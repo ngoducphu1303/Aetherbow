@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Compass,
   Crown,
   Flame,
@@ -10,11 +12,14 @@ import {
   Hammer,
   HelpCircle,
   History,
+  LayoutGrid,
   Lock,
   Mail,
   Map,
+  ScrollText,
   Settings,
   Shield,
+  ShoppingBag,
   Skull,
   Sparkles,
   Sword,
@@ -58,6 +63,12 @@ import {
   normalizeGuild,
 } from '../data/wave4Data';
 import {
+  CUMULATIVE_SPEND_MILESTONES,
+  countClaimableJourneyRewards,
+  normalizeArena,
+  normalizeNightMarket,
+} from '../data/wave5Data';
+import {
   AuraStyleId,
   ComputedPlayerStats,
   FlashDealItem,
@@ -99,23 +110,26 @@ interface TitleScreenProps {
   onStartDailyRift: () => void;
   onQuickSweepChapter: (chapterId: number) => void;
   onToggleMute: () => void;
-  onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome') => void;
+  onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome' | 'journey') => void;
   onOpenTalentsModal: () => void;
   onOpenBattlePassModal: () => void;
   onOpenVipModal: () => void;
   onOpenForgeModal: () => void;
   onOpenForgeSubTab: (
-    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken',
+    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets',
     gearUid?: string
   ) => void;
   onOpenGuildModal: () => void;
   onOpenDestinyWheelModal: () => void;
+  onOpenNightMarketModal: () => void;
+  onOpenArenaModal: () => void;
   onOpenProfileModal: (tab?: 'profile' | 'achievements' | 'history' | 'codex') => void;
   onOpenMailModal: () => void;
   onOpenSettingsModal: () => void;
   onSelectHero: (heroId: HeroId) => void;
   onUnlockHero: (heroId: HeroId, currency: 'gold' | 'gems') => void;
   onUpgradeHeroStar: (heroId: HeroId) => void;
+  onPreviewUltimate: (heroId: HeroId) => void;
   onUnlockPet: (petId: PetId, currency: 'gold' | 'gems') => void;
   onEquipPet: (petId: PetId | null) => void;
   onUpgradePet: (petId: PetId) => void;
@@ -200,12 +214,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenForgeSubTab,
   onOpenGuildModal,
   onOpenDestinyWheelModal,
+  onOpenNightMarketModal,
+  onOpenArenaModal,
   onOpenProfileModal,
   onOpenMailModal,
   onOpenSettingsModal,
   onSelectHero,
   onUnlockHero,
   onUpgradeHeroStar,
+  onPreviewUltimate,
   onUnlockPet,
   onEquipPet,
   onUpgradePet,
@@ -230,6 +247,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onResetHeroRotation,
 }) => {
   const [chapterPickerOpen, setChapterPickerOpen] = useState(false);
+  const [featureDockOpen, setFeatureDockOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [eventIdx, setEventIdx] = useState(0);
   const [eventImgFailed, setEventImgFailed] = useState(false);
@@ -269,6 +287,22 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const guild = normalizeGuild(save.guild);
   const destinyWheel = normalizeDestinyWheel(save.destinyWheel);
   const destinyReadyCount = destinyWheel.freeSpinsRemaining + destinyWheel.tickets;
+  const arena = normalizeArena(save.arena);
+  const nightMarket = normalizeNightMarket(save.nightMarket);
+  const journeyReadyCount = countClaimableJourneyRewards(save, stats.powerRating);
+  const spendMilestoneReady = CUMULATIVE_SPEND_MILESTONES.filter(
+    (m) =>
+      nightMarket.totalGemsSpent >= m.gems &&
+      !nightMarket.claimedSpendMilestones.includes(m.gems)
+  ).length;
+  const dockTotalBadges =
+    claimableCount +
+    bpClaimable +
+    (vipDailyReady ? 1 : 0) +
+    (!vip.starterPackClaimed ? 1 : 0) +
+    destinyReadyCount +
+    guild.bossRunsRemaining +
+    spendMilestoneReady;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -432,85 +466,42 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       <main key={activeTab} className="flex-1 min-h-0 flex flex-col a2-tab-enter">
         {activeTab === 'battle' && (
           <div className="flex-1 flex flex-col justify-between px-3 sm:px-6 py-3 min-h-0 relative">
-            {/* Upper Perimeter: Left Welfare | Center Quiet Title | Right Talents */}
-            <div className="flex items-start justify-between gap-2">
-              {/* Left-Edge Streamlined Welfare Stack (3 High-Signal Triggers) */}
+            {/* Upper Perimeter: Left Journey & Arena | Center Quiet Title | Right Expandable Feature Dock + Event Banner */}
+            <div className="flex items-start justify-between gap-2 relative">
+              {/* Left-Edge High-Signal Pillars: 7-Day Journey & Ranked PvP Arena */}
               <div className="pointer-events-auto flex flex-col gap-2 z-10 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     soundEngine.playUiClick();
-                    onOpenRewardsModal(!save.welcomeGiftClaimed ? 'welcome' : 'checkin');
-                  }}
-                  className="cel-panel flex items-center gap-2 px-3 py-2 rounded-xl hover:border-amber-300 text-xs font-black text-emerald-100 cursor-pointer whitespace-nowrap"
-                >
-                  <Gift className="w-4 h-4 text-emerald-300 shrink-0" />
-                  <span className="hidden sm:inline">Phúc Lợi</span>
-                  {claimableCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-mono-nums text-[9px] font-black">
-                      +{claimableCount}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    onOpenBattlePassModal();
-                  }}
-                  className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl hover:border-amber-200 text-xs font-black text-amber-200 cursor-pointer whitespace-nowrap"
-                >
-                  <Crown className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span className="hidden sm:inline">Battle Pass</span>
-                  <span className="font-mono-nums text-[10px] text-amber-300">
-                    Lv.{bpInfo.level}
-                  </span>
-                  {bpClaimable > 0 && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-mono-nums text-[9px] font-black">
-                      +{bpClaimable}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    onOpenVipModal();
-                  }}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap border ${
-                    hasVip
-                      ? 'bg-gradient-to-r from-amber-500/25 to-purple-500/25 border-amber-300/70 text-amber-200'
-                      : 'cel-panel border-purple-400/45 hover:border-amber-300 text-purple-100'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span className="hidden sm:inline">
-                    {hasVip ? 'Đặc Quyền VIP' : 'VIP & Quà Đầu'}
-                  </span>
-                  {(vipDailyReady || !vip.starterPackClaimed) && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
-                      {vipDailyReady ? 'Nhận' : 'Mới'}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    onOpenDestinyWheelModal();
+                    setFeatureDockOpen(false);
+                    onOpenRewardsModal('journey');
                   }}
                   className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl hover:border-amber-200 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap"
                 >
-                  <Ticket className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span className="hidden sm:inline">Vòng Quay</span>
-                  {destinyReadyCount > 0 && (
+                  <ScrollText className="w-4 h-4 text-emerald-300 shrink-0" />
+                  <span className="hidden sm:inline">Hành Trình 7 Ngày</span>
+                  {journeyReadyCount > 0 && (
                     <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
-                      {destinyReadyCount}
+                      +{journeyReadyCount}
                     </span>
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    setFeatureDockOpen(false);
+                    onOpenArenaModal();
+                  }}
+                  className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl border-rose-400/45 hover:border-amber-200 text-xs font-black text-rose-100 cursor-pointer whitespace-nowrap"
+                >
+                  <Swords className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span className="hidden sm:inline">Đấu Trường Arena</span>
+                  <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono-nums text-[9px] font-black">
+                    {arena.ticketsRemaining}
+                  </span>
                 </button>
               </div>
 
@@ -534,41 +525,202 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </div>
               </div>
 
-              {/* Right-Edge Guild + Talents Tree + Featured Event Banner */}
-              <div className="pointer-events-auto flex flex-col items-end gap-2 z-10 shrink-0">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playUiClick();
-                      onOpenGuildModal();
-                    }}
-                    className="cel-panel-ornate flex items-center gap-1.5 px-3 py-2 rounded-xl hover:border-amber-200 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap"
-                  >
-                    <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span className="hidden sm:inline">Bang Hội</span>
-                    {guild.bossRunsRemaining > 0 && (
-                      <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono-nums text-[9px] font-black">
-                        {guild.bossRunsRemaining}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playUiClick();
-                      onOpenTalentsModal();
-                    }}
-                    className="cel-panel flex items-center gap-2 px-3 py-2 rounded-xl border-amber-300/60 hover:border-amber-200 text-xs font-bold text-amber-200 cursor-pointer whitespace-nowrap"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span className="hidden sm:inline">Thiên Phú</span>
-                    <span className="font-mono-nums text-[11px] font-black text-amber-300">
-                      Lv.{totalTalentLv}
+              {/* Right-Edge Expandable Feature Dock + Featured Event Banner */}
+              <div className="pointer-events-auto flex flex-col items-end gap-2 z-20 shrink-0 relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    setFeatureDockOpen((v) => !v);
+                  }}
+                  aria-expanded={featureDockOpen}
+                  className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl border-amber-300/60 hover:border-amber-200 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap shadow-lg"
+                >
+                  <LayoutGrid className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span className="hidden sm:inline">Kho Tính Năng</span>
+                  {dockTotalBadges > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                      +{dockTotalBadges}
                     </span>
-                  </button>
-                </div>
+                  )}
+                  {featureDockOpen ? (
+                    <ChevronUp className="w-3.5 h-3.5 text-amber-300" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-amber-300" />
+                  )}
+                </button>
+
+                {featureDockOpen && (
+                  <div className="absolute top-11 right-0 w-72 sm:w-80 cel-panel-ornate rounded-2xl p-3 shadow-2xl z-30 a2-dock-enter">
+                    <div className="flex items-center justify-between border-b border-amber-400/20 pb-2 mb-2.5">
+                      <span className="font-display text-xs font-black text-amber-200 uppercase tracking-wider">
+                        Trung Tâm Tính Năng
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setFeatureDockOpen(false)}
+                        aria-label="Đóng Kho Tính Năng"
+                        className="text-slate-300 hover:text-white cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenRewardsModal(!save.welcomeGiftClaimed ? 'welcome' : 'checkin');
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-emerald-200 truncate">
+                          <Gift className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                          <span className="truncate">Phúc Lợi</span>
+                        </span>
+                        {claimableCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{claimableCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenNightMarketModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-purple-200 truncate">
+                          <ShoppingBag className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Chợ Đêm</span>
+                        </span>
+                        {spendMilestoneReady > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{spendMilestoneReady}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenGuildModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-100 truncate">
+                          <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Bang Hội</span>
+                        </span>
+                        {guild.bossRunsRemaining > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono-nums text-[9px] font-black">
+                            {guild.bossRunsRemaining}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenDestinyWheelModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
+                          <Ticket className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Vòng Quay</span>
+                        </span>
+                        {destinyReadyCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            {destinyReadyCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenForgeSubTab('sockets');
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-purple-200 truncate">
+                          <Gem className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                          <span className="truncate">Lò Rèn &amp; Khảm</span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenBattlePassModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                          <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">BP Lv.{bpInfo.level}</span>
+                        </span>
+                        {bpClaimable > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{bpClaimable}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenVipModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">{hasVip ? 'VIP Đặc Quyền' : 'VIP & Quà Đầu'}</span>
+                        </span>
+                        {(vipDailyReady || !vip.starterPackClaimed) && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            {vipDailyReady ? 'Nhận' : 'Mới'}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenTalentsModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                          <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Thiên Phú</span>
+                        </span>
+                        <span className="text-[9px] font-mono-nums font-black text-amber-300">
+                          Lv.{totalTalentLv}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Rotating Featured Live-Ops Event Banner with Zodiac Art */}
                 <div className="hidden md:flex flex-col w-56 cel-panel-ornate rounded-2xl overflow-hidden text-left">
@@ -617,7 +769,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       type="button"
                       onClick={() => {
                         soundEngine.playUiClick(1.05);
-                        if (activeEvent.target === 'destiny_wheel') onOpenDestinyWheelModal();
+                        if (activeEvent.target === 'night_market') onOpenNightMarketModal();
+                        else if (activeEvent.target === 'arena') onOpenArenaModal();
+                        else if (activeEvent.target === 'destiny_wheel') onOpenDestinyWheelModal();
                         else if (activeEvent.target === 'guild') onOpenGuildModal();
                         else if (activeEvent.target === 'shop') onTabChange('shop');
                         else if (activeEvent.target === 'battlepass') onOpenBattlePassModal();
@@ -1083,6 +1237,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onEquipSkin={onEquipSkin}
             onUnlockAura={onUnlockAura}
             onEquipAura={onEquipAura}
+            onPreviewUltimate={onPreviewUltimate}
             onRotateHero={onRotateHero}
             onResetHeroRotation={onResetHeroRotation}
           />

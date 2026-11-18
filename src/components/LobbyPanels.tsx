@@ -5,12 +5,14 @@ import {
   Check,
   Crown,
   Flame,
+  Gem,
   Hammer,
   Heart,
   Info,
   Layers,
   Lock,
   Palette,
+  Play,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -57,6 +59,14 @@ import {
   normalizeBuildPresets,
 } from '../data/wave4Data';
 import {
+  SOCKET_GEM_META,
+  getMaxGemSocketsForRarity,
+  getSocketGemBonuses,
+  getSocketGemLabel,
+  getSocketGemTierRoman,
+  normalizeSocketGems,
+} from '../data/wave5Data';
+import {
   AuraStyleId,
   ComputedPlayerStats,
   FlashDealItem,
@@ -91,7 +101,7 @@ interface GearPanelProps {
   onBulkFuseGear: () => void;
   onOpenForge: () => void;
   onOpenForgeSubTab?: (
-    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken',
+    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets',
     gearUid?: string
   ) => void;
   onSaveBuildPreset: (idx: number) => void;
@@ -126,6 +136,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   );
   const dragRef = useRef<{ active: boolean; lastX: number }>({ active: false, lastX: 0 });
   const buildPresets = normalizeBuildPresets(save);
+  const socketPool = normalizeSocketGems(save.socketGems);
 
   const selectedItem =
     save.inventory.find((g) => g.uid === selectedUid) || save.inventory[0];
@@ -323,13 +334,17 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                 if (!tpl) return null;
                 const rMeta = RARITY_META[selectedItem.rarity];
                 const gStats = getGearStats(selectedItem);
-                const itemScore = getGearPowerScore(selectedItem);
+                const itemScore = getGearPowerScore(selectedItem, socketPool);
                 const upgradeCost = getUpgradeCost(selectedItem);
                 const isEquipped = save.equipped[tpl.slot] === selectedItem.uid;
                 const atMaxLevel = selectedItem.level >= rMeta.maxLevel;
                 const fuseReady = canFuseItem(selectedItem);
                 const awkLv = selectedItem.awakeningLevel ?? 0;
                 const substats = getEffectiveSubstats(selectedItem);
+                const maxSockets = getMaxGemSocketsForRarity(selectedItem.rarity);
+                const selectedSockets = (selectedItem.socketedGems ?? [])
+                  .map((gid) => socketPool.find((g) => g.uid === gid))
+                  .filter((g): g is NonNullable<typeof g> => Boolean(g));
                 const isHolo =
                   selectedItem.rarity === Rarity.LEGENDARY ||
                   selectedItem.rarity === Rarity.MYTHIC ||
@@ -340,15 +355,100 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                 const equippedItem = !isEquipped
                   ? save.inventory.find((g) => g.uid === equippedUid)
                   : undefined;
-                const eqStats = equippedItem ? getGearStats(equippedItem) : null;
-                const eqScore = equippedItem ? getGearPowerScore(equippedItem) : 0;
-                const atkDiff = eqStats ? gStats.atk - eqStats.atk : 0;
-                const hpDiff = eqStats ? gStats.hp - eqStats.hp : 0;
-                const scoreDiff = equippedItem ? itemScore - eqScore : 0;
+                const sumWithGems = (item: GearInstance) => {
+                  const base = getGearStats(item);
+                  let atk = base.atk;
+                  let hp = base.hp;
+                  let crit = base.critChance;
+                  let aspd = base.attackSpeed;
+                  let move = base.moveSpeed;
+                  let dr = base.damageReduction;
+                  for (const gid of item.socketedGems ?? []) {
+                    const g = socketPool.find((x) => x.uid === gid);
+                    if (!g) continue;
+                    const b = getSocketGemBonuses(g);
+                    atk += b.atk;
+                    hp += b.hp;
+                    crit += b.critChance;
+                    aspd += b.attackSpeed;
+                    dr += b.damageReduction;
+                  }
+                  for (const sub of getEffectiveSubstats(item)) {
+                    if (sub.kind === 'crit_pct') crit += sub.value;
+                    else if (sub.kind === 'aspd_pct') aspd += sub.value;
+                    else if (sub.kind === 'move_pct') move += sub.value;
+                    else if (sub.kind === 'dr_pct') dr += sub.value;
+                  }
+                  return { atk, hp, crit, aspd, move, dr };
+                };
+                const selTotal = sumWithGems(selectedItem);
+                const eqTotal = equippedItem ? sumWithGems(equippedItem) : null;
+                const eqScore = equippedItem ? getGearPowerScore(equippedItem, socketPool) : 0;
+
+                const comparisonRows = eqTotal
+                  ? [
+                      {
+                        label: 'Tấn Công (ATK)',
+                        cur: eqTotal.atk,
+                        next: selTotal.atk,
+                        diff: selTotal.atk - eqTotal.atk,
+                        fmt: (v: number) => `${Math.round(v)}`,
+                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${Math.round(d)}`,
+                      },
+                      {
+                        label: 'Sinh Lực (HP)',
+                        cur: eqTotal.hp,
+                        next: selTotal.hp,
+                        diff: selTotal.hp - eqTotal.hp,
+                        fmt: (v: number) => `${Math.round(v)}`,
+                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${Math.round(d)}`,
+                      },
+                      {
+                        label: 'Chí Mạng',
+                        cur: eqTotal.crit * 100,
+                        next: selTotal.crit * 100,
+                        diff: (selTotal.crit - eqTotal.crit) * 100,
+                        fmt: (v: number) => `${v.toFixed(1)}%`,
+                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
+                      },
+                      {
+                        label: 'Tốc Bắn',
+                        cur: eqTotal.aspd * 100,
+                        next: selTotal.aspd * 100,
+                        diff: (selTotal.aspd - eqTotal.aspd) * 100,
+                        fmt: (v: number) => `${v.toFixed(1)}%`,
+                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
+                      },
+                      {
+                        label: 'Tốc Chạy',
+                        cur: eqTotal.move * 100,
+                        next: selTotal.move * 100,
+                        diff: (selTotal.move - eqTotal.move) * 100,
+                        fmt: (v: number) => `${v.toFixed(1)}%`,
+                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
+                      },
+                      {
+                        label: 'Giáp Giảm ST',
+                        cur: eqTotal.dr * 100,
+                        next: selTotal.dr * 100,
+                        diff: (selTotal.dr - eqTotal.dr) * 100,
+                        fmt: (v: number) => `${v.toFixed(1)}%`,
+                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
+                      },
+                      {
+                        label: 'Điểm LC Trang Bị',
+                        cur: eqScore,
+                        next: itemScore,
+                        diff: itemScore - eqScore,
+                        fmt: (v: number) => `${Math.round(v)}`,
+                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${Math.round(d)}`,
+                      },
+                    ]
+                  : [];
 
                 return (
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
+                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
                       <div
                         className={`a2-item-card w-16 h-16 shrink-0 ${
                           RARITY_FRAME_CLASS[selectedItem.rarity]
@@ -364,7 +464,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                         </div>
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5 text-[11px] mb-0.5">
                           <span className={`font-black ${rMeta.textClass}`}>
                             {rMeta.label} · {SLOT_LABELS[tpl.slot]}
@@ -421,41 +521,76 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                           </div>
                         )}
 
-                        {/* Live Comparison vs Currently Equipped */}
+                        {maxSockets > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            <span className="text-[10px] font-bold text-purple-200 flex items-center gap-1">
+                              <Gem className="w-3 h-3 text-purple-300" />
+                              Bảo Thạch ({selectedSockets.length}/{maxSockets}):
+                            </span>
+                            {selectedSockets.map((gem) => {
+                              const meta = SOCKET_GEM_META[gem.color];
+                              return (
+                                <span
+                                  key={gem.uid}
+                                  className={`px-2 py-0.5 rounded-lg border text-[10px] font-mono-nums font-bold ${meta.bgClass} ${meta.borderClass} ${meta.textClass}`}
+                                >
+                                  {getSocketGemTierRoman(gem.tier)} · {getSocketGemLabel(gem)}
+                                </span>
+                              );
+                            })}
+                            {selectedSockets.length < maxSockets && (
+                              <span className="text-[10px] text-slate-400 italic">
+                                Còn {maxSockets - selectedSockets.length} lỗ trống
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Detailed 6-Stat Comparison Table vs Currently Equipped */}
                         {!isEquipped && equippedItem && (
-                          <div className="mt-2 inline-flex flex-wrap items-center gap-2.5 bg-[#060916]/90 border border-amber-400/20 rounded-xl px-2.5 py-1 text-[11px] font-mono-nums">
-                            <span className="text-slate-400 font-semibold">
-                              So với đang mặc:
-                            </span>
-                            {atkDiff !== 0 && (
-                              <span
-                                className={`font-black ${
-                                  atkDiff > 0 ? 'text-emerald-300' : 'text-rose-400'
-                                }`}
-                              >
-                                {atkDiff > 0 ? `+${atkDiff}` : atkDiff} ATK
+                          <div className="mt-2.5 bg-[#060916]/95 border border-amber-400/25 rounded-xl p-2.5">
+                            <div className="flex items-center justify-between text-[10px] font-black text-amber-200 mb-1.5">
+                              <span>
+                                So sánh với đang mặc ({GEAR_TEMPLATES[equippedItem.templateId]?.name})
                               </span>
-                            )}
-                            {hpDiff !== 0 && (
-                              <span
-                                className={`font-black ${
-                                  hpDiff > 0 ? 'text-emerald-300' : 'text-rose-400'
-                                }`}
-                              >
-                                {hpDiff > 0 ? `+${hpDiff}` : hpDiff} HP
-                              </span>
-                            )}
-                            <span
-                              className={`font-black ${
-                                scoreDiff > 0
-                                  ? 'text-emerald-300'
-                                  : scoreDiff < 0
-                                  ? 'text-rose-400'
-                                  : 'text-slate-300'
-                              }`}
-                            >
-                              ({scoreDiff >= 0 ? `+${scoreDiff}` : scoreDiff} Điểm)
-                            </span>
+                              <span className="text-slate-400 font-semibold">Đã gồm Bảo Thạch</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                              {comparisonRows.map((row) => {
+                                const improved = row.diff > 0.05;
+                                const worse = row.diff < -0.05;
+                                return (
+                                  <div
+                                    key={row.label}
+                                    className="flex items-center justify-between gap-2 text-[10px] font-mono-nums border-b border-slate-800/70 py-0.5"
+                                  >
+                                    <span className="text-slate-300 font-sans font-semibold truncate">
+                                      {row.label}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="text-slate-400">{row.fmt(row.cur)}</span>
+                                      <span className="text-slate-600">→</span>
+                                      <span className="text-white font-bold">{row.fmt(row.next)}</span>
+                                      <span
+                                        className={`font-black min-w-[44px] text-right ${
+                                          improved
+                                            ? 'text-emerald-300'
+                                            : worse
+                                            ? 'text-rose-400'
+                                            : 'text-slate-500'
+                                        }`}
+                                      >
+                                        {improved
+                                          ? `▲ ${row.fmtDiff(row.diff)}`
+                                          : worse
+                                          ? `▼ ${row.fmtDiff(row.diff)}`
+                                          : '='}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -493,21 +628,41 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                       </button>
 
                       {selectedItem.rarity !== Rarity.COMMON && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            soundEngine.playUiClick();
-                            if (onOpenForgeSubTab) {
-                              onOpenForgeSubTab('reforge', selectedItem.uid);
-                            } else {
-                              onOpenForge();
-                            }
-                          }}
-                          className="a2-slate-btn px-4 py-2 rounded-xl text-xs font-black text-sky-200 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer border border-sky-400/35"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5 text-sky-300" />
-                          <span>Tẩy Luyện &amp; Thức Tỉnh</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              if (onOpenForgeSubTab) {
+                                onOpenForgeSubTab('sockets', selectedItem.uid);
+                              } else {
+                                onOpenForge();
+                              }
+                            }}
+                            className="a2-slate-btn px-4 py-2 rounded-xl text-xs font-black text-purple-200 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer border border-purple-400/40"
+                          >
+                            <Gem className="w-3.5 h-3.5 text-purple-300" />
+                            <span>
+                              Khảm Bảo Thạch ({selectedSockets.length}/{maxSockets})
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              if (onOpenForgeSubTab) {
+                                onOpenForgeSubTab('reforge', selectedItem.uid);
+                              } else {
+                                onOpenForge();
+                              }
+                            }}
+                            className="a2-slate-btn px-4 py-2 rounded-xl text-xs font-black text-sky-200 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer border border-sky-400/35"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5 text-sky-300" />
+                            <span>Tẩy Luyện &amp; Thức Tỉnh</span>
+                          </button>
+                        </>
                       )}
 
                       {selectedItem.rarity !== Rarity.MYTHIC && (
@@ -729,6 +884,7 @@ interface HeroesPanelProps {
   onEquipSkin: (heroId: HeroId, skinId: HeroSkinId) => void;
   onUnlockAura: (auraId: AuraStyleId, currency: 'gold' | 'gems') => void;
   onEquipAura: (auraId: AuraStyleId) => void;
+  onPreviewUltimate?: (heroId: HeroId) => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
 }
@@ -747,6 +903,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onEquipSkin,
   onUnlockAura,
   onEquipAura,
+  onPreviewUltimate,
   onRotateHero,
   onResetHeroRotation,
 }) => {
@@ -852,11 +1009,23 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 {hero.passiveDesc}
               </p>
 
-              {/* Ultimate Callout */}
+              {/* Ultimate Callout + 3D Showcase Button */}
               <div className="rounded-xl bg-[#141036] border border-purple-400/45 px-3.5 py-2.5">
-                <div className="flex items-center gap-1.5 text-[11px] font-black text-purple-300">
-                  <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>Chiêu Cuối (Q) · {hero.ultName}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-black text-purple-300">
+                    <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>Chiêu Cuối (Q) · {hero.ultName}</span>
+                  </div>
+                  {onPreviewUltimate && (
+                    <button
+                      type="button"
+                      onClick={() => onPreviewUltimate(hero.id)}
+                      className="a2-purple-btn px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                    >
+                      <Play className="w-3 h-3" />
+                      <span>Xem Trước 3D (Q)</span>
+                    </button>
+                  )}
                 </div>
                 <p className="text-xs text-slate-200 mt-1 leading-snug">
                   {hero.ultDesc}

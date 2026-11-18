@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementToast } from './components/AchievementToast';
+import { ArenaModal } from './components/ArenaModal';
 import { BattlePassModal } from './components/BattlePassModal';
 import { ChestGachaModal, GachaRevealState } from './components/ChestGachaModal';
 import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
@@ -8,6 +9,7 @@ import { DailyRewardsModal } from './components/DailyRewardsModal';
 import { DestinyWheelModal } from './components/DestinyWheelModal';
 import { GameHUD } from './components/GameHUD';
 import { MailModal } from './components/MailModal';
+import { NightMarketModal } from './components/NightMarketModal';
 import { OnboardingTour } from './components/OnboardingTour';
 import { PauseResultModal } from './components/PauseResultModal';
 import { ProfileCodexModal } from './components/ProfileCodexModal';
@@ -105,10 +107,25 @@ import {
   reforgeItemSubstats,
   rollDestinyPrize,
 } from './data/wave4Data';
+import {
+  ARENA_RANK_TIERS,
+  CUMULATIVE_SPEND_MILESTONES,
+  NOVICE_JOURNEY_DAYS,
+  SOCKET_GEM_COLORS,
+  createSocketGem,
+  getJourneyTaskCurrentValue,
+  getMaxGemSocketsForRarity,
+  getSocketGemCraftCost,
+  normalizeArena,
+  normalizeNightMarket,
+  normalizeNoviceJourney,
+  normalizeSocketGems,
+} from './data/wave5Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
+  ArenaOpponent,
   AuraStyleId,
   DamageBreakdown,
   DestinyWheelPrize,
@@ -125,6 +142,7 @@ import {
   HeroSkinId,
   HudSnapshot,
   JoystickState,
+  NightMarketOffer,
   PetId,
   Rarity,
   RunHistoryEntry,
@@ -132,11 +150,19 @@ import {
   SaveData,
   SkillDefinition,
   SkillId,
+  SocketGemColor,
+  SocketGemInstance,
   TalentId,
   WheelOutcome,
 } from './types/game';
 
 const STORAGE_KEY = 'artemis_3d_save_v1';
+
+function addGemsSpent(prev: SaveData, spent: number) {
+  const nm = normalizeNightMarket(prev.nightMarket);
+  if (spent <= 0) return nm;
+  return { ...nm, totalGemsSpent: nm.totalGemsSpent + spent };
+}
 
 function loadSaveData(): SaveData {
   try {
@@ -193,6 +219,11 @@ const INITIAL_HUD: HudSnapshot = {
   isGuildBossMode: false,
   guildBossTimeLeft: 60,
   guildBossTotalDamage: 0,
+  isArenaMode: false,
+  arenaTimeLeft: 45,
+  arenaOpponentName: '',
+  arenaOpponentHp: 0,
+  arenaOpponentMaxHp: 1,
   activeSkills: {},
   stageBannerText: null,
   comboCount: 0,
@@ -206,6 +237,7 @@ export default function App() {
   const transitionTimerRef = useRef<number | null>(null);
   const unlockedToastIdsRef = useRef<Set<string> | null>(null);
   const prevPowerRef = useRef<number | null>(null);
+  const activeArenaOpponentRef = useRef<ArenaOpponent | null>(null);
 
   const [save, setSave] = useState<SaveData>(() => loadSaveData());
   const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
@@ -221,21 +253,26 @@ export default function App() {
     isBossRushMode: boolean;
     isDailyRiftMode?: boolean;
     isGuildBossMode?: boolean;
+    isArenaMode?: boolean;
+    arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
   const [rewardsModalTab, setRewardsModalTab] = useState<
-    'checkin' | 'quests' | 'welcome' | null
+    'checkin' | 'quests' | 'welcome' | 'journey' | null
   >(null);
   const [talentsModalOpen, setTalentsModalOpen] = useState<boolean>(false);
   const [battlePassOpen, setBattlePassOpen] = useState<boolean>(false);
   const [vipModalOpen, setVipModalOpen] = useState<boolean>(false);
   const [forgeConfig, setForgeConfig] = useState<{
     open: boolean;
-    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken';
+    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets';
     gearUid?: string;
   }>({ open: false, subTab: 'salvage' });
   const [guildModalOpen, setGuildModalOpen] = useState<boolean>(false);
   const [destinyWheelOpen, setDestinyWheelOpen] = useState<boolean>(false);
+  const [nightMarketOpen, setNightMarketOpen] = useState<boolean>(false);
+  const [arenaModalOpen, setArenaModalOpen] = useState<boolean>(false);
+  const [activeArenaOpponent, setActiveArenaOpponent] = useState<ArenaOpponent | null>(null);
   const [profileModalTab, setProfileModalTab] = useState<
     'profile' | 'achievements' | 'history' | 'codex' | null
   >(null);
@@ -276,6 +313,9 @@ export default function App() {
     isDailyRiftMode?: boolean;
     isGuildBossMode?: boolean;
     guildBossDamage?: number;
+    isArenaMode?: boolean;
+    arenaOpponentName?: string;
+    arenaRatingDelta?: number;
     starDust?: number;
     petEssence?: number;
     maxCombo?: number;
@@ -453,11 +493,19 @@ export default function App() {
           const isBossRush = Boolean(summary.isBossRushMode);
           const isDailyRift = Boolean(summary.isDailyRiftMode);
           const isGuildBoss = Boolean(summary.isGuildBossMode);
+          const isArena = Boolean(summary.isArenaMode);
+          const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
           const bossRound = summary.bossRushRound ?? summary.stageReached ?? 1;
           const guildBossDamage = summary.guildBossDamage ?? 0;
+          const arenaRatingDelta = isArena ? (victory ? (opp?.rewardPoints ?? 24) : -12) : 0;
+          const arenaCoinsGain = isArena ? (victory ? (opp?.rewardArenaCoins ?? 35) : 12) : 0;
 
-          const bonusGold = isGuildBoss
+          const bonusGold = isArena
+            ? victory
+              ? 160
+              : 55
+            : isGuildBoss
             ? Math.min(480, 90 + Math.floor(guildBossDamage / 250))
             : isDailyRift
             ? victory
@@ -470,7 +518,11 @@ export default function App() {
             : victory
             ? 140 * summary.chapterId
             : 20;
-          const bonusGems = isGuildBoss
+          const bonusGems = isArena
+            ? victory
+              ? 18
+              : 4
+            : isGuildBoss
             ? Math.min(24, 4 + Math.floor(guildBossDamage / 4000))
             : isDailyRift
             ? victory
@@ -491,7 +543,11 @@ export default function App() {
             ? Math.min(180, 25 + Math.floor(guildBossDamage / 600))
             : 0;
 
-          const rawSeasonXp = isGuildBoss
+          const rawSeasonXp = isArena
+            ? victory
+              ? 95
+              : 40
+            : isGuildBoss
             ? 85 + Math.min(140, Math.floor(guildBossDamage / 500))
             : isDailyRift
             ? (victory ? 120 : summary.stageReached * 28) + summary.kills * 2
@@ -511,6 +567,7 @@ export default function App() {
             seasonXp: runSeasonXp,
             starDust: starDustGain,
             petEssence: petEssenceGain,
+            arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
 
@@ -526,7 +583,9 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isGuildBoss
+              mode: isArena
+                ? 'arena'
+                : isGuildBoss
                 ? 'guild_boss'
                 : isDailyRift
                 ? 'daily_rift'
@@ -535,7 +594,9 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isGuildBoss
+              label: isArena
+                ? `Đấu Trường · ${summary.arenaOpponentName || opp?.name || 'Kình Địch'}`
+                : isGuildBoss
                 ? `Boss Bang Hội · ${guildBossDamage.toLocaleString('vi-VN')} ST`
                 : isDailyRift
                 ? `Bí Cảnh Hằng Ngày · Ải ${summary.stageReached}/3`
@@ -544,7 +605,7 @@ export default function App() {
                 : isTower
                 ? `Tháp Vô Tận · Tầng ${towerFloor}`
                 : `Chương ${summary.chapterId} · ${chName}`,
-              stageReached: isGuildBoss
+              stageReached: isArena || isGuildBoss
                 ? 1
                 : isBossRush
                 ? bossRound
@@ -560,6 +621,28 @@ export default function App() {
               timestamp: Date.now(),
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isArena) {
+              const ar = normalizeArena(prev.arena);
+              const nextRating = Math.max(900, ar.rating + arenaRatingDelta);
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                arena: {
+                  ...ar,
+                  rating: nextRating,
+                  bestRating: Math.max(ar.bestRating, nextRating),
+                  wins: ar.wins + (victory ? 1 : 0),
+                  losses: ar.losses + (victory ? 0 : 1),
+                  streak: victory ? ar.streak + 1 : 0,
+                  arenaCoins: ar.arenaCoins + arenaCoinsGain,
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
 
             if (isGuildBoss) {
               const g = normalizeGuild(prev.guild);
@@ -880,6 +963,56 @@ export default function App() {
     engineRef.current?.startGuildBossRaid(playerStats);
   }, [save.guild, playerStats]);
 
+  const handleStartArenaDuel = useCallback(
+    (opponent: ArenaOpponent) => {
+      const ar = normalizeArena(save.arena);
+      if (ar.ticketsRemaining <= 0) return;
+
+      soundEngine.unlock();
+      setSave((prev) => {
+        const cur = normalizeArena(prev.arena);
+        if (cur.ticketsRemaining <= 0) return prev;
+        return {
+          ...prev,
+          arena: { ...cur, ticketsRemaining: cur.ticketsRemaining - 1 },
+        };
+      });
+
+      activeArenaOpponentRef.current = opponent;
+      setActiveArenaOpponent(opponent);
+      setEnteredGame(true);
+      setRewardsModalTab(null);
+      setTalentsModalOpen(false);
+      setMailModalOpen(false);
+      setVipModalOpen(false);
+      setForgeConfig((prev) => ({ ...prev, open: false }));
+      setGuildModalOpen(false);
+      setDestinyWheelOpen(false);
+      setNightMarketOpen(false);
+      setArenaModalOpen(false);
+      setGachaReveal(null);
+      setPreviewHeroId(null);
+      setRunSummary(null);
+      setDamages([]);
+      setTransitionState({
+        chapterId: 4,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isArenaMode: true,
+        arenaOpponentName: opponent.name,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startArenaDuel(playerStats, opponent);
+    },
+    [save.arena, playerStats]
+  );
+
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -968,6 +1101,8 @@ export default function App() {
         !forgeConfig.open &&
         !guildModalOpen &&
         !destinyWheelOpen &&
+        !nightMarketOpen &&
+        !arenaModalOpen &&
         !profileModalTab &&
         !mailModalOpen &&
         !sweepResult &&
@@ -1000,6 +1135,8 @@ export default function App() {
     forgeConfig.open,
     guildModalOpen,
     destinyWheelOpen,
+    nightMarketOpen,
+    arenaModalOpen,
     profileModalTab,
     mailModalOpen,
     sweepResult,
@@ -1034,6 +1171,7 @@ export default function App() {
         ...prev,
         gold: currency === 'gold' ? prev.gold - hero.unlockGold : prev.gold,
         gems: currency === 'gems' ? prev.gems - hero.unlockGems : prev.gems,
+        nightMarket: addGemsSpent(prev, currency === 'gems' ? hero.unlockGems : 0),
         unlockedHeroes: [...prev.unlockedHeroes, heroId],
         selectedHeroId: heroId,
       };
@@ -1052,6 +1190,7 @@ export default function App() {
         ...prev,
         gold: prev.gold - cost.gold,
         gems: prev.gems - cost.gems,
+        nightMarket: addGemsSpent(prev, cost.gems),
         heroStars: { ...prev.heroStars, [heroId]: currentStar + 1 },
         dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
       };
@@ -1121,6 +1260,12 @@ export default function App() {
         templateId: target.templateId,
         rarity: RARITY_ORDER[rIdx + 1],
         level: maxLv,
+        substats: target.substats,
+        awakeningLevel: Math.max(
+          target.awakeningLevel ?? 0,
+          ...others.map((o) => o.awakeningLevel ?? 0)
+        ),
+        socketedGems: target.socketedGems,
       };
 
       const nextInventory = prev.inventory.filter((g) => !consumedUids.has(g.uid));
@@ -1145,13 +1290,16 @@ export default function App() {
   const handleAutoEquipBest = useCallback(() => {
     soundEngine.playLevelUp();
     setSave((prev) => {
+      const socketPool = normalizeSocketGems(prev.socketGems);
       const nextEquipped = { ...prev.equipped };
       for (const slot of Object.values(GearSlot)) {
         const candidates = prev.inventory.filter(
           (g) => GEAR_TEMPLATES[g.templateId]?.slot === slot
         );
         if (candidates.length === 0) continue;
-        candidates.sort((a, b) => getGearPowerScore(b) - getGearPowerScore(a));
+        candidates.sort(
+          (a, b) => getGearPowerScore(b, socketPool) - getGearPowerScore(a, socketPool)
+        );
         nextEquipped[slot] = candidates[0].uid;
       }
       return { ...prev, equipped: nextEquipped };
@@ -1193,6 +1341,13 @@ export default function App() {
               templateId: tplId,
               rarity: nextRarity,
               level: Math.max(main.level, m2.level, m3.level),
+              substats: main.substats,
+              awakeningLevel: Math.max(
+                main.awakeningLevel ?? 0,
+                m2.awakeningLevel ?? 0,
+                m3.awakeningLevel ?? 0
+              ),
+              socketedGems: main.socketedGems,
             };
             inv = inv.filter((g) => !consumed.has(g.uid));
             inv.push(upgraded);
@@ -1324,6 +1479,7 @@ export default function App() {
             ...prev,
             gold: isGemChest ? prev.gold : prev.gold - totalCost,
             gems: isGemChest ? prev.gems - totalCost : prev.gems,
+            nightMarket: addGemsSpent(prev, isGemChest ? totalCost : 0),
             inventory: [...prev.inventory, ...items],
             pity: nextPity,
             dailyQuests: { ...dq, chests: dq.chests + count },
@@ -1345,6 +1501,7 @@ export default function App() {
             ...prev,
             gold: isGemChest ? prev.gold : prev.gold - totalCost,
             gems: isGemChest ? prev.gems - totalCost : prev.gems,
+            nightMarket: addGemsSpent(prev, isGemChest ? totalCost : 0),
             runeInventory: [...prev.runeInventory, ...items],
             pity: nextPity,
             dailyQuests: { ...dq, chests: dq.chests + count },
@@ -1367,6 +1524,7 @@ export default function App() {
       return {
         ...prev,
         gems: prev.gems - BATTLE_PASS_PREMIUM_GEM_COST,
+        nightMarket: addGemsSpent(prev, BATTLE_PASS_PREMIUM_GEM_COST),
         battlePass: { ...bp, premiumUnlocked: true },
       };
     });
@@ -1637,6 +1795,7 @@ export default function App() {
         ...prev,
         gold: nextGold,
         gems: nextGems,
+        nightMarket: addGemsSpent(prev, deal.currency === 'gems' ? deal.price : 0),
         inventory: nextInv,
         runeInventory: nextRunes,
         flashDeals: {
@@ -1745,6 +1904,7 @@ export default function App() {
         ...prev,
         gold: currency === 'gold' ? prev.gold - def.unlockGold : prev.gold,
         gems: currency === 'gems' ? prev.gems - def.unlockGems : prev.gems,
+        nightMarket: addGemsSpent(prev, currency === 'gems' ? def.unlockGems : 0),
         pets: [...pets, { petId, level: 1 }],
         equippedPetId: petId,
       };
@@ -1796,6 +1956,7 @@ export default function App() {
         ...prev,
         gold: currency === 'gold' ? prev.gold - skin.unlockGold : prev.gold,
         gems: currency === 'gems' ? prev.gems - skin.unlockGems : prev.gems,
+        nightMarket: addGemsSpent(prev, currency === 'gems' ? skin.unlockGems : 0),
         unlockedSkins: [...unlocked, skinId],
         equippedSkinByHero: { ...(prev.equippedSkinByHero ?? {}), [targetHero]: skinId },
       };
@@ -1827,6 +1988,7 @@ export default function App() {
         ...prev,
         gold: currency === 'gold' ? prev.gold - aura.unlockGold : prev.gold,
         gems: currency === 'gems' ? prev.gems - aura.unlockGems : prev.gems,
+        nightMarket: addGemsSpent(prev, currency === 'gems' ? aura.unlockGems : 0),
         unlockedAuras: [...unlocked, auraId],
         equippedAuraId: auraId,
       };
@@ -1854,6 +2016,7 @@ export default function App() {
       return {
         ...prev,
         gems: prev.gems - VIP_MONTHLY_COST_GEMS,
+        nightMarket: addGemsSpent(prev, VIP_MONTHLY_COST_GEMS),
         vip: { ...vip, activeUntilDate: nextUntil },
         dailySweeps: { ...sweeps, remaining: sweeps.remaining + 2 },
       };
@@ -1884,7 +2047,8 @@ export default function App() {
       soundEngine.playVictory();
       return {
         ...prev,
-        gems: prev.gems - STARTER_PACK_COST_GEMS + 0,
+        gems: prev.gems - STARTER_PACK_COST_GEMS,
+        nightMarket: addGemsSpent(prev, STARTER_PACK_COST_GEMS),
         gold: prev.gold + STARTER_PACK_REWARDS.gold,
         petEssence: (prev.petEssence ?? 0) + STARTER_PACK_REWARDS.essence,
         starDust: (prev.starDust ?? 0) + STARTER_PACK_REWARDS.starDust,
@@ -2117,6 +2281,7 @@ export default function App() {
         ...prev,
         gold: prev.gold - goldCost,
         gems: prev.gems - gemCost,
+        nightMarket: addGemsSpent(prev, gemCost),
         guild: {
           ...g,
           level: nextLevel,
@@ -2224,6 +2389,7 @@ export default function App() {
           ...prev,
           gold: prev.gold + goldGain,
           gems: Math.max(0, prev.gems - gemCost) + gemsGain,
+          nightMarket: addGemsSpent(prev, gemCost),
           starDust: (prev.starDust ?? 0) + dustGain,
           petEssence: (prev.petEssence ?? 0) + essenceGain,
           inventory: newGear.length > 0 ? [...prev.inventory, ...newGear] : prev.inventory,
@@ -2292,6 +2458,298 @@ export default function App() {
         seasonMedalsClaimed: [...claimed, medalId],
       };
     });
+  }, []);
+
+  // Wave 5 Handlers: Night Market, Arena, 3-Tier Socket Gems, 7-Day Novice Journey, Lobby Ultimate 3D Preview
+  const handleBuyNightMarketOffer = useCallback((offer: NightMarketOffer) => {
+    setSave((prev) => {
+      const nm = normalizeNightMarket(prev.nightMarket);
+      const bought = nm.purchasedCounts[offer.id] ?? 0;
+      if (bought >= offer.maxPurchases) return prev;
+      if (offer.currency === 'gold' && prev.gold < offer.price) return prev;
+      if (offer.currency === 'gems' && prev.gems < offer.price) return prev;
+
+      let nextDust = prev.starDust ?? 0;
+      let nextEssence = prev.petEssence ?? 0;
+      let nextInv = prev.inventory;
+      let nextSocketGems = normalizeSocketGems(prev.socketGems);
+      let nextDestiny = normalizeDestinyWheel(prev.destinyWheel);
+      let nextArena = normalizeArena(prev.arena);
+
+      if (offer.rewardKind === 'star_dust') nextDust += offer.amount;
+      else if (offer.rewardKind === 'pet_essence') nextEssence += offer.amount;
+      else if (offer.rewardKind === 'destiny_ticket') {
+        nextDestiny = { ...nextDestiny, tickets: nextDestiny.tickets + offer.amount };
+      } else if (offer.rewardKind === 'arena_ticket') {
+        nextArena = {
+          ...nextArena,
+          ticketsRemaining: Math.min(15, nextArena.ticketsRemaining + offer.amount),
+        };
+      } else if (offer.rewardKind === 'socket_gem_t2') {
+        const randColor =
+          SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+        nextSocketGems = [...nextSocketGems, createSocketGem(randColor, 2)];
+      } else if (offer.rewardKind === 'gear_s') {
+        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)];
+      }
+
+      const spentGems = offer.currency === 'gems' ? offer.price : 0;
+      return {
+        ...prev,
+        gold: offer.currency === 'gold' ? prev.gold - offer.price : prev.gold,
+        gems: offer.currency === 'gems' ? prev.gems - offer.price : prev.gems,
+        starDust: nextDust,
+        petEssence: nextEssence,
+        inventory: nextInv,
+        socketGems: nextSocketGems,
+        destinyWheel: nextDestiny,
+        arena: nextArena,
+        nightMarket: {
+          ...nm,
+          purchasedCounts: { ...nm.purchasedCounts, [offer.id]: bought + 1 },
+          totalGemsSpent: nm.totalGemsSpent + spentGems,
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimSpendMilestone = useCallback((gemsThreshold: number) => {
+    const ms = CUMULATIVE_SPEND_MILESTONES.find((m) => m.gems === gemsThreshold);
+    if (!ms) return;
+    setSave((prev) => {
+      const nm = normalizeNightMarket(prev.nightMarket);
+      if (nm.totalGemsSpent < ms.gems || nm.claimedSpendMilestones.includes(ms.gems)) {
+        return prev;
+      }
+
+      let nextSocketGems = normalizeSocketGems(prev.socketGems);
+      if (ms.gemTier2) {
+        const c = SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+        nextSocketGems = [...nextSocketGems, createSocketGem(c, 2)];
+      }
+      if ('gemTier3' in ms && ms.gemTier3) {
+        const c = SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+        nextSocketGems = [...nextSocketGems, createSocketGem(c, 3)];
+      }
+
+      let nextDestiny = normalizeDestinyWheel(prev.destinyWheel);
+      if ('destinyTickets' in ms && ms.destinyTickets) {
+        nextDestiny = { ...nextDestiny, tickets: nextDestiny.tickets + ms.destinyTickets };
+      }
+
+      const nextInv = ms.gearS
+        ? [...prev.inventory, rollChestGear(true, ms.gearRarity ?? Rarity.EPIC, true)]
+        : prev.inventory;
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: prev.gold + ms.gold,
+        starDust: (prev.starDust ?? 0) + ms.starDust,
+        petEssence: (prev.petEssence ?? 0) + ('petEssence' in ms ? ms.petEssence ?? 0 : 0),
+        inventory: nextInv,
+        socketGems: nextSocketGems,
+        destinyWheel: nextDestiny,
+        equippedTitle: ms.titleUnlock || prev.equippedTitle,
+        nightMarket: {
+          ...nm,
+          claimedSpendMilestones: [...nm.claimedSpendMilestones, ms.gems],
+        },
+      };
+    });
+  }, []);
+
+  const handleBuyArenaTicket = useCallback(() => {
+    setSave((prev) => {
+      if (prev.gems < 20) return prev;
+      const ar = normalizeArena(prev.arena);
+      if (ar.ticketsRemaining >= 15) return prev;
+      soundEngine.playUiClick(1.1);
+      return {
+        ...prev,
+        gems: prev.gems - 20,
+        nightMarket: addGemsSpent(prev, 20),
+        arena: {
+          ...ar,
+          ticketsRemaining: Math.min(15, ar.ticketsRemaining + 2),
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimArenaRankTier = useCallback((tierId: string) => {
+    const tier = ARENA_RANK_TIERS.find((t) => t.id === tierId);
+    if (!tier) return;
+    setSave((prev) => {
+      const ar = normalizeArena(prev.arena);
+      if (ar.bestRating < tier.minRating || ar.claimedRankTiers.includes(tierId)) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + tier.rewardGold,
+        gems: prev.gems + tier.rewardGems,
+        arena: {
+          ...ar,
+          claimedRankTiers: [...ar.claimedRankTiers, tierId],
+        },
+      };
+    });
+  }, []);
+
+  const handleCraftSocketGem = useCallback((tier: 1 | 2) => {
+    const cost = getSocketGemCraftCost(tier);
+    setSave((prev) => {
+      const dust = prev.starDust ?? 0;
+      if (dust < cost.starDust || prev.gold < cost.gold) return prev;
+      const randColor =
+        SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+      const gems = normalizeSocketGems(prev.socketGems);
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        starDust: dust - cost.starDust,
+        socketGems: [...gems, createSocketGem(randColor, tier)],
+      };
+    });
+  }, []);
+
+  const handleFuseSocketGem = useCallback((color: SocketGemColor, tier: 1 | 2) => {
+    setSave((prev) => {
+      const gems = normalizeSocketGems(prev.socketGems);
+      const usedSet = new Set<string>();
+      for (const item of prev.inventory) {
+        for (const gid of item.socketedGems ?? []) {
+          usedSet.add(gid);
+        }
+      }
+      const candidates = gems.filter(
+        (g) => g.color === color && g.tier === tier && !usedSet.has(g.uid)
+      );
+      if (candidates.length < 3) return prev;
+      const consumed = new Set(candidates.slice(0, 3).map((g) => g.uid));
+      const nextGems: SocketGemInstance[] = [
+        ...gems.filter((g) => !consumed.has(g.uid)),
+        createSocketGem(color, (tier + 1) as 2 | 3),
+      ];
+      return {
+        ...prev,
+        socketGems: nextGems,
+      };
+    });
+  }, []);
+
+  const handleSocketGemToGear = useCallback((gearUid: string, gemUid: string) => {
+    setSave((prev) => {
+      const itemIdx = prev.inventory.findIndex((g) => g.uid === gearUid);
+      if (itemIdx === -1) return prev;
+      const item = prev.inventory[itemIdx];
+      const maxSlots = getMaxGemSocketsForRarity(item.rarity);
+      const currentSockets = item.socketedGems ?? [];
+      if (currentSockets.length >= maxSlots) return prev;
+
+      const gems = normalizeSocketGems(prev.socketGems);
+      if (!gems.some((g) => g.uid === gemUid)) return prev;
+      const alreadyUsed = prev.inventory.some((g) => (g.socketedGems ?? []).includes(gemUid));
+      if (alreadyUsed) return prev;
+
+      const nextInv = [...prev.inventory];
+      nextInv[itemIdx] = { ...item, socketedGems: [...currentSockets, gemUid] };
+      return {
+        ...prev,
+        inventory: nextInv,
+      };
+    });
+  }, []);
+
+  const handleUnsocketGemFromGear = useCallback((gearUid: string, gemUid: string) => {
+    setSave((prev) => {
+      const itemIdx = prev.inventory.findIndex((g) => g.uid === gearUid);
+      if (itemIdx === -1) return prev;
+      const item = prev.inventory[itemIdx];
+      const nextInv = [...prev.inventory];
+      nextInv[itemIdx] = {
+        ...item,
+        socketedGems: (item.socketedGems ?? []).filter((id) => id !== gemUid),
+      };
+      return {
+        ...prev,
+        inventory: nextInv,
+      };
+    });
+  }, []);
+
+  const handleClaimJourneyTask = useCallback((taskId: string) => {
+    const task = NOVICE_JOURNEY_DAYS.flatMap((d) => d.tasks).find((t) => t.id === taskId);
+    if (!task) return;
+    setSave((prev) => {
+      const journey = normalizeNoviceJourney(prev.noviceJourney);
+      if (journey.claimedTaskIds.includes(taskId)) return prev;
+      const statsNow = computePlayerStats(prev);
+      if (getJourneyTaskCurrentValue(prev, statsNow.powerRating, task.metric) < task.target) {
+        return prev;
+      }
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + task.rewardGold,
+        gems: prev.gems + task.rewardGems,
+        starDust: (prev.starDust ?? 0) + task.rewardDust,
+        noviceJourney: {
+          ...journey,
+          claimedTaskIds: [...journey.claimedTaskIds, taskId],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimJourneyDay = useCallback((dayNumber: number) => {
+    const dayDef = NOVICE_JOURNEY_DAYS.find((d) => d.day === dayNumber);
+    if (!dayDef) return;
+    setSave((prev) => {
+      const journey = normalizeNoviceJourney(prev.noviceJourney);
+      if (journey.claimedDayMilestones.includes(dayNumber)) return prev;
+      const statsNow = computePlayerStats(prev);
+      const allDone = dayDef.tasks.every(
+        (t) => getJourneyTaskCurrentValue(prev, statsNow.powerRating, t.metric) >= t.target
+      );
+      if (!allDone) return prev;
+
+      let nextInv = prev.inventory;
+      if (dayDef.milestoneGearS) {
+        const sWeapons = ALL_TEMPLATE_LIST.filter(
+          (t) => t.isSTier && t.slot === GearSlot.WEAPON
+        );
+        const tpl =
+          sWeapons[Math.floor(Math.random() * sWeapons.length)] ?? ALL_TEMPLATE_LIST[0];
+        nextInv = [
+          ...prev.inventory,
+          {
+            uid: `journey_d7_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            templateId: tpl.templateId,
+            rarity: Rarity.EPIC,
+            level: 1,
+          },
+        ];
+      }
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: prev.gold + dayDef.milestoneGold,
+        gems: prev.gems + dayDef.milestoneGems,
+        starDust: (prev.starDust ?? 0) + dayDef.milestoneDust,
+        inventory: nextInv,
+        noviceJourney: {
+          ...journey,
+          claimedDayMilestones: [...journey.claimedDayMilestones, dayNumber],
+        },
+      };
+    });
+  }, []);
+
+  const handlePreviewLobbyUltimate = useCallback((heroId: HeroId) => {
+    setPreviewHeroId(heroId);
+    engineRef.current?.previewLobbyUltimate(heroId);
   }, []);
 
   const activeChapter =
@@ -2382,12 +2840,15 @@ export default function App() {
           }
           onOpenGuildModal={() => setGuildModalOpen(true)}
           onOpenDestinyWheelModal={() => setDestinyWheelOpen(true)}
+          onOpenNightMarketModal={() => setNightMarketOpen(true)}
+          onOpenArenaModal={() => setArenaModalOpen(true)}
           onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
           onOpenMailModal={() => setMailModalOpen(true)}
           onOpenSettingsModal={() => setSettingsOpen(true)}
           onSelectHero={handleSelectHero}
           onUnlockHero={handleUnlockHero}
           onUpgradeHeroStar={handleUpgradeHeroStar}
+          onPreviewUltimate={handlePreviewLobbyUltimate}
           onUnlockPet={handleUnlockPet}
           onEquipPet={handleEquipPet}
           onUpgradePet={handleUpgradePet}
@@ -2468,6 +2929,7 @@ export default function App() {
           chapterName={activeChapter.name}
           stageReached={runSummary?.stageReached ?? hud.stage}
           totalStages={
+            (runSummary?.isArenaMode ?? hud.isArenaMode) ||
             (runSummary?.isGuildBossMode ?? hud.isGuildBossMode)
               ? 1
               : (runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode)
@@ -2481,6 +2943,11 @@ export default function App() {
           isDailyRiftMode={runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode}
           isGuildBossMode={runSummary?.isGuildBossMode ?? hud.isGuildBossMode}
           guildBossDamage={runSummary?.guildBossDamage ?? hud.guildBossTotalDamage ?? 0}
+          isArenaMode={runSummary?.isArenaMode ?? hud.isArenaMode}
+          arenaOpponentName={
+            runSummary?.arenaOpponentName ?? hud.arenaOpponentName ?? activeArenaOpponent?.name ?? ''
+          }
+          arenaRatingDelta={runSummary?.arenaRatingDelta ?? 0}
           kills={runSummary?.kills ?? hud.kills}
           goldEarned={runSummary?.gold ?? hud.runGold}
           gemsEarned={runSummary?.gems ?? hud.runGems}
@@ -2491,7 +2958,15 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isGuildBossMode ?? hud.isGuildBossMode)
+            (runSummary?.isArenaMode ?? hud.isArenaMode)
+              ? () => {
+                  if (activeArenaOpponent && normalizeArena(save.arena).ticketsRemaining > 0) {
+                    handleStartArenaDuel(activeArenaOpponent);
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isGuildBossMode ?? hud.isGuildBossMode)
               ? () => {
                   if (normalizeGuild(save.guild).bossRunsRemaining > 0) {
                     handleStartGuildBoss();
@@ -2523,11 +2998,14 @@ export default function App() {
       {phase === GamePhase.TITLE && enteredGame && rewardsModalTab && (
         <DailyRewardsModal
           save={save}
+          powerRating={playerStats.powerRating}
           initialTab={rewardsModalTab}
           onClose={() => setRewardsModalTab(null)}
           onClaimCheckIn={handleClaimCheckIn}
           onClaimDailyQuest={handleClaimDailyQuest}
           onClaimWelcomeGift={handleClaimWelcomeGift}
+          onClaimJourneyTask={handleClaimJourneyTask}
+          onClaimJourneyDay={handleClaimJourneyDay}
         />
       )}
 
@@ -2570,6 +3048,10 @@ export default function App() {
           onCraftForgeRecipe={handleCraftForgeRecipe}
           onReforgeGear={handleReforgeGear}
           onAwakenGear={handleAwakenGear}
+          onCraftSocketGem={handleCraftSocketGem}
+          onFuseSocketGem={handleFuseSocketGem}
+          onSocketGemToGear={handleSocketGemToGear}
+          onUnsocketGemFromGear={handleUnsocketGemFromGear}
           onClose={() => setForgeConfig((prev) => ({ ...prev, open: false }))}
         />
       )}
@@ -2592,6 +3074,26 @@ export default function App() {
           onSpin={handleDestinySpin}
           onClaimMilestone={handleClaimDestinyMilestone}
           onClose={() => setDestinyWheelOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && nightMarketOpen && (
+        <NightMarketModal
+          save={save}
+          onBuyOffer={handleBuyNightMarketOffer}
+          onClaimSpendMilestone={handleClaimSpendMilestone}
+          onClose={() => setNightMarketOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && arenaModalOpen && (
+        <ArenaModal
+          save={save}
+          powerRating={playerStats.powerRating}
+          onStartDuel={handleStartArenaDuel}
+          onBuyTicket={handleBuyArenaTicket}
+          onClaimRankTier={handleClaimArenaRankTier}
+          onClose={() => setArenaModalOpen(false)}
         />
       )}
 
@@ -2668,6 +3170,8 @@ export default function App() {
           isBossRushMode={transitionState.isBossRushMode}
           isDailyRiftMode={transitionState.isDailyRiftMode}
           isGuildBossMode={transitionState.isGuildBossMode}
+          isArenaMode={transitionState.isArenaMode}
+          arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />
       )}

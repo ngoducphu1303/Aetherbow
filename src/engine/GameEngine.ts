@@ -1381,6 +1381,7 @@ export class GameEngine {
       model: {
         root: rivalHeroRefs.root,
         bodyGroup: rivalHeroRefs.bodyGroup,
+        headOrCore: rivalHeroRefs.hoodGem,
         hitMeshes: rivalHeroRefs.hitMeshes,
       },
       shadow,
