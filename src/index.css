@@ -1,0 +1,659 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #050813;
+    color: #f8fafc;
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.font-display {
+  font-family: "Cinzel", Georgia, serif;
+}
+
+.font-mono-nums {
+  font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sleek Scrollbar */
+.a2-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.a2-scroll::-webkit-scrollbar-track {
+  background: rgba(7, 11, 24, 0.7);
+  border-radius: 999px;
+}
+.a2-scroll::-webkit-scrollbar-thumb {
+  background: rgba(212, 168, 75, 0.35);
+  border-radius: 999px;
+}
+.a2-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 196, 81, 0.65);
+}
+
+/* =========================================================
+   CELESTIAL GILDED ZODIAC DESIGN SYSTEM (AAA RPG)
+   ========================================================= */
+
+.cel-panel {
+  background: linear-gradient(180deg, rgba(13, 19, 42, 0.94) 0%, rgba(7, 10, 24, 0.96) 100%);
+  border: 1px solid rgba(212, 168, 75, 0.36);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(254, 243, 199, 0.14);
+}
+
+.cel-panel-ornate {
+  background: linear-gradient(180deg, rgba(16, 23, 52, 0.97) 0%, rgba(8, 11, 26, 0.98) 100%);
+  border: 1.5px solid rgba(226, 180, 75, 0.58);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.8),
+    0 0 32px rgba(212, 168, 75, 0.12),
+    inset 0 1px 0 rgba(254, 243, 199, 0.22);
+}
+
+.cel-divider-gold {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(226, 180, 75, 0.65) 50%,
+    transparent 100%
+  );
+}
+
+/* Burnished Gold Primary CTA */
+.a2-yellow-btn {
+  background: linear-gradient(180deg, #fde68a 0%, #eab308 48%, #b47812 100%);
+  border: 1px solid #fef3c7;
+  box-shadow:
+    0 6px 18px rgba(234, 179, 8, 0.28),
+    0 3px 0 #78350f,
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  color: #1c1003;
+  text-shadow: 0 1px 0 rgba(255, 251, 235, 0.45);
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), filter 140ms ease, box-shadow 140ms ease;
+}
+.a2-yellow-btn:hover:not(:disabled) {
+  filter: brightness(1.07);
+  box-shadow:
+    0 8px 24px rgba(250, 204, 21, 0.38),
+    0 3px 0 #78350f,
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+.a2-yellow-btn:active:not(:disabled) {
+  transform: translateY(1.5px);
+  box-shadow:
+    0 3px 10px rgba(234, 179, 8, 0.25),
+    0 1.5px 0 #78350f;
+}
+
+/* Emerald Astral Action CTA */
+.a2-emerald-btn {
+  background: linear-gradient(180deg, #34d399 0%, #059669 58%, #065f46 100%);
+  border: 1px solid #a7f3d0;
+  box-shadow:
+    0 6px 18px rgba(16, 185, 129, 0.28),
+    0 3px 0 #064e3b,
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(2, 44, 34, 0.8);
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), filter 140ms ease;
+}
+.a2-emerald-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.a2-emerald-btn:active:not(:disabled) {
+  transform: translateY(1.5px);
+}
+
+/* Royal Amethyst Ultimate / Tower CTA */
+.a2-purple-btn {
+  background: linear-gradient(180deg, #c084fc 0%, #7e22ce 58%, #4c1d95 100%);
+  border: 1px solid #e9d5ff;
+  box-shadow:
+    0 6px 18px rgba(147, 51, 234, 0.34),
+    0 3px 0 #3b0764,
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(30, 10, 60, 0.85);
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), filter 140ms ease;
+}
+.a2-purple-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.a2-purple-btn:active:not(:disabled) {
+  transform: translateY(1.5px);
+}
+
+/* Obsidian Steel Secondary CTA */
+.a2-slate-btn {
+  background: linear-gradient(180deg, rgba(30, 41, 74, 0.96) 0%, rgba(13, 19, 38, 0.98) 100%);
+  border: 1px solid rgba(212, 168, 75, 0.42);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  color: #f1f5f9;
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), border-color 140ms ease, filter 140ms ease;
+}
+.a2-slate-btn:hover:not(:disabled) {
+  border-color: rgba(251, 191, 36, 0.78);
+  filter: brightness(1.1);
+}
+.a2-slate-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Celestial Zodiac Pedestal (Replaces old Terracotta/Grass Bar) */
+.a2-pedestal {
+  background: linear-gradient(180deg, rgba(16, 23, 50, 0.94) 0%, rgba(8, 12, 27, 0.97) 100%);
+  border: 1.5px solid rgba(230, 184, 76, 0.62);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.7),
+    0 0 24px rgba(230, 184, 76, 0.16),
+    inset 0 1px 0 rgba(254, 243, 199, 0.28);
+}
+
+.a2-stat-pill {
+  background: linear-gradient(180deg, rgba(9, 13, 30, 0.95) 0%, rgba(5, 8, 19, 0.98) 100%);
+  border: 1px solid rgba(212, 168, 75, 0.32);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.65);
+}
+
+/* Gilded Relic Item Medallions */
+.a2-item-card {
+  position: relative;
+  border-radius: 14px;
+  padding: 2px;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), filter 150ms ease;
+}
+.a2-item-card:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+.a2-item-card:active {
+  transform: scale(0.97);
+}
+.a2-item-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.a2-item-inner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  pointer-events: none;
+}
+
+.a2-q-common {
+  background: linear-gradient(180deg, #94a3b8 0%, #475569 65%, #1e293b 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.a2-q-common .a2-item-inner {
+  background: radial-gradient(circle at 50% 35%, #334155 0%, #1e293b 72%, #0f172a 100%);
+  border: 1px solid rgba(203, 213, 225, 0.45);
+}
+
+.a2-q-rare {
+  background: linear-gradient(180deg, #7dd3fc 0%, #2563eb 65%, #1e3a8a 100%);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.38);
+}
+.a2-q-rare .a2-item-inner {
+  background: radial-gradient(circle at 50% 35%, #1d4ed8 0%, #172554 74%, #091233 100%);
+  border: 1px solid rgba(147, 197, 253, 0.6);
+}
+
+.a2-q-epic {
+  background: linear-gradient(180deg, #e9d5ff 0%, #9333ea 65%, #581c87 100%);
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.44);
+}
+.a2-q-epic .a2-item-inner {
+  background: radial-gradient(circle at 50% 35%, #7e22ce 0%, #3b0764 74%, #1e0538 100%);
+  border: 1px solid rgba(233, 213, 255, 0.65);
+}
+
+.a2-q-legendary {
+  background: linear-gradient(180deg, #fef08a 0%, #d97706 65%, #78350f 100%);
+  box-shadow: 0 4px 18px rgba(245, 158, 11, 0.5);
+}
+.a2-q-legendary .a2-item-inner {
+  background: radial-gradient(circle at 50% 35%, #b45309 0%, #5c2706 74%, #260f02 100%);
+  border: 1px solid rgba(254, 240, 138, 0.78);
+}
+
+.a2-q-mythic {
+  background: linear-gradient(180deg, #fecdd3 0%, #e11d48 60%, #881337 100%);
+  box-shadow: 0 4px 20px rgba(244, 63, 94, 0.58);
+}
+.a2-q-mythic .a2-item-inner {
+  background: radial-gradient(circle at 50% 35%, #be123c 0%, #630823 74%, #2c0310 100%);
+  border: 1px solid rgba(254, 205, 211, 0.8);
+}
+
+/* Vault & Altar Surfaces (Zero backdrop-blur over WebGL) */
+.a2-gear-vault-bg {
+  background-color: #080c1c;
+  background-image:
+    linear-gradient(180deg, rgba(7, 10, 24, 0.92) 0%, rgba(6, 9, 20, 0.96) 100%),
+    url('/src/assets/images/zodiac_vault_tapestry_1794971371774.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+/* Circular Rune Altar */
+@keyframes runeSpinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rune-altar {
+  position: relative;
+  isolation: isolate;
+  border: 1.5px solid rgba(230, 184, 76, 0.55);
+  border-radius: 38% 38% 18% 18% / 36% 36% 14% 14%;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(168, 85, 247, 0.22) 0%, rgba(28, 16, 68, 0.78) 56%, rgba(8, 11, 26, 0.96) 100%);
+  box-shadow:
+    inset 0 0 36px rgba(168, 85, 247, 0.26),
+    0 14px 36px rgba(0, 0, 0, 0.7);
+}
+.rune-altar-ring {
+  position: absolute;
+  inset: 10% 14% 14%;
+  border: 1.5px dashed rgba(234, 179, 8, 0.48);
+  border-radius: 50%;
+  animation: runeSpinSlow 75s linear infinite;
+  pointer-events: none;
+}
+.rune-altar-core {
+  position: absolute;
+  inset: 25% 28% 25%;
+  border: 3px solid rgba(230, 184, 76, 0.42);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 10px rgba(18, 16, 42, 0.55),
+    0 0 30px rgba(192, 132, 252, 0.35),
+    inset 0 0 24px rgba(168, 85, 247, 0.35);
+  pointer-events: none;
+}
+
+.rune-socket {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 150ms ease;
+}
+.rune-socket:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+/* Segmented Boss HP Bar & Celestial HUD */
+.hv2-panel {
+  background: linear-gradient(180deg, rgba(13, 19, 42, 0.92), rgba(7, 10, 24, 0.95));
+  border: 1px solid rgba(212, 168, 75, 0.38);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(254, 243, 199, 0.14);
+}
+.hv2-lv {
+  background: radial-gradient(circle at 35% 30%, #fef08a 0%, #eab308 62%, #92400e 100%);
+  border: 1.5px solid #fef9c3;
+  color: #1c1003;
+  box-shadow: 0 2px 0 #78350f, 0 0 14px rgba(251, 191, 36, 0.45);
+}
+.hv2-boss-track {
+  position: relative;
+  height: 11px;
+  border-radius: 999px;
+  background: rgba(5, 7, 18, 0.94);
+  overflow: hidden;
+  border: 1px solid rgba(251, 113, 133, 0.5);
+}
+.hv2-boss-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(10% - 1px),
+    rgba(0, 0, 0, 0.55) calc(10% - 1px) 10%
+  );
+  pointer-events: none;
+}
+
+/* Game Feel Animations (GPU Transform & Opacity Only) */
+@keyframes a2FloatY {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+.a2-float {
+  animation: a2FloatY 3.4s ease-in-out infinite;
+}
+
+@keyframes a2BossSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.94);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0px) scale(1.02);
+  }
+  85% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+.a2-boss-intro {
+  animation: a2BossSlideIn 2.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes a2DamageFlash {
+  0% {
+    opacity: 0.78;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.a2-damage-flash {
+  animation: a2DamageFlash 260ms ease-out forwards;
+}
+
+@keyframes a2ChestShake {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  15% {
+    transform: translate3d(-6px, -2px, 0) rotate(-5deg) scale(1.05);
+  }
+  30% {
+    transform: translate3d(6px, -4px, 0) rotate(5deg) scale(1.07);
+  }
+  45% {
+    transform: translate3d(-7px, -2px, 0) rotate(-6deg) scale(1.1);
+  }
+  60% {
+    transform: translate3d(7px, -5px, 0) rotate(6deg) scale(1.12);
+  }
+  75% {
+    transform: translate3d(-5px, -3px, 0) rotate(-4deg) scale(1.16);
+  }
+  90% {
+    transform: translate3d(0, -10px, 0) rotate(0deg) scale(1.22);
+  }
+}
+.a2-chest-shake {
+  animation: a2ChestShake 720ms cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
+}
+
+@keyframes a2BurstPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.45) rotate(-14deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+.a2-gacha-reveal {
+  animation: a2BurstPop 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes a2CurtainSweep {
+  0% {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+.a2-curtain {
+  animation: a2CurtainSweep 540ms ease-in-out forwards;
+}
+
+@keyframes a2DmgFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(0.75);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -115%) scale(1.04);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -210%) scale(0.92);
+  }
+}
+.a2-dmg-float {
+  animation: a2DmgFloat 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes a2CritFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -125%) scale(1.26);
+  }
+  42% {
+    opacity: 1;
+    transform: translate(-50%, -145%) scale(1.06);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -240%) scale(0.96);
+  }
+}
+.a2-crit-float {
+  animation: a2CritFloat 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes a2ComboPop {
+  0% {
+    transform: scale(1.28);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.a2-combo-pop {
+  animation: a2ComboPop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes a2ToastSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.a2-toast-in {
+  animation: a2ToastSlide 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes a2ModalEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.a2-modal-enter {
+  animation: a2ModalEnter 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Wave 4: Smooth Lobby Tab Switch (GPU Transform + Opacity Only) */
+@keyframes a2TabEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.a2-tab-enter {
+  animation: a2TabEnter 190ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Wave 4: Holographic Metallic Sheen for Legendary / Mythic / S-Tier / Awakened Cards */
+@keyframes a2HoloSweep {
+  0% {
+    transform: translateX(-140%) skewX(-24deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.45;
+  }
+  70% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translateX(220%) skewX(-24deg);
+    opacity: 0;
+  }
+}
+.a2-holo-foil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 55%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.14) 35%,
+    rgba(254, 240, 138, 0.42) 50%,
+    rgba(192, 132, 252, 0.24) 65%,
+    transparent 100%
+  );
+  animation: a2HoloSweep 4.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Wave 4: Glowing Ultimate Ready Spinning Halo */
+@keyframes a2UltRingSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.a2-ult-ready-ring {
+  animation: a2UltRingSpin 5.5s linear infinite;
+}
+
+/* Wave 4: +LC Combat Power Delta Notification */
+@keyframes a2PowerDeltaPop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.92);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.03);
+  }
+  84% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.97);
+  }
+}
+.a2-power-toast {
+  animation: a2PowerDeltaPop 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Wave 5: Dynamic Low-HP HUD Warning Vignette (Compositor Opacity Only) */
+@keyframes a2LowHpPulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+.a2-lowhp-vignette {
+  animation: a2LowHpPulse 1.35s ease-in-out infinite;
+}
+
+/* Wave 5: Expandable Lobby Feature Dock Drawer */
+@keyframes a2DockSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.a2-dock-enter {
+  animation: a2DockSlideUp 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+

@@ -1,0 +1,2676 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { soundEngine } from './audio/soundEngine';
+import { AchievementToast } from './components/AchievementToast';
+import { BattlePassModal } from './components/BattlePassModal';
+import { ChestGachaModal, GachaRevealState } from './components/ChestGachaModal';
+import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
+import { DailyRewardsModal } from './components/DailyRewardsModal';
+import { DestinyWheelModal } from './components/DestinyWheelModal';
+import { GameHUD } from './components/GameHUD';
+import { MailModal } from './components/MailModal';
+import { OnboardingTour } from './components/OnboardingTour';
+import { PauseResultModal } from './components/PauseResultModal';
+import { ProfileCodexModal } from './components/ProfileCodexModal';
+import {
+  QuickSweepResultModal,
+  SweepResultState,
+} from './components/QuickSweepResultModal';
+import { RelicForgeModal } from './components/RelicForgeModal';
+import { SettingsModal } from './components/SettingsModal';
+import { SkillDraftModal } from './components/SkillDraftModal';
+import { SplashGate } from './components/SplashGate';
+import { StageTransitionCurtain } from './components/StageTransitionCurtain';
+import { TalentsModal } from './components/TalentsModal';
+import { LobbyTab, TitleScreen } from './components/TitleScreen';
+import { VipPrivilegeModal } from './components/VipPrivilegeModal';
+import { ZodiacGuildModal } from './components/ZodiacGuildModal';
+import { CHAPTERS } from './data/chaptersData';
+import {
+  ALL_TEMPLATE_LIST,
+  GEAR_TEMPLATES,
+  RARITY_META,
+  RARITY_ORDER,
+  computePlayerStats,
+  createInitialSaveData,
+  getGearPowerScore,
+  getUpgradeCost,
+  rollChestGear,
+  rollChestGearBatch,
+} from './data/gearData';
+import { HERO_MAP, getHeroStarUpgradeCost } from './data/heroesData';
+import {
+  ACHIEVEMENTS_CATALOG,
+  BATTLE_PASS_MAX_TIER,
+  BATTLE_PASS_PREMIUM_GEM_COST,
+  BATTLE_PASS_TIERS,
+  computeSeasonScore,
+  getAchievementCurrentValue,
+  getBattlePassLevelInfo,
+  normalizeBattlePass,
+  normalizeCareer,
+  normalizeDailySweeps,
+  normalizeFlashDeals,
+  normalizeMailInbox,
+  normalizeSettings,
+} from './data/liveOpsData';
+import {
+  CHECK_IN_REWARDS,
+  DAILY_QUESTS,
+  getTodayKey,
+  normalizeCheckIn,
+  normalizeDailyQuests,
+} from './data/questsData';
+import { rollRuneChestBatch } from './data/runesData';
+import { rollSkillChoices } from './data/skillsData';
+import {
+  TALENT_MAP,
+  getTalentLevel,
+  getTalentUpgradeCost,
+} from './data/talentsData';
+import {
+  AURA_MAP,
+  PET_MAP,
+  SKIN_MAP,
+  STARTER_PACK_COST_GEMS,
+  STARTER_PACK_REWARDS,
+  VIP_DAILY_ESSENCE,
+  VIP_DAILY_GEMS,
+  VIP_DAILY_GOLD,
+  VIP_DURATION_DAYS,
+  VIP_MONTHLY_COST_GEMS,
+  addDaysToDateKey,
+  getDailyRiftPair,
+  getPetUpgradeCost,
+  getSalvageValue,
+  isVipActive,
+  normalizeDailyRift,
+  normalizePets,
+  normalizeVip,
+} from './data/wave3Data';
+import {
+  DESTINY_MILESTONES,
+  DESTINY_SPIN5_GEM_COST,
+  DESTINY_SPIN_GEM_COST,
+  GUILD_BOSS_DAMAGE_TIERS,
+  GUILD_TECH_DEFS,
+  MAX_DAILY_GUILD_TRIBUTES,
+  SEASON_MEDALS,
+  getAwakenCost,
+  getGuildLevelExpReq,
+  getReforgeCost,
+  getSeasonMedalCurrentValue,
+  normalizeBuildPresets,
+  normalizeDestinyWheel,
+  normalizeGuild,
+  reforgeItemSubstats,
+  rollDestinyPrize,
+} from './data/wave4Data';
+import { GameEngine } from './engine/GameEngine';
+import { HeroVisualConfig } from './engine/models';
+import {
+  AchievementDefinition,
+  AuraStyleId,
+  DamageBreakdown,
+  DestinyWheelPrize,
+  EncounterOffer,
+  FlashDealItem,
+  FloatingDamage,
+  ForgeRecipe,
+  GamePhase,
+  GameSettings,
+  GearInstance,
+  GearSlot,
+  GuildTechId,
+  HeroId,
+  HeroSkinId,
+  HudSnapshot,
+  JoystickState,
+  PetId,
+  Rarity,
+  RunHistoryEntry,
+  RuneInstance,
+  SaveData,
+  SkillDefinition,
+  SkillId,
+  TalentId,
+  WheelOutcome,
+} from './types/game';
+
+const STORAGE_KEY = 'artemis_3d_save_v1';
+
+function loadSaveData(): SaveData {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return createInitialSaveData();
+    const parsed = JSON.parse(raw) as SaveData;
+    if (
+      !parsed ||
+      !Array.isArray(parsed.inventory) ||
+      !parsed.equipped ||
+      !Array.isArray(parsed.unlockedHeroes) ||
+      !Array.isArray(parsed.runeInventory)
+    ) {
+      return createInitialSaveData();
+    }
+    return parsed;
+  } catch {
+    return createInitialSaveData();
+  }
+}
+
+const INITIAL_HUD: HudSnapshot = {
+  hp: 260,
+  maxHp: 260,
+  shield: 0,
+  xp: 0,
+  xpToNext: 55,
+  level: 1,
+  stage: 1,
+  totalStages: 12,
+  stageName: 'Thánh Điện Nhật Luân · Phòng 1',
+  chapterName: '🦁 Sư Tử',
+  heroName: 'Artemis',
+  enemiesRemaining: 0,
+  portalOpen: false,
+  isBossStage: false,
+  lastPlayerHitAt: 0,
+  runGold: 0,
+  runGems: 0,
+  kills: 0,
+  dashCooldownRatio: 0,
+  ultCharge: 55,
+  ultName: 'Mưa Tên Trăng Bạc',
+  revivesLeft: 0,
+  bossName: null,
+  bossHp: 0,
+  bossMaxHp: 0,
+  bossPhase: 1,
+  isTowerMode: false,
+  towerFloor: 0,
+  isBossRushMode: false,
+  bossRushRound: 0,
+  bossRushTotalRounds: 5,
+  isGuildBossMode: false,
+  guildBossTimeLeft: 60,
+  guildBossTotalDamage: 0,
+  activeSkills: {},
+  stageBannerText: null,
+  comboCount: 0,
+  comboTimerRatio: 0,
+  comboTierLabel: '',
+};
+
+export default function App() {
+  const canvasMountRef = useRef<HTMLDivElement | null>(null);
+  const engineRef = useRef<GameEngine | null>(null);
+  const transitionTimerRef = useRef<number | null>(null);
+  const unlockedToastIdsRef = useRef<Set<string> | null>(null);
+  const prevPowerRef = useRef<number | null>(null);
+
+  const [save, setSave] = useState<SaveData>(() => loadSaveData());
+  const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
+  const [enteredGame, setEnteredGame] = useState<boolean>(false);
+  const [phase, setPhase] = useState<GamePhase>(GamePhase.TITLE);
+  const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
+  const [gameMode, setGameMode] = useState<'chapter' | 'tower' | 'boss_rush' | 'daily_rift'>('chapter');
+  const [activeLobbyTab, setActiveLobbyTab] = useState<LobbyTab>('battle');
+  const [previewHeroId, setPreviewHeroId] = useState<HeroId | null>(null);
+  const [transitionState, setTransitionState] = useState<{
+    chapterId: number;
+    isTowerMode: boolean;
+    isBossRushMode: boolean;
+    isDailyRiftMode?: boolean;
+    isGuildBossMode?: boolean;
+    dailyRiftTitle?: string;
+  } | null>(null);
+  const [rewardsModalTab, setRewardsModalTab] = useState<
+    'checkin' | 'quests' | 'welcome' | null
+  >(null);
+  const [talentsModalOpen, setTalentsModalOpen] = useState<boolean>(false);
+  const [battlePassOpen, setBattlePassOpen] = useState<boolean>(false);
+  const [vipModalOpen, setVipModalOpen] = useState<boolean>(false);
+  const [forgeConfig, setForgeConfig] = useState<{
+    open: boolean;
+    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken';
+    gearUid?: string;
+  }>({ open: false, subTab: 'salvage' });
+  const [guildModalOpen, setGuildModalOpen] = useState<boolean>(false);
+  const [destinyWheelOpen, setDestinyWheelOpen] = useState<boolean>(false);
+  const [profileModalTab, setProfileModalTab] = useState<
+    'profile' | 'achievements' | 'history' | 'codex' | null
+  >(null);
+  const [mailModalOpen, setMailModalOpen] = useState<boolean>(false);
+  const [sweepResult, setSweepResult] = useState<SweepResultState | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [onboardingOpen, setOnboardingOpen] = useState<boolean>(false);
+  const [activeAchievementToast, setActiveAchievementToast] =
+    useState<AchievementDefinition | null>(null);
+  const [powerToast, setPowerToast] = useState<PowerToastData | null>(null);
+  const [gachaReveal, setGachaReveal] = useState<GachaRevealState | null>(null);
+
+  const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
+  const [damages, setDamages] = useState<FloatingDamage[]>([]);
+  const [joystick, setJoystick] = useState<JoystickState>({
+    active: false,
+    originX: 0,
+    originY: 0,
+    currentX: 0,
+    currentY: 0,
+  });
+
+  const [draftChoices, setDraftChoices] = useState<SkillDefinition[]>([]);
+  const [draftStacks, setDraftStacks] = useState<Partial<Record<SkillId, number>>>({});
+  const [rerollUsed, setRerollUsed] = useState<boolean>(false);
+  const [encounterOffer, setEncounterOffer] = useState<EncounterOffer | null>(null);
+  const [runSummary, setRunSummary] = useState<{
+    chapterId: number;
+    stageReached: number;
+    kills: number;
+    gold: number;
+    gems: number;
+    seasonXp?: number;
+    isTowerMode?: boolean;
+    towerFloor?: number;
+    isBossRushMode?: boolean;
+    bossRushRound?: number;
+    isDailyRiftMode?: boolean;
+    isGuildBossMode?: boolean;
+    guildBossDamage?: number;
+    starDust?: number;
+    petEssence?: number;
+    maxCombo?: number;
+    damageBreakdown?: DamageBreakdown;
+  } | null>(null);
+
+  const playerStats = useMemo(() => computePlayerStats(save), [save]);
+  const currentSettings = useMemo(() => normalizeSettings(save.settings), [save.settings]);
+
+  const displayHeroId =
+    phase === GamePhase.TITLE && activeLobbyTab === 'heroes' && previewHeroId
+      ? previewHeroId
+      : save.selectedHeroId;
+
+  const heroVisualCfg = useMemo<HeroVisualConfig>(() => {
+    const hero = HERO_MAP[displayHeroId] ?? HERO_MAP.artemis;
+    const wUid = save.equipped[GearSlot.WEAPON];
+    const aUid = save.equipped[GearSlot.ARMOR];
+    const wItem = save.inventory.find((g) => g.uid === wUid);
+    const aItem = save.inventory.find((g) => g.uid === aUid);
+    const wTpl = wItem ? GEAR_TEMPLATES[wItem.templateId] : undefined;
+    const aTpl = aItem ? GEAR_TEMPLATES[aItem.templateId] : undefined;
+    const activeSkinId = save.equippedSkinByHero?.[hero.id] ?? 'default';
+    const skinDef = SKIN_MAP[activeSkinId];
+    const auraDef = AURA_MAP[save.equippedAuraId ?? 'zodiac_gold'] ?? AURA_MAP.zodiac_gold;
+
+    return {
+      weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
+      cloakColorHex: skinDef?.cloakHex ?? aTpl?.cloakColorHex ?? hero.cloakHex,
+      hairColorHex: skinDef?.hairHex ?? hero.hairHex,
+      eyeColor: hero.eyeColor,
+      cheekColor: hero.cheekColor,
+      crownStyle: hero.crownStyle,
+      weaponArchetype: wTpl?.weaponArchetype ?? 'bow',
+      auraPrimaryHex: auraDef.primaryHex,
+      auraSecondaryHex: auraDef.secondaryHex,
+    };
+  }, [save, displayHeroId]);
+
+  // Persist save to localStorage + sync audio volumes + keep VIP ref fresh
+  useEffect(() => {
+    vipActiveRef.current = isVipActive(save.vip);
+    soundEngine.setMuted(save.muted);
+    soundEngine.setVolumes(
+      currentSettings.masterVol,
+      currentSettings.bgmVol,
+      currentSettings.sfxVol
+    );
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(save));
+    } catch {
+      // ignore quota errors
+    }
+  }, [save, currentSettings]);
+
+  // Sync dynamic BGM track to game state
+  useEffect(() => {
+    if (!enteredGame) {
+      soundEngine.setBgmMode('silent');
+    } else if (phase === GamePhase.TITLE) {
+      soundEngine.setBgmMode('lobby');
+    } else if (hud.bossName) {
+      soundEngine.setBgmMode('boss');
+    } else {
+      soundEngine.setBgmMode('combat');
+    }
+  }, [enteredGame, phase, hud.bossName]);
+
+  // Detect newly unlocked achievements & trigger non-blocking Toast
+  useEffect(() => {
+    const currentlyUnlocked = ACHIEVEMENTS_CATALOG.filter(
+      (ach) => getAchievementCurrentValue(save, ach.metric) >= ach.target
+    );
+    if (!unlockedToastIdsRef.current) {
+      unlockedToastIdsRef.current = new Set(currentlyUnlocked.map((a) => a.id));
+      return;
+    }
+    const newlyUnlocked = currentlyUnlocked.find(
+      (a) => !unlockedToastIdsRef.current!.has(a.id)
+    );
+    if (newlyUnlocked) {
+      currentlyUnlocked.forEach((a) => unlockedToastIdsRef.current!.add(a.id));
+      setActiveAchievementToast(newlyUnlocked);
+      soundEngine.playAchievement();
+      const t = window.setTimeout(() => setActiveAchievementToast(null), 3400);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [save]);
+
+  // Trigger non-blocking +LC Combat Power Toast whenever player power increases in Lobby
+  useEffect(() => {
+    const nextPower = playerStats.powerRating;
+    if (!enteredGame || phase !== GamePhase.TITLE) {
+      prevPowerRef.current = nextPower;
+      return;
+    }
+    if (prevPowerRef.current === null) {
+      prevPowerRef.current = nextPower;
+      return;
+    }
+    if (nextPower > prevPowerRef.current) {
+      const prevPower = prevPowerRef.current;
+      prevPowerRef.current = nextPower;
+      setPowerToast({
+        id: Date.now(),
+        prevPower,
+        nextPower,
+        delta: nextPower - prevPower,
+      });
+      soundEngine.playPowerUp();
+      const t = window.setTimeout(() => setPowerToast(null), 2600);
+      return () => window.clearTimeout(t);
+    }
+    prevPowerRef.current = nextPower;
+    return undefined;
+  }, [playerStats.powerRating, enteredGame, phase]);
+
+  // Initialize Three.js engine once
+  useEffect(() => {
+    const mount = canvasMountRef.current;
+    if (!mount) return;
+
+    const engine = new GameEngine(
+      mount,
+      {
+        onHudUpdate: (snap) => {
+          setHud(snap);
+        },
+        onFloatingDamage: (dmg) => {
+          setDamages((prev) => [...prev.slice(-18), dmg]);
+        },
+        onJoystickUpdate: (joy) => {
+          setJoystick(joy);
+        },
+        onRequestSkillDraft: (currentSkills) => {
+          const rolled = rollSkillChoices(currentSkills, 3);
+          if (rolled.length === 0) {
+            engine.setPhase(GamePhase.PLAYING);
+            return;
+          }
+          setDraftStacks(currentSkills);
+          setDraftChoices(rolled);
+          setRerollUsed(false);
+          setPhase(GamePhase.SKILL_DRAFT);
+        },
+        onRequestEncounter: (kind, currentSkills) => {
+          if (kind === 'valkyrie') {
+            const rolled = rollSkillChoices(currentSkills, 3, 'epic');
+            const choices = rolled.length > 0 ? rolled : rollSkillChoices(currentSkills, 3);
+            if (choices.length === 0) {
+              engine.resumeFromDraft();
+              return;
+            }
+            setDraftStacks(currentSkills);
+            setDraftChoices(choices);
+            setRerollUsed(false);
+            setPhase(GamePhase.VALKYRIE_DRAFT);
+          } else if (kind === 'wheel') {
+            setPhase(GamePhase.LUCKY_WHEEL);
+          } else if (kind === 'angel') {
+            setEncounterOffer({ kind: 'angel' });
+            setPhase(GamePhase.ANGEL_DEVIL);
+          } else if (kind === 'devil') {
+            const rolled = rollSkillChoices(currentSkills, 1, 'legend');
+            const fallback = rolled.length > 0 ? rolled : rollSkillChoices(currentSkills, 1);
+            setEncounterOffer({ kind: 'devil', devilSkill: fallback[0] });
+            setPhase(GamePhase.ANGEL_DEVIL);
+          } else {
+            engine.resumeFromDraft();
+          }
+        },
+        onRunEnded: (victory, summary) => {
+          const isTower = Boolean(summary.isTowerMode);
+          const isBossRush = Boolean(summary.isBossRushMode);
+          const isDailyRift = Boolean(summary.isDailyRiftMode);
+          const isGuildBoss = Boolean(summary.isGuildBossMode);
+          const towerFloor = summary.towerFloor ?? 0;
+          const bossRound = summary.bossRushRound ?? summary.stageReached ?? 1;
+          const guildBossDamage = summary.guildBossDamage ?? 0;
+
+          const bonusGold = isGuildBoss
+            ? Math.min(480, 90 + Math.floor(guildBossDamage / 250))
+            : isDailyRift
+            ? victory
+              ? 160
+              : 30
+            : isBossRush
+            ? bossRound * 70 + (victory ? 180 : 0)
+            : isTower
+            ? towerFloor * 15
+            : victory
+            ? 140 * summary.chapterId
+            : 20;
+          const bonusGems = isGuildBoss
+            ? Math.min(24, 4 + Math.floor(guildBossDamage / 4000))
+            : isDailyRift
+            ? victory
+              ? 18
+              : 2
+            : isBossRush
+            ? bossRound * 6 + (victory ? 22 : 0)
+            : isTower
+            ? Math.floor(towerFloor / 3) * 4 + 2
+            : victory
+            ? 22 * summary.chapterId
+            : 2;
+          const totalGold = summary.gold + bonusGold;
+          const totalGems = summary.gems + bonusGems;
+          const starDustGain = summary.starDust ?? 0;
+          const petEssenceGain = summary.petEssence ?? 0;
+          const guildCoinGain = isGuildBoss
+            ? Math.min(180, 25 + Math.floor(guildBossDamage / 600))
+            : 0;
+
+          const rawSeasonXp = isGuildBoss
+            ? 85 + Math.min(140, Math.floor(guildBossDamage / 500))
+            : isDailyRift
+            ? (victory ? 120 : summary.stageReached * 28) + summary.kills * 2
+            : isBossRush
+            ? bossRound * 35 + summary.kills * 2
+            : isTower
+            ? towerFloor * 22 + summary.kills
+            : victory
+            ? 85 + summary.kills
+            : summary.stageReached * 12 + summary.kills;
+          const runSeasonXp = vipActiveRef.current ? Math.round(rawSeasonXp * 1.25) : rawSeasonXp;
+
+          setRunSummary({
+            ...summary,
+            gold: totalGold,
+            gems: totalGems,
+            seasonXp: runSeasonXp,
+            starDust: starDustGain,
+            petEssence: petEssenceGain,
+          });
+          setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
+
+          setSave((prev) => {
+            const bp = normalizeBattlePass(prev.battlePass);
+            const career = normalizeCareer(prev.career);
+            const hasVip = isVipActive(prev.vip);
+            const actualXp = hasVip ? Math.round(rawSeasonXp * 1.25) : rawSeasonXp;
+            const nextBp = { ...bp, xp: bp.xp + actualXp };
+            const nextCareer = { ...career, totalRuns: career.totalRuns + 1 };
+            const chName =
+              CHAPTERS.find((c) => c.id === summary.chapterId)?.name ?? `Chương ${summary.chapterId}`;
+
+            const historyEntry: RunHistoryEntry = {
+              id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              mode: isGuildBoss
+                ? 'guild_boss'
+                : isDailyRift
+                ? 'daily_rift'
+                : isBossRush
+                ? 'boss_rush'
+                : isTower
+                ? 'tower'
+                : 'chapter',
+              label: isGuildBoss
+                ? `Boss Bang Hội · ${guildBossDamage.toLocaleString('vi-VN')} ST`
+                : isDailyRift
+                ? `Bí Cảnh Hằng Ngày · Ải ${summary.stageReached}/3`
+                : isBossRush
+                ? `Săn Boss Liên Hoàn · Vòng ${bossRound}/5`
+                : isTower
+                ? `Tháp Vô Tận · Tầng ${towerFloor}`
+                : `Chương ${summary.chapterId} · ${chName}`,
+              stageReached: isGuildBoss
+                ? 1
+                : isBossRush
+                ? bossRound
+                : isTower
+                ? towerFloor
+                : summary.stageReached,
+              kills: summary.kills,
+              maxCombo: summary.maxCombo ?? 0,
+              gold: totalGold,
+              gems: totalGems,
+              victory,
+              heroId: prev.selectedHeroId,
+              timestamp: Date.now(),
+            };
+            const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isGuildBoss) {
+              const g = normalizeGuild(prev.guild);
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                starDust: (prev.starDust ?? 0) + starDustGain,
+                petEssence: (prev.petEssence ?? 0) + petEssenceGain,
+                guild: {
+                  ...g,
+                  guildCoins: g.guildCoins + guildCoinGain,
+                  bestGuildBossDamage: Math.max(g.bestGuildBossDamage, guildBossDamage),
+                  totalGuildBossDamage: g.totalGuildBossDamage + guildBossDamage,
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
+            if (isDailyRift) {
+              const rift = normalizeDailyRift(prev.dailyRift);
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                starDust: (prev.starDust ?? 0) + starDustGain,
+                petEssence: (prev.petEssence ?? 0) + petEssenceGain,
+                dailyRift: {
+                  ...rift,
+                  clearedToday: rift.clearedToday || victory,
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
+            if (isBossRush) {
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                bestBossRushRound: Math.max(prev.bestBossRushRound ?? 0, bossRound),
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
+            if (isTower) {
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                bestTowerFloor: Math.max(prev.bestTowerFloor ?? 0, towerFloor),
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
+            const prevBest = prev.bestStagePerChapter[summary.chapterId] ?? 0;
+            return {
+              ...prev,
+              gold: prev.gold + totalGold,
+              gems: prev.gems + totalGems,
+              highestChapterCleared: victory
+                ? Math.max(prev.highestChapterCleared, summary.chapterId)
+                : prev.highestChapterCleared,
+              bestStagePerChapter: {
+                ...prev.bestStagePerChapter,
+                [summary.chapterId]: Math.max(prevBest, summary.stageReached),
+              },
+              battlePass: nextBp,
+              career: nextCareer,
+              runHistory: nextHistory,
+            };
+          });
+        },
+        onProgressEvent: ({ killsDelta, stageCleared, bossKilled, maxCombo, seenEnemyKind }) => {
+          setSave((prev) => {
+            const dq = normalizeDailyQuests(prev.dailyQuests);
+            const career = normalizeCareer(prev.career);
+            const bp = normalizeBattlePass(prev.battlePass);
+            const rawXp =
+              (killsDelta ?? 0) * 2 + (stageCleared ? 16 : 0) + (bossKilled ? 40 : 0);
+            const xpGain = isVipActive(prev.vip) ? Math.round(rawXp * 1.25) : rawXp;
+            const nextSeen =
+              seenEnemyKind && !career.seenEnemies.includes(seenEnemyKind)
+                ? [...career.seenEnemies, seenEnemyKind]
+                : career.seenEnemies;
+
+            return {
+              ...prev,
+              dailyQuests: {
+                ...dq,
+                kills: dq.kills + (killsDelta ?? 0),
+                stages: dq.stages + (stageCleared ? 1 : 0),
+              },
+              career: {
+                ...career,
+                totalKills: career.totalKills + (killsDelta ?? 0),
+                totalBossesKilled: career.totalBossesKilled + (bossKilled ? 1 : 0),
+                maxComboEver: Math.max(career.maxComboEver, maxCombo ?? 0),
+                seenEnemies: nextSeen,
+              },
+              battlePass: {
+                ...bp,
+                xp: bp.xp + xpGain,
+              },
+            };
+          });
+        },
+      },
+      playerStats,
+      heroVisualCfg
+    );
+
+    engineRef.current = engine;
+    engine.applyRuntimeSettings(normalizeSettings(save.settings));
+    return () => {
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      engine.dispose();
+      engineRef.current = null;
+    };
+    // Mount once so React HUD updates never tear down the WebGL canvas
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync hero visual loadout when hero/gear/runes change
+  useEffect(() => {
+    engineRef.current?.updateLoadoutAppearance(playerStats, heroVisualCfg);
+  }, [playerStats, heroVisualCfg]);
+
+  // Sync 3D camera lobby framing with active lobby tab
+  useEffect(() => {
+    const mode =
+      activeLobbyTab === 'battle'
+        ? 'battle'
+        : activeLobbyTab === 'gear'
+        ? 'gear'
+        : activeLobbyTab === 'heroes'
+        ? 'heroes'
+        : 'vault';
+    engineRef.current?.setLobbyViewMode(mode);
+  }, [activeLobbyTab]);
+
+  // Sync runtime 3D graphics, shake & damage number preferences
+  useEffect(() => {
+    engineRef.current?.applyRuntimeSettings(currentSettings);
+  }, [currentSettings]);
+
+  // Clean up expired floating damage numbers
+  useEffect(() => {
+    if (damages.length === 0) return;
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      setDamages((prev) => prev.filter((d) => now - d.createdAt < 640));
+    }, 100);
+    return () => clearInterval(timer);
+  }, [damages.length]);
+
+  const handleStartTrial = useCallback(() => {
+    if (selectedChapterId > save.highestChapterCleared + 1) return;
+    soundEngine.unlock();
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setMailModalOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({ chapterId: selectedChapterId, isTowerMode: false, isBossRushMode: false });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startChapter(selectedChapterId, playerStats);
+  }, [selectedChapterId, save.highestChapterCleared, playerStats]);
+
+  const handleStartTower = useCallback(() => {
+    soundEngine.unlock();
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setMailModalOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({ chapterId: 1, isTowerMode: true, isBossRushMode: false });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startEndlessTower(playerStats);
+  }, [playerStats]);
+
+  const handleStartBossRush = useCallback(() => {
+    soundEngine.unlock();
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({ chapterId: 5, isTowerMode: false, isBossRushMode: true });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startBossRush(playerStats);
+  }, [playerStats]);
+
+  const handleStartDailyRift = useCallback(() => {
+    const riftState = normalizeDailyRift(save.dailyRift);
+    if (riftState.runsRemaining <= 0) return;
+
+    const todayPair = getDailyRiftPair(getTodayKey());
+    soundEngine.unlock();
+    setSave((prev) => {
+      const r = normalizeDailyRift(prev.dailyRift);
+      if (r.runsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        dailyRift: { ...r, runsRemaining: r.runsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 3,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isDailyRiftMode: true,
+      dailyRiftTitle: todayPair.title,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startDailyRift(playerStats, todayPair);
+  }, [save.dailyRift, playerStats]);
+
+  const handleStartGuildBoss = useCallback(() => {
+    const guild = normalizeGuild(save.guild);
+    if (guild.bossRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const g = normalizeGuild(prev.guild);
+      if (g.bossRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        guild: { ...g, bossRunsRemaining: g.bossRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 6,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isGuildBossMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startGuildBossRaid(playerStats);
+  }, [save.guild, playerStats]);
+
+  const handleQuickSweepChapter = useCallback((chapterId: number) => {
+    const ch = CHAPTERS.find((c) => c.id === chapterId);
+    if (!ch) return;
+    setSave((prev) => {
+      if (chapterId > prev.highestChapterCleared) return prev;
+      const hasVip = isVipActive(prev.vip);
+      const sweeps = normalizeDailySweeps(prev.dailySweeps, hasVip);
+      if (sweeps.remaining <= 0) return prev;
+
+      const goldGain = 95 + chapterId * 42;
+      const gemsGain = 6 + chapterId * 2;
+      const rawXpGain = 55 + chapterId * 8;
+      const xpGain = hasVip ? Math.round(rawXpGain * 1.25) : rawXpGain;
+      let bonusGear: GearInstance | undefined;
+      if (Math.random() < 0.45) {
+        bonusGear = rollChestGear(false, chapterId >= 4 ? Rarity.RARE : undefined);
+      }
+
+      const bp = normalizeBattlePass(prev.battlePass);
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      soundEngine.playVictory();
+      setSweepResult({
+        chapterName: `Chương ${ch.id} · ${ch.name}`,
+        gold: goldGain,
+        gems: gemsGain,
+        seasonXp: xpGain,
+        bonusGear,
+      });
+
+      return {
+        ...prev,
+        gold: prev.gold + goldGain,
+        gems: prev.gems + gemsGain,
+        inventory: bonusGear ? [...prev.inventory, bonusGear] : prev.inventory,
+        dailySweeps: { ...sweeps, remaining: sweeps.remaining - 1 },
+        battlePass: { ...bp, xp: bp.xp + xpGain },
+        dailyQuests: { ...dq, stages: dq.stages + 3 },
+      };
+    });
+  }, []);
+
+  const handleSelectChapter = useCallback((chapterId: number) => {
+    setSelectedChapterId(chapterId);
+    engineRef.current?.selectChapterPreview(chapterId);
+  }, []);
+
+  const handleToggleMute = useCallback(() => {
+    setSave((prev) => {
+      const nextMuted = !prev.muted;
+      soundEngine.setMuted(nextMuted);
+      return { ...prev, muted: nextMuted };
+    });
+  }, []);
+
+  const handlePause = useCallback(() => {
+    if (phase === GamePhase.PLAYING) {
+      setPhase(GamePhase.PAUSED);
+      engineRef.current?.setPhase(GamePhase.PAUSED);
+    } else if (phase === GamePhase.PAUSED) {
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.setPhase(GamePhase.PLAYING);
+    }
+  }, [phase]);
+
+  const handleReturnTitle = useCallback(() => {
+    setPhase(GamePhase.TITLE);
+    setDamages([]);
+    engineRef.current?.setPhase(GamePhase.TITLE);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') {
+        if (phase === GamePhase.PLAYING || phase === GamePhase.PAUSED) {
+          handlePause();
+        }
+      } else if (
+        (e.code === 'Enter' || e.code === 'Space') &&
+        phase === GamePhase.TITLE &&
+        enteredGame &&
+        activeLobbyTab === 'battle' &&
+        !rewardsModalTab &&
+        !talentsModalOpen &&
+        !battlePassOpen &&
+        !vipModalOpen &&
+        !forgeConfig.open &&
+        !guildModalOpen &&
+        !destinyWheelOpen &&
+        !profileModalTab &&
+        !mailModalOpen &&
+        !sweepResult &&
+        !settingsOpen &&
+        !onboardingOpen &&
+        !gachaReveal
+      ) {
+        e.preventDefault();
+        if (gameMode === 'daily_rift') {
+          handleStartDailyRift();
+        } else if (gameMode === 'tower') {
+          handleStartTower();
+        } else if (gameMode === 'boss_rush') {
+          handleStartBossRush();
+        } else {
+          handleStartTrial();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    phase,
+    enteredGame,
+    activeLobbyTab,
+    rewardsModalTab,
+    talentsModalOpen,
+    battlePassOpen,
+    vipModalOpen,
+    forgeConfig.open,
+    guildModalOpen,
+    destinyWheelOpen,
+    profileModalTab,
+    mailModalOpen,
+    sweepResult,
+    settingsOpen,
+    onboardingOpen,
+    gachaReveal,
+    gameMode,
+    handlePause,
+    handleStartTrial,
+    handleStartTower,
+    handleStartBossRush,
+    handleStartDailyRift,
+  ]);
+
+  // Hero Handlers
+  const handleSelectHero = (heroId: HeroId) => {
+    setSave((prev) => {
+      if (!prev.unlockedHeroes.includes(heroId)) return prev;
+      return { ...prev, selectedHeroId: heroId };
+    });
+  };
+
+  const handleUnlockHero = (heroId: HeroId, currency: 'gold' | 'gems') => {
+    const hero = HERO_MAP[heroId];
+    if (!hero) return;
+    setSave((prev) => {
+      if (prev.unlockedHeroes.includes(heroId)) return prev;
+      if (currency === 'gold' && prev.gold < hero.unlockGold) return prev;
+      if (currency === 'gems' && prev.gems < hero.unlockGems) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: currency === 'gold' ? prev.gold - hero.unlockGold : prev.gold,
+        gems: currency === 'gems' ? prev.gems - hero.unlockGems : prev.gems,
+        unlockedHeroes: [...prev.unlockedHeroes, heroId],
+        selectedHeroId: heroId,
+      };
+    });
+  };
+
+  const handleUpgradeHeroStar = (heroId: HeroId) => {
+    setSave((prev) => {
+      const currentStar = prev.heroStars[heroId] ?? 0;
+      if (currentStar >= 5) return prev;
+      const cost = getHeroStarUpgradeCost(currentStar);
+      if (prev.gold < cost.gold || prev.gems < cost.gems) return prev;
+      soundEngine.playLevelUp();
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        gems: prev.gems - cost.gems,
+        heroStars: { ...prev.heroStars, [heroId]: currentStar + 1 },
+        dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
+      };
+    });
+  };
+
+  // Gear Handlers
+  const handleEquip = (uid: string) => {
+    setSave((prev) => {
+      const item = prev.inventory.find((g) => g.uid === uid);
+      if (!item) return prev;
+      const slot = GEAR_TEMPLATES[item.templateId]?.slot;
+      if (!slot) return prev;
+      return {
+        ...prev,
+        equipped: { ...prev.equipped, [slot]: uid },
+      };
+    });
+  };
+
+  const handleUpgrade = (uid: string) => {
+    setSave((prev) => {
+      const idx = prev.inventory.findIndex((g) => g.uid === uid);
+      if (idx === -1) return prev;
+      const item = prev.inventory[idx];
+      const maxLv = RARITY_META[item.rarity].maxLevel;
+      const cost = getUpgradeCost(item);
+      if (item.level >= maxLv || prev.gold < cost) return prev;
+      const nextInv = [...prev.inventory];
+      nextInv[idx] = { ...item, level: item.level + 1 };
+      soundEngine.playLevelUp();
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      return {
+        ...prev,
+        gold: prev.gold - cost,
+        inventory: nextInv,
+        dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
+      };
+    });
+  };
+
+  const handleFuse = (uid: string) => {
+    setSave((prev) => {
+      const target = prev.inventory.find((g) => g.uid === uid);
+      if (!target) return prev;
+      const rIdx = RARITY_ORDER.indexOf(target.rarity);
+      if (rIdx >= RARITY_ORDER.length - 1) return prev;
+
+      const matching = prev.inventory.filter(
+        (g) => g.templateId === target.templateId && g.rarity === target.rarity
+      );
+      if (matching.length < 3) return prev;
+
+      const others = matching
+        .filter((g) => g.uid !== target.uid)
+        .sort((a, b) => {
+          const aEq = Object.values(prev.equipped).includes(a.uid) ? 1 : 0;
+          const bEq = Object.values(prev.equipped).includes(b.uid) ? 1 : 0;
+          return aEq - bEq;
+        })
+        .slice(0, 2);
+
+      const consumedUids = new Set([target.uid, ...others.map((o) => o.uid)]);
+      const maxLv = Math.max(target.level, ...others.map((o) => o.level));
+      const upgradedItem: GearInstance = {
+        uid: target.uid,
+        templateId: target.templateId,
+        rarity: RARITY_ORDER[rIdx + 1],
+        level: maxLv,
+      };
+
+      const nextInventory = prev.inventory.filter((g) => !consumedUids.has(g.uid));
+      nextInventory.push(upgradedItem);
+
+      const slot = GEAR_TEMPLATES[target.templateId].slot;
+      const wasAnyEquipped =
+        prev.equipped[slot] === target.uid ||
+        others.some((o) => prev.equipped[slot] === o.uid);
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        inventory: nextInventory,
+        equipped: wasAnyEquipped
+          ? { ...prev.equipped, [slot]: upgradedItem.uid }
+          : prev.equipped,
+      };
+    });
+  };
+
+  const handleAutoEquipBest = useCallback(() => {
+    soundEngine.playLevelUp();
+    setSave((prev) => {
+      const nextEquipped = { ...prev.equipped };
+      for (const slot of Object.values(GearSlot)) {
+        const candidates = prev.inventory.filter(
+          (g) => GEAR_TEMPLATES[g.templateId]?.slot === slot
+        );
+        if (candidates.length === 0) continue;
+        candidates.sort((a, b) => getGearPowerScore(b) - getGearPowerScore(a));
+        nextEquipped[slot] = candidates[0].uid;
+      }
+      return { ...prev, equipped: nextEquipped };
+    });
+  }, []);
+
+  const handleBulkFuseGear = useCallback(() => {
+    setSave((prev) => {
+      let inv = [...prev.inventory];
+      let eq = { ...prev.equipped };
+      let fusedAny = false;
+
+      let progress = true;
+      while (progress) {
+        progress = false;
+        for (const rIdx of [0, 1, 2, 3]) {
+          const rarity = RARITY_ORDER[rIdx];
+          const nextRarity = RARITY_ORDER[rIdx + 1];
+          const groups = new Map<string, GearInstance[]>();
+          for (const g of inv) {
+            if (g.rarity !== rarity) continue;
+            const list = groups.get(g.templateId) ?? [];
+            list.push(g);
+            groups.set(g.templateId, list);
+          }
+          for (const [tplId, group] of groups.entries()) {
+            if (group.length < 3) continue;
+            const eqSet = new Set(Object.values(eq));
+            group.sort((a, b) => {
+              const aEq = eqSet.has(a.uid) ? 1 : 0;
+              const bEq = eqSet.has(b.uid) ? 1 : 0;
+              if (bEq !== aEq) return bEq - aEq;
+              return b.level - a.level;
+            });
+            const [main, m2, m3] = group;
+            const consumed = new Set([main.uid, m2.uid, m3.uid]);
+            const upgraded: GearInstance = {
+              uid: main.uid,
+              templateId: tplId,
+              rarity: nextRarity,
+              level: Math.max(main.level, m2.level, m3.level),
+            };
+            inv = inv.filter((g) => !consumed.has(g.uid));
+            inv.push(upgraded);
+            const slot = GEAR_TEMPLATES[tplId]?.slot;
+            if (slot && (eq[slot] === m2.uid || eq[slot] === m3.uid)) {
+              eq[slot] = upgraded.uid;
+            }
+            fusedAny = true;
+            progress = true;
+            break;
+          }
+          if (progress) break;
+        }
+      }
+
+      if (!fusedAny) return prev;
+      soundEngine.playVictory();
+      return { ...prev, inventory: inv, equipped: eq };
+    });
+  }, []);
+
+  // Welfare & Gacha Chest Handlers
+  const handleClaimCheckIn = useCallback(() => {
+    const today = getTodayKey();
+    setSave((prev) => {
+      const ci = normalizeCheckIn(prev.checkIn);
+      if (ci.count >= 7 || ci.lastDate === today) return prev;
+      const reward = CHECK_IN_REWARDS[ci.count];
+      if (!reward) return prev;
+      soundEngine.playVictory();
+      let nextInventory = prev.inventory;
+      if (reward.bonusRarity) {
+        const pool =
+          reward.bonusRarity === Rarity.EPIC
+            ? ALL_TEMPLATE_LIST.filter((t) => t.isSTier)
+            : ALL_TEMPLATE_LIST.filter((t) => t.setName !== 'Khởi Đầu');
+        const tpl =
+          pool[Math.floor(Math.random() * pool.length)] ?? ALL_TEMPLATE_LIST[0];
+        const bonusGear: GearInstance = {
+          uid: `checkin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          templateId: tpl.templateId,
+          rarity: reward.bonusRarity,
+          level: 1,
+        };
+        nextInventory = [...prev.inventory, bonusGear];
+      }
+      return {
+        ...prev,
+        gold: prev.gold + reward.gold,
+        gems: prev.gems + reward.gems,
+        inventory: nextInventory,
+        checkIn: { count: ci.count + 1, lastDate: today },
+      };
+    });
+  }, []);
+
+  const handleClaimDailyQuest = useCallback((questId: string) => {
+    const quest = DAILY_QUESTS.find((q) => q.id === questId);
+    if (!quest) return;
+    setSave((prev) => {
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      if (dq.claimedIds.includes(questId) || dq[quest.metric] < quest.target) {
+        return prev;
+      }
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + quest.rewardGold,
+        gems: prev.gems + quest.rewardGems,
+        dailyQuests: {
+          ...dq,
+          claimedIds: [...dq.claimedIds, questId],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimWelcomeGift = useCallback(() => {
+    setSave((prev) => {
+      if (prev.welcomeGiftClaimed) return prev;
+      soundEngine.playVictory();
+      const pool = ALL_TEMPLATE_LIST.filter((t) => t.setName !== 'Khởi Đầu');
+      const tpl =
+        pool[Math.floor(Math.random() * pool.length)] ?? ALL_TEMPLATE_LIST[0];
+      const giftGear: GearInstance = {
+        uid: `welcome_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        templateId: tpl.templateId,
+        rarity: Rarity.RARE,
+        level: 1,
+      };
+      return {
+        ...prev,
+        gold: prev.gold + 300,
+        gems: prev.gems + 35,
+        inventory: [...prev.inventory, giftGear],
+        welcomeGiftClaimed: true,
+      };
+    });
+  }, []);
+
+  const handleOpenChestWithGacha = useCallback(
+    (variant: GachaRevealState['chestVariant'], count: 1 | 10 = 1) => {
+      const unitCost =
+        variant === 'iron'
+          ? 120
+          : variant === 'mythic'
+          ? 25
+          : variant === 'rune_bag'
+          ? 100
+          : 18;
+      const totalCost = count === 10 ? Math.round(unitCost * 9) : unitCost;
+      const isGemChest = variant === 'mythic' || variant === 'rune_rare';
+      if (isGemChest && save.gems < totalCost) return;
+      if (!isGemChest && save.gold < totalCost) return;
+
+      soundEngine.unlock();
+      soundEngine.playChestRoll();
+
+      if (variant === 'iron' || variant === 'mythic') {
+        const isPremium = variant === 'mythic';
+        const { items, nextPity } = rollChestGearBatch(isPremium, count, save.pity);
+        setSave((prev) => {
+          const dq = normalizeDailyQuests(prev.dailyQuests);
+          const career = normalizeCareer(prev.career);
+          const bp = normalizeBattlePass(prev.battlePass);
+          const rawXp = count === 10 ? 120 : 15;
+          const xpGain = isVipActive(prev.vip) ? Math.round(rawXp * 1.25) : rawXp;
+          return {
+            ...prev,
+            gold: isGemChest ? prev.gold : prev.gold - totalCost,
+            gems: isGemChest ? prev.gems - totalCost : prev.gems,
+            inventory: [...prev.inventory, ...items],
+            pity: nextPity,
+            dailyQuests: { ...dq, chests: dq.chests + count },
+            career: { ...career, totalChestsOpened: career.totalChestsOpened + count },
+            battlePass: { ...bp, xp: bp.xp + xpGain },
+          };
+        });
+        setGachaReveal({ chestVariant: variant, count, gears: items });
+      } else {
+        const isPremium = variant === 'rune_rare';
+        const { items, nextPity } = rollRuneChestBatch(isPremium, count, save.pity);
+        setSave((prev) => {
+          const dq = normalizeDailyQuests(prev.dailyQuests);
+          const career = normalizeCareer(prev.career);
+          const bp = normalizeBattlePass(prev.battlePass);
+          const rawXp = count === 10 ? 120 : 15;
+          const xpGain = isVipActive(prev.vip) ? Math.round(rawXp * 1.25) : rawXp;
+          return {
+            ...prev,
+            gold: isGemChest ? prev.gold : prev.gold - totalCost,
+            gems: isGemChest ? prev.gems - totalCost : prev.gems,
+            runeInventory: [...prev.runeInventory, ...items],
+            pity: nextPity,
+            dailyQuests: { ...dq, chests: dq.chests + count },
+            career: { ...career, totalChestsOpened: career.totalChestsOpened + count },
+            battlePass: { ...bp, xp: bp.xp + xpGain },
+          };
+        });
+        setGachaReveal({ chestVariant: variant, count, runes: items });
+      }
+    },
+    [save.gold, save.gems, save.pity]
+  );
+
+  // Battle Pass, Achievements & Settings Handlers
+  const handleUnlockBattlePassPremium = useCallback(() => {
+    setSave((prev) => {
+      const bp = normalizeBattlePass(prev.battlePass);
+      if (bp.premiumUnlocked || prev.gems < BATTLE_PASS_PREMIUM_GEM_COST) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: prev.gems - BATTLE_PASS_PREMIUM_GEM_COST,
+        battlePass: { ...bp, premiumUnlocked: true },
+      };
+    });
+  }, []);
+
+  const handleClaimBattlePassTier = useCallback(
+    (level: number, track: 'free' | 'premium') => {
+      const tier = BATTLE_PASS_TIERS.find((t) => t.level === level);
+      if (!tier) return;
+      setSave((prev) => {
+        const bp = normalizeBattlePass(prev.battlePass);
+        const info = getBattlePassLevelInfo(bp.xp);
+        const maxReached = info.isMax ? BATTLE_PASS_MAX_TIER : info.level;
+        if (level > maxReached) return prev;
+        if (track === 'free' && bp.claimedFree.includes(level)) return prev;
+        if (track === 'premium' && (!bp.premiumUnlocked || bp.claimedPremium.includes(level))) {
+          return prev;
+        }
+
+        const reward = track === 'free' ? tier.free : tier.premium;
+        let goldGain = reward.kind === 'gold' ? reward.amount : 0;
+        let gemsGain = reward.kind === 'gems' ? reward.amount : 0;
+        let nextInv = prev.inventory;
+        if (reward.kind === 'gear') {
+          const item = rollChestGear(true, reward.rarity ?? Rarity.EPIC, reward.sTier);
+          nextInv = [...prev.inventory, item];
+        }
+        soundEngine.playVictory();
+        return {
+          ...prev,
+          gold: prev.gold + goldGain,
+          gems: prev.gems + gemsGain,
+          inventory: nextInv,
+          battlePass: {
+            ...bp,
+            claimedFree: track === 'free' ? [...bp.claimedFree, level] : bp.claimedFree,
+            claimedPremium:
+              track === 'premium' ? [...bp.claimedPremium, level] : bp.claimedPremium,
+          },
+        };
+      });
+    },
+    []
+  );
+
+  const handleClaimAllBattlePass = useCallback(() => {
+    setSave((prev) => {
+      const bp = normalizeBattlePass(prev.battlePass);
+      const info = getBattlePassLevelInfo(bp.xp);
+      const maxReached = info.isMax ? BATTLE_PASS_MAX_TIER : info.level;
+
+      let goldGain = 0;
+      let gemsGain = 0;
+      const newGear: GearInstance[] = [];
+      const nextFree = [...bp.claimedFree];
+      const nextPrem = [...bp.claimedPremium];
+
+      for (const tier of BATTLE_PASS_TIERS) {
+        if (tier.level > maxReached) break;
+        if (!nextFree.includes(tier.level)) {
+          nextFree.push(tier.level);
+          if (tier.free.kind === 'gold') goldGain += tier.free.amount;
+          else if (tier.free.kind === 'gems') gemsGain += tier.free.amount;
+          else newGear.push(rollChestGear(true, tier.free.rarity ?? Rarity.EPIC, tier.free.sTier));
+        }
+        if (bp.premiumUnlocked && !nextPrem.includes(tier.level)) {
+          nextPrem.push(tier.level);
+          if (tier.premium.kind === 'gold') goldGain += tier.premium.amount;
+          else if (tier.premium.kind === 'gems') gemsGain += tier.premium.amount;
+          else
+            newGear.push(
+              rollChestGear(true, tier.premium.rarity ?? Rarity.EPIC, tier.premium.sTier)
+            );
+        }
+      }
+
+      if (goldGain === 0 && gemsGain === 0 && newGear.length === 0) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + goldGain,
+        gems: prev.gems + gemsGain,
+        inventory: [...prev.inventory, ...newGear],
+        battlePass: {
+          ...bp,
+          claimedFree: nextFree,
+          claimedPremium: nextPrem,
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimAchievement = useCallback((id: string) => {
+    const ach = ACHIEVEMENTS_CATALOG.find((a) => a.id === id);
+    if (!ach) return;
+    setSave((prev) => {
+      const claimed = prev.achievementsClaimed ?? [];
+      if (claimed.includes(id)) return prev;
+      if (getAchievementCurrentValue(prev, ach.metric) < ach.target) return prev;
+      return {
+        ...prev,
+        gold: prev.gold + ach.rewardGold,
+        gems: prev.gems + ach.rewardGems,
+        achievementsClaimed: [...claimed, id],
+        equippedTitle: ach.unlockTitle ?? prev.equippedTitle,
+      };
+    });
+  }, []);
+
+  const handleSelectTitle = useCallback((title: string) => {
+    setSave((prev) => ({ ...prev, equippedTitle: title }));
+  }, []);
+
+  const handleUpdateSettings = useCallback((patch: Partial<GameSettings>) => {
+    setSave((prev) => ({
+      ...prev,
+      settings: { ...normalizeSettings(prev.settings), ...patch },
+    }));
+  }, []);
+
+  const handleCompleteOnboarding = useCallback(() => {
+    setOnboardingOpen(false);
+    setSave((prev) => ({ ...prev, onboardingCompleted: true }));
+  }, []);
+
+  // Rune Handlers
+  const handleEquipRune = (uid: string) => {
+    setSave((prev) => {
+      if (prev.equippedRunes.includes(uid) || prev.equippedRunes.length >= 4) return prev;
+      return { ...prev, equippedRunes: [...prev.equippedRunes, uid] };
+    });
+  };
+
+  const handleUnequipRune = (uid: string) => {
+    setSave((prev) => ({
+      ...prev,
+      equippedRunes: prev.equippedRunes.filter((id) => id !== uid),
+    }));
+  };
+
+  const handleFuseRune = (uid: string) => {
+    setSave((prev) => {
+      const target = prev.runeInventory.find((r) => r.uid === uid);
+      if (!target) return prev;
+      const rIdx = RARITY_ORDER.indexOf(target.rarity);
+      if (rIdx >= RARITY_ORDER.length - 1) return prev;
+      const matching = prev.runeInventory.filter(
+        (r) => r.runeId === target.runeId && r.rarity === target.rarity
+      );
+      if (matching.length < 3) return prev;
+
+      const others = matching
+        .filter((r) => r.uid !== target.uid)
+        .sort((a, b) => {
+          const aEq = prev.equippedRunes.includes(a.uid) ? 1 : 0;
+          const bEq = prev.equippedRunes.includes(b.uid) ? 1 : 0;
+          return aEq - bEq;
+        })
+        .slice(0, 2);
+
+      const consumedUids = new Set([target.uid, ...others.map((o) => o.uid)]);
+      const upgradedRune: RuneInstance = {
+        uid: target.uid,
+        runeId: target.runeId,
+        rarity: RARITY_ORDER[rIdx + 1],
+      };
+
+      const nextRunes = prev.runeInventory.filter((r) => !consumedUids.has(r.uid));
+      nextRunes.push(upgradedRune);
+
+      const nextEquipped = prev.equippedRunes.map((id) =>
+        others.some((o) => o.uid === id) ? upgradedRune.uid : id
+      );
+      const dedupEquipped = Array.from(new Set(nextEquipped));
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        runeInventory: nextRunes,
+        equippedRunes: dedupEquipped,
+      };
+    });
+  };
+
+  const handleBulkFuseRunes = useCallback(() => {
+    setSave((prev) => {
+      let runes = [...prev.runeInventory];
+      let eqRunes = [...prev.equippedRunes];
+      let fusedAny = false;
+
+      let progress = true;
+      while (progress) {
+        progress = false;
+        for (const rIdx of [0, 1, 2, 3]) {
+          const rarity = RARITY_ORDER[rIdx];
+          const nextRarity = RARITY_ORDER[rIdx + 1];
+          const groups = new Map<string, RuneInstance[]>();
+          for (const r of runes) {
+            if (r.rarity !== rarity) continue;
+            const list = groups.get(r.runeId) ?? [];
+            list.push(r);
+            groups.set(r.runeId, list);
+          }
+          for (const [runeId, group] of groups.entries()) {
+            if (group.length < 3) continue;
+            group.sort((a, b) => {
+              const aEq = eqRunes.includes(a.uid) ? 1 : 0;
+              const bEq = eqRunes.includes(b.uid) ? 1 : 0;
+              return bEq - aEq;
+            });
+            const [main, m2, m3] = group;
+            const consumed = new Set([main.uid, m2.uid, m3.uid]);
+            const upgraded: RuneInstance = {
+              uid: main.uid,
+              runeId: main.runeId,
+              rarity: nextRarity,
+            };
+            runes = runes.filter((r) => !consumed.has(r.uid));
+            runes.push(upgraded);
+            eqRunes = Array.from(
+              new Set(eqRunes.map((id) => (id === m2.uid || id === m3.uid ? upgraded.uid : id)))
+            );
+            fusedAny = true;
+            progress = true;
+            break;
+          }
+          if (progress) break;
+        }
+      }
+
+      if (!fusedAny) return prev;
+      soundEngine.playVictory();
+      return { ...prev, runeInventory: runes, equippedRunes: eqRunes };
+    });
+  }, []);
+
+  // Flash Sale & Mail Inbox Handlers
+  const handleBuyFlashDeal = useCallback((deal: FlashDealItem) => {
+    setSave((prev) => {
+      const flash = normalizeFlashDeals(prev.flashDeals);
+      if (flash.purchasedIds.includes(deal.id)) return prev;
+      if (deal.currency === 'gold' && prev.gold < deal.price) return prev;
+      if (deal.currency === 'gems' && prev.gems < deal.price) return prev;
+
+      let nextGold =
+        deal.currency === 'gold' ? prev.gold - deal.price : prev.gold;
+      let nextGems =
+        deal.currency === 'gems' ? prev.gems - deal.price : prev.gems;
+      let nextInv = prev.inventory;
+      let nextRunes = prev.runeInventory;
+
+      if (deal.rewardKind === 'gold') nextGold += deal.amount;
+      else if (deal.rewardKind === 'gems') nextGems += deal.amount;
+      else if (deal.rewardKind === 'gear_epic') {
+        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC)];
+      } else if (deal.rewardKind === 'gear_s') {
+        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)];
+      } else if (deal.rewardKind === 'rune_epic') {
+        const { items } = rollRuneChestBatch(true, 1, prev.pity);
+        const epicRune = items[0]
+          ? { ...items[0], rarity: Rarity.EPIC }
+          : undefined;
+        if (epicRune) nextRunes = [...prev.runeInventory, epicRune];
+      }
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: nextGold,
+        gems: nextGems,
+        inventory: nextInv,
+        runeInventory: nextRunes,
+        flashDeals: {
+          ...flash,
+          purchasedIds: [...flash.purchasedIds, deal.id],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimMail = useCallback((mailId: string) => {
+    setSave((prev) => {
+      const inbox = normalizeMailInbox(prev.mailInbox);
+      const target = inbox.find((m) => m.id === mailId);
+      if (!target || target.claimed) return prev;
+
+      let nextInv = prev.inventory;
+      if (target.bonusGearRarity) {
+        nextInv = [
+          ...prev.inventory,
+          rollChestGear(true, target.bonusGearRarity, target.bonusSTier),
+        ];
+      }
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + target.rewardGold,
+        gems: prev.gems + target.rewardGems,
+        inventory: nextInv,
+        mailInbox: inbox.map((m) => (m.id === mailId ? { ...m, claimed: true } : m)),
+      };
+    });
+  }, []);
+
+  const handleClaimAllMail = useCallback(() => {
+    setSave((prev) => {
+      const inbox = normalizeMailInbox(prev.mailInbox);
+      const unclaimed = inbox.filter((m) => !m.claimed);
+      if (unclaimed.length === 0) return prev;
+
+      let goldGain = 0;
+      let gemsGain = 0;
+      const bonusGears: GearInstance[] = [];
+      for (const m of unclaimed) {
+        goldGain += m.rewardGold;
+        gemsGain += m.rewardGems;
+        if (m.bonusGearRarity) {
+          bonusGears.push(rollChestGear(true, m.bonusGearRarity, m.bonusSTier));
+        }
+      }
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + goldGain,
+        gems: prev.gems + gemsGain,
+        inventory: [...prev.inventory, ...bonusGears],
+        mailInbox: inbox.map((m) => ({ ...m, claimed: true })),
+      };
+    });
+  }, []);
+
+  const handleDeleteClaimedMail = useCallback(() => {
+    setSave((prev) => {
+      const inbox = normalizeMailInbox(prev.mailInbox);
+      return {
+        ...prev,
+        mailInbox: inbox.filter((m) => !m.claimed),
+      };
+    });
+  }, []);
+
+  const handleUpgradeTalent = useCallback((id: TalentId) => {
+    setSave((prev) => {
+      const def = TALENT_MAP[id];
+      const level = getTalentLevel(prev.talents, id);
+      if (level >= def.maxLevel) return prev;
+      const cost = getTalentUpgradeCost(id, level);
+      if (prev.gold < cost) return prev;
+      soundEngine.playLevelUp();
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      return {
+        ...prev,
+        gold: prev.gold - cost,
+        talents: {
+          ...prev.talents,
+          [id]: level + 1,
+        },
+        dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
+      };
+    });
+  }, []);
+
+  // Wave 3 Handlers: Pets, Skins, Auras, VIP & Relic Forge
+  const handleUnlockPet = useCallback((petId: PetId, currency: 'gold' | 'gems') => {
+    const def = PET_MAP[petId];
+    if (!def) return;
+    setSave((prev) => {
+      const pets = normalizePets(prev.pets);
+      if (pets.some((p) => p.petId === petId)) return prev;
+      if (currency === 'gold' && (def.unlockGold <= 0 || prev.gold < def.unlockGold)) return prev;
+      if (currency === 'gems' && (def.unlockGems <= 0 || prev.gems < def.unlockGems)) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: currency === 'gold' ? prev.gold - def.unlockGold : prev.gold,
+        gems: currency === 'gems' ? prev.gems - def.unlockGems : prev.gems,
+        pets: [...pets, { petId, level: 1 }],
+        equippedPetId: petId,
+      };
+    });
+  }, []);
+
+  const handleEquipPet = useCallback((petId: PetId | null) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      if (petId === null) return { ...prev, equippedPetId: null };
+      const pets = normalizePets(prev.pets);
+      if (!pets.some((p) => p.petId === petId)) return prev;
+      return { ...prev, equippedPetId: petId };
+    });
+  }, []);
+
+  const handleUpgradePet = useCallback((petId: PetId) => {
+    setSave((prev) => {
+      const pets = normalizePets(prev.pets);
+      const idx = pets.findIndex((p) => p.petId === petId);
+      if (idx === -1) return prev;
+      const current = pets[idx];
+      const cost = getPetUpgradeCost(current.level);
+      const essence = prev.petEssence ?? 0;
+      if (essence < cost.essence || prev.gold < cost.gold) return prev;
+      const nextPets = [...pets];
+      nextPets[idx] = { ...current, level: current.level + 1 };
+      soundEngine.playLevelUp();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        petEssence: essence - cost.essence,
+        pets: nextPets,
+      };
+    });
+  }, []);
+
+  const handleUnlockSkin = useCallback((skinId: HeroSkinId, currency: 'gold' | 'gems') => {
+    const skin = SKIN_MAP[skinId];
+    if (!skin) return;
+    setSave((prev) => {
+      const unlocked = prev.unlockedSkins ?? ['default'];
+      if (unlocked.includes(skinId)) return prev;
+      if (currency === 'gold' && (skin.unlockGold <= 0 || prev.gold < skin.unlockGold)) return prev;
+      if (currency === 'gems' && (skin.unlockGems <= 0 || prev.gems < skin.unlockGems)) return prev;
+      const targetHero = prev.selectedHeroId;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: currency === 'gold' ? prev.gold - skin.unlockGold : prev.gold,
+        gems: currency === 'gems' ? prev.gems - skin.unlockGems : prev.gems,
+        unlockedSkins: [...unlocked, skinId],
+        equippedSkinByHero: { ...(prev.equippedSkinByHero ?? {}), [targetHero]: skinId },
+      };
+    });
+  }, []);
+
+  const handleEquipSkin = useCallback((heroId: HeroId, skinId: HeroSkinId) => {
+    soundEngine.playUiClick(1.1);
+    setSave((prev) => {
+      const unlocked = prev.unlockedSkins ?? ['default'];
+      if (!unlocked.includes(skinId)) return prev;
+      return {
+        ...prev,
+        equippedSkinByHero: { ...(prev.equippedSkinByHero ?? {}), [heroId]: skinId },
+      };
+    });
+  }, []);
+
+  const handleUnlockAura = useCallback((auraId: AuraStyleId, currency: 'gold' | 'gems') => {
+    const aura = AURA_MAP[auraId];
+    if (!aura) return;
+    setSave((prev) => {
+      const unlocked = prev.unlockedAuras ?? ['zodiac_gold'];
+      if (unlocked.includes(auraId)) return prev;
+      if (currency === 'gold' && (aura.unlockGold <= 0 || prev.gold < aura.unlockGold)) return prev;
+      if (currency === 'gems' && (aura.unlockGems <= 0 || prev.gems < aura.unlockGems)) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: currency === 'gold' ? prev.gold - aura.unlockGold : prev.gold,
+        gems: currency === 'gems' ? prev.gems - aura.unlockGems : prev.gems,
+        unlockedAuras: [...unlocked, auraId],
+        equippedAuraId: auraId,
+      };
+    });
+  }, []);
+
+  const handleEquipAura = useCallback((auraId: AuraStyleId) => {
+    soundEngine.playUiClick(1.1);
+    setSave((prev) => {
+      const unlocked = prev.unlockedAuras ?? ['zodiac_gold'];
+      if (!unlocked.includes(auraId)) return prev;
+      return { ...prev, equippedAuraId: auraId };
+    });
+  }, []);
+
+  const handleActivateVip = useCallback(() => {
+    const today = getTodayKey();
+    setSave((prev) => {
+      if (prev.gems < VIP_MONTHLY_COST_GEMS) return prev;
+      const vip = normalizeVip(prev.vip);
+      const baseDate = isVipActive(vip) && vip.activeUntilDate >= today ? vip.activeUntilDate : today;
+      const nextUntil = addDaysToDateKey(baseDate, VIP_DURATION_DAYS);
+      const sweeps = normalizeDailySweeps(prev.dailySweeps, true);
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: prev.gems - VIP_MONTHLY_COST_GEMS,
+        vip: { ...vip, activeUntilDate: nextUntil },
+        dailySweeps: { ...sweeps, remaining: sweeps.remaining + 2 },
+      };
+    });
+  }, []);
+
+  const handleClaimVipDaily = useCallback(() => {
+    const today = getTodayKey();
+    setSave((prev) => {
+      const vip = normalizeVip(prev.vip);
+      if (!isVipActive(vip) || vip.lastDailyClaimDate === today) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + VIP_DAILY_GOLD,
+        gems: prev.gems + VIP_DAILY_GEMS,
+        petEssence: (prev.petEssence ?? 0) + VIP_DAILY_ESSENCE,
+        vip: { ...vip, lastDailyClaimDate: today },
+      };
+    });
+  }, []);
+
+  const handleClaimStarterPack = useCallback(() => {
+    setSave((prev) => {
+      const vip = normalizeVip(prev.vip);
+      if (vip.starterPackClaimed || prev.gems < STARTER_PACK_COST_GEMS) return prev;
+      const starterGear = rollChestGear(true, STARTER_PACK_REWARDS.gearRarity, STARTER_PACK_REWARDS.sTier);
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: prev.gems - STARTER_PACK_COST_GEMS + 0,
+        gold: prev.gold + STARTER_PACK_REWARDS.gold,
+        petEssence: (prev.petEssence ?? 0) + STARTER_PACK_REWARDS.essence,
+        starDust: (prev.starDust ?? 0) + STARTER_PACK_REWARDS.starDust,
+        inventory: [...prev.inventory, starterGear],
+        vip: { ...vip, starterPackClaimed: true },
+      };
+    });
+  }, []);
+
+  const handleSalvageGear = useCallback((uids: string[]) => {
+    if (uids.length === 0) return;
+    setSave((prev) => {
+      const eqSet = new Set(Object.values(prev.equipped));
+      const targetSet = new Set(uids);
+      let dustGain = 0;
+      let goldGain = 0;
+      const keptInventory: GearInstance[] = [];
+
+      for (const item of prev.inventory) {
+        if (targetSet.has(item.uid) && !eqSet.has(item.uid) && item.rarity !== Rarity.MYTHIC) {
+          const val = getSalvageValue(item);
+          dustGain += val.starDust;
+          goldGain += val.gold;
+        } else {
+          keptInventory.push(item);
+        }
+      }
+
+      if (dustGain === 0 && goldGain === 0) return prev;
+      soundEngine.playSalvage();
+      return {
+        ...prev,
+        gold: prev.gold + goldGain,
+        starDust: (prev.starDust ?? 0) + dustGain,
+        inventory: keptInventory,
+      };
+    });
+  }, []);
+
+  const handleCraftForgeRecipe = useCallback((recipe: ForgeRecipe) => {
+    setSave((prev) => {
+      const currentDust = prev.starDust ?? 0;
+      if (currentDust < recipe.starDustCost || prev.gold < recipe.goldCost) return prev;
+
+      let nextInv = prev.inventory;
+      let nextEssence = prev.petEssence ?? 0;
+
+      if (recipe.rewardKind === 'pet_essence') {
+        nextEssence += recipe.amount;
+      } else if (recipe.rewardKind === 'gear_epic_any') {
+        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC)];
+      } else {
+        const pool = ALL_TEMPLATE_LIST.filter((t) => {
+          if (!t.isSTier) return false;
+          if (recipe.rewardKind === 'gear_s_weapon') return t.slot === GearSlot.WEAPON;
+          if (recipe.rewardKind === 'gear_s_armor') {
+            return (
+              t.slot === GearSlot.ARMOR ||
+              t.slot === GearSlot.HELMET ||
+              t.slot === GearSlot.BOOTS
+            );
+          }
+          return t.slot === GearSlot.RING || t.slot === GearSlot.NECKLACE;
+        });
+        const tpl = pool[Math.floor(Math.random() * pool.length)] ?? ALL_TEMPLATE_LIST[0];
+        const craftedGear: GearInstance = {
+          uid: `forge_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          templateId: tpl.templateId,
+          rarity: recipe.rarity,
+          level: 1,
+        };
+        nextInv = [...prev.inventory, craftedGear];
+      }
+
+      soundEngine.playForgeCraft();
+      return {
+        ...prev,
+        gold: prev.gold - recipe.goldCost,
+        starDust: currentDust - recipe.starDustCost,
+        petEssence: nextEssence,
+        inventory: nextInv,
+      };
+    });
+  }, []);
+
+  // Wave 4 Handlers: Reforge, Awakening, Build Presets, Guild, Destiny Wheel & Season Medals
+  const handleReforgeGear = useCallback((uid: string, lockedIds: string[]) => {
+    setSave((prev) => {
+      const idx = prev.inventory.findIndex((g) => g.uid === uid);
+      if (idx === -1) return prev;
+      const item = prev.inventory[idx];
+      const cost = getReforgeCost(item, lockedIds.length);
+      const currentDust = prev.starDust ?? 0;
+      if (currentDust < cost.starDust || prev.gold < cost.gold) return prev;
+
+      const nextSubstats = reforgeItemSubstats(item, lockedIds);
+      const nextInventory = [...prev.inventory];
+      nextInventory[idx] = { ...item, substats: nextSubstats };
+      soundEngine.playForgeCraft();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        starDust: currentDust - cost.starDust,
+        inventory: nextInventory,
+      };
+    });
+  }, []);
+
+  const handleAwakenGear = useCallback((uid: string) => {
+    setSave((prev) => {
+      const idx = prev.inventory.findIndex((g) => g.uid === uid);
+      if (idx === -1) return prev;
+      const item = prev.inventory[idx];
+      const cur = item.awakeningLevel ?? 0;
+      const cost = getAwakenCost(item);
+      if (cur >= cost.maxStars) return prev;
+      const guild = normalizeGuild(prev.guild);
+      const currentDust = prev.starDust ?? 0;
+      if (
+        currentDust < cost.starDust ||
+        prev.gold < cost.gold ||
+        guild.guildCoins < cost.guildCoins
+      ) {
+        return prev;
+      }
+
+      const nextInventory = [...prev.inventory];
+      nextInventory[idx] = { ...item, awakeningLevel: cur + 1 };
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        starDust: currentDust - cost.starDust,
+        guild: {
+          ...guild,
+          guildCoins: guild.guildCoins - cost.guildCoins,
+        },
+        inventory: nextInventory,
+      };
+    });
+  }, []);
+
+  const handleSaveBuildPreset = useCallback((idx: number) => {
+    soundEngine.playLevelUp();
+    setSave((prev) => {
+      const presets = normalizeBuildPresets(prev);
+      if (idx < 0 || idx >= presets.length) return prev;
+      const nextPresets = [...presets];
+      nextPresets[idx] = {
+        ...presets[idx],
+        heroId: prev.selectedHeroId,
+        equipped: { ...prev.equipped },
+        equippedRunes: [...prev.equippedRunes],
+        equippedPetId: prev.equippedPetId ?? null,
+        skinId: prev.equippedSkinByHero?.[prev.selectedHeroId] ?? 'default',
+        auraId: prev.equippedAuraId ?? 'zodiac_gold',
+      };
+      return { ...prev, buildPresets: nextPresets };
+    });
+  }, []);
+
+  const handleApplyBuildPreset = useCallback((idx: number) => {
+    soundEngine.playVictory();
+    setSave((prev) => {
+      const presets = normalizeBuildPresets(prev);
+      const preset = presets[idx];
+      if (!preset) return prev;
+
+      const invIds = new Set(prev.inventory.map((g) => g.uid));
+      const runeIds = new Set(prev.runeInventory.map((r) => r.uid));
+      const nextHeroId = prev.unlockedHeroes.includes(preset.heroId)
+        ? preset.heroId
+        : prev.selectedHeroId;
+
+      const nextEquipped = { ...prev.equipped };
+      for (const slot of Object.values(GearSlot)) {
+        const uid = preset.equipped[slot];
+        if (uid && invIds.has(uid)) {
+          nextEquipped[slot] = uid;
+        }
+      }
+
+      const nextRunes = preset.equippedRunes.filter((id) => runeIds.has(id)).slice(0, 4);
+      const ownedPets = normalizePets(prev.pets);
+      const nextPetId =
+        preset.equippedPetId && ownedPets.some((p) => p.petId === preset.equippedPetId)
+          ? preset.equippedPetId
+          : null;
+
+      const unlockedSkins = prev.unlockedSkins ?? ['default'];
+      const nextSkinId = unlockedSkins.includes(preset.skinId) ? preset.skinId : 'default';
+      const unlockedAuras = prev.unlockedAuras ?? ['zodiac_gold'];
+      const nextAuraId = unlockedAuras.includes(preset.auraId)
+        ? preset.auraId
+        : prev.equippedAuraId ?? 'zodiac_gold';
+
+      return {
+        ...prev,
+        selectedHeroId: nextHeroId,
+        equipped: nextEquipped,
+        equippedRunes: nextRunes,
+        equippedPetId: nextPetId,
+        equippedSkinByHero: {
+          ...(prev.equippedSkinByHero ?? {}),
+          [nextHeroId]: nextSkinId,
+        },
+        equippedAuraId: nextAuraId,
+      };
+    });
+  }, []);
+
+  const handleGuildTribute = useCallback((currency: 'gold' | 'gems') => {
+    setSave((prev) => {
+      const g = normalizeGuild(prev.guild);
+      if (g.tributeCountToday >= MAX_DAILY_GUILD_TRIBUTES) return prev;
+      const goldCost = currency === 'gold' ? 150 : 0;
+      const gemCost = currency === 'gems' ? 20 : 0;
+      if (prev.gold < goldCost || prev.gems < gemCost) return prev;
+
+      const coinGain = currency === 'gems' ? 75 : 30;
+      const expGain = currency === 'gems' ? 160 : 70;
+      let nextLevel = g.level;
+      let nextExp = g.exp + expGain;
+      while (nextExp >= getGuildLevelExpReq(nextLevel)) {
+        nextExp -= getGuildLevelExpReq(nextLevel);
+        nextLevel += 1;
+      }
+
+      return {
+        ...prev,
+        gold: prev.gold - goldCost,
+        gems: prev.gems - gemCost,
+        guild: {
+          ...g,
+          level: nextLevel,
+          exp: nextExp,
+          guildCoins: g.guildCoins + coinGain,
+          tributeCountToday: g.tributeCountToday + 1,
+        },
+      };
+    });
+  }, []);
+
+  const handleUpgradeGuildTech = useCallback((techId: GuildTechId) => {
+    const tech = GUILD_TECH_DEFS.find((t) => t.id === techId);
+    if (!tech) return;
+    setSave((prev) => {
+      const g = normalizeGuild(prev.guild);
+      const lv = g.techLevels[techId] ?? 0;
+      if (lv >= tech.maxLevel) return prev;
+      const coinCost = tech.baseCoinCost + lv * tech.stepCoinCost;
+      const goldCost = tech.baseGoldCost + lv * tech.stepGoldCost;
+      if (g.guildCoins < coinCost || prev.gold < goldCost) return prev;
+
+      return {
+        ...prev,
+        gold: prev.gold - goldCost,
+        guild: {
+          ...g,
+          guildCoins: g.guildCoins - coinCost,
+          techLevels: {
+            ...g.techLevels,
+            [techId]: lv + 1,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimGuildDamageTier = useCallback((tierId: string) => {
+    const tier = GUILD_BOSS_DAMAGE_TIERS.find((t) => t.id === tierId);
+    if (!tier) return;
+    setSave((prev) => {
+      const g = normalizeGuild(prev.guild);
+      if (g.bestGuildBossDamage < tier.minDamage || g.claimedDamageTiers.includes(tierId)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        gems: prev.gems + tier.gems,
+        starDust: (prev.starDust ?? 0) + tier.starDust,
+        guild: {
+          ...g,
+          guildCoins: g.guildCoins + tier.guildCoins,
+          claimedDamageTiers: [...g.claimedDamageTiers, tierId],
+        },
+      };
+    });
+  }, []);
+
+  const handleDestinySpin = useCallback(
+    (count: 1 | 5): { prizes: DestinyWheelPrize[]; lastIndex: number } | null => {
+      const dw = normalizeDestinyWheel(save.destinyWheel);
+      let useFree = false;
+      let useTicket = false;
+      let gemCost = 0;
+
+      if (count === 1) {
+        if (dw.freeSpinsRemaining > 0) {
+          useFree = true;
+        } else if (dw.tickets > 0) {
+          useTicket = true;
+        } else if (save.gems >= DESTINY_SPIN_GEM_COST) {
+          gemCost = DESTINY_SPIN_GEM_COST;
+        } else {
+          return null;
+        }
+      } else {
+        if (save.gems < DESTINY_SPIN5_GEM_COST) return null;
+        gemCost = DESTINY_SPIN5_GEM_COST;
+      }
+
+      const rolls = Array.from({ length: count }, () => rollDestinyPrize());
+      const prizes = rolls.map((r) => r.prize);
+      const lastIndex = rolls[rolls.length - 1].index;
+
+      setSave((prev) => {
+        const curDw = normalizeDestinyWheel(prev.destinyWheel);
+        let goldGain = 0;
+        let gemsGain = 0;
+        let dustGain = 0;
+        let essenceGain = 0;
+        const newGear: GearInstance[] = [];
+        const newHistoryLabels: string[] = [];
+
+        for (const p of prizes) {
+          newHistoryLabels.unshift(p.label);
+          if (p.kind === 'gold') goldGain += p.amount;
+          else if (p.kind === 'gems') gemsGain += p.amount;
+          else if (p.kind === 'star_dust') dustGain += p.amount;
+          else if (p.kind === 'pet_essence') essenceGain += p.amount;
+          else if (p.kind === 'gear_epic') newGear.push(rollChestGear(true, Rarity.EPIC));
+          else if (p.kind === 'gear_s') newGear.push(rollChestGear(true, Rarity.EPIC, true));
+        }
+
+        return {
+          ...prev,
+          gold: prev.gold + goldGain,
+          gems: Math.max(0, prev.gems - gemCost) + gemsGain,
+          starDust: (prev.starDust ?? 0) + dustGain,
+          petEssence: (prev.petEssence ?? 0) + essenceGain,
+          inventory: newGear.length > 0 ? [...prev.inventory, ...newGear] : prev.inventory,
+          destinyWheel: {
+            ...curDw,
+            freeSpinsRemaining: useFree
+              ? Math.max(0, curDw.freeSpinsRemaining - 1)
+              : curDw.freeSpinsRemaining,
+            tickets: useTicket ? Math.max(0, curDw.tickets - 1) : curDw.tickets,
+            totalSpins: curDw.totalSpins + count,
+            history: [...newHistoryLabels, ...curDw.history].slice(0, 8),
+          },
+        };
+      });
+
+      return { prizes, lastIndex };
+    },
+    [save.destinyWheel, save.gems]
+  );
+
+  const handleClaimDestinyMilestone = useCallback((spins: number) => {
+    const ms = DESTINY_MILESTONES.find((m) => m.spins === spins);
+    if (!ms) return;
+    setSave((prev) => {
+      const curDw = normalizeDestinyWheel(prev.destinyWheel);
+      if (curDw.totalSpins < ms.spins || curDw.claimedMilestones.includes(ms.spins)) {
+        return prev;
+      }
+      const nextInv = ms.gearS
+        ? [
+            ...prev.inventory,
+            rollChestGear(true, ms.spins >= 50 ? Rarity.LEGENDARY : Rarity.EPIC, true),
+          ]
+        : prev.inventory;
+      return {
+        ...prev,
+        gold: prev.gold + ms.gold,
+        gems: prev.gems + ms.gems,
+        starDust: (prev.starDust ?? 0) + ms.starDust,
+        inventory: nextInv,
+        destinyWheel: {
+          ...curDw,
+          claimedMilestones: [...curDw.claimedMilestones, ms.spins],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimSeasonMedal = useCallback((medalId: string) => {
+    const medal = SEASON_MEDALS.find((m) => m.id === medalId);
+    if (!medal) return;
+    setSave((prev) => {
+      const claimed = prev.seasonMedalsClaimed ?? [];
+      if (claimed.includes(medalId)) return prev;
+      const statsNow = computePlayerStats(prev);
+      const seasonScore = computeSeasonScore(prev, statsNow.powerRating);
+      if (getSeasonMedalCurrentValue(prev, statsNow.powerRating, seasonScore, medal.metric) < medal.target) {
+        return prev;
+      }
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: prev.gold + medal.rewardGold,
+        gems: prev.gems + medal.rewardGems,
+        starDust: (prev.starDust ?? 0) + medal.rewardStarDust,
+        seasonMedalsClaimed: [...claimed, medalId],
+      };
+    });
+  }, []);
+
+  const activeChapter =
+    CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
+
+  const canRollAgainGacha = gachaReveal
+    ? (() => {
+        const unit =
+          gachaReveal.chestVariant === 'iron'
+            ? 120
+            : gachaReveal.chestVariant === 'mythic'
+            ? 25
+            : gachaReveal.chestVariant === 'rune_bag'
+            ? 100
+            : 18;
+        const cost = gachaReveal.count === 10 ? Math.round(unit * 9) : unit;
+        const isGem =
+          gachaReveal.chestVariant === 'mythic' || gachaReveal.chestVariant === 'rune_rare';
+        return isGem ? save.gems >= cost : save.gold >= cost;
+      })()
+    : false;
+
+  const draftModalMode =
+    phase === GamePhase.SKILL_DRAFT
+      ? 'skill'
+      : phase === GamePhase.VALKYRIE_DRAFT
+      ? 'valkyrie'
+      : phase === GamePhase.LUCKY_WHEEL
+      ? 'wheel'
+      : phase === GamePhase.ANGEL_DEVIL
+      ? encounterOffer?.kind ?? 'angel'
+      : null;
+
+  return (
+    <div className="relative w-screen h-screen overflow-hidden bg-[#0b0e14]">
+      {/* Isolated WebGL Mount */}
+      <div ref={canvasMountRef} className="fixed inset-0 z-0" />
+
+      {phase === GamePhase.TITLE && !enteredGame && (
+        <SplashGate
+          save={save}
+          onEnterGame={() => {
+            soundEngine.unlock();
+            soundEngine.playVictory();
+            setEnteredGame(true);
+            if (!save.onboardingCompleted) {
+              setOnboardingOpen(true);
+            }
+          }}
+          onToggleMute={handleToggleMute}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && (
+        <TitleScreen
+          save={save}
+          stats={playerStats}
+          selectedChapterId={selectedChapterId}
+          gameMode={gameMode}
+          activeTab={activeLobbyTab}
+          previewHeroId={previewHeroId ?? save.selectedHeroId}
+          onTabChange={(tab) => {
+            soundEngine.playUiClick();
+            setActiveLobbyTab(tab);
+            if (tab !== 'heroes') {
+              setPreviewHeroId(null);
+            }
+          }}
+          onGameModeChange={(mode) => {
+            soundEngine.playUiClick();
+            setGameMode(mode);
+          }}
+          onPreviewHero={(heroId) => setPreviewHeroId(heroId)}
+          onSelectChapter={handleSelectChapter}
+          onStartTrial={handleStartTrial}
+          onStartTower={handleStartTower}
+          onStartBossRush={handleStartBossRush}
+          onStartDailyRift={handleStartDailyRift}
+          onQuickSweepChapter={handleQuickSweepChapter}
+          onToggleMute={handleToggleMute}
+          onOpenRewardsModal={(tab) => setRewardsModalTab(tab)}
+          onOpenTalentsModal={() => setTalentsModalOpen(true)}
+          onOpenBattlePassModal={() => setBattlePassOpen(true)}
+          onOpenVipModal={() => setVipModalOpen(true)}
+          onOpenForgeModal={() => setForgeConfig({ open: true, subTab: 'salvage' })}
+          onOpenForgeSubTab={(subTab, gearUid) =>
+            setForgeConfig({ open: true, subTab, gearUid })
+          }
+          onOpenGuildModal={() => setGuildModalOpen(true)}
+          onOpenDestinyWheelModal={() => setDestinyWheelOpen(true)}
+          onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
+          onOpenMailModal={() => setMailModalOpen(true)}
+          onOpenSettingsModal={() => setSettingsOpen(true)}
+          onSelectHero={handleSelectHero}
+          onUnlockHero={handleUnlockHero}
+          onUpgradeHeroStar={handleUpgradeHeroStar}
+          onUnlockPet={handleUnlockPet}
+          onEquipPet={handleEquipPet}
+          onUpgradePet={handleUpgradePet}
+          onUnlockSkin={handleUnlockSkin}
+          onEquipSkin={handleEquipSkin}
+          onUnlockAura={handleUnlockAura}
+          onEquipAura={handleEquipAura}
+          onEquipGear={handleEquip}
+          onUpgradeGear={handleUpgrade}
+          onFuseGear={handleFuse}
+          onAutoEquipBest={handleAutoEquipBest}
+          onBulkFuseGear={handleBulkFuseGear}
+          onSaveBuildPreset={handleSaveBuildPreset}
+          onApplyBuildPreset={handleApplyBuildPreset}
+          onOpenChestWithGacha={handleOpenChestWithGacha}
+          onBuyFlashDeal={handleBuyFlashDeal}
+          onEquipRune={handleEquipRune}
+          onUnequipRune={handleUnequipRune}
+          onFuseRune={handleFuseRune}
+          onBulkFuseRunes={handleBulkFuseRunes}
+          onRotateHero={(deltaRad) => engineRef.current?.rotateLobbyHero(deltaRad)}
+          onResetHeroRotation={() => engineRef.current?.resetLobbyHeroRotation()}
+        />
+      )}
+
+      {phase !== GamePhase.TITLE && (
+        <GameHUD
+          hud={hud}
+          muted={save.muted}
+          damages={damages}
+          joystick={joystick}
+          onToggleMute={handleToggleMute}
+          onPause={handlePause}
+          onDashClick={() => engineRef.current?.triggerDash()}
+          onUltimateClick={() => engineRef.current?.triggerHeroUltimate()}
+        />
+      )}
+
+      {draftModalMode && (
+        <SkillDraftModal
+          mode={draftModalMode}
+          level={hud.level}
+          skillChoices={draftChoices}
+          currentStacks={draftStacks}
+          rerollUsed={rerollUsed}
+          encounterOffer={encounterOffer}
+          onPickSkill={(skillId) => {
+            setPhase(GamePhase.PLAYING);
+            engineRef.current?.applySkillChoice(skillId);
+          }}
+          onRerollSkills={() => {
+            if (rerollUsed) return;
+            setRerollUsed(true);
+            const minR = phase === GamePhase.VALKYRIE_DRAFT ? 'epic' : undefined;
+            const rolled = rollSkillChoices(draftStacks, 3, minR);
+            if (rolled.length > 0) setDraftChoices(rolled);
+          }}
+          onAngelChoice={(choice) => {
+            setPhase(GamePhase.PLAYING);
+            engineRef.current?.applyAngelChoice(choice);
+          }}
+          onDevilPact={(acceptSkill) => {
+            setPhase(GamePhase.PLAYING);
+            engineRef.current?.applyDevilPact(acceptSkill);
+          }}
+          onWheelComplete={(outcome: WheelOutcome) => {
+            setPhase(GamePhase.PLAYING);
+            engineRef.current?.applyWheelOutcome(outcome);
+          }}
+        />
+      )}
+
+      {(phase === GamePhase.PAUSED ||
+        phase === GamePhase.VICTORY ||
+        phase === GamePhase.GAME_OVER) && (
+        <PauseResultModal
+          phase={phase}
+          chapterName={activeChapter.name}
+          stageReached={runSummary?.stageReached ?? hud.stage}
+          totalStages={
+            (runSummary?.isGuildBossMode ?? hud.isGuildBossMode)
+              ? 1
+              : (runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode)
+              ? 3
+              : activeChapter.stages.length
+          }
+          isTowerMode={runSummary?.isTowerMode ?? hud.isTowerMode}
+          towerFloor={runSummary?.towerFloor ?? hud.towerFloor}
+          isBossRushMode={runSummary?.isBossRushMode ?? hud.isBossRushMode}
+          bossRushRound={runSummary?.bossRushRound ?? hud.bossRushRound}
+          isDailyRiftMode={runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode}
+          isGuildBossMode={runSummary?.isGuildBossMode ?? hud.isGuildBossMode}
+          guildBossDamage={runSummary?.guildBossDamage ?? hud.guildBossTotalDamage ?? 0}
+          kills={runSummary?.kills ?? hud.kills}
+          goldEarned={runSummary?.gold ?? hud.runGold}
+          gemsEarned={runSummary?.gems ?? hud.runGems}
+          starDustEarned={runSummary?.starDust ?? 0}
+          petEssenceEarned={runSummary?.petEssence ?? 0}
+          maxCombo={runSummary?.maxCombo ?? hud.comboCount}
+          damageBreakdown={runSummary?.damageBreakdown}
+          seasonXpEarned={runSummary?.seasonXp ?? 0}
+          onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
+          onRetry={
+            (runSummary?.isGuildBossMode ?? hud.isGuildBossMode)
+              ? () => {
+                  if (normalizeGuild(save.guild).bossRunsRemaining > 0) {
+                    handleStartGuildBoss();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode)
+              ? () => {
+                  if (normalizeDailyRift(save.dailyRift).runsRemaining > 0) {
+                    handleStartDailyRift();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isBossRushMode ?? hud.isBossRushMode)
+              ? handleStartBossRush
+              : (runSummary?.isTowerMode ?? hud.isTowerMode)
+              ? handleStartTower
+              : handleStartTrial
+          }
+          onReturnTitle={handleReturnTitle}
+          onOpenSettings={
+            phase === GamePhase.PAUSED ? () => setSettingsOpen(true) : undefined
+          }
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && rewardsModalTab && (
+        <DailyRewardsModal
+          save={save}
+          initialTab={rewardsModalTab}
+          onClose={() => setRewardsModalTab(null)}
+          onClaimCheckIn={handleClaimCheckIn}
+          onClaimDailyQuest={handleClaimDailyQuest}
+          onClaimWelcomeGift={handleClaimWelcomeGift}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && talentsModalOpen && (
+        <TalentsModal
+          save={save}
+          stats={playerStats}
+          onUpgradeTalent={handleUpgradeTalent}
+          onClose={() => setTalentsModalOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && battlePassOpen && (
+        <BattlePassModal
+          save={save}
+          onClose={() => setBattlePassOpen(false)}
+          onUnlockPremium={handleUnlockBattlePassPremium}
+          onClaimTier={handleClaimBattlePassTier}
+          onClaimAll={handleClaimAllBattlePass}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && vipModalOpen && (
+        <VipPrivilegeModal
+          save={save}
+          onActivateVip={handleActivateVip}
+          onClaimVipDaily={handleClaimVipDaily}
+          onClaimStarterPack={handleClaimStarterPack}
+          onClose={() => setVipModalOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && forgeConfig.open && (
+        <RelicForgeModal
+          key={`${forgeConfig.subTab}_${forgeConfig.gearUid ?? 'all'}`}
+          save={save}
+          initialSubTab={forgeConfig.subTab}
+          initialGearUid={forgeConfig.gearUid}
+          onSalvageGear={handleSalvageGear}
+          onCraftForgeRecipe={handleCraftForgeRecipe}
+          onReforgeGear={handleReforgeGear}
+          onAwakenGear={handleAwakenGear}
+          onClose={() => setForgeConfig((prev) => ({ ...prev, open: false }))}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && guildModalOpen && (
+        <ZodiacGuildModal
+          save={save}
+          powerRating={playerStats.powerRating}
+          onTribute={handleGuildTribute}
+          onUpgradeTech={handleUpgradeGuildTech}
+          onClaimDamageTier={handleClaimGuildDamageTier}
+          onStartGuildBoss={handleStartGuildBoss}
+          onClose={() => setGuildModalOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && destinyWheelOpen && (
+        <DestinyWheelModal
+          save={save}
+          onSpin={handleDestinySpin}
+          onClaimMilestone={handleClaimDestinyMilestone}
+          onClose={() => setDestinyWheelOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && profileModalTab && (
+        <ProfileCodexModal
+          save={save}
+          stats={playerStats}
+          initialTab={profileModalTab}
+          onClose={() => setProfileModalTab(null)}
+          onClaimAchievement={handleClaimAchievement}
+          onClaimSeasonMedal={handleClaimSeasonMedal}
+          onSelectTitle={handleSelectTitle}
+        />
+      )}
+
+      {settingsOpen && (
+        <SettingsModal
+          settings={currentSettings}
+          muted={save.muted}
+          onUpdateSettings={handleUpdateSettings}
+          onToggleMute={handleToggleMute}
+          onReplayTutorial={
+            phase === GamePhase.TITLE && enteredGame
+              ? () => setOnboardingOpen(true)
+              : undefined
+          }
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && onboardingOpen && (
+        <OnboardingTour
+          onComplete={handleCompleteOnboarding}
+          onJumpToTab={(t) => setActiveLobbyTab(t)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && gachaReveal && (
+        <ChestGachaModal
+          reveal={gachaReveal}
+          canEquipRune={save.equippedRunes.length < 4}
+          onClose={() => setGachaReveal(null)}
+          onEquipGear={handleEquip}
+          onEquipRune={handleEquipRune}
+          onRollAgain={handleOpenChestWithGacha}
+          canRollAgain={canRollAgainGacha}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && mailModalOpen && (
+        <MailModal
+          save={save}
+          onClose={() => setMailModalOpen(false)}
+          onClaimMail={handleClaimMail}
+          onClaimAllMail={handleClaimAllMail}
+          onDeleteClaimedMail={handleDeleteClaimedMail}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && sweepResult && (
+        <QuickSweepResultModal
+          result={sweepResult}
+          onClose={() => setSweepResult(null)}
+        />
+      )}
+
+      <CombatPowerToast toast={powerToast} />
+      <AchievementToast achievement={activeAchievementToast} />
+
+      {transitionState !== null && (
+        <StageTransitionCurtain
+          chapterId={transitionState.chapterId}
+          isTowerMode={transitionState.isTowerMode}
+          isBossRushMode={transitionState.isBossRushMode}
+          isDailyRiftMode={transitionState.isDailyRiftMode}
+          isGuildBossMode={transitionState.isGuildBossMode}
+          dailyRiftTitle={transitionState.dailyRiftTitle}
+        />
+      )}
+    </div>
+  );
+}

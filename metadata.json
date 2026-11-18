@@ -1,0 +1,6 @@
+{
+  "name": "Aetherbow: Citadel Trial",
+  "description": "A 3D action-roguelike archer game with smooth stutter-step movement, tactical skill drafts, boss encounters, and strategic gear progression.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
