@@ -245,6 +245,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span>
                 {hud.isArenaMode
                   ? `Đấu Trường 1v1 · ${hud.arenaTimeLeft ?? 45}s`
+                  : hud.isPantheonMode
+                  ? `Điện Thần 3D · Tầng ${hud.pantheonStage ?? 1}/${hud.pantheonTotalStages ?? 3}`
                   : hud.isGuildWarMode
                   ? `Chiến Trường Bang · ${hud.guildWarTimeLeft ?? 75}s`
                   : hud.isAbyssalMode
@@ -281,6 +283,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
               {hud.isArenaMode
                 ? `Đối thủ: ${hud.arenaOpponentName ?? 'Kình Địch'}`
+                : hud.isPantheonMode
+                ? `${hud.pantheonBlessingTitle ?? 'Chúc Phúc'} · Điểm: ${(hud.pantheonScore ?? 0).toLocaleString('vi-VN')}`
                 : hud.isGuildWarMode
                 ? `Trụ Chiếm: ${hud.guildWarNodes ?? 0}/3 · Điểm: ${(hud.guildWarScore ?? 0).toLocaleString('vi-VN')}`
                 : hud.isAbyssalMode
@@ -456,6 +460,34 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <div
                 className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-300 transition-all duration-300"
                 style={{ width: `${Math.max(0, Math.min(100, ((hud.guildWarTimeLeft ?? 0) / 75) * 100))}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Celestial Pantheon Boss Expedition Progress Strip */}
+        {hud.isPantheonMode && (
+          <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#1a1105]/95 border border-amber-300/80 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+              <span className="flex items-center gap-1.5 text-amber-200 truncate">
+                <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">
+                  Điện Thần 3D · Tầng {hud.pantheonStage ?? 1}/{hud.pantheonTotalStages ?? 3} ({hud.pantheonBlessingTitle ?? 'Chúc Phúc'})
+                </span>
+              </span>
+              <span className="font-mono-nums text-emerald-300 shrink-0">
+                {(hud.pantheonScore ?? 0).toLocaleString('vi-VN')} Điểm
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-950 border border-amber-400/35 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 via-yellow-400 to-emerald-300 transition-all duration-300"
+                style={{
+                  width: `${Math.max(
+                    15,
+                    Math.min(100, ((hud.pantheonStage ?? 1) / Math.max(1, hud.pantheonTotalStages ?? 3)) * 100)
+                  )}%`,
+                }}
               />
             </div>
           </div>

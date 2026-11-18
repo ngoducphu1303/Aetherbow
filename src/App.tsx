@@ -202,6 +202,21 @@ import {
   normalizeGuildWar,
   normalizeMysticExchange,
 } from './data/wave9Data';
+import {
+  DIVINE_HALO_MAP,
+  DIVINE_HALO_MAX_LEVEL,
+  GEM_VAULT_CLAIM_THRESHOLD,
+  GEM_VAULT_MILESTONES,
+  PANTHEON_BLESSINGS,
+  PANTHEON_MILESTONES,
+  PANTHEON_TOTAL_STAGES,
+  STEP_UP_CHAIN_STEPS,
+  depositToGemRebateVault,
+  getDivineHaloUpgradeCost,
+  normalizeGemRebateVault,
+  normalizePantheonExpedition,
+  normalizeStepUpChain,
+} from './data/wave10Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
@@ -226,6 +241,7 @@ import {
   GearInstance,
   GearSlot,
   GuildTechId,
+  HaloId,
   HeroId,
   HeroSkinId,
   HudSnapshot,
@@ -235,6 +251,7 @@ import {
   MountId,
   MythicBadgeId,
   NightMarketOffer,
+  PantheonBlessingId,
   PetId,
   Rarity,
   RunHistoryEntry,
@@ -350,9 +367,9 @@ export default function App() {
   const [gameMode, setGameMode] = useState<LobbyGameMode>('chapter');
   const [activeLobbyTab, setActiveLobbyTab] = useState<LobbyTab>('battle');
   const [heroSubTabInitial, setHeroSubTabInitial] = useState<
-    'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts'
+    'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos'
   >('roster');
-  const [shopSection, setShopSection] = useState<ShopSectionTab>('privilege');
+  const [shopSection, setShopSection] = useState<ShopSectionTab>('chain_bank');
   const [selectedCoopDifficulty, setSelectedCoopDifficulty] = useState<CoopRaidDifficulty>('normal');
   const [selectedElementalTower, setSelectedElementalTower] = useState<ElementalTowerId>('fire');
   const [previewHeroId, setPreviewHeroId] = useState<HeroId | null>(null);
@@ -379,6 +396,7 @@ export default function App() {
     isBloodMoonMode?: boolean;
     isAbyssalMode?: boolean;
     isGuildWarMode?: boolean;
+    isPantheonMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
@@ -472,6 +490,10 @@ export default function App() {
     guildWarScore?: number;
     guildWarNodes?: number;
     guildCoins?: number;
+    isPantheonMode?: boolean;
+    pantheonStage?: number;
+    pantheonScore?: number;
+    divineCrystals?: number;
     maxCombo?: number;
     damageBreakdown?: DamageBreakdown;
   } | null>(null);
@@ -543,6 +565,18 @@ export default function App() {
       ? Math.max(1, save.artifactLevels?.[effectiveArtifactId] ?? 1)
       : 1;
 
+    const equippedHaloId: HaloId | null =
+      save.equippedHaloId && (save.unlockedHalos ?? []).includes(save.equippedHaloId)
+        ? save.equippedHaloId
+        : null;
+    const effectiveHaloId: HaloId | null =
+      isWardrobePreviewActive && wardrobePreview.haloId !== undefined
+        ? wardrobePreview.haloId
+        : equippedHaloId;
+    const haloLevel = effectiveHaloId
+      ? Math.max(1, save.haloLevels?.[effectiveHaloId] ?? 1)
+      : 1;
+
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
       cloakColorHex: skinDef?.cloakHex ?? aTpl?.cloakColorHex ?? hero.cloakHex,
@@ -563,6 +597,8 @@ export default function App() {
       weaponAuraLevel,
       artifactId: effectiveArtifactId,
       artifactLevel,
+      haloId: effectiveHaloId,
+      haloLevel,
     };
   }, [
     save,
@@ -645,6 +681,21 @@ export default function App() {
         changed = true;
       }
 
+      const normPe = normalizePantheonExpedition(prev.pantheonExpedition);
+      if (!prev.pantheonExpedition || prev.pantheonExpedition.date !== normPe.date) {
+        changed = true;
+      }
+
+      const normChain = normalizeStepUpChain(prev.stepUpChain);
+      if (!prev.stepUpChain) {
+        changed = true;
+      }
+
+      const normVault = normalizeGemRebateVault(prev.gemRebateVault);
+      if (!prev.gemRebateVault) {
+        changed = true;
+      }
+
       if (!changed) return prev;
       return {
         ...prev,
@@ -655,6 +706,9 @@ export default function App() {
         mysticExchange: normMx,
         abyssalGauntlet: normAb,
         guildWar: normGw,
+        pantheonExpedition: normPe,
+        stepUpChain: normChain,
+        gemRebateVault: normVault,
       };
     });
   }, []);
@@ -835,6 +889,7 @@ export default function App() {
           const isBloodMoon = Boolean(summary.isBloodMoonMode);
           const isAbyssal = Boolean(summary.isAbyssalMode);
           const isGuildWar = Boolean(summary.isGuildWarMode);
+          const isPantheon = Boolean(summary.isPantheonMode);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
           const elTowerFloor = summary.elementalTowerFloor ?? 1;
@@ -852,6 +907,9 @@ export default function App() {
           const abyssalScore = summary.abyssalScore ?? 0;
           const guildWarScore = summary.guildWarScore ?? 0;
           const guildWarNodes = summary.guildWarNodes ?? summary.stageReached ?? 0;
+          const pantheonStage = summary.pantheonStage ?? summary.stageReached ?? 1;
+          const pantheonScore = summary.pantheonScore ?? 0;
+          const divineCrystalsGain = summary.divineCrystals ?? 0;
           const artifactShardsGain = summary.artifactShards ?? 0;
           const mysticTokensGain = summary.mysticTokens ?? 0;
           const guildWarCoinsGain = summary.guildCoins ?? 0;
@@ -865,6 +923,8 @@ export default function App() {
             ? victory
               ? 160
               : 55
+            : isPantheon
+            ? Math.min(520, 110 + pantheonStage * 85)
             : isAbyssal
             ? Math.min(460, 85 + abyssalWave * 35)
             : isGuildWar
@@ -896,6 +956,8 @@ export default function App() {
             ? victory
               ? 18
               : 4
+            : isPantheon
+            ? Math.min(34, 8 + pantheonStage * 7)
             : isAbyssal
             ? Math.min(28, 6 + abyssalWave * 2)
             : isGuildWar
@@ -933,6 +995,8 @@ export default function App() {
             ? victory
               ? 95
               : 40
+            : isPantheon
+            ? 110 + pantheonStage * 38 + summary.kills * 2
             : isAbyssal
             ? 90 + abyssalWave * 22 + summary.kills
             : isGuildWar
@@ -974,6 +1038,7 @@ export default function App() {
             awakeningCrystals: awakeningCrystalsGain,
             artifactShards: artifactShardsGain,
             mysticTokens: mysticTokensGain,
+            divineCrystals: divineCrystalsGain,
             guildCoins: isGuildWar ? guildWarCoinsGain : undefined,
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
@@ -987,6 +1052,10 @@ export default function App() {
             const actualXp = hasVip ? Math.round(rawSeasonXp * 1.25) : rawSeasonXp;
             const nextBp = { ...bp, xp: bp.xp + actualXp };
             const nextCareer = { ...career, totalRuns: career.totalRuns + 1 };
+            const nextGemVault = depositToGemRebateVault(
+              prev.gemRebateVault,
+              Math.max(4, Math.round(totalGems * 0.6) + (victory ? 8 : 3))
+            );
             const chName =
               CHAPTERS.find((c) => c.id === summary.chapterId)?.name ?? `Chương ${summary.chapterId}`;
             const elDef = ELEMENTAL_TOWER_MAP[elTowerId];
@@ -994,7 +1063,9 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isAbyssal
+              mode: isPantheon
+                ? 'pantheon_expedition'
+                : isAbyssal
                 ? 'abyssal_gauntlet'
                 : isGuildWar
                 ? 'guild_war'
@@ -1019,7 +1090,9 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isAbyssal
+              label: isPantheon
+                ? `Viễn Chinh Điện Thần · Ải ${pantheonStage}/${PANTHEON_TOTAL_STAGES}`
+                : isAbyssal
                 ? `Hố Sâu Đột Biến · Đợt ${abyssalWave}/${ABYSSAL_GAUNTLET_TOTAL_WAVES}`
                 : isGuildWar
                 ? `Chiến Trường Bang · ${guildWarScore.toLocaleString('vi-VN')} ĐB`
@@ -1046,6 +1119,8 @@ export default function App() {
                 : `Chương ${summary.chapterId} · ${chName}`,
               stageReached: isArena || isGuildBoss || isWorldBoss
                 ? 1
+                : isPantheon
+                ? pantheonStage
                 : isAbyssal
                 ? abyssalWave
                 : isGuildWar
@@ -1071,6 +1146,33 @@ export default function App() {
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
 
+            if (isPantheon) {
+              const pe = normalizePantheonExpedition(prev.pantheonExpedition);
+              const mx = normalizeMysticExchange(prev.mysticExchange);
+              const nextShards = mx.artifactShards + artifactShardsGain;
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                divineCrystals: (prev.divineCrystals ?? 0) + divineCrystalsGain,
+                artifactShards: nextShards,
+                mysticExchange: {
+                  ...mx,
+                  artifactShards: nextShards,
+                },
+                pantheonExpedition: {
+                  ...pe,
+                  bestDeityStage: Math.max(pe.bestDeityStage, pantheonStage),
+                  bestScore: Math.max(pe.bestScore, pantheonScore),
+                  totalClears: pe.totalClears + (victory ? 1 : 0),
+                },
+                gemRebateVault: nextGemVault,
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
             if (isAbyssal) {
               const ab = normalizeAbyssalGauntlet(prev.abyssalGauntlet);
               const mx = normalizeMysticExchange(prev.mysticExchange);
@@ -1092,6 +1194,7 @@ export default function App() {
                   bestScore: Math.max(ab.bestScore, abyssalScore),
                   totalClears: ab.totalClears + (victory ? 1 : 0),
                 },
+                gemRebateVault: nextGemVault,
                 battlePass: nextBp,
                 career: nextCareer,
                 runHistory: nextHistory,
@@ -1123,6 +1226,7 @@ export default function App() {
                   weeklyScore: gw.weeklyScore + guildWarScore,
                   totalNodesCaptured: gw.totalNodesCaptured + guildWarNodes,
                 },
+                gemRebateVault: nextGemVault,
                 battlePass: nextBp,
                 career: nextCareer,
                 runHistory: nextHistory,
@@ -1354,6 +1458,7 @@ export default function App() {
                 ...prev.bestStagePerChapter,
                 [summary.chapterId]: Math.max(prevBest, summary.stageReached),
               },
+              gemRebateVault: nextGemVault,
               battlePass: nextBp,
               career: nextCareer,
               runHistory: nextHistory,
@@ -1970,6 +2075,84 @@ export default function App() {
     engineRef.current?.startGuildWarBattle(playerStats);
   }, [save.guildWar, playerStats]);
 
+  const handleStartPantheon = useCallback(() => {
+    const pe = normalizePantheonExpedition(save.pantheonExpedition);
+    if (pe.dailyRunsRemaining <= 0) return;
+    const blessing =
+      PANTHEON_BLESSINGS.find((b) => b.id === pe.selectedBlessingId) ?? PANTHEON_BLESSINGS[0];
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizePantheonExpedition(prev.pantheonExpedition);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        pantheonExpedition: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 12,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isPantheonMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startPantheonExpedition(playerStats, blessing);
+  }, [save.pantheonExpedition, playerStats]);
+
+  // Sync game state to document.body.dataset.state for deterministic harness inspection
+  useEffect(() => {
+    const stateLabel =
+      phase === GamePhase.TITLE
+        ? 'title'
+        : phase === GamePhase.PAUSED
+        ? 'paused'
+        : phase === GamePhase.VICTORY || phase === GamePhase.GAME_OVER
+        ? 'gameover'
+        : 'playing';
+    document.body.dataset.state = stateLabel;
+  }, [phase]);
+
+  // Support ?autostart=1 to skip TitleScreen/SplashGate and start gameplay directly
+  const autostartDoneRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (autostartDoneRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('autostart') === '1' && engineRef.current) {
+      autostartDoneRef.current = true;
+      setEnteredGame(true);
+      setOnboardingOpen(false);
+      handleStartTrial();
+    }
+  }, [handleStartTrial]);
+
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -2073,7 +2256,9 @@ export default function App() {
         !gachaReveal
       ) {
         e.preventDefault();
-        if (gameMode === 'abyssal_gauntlet') {
+        if (gameMode === 'pantheon_expedition') {
+          handleStartPantheon();
+        } else if (gameMode === 'abyssal_gauntlet') {
           handleStartAbyssalGauntlet();
         } else if (gameMode === 'guild_war') {
           handleStartGuildWar();
@@ -2139,6 +2324,7 @@ export default function App() {
     handleStartBloodMoon,
     handleStartAbyssalGauntlet,
     handleStartGuildWar,
+    handleStartPantheon,
   ]);
 
   // Hero Handlers
@@ -5177,6 +5363,9 @@ export default function App() {
   const handlePowerAdvisorAction = useCallback((kind: PowerRecommendation['actionKind']) => {
     if (kind === 'gear') {
       setActiveLobbyTab('gear');
+    } else if (kind === 'halos') {
+      setHeroSubTabInitial('halos');
+      setActiveLobbyTab('heroes');
     } else if (kind === 'artifacts') {
       setHeroSubTabInitial('artifacts');
       setActiveLobbyTab('heroes');
@@ -5187,10 +5376,213 @@ export default function App() {
       setTalentsModalOpen(true);
     } else if (kind === 'constellation') {
       setConstellationModalOpen(true);
+    } else if (kind === 'chain_bank') {
+      setShopSection('chain_bank');
+      setActiveLobbyTab('shop');
     } else if (kind === 'mystic_exchange') {
       setShopSection('mystic_exchange');
       setActiveLobbyTab('shop');
     }
+  }, []);
+
+  // Wave 10 Handlers: 3D Divine Halos, 5-Step Commercial Chain, Astral Gem Rebate Vault & Pantheon Expedition
+  const handleSelectPantheonBlessing = useCallback((id: PantheonBlessingId) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      const pe = normalizePantheonExpedition(prev.pantheonExpedition);
+      return {
+        ...prev,
+        pantheonExpedition: { ...pe, selectedBlessingId: id },
+      };
+    });
+  }, []);
+
+  const handleClaimPantheonMilestone = useCallback((score: number) => {
+    const ms = PANTHEON_MILESTONES.find((m) => m.score === score);
+    if (!ms) return;
+    setSave((prev) => {
+      const pe = normalizePantheonExpedition(prev.pantheonExpedition);
+      if (pe.bestScore < ms.score || pe.claimedMilestones.includes(ms.score)) return prev;
+      const mx = normalizeMysticExchange(prev.mysticExchange);
+      const nextShards = mx.artifactShards + ms.rewardArtifactShards;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + ms.rewardGems,
+        divineCrystals: (prev.divineCrystals ?? 0) + ms.rewardDivineCrystals,
+        artifactShards: nextShards,
+        mysticExchange: {
+          ...mx,
+          artifactShards: nextShards,
+        },
+        pantheonExpedition: {
+          ...pe,
+          claimedMilestones: [...pe.claimedMilestones, ms.score],
+        },
+      };
+    });
+  }, []);
+
+  const handleUnlockHalo = useCallback((haloId: HaloId, currency: 'gems' | 'crystals') => {
+    const def = DIVINE_HALO_MAP[haloId];
+    if (!def) return;
+    setSave((prev) => {
+      const unlocked = prev.unlockedHalos ?? [];
+      if (unlocked.includes(haloId)) return prev;
+      const crystals = prev.divineCrystals ?? 0;
+      if (currency === 'gems' && prev.gems < def.unlockGems) return prev;
+      if (currency === 'crystals' && crystals < def.unlockDivineCrystals) return prev;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: currency === 'gems' ? prev.gems - def.unlockGems : prev.gems,
+        divineCrystals:
+          currency === 'crystals' ? crystals - def.unlockDivineCrystals : crystals,
+        nightMarket: addGemsSpent(prev, currency === 'gems' ? def.unlockGems : 0),
+        unlockedHalos: [...unlocked, haloId],
+        haloLevels: { ...(prev.haloLevels ?? {}), [haloId]: 1 },
+        equippedHaloId: haloId,
+      };
+    });
+  }, []);
+
+  const handleEquipHalo = useCallback((haloId: HaloId | null) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      if (haloId === null) return { ...prev, equippedHaloId: null };
+      if (!(prev.unlockedHalos ?? []).includes(haloId)) return prev;
+      return { ...prev, equippedHaloId: haloId };
+    });
+  }, []);
+
+  const handleUpgradeHalo = useCallback((haloId: HaloId) => {
+    setSave((prev) => {
+      if (!(prev.unlockedHalos ?? []).includes(haloId)) return prev;
+      const curLv = Math.max(1, prev.haloLevels?.[haloId] ?? 1);
+      if (curLv >= DIVINE_HALO_MAX_LEVEL) return prev;
+      const cost = getDivineHaloUpgradeCost(curLv);
+      const crystals = prev.divineCrystals ?? 0;
+      if (crystals < cost.divineCrystals || prev.gold < cost.gold) return prev;
+      soundEngine.playLevelUp();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        divineCrystals: crystals - cost.divineCrystals,
+        haloLevels: { ...(prev.haloLevels ?? {}), [haloId]: curLv + 1 },
+      };
+    });
+  }, []);
+
+  const handleClaimChainStep = useCallback((stepNumber: number) => {
+    const step = STEP_UP_CHAIN_STEPS.find((s) => s.step === stepNumber);
+    if (!step) return;
+    setSave((prev) => {
+      const chain = normalizeStepUpChain(prev.stepUpChain);
+      if (chain.currentStep !== step.step || chain.claimedSteps.includes(step.step)) return prev;
+      if (step.costGems > 0 && prev.gems < step.costGems) return prev;
+
+      const mx = normalizeMysticExchange(prev.mysticExchange);
+      const nextArtShards = mx.artifactShards + step.rewardArtifactShards;
+      let nextInv = prev.inventory;
+      if (step.rewardSGear) {
+        nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC, true)];
+      }
+      let nextUnlockedHalos = prev.unlockedHalos ?? [];
+      let nextEquippedHalo = prev.equippedHaloId ?? null;
+      const nextHaloLevels = { ...(prev.haloLevels ?? {}) };
+      if (step.unlockHaloId && !nextUnlockedHalos.includes(step.unlockHaloId)) {
+        nextUnlockedHalos = [...nextUnlockedHalos, step.unlockHaloId];
+        nextHaloLevels[step.unlockHaloId] = 1;
+        if (!nextEquippedHalo) nextEquippedHalo = step.unlockHaloId;
+      }
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + step.rewardGold,
+        gems: prev.gems - step.costGems + step.rewardGems,
+        divineCrystals: (prev.divineCrystals ?? 0) + step.rewardDivineCrystals,
+        wishTickets: (prev.wishTickets ?? 0) + step.rewardWishTickets,
+        artifactShards: nextArtShards,
+        mysticExchange: {
+          ...mx,
+          artifactShards: nextArtShards,
+        },
+        inventory: nextInv,
+        unlockedHalos: nextUnlockedHalos,
+        haloLevels: nextHaloLevels,
+        equippedHaloId: nextEquippedHalo,
+        nightMarket: addGemsSpent(prev, step.costGems),
+        topUpEvolution: addTopUpPoints(prev, step.topUpPoints),
+        stepUpChain: {
+          ...chain,
+          currentStep: Math.min(STEP_UP_CHAIN_STEPS.length + 1, chain.currentStep + 1),
+          claimedSteps: [...chain.claimedSteps, step.step],
+        },
+      };
+    });
+  }, []);
+
+  const handleResetChainCycle = useCallback(() => {
+    setSave((prev) => {
+      const chain = normalizeStepUpChain(prev.stepUpChain);
+      if (chain.claimedSteps.length < STEP_UP_CHAIN_STEPS.length) return prev;
+      soundEngine.playUiClick(1.1);
+      return {
+        ...prev,
+        stepUpChain: {
+          currentStep: 1,
+          claimedSteps: [],
+          cycleCount: chain.cycleCount + 1,
+        },
+      };
+    });
+  }, []);
+
+  const handleBreakGemVault = useCallback(() => {
+    setSave((prev) => {
+      const vault = normalizeGemRebateVault(prev.gemRebateVault);
+      if (vault.storedGems < GEM_VAULT_CLAIM_THRESHOLD) return prev;
+      const rebateRate = 0.25 + Math.min(0.4, vault.vaultBrokenCount * 0.05);
+      const bonus = Math.round(vault.storedGems * rebateRate);
+      const payout = vault.storedGems + bonus;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: prev.gems + payout,
+        divineCrystals: (prev.divineCrystals ?? 0) + 4,
+        gemRebateVault: {
+          ...vault,
+          storedGems: 0,
+          vaultBrokenCount: vault.vaultBrokenCount + 1,
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimGemVaultMilestone = useCallback((storedTarget: number) => {
+    const ms = GEM_VAULT_MILESTONES.find((m) => m.storedTarget === storedTarget);
+    if (!ms) return;
+    setSave((prev) => {
+      const vault = normalizeGemRebateVault(prev.gemRebateVault);
+      if (
+        vault.totalDepositedEver < ms.storedTarget ||
+        vault.claimedMilestoneTargets.includes(ms.storedTarget)
+      ) {
+        return prev;
+      }
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + ms.dividendGems,
+        divineCrystals: (prev.divineCrystals ?? 0) + ms.bonusDivineCrystals,
+        wishTickets: (prev.wishTickets ?? 0) + ms.bonusWishTickets,
+        gemRebateVault: {
+          ...vault,
+          claimedMilestoneTargets: [...vault.claimedMilestoneTargets, ms.storedTarget],
+        },
+      };
+    });
   }, []);
 
   const activeChapter =
@@ -5299,6 +5691,9 @@ export default function App() {
           onClaimAbyssalMilestone={handleClaimAbyssalMilestone}
           onStartGuildWar={handleStartGuildWar}
           onClaimGuildWarBox={handleClaimGuildWarBox}
+          onStartPantheon={handleStartPantheon}
+          onSelectPantheonBlessing={handleSelectPantheonBlessing}
+          onClaimPantheonMilestone={handleClaimPantheonMilestone}
           onQuickSweepChapter={handleQuickSweepChapter}
           onToggleMute={handleToggleMute}
           onOpenRewardsModal={(tab) => setRewardsModalTab(tab)}
@@ -5346,6 +5741,9 @@ export default function App() {
           onUnlockArtifact={handleUnlockArtifact}
           onEquipArtifact={handleEquipArtifact}
           onUpgradeArtifact={handleUpgradeArtifact}
+          onUnlockHalo={handleUnlockHalo}
+          onEquipHalo={handleEquipHalo}
+          onUpgradeHalo={handleUpgradeHalo}
           onEquipGear={handleEquip}
           onUpgradeGear={handleUpgrade}
           onFuseGear={handleFuse}
@@ -5369,6 +5767,10 @@ export default function App() {
           onClaimFirstTopUp={handleClaimFirstTopUp}
           onBuyHotBundle={handleBuyHotBundle}
           onMysticExchange={handleMysticExchange}
+          onClaimChainStep={handleClaimChainStep}
+          onResetChainCycle={handleResetChainCycle}
+          onBreakGemVault={handleBreakGemVault}
+          onClaimGemVaultMilestone={handleClaimGemVaultMilestone}
           onPowerAdvisorAction={handlePowerAdvisorAction}
           onEquipRune={handleEquipRune}
           onUnequipRune={handleUnequipRune}
@@ -5440,6 +5842,8 @@ export default function App() {
             (runSummary?.isWorldBossMode ?? hud.isWorldBossMode) ||
             (runSummary?.isGuildWarMode ?? hud.isGuildWarMode)
               ? 1
+              : (runSummary?.isPantheonMode ?? hud.isPantheonMode)
+              ? PANTHEON_TOTAL_STAGES
               : (runSummary?.isAbyssalMode ?? hud.isAbyssalMode)
               ? ABYSSAL_GAUNTLET_TOTAL_WAVES
               : (runSummary?.isCrystalDefenseMode ?? hud.isCrystalDefenseMode)
@@ -5493,6 +5897,10 @@ export default function App() {
           isGuildWarMode={runSummary?.isGuildWarMode ?? hud.isGuildWarMode}
           guildWarScore={runSummary?.guildWarScore ?? hud.guildWarScore ?? 0}
           guildWarNodes={runSummary?.guildWarNodes ?? hud.guildWarNodes ?? 0}
+          isPantheonMode={runSummary?.isPantheonMode ?? hud.isPantheonMode}
+          pantheonStage={runSummary?.pantheonStage ?? hud.pantheonStage ?? 1}
+          pantheonScore={runSummary?.pantheonScore ?? hud.pantheonScore ?? 0}
+          divineCrystalsEarned={runSummary?.divineCrystals ?? 0}
           wingFeathersEarned={runSummary?.wingFeathers ?? 0}
           mountShardsEarned={runSummary?.mountShards ?? 0}
           awakeningCrystalsEarned={runSummary?.awakeningCrystals ?? 0}
@@ -5509,7 +5917,15 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isAbyssalMode ?? hud.isAbyssalMode)
+            (runSummary?.isPantheonMode ?? hud.isPantheonMode)
+              ? () => {
+                  if (normalizePantheonExpedition(save.pantheonExpedition).dailyRunsRemaining > 0) {
+                    handleStartPantheon();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isAbyssalMode ?? hud.isAbyssalMode)
               ? () => {
                   if (normalizeAbyssalGauntlet(save.abyssalGauntlet).dailyRunsRemaining > 0) {
                     handleStartAbyssalGauntlet();
@@ -5856,6 +6272,15 @@ export default function App() {
                 : 'gems'
             )
           }
+          onEquipHalo={handleEquipHalo}
+          onUnlockHalo={(haloId) =>
+            handleUnlockHalo(
+              haloId,
+              (save.divineCrystals ?? 0) >= (DIVINE_HALO_MAP[haloId]?.unlockDivineCrystals ?? Infinity)
+                ? 'crystals'
+                : 'gems'
+            )
+          }
           onClose={handleCloseWardrobe}
         />
       )}
@@ -5880,6 +6305,7 @@ export default function App() {
           isBloodMoonMode={transitionState.isBloodMoonMode}
           isAbyssalMode={transitionState.isAbyssalMode}
           isGuildWarMode={transitionState.isGuildWarMode}
+          isPantheonMode={transitionState.isPantheonMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

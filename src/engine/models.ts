@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import { WING_MAP } from '../data/wave7Data';
 import { MOUNT_MAP, WEAPON_AURA_MAP } from '../data/wave8Data';
 import { ARTIFACT_MAP } from '../data/wave9Data';
+import { DIVINE_HALO_MAP } from '../data/wave10Data';
 import {
   ArtifactId,
   CrownStyle,
   EnemyKind,
+  HaloId,
   MountId,
   PetId,
   StageEventAfter,
@@ -40,6 +42,8 @@ export interface HeroVisualConfig {
   weaponAuraLevel?: number;
   artifactId?: ArtifactId | null;
   artifactLevel?: number;
+  haloId?: HaloId | null;
+  haloLevel?: number;
 }
 
 export interface HeroModelRefs {
@@ -61,6 +65,7 @@ export interface HeroModelRefs {
   mountLegs?: THREE.Group[];
   weaponAuraGroup?: THREE.Group;
   artifactGroup?: THREE.Group;
+  haloGroup?: THREE.Group;
   hitMeshes: THREE.Mesh[];
 }
 
@@ -607,7 +612,15 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     bodyGroup.add(artifactGroup);
   }
 
-  // 10. Composite 3D Zodiac Mount under Hero
+  // 10. Wave 10: 3D Divine Zodiac Halo rotating behind Hero's head & shoulders
+  let haloGroup: THREE.Group | undefined;
+  if (cfg.haloId) {
+    haloGroup = createDivineHaloModel(cfg.haloId, cfg.haloLevel ?? 1);
+    haloGroup.position.set(0, 1.34, -0.34);
+    bodyGroup.add(haloGroup);
+  }
+
+  // 11. Composite 3D Zodiac Mount under Hero
   let mountGroup: THREE.Group | undefined;
   let mountLegs: THREE.Group[] | undefined;
   if (cfg.mountId) {
@@ -637,6 +650,7 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     mountLegs,
     weaponAuraGroup,
     artifactGroup,
+    haloGroup,
     hitMeshes,
   };
 }
@@ -1823,5 +1837,68 @@ function createMythicArtifactModel(artifactId: ArtifactId, level: number): THREE
   g.scale.setScalar(scaleFactor);
   return g;
 }
+
+function createDivineHaloModel(haloId: HaloId, level: number): THREE.Group {
+  const def = DIVINE_HALO_MAP[haloId];
+  const g = new THREE.Group();
+  const boost = 1 + Math.min(11, Math.max(0, level - 1)) * 0.07;
+  const scaleFactor = 1 + Math.min(11, Math.max(0, level - 1)) * 0.02;
+
+  const primaryMat = new THREE.MeshStandardMaterial({
+    color: def.primaryHex,
+    emissive: def.primaryHex,
+    emissiveIntensity: 1.35 * boost,
+    roughness: 0.16,
+    metalness: 0.65,
+  });
+  const secondaryMat = new THREE.MeshStandardMaterial({
+    color: def.secondaryHex,
+    emissive: def.secondaryHex,
+    emissiveIntensity: 1.65 * boost,
+    roughness: 0.12,
+    metalness: 0.4,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    roughness: 0.2,
+    metalness: 0.92,
+  });
+
+  // Outer zodiac astrolabe ring
+  const outerRing = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.026, 10, 36), primaryMat);
+  const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.018, 8, 28), goldMat);
+  g.add(outerRing, innerRing);
+
+  const rayCount = haloId === 'seraphim_glory' ? 12 : haloId === 'stellar_wheel' ? 10 : 8;
+  for (let i = 0; i < rayCount; i++) {
+    const a = (i / rayCount) * Math.PI * 2;
+    const isMajor = i % 2 === 0;
+    const ray = new THREE.Mesh(
+      new THREE.ConeGeometry(isMajor ? 0.044 : 0.028, isMajor ? 0.24 : 0.15, 4),
+      isMajor ? secondaryMat : primaryMat
+    );
+    const radius = isMajor ? 0.74 : 0.68;
+    ray.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0);
+    ray.rotation.z = a - Math.PI / 2;
+    g.add(ray);
+  }
+
+  if (haloId === 'lunar_eclipse') {
+    const crescent = new THREE.Mesh(makeCrescentGeo(0.32, 0.22, 0.03), secondaryMat);
+    crescent.position.set(0, 0.48, 0.02);
+    g.add(crescent);
+  } else if (haloId === 'seraphim_glory') {
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const jewel = new THREE.Mesh(new THREE.OctahedronGeometry(0.075, 0), secondaryMat);
+      jewel.position.set(Math.cos(a) * 0.53, Math.sin(a) * 0.53, 0.03);
+      g.add(jewel);
+    }
+  }
+
+  g.scale.setScalar(scaleFactor);
+  return g;
+}
+
 
 

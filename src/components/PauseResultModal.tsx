@@ -49,6 +49,10 @@ interface PauseResultModalProps {
   isGuildWarMode?: boolean;
   guildWarScore?: number;
   guildWarNodes?: number;
+  isPantheonMode?: boolean;
+  pantheonStage?: number;
+  pantheonScore?: number;
+  divineCrystalsEarned?: number;
   wingFeathersEarned?: number;
   mountShardsEarned?: number;
   awakeningCrystalsEarned?: number;
@@ -104,6 +108,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   isGuildWarMode = false,
   guildWarScore = 0,
   guildWarNodes = 0,
+  isPantheonMode = false,
+  pantheonStage = 0,
+  pantheonScore = 0,
+  divineCrystalsEarned = 0,
   wingFeathersEarned = 0,
   mountShardsEarned = 0,
   awakeningCrystalsEarned = 0,
@@ -185,6 +193,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
           {isArenaMode
             ? `Đấu Trường Arena 1v1 · ${arenaOpponentName || 'Kình Địch'}`
+            : isPantheonMode
+            ? `Viễn Chinh Điện Thần 3D · Tầng ${pantheonStage}/3`
             : isGuildWarMode
             ? `Chiến Trường Bang Hội 3D · Trụ ${guildWarNodes}/3`
             : isAbyssalMode
@@ -216,6 +226,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? 'Chiến Thắng Đấu Trường!'
               : 'Thất Bại Tại Đấu Trường'
+            : isPantheonMode
+            ? isVictory
+              ? 'Chinh Phục Viễn Chinh Điện Thần!'
+              : 'Dừng Bước Tại Điện Thần 3D'
             : isGuildWarMode
             ? 'Tổng Kết Chiến Trường Bang!'
             : isAbyssalMode
@@ -261,6 +275,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? `Bạn đã đánh bại ${arenaOpponentName || 'đối thủ'} và nhận ${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm Xếp Hạng Arena!`
               : `Đối thủ ${arenaOpponentName || 'đối thủ'} đã thắng thế (${arenaRatingDelta} Điểm Arena). Hãy nâng cấp Bảo Thạch và tái đấu!`
+            : isPantheonMode
+            ? `Bạn chinh phục Tầng ${pantheonStage}/3 với ${pantheonScore.toLocaleString('vi-VN')} Điểm Điện Thần! Thần Tinh & Ấn Thần Bí đã chuyển vào Kho.`
             : isGuildWarMode
             ? `Bạn đã chiếm ${guildWarNodes}/3 Trụ Tinh Thể và ghi ${guildWarScore.toLocaleString('vi-VN')} Điểm Bang Hội! Điểm Tuần & Xu Bang đã được cộng.`
             : isAbyssalMode
@@ -302,6 +318,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             <div className="text-[10px] text-slate-400 font-bold">
               {isArenaMode
                 ? 'Điểm Xếp Hạng'
+                : isPantheonMode
+                ? 'Tầng Điện Thần'
                 : isGuildWarMode
                 ? 'Điểm Chiến Trường'
                 : isAbyssalMode
@@ -337,6 +355,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             >
               {isArenaMode
                 ? `${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm`
+                : isPantheonMode
+                ? `Tầng ${pantheonStage}/3 (${pantheonScore.toLocaleString('vi-VN')}đ)`
                 : isGuildWarMode
                 ? `${guildWarScore.toLocaleString('vi-VN')} (${guildWarNodes}/3 Trụ)`
                 : isAbyssalMode
@@ -390,8 +410,20 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             awakeningCrystalsEarned > 0 ||
             artifactShardsEarned > 0 ||
             mysticTokensEarned > 0 ||
-            guildCoinsEarned > 0) && (
+            guildCoinsEarned > 0 ||
+            divineCrystalsEarned > 0) && (
             <>
+              {divineCrystalsEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-amber-200 font-bold">
+                    <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>Thần Tinh (Nâng Hào Quang 3D)</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-amber-300">
+                    +{divineCrystalsEarned}
+                  </span>
+                </div>
+              )}
               {starDustEarned > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-sky-200 font-bold">

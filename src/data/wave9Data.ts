@@ -460,7 +460,15 @@ export function evaluateDynamicTitleUnlocks(save: SaveData, powerRating: number)
 }
 
 export interface PowerRecommendation {
-  actionKind: 'gear' | 'artifacts' | 'mounts' | 'talents' | 'constellation' | 'mystic_exchange';
+  actionKind:
+    | 'gear'
+    | 'artifacts'
+    | 'halos'
+    | 'chain_bank'
+    | 'mounts'
+    | 'talents'
+    | 'constellation'
+    | 'mystic_exchange';
   title: string;
   detail: string;
   ctaLabel: string;
@@ -473,6 +481,39 @@ export function computePowerAdvisor(
 ): PowerRecommendation {
   const mx = normalizeMysticExchange(save.mysticExchange);
   const artifactShards = mx.artifactShards;
+  const divineCrystals = save.divineCrystals ?? 0;
+
+  // 0. Wave 10: Free Step-Up Chain Relay or 3D Divine Halo unlock/equip
+  const eqHalo = save.equippedHaloId;
+  if (!eqHalo && (save.unlockedHalos?.length ?? 0) > 0) {
+    return {
+      actionKind: 'halos',
+      title: 'Trang bị ngay Hào Quang Thần Vực 3D',
+      detail: 'Bạn đã sở hữu Hào Quang 3D nhưng chưa kích hoạt sau lưng Anh Hùng.',
+      ctaLabel: 'Đeo Hào Quang',
+      estGainLabel: '+480 LC',
+    };
+  }
+  if (!eqHalo && divineCrystals >= 20) {
+    return {
+      actionKind: 'halos',
+      title: 'Khai mở Thánh Luân Thái Dương 3D',
+      detail: `Đang có ${divineCrystals} Thần Tinh — đủ mở khóa Hào Quang 3D tăng +8% ATK & +16% Bạo Thương!`,
+      ctaLabel: 'Mở Hào Quang',
+      estGainLabel: '+520 LC',
+    };
+  }
+  const chainStep = save.stepUpChain?.currentStep ?? 1;
+  const chainClaimed = save.stepUpChain?.claimedSteps ?? [];
+  if ((chainStep === 1 || chainStep === 3) && !chainClaimed.includes(chainStep)) {
+    return {
+      actionKind: 'chain_bank',
+      title: `Nhận MIỄN PHÍ Bước ${chainStep} Chuỗi Quà Liên Hoàn`,
+      detail: 'Nhận ngay Thần Tinh, Ngọc Hồn & Vé Ước Nguyện 0đ tại Trung Tâm Thương Mại.',
+      ctaLabel: 'Nhận Quà 0đ',
+      estGainLabel: 'Quà Free',
+    };
+  }
 
   // 1. Unlocked artifact not equipped or upgradable
   const eqArt = save.equippedArtifactId;

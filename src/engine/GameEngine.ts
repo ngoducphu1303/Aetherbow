@@ -21,6 +21,7 @@ import {
   ABYSSAL_GAUNTLET_TOTAL_WAVES,
   GUILD_WAR_DURATION_SEC,
 } from '../data/wave9Data';
+import { PANTHEON_TOTAL_STAGES } from '../data/wave10Data';
 import {
   ArenaOpponent,
   ChapterDefinition,
@@ -38,6 +39,7 @@ import {
   HudSnapshot,
   JoystickState,
   LobbyCameraPreset,
+  PantheonBlessingDef,
   PetId,
   RuneId,
   SkillId,
@@ -296,6 +298,10 @@ export interface EngineCallbacks {
       guildWarScore?: number;
       guildWarNodes?: number;
       guildCoins?: number;
+      isPantheonMode?: boolean;
+      pantheonStage?: number;
+      pantheonScore?: number;
+      divineCrystals?: number;
       maxCombo?: number;
       damageBreakdown?: DamageBreakdown;
     }
@@ -435,6 +441,10 @@ export class GameEngine {
     core: THREE.Mesh;
     ring: THREE.Mesh;
   }> = [];
+  private isPantheonMode = false;
+  private pantheonStage = 0;
+  private pantheonScore = 0;
+  private pantheonBlessing: PantheonBlessingDef | null = null;
   private starfallMesh!: THREE.InstancedMesh;
   private starfallEnabled = true;
   private starfallSeeds: Array<{
@@ -2171,6 +2181,93 @@ export class GameEngine {
     );
   }
 
+  public startPantheonExpedition(
+    stats: ComputedPlayerStats,
+    blessing: PantheonBlessingDef
+  ): void {
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
+    this.isPantheonMode = true;
+    this.pantheonStage = 0;
+    this.pantheonScore = 0;
+    this.pantheonBlessing = blessing;
+    this.currentChapter = CHAPTERS[11] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
+
+    const blessedStats: ComputedPlayerStats = {
+      ...stats,
+      attack: Math.round(stats.attack * (1 + blessing.atkBonusPct)),
+      critChance: Math.min(0.95, stats.critChance + blessing.critBonus),
+      damageReduction: Math.min(0.75, stats.damageReduction + blessing.drBonus),
+    };
+    this.baseStats = blessedStats;
+
+    this.buildArena(this.currentChapter);
+    this.scene.background = new THREE.Color(0x0c0a20);
+    this.scene.fog = new THREE.FogExp2(0x141036, 0.019);
+    this.keyLight.color.setHex(0xfde047);
+    this.hemiLight.color.setHex(0xc084fc);
+
+    this.resetRunState(blessedStats);
+    this.isPantheonMode = true;
+    this.ultCharge = 100;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'sanctum',
+      true,
+      `ĐIỆN THẦN HOÀNG ĐẠO 3D · ${blessing.name.toUpperCase()} KÍCH HOẠT!`
+    );
+    this.spawnNextPantheonStage();
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  private spawnNextPantheonStage(): void {
+    this.pantheonStage += 1;
+    const s = this.pantheonStage;
+    const groups: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> =
+      s === 1
+        ? [
+            { kind: EnemyKind.WARDEN_BOSS, count: 1 },
+            { kind: EnemyKind.WISP, count: 2, isElite: true },
+          ]
+        : s === 2
+        ? [
+            { kind: EnemyKind.TITAN_BOSS, count: 1 },
+            { kind: EnemyKind.DRAGON_WHELP, count: 2, isElite: true },
+          ]
+        : [
+            { kind: EnemyKind.ZODIAC_BOSS, count: 1 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 2, isElite: true },
+          ];
+    const deityTitles = [
+      'Cổ Thần Nhật Nguyệt · Tầng I',
+      'Cổ Thần Tinh Hà · Tầng II',
+      'Chúa Tể Điện Thần Tối Thượng · Tầng III',
+    ];
+    this.spawnEnemyGroups(
+      groups,
+      1.25 + s * 0.45,
+      1.05 + s * 0.18,
+      deityTitles[s - 1] ?? 'Chúa Tể Điện Thần'
+    );
+    this.stageBannerText = `ĐIỆN THẦN 3D · ẢI ${s}/${PANTHEON_TOTAL_STAGES}: ${deityTitles[s - 1]}`;
+    this.stageBannerTimer = 2.6;
+    this.syncHudImmediate();
+  }
+
   public previewLobbyUltimate(heroId: HeroId): void {
     if (this.phase !== GamePhase.TITLE) return;
     const heroDef = HERO_MAP[heroId] ?? HERO_MAP.artemis;
@@ -2204,6 +2301,7 @@ export class GameEngine {
   }
 
   private resetRunState(stats: ComputedPlayerStats): void {
+    this.isPantheonMode = false;
     this.hp = stats.maxHp;
     this.maxHp = stats.maxHp;
     this.shield = 0;
@@ -3584,6 +3682,10 @@ export class GameEngine {
         this.hero.artifactGroup.rotation.y += dt * 1.35;
         this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 2.6) * 0.07;
       }
+      if (this.hero.haloGroup) {
+        this.hero.haloGroup.rotation.z += dt * 0.95;
+        this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.2) * 0.04;
+      }
       this.hero.magicOrb.visible = true;
       this.hero.magicOrb.rotation.z += dt * 2.8;
       this.hero.bowGroup.visible = false;
@@ -4044,6 +4146,10 @@ export class GameEngine {
     if (this.hero.artifactGroup) {
       this.hero.artifactGroup.rotation.y += dt * 1.65;
       this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 3.1) * 0.08;
+    }
+    if (this.hero.haloGroup) {
+      this.hero.haloGroup.rotation.z += dt * 1.35;
+      this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.8) * 0.045;
     }
 
     if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
@@ -5793,6 +5899,9 @@ export class GameEngine {
     if (this.isGuildWarMode) {
       this.guildWarScore += e.isBoss ? 220 : e.isElite ? 80 : 32;
     }
+    if (this.isPantheonMode) {
+      this.pantheonScore += e.isBoss ? 850 + this.pantheonStage * 220 : e.isElite ? 140 : 60;
+    }
 
     this.releaseObject(e.model.root);
     this.releaseObject(e.shadow);
@@ -5805,6 +5914,15 @@ export class GameEngine {
         this.bloodMoonSpawnTimer = Math.min(this.bloodMoonSpawnTimer, 0.45);
       } else if (this.isGuildWarMode) {
         this.guildWarSpawnTimer = Math.min(this.guildWarSpawnTimer, 0.55);
+      } else if (this.isPantheonMode) {
+        if (this.pantheonStage < PANTHEON_TOTAL_STAGES) {
+          const healAmt = Math.round(this.maxHp * 0.18);
+          this.hp = Math.min(this.maxHp, this.hp + healAmt);
+          this.emitFloatingNumber(this.px, 2.1, this.pz, healAmt, false, true, undefined, 'THẦN ẤN HỒI PHỤC!');
+          this.spawnNextPantheonStage();
+        } else {
+          this.onStageCleared();
+        }
       } else if (this.isAbyssalMode) {
         if (this.abyssalWave < ABYSSAL_GAUNTLET_TOTAL_WAVES) {
           this.spawnNextAbyssalWave();
@@ -6000,6 +6118,30 @@ export class GameEngine {
         isCrystalDefenseMode: true,
         crystalWavesCleared: CRYSTAL_DEFENSE_TOTAL_WAVES,
         crystalHpPct,
+        maxCombo: this.maxRunCombo,
+        damageBreakdown: this.getDamageBreakdownSnapshot(),
+      });
+      return;
+    }
+
+    if (this.isPantheonMode) {
+      const finalScore = Math.max(1200, Math.round(this.pantheonScore + PANTHEON_TOTAL_STAGES * 450));
+      const divineCrystals = 18 + Math.min(22, Math.floor(finalScore / 280));
+      const artifactShards = 10 + Math.min(14, Math.floor(finalScore / 420));
+      soundEngine.playVictory();
+      this.phase = GamePhase.VICTORY;
+      this.syncHudImmediate();
+      this.callbacks.onRunEnded(true, {
+        chapterId: this.currentChapter.id,
+        stageReached: PANTHEON_TOTAL_STAGES,
+        kills: this.kills,
+        gold: this.runGold + 380,
+        gems: this.runGems + 38,
+        isPantheonMode: true,
+        pantheonStage: PANTHEON_TOTAL_STAGES,
+        pantheonScore: finalScore,
+        divineCrystals,
+        artifactShards,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
       });
@@ -6247,7 +6389,9 @@ export class GameEngine {
       const stage = this.currentChapter.stages[this.stageIndex];
       this.callbacks.onRunEnded(false, {
         chapterId: this.currentChapter.id,
-        stageReached: this.isAbyssalMode
+        stageReached: this.isPantheonMode
+          ? this.pantheonStage
+          : this.isAbyssalMode
           ? this.abyssalWave
           : this.isGuildWarMode
           ? this.guildWarNodesCaptured
@@ -6304,7 +6448,9 @@ export class GameEngine {
         isAbyssalMode: this.isAbyssalMode,
         abyssalWave: this.isAbyssalMode ? Math.max(0, this.abyssalWave - 1) : undefined,
         abyssalScore: this.isAbyssalMode ? Math.round(this.abyssalScore) : undefined,
-        artifactShards: this.isAbyssalMode
+        artifactShards: this.isPantheonMode
+          ? Math.max(3, (this.pantheonStage - 1) * 4)
+          : this.isAbyssalMode
           ? Math.max(3, (this.abyssalWave - 1) * 2)
           : this.isGuildWarMode
           ? Math.max(2, this.guildWarNodesCaptured * 2)
@@ -6318,6 +6464,10 @@ export class GameEngine {
         guildWarScore: this.isGuildWarMode ? Math.round(this.guildWarScore) : undefined,
         guildWarNodes: this.isGuildWarMode ? this.guildWarNodesCaptured : undefined,
         guildCoins: this.isGuildWarMode ? Math.max(40, Math.round(this.guildWarScore / 18)) : undefined,
+        isPantheonMode: this.isPantheonMode,
+        pantheonStage: this.isPantheonMode ? Math.max(0, this.pantheonStage - 1) : undefined,
+        pantheonScore: this.isPantheonMode ? Math.round(this.pantheonScore) : undefined,
+        divineCrystals: this.isPantheonMode ? Math.max(4, (this.pantheonStage - 1) * 6) : undefined,
         mountShards: this.isBloodMoonMode
           ? Math.max(2, Math.floor(this.bloodMoonScore / 180))
           : undefined,
@@ -6784,6 +6934,8 @@ export class GameEngine {
       stage:
         this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode || this.isGuildWarMode
           ? 1
+          : this.isPantheonMode
+          ? Math.max(1, this.pantheonStage)
           : this.isAbyssalMode
           ? Math.max(1, this.abyssalWave)
           : this.isBloodMoonMode
@@ -6802,6 +6954,8 @@ export class GameEngine {
       totalStages:
         this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode || this.isGuildWarMode
           ? 1
+          : this.isPantheonMode
+          ? PANTHEON_TOTAL_STAGES
           : this.isAbyssalMode
           ? ABYSSAL_GAUNTLET_TOTAL_WAVES
           : this.isBloodMoonMode
@@ -6817,7 +6971,9 @@ export class GameEngine {
           : this.isTowerMode
           ? this.towerFloor
           : this.currentChapter.stages.length,
-      stageName: this.isAbyssalMode
+      stageName: this.isPantheonMode
+        ? `Viễn Chinh Điện Thần · Tầng ${Math.max(1, this.pantheonStage)}/${PANTHEON_TOTAL_STAGES}`
+        : this.isAbyssalMode
         ? `Hố Sâu Đột Biến · Đợt ${Math.max(1, this.abyssalWave)}/${ABYSSAL_GAUNTLET_TOTAL_WAVES}`
         : this.isGuildWarMode
         ? `Chiến Trường Bang · Trụ ${this.guildWarNodesCaptured}/3`
@@ -6842,7 +6998,9 @@ export class GameEngine {
         : this.isTowerMode
         ? `Tháp Vô Tận · Tầng ${this.towerFloor}`
         : stage.name,
-      chapterName: this.isAbyssalMode
+      chapterName: this.isPantheonMode
+        ? '👑 Điện Thần 3D'
+        : this.isAbyssalMode
         ? '🟣 Hố Sâu Đột Biến'
         : this.isGuildWarMode
         ? '🏰 Chiến Trường Bang'
@@ -6870,7 +7028,7 @@ export class GameEngine {
       heroName: this.baseStats.heroName,
       enemiesRemaining: this.enemies.length,
       portalOpen: this.portalOpen,
-      isBossStage: isBossFloor,
+      isBossStage: isBossFloor || this.isPantheonMode,
       lastPlayerHitAt: this.lastPlayerHitAt,
       runGold: this.runGold,
       runGems: this.runGems,
@@ -6896,13 +7054,13 @@ export class GameEngine {
       bossHp: boss ? boss.hp : 0,
       bossMaxHp: boss ? boss.maxHp : 0,
       bossPhase: boss ? boss.bossPhase : 1,
-      bossLayers: boss ? (this.isWorldBossMode || this.isGuildBossMode ? 8 : 5) : undefined,
+      bossLayers: boss ? (this.isWorldBossMode || this.isGuildBossMode || this.isPantheonMode ? 8 : 5) : undefined,
       bossCurrentLayer: boss
         ? Math.max(
             1,
             Math.ceil(
               (Math.max(0, boss.hp) / Math.max(1, boss.maxHp)) *
-                (this.isWorldBossMode || this.isGuildBossMode ? 8 : 5)
+                (this.isWorldBossMode || this.isGuildBossMode || this.isPantheonMode ? 8 : 5)
             )
           )
         : undefined,
@@ -6957,6 +7115,11 @@ export class GameEngine {
       guildWarTimeLeft: this.isGuildWarMode ? Math.ceil(this.guildWarTimeLeft) : undefined,
       guildWarScore: this.isGuildWarMode ? Math.round(this.guildWarScore) : undefined,
       guildWarNodes: this.isGuildWarMode ? this.guildWarNodesCaptured : undefined,
+      isPantheonMode: this.isPantheonMode,
+      pantheonStage: this.isPantheonMode ? this.pantheonStage : undefined,
+      pantheonTotalStages: this.isPantheonMode ? PANTHEON_TOTAL_STAGES : undefined,
+      pantheonScore: this.isPantheonMode ? Math.round(this.pantheonScore) : undefined,
+      pantheonBlessingTitle: this.isPantheonMode ? this.pantheonBlessing?.name : undefined,
       activeSkills: { ...this.activeSkills },
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,

@@ -230,6 +230,8 @@ export interface ComputedPlayerStats {
   equippedArtifactId?: ArtifactId | null;
   artifactLevel?: number;
   activeBondCount?: number;
+  equippedHaloId?: HaloId | null;
+  haloLevel?: number;
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -876,7 +878,8 @@ export interface RunHistoryEntry {
     | 'world_boss'
     | 'blood_moon'
     | 'abyssal_gauntlet'
-    | 'guild_war';
+    | 'guild_war'
+    | 'pantheon_expedition';
   label: string;
   stageReached: number;
   kills: number;
@@ -978,6 +981,13 @@ export interface SaveData {
   guildWar?: GuildWarState;
   unlockedDynamicTitles?: DynamicTitleId[];
   equippedDynamicTitleId?: DynamicTitleId;
+  divineCrystals?: number;
+  unlockedHalos?: HaloId[];
+  haloLevels?: Partial<Record<HaloId, number>>;
+  equippedHaloId?: HaloId | null;
+  stepUpChain?: StepUpChainState;
+  gemRebateVault?: AstralGemVaultState;
+  pantheonExpedition?: PantheonExpeditionState;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
@@ -1027,6 +1037,7 @@ export interface WardrobePreviewOverrides {
   wingId?: WingId | null;
   mountId?: MountId | null;
   weaponAuraId?: WeaponAuraId;
+  haloId?: HaloId | null;
 }
 
 export type WishTargetKind = 'hero' | 'wing' | 'mount' | 's_gear';
@@ -1347,6 +1358,11 @@ export interface HudSnapshot {
   guildWarTimeLeft?: number;
   guildWarScore?: number;
   guildWarNodes?: number;
+  isPantheonMode?: boolean;
+  pantheonStage?: number;
+  pantheonTotalStages?: number;
+  pantheonScore?: number;
+  pantheonBlessingTitle?: string;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;
@@ -1365,4 +1381,98 @@ export interface WheelOutcome {
   kind: 'gold' | 'gems' | 'heal' | 'atk';
   amount: number;
   color: string;
+}
+
+export type HaloId =
+  | 'solar_crown'
+  | 'lunar_eclipse'
+  | 'stellar_wheel'
+  | 'seraphim_glory';
+
+export interface DivineHaloDefinition {
+  id: HaloId;
+  name: string;
+  badge: string;
+  elementLabel: string;
+  desc: string;
+  primaryHex: number;
+  secondaryHex: number;
+  baseAtkPct: number;
+  baseHpPct: number;
+  baseCritDmg: number;
+  baseDr: number;
+  atkPctPerLv: number;
+  hpPctPerLv: number;
+  critDmgPerLv: number;
+  unlockGems: number;
+  unlockDivineCrystals: number;
+}
+
+export interface StepUpChainStep {
+  step: number;
+  title: string;
+  subtitle: string;
+  badge: string;
+  valueLabel: string;
+  costGems: number; // 0 = Free step
+  rewardGold: number;
+  rewardGems: number;
+  rewardDivineCrystals: number;
+  rewardArtifactShards: number;
+  rewardWishTickets: number;
+  rewardSGear?: boolean;
+  unlockHaloId?: HaloId;
+  topUpPoints: number;
+}
+
+export interface StepUpChainState {
+  currentStep: number; // 1..5 (6 = completed cycle)
+  claimedSteps: number[];
+  cycleCount: number;
+}
+
+export interface AstralGemVaultMilestone {
+  storedTarget: number;
+  title: string;
+  dividendGems: number;
+  bonusDivineCrystals: number;
+  bonusWishTickets: number;
+}
+
+export interface AstralGemVaultState {
+  storedGems: number;
+  totalDepositedEver: number;
+  vaultBrokenCount: number;
+  claimedMilestoneTargets: number[];
+}
+
+export type PantheonBlessingId = 'blessing_wrath' | 'blessing_starlight' | 'blessing_immortal';
+
+export interface PantheonBlessingDef {
+  id: PantheonBlessingId;
+  name: string;
+  badge: string;
+  desc: string;
+  atkBonusPct: number;
+  critBonus: number;
+  drBonus: number;
+  accentColor: string;
+}
+
+export interface PantheonMilestone {
+  score: number;
+  title: string;
+  rewardGems: number;
+  rewardDivineCrystals: number;
+  rewardArtifactShards: number;
+}
+
+export interface PantheonExpeditionState {
+  date: string;
+  dailyRunsRemaining: number;
+  selectedBlessingId: PantheonBlessingId;
+  bestDeityStage: number; // 0..3
+  bestScore: number;
+  totalClears: number;
+  claimedMilestones: number[];
 }

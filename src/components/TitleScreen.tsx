@@ -45,6 +45,7 @@ import dailyRiftArt from '../assets/images/daily_rift_portal_art_1794977270758.j
 import elementalTrialsArt from '../assets/images/elemental_trials_spires_1795004418882.jpg';
 import eventZodiacBanner from '../assets/images/event_zodiac_banner_1794973981859.jpg';
 import guildWarCitadelArt from '../assets/images/guild_war_citadel_1795010358440.jpg';
+import pantheonBossArt from '../assets/images/pantheon_expedition_boss_1795018174577.jpg';
 import worldBossArt from '../assets/images/world_boss_abyss_1795005956955.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
@@ -131,6 +132,21 @@ import {
   normalizeGuildWar,
 } from '../data/wave9Data';
 import {
+  DIVINE_HALO_CATALOG,
+  GEM_VAULT_CAPACITY,
+  GEM_VAULT_CLAIM_THRESHOLD,
+  MAX_DAILY_PANTHEON_RUNS,
+  PANTHEON_BLESSINGS,
+  PANTHEON_MILESTONES,
+  PANTHEON_TOTAL_STAGES,
+  countClaimablePantheonMilestones,
+  countClaimableVaultRewards,
+  hasFreeChainStepReady,
+  normalizeGemRebateVault,
+  normalizePantheonExpedition,
+  normalizeStepUpChain,
+} from '../data/wave10Data';
+import {
   ArtifactId,
   AuraStyleId,
   AvatarFrameId,
@@ -138,11 +154,13 @@ import {
   CoopRaidDifficulty,
   ElementalTowerId,
   FlashDealItem,
+  HaloId,
   HeroId,
   HeroSkinId,
   LobbyCameraPreset,
   MonthlyCardTier,
   MountId,
+  PantheonBlessingId,
   PetId,
   SaveData,
   WeaponAuraId,
@@ -180,7 +198,8 @@ export type LobbyGameMode =
   | 'world_boss'
   | 'blood_moon'
   | 'abyssal_gauntlet'
-  | 'guild_war';
+  | 'guild_war'
+  | 'pantheon_expedition';
 
 interface TitleScreenProps {
   save: SaveData;
@@ -188,7 +207,7 @@ interface TitleScreenProps {
   selectedChapterId: number;
   gameMode: LobbyGameMode;
   activeTab: LobbyTab;
-  heroSubTabInitial?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts';
+  heroSubTabInitial?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos';
   shopSection?: ShopSectionTab;
   previewHeroId: HeroId;
   cameraPreset?: LobbyCameraPreset;
@@ -199,7 +218,9 @@ interface TitleScreenProps {
   onSelectElementalTower: (t: ElementalTowerId) => void;
   onChangeCameraPreset?: (preset: LobbyCameraPreset) => void;
   onTabChange: (tab: LobbyTab) => void;
-  onOpenHeroSubTab?: (subTab: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts') => void;
+  onOpenHeroSubTab?: (
+    subTab: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos'
+  ) => void;
   onOpenShopSection: (section: ShopSectionTab) => void;
   onGameModeChange: (mode: LobbyGameMode) => void;
   onPreviewHero: (heroId: HeroId) => void;
@@ -218,6 +239,9 @@ interface TitleScreenProps {
   onClaimAbyssalMilestone?: (wave: number) => void;
   onStartGuildWar?: () => void;
   onClaimGuildWarBox?: (score: number) => void;
+  onStartPantheon?: () => void;
+  onSelectPantheonBlessing?: (blessingId: PantheonBlessingId) => void;
+  onClaimPantheonMilestone?: (score: number) => void;
   onQuickSweepChapter: (chapterId: number) => void;
   onToggleMute: () => void;
   onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome' | 'journey') => void;
@@ -266,6 +290,9 @@ interface TitleScreenProps {
   onUnlockArtifact?: (artifactId: ArtifactId, currency: 'gems' | 'shards') => void;
   onEquipArtifact?: (artifactId: ArtifactId | null) => void;
   onUpgradeArtifact?: (artifactId: ArtifactId) => void;
+  onUnlockHalo?: (haloId: HaloId, currency: 'gems' | 'crystals') => void;
+  onEquipHalo?: (haloId: HaloId | null) => void;
+  onUpgradeHalo?: (haloId: HaloId) => void;
   onEquipGear: (uid: string) => void;
   onUpgradeGear: (uid: string) => void;
   onFuseGear: (uid: string) => void;
@@ -292,6 +319,10 @@ interface TitleScreenProps {
   onClaimFirstTopUp?: (tierId: string) => void;
   onBuyHotBundle?: (bundleId: string) => void;
   onMysticExchange?: (offerId: string) => void;
+  onClaimChainStep?: (stepNumber: number) => void;
+  onResetChainCycle?: () => void;
+  onBreakGemVault?: () => void;
+  onClaimGemVaultMilestone?: (target: number) => void;
   onPowerAdvisorAction?: (kind: PowerRecommendation['actionKind']) => void;
   onEquipRune: (uid: string) => void;
   onUnequipRune: (uid: string) => void;
@@ -369,6 +400,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onClaimAbyssalMilestone,
   onStartGuildWar,
   onClaimGuildWarBox,
+  onStartPantheon,
+  onSelectPantheonBlessing,
+  onClaimPantheonMilestone,
   onQuickSweepChapter,
   onToggleMute,
   onOpenRewardsModal,
@@ -414,6 +448,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUnlockArtifact,
   onEquipArtifact,
   onUpgradeArtifact,
+  onUnlockHalo,
+  onEquipHalo,
+  onUpgradeHalo,
   onEquipGear,
   onUpgradeGear,
   onFuseGear,
@@ -437,6 +474,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onClaimFirstTopUp,
   onBuyHotBundle,
   onMysticExchange,
+  onClaimChainStep,
+  onResetChainCycle,
+  onBreakGemVault,
+  onClaimGemVaultMilestone,
   onPowerAdvisorAction,
   onEquipRune,
   onUnequipRune,
@@ -459,6 +500,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [bloodMoonImgFailed, setBloodMoonImgFailed] = useState(false);
   const [abyssalImgFailed, setAbyssalImgFailed] = useState(false);
   const [guildWarImgFailed, setGuildWarImgFailed] = useState(false);
+  const [pantheonImgFailed, setPantheonImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -541,6 +583,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const equippedBadgeDef = save.equippedMythicBadgeId
     ? MYTHIC_BADGE_MAP[save.equippedMythicBadgeId]
     : undefined;
+  const stepUpChain = normalizeStepUpChain(save.stepUpChain);
+  const gemVault = normalizeGemRebateVault(save.gemRebateVault);
+  const pantheonState = normalizePantheonExpedition(save.pantheonExpedition);
+  const freeChainStepReady = hasFreeChainStepReady(save);
+  const vaultClaimCount = countClaimableVaultRewards(save);
+  const pantheonClaimCount = countClaimablePantheonMilestones(save);
+  const wave10Badges = (freeChainStepReady ? 1 : 0) + vaultClaimCount + pantheonClaimCount;
 
   const dockTotalBadges =
     claimableCount +
@@ -554,7 +603,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     auctionClaimCount +
     wave7RewardBadges +
     wave8Badges +
-    wave9Badges;
+    wave9Badges +
+    wave10Badges;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -1240,6 +1290,48 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                           <span className="truncate">Chợ Mảnh Dư</span>
                         </span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          if (onOpenHeroSubTab) {
+                            onOpenHeroSubTab('halos');
+                          } else {
+                            onTabChange('heroes');
+                          }
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                          <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Hào Quang 3D</span>
+                        </span>
+                        <span className="text-[9px] font-mono-nums font-black text-amber-300">
+                          {save.divineCrystals ?? 0} TT
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenShopSection('chain_bank');
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-emerald-200 truncate">
+                          <Gift className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                          <span className="truncate">Chuỗi Quà &amp; Két</span>
+                        </span>
+                        {(freeChainStepReady || vaultClaimCount > 0) && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            {freeChainStepReady ? '0Đ' : `+${vaultClaimCount}`}
+                          </span>
+                        )}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1291,7 +1383,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       type="button"
                       onClick={() => {
                         soundEngine.playUiClick(1.05);
-                        if (activeEvent.target === 'mythic_artifact') {
+                        if (activeEvent.target === 'chain_bank') {
+                          onOpenShopSection('chain_bank');
+                        } else if (activeEvent.target === 'divine_halo') {
+                          if (onOpenHeroSubTab) onOpenHeroSubTab('halos');
+                          else onTabChange('heroes');
+                        } else if (activeEvent.target === 'pantheon_expedition') {
+                          onGameModeChange('pantheon_expedition');
+                        } else if (activeEvent.target === 'mythic_artifact') {
                           if (onOpenHeroSubTab) onOpenHeroSubTab('artifacts');
                           else onTabChange('heroes');
                         } else if (activeEvent.target === 'abyssal_gauntlet') {
@@ -1333,6 +1432,83 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
             {/* Bottom-Docked Chapter / Tower Console */}
             <div className="w-full max-w-xl mx-auto flex flex-col gap-2 pointer-events-auto">
+              {/* Commercial Highlight & Quick-Claim Ribbon */}
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.06);
+                    onOpenShopSection('chain_bank');
+                  }}
+                  className={`cel-panel rounded-xl px-2.5 py-1.5 border flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${
+                    freeChainStepReady
+                      ? 'border-emerald-400/70 bg-[#071a18]/95 hover:border-emerald-300'
+                      : 'border-amber-400/35 bg-[#080f24]/95 hover:border-amber-300'
+                  }`}
+                >
+                  <div className="min-w-0 text-left">
+                    <div className="text-[10px] font-black text-amber-200 truncate">
+                      Chuỗi Quà Liên Hoàn
+                    </div>
+                    <div className="text-[9px] font-mono-nums font-bold text-slate-300 truncate">
+                      Bước {Math.min(5, stepUpChain.currentStep)}/5 · Vòng {stepUpChain.cycleCount + 1}
+                    </div>
+                  </div>
+                  {freeChainStepReady && (
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[8px] font-black shrink-0">
+                      0Đ
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.06);
+                    onOpenShopSection('chain_bank');
+                  }}
+                  className={`cel-panel rounded-xl px-2.5 py-1.5 border flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${
+                    gemVault.storedGems >= GEM_VAULT_CLAIM_THRESHOLD
+                      ? 'border-purple-400/70 bg-[#140a28]/95 hover:border-purple-300'
+                      : 'border-purple-400/35 bg-[#080f24]/95 hover:border-purple-300'
+                  }`}
+                >
+                  <div className="min-w-0 text-left">
+                    <div className="text-[10px] font-black text-purple-200 truncate">
+                      Két Tinh Ngân
+                    </div>
+                    <div className="text-[9px] font-mono-nums font-bold text-amber-300 truncate">
+                      {gemVault.storedGems}/{GEM_VAULT_CAPACITY} Ngọc
+                    </div>
+                  </div>
+                  {vaultClaimCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-300 text-slate-950 font-mono-nums text-[8px] font-black shrink-0">
+                      MỞ
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.06);
+                    if (onOpenHeroSubTab) onOpenHeroSubTab('halos');
+                    else onTabChange('heroes');
+                  }}
+                  className="cel-panel rounded-xl px-2.5 py-1.5 border border-amber-400/40 bg-[#080f24]/95 hover:border-amber-300 flex items-center justify-between gap-1.5 cursor-pointer transition-colors"
+                >
+                  <div className="min-w-0 text-left">
+                    <div className="text-[10px] font-black text-amber-200 truncate">
+                      Hào Quang 3D
+                    </div>
+                    <div className="text-[9px] font-mono-nums font-bold text-sky-300 truncate">
+                      {(save.unlockedHalos ?? []).length}/{DIVINE_HALO_CATALOG.length} · {save.divineCrystals ?? 0} TT
+                    </div>
+                  </div>
+                  <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                </button>
+              </div>
+
               {/* Smart Power-Up Advisor Strip */}
               <div className="cel-panel rounded-xl px-3 py-1.5 border border-emerald-400/35 flex items-center justify-between gap-2.5 bg-[#080f24]/95">
                 <div className="min-w-0 flex items-center gap-2">
@@ -1567,6 +1743,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     <Shield className="w-3 h-3 shrink-0" />
                     <span>Chiến Bang</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('pantheon_expedition');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'pantheon_expedition'
+                        ? 'bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-600 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Crown className="w-3 h-3 shrink-0" />
+                    <span>Điện Thần 3D</span>
+                  </button>
                 </div>
 
                 {gameMode === 'chapter' ? (
@@ -1651,6 +1842,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                       <button
                         type="button"
+                        data-start="true"
                         disabled={!isChapterUnlocked}
                         onClick={onStartTrial}
                         className={`flex-1 py-3 px-4 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
@@ -2433,6 +2625,143 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </button>
                     </div>
                   </>
+                ) : gameMode === 'pantheon_expedition' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-amber-300/65 bg-[#090d1f] shrink-0">
+                        {!pantheonImgFailed ? (
+                          <img
+                            src={pantheonBossArt}
+                            alt="Viễn Chinh Điện Thần 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setPantheonImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Crown className="w-6 h-6 text-amber-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-amber-200 truncate">
+                            Viễn Chinh Điện Thần 3D ({PANTHEON_TOTAL_STAGES} Tầng Thần Chủ)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            {pantheonState.dailyRunsRemaining}/{MAX_DAILY_PANTHEON_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Chọn Chúc Phúc Hoàng Đạo và khiêu chiến 3 Thần Chủ liên hoàn để săn Thần Tinh nâng Hào Quang 3D!
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 3 Selectable Pantheon Blessings */}
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {PANTHEON_BLESSINGS.map((bl) => {
+                        const isSel = pantheonState.selectedBlessingId === bl.id;
+                        return (
+                          <button
+                            key={bl.id}
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              onSelectPantheonBlessing?.(bl.id);
+                            }}
+                            className={`px-2 py-1.5 rounded-xl border text-left cursor-pointer transition-colors ${
+                              isSel
+                                ? 'bg-amber-400/15 border-amber-300 text-amber-100 shadow'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-300 hover:border-amber-300/60'
+                            }`}
+                          >
+                            <div className="text-[9px] font-black text-amber-300 truncate">
+                              {bl.badge}
+                            </div>
+                            <div className="text-[10px] font-black text-white truncate">
+                              {bl.name}
+                            </div>
+                            <div className="text-[9px] text-slate-300 truncate">{bl.desc}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-amber-400/20 py-1.5 px-1">
+                      <span className="text-amber-300 font-bold">
+                        Kỷ lục: Tầng {pantheonState.bestDeityStage}/{PANTHEON_TOTAL_STAGES} ({pantheonState.bestScore.toLocaleString('vi-VN')}đ)
+                      </span>
+                      <span className="text-sky-300 font-bold">
+                        Thần Tinh hiện có: {save.divineCrystals ?? 0}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {PANTHEON_MILESTONES.map((ms) => {
+                        const met = pantheonState.bestScore >= ms.score;
+                        const claimed = pantheonState.claimedMilestones.includes(ms.score);
+                        return (
+                          <button
+                            key={ms.score}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimPantheonMilestone?.(ms.score);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ ${ms.score}`
+                              : met
+                              ? `Nhận ${ms.score} (+${ms.rewardDivineCrystals}TT)`
+                              : `${ms.score}đ (+${ms.rewardDivineCrystals}TT)`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          if (onOpenHeroSubTab) onOpenHeroSubTab('halos');
+                          else onTabChange('heroes');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Crown className="w-4 h-4 text-amber-300 shrink-0" />
+                        <span>Hào Quang 3D</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-start="true"
+                        disabled={pantheonState.dailyRunsRemaining <= 0}
+                        onClick={onStartPantheon}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          pantheonState.dailyRunsRemaining > 0
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {pantheonState.dailyRunsRemaining > 0
+                            ? 'VÀO ĐIỆN THẦN 3D'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {pantheonState.dailyRunsRemaining > 0 && <ChevronRight className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
@@ -2581,6 +2910,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onUnlockArtifact={onUnlockArtifact}
             onEquipArtifact={onEquipArtifact}
             onUpgradeArtifact={onUpgradeArtifact}
+            onUnlockHalo={onUnlockHalo}
+            onEquipHalo={onEquipHalo}
+            onUpgradeHalo={onUpgradeHalo}
             onOpenWardrobe={onOpenWardrobe}
             onPreviewUltimate={onPreviewUltimate}
             onRotateHero={onRotateHero}
@@ -2622,6 +2954,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onClaimFirstTopUp={onClaimFirstTopUp}
             onBuyHotBundle={onBuyHotBundle}
             onMysticExchange={onMysticExchange}
+            onClaimChainStep={onClaimChainStep}
+            onResetChainCycle={onResetChainCycle}
+            onBreakGemVault={onBreakGemVault}
+            onClaimGemVaultMilestone={onClaimGemVaultMilestone}
             onOpenVipModal={onOpenVipModal}
             onOpenArenaModal={onOpenArenaModal}
           />

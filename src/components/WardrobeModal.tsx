@@ -12,7 +12,9 @@ import {
 import { ZODIAC_AURAS, HERO_SKINS } from '../data/wave3Data';
 import { ZODIAC_WINGS } from '../data/wave7Data';
 import { WEAPON_AURAS, ZODIAC_MOUNTS } from '../data/wave8Data';
+import { DIVINE_HALO_CATALOG } from '../data/wave10Data';
 import {
+  HaloId,
   HeroSkinId,
   LobbyCameraPreset,
   MountId,
@@ -39,10 +41,12 @@ interface WardrobeModalProps {
   onUnlockMount: (mountId: MountId) => void;
   onEquipWeaponAura: (auraId: WeaponAuraId) => void;
   onUnlockWeaponAura: (auraId: WeaponAuraId) => void;
+  onEquipHalo?: (haloId: HaloId | null) => void;
+  onUnlockHalo?: (haloId: HaloId) => void;
   onClose: () => void;
 }
 
-type WardrobeTab = 'skins' | 'wings' | 'mounts' | 'weapon_auras';
+type WardrobeTab = 'halos' | 'mounts' | 'wings' | 'weapon_auras' | 'skins';
 
 export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   save,
@@ -60,9 +64,11 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   onUnlockMount,
   onEquipWeaponAura,
   onUnlockWeaponAura,
+  onEquipHalo,
+  onUnlockHalo,
   onClose,
 }) => {
-  const [tab, setTab] = useState<WardrobeTab>('mounts');
+  const [tab, setTab] = useState<WardrobeTab>('halos');
 
   const equippedSkin = save.equippedSkinByHero?.[save.selectedHeroId] ?? 'default';
   const activeSkinPreview = preview.skinId ?? equippedSkin;
@@ -70,11 +76,14 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   const activeMountPreview = preview.mountId !== undefined ? preview.mountId : (save.equippedMountId ?? null);
   const activeWeaponAuraPreview =
     preview.weaponAuraId !== undefined ? preview.weaponAuraId : (save.equippedWeaponAuraId ?? 'none');
+  const activeHaloPreview =
+    preview.haloId !== undefined ? preview.haloId : (save.equippedHaloId ?? null);
 
   const unlockedSkins = new Set<HeroSkinId>(save.unlockedSkins ?? ['default']);
   const unlockedWings = new Set<WingId>(save.unlockedWings ?? []);
   const unlockedMounts = new Set<MountId>(save.unlockedMounts ?? []);
   const unlockedWeaponAuras = new Set<WeaponAuraId>(save.unlockedWeaponAuras ?? ['none']);
+  const unlockedHalos = new Set<HaloId>(save.unlockedHalos ?? []);
 
   return (
     <div className="fixed inset-0 z-40 pointer-events-none flex flex-col justify-between p-3 sm:p-5">
@@ -144,6 +153,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
           <div className="flex flex-wrap items-center gap-1.5">
             {(
               [
+                { id: 'halos', label: 'Hào Quang 3D' },
                 { id: 'mounts', label: 'Thú Cưỡi 3D' },
                 { id: 'wings', label: 'Cánh Hoàng Đạo' },
                 { id: 'weapon_auras', label: 'Hào Quang Vũ Khí' },
@@ -170,6 +180,10 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
               <SoulGemIcon className="w-3.5 h-3.5" />
               {save.gems}
             </span>
+            <span className="flex items-center gap-1 text-amber-200">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              {save.divineCrystals ?? 0} TT
+            </span>
             <span className="flex items-center gap-1 text-amber-300">
               <MountShardIcon className="w-3.5 h-3.5" />
               {save.mountShards ?? 0}
@@ -193,6 +207,67 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pr-1">
+          {tab === 'halos' &&
+            DIVINE_HALO_CATALOG.map((h) => {
+              const owned = unlockedHalos.has(h.id);
+              const equipped = save.equippedHaloId === h.id;
+              const isPreviewing = activeHaloPreview === h.id;
+              const hasCrystals = (save.divineCrystals ?? 0) >= h.unlockDivineCrystals;
+              const hasGems = save.gems >= h.unlockGems;
+              const canUnlock = hasCrystals || hasGems;
+              return (
+                <div
+                  key={h.id}
+                  className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                    isPreviewing
+                      ? 'bg-amber-400/10 border-amber-300'
+                      : 'bg-[#080d1e] border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                      <span className="text-amber-300">{h.badge}</span>
+                      {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
+                    </div>
+                    <div className="text-xs font-black text-white">{h.name}</div>
+                    <div className="text-[10px] text-slate-300 mt-1">
+                      +{Math.round(h.baseAtkPct * 100)}% ATK · +{Math.round(h.baseHpPct * 100)}% HP · +{Math.round(h.baseCritDmg * 100)}% ST Bạo
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onChangePreview({ ...preview, haloId: h.id })}
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Mặc Thử</span>
+                    </button>
+                    {owned ? (
+                      <button
+                        type="button"
+                        onClick={() => onEquipHalo?.(equipped ? null : h.id)}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                          equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                        }`}
+                      >
+                        {equipped ? 'Tháo' : 'Trang Bị'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!canUnlock}
+                        onClick={() => onUnlockHalo?.(h.id)}
+                        className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
+                      >
+                        {hasCrystals ? `${h.unlockDivineCrystals} Thần Tinh` : `${h.unlockGems} Ngọc`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
           {tab === 'mounts' &&
             ZODIAC_MOUNTS.map((m) => {
               const owned = unlockedMounts.has(m.id);

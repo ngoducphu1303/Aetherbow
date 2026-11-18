@@ -309,6 +309,33 @@ export function countClaimableAchievements(save: SaveData): number {
 
 export const EVENT_BANNERS = [
   {
+    id: 'event_chain_bank',
+    badge: 'CHUỖI QUÀ 5 BƯỚC · NGÂN HÀNG NGỌC',
+    title: 'Chuỗi Quà Liên Hoàn & Ngân Hàng Hoàn Trả Ngọc Hồn',
+    subtitle: 'Nhận MIỄN PHÍ Bước 1 & Bước 3, rút cổ tức Ngân Hàng Tinh Ngân và mở khóa Thánh Luân Thái Dương 3D!',
+    ctaLabel: 'Nhận Quà Liên Hoàn',
+    target: 'chain_bank' as const,
+    accent: 'amber' as const,
+  },
+  {
+    id: 'event_divine_halos',
+    badge: 'HÀO QUANG 3D · THẦN VỰC',
+    title: 'Hào Quang Thần Vực 3D · Vòng Luân Hoàng Đạo Sau Lưng',
+    subtitle: 'Khai mở 4 Vòng Hào Quang 3D xoay lơ lửng sau lưng Anh Hùng, bùng nổ ATK%, HP% & Sát Thương Bạo Kích!',
+    ctaLabel: 'Mở Hào Quang 3D',
+    target: 'divine_halo' as const,
+    accent: 'amber' as const,
+  },
+  {
+    id: 'event_pantheon_expedition',
+    badge: 'ĐIỆN THẦN 3D · MỚI',
+    title: 'Viễn Chinh Điện Thần 3D · Săn Thần Tinh & Cổ Thần',
+    subtitle: 'Chọn Thần Ấn chúc phúc, liên chiến 3 Cổ Thần Hoàng Đạo để thu hoạch Thần Tinh đúc Hào Quang 3D!',
+    ctaLabel: 'Vào Điện Thần 3D',
+    target: 'pantheon_expedition' as const,
+    accent: 'purple' as const,
+  },
+  {
     id: 'event_mythic_artifacts',
     badge: 'THÁNH KHÍ 3D · DUYÊN ĐỘI HÌNH',
     title: 'Thánh Khí Thần Thoại 3D & Cộng Hưởng Đội Hình',

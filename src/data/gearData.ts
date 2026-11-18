@@ -77,6 +77,12 @@ import {
   normalizeGuildWar,
   normalizeMysticExchange,
 } from './wave9Data';
+import {
+  getDivineHaloStats,
+  normalizeGemRebateVault,
+  normalizePantheonExpedition,
+  normalizeStepUpChain,
+} from './wave10Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -751,6 +757,18 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     maxHp += dynTitleDef.bonusHp;
   }
 
+  // Apply Equipped 3D Divine Halo (Wave 10)
+  const equippedHaloId =
+    save.equippedHaloId && (save.unlockedHalos ?? []).includes(save.equippedHaloId)
+      ? save.equippedHaloId
+      : null;
+  let haloLevel = 1;
+  if (equippedHaloId) {
+    haloLevel = Math.max(1, save.haloLevels?.[equippedHaloId] ?? 1);
+  }
+  const haloStats = getDivineHaloStats(equippedHaloId, haloLevel);
+  critDamage += haloStats.critDmg;
+
   // Apply Monthly Privilege Card passive buffs
   const monthlyPriv = normalizeMonthlyPrivilege(save.monthlyPrivilege);
   const hasSilverCard = isMonthlyCardActive(monthlyPriv.silver);
@@ -764,10 +782,18 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const tal = computeTalentBonuses(save.talents);
   attack = Math.round(
     (attack + tal.atk + constellation.atkFlat) *
-      (1 + runeAtkPct + subAtkPct + guildTech.atkPct + cardAtkPct + wAuraStats.atkPct + bondBonuses.atkPct)
+      (1 +
+        runeAtkPct +
+        subAtkPct +
+        guildTech.atkPct +
+        cardAtkPct +
+        wAuraStats.atkPct +
+        bondBonuses.atkPct +
+        haloStats.atkPct)
   );
   maxHp = Math.round(
-    (maxHp + tal.hp + constellation.hpFlat) * (1 + runeHpPct + subHpPct + guildTech.hpPct + bondBonuses.hpPct)
+    (maxHp + tal.hp + constellation.hpFlat) *
+      (1 + runeHpPct + subHpPct + guildTech.hpPct + bondBonuses.hpPct + haloStats.hpPct)
   );
   critChance = Math.min(
     0.92,
@@ -777,7 +803,7 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   moveSpeedMult += tal.moveSpeedMult;
   damageReduction = Math.min(
     0.72,
-    damageReduction + tal.damageReduction + constellation.drBonus
+    damageReduction + tal.damageReduction + constellation.drBonus + haloStats.dr
   );
   const moveSpeed = 7.6 * moveSpeedMult;
   const goldGainMult = tal.goldGainMult + guildTech.goldPct + constellation.goldBonus + cardGoldBonus;
@@ -793,6 +819,7 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       (equippedMountId ? mountLevel * 32 : 0) +
       (equippedWeaponAuraId !== 'none' ? weaponAuraLevel * 26 : 0) +
       (equippedArtifactId ? artifactLevel * 38 : 0) +
+      (equippedHaloId ? haloLevel * 45 : 0) +
       bondBonuses.activeCount * 85
   );
 
@@ -832,6 +859,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     equippedArtifactId,
     artifactLevel,
     activeBondCount: bondBonuses.activeCount,
+    equippedHaloId,
+    haloLevel,
   };
 }
 
@@ -1014,6 +1043,13 @@ export function createInitialSaveData(): SaveData {
     guildWar: normalizeGuildWar(),
     unlockedDynamicTitles: ['none'],
     equippedDynamicTitleId: 'none',
+    divineCrystals: 16,
+    unlockedHalos: [],
+    haloLevels: {},
+    equippedHaloId: null,
+    stepUpChain: normalizeStepUpChain(),
+    gemRebateVault: normalizeGemRebateVault(),
+    pantheonExpedition: normalizePantheonExpedition(),
   };
 }
 

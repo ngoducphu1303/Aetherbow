@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Play, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import splashArtSrc from '../assets/images/celestial_sanctuary_backdrop_1794971371758.jpg';
 import { CHAPTERS } from '../data/chaptersData';
@@ -18,6 +18,17 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   onToggleMute,
 }) => {
   const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        onEnterGame();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onEnterGame]);
 
   return (
     <div className="fixed inset-0 z-30 pointer-events-auto flex flex-col justify-between overflow-hidden bg-[#050813]">
@@ -130,11 +141,12 @@ export const SplashGate: React.FC<SplashGateProps> = ({
       <div className="relative z-10 max-w-md w-full mx-auto flex flex-col items-center gap-3.5 px-5 pb-7 sm:pb-9">
         <div className="flex items-center gap-2 text-xs text-slate-200 font-medium tracking-wide text-center">
           <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-          <span>8 Anh Hùng Chibi · 12 Chương Hoàng Đạo · Tháp Vô Tận</span>
+          <span>8 Anh Hùng Chibi · 12 Chương Hoàng Đạo · Điện Thần 3D</span>
         </div>
 
         <button
           type="button"
+          data-start="true"
           onClick={onEnterGame}
           className="a2-yellow-btn w-full py-4 px-8 rounded-2xl font-display font-black text-base sm:text-lg tracking-[0.12em] flex items-center justify-center gap-3 cursor-pointer whitespace-nowrap"
         >

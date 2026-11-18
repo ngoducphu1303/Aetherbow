@@ -23,6 +23,8 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import celestialPassVaultArt from '../assets/images/celestial_pass_vault_1795018173631.jpg';
+import divineHaloArt from '../assets/images/divine_halo_sanctum_1795018170438.jpg';
 import firstTopUpArt from '../assets/images/first_topup_treasury_1795007596297.jpg';
 import flashDealVaultArt from '../assets/images/flash_deal_vault_art_1794973982335.jpg';
 import growthFundVaultArt from '../assets/images/growth_fund_vault_1795004417139.jpg';
@@ -135,6 +137,20 @@ import {
   normalizeMysticExchange,
 } from '../data/wave9Data';
 import {
+  DIVINE_HALO_CATALOG,
+  DIVINE_HALO_MAX_LEVEL,
+  GEM_VAULT_CAPACITY,
+  GEM_VAULT_CLAIM_THRESHOLD,
+  GEM_VAULT_MILESTONES,
+  STEP_UP_CHAIN_STEPS,
+  countClaimableVaultRewards,
+  getDivineHaloStats,
+  getDivineHaloUpgradeCost,
+  hasFreeChainStepReady,
+  normalizeGemRebateVault,
+  normalizeStepUpChain,
+} from '../data/wave10Data';
+import {
   ArtifactId,
   AuraStyleId,
   AvatarFrameId,
@@ -143,6 +159,7 @@ import {
   FlashDealItem,
   GearInstance,
   GearSlot,
+  HaloId,
   HeroId,
   HeroSkinId,
   HotFlashBundle,
@@ -1128,7 +1145,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
 interface HeroesPanelProps {
   save: SaveData;
   previewHeroId: HeroId;
-  initialSubTab?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts';
+  initialSubTab?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos';
   onPreviewHero: (heroId: HeroId) => void;
   onSelectHero: (heroId: HeroId) => void;
   onUnlockHero: (heroId: HeroId, currency: 'gold' | 'gems') => void;
@@ -1154,6 +1171,9 @@ interface HeroesPanelProps {
   onUnlockArtifact?: (artifactId: ArtifactId, currency: 'gems' | 'shards') => void;
   onEquipArtifact?: (artifactId: ArtifactId | null) => void;
   onUpgradeArtifact?: (artifactId: ArtifactId) => void;
+  onUnlockHalo?: (haloId: HaloId, currency: 'gems' | 'crystals') => void;
+  onEquipHalo?: (haloId: HaloId | null) => void;
+  onUpgradeHalo?: (haloId: HaloId) => void;
   onOpenWardrobe?: () => void;
   onPreviewUltimate?: (heroId: HeroId) => void;
   onRotateHero?: (deltaRad: number) => void;
@@ -1189,18 +1209,22 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onUnlockArtifact,
   onEquipArtifact,
   onUpgradeArtifact,
+  onUnlockHalo,
+  onEquipHalo,
+  onUpgradeHalo,
   onOpenWardrobe,
   onPreviewUltimate,
   onRotateHero,
   onResetHeroRotation,
 }) => {
   const [heroSubTab, setHeroSubTab] = useState<
-    'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts'
+    'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos'
   >(initialSubTab);
   const [petBannerErr, setPetBannerErr] = useState(false);
   const [wingsBannerErr, setWingsBannerErr] = useState(false);
   const [mountsBannerErr, setMountsBannerErr] = useState(false);
   const [artifactsBannerErr, setArtifactsBannerErr] = useState(false);
+  const [halosBannerErr, setHalosBannerErr] = useState(false);
 
   const hero = HERO_MAP[previewHeroId] ?? HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const unlocked = save.unlockedHeroes.includes(hero.id);
@@ -1235,6 +1259,10 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const mxState = normalizeMysticExchange(save.mysticExchange);
   const artifactShards = mxState.artifactShards;
   const heroBondsSummary = evaluateHeroBonds(save);
+  const unlockedHalos = save.unlockedHalos ?? [];
+  const haloLevels = save.haloLevels ?? {};
+  const equippedHaloId = save.equippedHaloId ?? null;
+  const divineCrystals = save.divineCrystals ?? 0;
 
   const handleHeroDragDown = (e: React.PointerEvent<HTMLDivElement>) => {
     dragRef.current = { active: true, lastX: e.clientX };
@@ -1518,6 +1546,22 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               >
                 <ArtifactRelicIcon className="w-3.5 h-3.5 shrink-0" />
                 <span>Thánh Khí &amp; Duyên ({unlockedArtifacts.length}/{MYTHIC_ARTIFACTS.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  setHeroSubTab('halos');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  heroSubTab === 'halos'
+                    ? 'bg-gradient-to-b from-yellow-300 via-amber-400 to-rose-500 text-slate-950 shadow'
+                    : 'text-amber-200 hover:text-white'
+                }`}
+              >
+                <Crown className="w-3.5 h-3.5 shrink-0" />
+                <span>Hào Quang 3D ({unlockedHalos.length}/{DIVINE_HALO_CATALOG.length})</span>
               </button>
             </div>
 
@@ -2855,6 +2899,185 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
             </div>
           )}
+
+          {/* SUB-TAB 7: WAVE 10 3D DIVINE ZODIAC HALOS (HÀO QUANG THẦN VỰC 3D) */}
+          {heroSubTab === 'halos' && (
+            <div className="space-y-4 pb-6">
+              <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 sm:grid-cols-12 items-center">
+                <div className="sm:col-span-5 h-32 sm:h-36 bg-[#0b1229] relative overflow-hidden">
+                  {!halosBannerErr ? (
+                    <img
+                      src={divineHaloArt}
+                      alt="Thánh Điện Hào Quang Thần Vực 3D"
+                      referrerPolicy="no-referrer"
+                      onError={() => setHalosBannerErr(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-500/25 to-rose-500/25">
+                      <Crown className="w-8 h-8 text-amber-300" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                  <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-amber-300 text-slate-950 font-mono-nums text-[10px] font-black shadow">
+                    VÒNG LUÂN 3D SAU LƯNG
+                  </span>
+                </div>
+                <div className="sm:col-span-7 p-3.5 sm:p-4 flex flex-col justify-between gap-2">
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                        Hào Quang Thần Vực 3D · Đúc Bằng Thần Tinh
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 border border-amber-300/45 font-mono-nums text-xs font-black text-amber-200">
+                        Thần Tinh: {divineCrystals}
+                      </span>
+                    </div>
+                    <h4 className="font-display text-sm sm:text-base font-black text-white mt-0.5">
+                      Xoay Tròn Sau Đầu &amp; Vai Anh Hùng Trong Sảnh Lẫn Thực Chiến 3D
+                    </h4>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Thu thập Thần Tinh từ <strong className="text-amber-300">Viễn Chinh Điện Thần 3D</strong> hoặc <strong className="text-amber-300">Chuỗi Quà Liên Hoàn</strong> để khai mở &amp; thăng cấp 4 Vòng Hào Quang Chí Tôn!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {DIVINE_HALO_CATALOG.map((halo) => {
+                  const isOwned = unlockedHalos.includes(halo.id);
+                  const isEquipped = equippedHaloId === halo.id;
+                  const lv = Math.max(1, haloLevels[halo.id] ?? 1);
+                  const maxLv = lv >= DIVINE_HALO_MAX_LEVEL;
+                  const hStats = getDivineHaloStats(halo.id, lv);
+                  const upCost = getDivineHaloUpgradeCost(lv);
+
+                  return (
+                    <div
+                      key={halo.id}
+                      className={`rounded-2xl p-4 border flex flex-col justify-between gap-3 ${
+                        isEquipped ? 'cel-panel-ornate ring-2 ring-amber-300/70' : 'cel-panel'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+                              style={{
+                                backgroundColor: `#${halo.primaryHex.toString(16).padStart(6, '0')}22`,
+                                borderColor: `#${halo.secondaryHex.toString(16).padStart(6, '0')}88`,
+                                color: `#${halo.secondaryHex.toString(16).padStart(6, '0')}`,
+                              }}
+                            >
+                              <Crown className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <span className="text-[10px] font-black uppercase text-amber-300">
+                                {halo.badge} {isOwned ? `· Lv.${lv}/${DIVINE_HALO_MAX_LEVEL}` : ''}
+                              </span>
+                              <h5 className="font-display text-sm sm:text-base font-black text-white">
+                                {halo.name}
+                              </h5>
+                            </div>
+                          </div>
+                          {isEquipped && (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[10px] font-black text-emerald-300">
+                              ĐANG TỎA SÁNG
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed">{halo.desc}</p>
+
+                        <div className="grid grid-cols-4 gap-1.5 mt-2.5 text-center rounded-xl bg-[#070b1a] border border-amber-400/20 p-2 text-[10px] font-mono-nums font-bold">
+                          <div>
+                            <div className="text-slate-400">% ATK</div>
+                            <div className="text-amber-300">+{(hStats.atkPct * 100).toFixed(1)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">% HP</div>
+                            <div className="text-emerald-300">+{(hStats.hpPct * 100).toFixed(1)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Bạo Thương</div>
+                            <div className="text-rose-300">+{Math.round(hStats.critDmg * 100)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Giảm Thương</div>
+                            <div className="text-sky-300">+{(hStats.dr * 100).toFixed(1)}%</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {isOwned ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.05);
+                                onEquipHalo?.(isEquipped ? null : halo.id);
+                              }}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                                isEquipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                              }`}
+                            >
+                              {isEquipped ? 'Thu Hồi Hào Quang' : 'Kích Hoạt Sau Lưng'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                maxLv ||
+                                divineCrystals < upCost.divineCrystals ||
+                                save.gold < upCost.gold
+                              }
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUpgradeHalo?.(halo.id);
+                              }}
+                              className="a2-yellow-btn flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              {maxLv
+                                ? 'Cấp Tối Đa'
+                                : `Nâng (${upCost.divineCrystals} TT + ${upCost.gold}V)`}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={divineCrystals < halo.unlockDivineCrystals}
+                              onClick={() => {
+                                soundEngine.playVictory();
+                                onUnlockHalo?.(halo.id, 'crystals');
+                              }}
+                              className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Đúc · {halo.unlockDivineCrystals} Thần Tinh</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={save.gems < halo.unlockGems}
+                              onClick={() => {
+                                soundEngine.playVictory();
+                                onUnlockHalo?.(halo.id, 'gems');
+                              }}
+                              className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                              <span>Mở · {halo.unlockGems} Ngọc</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -3196,6 +3419,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
 };
 
 export type ShopSectionTab =
+  | 'chain_bank'
   | 'privilege'
   | 'wish_topup'
   | 'packs'
@@ -3228,6 +3452,10 @@ interface ShopPanelProps {
   onClaimFirstTopUp?: (tierId: string) => void;
   onBuyHotBundle?: (bundleId: string) => void;
   onMysticExchange?: (offerId: string) => void;
+  onClaimChainStep?: (stepNum: number) => void;
+  onResetChainCycle?: () => void;
+  onBreakGemVault?: () => void;
+  onClaimGemVaultMilestone?: (target: number) => void;
   onOpenVipModal: () => void;
   onOpenArenaModal: () => void;
 }
@@ -3235,7 +3463,7 @@ interface ShopPanelProps {
 export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   save,
   powerRating,
-  initialSection = 'privilege',
+  initialSection = 'chain_bank',
   wishLastOutcomes = [],
   onOpenChestWithGacha,
   onBuyFlashDeal,
@@ -3253,6 +3481,10 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   onClaimFirstTopUp,
   onBuyHotBundle,
   onMysticExchange,
+  onClaimChainStep,
+  onResetChainCycle,
+  onBreakGemVault,
+  onClaimGemVaultMilestone,
   onOpenVipModal,
   onOpenArenaModal,
 }) => {
@@ -3264,6 +3496,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const [wishBannerFailed, setWishBannerFailed] = useState(false);
   const [topUpBannerFailed, setTopUpBannerFailed] = useState(false);
   const [mysticImgFailed, setMysticImgFailed] = useState(false);
+  const [chainBankImgFailed, setChainBankImgFailed] = useState(false);
   const [oddsModalVariant, setOddsModalVariant] = useState<
     'iron' | 'mythic' | 'rune_bag' | 'rune_rare' | null
   >(null);
@@ -3294,6 +3527,10 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   ).length;
   const activeWishTarget =
     WISH_TARGET_CATALOG.find((t) => t.id === wishPool.selectedTargetId) ?? WISH_TARGET_CATALOG[0];
+  const stepUpChain = normalizeStepUpChain(save.stepUpChain);
+  const gemVault = normalizeGemRebateVault(save.gemRebateVault);
+  const chainBankBadge =
+    (hasFreeChainStepReady(save) ? 1 : 0) + countClaimableVaultRewards(save);
 
   const chests: Array<{
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare';
@@ -3364,13 +3601,14 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
               Thương Hội &amp; Kho Báu Hoàng Đạo
             </h2>
             <p className="text-xs text-slate-300 mt-0.5">
-              Hồ Ước Nguyện SSR, Nạp Đầu X2 Kim Cương, Gói Hot Giảm Sốc &amp; Quỹ Đầu Tư 800%.
+              Chuỗi Quà Liên Hoàn 5 Bước, Ngân Hàng Hoàn Trả Ngọc, Hồ Ước Nguyện SSR &amp; Thẻ Đặc Quyền.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
             {(
               [
+                ['chain_bank', 'Chuỗi Quà & Ngân Hàng', chainBankBadge],
                 ['wish_topup', 'Hồ Ước & Nạp X2', wishMilestonesReady],
                 ['privilege', 'Thẻ Tháng & Tích Nạp', claimableWave7Count],
                 ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
@@ -3403,6 +3641,300 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
             ))}
           </div>
         </div>
+
+        {/* SECTION WAVE 10: STEP-UP COMMERCIAL CHAIN RELAY + ASTRAL GEM REBATE VAULT */}
+        {storeSection === 'chain_bank' && (
+          <section className="space-y-5">
+            {/* 1. Hero Banner + Astral Gem Rebate Vault */}
+            <div className="cel-panel-ornate rounded-2xl overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-12 items-stretch border-b border-amber-400/20">
+                <div className="md:col-span-5 relative min-h-[155px] bg-[#0b1229]">
+                  {!chainBankImgFailed ? (
+                    <img
+                      src={celestialPassVaultArt}
+                      alt="Chuỗi Quà Liên Hoàn & Ngân Hàng Hoàn Trả Ngọc"
+                      referrerPolicy="no-referrer"
+                      onError={() => setChainBankImgFailed(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-amber-500/25 to-purple-500/25 flex items-center justify-center">
+                      <Crown className="w-10 h-10 text-amber-300" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                  <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-amber-300 text-slate-950 font-mono-nums text-[10px] font-black shadow">
+                    HOÀN TRẢ LÊN TỚI 900%
+                  </span>
+                </div>
+
+                <div className="md:col-span-7 p-4 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                        Ngân Hàng Tinh Ngân · Tích Trữ &amp; Sinh Lời Tự Động
+                      </span>
+                      <span className="font-mono-nums text-xs font-black text-emerald-300">
+                        Thần Tinh hiện có: {save.divineCrystals ?? 0}
+                      </span>
+                    </div>
+                    <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                      Két Tinh Ngân: {gemVault.storedGems}/{GEM_VAULT_CAPACITY} Ngọc Hồn Hoàn Trả
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Mỗi trận chiến &amp; giao dịch thương mại tự động tích lũy thêm Ngọc Hồn vào Két. Đạt tối thiểu{' '}
+                      <strong className="text-amber-300">{GEM_VAULT_CLAIM_THRESHOLD} Ngọc</strong> có thể mở két rút toàn bộ kèm thưởng Thần Tinh!
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-mono-nums font-bold">
+                      <span className="text-amber-300">
+                        Tiến độ Két: {gemVault.storedGems}/{GEM_VAULT_CAPACITY} Ngọc
+                      </span>
+                      <span className="text-slate-300">
+                        Tổng tích lũy: {gemVault.totalDepositedEver} Ngọc · Đã rút {gemVault.vaultBrokenCount} lần
+                      </span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-slate-950 border border-amber-400/35 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-400 via-amber-300 to-rose-400 transition-all"
+                        style={{
+                          width: `${Math.min(100, Math.round((gemVault.storedGems / GEM_VAULT_CAPACITY) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <span className="text-[11px] text-emerald-300 font-bold">
+                        {gemVault.storedGems >= GEM_VAULT_CLAIM_THRESHOLD
+                          ? `Sẵn sàng rút ngay +${gemVault.storedGems} Ngọc Hồn & +${Math.max(4, Math.floor(gemVault.storedGems / 15))} Thần Tinh!`
+                          : `Cần tích thêm ${GEM_VAULT_CLAIM_THRESHOLD - gemVault.storedGems} Ngọc trong két để mở khóa rút.`}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={gemVault.storedGems < GEM_VAULT_CLAIM_THRESHOLD}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onBreakGemVault?.();
+                        }}
+                        className="a2-emerald-btn px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                      >
+                        <SoulGemIcon className="w-3.5 h-3.5" />
+                        <span>Rút Két (+{gemVault.storedGems} Ngọc)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Cumulative Vault Dividend Milestones */}
+              <div className="p-4 bg-[#070b1a]">
+                <div className="text-xs font-black text-amber-200 mb-2.5">
+                  Cổ Tức Tích Lũy Ngân Hàng Tinh Ngân (Nhận MIỄN PHÍ theo tổng Ngọc đã tích vào Két)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  {GEM_VAULT_MILESTONES.map((ms) => {
+                    const met = gemVault.totalDepositedEver >= ms.storedTarget;
+                    const claimed = gemVault.claimedMilestoneTargets.includes(ms.storedTarget);
+                    return (
+                      <div
+                        key={ms.storedTarget}
+                        className={`rounded-xl p-3 border flex flex-col justify-between gap-2 ${
+                          met && !claimed
+                            ? 'bg-amber-400/12 border-amber-300'
+                            : 'bg-[#090f24] border-slate-800'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1 text-[10px] font-mono-nums font-black">
+                            <span className="text-amber-300">MỐC {ms.storedTarget} NGỌC</span>
+                            <span className={claimed ? 'text-emerald-300' : 'text-slate-400'}>
+                              {claimed ? 'ĐÃ NHẬN' : `${Math.min(ms.storedTarget, gemVault.totalDepositedEver)}/${ms.storedTarget}`}
+                            </span>
+                          </div>
+                          <div className="text-xs font-black text-white mt-0.5">{ms.title}</div>
+                          <div className="text-[10px] font-mono-nums text-sky-300 mt-1">
+                            +{ms.dividendGems} Ngọc · +{ms.bonusDivineCrystals} Thần Tinh · +{ms.bonusWishTickets} Vé
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!met || claimed}
+                          onClick={() => {
+                            soundEngine.playVictory();
+                            onClaimGemVaultMilestone?.(ms.storedTarget);
+                          }}
+                          className={`w-full py-1.5 px-2.5 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer ${
+                            claimed
+                              ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300'
+                              : met
+                              ? 'a2-yellow-btn'
+                              : 'bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {claimed ? 'Đã Nhận Cổ Tức' : met ? 'Nhận Cổ Tức Free' : 'Chưa Đạt Mốc'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. 5-Step Commercial Chain Relay (Chuỗi Quà Liên Hoàn 5 Bước) */}
+            <div className="cel-panel-ornate rounded-2xl p-4 space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                    Chuỗi Quà Liên Hoàn 5 Bước · Mở Theo Thứ Tự 1 → 5
+                  </span>
+                  <h3 className="font-display text-base sm:text-lg font-black text-white">
+                    Bước 1 &amp; Bước 3 MIỄN PHÍ 0Đ · Bước 5 Tặng Hào Quang 3D [Thánh Luân Thái Dương]
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-xl bg-[#070b1a] border border-amber-400/30 font-mono-nums text-xs font-black text-amber-200">
+                    Tiến Độ: {Math.min(5, stepUpChain.claimedSteps.length)}/5 Bước · Chu Kỳ #{stepUpChain.cycleCount + 1}
+                  </span>
+                  {stepUpChain.currentStep > 5 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.1);
+                        onResetChainCycle?.();
+                      }}
+                      className="a2-purple-btn px-3 py-1.5 rounded-xl text-xs font-black cursor-pointer"
+                    >
+                      Làm Mới Chu Kỳ Mới
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5">
+                {STEP_UP_CHAIN_STEPS.map((st) => {
+                  const isClaimed = stepUpChain.claimedSteps.includes(st.step);
+                  const isCurrent = stepUpChain.currentStep === st.step && !isClaimed;
+                  const isLocked = st.step > stepUpChain.currentStep;
+                  const canAfford = save.gems >= st.costGems;
+                  const isFree = st.costGems === 0;
+
+                  return (
+                    <div
+                      key={st.step}
+                      className={`rounded-2xl p-3.5 border flex flex-col justify-between gap-3 transition-all ${
+                        isCurrent
+                          ? 'cel-panel-ornate ring-2 ring-amber-300'
+                          : isClaimed
+                          ? 'bg-emerald-950/25 border-emerald-500/35'
+                          : 'bg-[#070b1a] border-slate-800 opacity-85'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[9px] font-black ${
+                              isFree
+                                ? 'bg-emerald-400 text-slate-950'
+                                : st.step === 5
+                                ? 'bg-gradient-to-r from-amber-300 to-rose-400 text-slate-950'
+                                : 'bg-amber-400/20 border border-amber-300/40 text-amber-200'
+                            }`}
+                          >
+                            {st.badge}
+                          </span>
+                          <span className="text-[9px] font-mono-nums font-black text-amber-300">
+                            {st.valueLabel}
+                          </span>
+                        </div>
+
+                        <h4 className="font-display text-xs sm:text-sm font-black text-white mt-1">
+                          {st.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                          {st.subtitle}
+                        </p>
+
+                        <div className="flex flex-wrap gap-1 mt-2.5 text-[10px] font-mono-nums font-bold">
+                          {st.unlockHaloId && (
+                            <span className="px-2 py-0.5 rounded bg-gradient-to-r from-amber-500/30 to-rose-500/30 border border-amber-300 text-amber-200 font-black">
+                              ★ Hào Quang 3D: Thánh Luân
+                            </span>
+                          )}
+                          {st.rewardSGear && (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/45 text-amber-200">
+                              +1 Trang Bị [S]
+                            </span>
+                          )}
+                          {st.rewardDivineCrystals > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-400/40 text-rose-200">
+                              +{st.rewardDivineCrystals} Thần Tinh
+                            </span>
+                          )}
+                          {st.rewardArtifactShards > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/35 text-amber-200">
+                              +{st.rewardArtifactShards} Mảnh Thánh Khí
+                            </span>
+                          )}
+                          {st.rewardGems > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/40 text-sky-200">
+                              +{st.rewardGems} Ngọc
+                            </span>
+                          )}
+                          {st.rewardWishTickets > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-200">
+                              +{st.rewardWishTickets} Vé Ước
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/35 text-emerald-200">
+                            +{st.rewardGold} Vàng
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!isCurrent || !canAfford}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onClaimChainStep?.(st.step);
+                        }}
+                        className={`w-full py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer font-mono-nums ${
+                          isClaimed
+                            ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 cursor-default'
+                            : isCurrent && isFree
+                            ? 'a2-emerald-btn'
+                            : isCurrent && canAfford
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {isClaimed ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Đã Nhận Bước {st.step}</span>
+                          </>
+                        ) : isLocked ? (
+                          <>
+                            <Lock className="w-3.5 h-3.5" />
+                            <span>Mở Bước {st.step - 1} Trước</span>
+                          </>
+                        ) : isFree ? (
+                          <span>Nhận MIỄN PHÍ 0Đ</span>
+                        ) : (
+                          <>
+                            <SoulGemIcon className="w-3.5 h-3.5" />
+                            <span>Mở · {st.costGems} Ngọc</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* SECTION WAVE 8: WISH POOL SSR + FIRST TOP-UP X2 + HOT FLASH BUNDLES */}
         {storeSection === 'wish_topup' && (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Flame, Gem, Moon, Shield, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
+import { Compass, Crown, Flame, Gem, Moon, Shield, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
 import { CHAPTERS } from '../data/chaptersData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, ElementalTowerId } from '../types/game';
@@ -20,6 +20,7 @@ interface StageTransitionCurtainProps {
   isBloodMoonMode?: boolean;
   isAbyssalMode?: boolean;
   isGuildWarMode?: boolean;
+  isPantheonMode?: boolean;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -40,6 +41,7 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   isBloodMoonMode = false,
   isAbyssalMode = false,
   isGuildWarMode = false,
+  isPantheonMode = false,
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
@@ -53,6 +55,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
           {isArenaMode ? (
             <Swords className="w-12 h-12 text-rose-400" />
+          ) : isPantheonMode ? (
+            <Crown className="w-12 h-12 text-amber-300" />
           ) : isGuildWarMode ? (
             <Shield className="w-12 h-12 text-emerald-300" />
           ) : isAbyssalMode ? (
@@ -88,6 +92,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
           {isArenaMode
             ? 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
+            : isPantheonMode
+            ? 'Viễn Chinh Điện Thần 3D · 3 Tầng Thần Chủ'
             : isGuildWarMode
             ? 'Chiến Trường Bang Hội 3D · 75 Giây'
             : isAbyssalMode
@@ -115,6 +121,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
           {isArenaMode
             ? `VS · ${arenaOpponentName || 'Kình Địch'}`
+            : isPantheonMode
+            ? 'Viễn Chinh Điện Thần Hoàng Đạo'
             : isGuildWarMode
             ? 'Chiến Trường Bang Hội 3D'
             : isAbyssalMode
@@ -143,6 +151,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs text-slate-300 font-semibold">
           {isArenaMode
             ? 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
+            : isPantheonMode
+            ? 'Đánh bại liên tiếp 3 Thần Chủ Điện Thần dưới sức mạnh Chúc Phúc để săn Thần Tinh nâng Hào Quang 3D!'
             : isGuildWarMode
             ? 'Chiếm giữ 3 Trụ Tinh Thể và tiêu diệt Hộ Vệ Chiến Trường trong 75 giây để tích Điểm Bang!'
             : isAbyssalMode
