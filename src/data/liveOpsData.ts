@@ -309,6 +309,33 @@ export function countClaimableAchievements(save: SaveData): number {
 
 export const EVENT_BANNERS = [
   {
+    id: 'event_world_boss',
+    badge: 'LIÊN SERVER · TOP 1',
+    title: 'Boss Thế Giới Cửu Thiên & Bảng Vinh Danh',
+    subtitle: 'Đua Top Sát Thương 60 giây toàn server để nhận Khung Long Hồn, Huy Hiệu & Ngọc Hồn!',
+    ctaLabel: 'Đua Top Boss',
+    target: 'world_boss' as const,
+    accent: 'amber' as const,
+  },
+  {
+    id: 'event_crystal_defense',
+    badge: 'THỦ THÀNH 3D',
+    title: 'Thủ Thành Pha Lê Tinh Linh · Săn Cánh Hoàng Đạo',
+    subtitle: 'Bảo vệ Pha Lê qua 6 đợt quái 3D để thu thập Lông Vũ Tinh Tú mở khóa Đôi Cánh!',
+    ctaLabel: 'Thủ Pha Lê',
+    target: 'crystal_defense' as const,
+    accent: 'emerald' as const,
+  },
+  {
+    id: 'event_auction_house',
+    badge: 'GIAO DỊCH TỰ DO',
+    title: 'Sàn Đấu Giá Tinh Giới · Mua Bán Trang Bị & Ngọc',
+    subtitle: 'Đấu giá, mua đứt Thánh Vật [S] và ký gửi vật phẩm dư lấy Ngọc Hồn mỗi ngày.',
+    ctaLabel: 'Mở Sàn Đấu Giá',
+    target: 'auction_house' as const,
+    accent: 'purple' as const,
+  },
+  {
     id: 'event_constellation',
     badge: '12 CHÒM SAO',
     title: 'Bản Đồ 12 Chòm Sao · Thức Tỉnh Bệ Tinh Tú 3D',

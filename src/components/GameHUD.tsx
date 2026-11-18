@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Crown, Flame, Heart, Pause, Skull, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowUp, Crown, Flame, Gem, Heart, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import { SKILLS_CATALOG } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import {
@@ -228,6 +228,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span>
                 {hud.isArenaMode
                   ? `Đấu Trường 1v1 · ${hud.arenaTimeLeft ?? 45}s`
+                  : hud.isCrystalDefenseMode
+                  ? `Thủ Thành Pha Lê · Đợt ${hud.crystalWave ?? 1}/${hud.crystalTotalWaves ?? 6}`
+                  : hud.isWorldBossMode
+                  ? `Boss Thế Giới · ${hud.worldBossTimeLeft ?? 60}s`
                   : hud.isCoopRaidMode
                   ? `Co-op Raid · ${
                       hud.coopDifficulty === 'mythic'
@@ -254,6 +258,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
               {hud.isArenaMode
                 ? `Đối thủ: ${hud.arenaOpponentName ?? 'Kình Địch'}`
+                : hud.isCrystalDefenseMode
+                ? `Bảo vệ Pha Lê · Còn ${hud.enemiesRemaining} quái công thành`
+                : hud.isWorldBossMode
+                ? `Sát thương: ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} · Hạng #${hud.worldBossRank ?? 9}`
                 : hud.isGuildBossMode
                 ? `Tổng ST: ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')}`
                 : hud.portalOpen
@@ -378,7 +386,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 )}
               </div>
               <span className="font-mono-nums text-rose-200 shrink-0">
-                {hud.isGuildBossMode
+                {hud.isWorldBossMode
+                  ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
+                  : hud.isGuildBossMode
                   ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
                   : `${Math.max(0, hud.bossHp)} / ${hud.bossMaxHp}`}
               </span>
@@ -397,6 +407,51 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 style={{ width: `${bossHpPct}%` }}
               />
             </div>
+          </div>
+        )}
+
+        {/* Crystal Defense Spirit Crystal HP Bar */}
+        {hud.isCrystalDefenseMode && (() => {
+          const cHp = Math.max(0, hud.crystalHp ?? 0);
+          const cMax = Math.max(1, hud.crystalMaxHp ?? 1);
+          const cPct = Math.max(0, Math.min(100, (cHp / cMax) * 100));
+          return (
+            <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#071526]/95 border border-sky-400/70 shadow-2xl">
+              <div className="flex items-center justify-between gap-2 text-xs font-black mb-1.5">
+                <span className="flex items-center gap-1.5 text-sky-200 truncate">
+                  <Gem className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                  <span>Pha Lê Tinh Linh (Trung Tâm)</span>
+                </span>
+                <span className="font-mono-nums text-cyan-200 shrink-0">
+                  {cHp.toLocaleString('vi-VN')} / {cMax.toLocaleString('vi-VN')} ({Math.round(cPct)}%)
+                </span>
+              </div>
+              <div className="h-2.5 rounded-full bg-slate-950 border border-sky-400/35 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-150 ${
+                    cPct > 55
+                      ? 'bg-gradient-to-r from-sky-500 to-cyan-300'
+                      : cPct > 28
+                      ? 'bg-gradient-to-r from-amber-500 to-yellow-300'
+                      : 'bg-gradient-to-r from-rose-600 to-orange-400'
+                  }`}
+                  style={{ width: `${cPct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* World Boss Live Cross-Server Rank Climber Strip */}
+        {hud.isWorldBossMode && (
+          <div className="w-full max-w-md mx-auto flex items-center justify-between gap-2 rounded-xl px-3.5 py-1.5 bg-[#1b081b]/95 border border-amber-400/55 text-[11px] font-black">
+            <span className="flex items-center gap-1.5 text-amber-200">
+              <Trophy className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Đua Top Liên Server</span>
+            </span>
+            <span className="font-mono-nums text-emerald-300">
+              Hạng Hiện Tại: #{hud.worldBossRank ?? 9}
+            </span>
           </div>
         )}
         {/* Co-op AI Allies Live Strip & Elemental Tower Affinity Banner */}

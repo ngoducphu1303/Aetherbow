@@ -51,6 +51,16 @@ import {
   normalizeElementalTowers,
   normalizeGrowthFund,
 } from './wave6Data';
+import {
+  MYTHIC_BADGE_MAP,
+  getWingStats,
+  isMonthlyCardActive,
+  normalizeAuctionHouse,
+  normalizeCrystalDefense,
+  normalizeMonthlyPrivilege,
+  normalizeTopUpEvolution,
+  normalizeWorldBoss,
+} from './wave7Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -641,7 +651,7 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     critChance += auraDef.critBonus;
   }
 
-  // Apply Claimed Season Honor Medals flat bonuses
+  // Apply Claimed Season Honor Medals & Mythic Badges
   const medalSet = new Set(save.seasonMedalsClaimed ?? []);
   for (const m of SEASON_MEDALS) {
     if (medalSet.has(m.id)) {
@@ -649,13 +659,42 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       maxHp += m.hpBonus;
     }
   }
+  const mythicBadgeSet = new Set(save.claimedMythicBadges ?? []);
+  for (const bId of mythicBadgeSet) {
+    const bDef = MYTHIC_BADGE_MAP[bId];
+    if (bDef) {
+      attack += bDef.atkBonus;
+      maxHp += bDef.hpBonus;
+      bossDamageBonus += bDef.bossDmgBonus;
+    }
+  }
+
+  // Apply Equipped 3D Zodiac Wings
+  const equippedWingId = save.equippedWingId ?? null;
+  let wingLevel = 1;
+  let wingAspd = 0;
+  if (equippedWingId && (save.unlockedWings ?? []).includes(equippedWingId)) {
+    wingLevel = Math.max(1, save.wingLevels?.[equippedWingId] ?? 1);
+    const wStats = getWingStats(equippedWingId, wingLevel);
+    attack += wStats.atk;
+    maxHp += wStats.hp;
+    critChance += wStats.crit;
+    wingAspd = wStats.aspd;
+  }
+
+  // Apply Monthly Privilege Card passive buffs
+  const monthlyPriv = normalizeMonthlyPrivilege(save.monthlyPrivilege);
+  const hasSilverCard = isMonthlyCardActive(monthlyPriv.silver);
+  const hasRoyalCard = isMonthlyCardActive(monthlyPriv.royal);
+  const cardGoldBonus = (hasSilverCard ? 0.2 : 0) + (hasRoyalCard ? 0.35 : 0);
+  const cardAtkPct = hasRoyalCard ? 0.08 : 0;
 
   // Apply Zodiac Guild Tech + 12 Constellations + Talents
   const guildTech = computeGuildTechBonuses(save.guild);
   const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
   attack = Math.round(
-    (attack + tal.atk + constellation.atkFlat) * (1 + runeAtkPct + subAtkPct + guildTech.atkPct)
+    (attack + tal.atk + constellation.atkFlat) * (1 + runeAtkPct + subAtkPct + guildTech.atkPct + cardAtkPct)
   );
   maxHp = Math.round(
     (maxHp + tal.hp + constellation.hpFlat) * (1 + runeHpPct + subHpPct + guildTech.hpPct)
@@ -664,14 +703,14 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     0.92,
     critChance + tal.critChance + guildTech.critBonus + constellation.critBonus
   );
-  attackSpeedMult += tal.aspdMult + constellation.aspdBonus;
+  attackSpeedMult += tal.aspdMult + constellation.aspdBonus + wingAspd;
   moveSpeedMult += tal.moveSpeedMult;
   damageReduction = Math.min(
     0.72,
     damageReduction + tal.damageReduction + constellation.drBonus
   );
   const moveSpeed = 7.6 * moveSpeedMult;
-  const goldGainMult = tal.goldGainMult + guildTech.goldPct + constellation.goldBonus;
+  const goldGainMult = tal.goldGainMult + guildTech.goldPct + constellation.goldBonus + cardGoldBonus;
 
   const powerRating = Math.round(
     attack * attackSpeedMult * (1 + critChance * 0.85) * 3.1 +
@@ -679,7 +718,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       damageReduction * 420 +
       tal.stageHealPct * 600 +
       bossDamageBonus * 450 +
-      constellation.totalStars * 18
+      constellation.totalStars * 18 +
+      (equippedWingId ? wingLevel * 24 : 0)
   );
 
   return {
@@ -709,6 +749,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     constellationIceBonus: constellation.iceDmgBonus,
     constellationStormBonus: constellation.stormDmgBonus,
     constellationLevels: constellation.levelsArray,
+    equippedWingId,
+    wingLevel,
   };
 }
 
@@ -855,6 +897,19 @@ export function createInitialSaveData(): SaveData {
     coopRaid: normalizeCoopRaid(),
     elementalTowers: normalizeElementalTowers(),
     commercialPackClaims: {},
+    wingFeathers: 22,
+    unlockedWings: [],
+    wingLevels: {},
+    equippedWingId: null,
+    unlockedAvatarFrames: ['default_gold'],
+    equippedAvatarFrameId: 'default_gold',
+    claimedMythicBadges: [],
+    equippedMythicBadgeId: null,
+    monthlyPrivilege: normalizeMonthlyPrivilege(),
+    topUpEvolution: normalizeTopUpEvolution(),
+    auctionHouse: normalizeAuctionHouse(),
+    crystalDefense: normalizeCrystalDefense(),
+    worldBoss: normalizeWorldBoss(),
   };
 }
 

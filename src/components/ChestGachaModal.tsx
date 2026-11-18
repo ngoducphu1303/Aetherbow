@@ -135,6 +135,18 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
           className="absolute inset-0 pointer-events-none"
           style={{ background: stage === 'revealed' ? RARITY_GLOW_BG[highestRarity] : undefined }}
         />
+        {stage === 'revealed' &&
+          (highestRarity === Rarity.EPIC ||
+            highestRarity === Rarity.LEGENDARY ||
+            highestRarity === Rarity.MYTHIC) && (
+            <div
+              aria-hidden="true"
+              className="absolute -inset-24 pointer-events-none opacity-25"
+              style={{
+                background: `repeating-conic-gradient(from 0deg, ${rMeta.color}55 0deg 10deg, transparent 10deg 26deg)`,
+              }}
+            />
+          )}
 
         {stage === 'shaking' ? (
           <div className="relative z-10 py-10 flex flex-col items-center gap-4">
@@ -188,6 +200,39 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                 </button>
               )}
             </div>
+
+            {(() => {
+              const allRarities = [
+                ...(reveal.gears ?? []).map((g) => g.rarity),
+                ...(reveal.runes ?? []).map((r) => r.rarity),
+              ];
+              const sTierCount = (reveal.gears ?? []).filter(
+                (g) => GEAR_TEMPLATES[g.templateId]?.isSTier
+              ).length;
+              const counts = RARITY_ORDER.map((r) => ({
+                rarity: r,
+                meta: RARITY_META[r],
+                count: allRarities.filter((x) => x === r).length,
+              })).filter((c) => c.count > 0);
+
+              return (
+                <div className="flex flex-wrap items-center justify-center gap-1.5 shrink-0">
+                  {counts.map((c) => (
+                    <span
+                      key={c.rarity}
+                      className={`px-2 py-0.5 rounded-lg border text-[10px] font-mono-nums font-black bg-[#070b1a] ${c.meta.borderClass} ${c.meta.textClass}`}
+                    >
+                      {c.meta.label} ×{c.count}
+                    </span>
+                  ))}
+                  {sTierCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-lg border border-amber-300/70 bg-amber-400/15 text-[10px] font-mono-nums font-black text-amber-300">
+                      Trang Bị [S] ×{sTierCount}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 overflow-y-auto a2-scroll py-1">
               {(reveal.gears ?? []).map((g, idx) => {

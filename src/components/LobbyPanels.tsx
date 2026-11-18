@@ -26,7 +26,9 @@ import {
 import flashDealVaultArt from '../assets/images/flash_deal_vault_art_1794973982335.jpg';
 import growthFundVaultArt from '../assets/images/growth_fund_vault_1795004417139.jpg';
 import petSanctuaryArt from '../assets/images/pet_sanctuary_art_1794977269592.jpg';
+import privilegeVaultArt from '../assets/images/privilege_royal_vault_1795005956277.jpg';
 import royalChestArt from '../assets/images/royal_zodiac_chest_1794971375438.jpg';
+import zodiacWingsArt from '../assets/images/zodiac_wings_sanctum_1795005955367.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import {
   CHEST_DROP_RATES,
@@ -82,17 +84,34 @@ import {
   normalizeGrowthFund,
 } from '../data/wave6Data';
 import {
+  AVATAR_FRAMES,
+  MAX_WING_LEVEL,
+  MONTHLY_CARDS,
+  TOPUP_EVOLUTION_MILESTONES,
+  ZODIAC_WINGS,
+  canClaimMonthlyCardDaily,
+  countClaimableWave7Rewards,
+  getWingStats,
+  getWingUpgradeCost,
+  isMonthlyCardActive,
+  normalizeMonthlyPrivilege,
+  normalizeTopUpEvolution,
+} from '../data/wave7Data';
+import {
   AuraStyleId,
+  AvatarFrameId,
   ComputedPlayerStats,
   FlashDealItem,
   GearInstance,
   GearSlot,
   HeroId,
   HeroSkinId,
+  MonthlyCardTier,
   PetId,
   Rarity,
   RuneInstance,
   SaveData,
+  WingId,
 } from '../types/game';
 import {
   ChestSvg,
@@ -104,6 +123,8 @@ import {
   SLOT_LABELS,
   SoulGemIcon,
   StarDustIcon,
+  WingFeatherIcon,
+  ZodiacAvatar,
 } from './GameIcons';
 
 interface GearPanelProps {
@@ -594,16 +615,83 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                           </div>
                         )}
 
-                        {/* Detailed 6-Stat Comparison Table vs Currently Equipped */}
-                        {!isEquipped && equippedItem && (
-                          <div className="mt-2.5 bg-[#060916]/95 border border-amber-400/25 rounded-xl p-2.5">
-                            <div className="flex items-center justify-between text-[10px] font-black text-amber-200 mb-1.5">
-                              <span>
-                                So sánh với đang mặc ({GEAR_TEMPLATES[equippedItem.templateId]?.name})
-                              </span>
-                              <span className="text-slate-400 font-semibold">Đã gồm Bảo Thạch</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                        {/* Side-by-Side Visual Gear Comparison + Detailed 7-Stat Table */}
+                        {!isEquipped && equippedItem && (() => {
+                          const eqTpl = GEAR_TEMPLATES[equippedItem.templateId];
+                          const eqMeta = RARITY_META[equippedItem.rarity];
+                          const lcDiff = itemScore - eqScore;
+                          return (
+                            <div className="mt-2.5 bg-[#060916]/95 border border-amber-400/30 rounded-xl p-2.5 space-y-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div className="flex items-center gap-2 rounded-lg bg-[#090f24] border border-slate-700/80 p-2 min-w-0">
+                                  {eqTpl && (
+                                    <div className={`a2-item-card w-10 h-10 shrink-0 ${RARITY_FRAME_CLASS[equippedItem.rarity]}`}>
+                                      <div className="a2-item-inner flex items-center justify-center">
+                                        <GearSlotSvg
+                                          slot={eqTpl.slot}
+                                          weaponArchetype={eqTpl.weaponArchetype}
+                                          accentHex={eqTpl.visualAccentHex}
+                                          className="w-6 h-6"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <div className="text-[9px] font-black uppercase text-slate-400">
+                                      Đang Mặc · Lv.{equippedItem.level}
+                                    </div>
+                                    <div className={`text-[11px] font-black truncate ${eqMeta.textClass}`}>
+                                      {eqTpl?.name ?? equippedItem.templateId}
+                                    </div>
+                                    <div className="text-[10px] font-mono-nums text-slate-300">
+                                      {eqScore} LC
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 rounded-lg bg-[#0c162b] border border-amber-400/45 p-2 min-w-0">
+                                  <div className={`a2-item-card w-10 h-10 shrink-0 ${RARITY_FRAME_CLASS[selectedItem.rarity]}`}>
+                                    <div className="a2-item-inner flex items-center justify-center">
+                                      <GearSlotSvg
+                                        slot={tpl.slot}
+                                        weaponArchetype={tpl.weaponArchetype}
+                                        accentHex={tpl.visualAccentHex}
+                                        className="w-6 h-6"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="text-[9px] font-black uppercase text-amber-300">
+                                        Đang Chọn · Lv.{selectedItem.level}
+                                      </span>
+                                      <span
+                                        className={`text-[9px] font-mono-nums font-black ${
+                                          lcDiff > 0
+                                            ? 'text-emerald-300'
+                                            : lcDiff < 0
+                                            ? 'text-rose-400'
+                                            : 'text-slate-400'
+                                        }`}
+                                      >
+                                        {lcDiff > 0 ? `+${lcDiff}` : lcDiff} LC
+                                      </span>
+                                    </div>
+                                    <div className={`text-[11px] font-black truncate ${rMeta.textClass}`}>
+                                      {tpl.name}
+                                    </div>
+                                    <div className="text-[10px] font-mono-nums text-amber-200">
+                                      {itemScore} LC
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] font-black text-amber-200">
+                                <span>Chi Tiết Chênh Lệch Chỉ Số</span>
+                                <span className="text-slate-400 font-semibold">Đã gồm Bảo Thạch</span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                               {comparisonRows.map((row) => {
                                 const improved = row.diff > 0.05;
                                 const worse = row.diff < -0.05;
@@ -638,9 +726,10 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                                   </div>
                                 );
                               })}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -932,6 +1021,11 @@ interface HeroesPanelProps {
   onEquipSkin: (heroId: HeroId, skinId: HeroSkinId) => void;
   onUnlockAura: (auraId: AuraStyleId, currency: 'gold' | 'gems') => void;
   onEquipAura: (auraId: AuraStyleId) => void;
+  onUnlockWing?: (wingId: WingId, currency: 'gems' | 'feathers') => void;
+  onEquipWing?: (wingId: WingId | null) => void;
+  onUpgradeWing?: (wingId: WingId) => void;
+  onUnlockAvatarFrame?: (frameId: AvatarFrameId) => void;
+  onEquipAvatarFrame?: (frameId: AvatarFrameId) => void;
   onPreviewUltimate?: (heroId: HeroId) => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
@@ -951,12 +1045,18 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onEquipSkin,
   onUnlockAura,
   onEquipAura,
+  onUnlockWing,
+  onEquipWing,
+  onUpgradeWing,
+  onUnlockAvatarFrame,
+  onEquipAvatarFrame,
   onPreviewUltimate,
   onRotateHero,
   onResetHeroRotation,
 }) => {
-  const [heroSubTab, setHeroSubTab] = useState<'roster' | 'pets' | 'cosmetics'>('roster');
+  const [heroSubTab, setHeroSubTab] = useState<'roster' | 'pets' | 'cosmetics' | 'wings'>('roster');
   const [petBannerErr, setPetBannerErr] = useState(false);
+  const [wingsBannerErr, setWingsBannerErr] = useState(false);
 
   const hero = HERO_MAP[previewHeroId] ?? HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const unlocked = save.unlockedHeroes.includes(hero.id);
@@ -970,6 +1070,12 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const activeSkinId = save.equippedSkinByHero?.[hero.id] ?? 'default';
   const unlockedAuras = save.unlockedAuras ?? ['zodiac_gold'];
   const activeAuraId = save.equippedAuraId ?? 'zodiac_gold';
+  const unlockedWings = save.unlockedWings ?? [];
+  const wingLevels = save.wingLevels ?? {};
+  const equippedWingId = save.equippedWingId ?? null;
+  const wingFeathers = save.wingFeathers ?? 0;
+  const unlockedFrames = save.unlockedAvatarFrames ?? ['default_gold'];
+  const equippedFrameId = save.equippedAvatarFrameId ?? 'default_gold';
   const petEssence = save.petEssence ?? 0;
 
   const handleHeroDragDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1207,12 +1313,35 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 <Palette className="w-3.5 h-3.5 shrink-0" />
                 <span>Trang Phục &amp; Hào Quang</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  setHeroSubTab('wings');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  heroSubTab === 'wings'
+                    ? 'bg-gradient-to-b from-sky-400 to-indigo-600 text-white'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Cánh 3D &amp; Khung ({unlockedWings.length}/{ZODIAC_WINGS.length})</span>
+              </button>
             </div>
 
             {heroSubTab === 'pets' && (
               <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-emerald-300">
                 <PetEssenceIcon className="w-3.5 h-3.5 shrink-0" />
                 <span>Tinh Chất: {petEssence}</span>
+              </div>
+            )}
+
+            {heroSubTab === 'wings' && (
+              <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-sky-300">
+                <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Lông Vũ Tinh Tú: {wingFeathers}</span>
               </div>
             )}
           </div>
@@ -1648,6 +1777,232 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
             </div>
           )}
+
+          {/* SUB-TAB 4: 3D ZODIAC WINGS & AVATAR FRAMES */}
+          {heroSubTab === 'wings' && (
+            <div className="space-y-5 pb-6">
+              <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 sm:grid-cols-12 items-center">
+                <div className="sm:col-span-5 h-32 sm:h-36 bg-[#0b1229] relative overflow-hidden">
+                  {!wingsBannerErr ? (
+                    <img
+                      src={zodiacWingsArt}
+                      alt="Thánh Địa Cánh Hoàng Đạo 3D"
+                      referrerPolicy="no-referrer"
+                      onError={() => setWingsBannerErr(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-sky-500/25 to-amber-500/25 flex items-center justify-center">
+                      <WingFeatherIcon className="w-12 h-12" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                </div>
+
+                <div className="sm:col-span-7 p-4 flex flex-col justify-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-sky-300">
+                    Cánh Hoàng Đạo 3D Gắn Lưng · Lv.1–{MAX_WING_LEVEL}
+                  </span>
+                  <h4 className="font-display text-base sm:text-lg font-black text-white">
+                    Thức Tỉnh Thiên Dực · Đập Cánh Trực Tiếp Trong Sảnh &amp; Trận
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Thu thập Lông Vũ Tinh Tú từ <strong>Thủ Thành Pha Lê 3D</strong> và{' '}
+                    <strong>Boss Thế Giới</strong> để mở khóa, đeo lên lưng Anh Hùng và cường hóa tối đa!
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {ZODIAC_WINGS.map((w) => {
+                  const isOwned = unlockedWings.includes(w.id);
+                  const isEquipped = equippedWingId === w.id;
+                  const lv = wingLevels[w.id] ?? 1;
+                  const stats = getWingStats(w.id, lv);
+                  const upCost = getWingUpgradeCost(lv);
+                  const maxLv = lv >= MAX_WING_LEVEL;
+                  const pColor = `#${w.primaryHex.toString(16).padStart(6, '0')}`;
+                  const sColor = `#${w.secondaryHex.toString(16).padStart(6, '0')}`;
+
+                  return (
+                    <div
+                      key={w.id}
+                      className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
+                        isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="w-10 h-10 rounded-xl border border-amber-300/60 flex items-center justify-center shrink-0"
+                              style={{
+                                background: `linear-gradient(135deg, ${pColor}33, ${sColor}22)`,
+                              }}
+                            >
+                              <WingFeatherIcon className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <span className="text-[10px] font-black uppercase text-amber-300">
+                                {w.badge} {isOwned ? `· Cấp ${lv}/${MAX_WING_LEVEL}` : ''}
+                              </span>
+                              <h5 className="font-display text-sm sm:text-base font-black text-white">
+                                {w.name}
+                              </h5>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed">{w.desc}</p>
+
+                        <div className="grid grid-cols-4 gap-1.5 mt-2.5 text-center rounded-xl bg-[#070b1a] border border-amber-400/20 p-2 text-[10px] font-mono-nums font-bold">
+                          <div>
+                            <div className="text-slate-400">ATK</div>
+                            <div className="text-amber-300">+{stats.atk}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">HP</div>
+                            <div className="text-emerald-300">+{stats.hp}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Crit</div>
+                            <div className="text-rose-300">+{Math.round(stats.crit * 1000) / 10}%</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Tốc</div>
+                            <div className="text-sky-300">+{Math.round(stats.aspd * 1000) / 10}%</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {isOwned ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.05);
+                                onEquipWing?.(isEquipped ? null : w.id);
+                              }}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                                isEquipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                              }`}
+                            >
+                              {isEquipped ? 'Tháo Cánh' : 'Đeo Cánh 3D'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={maxLv || wingFeathers < upCost.feathers || save.gold < upCost.gold}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUpgradeWing?.(w.id);
+                              }}
+                              className="a2-yellow-btn flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              {maxLv
+                                ? 'Cấp Tối Đa'
+                                : `Cường Hóa (${upCost.feathers} Lông + ${upCost.gold} Vàng)`}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={wingFeathers < w.unlockFeathers}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUnlockWing?.(w.id, 'feathers');
+                              }}
+                              className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <WingFeatherIcon className="w-3.5 h-3.5" />
+                              <span>Mở · {w.unlockFeathers} Lông</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={save.gems < w.unlockGems}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUnlockWing?.(w.id, 'gems');
+                              }}
+                              className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                              <span>Mở · {w.unlockGems} Ngọc</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Quick Avatar Frame Showcase */}
+              <div className="pt-2 border-t border-amber-400/20">
+                <h4 className="font-display text-sm font-black text-amber-200 mb-2.5">
+                  Khung Avatar Hoàng Đạo
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                  {AVATAR_FRAMES.map((frame) => {
+                    const owned = unlockedFrames.includes(frame.id);
+                    const equipped = equippedFrameId === frame.id;
+                    return (
+                      <div
+                        key={frame.id}
+                        className={`rounded-2xl p-3 flex flex-col items-center text-center justify-between gap-2 ${
+                          equipped ? 'cel-panel-ornate' : 'cel-panel'
+                        }`}
+                      >
+                        <ZodiacAvatar
+                          heroId={hero.id}
+                          accentHex={hero.accentHex}
+                          cloakHex={hero.cloakHex}
+                          hairHex={hero.hairHex}
+                          frameId={frame.id}
+                          sizeClass="w-11 h-11"
+                        />
+                        <div className="text-[11px] font-black text-white leading-tight">
+                          {frame.name}
+                        </div>
+                        {owned ? (
+                          <button
+                            type="button"
+                            disabled={equipped}
+                            onClick={() => {
+                              soundEngine.playUiClick(1.05);
+                              onEquipAvatarFrame?.(frame.id);
+                            }}
+                            className={`w-full py-1.5 rounded-lg text-[10px] font-black cursor-pointer ${
+                              equipped ? 'a2-emerald-btn' : 'a2-yellow-btn'
+                            }`}
+                          >
+                            {equipped ? 'Đang Dùng' : 'Chọn'}
+                          </button>
+                        ) : frame.unlockGems ? (
+                          <button
+                            type="button"
+                            disabled={save.gems < frame.unlockGems}
+                            onClick={() => {
+                              soundEngine.playLevelUp();
+                              onUnlockAvatarFrame?.(frame.id);
+                            }}
+                            className="a2-purple-btn w-full py-1.5 rounded-lg text-[10px] font-black cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                          >
+                            {frame.unlockGems} Ngọc
+                          </button>
+                        ) : (
+                          <span className="text-[9px] font-bold text-slate-400">
+                            {frame.tierLabel}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1988,7 +2343,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   );
 };
 
-export type ShopSectionTab = 'packs' | 'arena_shop' | 'deals' | 'gacha';
+export type ShopSectionTab = 'privilege' | 'packs' | 'arena_shop' | 'deals' | 'gacha';
 
 interface ShopPanelProps {
   save: SaveData;
@@ -2004,6 +2359,9 @@ interface ShopPanelProps {
   onClaimAllGrowthFund: () => void;
   onBuyArenaShopOffer: (offer: ArenaShopOffer) => void;
   onBuyCommercialPack: (pack: CommercialPackItem) => void;
+  onBuyMonthlyCard?: (tier: MonthlyCardTier) => void;
+  onClaimMonthlyCardDaily?: (tier: MonthlyCardTier) => void;
+  onClaimTopUpEvolutionTier?: (tierId: string) => void;
   onOpenVipModal: () => void;
   onOpenArenaModal: () => void;
 }
@@ -2011,7 +2369,7 @@ interface ShopPanelProps {
 export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   save,
   powerRating,
-  initialSection = 'packs',
+  initialSection = 'privilege',
   onOpenChestWithGacha,
   onBuyFlashDeal,
   onUnlockGrowthFundPremium,
@@ -2019,6 +2377,9 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   onClaimAllGrowthFund,
   onBuyArenaShopOffer,
   onBuyCommercialPack,
+  onBuyMonthlyCard,
+  onClaimMonthlyCardDaily,
+  onClaimTopUpEvolutionTier,
   onOpenVipModal,
   onOpenArenaModal,
 }) => {
@@ -2026,6 +2387,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const [chestImgFailed, setChestImgFailed] = useState(false);
   const [vaultBannerFailed, setVaultBannerFailed] = useState(false);
   const [growthImgFailed, setGrowthImgFailed] = useState(false);
+  const [privilegeImgFailed, setPrivilegeImgFailed] = useState(false);
   const [oddsModalVariant, setOddsModalVariant] = useState<
     'iron' | 'mythic' | 'rune_bag' | 'rune_rare' | null
   >(null);
@@ -2044,6 +2406,9 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const arenaShop = normalizeArenaShop(save.arenaShop);
   const hasVip = isVipActive(save.vip);
   const packClaims = save.commercialPackClaims ?? {};
+  const mp = normalizeMonthlyPrivilege(save.monthlyPrivilege);
+  const tu = normalizeTopUpEvolution(save.topUpEvolution);
+  const claimableWave7Count = countClaimableWave7Rewards(save);
 
   const chests: Array<{
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare';
@@ -2121,6 +2486,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
           <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
             {(
               [
+                ['privilege', 'Thẻ Tháng & Tích Nạp', claimableWave7Count],
                 ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
                 ['arena_shop', 'Shop Xu Arena', 0],
                 ['deals', 'Flash Sale', 0],
@@ -2150,6 +2516,203 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
             ))}
           </div>
         </div>
+
+        {/* SECTION 0: MONTHLY PRIVILEGE CARDS & TOP-UP EVOLUTION */}
+        {storeSection === 'privilege' && (
+          <section className="space-y-4">
+            <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-stretch">
+              <div className="md:col-span-5 relative min-h-[150px] bg-[#0b1229]">
+                {!privilegeImgFailed ? (
+                  <img
+                    src={privilegeVaultArt}
+                    alt="Đặc Quyền Tháng & Nạp Tiến Hóa"
+                    referrerPolicy="no-referrer"
+                    onError={() => setPrivilegeImgFailed(true)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-amber-500/25 to-rose-500/25 flex items-center justify-center">
+                    <Crown className="w-10 h-10 text-amber-300" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-mono-nums text-[10px] font-black shadow">
+                  ĐẶC QUYỀN HOÀNG GIA
+                </span>
+              </div>
+
+              <div className="md:col-span-7 p-4 flex flex-col justify-between gap-2.5">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                    Thẻ Đặc Quyền 30 Ngày &amp; Quà Tích Lũy Nạp Tiến Hóa
+                  </span>
+                  <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                    Hoàn Trả Ngọc Hồn Hằng Ngày + Tích Điểm Nhận Cánh Phượng Hoàng!
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    Mỗi lần mua Thẻ Tháng, Gói Nạp, VIP hoặc Battle Pass đều cộng Điểm Nạp Tiến Hóa để mở khóa Trang Bị [S], Khung VIP &amp; Cánh 3D.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-400/20">
+                  <span className="font-mono-nums text-xs font-black text-amber-200">
+                    Điểm Tích Lũy Hiện Tại: {tu.points} / 600 Điểm
+                  </span>
+                  <div className="w-full sm:w-52 h-2 rounded-full bg-slate-950 border border-amber-400/30 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400"
+                      style={{ width: `${Math.min(100, Math.round((tu.points / 600) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Dual Monthly Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {MONTHLY_CARDS.map((card) => {
+                const progress = card.tier === 'silver_astral' ? mp.silver : mp.royal;
+                const active = isMonthlyCardActive(progress, today);
+                const canClaim = canClaimMonthlyCardDaily(progress, today);
+
+                return (
+                  <div
+                    key={card.tier}
+                    className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
+                      card.tier === 'royal_zodiac' ? 'cel-panel-ornate' : 'cel-panel'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="px-2 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-[10px] font-black text-amber-300">
+                          {card.badge}
+                        </span>
+                        <span className="font-mono-nums text-[10px] font-black text-emerald-300">
+                          {active ? `Hiệu lực đến ${progress.activeUntilDate}` : 'Chưa kích hoạt'}
+                        </span>
+                      </div>
+                      <h4 className="font-display text-base font-black text-white">{card.name}</h4>
+                      <p className="text-[11px] text-slate-300 mt-0.5">{card.subtitle}</p>
+                      <ul className="mt-2.5 space-y-1 text-[11px] text-slate-200">
+                        {card.perks.map((p, idx) => (
+                          <li key={idx} className="flex items-start gap-1.5">
+                            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {active && (
+                        <button
+                          type="button"
+                          disabled={!canClaim}
+                          onClick={() => {
+                            soundEngine.playVictory();
+                            onClaimMonthlyCardDaily?.(card.tier);
+                          }}
+                          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                            canClaim
+                              ? 'a2-emerald-btn'
+                              : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-default'
+                          }`}
+                        >
+                          {canClaim ? 'Nhận Quà Hôm Nay' : 'Đã Nhận Hôm Nay'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={save.gems < card.gemCost}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onBuyMonthlyCard?.(card.tier);
+                        }}
+                        className="a2-purple-btn flex-1 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                      >
+                        <SoulGemIcon className="w-3.5 h-3.5" />
+                        <span>
+                          {active ? `Gia Hạn +30d · ${card.gemCost}` : `Kích Hoạt · ${card.gemCost} Ngọc`}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 6-Tier Top-Up Evolution Track */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-display text-sm sm:text-base font-black text-amber-200">
+                  Quà Tích Lũy Nạp Tiến Hóa (6 Bậc Hoàng Đạo)
+                </h3>
+                <span className="font-mono-nums text-xs font-bold text-slate-300">
+                  {tu.points} Điểm
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {TOPUP_EVOLUTION_MILESTONES.map((ms) => {
+                  const met = tu.points >= ms.pointsRequired;
+                  const claimed = tu.claimedTierIds.includes(ms.id);
+
+                  return (
+                    <div
+                      key={ms.id}
+                      className={`rounded-2xl border p-3.5 flex flex-col justify-between gap-2.5 ${
+                        claimed
+                          ? 'bg-[#071512]/90 border-emerald-400/40'
+                          : met
+                          ? 'bg-amber-400/10 border-amber-300/80'
+                          : 'bg-[#070b1a]/95 border-slate-800'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-[10px] font-black text-amber-300">
+                            {ms.tierLabel}
+                          </span>
+                          <span className="font-mono-nums text-[10px] font-bold text-slate-300">
+                            {Math.min(tu.points, ms.pointsRequired)}/{ms.pointsRequired} Điểm
+                          </span>
+                        </div>
+                        <h4 className="font-display text-sm font-black text-white">{ms.title}</h4>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {ms.rewards.map((rw, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-lg bg-[#050814] border border-sky-400/30 text-[10px] font-bold text-sky-200"
+                            >
+                              {rw.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!met || claimed}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onClaimTopUpEvolutionTier?.(ms.id);
+                        }}
+                        className={`w-full py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:cursor-not-allowed ${
+                          claimed
+                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300'
+                            : met
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {claimed ? 'Đã Nhận Thưởng' : met ? 'Nhận Quà Tiến Hóa' : `Cần ${ms.pointsRequired} Điểm`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* SECTION 1: GROWTH FUND + VIP PASS + COMMERCIAL VALUE PACKS */}
         {storeSection === 'packs' && (

@@ -13,6 +13,10 @@ import {
   selectCoopAiAllies,
 } from '../data/wave6Data';
 import {
+  CRYSTAL_DEFENSE_TOTAL_WAVES,
+  computeWorldBossLiveRank,
+} from '../data/wave7Data';
+import {
   ArenaOpponent,
   ChapterDefinition,
   ComputedPlayerStats,
@@ -42,10 +46,12 @@ import {
   createPillarModel,
   createPortalModel,
   createShrineModel,
+  createSpiritCrystalModel,
   createUrnModel,
   EnemyModelRefs,
   HeroModelRefs,
   HeroVisualConfig,
+  SpiritCrystalRefs,
 } from './models';
 import {
   createContactShadowTexture,
@@ -260,6 +266,13 @@ export interface EngineCallbacks {
       isElementalTowerMode?: boolean;
       elementalTowerId?: ElementalTowerId;
       elementalTowerFloor?: number;
+      isCrystalDefenseMode?: boolean;
+      crystalWavesCleared?: number;
+      crystalHpPct?: number;
+      wingFeathers?: number;
+      isWorldBossMode?: boolean;
+      worldBossDamage?: number;
+      worldBossLiveRank?: number;
       starDust?: number;
       petEssence?: number;
       maxCombo?: number;
@@ -364,6 +377,14 @@ export class GameEngine {
   private elementalTowerId: ElementalTowerId = 'fire';
   private elementalTowerFloor = 0;
   private elementalWaveDefs: Array<Array<{ kind: EnemyKind; count: number; isElite?: boolean }>> = [];
+  private isCrystalDefenseMode = false;
+  private crystalWave = 0;
+  private crystalHp = 2400;
+  private crystalMaxHp = 2400;
+  private crystalRefs: SpiritCrystalRefs | null = null;
+  private isWorldBossMode = false;
+  private worldBossTimeLeft = 60;
+  private worldBossTotalDamage = 0;
   private starfallMesh!: THREE.InstancedMesh;
   private starfallEnabled = true;
   private starfallSeeds: Array<{
@@ -1215,6 +1236,8 @@ export class GameEngine {
     this.isArenaMode = false;
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
     this.currentChapter = ch;
     this.baseStats = stats;
 
@@ -1238,6 +1261,8 @@ export class GameEngine {
     this.isArenaMode = false;
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1259,6 +1284,8 @@ export class GameEngine {
     this.isArenaMode = false;
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1282,6 +1309,8 @@ export class GameEngine {
     this.isArenaMode = false;
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
     this.currentChapter = CHAPTERS[2] ?? CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1304,6 +1333,8 @@ export class GameEngine {
     this.isArenaMode = false;
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
     this.guildBossTimeLeft = 60;
     this.guildBossTotalDamage = 0;
     this.currentChapter = CHAPTERS[11] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
@@ -1341,6 +1372,8 @@ export class GameEngine {
     this.isCoopRaidMode = true;
     this.coopDifficulty = difficulty;
     this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
 
     const chIdx = difficulty === 'mythic' ? 11 : difficulty === 'heroic' ? 8 : 5;
     this.currentChapter = CHAPTERS[chIdx] ?? CHAPTERS[0];
@@ -1459,6 +1492,8 @@ export class GameEngine {
     this.isArenaMode = false;
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = true;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
     this.elementalTowerId = towerId;
     this.elementalTowerFloor = Math.max(1, startFloor);
     this.currentChapter = CHAPTERS[(tDef.chapterId - 1) % CHAPTERS.length] ?? CHAPTERS[0];
@@ -1482,6 +1517,8 @@ export class GameEngine {
     this.isGuildBossMode = false;
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
     this.isArenaMode = true;
     this.arenaTimeLeft = 45;
     this.arenaOpponentName = opponent.name;
@@ -1627,6 +1664,141 @@ export class GameEngine {
       laserLine,
     });
 
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  public startCrystalDefense(stats: ComputedPlayerStats): void {
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isWorldBossMode = false;
+    this.isCrystalDefenseMode = true;
+    this.crystalWave = 1;
+    const baseCrystalHp = Math.round(1800 + stats.maxHp * 1.65);
+    this.crystalMaxHp = baseCrystalHp;
+    this.crystalHp = baseCrystalHp;
+    this.currentChapter = CHAPTERS[4] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    this.resetRunState(stats);
+    this.ultCharge = 70;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'courtyard',
+      true,
+      `THỦ THÀNH PHA LÊ TINH LINH · ĐỢT 1/${CRYSTAL_DEFENSE_TOTAL_WAVES}`
+    );
+
+    this.px = 0;
+    this.pz = 3.8;
+    this.pFacing = Math.PI;
+    this.hero.root.position.set(this.px, 0, this.pz);
+    this.heroShadow.position.set(this.px, 0.02, this.pz);
+
+    this.crystalRefs = createSpiritCrystalModel();
+    this.crystalRefs.group.position.set(0, 0, 0);
+    this.entitiesGroup.add(this.crystalRefs.group);
+
+    this.spawnCrystalDefenseWave(1);
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  private spawnCrystalDefenseWave(waveNum: number): void {
+    this.crystalWave = waveNum;
+    this.stageBannerText = `ĐỢT ${waveNum}/${CRYSTAL_DEFENSE_TOTAL_WAVES} · BẢO VỆ PHA LÊ TINH LINH!`;
+    this.stageBannerTimer = 2.6;
+
+    const groups: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> =
+      waveNum === 1
+        ? [
+            { kind: EnemyKind.SKIRMISHER, count: 4 },
+            { kind: EnemyKind.IMP_ARCHER, count: 2 },
+          ]
+        : waveNum === 2
+        ? [
+            { kind: EnemyKind.SKIRMISHER, count: 4 },
+            { kind: EnemyKind.GOLEM, count: 2 },
+            { kind: EnemyKind.WISP, count: 2 },
+          ]
+        : waveNum === 3
+        ? [
+            { kind: EnemyKind.SHADOW_STALKER, count: 3, isElite: true },
+            { kind: EnemyKind.DRAGON_WHELP, count: 2 },
+            { kind: EnemyKind.WARDEN_BOSS, count: 1 },
+          ]
+        : waveNum === 4
+        ? [
+            { kind: EnemyKind.GOLEM, count: 3, isElite: true },
+            { kind: EnemyKind.IMP_ARCHER, count: 3 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 2 },
+          ]
+        : waveNum === 5
+        ? [
+            { kind: EnemyKind.DRAGON_WHELP, count: 4, isElite: true },
+            { kind: EnemyKind.SKIRMISHER, count: 4 },
+            { kind: EnemyKind.TITAN_BOSS, count: 1 },
+          ]
+        : [
+            { kind: EnemyKind.ZODIAC_BOSS, count: 1 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 3, isElite: true },
+            { kind: EnemyKind.GOLEM, count: 2 },
+          ];
+
+    const hpMult = 0.85 + waveNum * 0.34;
+    const dmgMult = 0.9 + waveNum * 0.16;
+    const bossTitle =
+      waveNum >= 6
+        ? 'Chúa Tể Công Thành Pha Lê'
+        : waveNum === 5
+        ? 'Cự Thần Phá Thành'
+        : 'Tiên Phong Phá Pha Lê';
+    this.spawnEnemyGroups(groups, hpMult, dmgMult, bossTitle);
+    this.syncHudImmediate();
+  }
+
+  public startWorldBoss(stats: ComputedPlayerStats): void {
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = true;
+    this.worldBossTimeLeft = 60;
+    this.worldBossTotalDamage = 0;
+    this.currentChapter = CHAPTERS[11] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    this.resetRunState(stats);
+    this.ultCharge = 100;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'sanctum',
+      true,
+      'BOSS THẾ GIỚI LIÊN SERVER · 60 GIÂY ĐUA TOP SÁT THƯƠNG!'
+    );
+    this.spawnEnemyGroups(
+      [{ kind: EnemyKind.ZODIAC_BOSS, count: 1 }],
+      360,
+      1.38,
+      'Hắc Long Tinh Giới Liên Server'
+    );
     this.phase = GamePhase.PLAYING;
     this.syncHudImmediate();
   }
@@ -1883,6 +2055,11 @@ export class GameEngine {
     if (this.shrineGroup) {
       this.releaseObject(this.shrineGroup);
       this.shrineGroup = null;
+    }
+
+    if (this.crystalRefs) {
+      this.releaseObject(this.crystalRefs.group);
+      this.crystalRefs = null;
     }
 
     this.arrowPool.forEach((p) => {
@@ -2994,6 +3171,11 @@ export class GameEngine {
       this.hero.root.rotation.y = this.lobbyYaw;
       this.hero.bodyGroup.position.y = Math.sin(this.elapsed * 2.2) * 0.04;
       this.hero.capeTail.rotation.x = 0.22 + Math.sin(this.elapsed * 3.1) * 0.07;
+      if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
+        const flap = Math.sin(this.elapsed * 3.2) * 0.24;
+        this.hero.leftWingPivot.rotation.y = 0.22 + flap;
+        this.hero.rightWingPivot.rotation.y = -0.22 - flap;
+      }
       this.hero.magicOrb.visible = true;
       this.hero.magicOrb.rotation.z += dt * 2.8;
       this.hero.bowGroup.visible = false;
@@ -3081,6 +3263,48 @@ export class GameEngine {
         });
         return;
       }
+    }
+
+    if (this.isWorldBossMode) {
+      this.worldBossTimeLeft = Math.max(0, this.worldBossTimeLeft - dt);
+      if (this.worldBossTimeLeft <= 0) {
+        const totalDmg = Math.round(this.worldBossTotalDamage);
+        const liveRank = computeWorldBossLiveRank(totalDmg);
+        const feathers = Math.max(6, Math.min(28, 6 + Math.floor(totalDmg / 28000) * 2));
+        soundEngine.playVictory();
+        this.phase = GamePhase.VICTORY;
+        this.syncHudImmediate();
+        this.callbacks.onRunEnded(true, {
+          chapterId: this.currentChapter.id,
+          stageReached: 1,
+          kills: this.kills,
+          gold: this.runGold + 240 + Math.floor(totalDmg / 2500),
+          gems: this.runGems + 14 + Math.max(0, 10 - liveRank) * 2,
+          wingFeathers: feathers,
+          isWorldBossMode: true,
+          worldBossDamage: totalDmg,
+          worldBossLiveRank: liveRank,
+          maxCombo: this.maxRunCombo,
+          damageBreakdown: this.getDamageBreakdownSnapshot(),
+        });
+        return;
+      }
+    }
+
+    if (this.isCrystalDefenseMode && this.crystalRefs) {
+      this.crystalRefs.coreMesh.rotation.y += dt * 1.15;
+      this.crystalRefs.coreMesh.position.y = 1.65 + Math.sin(this.elapsed * 2.6) * 0.12;
+      this.crystalRefs.outerRing.rotation.x += dt * 0.9;
+      this.crystalRefs.outerRing.rotation.z += dt * 0.7;
+      this.crystalRefs.shards.forEach((sh, sIdx) => {
+        const ang = this.elapsed * 2.1 + (sIdx * Math.PI) / 2;
+        sh.position.set(
+          Math.cos(ang) * 1.18,
+          1.55 + Math.sin(this.elapsed * 3.4 + sIdx) * 0.16,
+          Math.sin(ang) * 1.18
+        );
+        sh.rotation.y = -ang;
+      });
     }
 
     if (this.hitstopTimer > 0) {
@@ -3250,6 +3474,15 @@ export class GameEngine {
       }
     }
 
+    if (this.isCrystalDefenseMode && this.crystalRefs) {
+      const cd = Math.hypot(this.px, this.pz);
+      const minCrystalD = 1.58;
+      if (cd < minCrystalD && cd > 0.0001) {
+        this.px = (this.px / cd) * minCrystalD;
+        this.pz = (this.pz / cd) * minCrystalD;
+      }
+    }
+
     const speedMag = Math.hypot(this.pvx, this.pvz);
     const isMoving = inputLen > 0.12 || this.dashTimer > 0;
     const isThor = this.baseStats.heroId === 'thor';
@@ -3286,6 +3519,14 @@ export class GameEngine {
         const aimYaw = Math.atan2(nearest.x - this.px, nearest.z - this.pz);
         this.pFacing = this.lerpAngle(this.pFacing, aimYaw, 1 - Math.exp(-22 * dt));
       }
+    }
+
+    if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
+      const flapSpeed = isMoving ? 8.5 : 3.6;
+      const flapAmp = isMoving ? 0.34 : 0.18;
+      const flap = Math.sin(this.elapsed * flapSpeed) * flapAmp;
+      this.hero.leftWingPivot.rotation.y = 0.25 + flap;
+      this.hero.rightWingPivot.rotation.y = -0.25 - flap;
     }
 
     this.hero.root.position.set(this.px, 0, this.pz);
@@ -4092,8 +4333,16 @@ export class GameEngine {
       const dx = this.px - e.x;
       const dz = this.pz - e.z;
       const distToHero = Math.hypot(dx, dz);
-      const dirX = distToHero > 0.001 ? dx / distToHero : 0;
-      const dirZ = distToHero > 0.001 ? dz / distToHero : 1;
+      const distToCrystal = Math.hypot(-e.x, -e.z);
+      const targetCrystal =
+        this.isCrystalDefenseMode &&
+        Boolean(this.crystalRefs) &&
+        distToCrystal < distToHero * 1.18;
+      const moveDx = targetCrystal ? -e.x : dx;
+      const moveDz = targetCrystal ? -e.z : dz;
+      const moveDist = targetCrystal ? distToCrystal : distToHero;
+      const dirX = moveDist > 0.001 ? moveDx / moveDist : 0;
+      const dirZ = moveDist > 0.001 ? moveDz / moveDist : 1;
 
       const isEnraged = e.isBoss && e.bossPhase === 2;
 
@@ -4316,6 +4565,41 @@ export class GameEngine {
           e.z += (sdz / d) * push;
           o.x -= (sdx / d) * push;
           o.z -= (sdz / d) * push;
+        }
+      }
+
+      if (this.isCrystalDefenseMode && this.crystalRefs) {
+        const cDist = Math.hypot(e.x, e.z);
+        const minCrystalDist = 1.32 + e.radius;
+        if (cDist < minCrystalDist && cDist > 0.0001) {
+          e.x = (e.x / cDist) * minCrystalDist;
+          e.z = (e.z / cDist) * minCrystalDist;
+        }
+        if (cDist <= minCrystalDist + 0.25 && e.attackTimer <= 0) {
+          e.attackTimer = 1.35;
+          const crystalDmg = Math.max(14, Math.round(e.damage * 1.25));
+          this.crystalHp = Math.max(0, this.crystalHp - crystalDmg);
+          soundEngine.playPlayerHurt();
+          this.spawnParticles(0, 1.5, 0, 0x38bdf8, 12);
+          this.emitFloatingNumber(0, 2.2, 0, crystalDmg, false, false, 'playerHit', 'PHA LÊ!');
+          if (this.crystalHp <= 0) {
+            this.phase = GamePhase.GAME_OVER;
+            this.syncHudImmediate();
+            this.callbacks.onRunEnded(false, {
+              chapterId: this.currentChapter.id,
+              stageReached: this.crystalWave,
+              kills: this.kills,
+              gold: this.runGold,
+              gems: this.runGems,
+              isCrystalDefenseMode: true,
+              crystalWavesCleared: Math.max(0, this.crystalWave - 1),
+              crystalHpPct: 0,
+              wingFeathers: Math.max(2, (this.crystalWave - 1) * 3),
+              maxCombo: this.maxRunCombo,
+              damageBreakdown: this.getDamageBreakdownSnapshot(),
+            });
+            return;
+          }
         }
       }
 
@@ -4771,6 +5055,9 @@ export class GameEngine {
     if (this.isGuildBossMode && e.isBoss) {
       this.guildBossTotalDamage += finalDmg;
     }
+    if (this.isWorldBossMode && e.isBoss) {
+      this.worldBossTotalDamage += finalDmg;
+    }
 
     if (coopAllyIndex !== undefined && this.coopAllies[coopAllyIndex]) {
       this.coopAllies[coopAllyIndex].damageDealt += finalDmg;
@@ -4969,8 +5256,22 @@ export class GameEngine {
     this.enemies.splice(index, 1);
 
     if (this.enemies.length === 0) {
-      if (this.isGuildBossMode || this.isCoopRaidMode || this.isArenaMode) {
+      if (
+        this.isGuildBossMode ||
+        this.isCoopRaidMode ||
+        this.isArenaMode ||
+        this.isWorldBossMode
+      ) {
         this.onStageCleared();
+      } else if (this.isCrystalDefenseMode) {
+        if (this.crystalWave < CRYSTAL_DEFENSE_TOTAL_WAVES) {
+          const healCrystal = Math.round(this.crystalMaxHp * 0.12);
+          this.crystalHp = Math.min(this.crystalMaxHp, this.crystalHp + healCrystal);
+          this.emitFloatingNumber(0, 2.3, 0, healCrystal, false, true, undefined, 'HỒI PHA LÊ!');
+          this.spawnCrystalDefenseWave(this.crystalWave + 1);
+        } else {
+          this.onStageCleared();
+        }
       } else if (this.isElementalTowerMode) {
         if (this.waveIndex + 1 < this.elementalWaveDefs.length) {
           this.spawnElementalTowerWave(this.waveIndex + 1);
@@ -5121,6 +5422,52 @@ export class GameEngine {
         gems: this.runGems + 12,
         isGuildBossMode: true,
         guildBossDamage: Math.round(this.guildBossTotalDamage),
+        maxCombo: this.maxRunCombo,
+        damageBreakdown: this.getDamageBreakdownSnapshot(),
+      });
+      return;
+    }
+
+    if (this.isCrystalDefenseMode) {
+      const crystalHpPct = Math.round((this.crystalHp / Math.max(1, this.crystalMaxHp)) * 100);
+      const wingFeathers = 18 + Math.round(crystalHpPct * 0.12);
+      soundEngine.playVictory();
+      this.phase = GamePhase.VICTORY;
+      this.syncHudImmediate();
+      this.callbacks.onRunEnded(true, {
+        chapterId: this.currentChapter.id,
+        stageReached: CRYSTAL_DEFENSE_TOTAL_WAVES,
+        kills: this.kills,
+        gold: this.runGold + 280,
+        gems: this.runGems + 26,
+        starDust: 65,
+        wingFeathers,
+        isCrystalDefenseMode: true,
+        crystalWavesCleared: CRYSTAL_DEFENSE_TOTAL_WAVES,
+        crystalHpPct,
+        maxCombo: this.maxRunCombo,
+        damageBreakdown: this.getDamageBreakdownSnapshot(),
+      });
+      return;
+    }
+
+    if (this.isWorldBossMode) {
+      const totalDmg = Math.round(this.worldBossTotalDamage);
+      const liveRank = computeWorldBossLiveRank(totalDmg);
+      const wingFeathers = 16 + Math.max(0, 10 - liveRank) * 2;
+      soundEngine.playVictory();
+      this.phase = GamePhase.VICTORY;
+      this.syncHudImmediate();
+      this.callbacks.onRunEnded(true, {
+        chapterId: this.currentChapter.id,
+        stageReached: 1,
+        kills: this.kills,
+        gold: this.runGold + 340,
+        gems: this.runGems + 30,
+        wingFeathers,
+        isWorldBossMode: true,
+        worldBossDamage: totalDmg,
+        worldBossLiveRank: liveRank,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
       });
@@ -5321,7 +5668,9 @@ export class GameEngine {
       const stage = this.currentChapter.stages[this.stageIndex];
       this.callbacks.onRunEnded(false, {
         chapterId: this.currentChapter.id,
-        stageReached: this.isElementalTowerMode
+        stageReached: this.isCrystalDefenseMode
+          ? this.crystalWave
+          : this.isElementalTowerMode
           ? this.elementalTowerFloor
           : this.isDailyRiftMode
           ? this.dailyRiftStageIdx + 1
@@ -5347,6 +5696,21 @@ export class GameEngine {
         isElementalTowerMode: this.isElementalTowerMode,
         elementalTowerId: this.isElementalTowerMode ? this.elementalTowerId : undefined,
         elementalTowerFloor: this.isElementalTowerMode ? this.elementalTowerFloor : undefined,
+        isCrystalDefenseMode: this.isCrystalDefenseMode,
+        crystalWavesCleared: this.isCrystalDefenseMode ? Math.max(0, this.crystalWave - 1) : undefined,
+        crystalHpPct: this.isCrystalDefenseMode
+          ? Math.round((this.crystalHp / Math.max(1, this.crystalMaxHp)) * 100)
+          : undefined,
+        wingFeathers: this.isCrystalDefenseMode
+          ? Math.max(2, (this.crystalWave - 1) * 3)
+          : this.isWorldBossMode
+          ? Math.max(4, Math.min(18, 4 + Math.floor(this.worldBossTotalDamage / 35000) * 2))
+          : undefined,
+        isWorldBossMode: this.isWorldBossMode,
+        worldBossDamage: this.isWorldBossMode ? Math.round(this.worldBossTotalDamage) : undefined,
+        worldBossLiveRank: this.isWorldBossMode
+          ? computeWorldBossLiveRank(Math.round(this.worldBossTotalDamage))
+          : undefined,
         starDust: this.isDailyRiftMode
           ? Math.max(15, this.dailyRiftStageIdx * 28)
           : this.isElementalTowerMode
@@ -5744,8 +6108,10 @@ export class GameEngine {
     const elemDef = this.isElementalTowerMode ? ELEMENTAL_TOWER_MAP[this.elementalTowerId] : null;
     const isBossFloor = this.isArenaMode
       ? false
-      : this.isGuildBossMode || this.isCoopRaidMode
+      : this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
       ? true
+      : this.isCrystalDefenseMode
+      ? this.crystalWave >= 3 && (this.crystalWave === 3 || this.crystalWave >= 5)
       : this.isElementalTowerMode
       ? this.elementalTowerFloor % 3 === 0
       : this.isDailyRiftMode
@@ -5764,8 +6130,10 @@ export class GameEngine {
       xpToNext: this.xpToNext,
       level: this.level,
       stage:
-        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode
+        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
           ? 1
+          : this.isCrystalDefenseMode
+          ? this.crystalWave
           : this.isElementalTowerMode
           ? this.elementalTowerFloor
           : this.isDailyRiftMode
@@ -5776,8 +6144,10 @@ export class GameEngine {
           ? this.towerFloor
           : stage.stageNumber,
       totalStages:
-        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode
+        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
           ? 1
+          : this.isCrystalDefenseMode
+          ? CRYSTAL_DEFENSE_TOTAL_WAVES
           : this.isElementalTowerMode
           ? this.elementalTowerFloor
           : this.isDailyRiftMode
@@ -5787,7 +6157,11 @@ export class GameEngine {
           : this.isTowerMode
           ? this.towerFloor
           : this.currentChapter.stages.length,
-      stageName: this.isCoopRaidMode
+      stageName: this.isCrystalDefenseMode
+        ? `Thủ Thành Pha Lê · Đợt ${this.crystalWave}/${CRYSTAL_DEFENSE_TOTAL_WAVES}`
+        : this.isWorldBossMode
+        ? 'Boss Thế Giới Liên Server · 60s'
+        : this.isCoopRaidMode
         ? `Phó Bản Hợp Tác AI · ${COOP_DIFFICULTY_MAP[this.coopDifficulty].name}`
         : this.isElementalTowerMode && elemDef
         ? `${elemDef.name} · Tầng ${this.elementalTowerFloor}`
@@ -5802,7 +6176,11 @@ export class GameEngine {
         : this.isTowerMode
         ? `Tháp Vô Tận · Tầng ${this.towerFloor}`
         : stage.name,
-      chapterName: this.isCoopRaidMode
+      chapterName: this.isCrystalDefenseMode
+        ? '💎 Thủ Thành Pha Lê'
+        : this.isWorldBossMode
+        ? '🐉 Boss Thế Giới'
+        : this.isCoopRaidMode
         ? '🤝 Co-op AI 3D'
         : this.isElementalTowerMode && elemDef
         ? `💠 ${elemDef.name}`
@@ -5831,7 +6209,9 @@ export class GameEngine {
       revivesLeft: this.revivesLeft,
       bossName: boss
         ? boss.bossTitle ||
-          (this.isGuildBossMode
+          (this.isWorldBossMode
+            ? 'Hắc Long Tinh Giới Liên Server'
+            : this.isGuildBossMode
             ? 'Thái Cổ Ma Long Hoàng Đạo'
             : this.isDailyRiftMode
             ? `Thủ Lĩnh Bí Cảnh · ${this.dailyRiftPair?.title ?? ''}`
@@ -5872,6 +6252,17 @@ export class GameEngine {
       isElementalTowerMode: this.isElementalTowerMode,
       elementalTowerId: this.isElementalTowerMode ? this.elementalTowerId : undefined,
       elementalTowerFloor: this.isElementalTowerMode ? this.elementalTowerFloor : undefined,
+      isCrystalDefenseMode: this.isCrystalDefenseMode,
+      crystalWave: this.isCrystalDefenseMode ? this.crystalWave : undefined,
+      crystalTotalWaves: this.isCrystalDefenseMode ? CRYSTAL_DEFENSE_TOTAL_WAVES : undefined,
+      crystalHp: this.isCrystalDefenseMode ? Math.round(this.crystalHp) : undefined,
+      crystalMaxHp: this.isCrystalDefenseMode ? Math.round(this.crystalMaxHp) : undefined,
+      isWorldBossMode: this.isWorldBossMode,
+      worldBossTimeLeft: this.isWorldBossMode ? Math.ceil(this.worldBossTimeLeft) : undefined,
+      worldBossTotalDamage: this.isWorldBossMode ? Math.round(this.worldBossTotalDamage) : undefined,
+      worldBossRank: this.isWorldBossMode
+        ? computeWorldBossLiveRank(Math.round(this.worldBossTotalDamage))
+        : undefined,
       activeSkills: { ...this.activeSkills },
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,

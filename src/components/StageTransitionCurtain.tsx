@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Flame, Skull, Snowflake, Sparkles, Swords, Users, Zap } from 'lucide-react';
+import { Compass, Flame, Gem, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
 import { CHAPTERS } from '../data/chaptersData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, ElementalTowerId } from '../types/game';
@@ -15,6 +15,8 @@ interface StageTransitionCurtainProps {
   coopDifficulty?: CoopRaidDifficulty;
   isElementalTowerMode?: boolean;
   elementalTowerId?: ElementalTowerId;
+  isCrystalDefenseMode?: boolean;
+  isWorldBossMode?: boolean;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -30,6 +32,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   coopDifficulty = 'normal',
   isElementalTowerMode = false,
   elementalTowerId = 'fire',
+  isCrystalDefenseMode = false,
+  isWorldBossMode = false,
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
@@ -43,6 +47,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
           {isArenaMode ? (
             <Swords className="w-12 h-12 text-rose-400" />
+          ) : isCrystalDefenseMode ? (
+            <Gem className="w-12 h-12 text-cyan-300" />
+          ) : isWorldBossMode ? (
+            <Trophy className="w-12 h-12 text-amber-300" />
           ) : isCoopRaidMode ? (
             <Users className="w-12 h-12 text-sky-300" />
           ) : isElementalTowerMode ? (
@@ -68,6 +76,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
           {isArenaMode
             ? 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
+            : isCrystalDefenseMode
+            ? 'Thánh Địa Pha Lê · 6 Đợt Công Thành'
+            : isWorldBossMode
+            ? 'Boss Thế Giới Liên Server · 60 Giây'
             : isCoopRaidMode
             ? `Phó Bản Hợp Tác 3 Anh Hùng · ${coopDef.badge}`
             : isElementalTowerMode
@@ -85,6 +97,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
           {isArenaMode
             ? `VS · ${arenaOpponentName || 'Kình Địch'}`
+            : isCrystalDefenseMode
+            ? 'Thủ Thành Pha Lê Tinh Linh 3D'
+            : isWorldBossMode
+            ? 'Hắc Long Tinh Giới Liên Server'
             : isCoopRaidMode
             ? coopDef.name
             : isElementalTowerMode
@@ -103,6 +119,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs text-slate-300 font-semibold">
           {isArenaMode
             ? 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
+            : isCrystalDefenseMode
+            ? 'Đứng chắn trước Pha Lê Tinh Linh ở trung tâm, ngăn quái vật phá hủy qua 6 đợt để nhận Lông Vũ!'
+            : isWorldBossMode
+            ? 'Gây tối đa sát thương trong 60 giây để leo Bảng Xếp Hạng Liên Server & mở mốc thưởng!'
             : isCoopRaidMode
             ? '2 Đồng Hành AI 3D sẽ tự động tấn công, né đạn & tung Tuyệt Kỹ cùng bạn!'
             : isElementalTowerMode

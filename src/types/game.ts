@@ -221,6 +221,8 @@ export interface ComputedPlayerStats {
   constellationIceBonus?: number;
   constellationStormBonus?: number;
   constellationLevels?: number[];
+  equippedWingId?: WingId | null;
+  wingLevel?: number;
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -717,6 +719,141 @@ export interface ElementalTowersState {
   storm: number;
 }
 
+export type WingId = 'aries_feather' | 'phoenix_blaze' | 'swan_nebula' | 'seraph_zodiac';
+
+export interface WingDefinition {
+  id: WingId;
+  name: string;
+  badge: string;
+  rarity: 'Hiếm' | 'Sử Thi' | 'Huyền Thoại' | 'Thần Thoại';
+  desc: string;
+  featherStyle: 'blade' | 'flame' | 'crystal' | 'seraph';
+  primaryHex: number;
+  secondaryHex: number;
+  spineHex: number;
+  baseAtk: number;
+  baseHp: number;
+  baseCrit: number;
+  baseAspd: number;
+  atkPerLv: number;
+  hpPerLv: number;
+  unlockGems: number;
+  unlockFeathers: number;
+}
+
+export type AvatarFrameId =
+  | 'default_gold'
+  | 'astral_crescent'
+  | 'royal_vip'
+  | 'world_dragon'
+  | 'seraph_crown'
+  | 'crystal_guardian';
+
+export interface AvatarFrameDefinition {
+  id: AvatarFrameId;
+  name: string;
+  tierLabel: string;
+  desc: string;
+  ringClass: string;
+  glowColor: string;
+  unlockMethodLabel: string;
+  unlockGems?: number;
+}
+
+export type MythicBadgeId =
+  | 'badge_wing_lord'
+  | 'badge_world_slayer'
+  | 'badge_crystal_shield'
+  | 'badge_auction_tycoon'
+  | 'badge_vip_sovereign'
+  | 'badge_power_legend';
+
+export interface MythicBadgeDefinition {
+  id: MythicBadgeId;
+  title: string;
+  tierLabel: string;
+  desc: string;
+  metric:
+    | 'powerRating'
+    | 'worldBossBestDamage'
+    | 'crystalBestWave'
+    | 'auctionTrades'
+    | 'topUpPoints'
+    | 'wingLevelSum';
+  target: number;
+  atkBonus: number;
+  hpBonus: number;
+  bossDmgBonus: number;
+  accentColor: string;
+}
+
+export type MonthlyCardTier = 'silver_astral' | 'royal_zodiac';
+
+export interface MonthlyCardProgress {
+  activeUntilDate: string;
+  lastClaimDate: string;
+}
+
+export interface MonthlyPrivilegeState {
+  silver: MonthlyCardProgress;
+  royal: MonthlyCardProgress;
+}
+
+export interface TopUpEvolutionState {
+  points: number;
+  claimedTierIds: string[];
+}
+
+export interface AuctionLotItem {
+  id: string;
+  sellerName: string;
+  itemKind: 'gear' | 'socket_gem';
+  gear?: GearInstance;
+  socketGem?: SocketGemInstance;
+  label: string;
+  rarity: Rarity;
+  startingBid: number;
+  currentBid: number;
+  buyoutPrice: number;
+  highestBidderIsPlayer: boolean;
+  playerBidAmount: number;
+  endsAt: number;
+  status: 'active' | 'sold' | 'ended';
+  isPlayerListing?: boolean;
+}
+
+export interface AuctionClaimEntry {
+  id: string;
+  title: string;
+  gems?: number;
+  gold?: number;
+  gear?: GearInstance;
+  socketGem?: SocketGemInstance;
+  reason: string;
+}
+
+export interface AuctionHouseState {
+  lastRefreshAt: number;
+  lots: AuctionLotItem[];
+  claimBox: AuctionClaimEntry[];
+  totalTrades: number;
+}
+
+export interface CrystalDefenseState {
+  date: string;
+  runsRemaining: number;
+  bestWave: number;
+  totalClears: number;
+}
+
+export interface WorldBossState {
+  date: string;
+  dailyRunsRemaining: number;
+  bestSingleDamage: number;
+  totalDailyDamage: number;
+  claimedMilestoneIds: string[];
+}
+
 export interface RunHistoryEntry {
   id: string;
   mode:
@@ -727,7 +864,9 @@ export interface RunHistoryEntry {
     | 'guild_boss'
     | 'arena'
     | 'coop_raid'
-    | 'elemental_tower';
+    | 'elemental_tower'
+    | 'crystal_defense'
+    | 'world_boss';
   label: string;
   stageReached: number;
   kills: number;
@@ -744,6 +883,7 @@ export interface SaveData {
   gems: number;
   starDust?: number;
   petEssence?: number;
+  wingFeathers?: number;
   highestChapterCleared: number;
   bestStagePerChapter: Record<number, number>;
   selectedHeroId: HeroId;
@@ -793,6 +933,18 @@ export interface SaveData {
   coopRaid?: CoopRaidState;
   elementalTowers?: ElementalTowersState;
   commercialPackClaims?: Record<string, number>;
+  unlockedWings?: WingId[];
+  wingLevels?: Partial<Record<WingId, number>>;
+  equippedWingId?: WingId | null;
+  unlockedAvatarFrames?: AvatarFrameId[];
+  equippedAvatarFrameId?: AvatarFrameId;
+  claimedMythicBadges?: MythicBadgeId[];
+  equippedMythicBadgeId?: MythicBadgeId | null;
+  monthlyPrivilege?: MonthlyPrivilegeState;
+  topUpEvolution?: TopUpEvolutionState;
+  auctionHouse?: AuctionHouseState;
+  crystalDefense?: CrystalDefenseState;
+  worldBoss?: WorldBossState;
 }
 
 export interface FloatingDamage {
@@ -871,6 +1023,15 @@ export interface HudSnapshot {
   isElementalTowerMode?: boolean;
   elementalTowerId?: ElementalTowerId;
   elementalTowerFloor?: number;
+  isCrystalDefenseMode?: boolean;
+  crystalWave?: number;
+  crystalTotalWaves?: number;
+  crystalHp?: number;
+  crystalMaxHp?: number;
+  isWorldBossMode?: boolean;
+  worldBossTimeLeft?: number;
+  worldBossTotalDamage?: number;
+  worldBossRank?: number;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;

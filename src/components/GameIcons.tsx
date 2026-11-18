@@ -1,5 +1,6 @@
 import React from 'react';
-import { GearSlot, HeroId, Rarity, WeaponArchetype } from '../types/game';
+import { AVATAR_FRAME_MAP } from '../data/wave7Data';
+import { AvatarFrameId, GearSlot, HeroId, Rarity, WeaponArchetype } from '../types/game';
 
 export const RARITY_FRAME_CLASS: Record<Rarity, string> = {
   [Rarity.COMMON]: 'a2-q-common',
@@ -286,5 +287,65 @@ export const ChestSvg: React.FC<{ variant: 'iron' | 'mythic' | 'rune_bag' | 'run
       <rect x="27" y="25" width="10" height="12" rx="3" fill="#fbbf24" stroke="#fffbeb" strokeWidth="1.5" />
       <line x1="10" y1="30" x2="54" y2="30" stroke={isMythic ? '#fde047' : '#94a3b8'} strokeWidth="2.5" />
     </svg>
+  );
+};
+
+export const WingFeatherIcon: React.FC<{ className?: string }> = ({
+  className = 'w-4 h-4',
+}) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="celWingFeather" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#fef08a" />
+        <stop offset="55%" stopColor="#38bdf8" />
+        <stop offset="100%" stopColor="#0284c7" />
+      </linearGradient>
+    </defs>
+    <path
+      d="M20 3 C12 3, 6 9, 4 19 L9 17 L8 21 L12 16 C16 14, 20 10, 20 3 Z"
+      fill="url(#celWingFeather)"
+      stroke="#fef9c3"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <line x1="5" y1="20" x2="17" y2="6" stroke="#fffbeb" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+);
+
+export const ZodiacAvatar: React.FC<{
+  heroId: HeroId;
+  accentHex: number;
+  cloakHex: number;
+  hairHex: number;
+  frameId?: AvatarFrameId;
+  sizeClass?: string;
+}> = ({
+  heroId,
+  accentHex,
+  cloakHex,
+  hairHex,
+  frameId = 'default_gold',
+  sizeClass = 'w-10 h-10',
+}) => {
+  const frame = AVATAR_FRAME_MAP[frameId] ?? AVATAR_FRAME_MAP.default_gold;
+  return (
+    <div
+      className={`relative rounded-full p-0.5 flex items-center justify-center shrink-0 ${frame.ringClass} ${sizeClass}`}
+      style={{ boxShadow: `0 0 14px ${frame.glowColor}` }}
+    >
+      <HeroCrestSvg
+        heroId={heroId}
+        accentHex={accentHex}
+        cloakHex={cloakHex}
+        hairHex={hairHex}
+        className="w-full h-full"
+      />
+      {(frameId === 'royal_vip' || frameId === 'seraph_crown') && (
+        <span
+          aria-hidden="true"
+          className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-2 bg-amber-300 border border-white/80 rounded-t-sm rotate-45"
+        />
+      )}
+    </div>
   );
 };

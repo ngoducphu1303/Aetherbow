@@ -7,6 +7,7 @@ import {
   Compass,
   Crown,
   Flame,
+  Gavel,
   Gem,
   Gift,
   Hammer,
@@ -34,9 +35,11 @@ import {
 } from 'lucide-react';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
 import coopRaidArt from '../assets/images/coop_raid_portal_1795004418576.jpg';
+import crystalDefenseArt from '../assets/images/crystal_defense_sanctum_1795005958099.jpg';
 import dailyRiftArt from '../assets/images/daily_rift_portal_art_1794977270758.jpg';
 import elementalTrialsArt from '../assets/images/elemental_trials_spires_1795004418882.jpg';
 import eventZodiacBanner from '../assets/images/event_zodiac_banner_1794973981859.jpg';
+import worldBossArt from '../assets/images/world_boss_abyss_1795005956955.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
 import { HERO_MAP } from '../data/heroesData';
@@ -85,22 +88,39 @@ import {
   selectCoopAiAllies,
 } from '../data/wave6Data';
 import {
+  CRYSTAL_DEFENSE_MAX_DAILY_RUNS,
+  CRYSTAL_DEFENSE_TOTAL_WAVES,
+  MYTHIC_BADGE_MAP,
+  WORLD_BOSS_MAX_DAILY_RUNS,
+  computeWorldBossLiveRank,
+  countClaimableWave7Rewards,
+  isMonthlyCardActive,
+  normalizeAuctionHouse,
+  normalizeCrystalDefense,
+  normalizeMonthlyPrivilege,
+  normalizeWorldBoss,
+} from '../data/wave7Data';
+import {
   AuraStyleId,
+  AvatarFrameId,
   ComputedPlayerStats,
   CoopRaidDifficulty,
   ElementalTowerId,
   FlashDealItem,
   HeroId,
   HeroSkinId,
+  MonthlyCardTier,
   PetId,
   SaveData,
+  WingId,
 } from '../types/game';
 import {
   GoldCoinIcon,
-  HeroCrestSvg,
   PetEssenceIcon,
   SoulGemIcon,
   StarDustIcon,
+  WingFeatherIcon,
+  ZodiacAvatar,
 } from './GameIcons';
 import {
   LobbyGearPanel,
@@ -117,7 +137,9 @@ export type LobbyGameMode =
   | 'elemental_tower'
   | 'boss_rush'
   | 'daily_rift'
-  | 'coop_raid';
+  | 'coop_raid'
+  | 'crystal_defense'
+  | 'world_boss';
 
 interface TitleScreenProps {
   save: SaveData;
@@ -142,6 +164,8 @@ interface TitleScreenProps {
   onStartDailyRift: () => void;
   onStartCoopRaid: (difficulty: CoopRaidDifficulty) => void;
   onStartElementalTower: (towerId: ElementalTowerId) => void;
+  onStartCrystalDefense: () => void;
+  onStartWorldBoss: () => void;
   onQuickSweepChapter: (chapterId: number) => void;
   onToggleMute: () => void;
   onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome' | 'journey') => void;
@@ -158,6 +182,8 @@ interface TitleScreenProps {
   onOpenDestinyWheelModal: () => void;
   onOpenNightMarketModal: () => void;
   onOpenArenaModal: () => void;
+  onOpenAuctionModal: () => void;
+  onOpenHonorBoard: () => void;
   onOpenProfileModal: (tab?: 'profile' | 'achievements' | 'history' | 'codex') => void;
   onOpenMailModal: () => void;
   onOpenSettingsModal: () => void;
@@ -172,6 +198,11 @@ interface TitleScreenProps {
   onEquipSkin: (heroId: HeroId, skinId: HeroSkinId) => void;
   onUnlockAura: (auraId: AuraStyleId, currency: 'gold' | 'gems') => void;
   onEquipAura: (auraId: AuraStyleId) => void;
+  onUnlockWing: (wingId: WingId, currency: 'gems' | 'feathers') => void;
+  onEquipWing: (wingId: WingId | null) => void;
+  onUpgradeWing: (wingId: WingId) => void;
+  onUnlockAvatarFrame: (frameId: AvatarFrameId) => void;
+  onEquipAvatarFrame: (frameId: AvatarFrameId) => void;
   onEquipGear: (uid: string) => void;
   onUpgradeGear: (uid: string) => void;
   onFuseGear: (uid: string) => void;
@@ -189,6 +220,9 @@ interface TitleScreenProps {
   onClaimAllGrowthFund: () => void;
   onBuyArenaShopOffer: (offer: ArenaShopOffer) => void;
   onBuyCommercialPack: (pack: CommercialPackItem) => void;
+  onBuyMonthlyCard: (tier: MonthlyCardTier) => void;
+  onClaimMonthlyCardDaily: (tier: MonthlyCardTier) => void;
+  onClaimTopUpEvolutionTier: (tierId: string) => void;
   onEquipRune: (uid: string) => void;
   onUnequipRune: (uid: string) => void;
   onFuseRune: (uid: string) => void;
@@ -235,7 +269,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   selectedChapterId,
   gameMode,
   activeTab,
-  shopSection = 'packs',
+  shopSection = 'privilege',
   previewHeroId,
   selectedCoopDifficulty,
   selectedElementalTower,
@@ -252,6 +286,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartDailyRift,
   onStartCoopRaid,
   onStartElementalTower,
+  onStartCrystalDefense,
+  onStartWorldBoss,
   onQuickSweepChapter,
   onToggleMute,
   onOpenRewardsModal,
@@ -265,6 +301,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenDestinyWheelModal,
   onOpenNightMarketModal,
   onOpenArenaModal,
+  onOpenAuctionModal,
+  onOpenHonorBoard,
   onOpenProfileModal,
   onOpenMailModal,
   onOpenSettingsModal,
@@ -279,6 +317,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onEquipSkin,
   onUnlockAura,
   onEquipAura,
+  onUnlockWing,
+  onEquipWing,
+  onUpgradeWing,
+  onUnlockAvatarFrame,
+  onEquipAvatarFrame,
   onEquipGear,
   onUpgradeGear,
   onFuseGear,
@@ -293,6 +336,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onClaimAllGrowthFund,
   onBuyArenaShopOffer,
   onBuyCommercialPack,
+  onBuyMonthlyCard,
+  onClaimMonthlyCardDaily,
+  onClaimTopUpEvolutionTier,
   onEquipRune,
   onUnequipRune,
   onFuseRune,
@@ -309,6 +355,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [riftImgFailed, setRiftImgFailed] = useState(false);
   const [coopImgFailed, setCoopImgFailed] = useState(false);
   const [towerElImgFailed, setTowerElImgFailed] = useState(false);
+  const [crystalDefenseImgFailed, setCrystalDefenseImgFailed] = useState(false);
+  const [worldBossImgFailed, setWorldBossImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -359,6 +407,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const elementalTowers = normalizeElementalTowers(save.elementalTowers);
   const activeElTower = ELEMENTAL_TOWER_MAP[selectedElementalTower] ?? ELEMENTAL_TOWERS[0];
 
+  const monthlyPriv = normalizeMonthlyPrivilege(save.monthlyPrivilege);
+  const extraDefenseMax =
+    (isMonthlyCardActive(monthlyPriv.silver) ? 1 : 0) +
+    (isMonthlyCardActive(monthlyPriv.royal) ? 1 : 0);
+  const crystalState = normalizeCrystalDefense(save.crystalDefense);
+  const crystalMaxRuns = CRYSTAL_DEFENSE_MAX_DAILY_RUNS + extraDefenseMax;
+  const wbState = normalizeWorldBoss(save.worldBoss);
+  const wbLiveRank = computeWorldBossLiveRank(wbState.bestSingleDamage);
+  const auctionState = normalizeAuctionHouse(save.auctionHouse);
+  const auctionClaimCount = auctionState.claimBox.length;
+  const wave7RewardBadges = countClaimableWave7Rewards(save);
+  const equippedBadgeDef = save.equippedMythicBadgeId
+    ? MYTHIC_BADGE_MAP[save.equippedMythicBadgeId]
+    : undefined;
+
   const dockTotalBadges =
     claimableCount +
     bpClaimable +
@@ -367,7 +430,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     destinyReadyCount +
     guild.bossRunsRemaining +
     spendMilestoneReady +
-    claimableGfCount;
+    claimableGfCount +
+    auctionClaimCount +
+    wave7RewardBadges;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -389,12 +454,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           className="relative flex items-center gap-2.5 pr-3 pl-1 py-1 rounded-2xl bg-[#0b1229]/95 border border-amber-400/35 hover:border-amber-300/80 transition-colors cursor-pointer shrink-0"
           title="Mở Hồ Sơ, Thành Tựu & Thư Viện"
         >
-          <HeroCrestSvg
+          <ZodiacAvatar
             heroId={activeHero.id}
             accentHex={activeHero.accentHex}
             cloakHex={activeHero.cloakHex}
             hairHex={activeHero.hairHex}
-            className="w-9 h-9 sm:w-10 sm:h-10 shrink-0"
+            frameId={save.equippedAvatarFrameId ?? 'default_gold'}
+            sizeClass="w-10 h-10 sm:w-11 sm:h-11"
           />
           <div className="text-left leading-tight">
             <div className="flex items-center gap-1.5">
@@ -407,6 +473,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               {hasVip && (
                 <span className="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-[9px] font-black text-amber-300">
                   VIP
+                </span>
+              )}
+              {equippedBadgeDef && (
+                <span className="hidden md:inline px-1.5 py-0.5 rounded bg-purple-500/25 border border-purple-300/50 text-[9px] font-black text-purple-200 whitespace-nowrap">
+                  {equippedBadgeDef.title}
                 </span>
               )}
             </div>
@@ -444,6 +515,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             type="button"
             onClick={() => {
               soundEngine.playUiClick();
+              onTabChange('heroes');
+            }}
+            title="Lông Vũ Tinh Tú · Nâng Cánh 3D"
+            className="hidden xl:flex items-center gap-1.5 bg-[#070b1a]/95 border border-cyan-400/35 hover:border-cyan-300 px-2.5 py-1.5 rounded-xl text-xs font-mono-nums font-black text-cyan-200 cursor-pointer transition-colors"
+          >
+            <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
+            <span>{save.wingFeathers ?? 0}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
               onOpenForgeModal();
             }}
             title="Mở Lò Rèn & Tách Đồ"
@@ -457,15 +541,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             type="button"
             onClick={() => {
               soundEngine.playUiClick();
-              onOpenProfileModal('history');
+              onOpenHonorBoard();
             }}
-            title="Bảng Vinh Danh & Lịch Sử Mùa"
-            className="hidden md:flex items-center gap-1.5 bg-[#070b1a]/95 border border-sky-400/30 hover:border-amber-300 px-3 py-1.5 rounded-xl text-xs font-mono-nums font-bold text-sky-200 cursor-pointer transition-colors"
+            title="Bảng Vinh Danh Liên Server & Huy Hiệu Thần Thoại"
+            className="hidden md:flex items-center gap-1.5 bg-[#070b1a]/95 border border-amber-400/35 hover:border-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-200 cursor-pointer transition-colors whitespace-nowrap"
           >
             <Trophy className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            <span>
-              {save.highestChapterCleared}/{CHAPTERS.length}
-            </span>
+            <span>Vinh Danh</span>
           </button>
 
           <button
@@ -809,13 +891,71 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         onClick={() => {
                           soundEngine.playUiClick();
                           setFeatureDockOpen(false);
+                          onOpenAuctionModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                          <Gavel className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Sàn Đấu Giá</span>
+                        </span>
+                        {auctionClaimCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{auctionClaimCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenHonorBoard();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-100 truncate">
+                          <Trophy className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Bảng Vinh Danh</span>
+                        </span>
+                        <span className="text-[9px] font-mono-nums font-black text-amber-300">
+                          #{wbLiveRank}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenShopSection('privilege');
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
+                          <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Thẻ Tháng &amp; Nạp</span>
+                        </span>
+                        {wave7RewardBadges > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{wave7RewardBadges}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
                           onOpenTalentsModal();
                         }}
-                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer col-span-2"
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
                       >
                         <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
                           <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                          <span className="truncate">Bảng Thiên Phú Vĩnh Viễn</span>
+                          <span className="truncate">Thiên Phú</span>
                         </span>
                         <span className="text-[9px] font-mono-nums font-black text-amber-300">
                           Lv.{totalTalentLv}
@@ -872,7 +1012,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       type="button"
                       onClick={() => {
                         soundEngine.playUiClick(1.05);
-                        if (activeEvent.target === 'constellation') onOpenConstellationModal();
+                        if (activeEvent.target === 'world_boss') onGameModeChange('world_boss');
+                        else if (activeEvent.target === 'crystal_defense') onGameModeChange('crystal_defense');
+                        else if (activeEvent.target === 'auction_house') onOpenAuctionModal();
+                        else if (activeEvent.target === 'constellation') onOpenConstellationModal();
                         else if (activeEvent.target === 'coop_raid') onGameModeChange('coop_raid');
                         else if (activeEvent.target === 'elemental_tower') onGameModeChange('elemental_tower');
                         else if (activeEvent.target === 'night_market') onOpenNightMarketModal();
@@ -944,8 +1087,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               )}
 
               <div className="cel-panel-ornate rounded-2xl p-3.5 sm:p-4">
-                {/* 6-Mode Selector */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
+                {/* 8-Mode Selector (2x4 Grid) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
                   <button
                     type="button"
                     onClick={() => onGameModeChange('chapter')}
@@ -1032,6 +1175,36 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   >
                     <Users className="w-3 h-3 shrink-0" />
                     <span>Co-op AI</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('crystal_defense');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'crystal_defense'
+                        ? 'bg-gradient-to-b from-cyan-400 to-indigo-600 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Gem className="w-3 h-3 shrink-0" />
+                    <span>Thủ Pha Lê</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('world_boss');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'world_boss'
+                        ? 'bg-gradient-to-b from-yellow-300 via-amber-500 to-rose-600 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Trophy className="w-3 h-3 shrink-0" />
+                    <span>Boss Thế Giới</span>
                   </button>
                 </div>
 
@@ -1420,6 +1593,160 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </button>
                     </div>
                   </>
+                ) : gameMode === 'crystal_defense' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-cyan-400/50 bg-[#090d1f] shrink-0">
+                        {!crystalDefenseImgFailed ? (
+                          <img
+                            src={crystalDefenseArt}
+                            alt="Thủ Thành Pha Lê Tinh Linh 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setCrystalDefenseImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Gem className="w-6 h-6 text-cyan-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-cyan-200 truncate">
+                            Thủ Thành Pha Lê Tinh Linh 3D
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-amber-300 shrink-0">
+                            {crystalState.runsRemaining}/{crystalMaxRuns} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Bảo vệ Pha Lê trung tâm qua {CRYSTAL_DEFENSE_TOTAL_WAVES} đợt quái để săn Lông Vũ nâng Cánh 3D!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-cyan-400/20 py-2 px-1">
+                      <span className="text-cyan-300 font-bold">
+                        Kỷ lục: Đợt {crystalState.bestWave}/{CRYSTAL_DEFENSE_TOTAL_WAVES}
+                      </span>
+                      <span className="text-emerald-300 font-bold">
+                        Toàn thắng: {crystalState.totalClears} lần
+                      </span>
+                      <span className="flex items-center gap-1 text-sky-200 font-bold">
+                        <WingFeatherIcon className="w-3.5 h-3.5" /> Rơi Lông Vũ + Bụi
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onTabChange('heroes');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <WingFeatherIcon className="w-4 h-4 shrink-0" />
+                        <span>Cánh 3D</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={crystalState.runsRemaining <= 0}
+                        onClick={onStartCrystalDefense}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          crystalState.runsRemaining > 0
+                            ? 'bg-gradient-to-b from-cyan-300 via-sky-400 to-indigo-600 text-slate-950 border border-cyan-100/80 shadow-lg'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {crystalState.runsRemaining > 0
+                            ? 'VÀO THỦ THÀNH PHA LÊ'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {crystalState.runsRemaining > 0 && <ChevronRight className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </>
+                ) : gameMode === 'world_boss' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-amber-400/55 bg-[#090d1f] shrink-0">
+                        {!worldBossImgFailed ? (
+                          <img
+                            src={worldBossArt}
+                            alt="Boss Thế Giới Liên Server"
+                            referrerPolicy="no-referrer"
+                            onError={() => setWorldBossImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Trophy className="w-6 h-6 text-amber-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-amber-200 truncate">
+                            Boss Thế Giới Liên Server (60s)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            {wbState.dailyRunsRemaining}/{WORLD_BOSS_MAX_DAILY_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Dồn tổng sát thương trong 60 giây để leo hạng Liên Server &amp; nhận Khung Long Hồn!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-amber-400/20 py-2 px-1">
+                      <span className="text-amber-300 font-bold">
+                        Kỷ lục: {wbState.bestSingleDamage.toLocaleString('vi-VN')} ST
+                      </span>
+                      <span className="text-rose-300 font-bold">
+                        Hạng hiện tại: #{wbLiveRank}
+                      </span>
+                      <span className="text-purple-300 font-bold">
+                        Thưởng: Ngọc · Lông Vũ · Khung
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onOpenHonorBoard();
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Trophy className="w-4 h-4 text-amber-300 shrink-0" />
+                        <span>Bảng Vinh Danh</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={wbState.dailyRunsRemaining <= 0}
+                        onClick={onStartWorldBoss}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          wbState.dailyRunsRemaining > 0
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {wbState.dailyRunsRemaining > 0
+                            ? 'KHIÊU CHIẾN BOSS THẾ GIỚI'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {wbState.dailyRunsRemaining > 0 && <ChevronRight className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
@@ -1551,6 +1878,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onEquipSkin={onEquipSkin}
             onUnlockAura={onUnlockAura}
             onEquipAura={onEquipAura}
+            onUnlockWing={onUnlockWing}
+            onEquipWing={onEquipWing}
+            onUpgradeWing={onUpgradeWing}
+            onUnlockAvatarFrame={onUnlockAvatarFrame}
+            onEquipAvatarFrame={onEquipAvatarFrame}
             onPreviewUltimate={onPreviewUltimate}
             onRotateHero={onRotateHero}
             onResetHeroRotation={onResetHeroRotation}
@@ -1581,6 +1913,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onClaimAllGrowthFund={onClaimAllGrowthFund}
             onBuyArenaShopOffer={onBuyArenaShopOffer}
             onBuyCommercialPack={onBuyCommercialPack}
+            onBuyMonthlyCard={onBuyMonthlyCard}
+            onClaimMonthlyCardDaily={onClaimMonthlyCardDaily}
+            onClaimTopUpEvolutionTier={onClaimTopUpEvolutionTier}
             onOpenVipModal={onOpenVipModal}
             onOpenArenaModal={onOpenArenaModal}
           />

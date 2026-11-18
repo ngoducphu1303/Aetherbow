@@ -1,5 +1,13 @@
 import * as THREE from 'three';
-import { CrownStyle, EnemyKind, PetId, StageEventAfter, WeaponArchetype } from '../types/game';
+import { WING_MAP } from '../data/wave7Data';
+import {
+  CrownStyle,
+  EnemyKind,
+  PetId,
+  StageEventAfter,
+  WeaponArchetype,
+  WingId,
+} from '../types/game';
 import {
   createEngravedArmorTexture,
   createFabricWeaveTexture,
@@ -19,6 +27,8 @@ export interface HeroVisualConfig {
   auraSecondaryHex?: number;
   pedestalTintHex?: number;
   constellationLevels?: number[];
+  wingId?: WingId | null;
+  wingLevel?: number;
 }
 
 export interface HeroModelRefs {
@@ -33,6 +43,9 @@ export interface HeroModelRefs {
   leftLeg: THREE.Group;
   rightLeg: THREE.Group;
   hoodGem: THREE.Mesh;
+  wingGroup?: THREE.Group;
+  leftWingPivot?: THREE.Group;
+  rightWingPivot?: THREE.Group;
   hitMeshes: THREE.Mesh[];
 }
 
@@ -550,6 +563,19 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
   drawArm.add(rSleeve, rCuff, rHand, magicOrb);
   bodyGroup.add(drawArm);
 
+  // 7. Composite 3D Zodiac Wings attached to Hero's back
+  let wingGroup: THREE.Group | undefined;
+  let leftWingPivot: THREE.Group | undefined;
+  let rightWingPivot: THREE.Group | undefined;
+  if (cfg.wingId) {
+    const builtWings = createZodiacWingsModel(cfg.wingId, cfg.wingLevel ?? 1);
+    wingGroup = builtWings.group;
+    leftWingPivot = builtWings.leftPivot;
+    rightWingPivot = builtWings.rightPivot;
+    wingGroup.position.set(0, 0.96, -0.24);
+    bodyGroup.add(wingGroup);
+  }
+
   return {
     root,
     bodyGroup,
@@ -562,8 +588,87 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     leftLeg,
     rightLeg,
     hoodGem,
+    wingGroup,
+    leftWingPivot,
+    rightWingPivot,
     hitMeshes,
   };
+}
+
+function createZodiacWingsModel(
+  wingId: WingId,
+  wingLevel: number
+): { group: THREE.Group; leftPivot: THREE.Group; rightPivot: THREE.Group } {
+  const def = WING_MAP[wingId];
+  const group = new THREE.Group();
+  const scaleFactor = 1 + Math.min(14, Math.max(0, wingLevel - 1)) * 0.022;
+  const emissiveBoost = 0.85 + Math.min(14, Math.max(0, wingLevel - 1)) * 0.06;
+
+  const spineMat = new THREE.MeshStandardMaterial({
+    color: def.spineHex,
+    roughness: 0.24,
+    metalness: 0.88,
+  });
+  const primaryMat = new THREE.MeshStandardMaterial({
+    color: def.primaryHex,
+    emissive: def.primaryHex,
+    emissiveIntensity: emissiveBoost * 0.72,
+    roughness: 0.28,
+    metalness: 0.48,
+  });
+  const tipMat = new THREE.MeshStandardMaterial({
+    color: def.secondaryHex,
+    emissive: def.secondaryHex,
+    emissiveIntensity: emissiveBoost * 1.15,
+    roughness: 0.14,
+    metalness: 0.22,
+  });
+
+  // Central spinal crest & jewel core
+  const spinalPlate = new THREE.Mesh(new THREE.OctahedronGeometry(0.14, 0), spineMat);
+  spinalPlate.scale.set(0.85, 1.5, 0.45);
+  const coreGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 0), tipMat);
+  coreGem.position.set(0, 0.02, -0.05);
+  group.add(spinalPlate, coreGem);
+
+  const bladeCount = def.featherStyle === 'seraph' ? 5 : def.featherStyle === 'crystal' ? 4 : 3;
+
+  const buildWingSide = (side: -1 | 1) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.08, 0.06, -0.02);
+
+    // Upper shoulder strut
+    const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.032, 0.46, 8), spineMat);
+    strut.rotation.z = -side * 1.1;
+    strut.position.set(side * 0.2, 0.14, -0.03);
+    pivot.add(strut);
+
+    for (let i = 0; i < bladeCount; i++) {
+      const w = (0.48 - i * 0.075) * scaleFactor;
+      const h = (0.64 - i * 0.08) * scaleFactor;
+      const featherGeo = makeBeveledWingGeo(w, h, 0.035);
+      const blade = new THREE.Mesh(featherGeo, i % 2 === 0 ? primaryMat : tipMat);
+      blade.position.set(side * (0.28 + i * 0.08), 0.18 - i * 0.13, -0.04 - i * 0.025);
+      blade.rotation.y = side > 0 ? -0.32 - i * 0.04 : Math.PI + 0.32 + i * 0.04;
+      blade.rotation.z = side * (0.14 - i * 0.2);
+      blade.castShadow = true;
+      pivot.add(blade);
+    }
+
+    // Glowing feather tip accent shard
+    const tipShard = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.34 * scaleFactor, 5), tipMat);
+    tipShard.position.set(side * (0.62 * scaleFactor), 0.38 * scaleFactor, -0.09);
+    tipShard.rotation.z = -side * 0.92;
+    pivot.add(tipShard);
+
+    return pivot;
+  };
+
+  const leftPivot = buildWingSide(-1);
+  const rightPivot = buildWingSide(1);
+  group.add(leftPivot, rightPivot);
+
+  return { group, leftPivot, rightPivot };
 }
 
 export interface EnemyModelRefs {
@@ -1338,4 +1443,81 @@ export function createShrineModel(kind: StageEventAfter = 'valkyrie'): THREE.Gro
   }
 
   return g;
+}
+
+export interface SpiritCrystalRefs {
+  group: THREE.Group;
+  coreMesh: THREE.Mesh;
+  outerRing: THREE.Mesh;
+  shards: THREE.Mesh[];
+}
+
+export function createSpiritCrystalModel(): SpiritCrystalRefs {
+  const group = new THREE.Group();
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.45,
+    metalness: 0.65,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    roughness: 0.24,
+    metalness: 0.9,
+  });
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.55,
+    roughness: 0.1,
+    metalness: 0.2,
+  });
+  const shardMat = new THREE.MeshStandardMaterial({
+    color: 0x67e8f9,
+    emissive: 0x22d3ee,
+    emissiveIntensity: 1.35,
+    roughness: 0.14,
+    metalness: 0.25,
+  });
+
+  const basePlinth = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.35, 0.34, 16), stoneMat);
+  basePlinth.position.y = 0.17;
+  basePlinth.receiveShadow = true;
+
+  const goldRim = new THREE.Mesh(new THREE.TorusGeometry(1.16, 0.055, 8, 28), goldMat);
+  goldRim.rotation.x = Math.PI / 2;
+  goldRim.position.y = 0.34;
+
+  const coreMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.68, 0), crystalMat);
+  coreMesh.scale.set(0.85, 1.65, 0.85);
+  coreMesh.position.y = 1.65;
+  coreMesh.castShadow = true;
+
+  const outerRing = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.045, 8, 32), goldMat);
+  outerRing.position.y = 1.65;
+
+  const wardRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.55, 1.72, 36),
+    new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+  );
+  wardRing.rotation.x = -Math.PI / 2;
+  wardRing.position.y = 0.04;
+
+  const shards: THREE.Mesh[] = [];
+  const shardGeo = new THREE.OctahedronGeometry(0.16, 0);
+  for (let i = 0; i < 4; i++) {
+    const s = new THREE.Mesh(shardGeo, shardMat);
+    s.scale.set(0.7, 1.45, 0.7);
+    shards.push(s);
+    group.add(s);
+  }
+
+  group.add(basePlinth, goldRim, coreMesh, outerRing, wardRing);
+  return { group, coreMesh, outerRing, shards };
 }

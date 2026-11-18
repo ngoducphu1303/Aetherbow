@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementToast } from './components/AchievementToast';
 import { ArenaModal } from './components/ArenaModal';
+import { AuctionHouseModal } from './components/AuctionHouseModal';
 import { BattlePassModal } from './components/BattlePassModal';
 import { ChestGachaModal, GachaRevealState } from './components/ChestGachaModal';
 import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
@@ -9,6 +10,7 @@ import { ConstellationModal } from './components/ConstellationModal';
 import { DailyRewardsModal } from './components/DailyRewardsModal';
 import { DestinyWheelModal } from './components/DestinyWheelModal';
 import { GameHUD } from './components/GameHUD';
+import { HonorLeaderboardModal } from './components/HonorLeaderboardModal';
 import { ShopSectionTab } from './components/LobbyPanels';
 import { MailModal } from './components/MailModal';
 import { NightMarketModal } from './components/NightMarketModal';
@@ -139,12 +141,37 @@ import {
   normalizeElementalTowers,
   normalizeGrowthFund,
 } from './data/wave6Data';
+import {
+  AVATAR_FRAME_MAP,
+  CRYSTAL_DEFENSE_MAX_DAILY_RUNS,
+  CRYSTAL_DEFENSE_TOTAL_WAVES,
+  MAX_WING_LEVEL,
+  MONTHLY_CARD_MAP,
+  MYTHIC_BADGE_MAP,
+  TOPUP_EVOLUTION_MILESTONES,
+  WING_MAP,
+  WORLD_BOSS_MILESTONES,
+  computeWorldBossLiveRank,
+  generateRotatingAuctionLots,
+  getMythicBadgeMetricValue,
+  getNextMonthlyExpiryDate,
+  getWingUpgradeCost,
+  isMonthlyCardActive,
+  normalizeAuctionHouse,
+  normalizeCrystalDefense,
+  normalizeMonthlyPrivilege,
+  normalizeTopUpEvolution,
+  normalizeWorldBoss,
+  resolveExpiredAuctionLots,
+} from './data/wave7Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
   ArenaOpponent,
+  AuctionLotItem,
   AuraStyleId,
+  AvatarFrameId,
   ConstellationId,
   CoopRaidDifficulty,
   DamageBreakdown,
@@ -163,6 +190,8 @@ import {
   HeroSkinId,
   HudSnapshot,
   JoystickState,
+  MonthlyCardTier,
+  MythicBadgeId,
   NightMarketOffer,
   PetId,
   Rarity,
@@ -175,6 +204,7 @@ import {
   SocketGemInstance,
   TalentId,
   WheelOutcome,
+  WingId,
 } from './types/game';
 
 const STORAGE_KEY = 'artemis_3d_save_v1';
@@ -183,6 +213,12 @@ function addGemsSpent(prev: SaveData, spent: number) {
   const nm = normalizeNightMarket(prev.nightMarket);
   if (spent <= 0) return nm;
   return { ...nm, totalGemsSpent: nm.totalGemsSpent + spent };
+}
+
+function addTopUpPoints(prev: SaveData, pts: number) {
+  const tu = normalizeTopUpEvolution(prev.topUpEvolution);
+  if (pts <= 0) return tu;
+  return { ...tu, points: tu.points + pts };
 }
 
 function loadSaveData(): SaveData {
@@ -269,7 +305,7 @@ export default function App() {
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
   const [gameMode, setGameMode] = useState<LobbyGameMode>('chapter');
   const [activeLobbyTab, setActiveLobbyTab] = useState<LobbyTab>('battle');
-  const [shopSection, setShopSection] = useState<ShopSectionTab>('packs');
+  const [shopSection, setShopSection] = useState<ShopSectionTab>('privilege');
   const [selectedCoopDifficulty, setSelectedCoopDifficulty] = useState<CoopRaidDifficulty>('normal');
   const [selectedElementalTower, setSelectedElementalTower] = useState<ElementalTowerId>('fire');
   const [previewHeroId, setPreviewHeroId] = useState<HeroId | null>(null);
@@ -284,6 +320,8 @@ export default function App() {
     coopDifficulty?: CoopRaidDifficulty;
     isElementalTowerMode?: boolean;
     elementalTowerId?: ElementalTowerId;
+    isCrystalDefenseMode?: boolean;
+    isWorldBossMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
@@ -303,6 +341,8 @@ export default function App() {
   const [destinyWheelOpen, setDestinyWheelOpen] = useState<boolean>(false);
   const [nightMarketOpen, setNightMarketOpen] = useState<boolean>(false);
   const [arenaModalOpen, setArenaModalOpen] = useState<boolean>(false);
+  const [auctionModalOpen, setAuctionModalOpen] = useState<boolean>(false);
+  const [honorBoardOpen, setHonorBoardOpen] = useState<boolean>(false);
   const [activeArenaOpponent, setActiveArenaOpponent] = useState<ArenaOpponent | null>(null);
   const [profileModalTab, setProfileModalTab] = useState<
     'profile' | 'achievements' | 'history' | 'codex' | null
@@ -352,6 +392,13 @@ export default function App() {
     isElementalTowerMode?: boolean;
     elementalTowerId?: ElementalTowerId;
     elementalTowerFloor?: number;
+    isCrystalDefenseMode?: boolean;
+    crystalWavesCleared?: number;
+    crystalHpPct?: number;
+    wingFeathers?: number;
+    isWorldBossMode?: boolean;
+    worldBossDamage?: number;
+    worldBossLiveRank?: number;
     starDust?: number;
     petEssence?: number;
     maxCombo?: number;
@@ -378,6 +425,11 @@ export default function App() {
     const skinDef = SKIN_MAP[activeSkinId];
     const auraDef = AURA_MAP[save.equippedAuraId ?? 'zodiac_gold'] ?? AURA_MAP.zodiac_gold;
     const selCh = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
+    const equippedWingId =
+      save.equippedWingId && (save.unlockedWings ?? []).includes(save.equippedWingId)
+        ? save.equippedWingId
+        : null;
+    const wingLevel = equippedWingId ? Math.max(1, save.wingLevels?.[equippedWingId] ?? 1) : 1;
 
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
@@ -391,8 +443,74 @@ export default function App() {
       auraSecondaryHex: auraDef.secondaryHex,
       pedestalTintHex: selCh.trimHex,
       constellationLevels: playerStats.constellationLevels,
+      wingId: equippedWingId,
+      wingLevel,
     };
   }, [save, displayHeroId, selectedChapterId, playerStats.constellationLevels]);
+
+  // Daily Wave 7 rollover bonus runs + initial Auction resolution
+  useEffect(() => {
+    const today = getTodayKey();
+    setSave((prev) => {
+      const mp = normalizeMonthlyPrivilege(prev.monthlyPrivilege);
+      const extraDefense =
+        (isMonthlyCardActive(mp.silver, today) ? 1 : 0) +
+        (isMonthlyCardActive(mp.royal, today) ? 1 : 0);
+      const extraArena = isMonthlyCardActive(mp.royal, today) ? 2 : 0;
+
+      let nextCd = prev.crystalDefense;
+      let changed = false;
+      if (!prev.crystalDefense || prev.crystalDefense.date !== today) {
+        nextCd = {
+          date: today,
+          runsRemaining: CRYSTAL_DEFENSE_MAX_DAILY_RUNS + extraDefense,
+          bestWave: prev.crystalDefense?.bestWave ?? 0,
+          totalClears: prev.crystalDefense?.totalClears ?? 0,
+        };
+        changed = true;
+      }
+
+      let nextArena = prev.arena;
+      if (extraArena > 0 && (!prev.arena || prev.arena.ticketsDate !== today)) {
+        const baseArena = normalizeArena(prev.arena);
+        nextArena = {
+          ...baseArena,
+          ticketsRemaining: baseArena.ticketsRemaining + extraArena,
+        };
+        changed = true;
+      }
+
+      const normAh = normalizeAuctionHouse(prev.auctionHouse);
+      const resolvedAh = resolveExpiredAuctionLots(normAh);
+      if (resolvedAh !== normAh || !prev.auctionHouse) {
+        changed = true;
+      }
+
+      if (!changed) return prev;
+      return {
+        ...prev,
+        crystalDefense: nextCd,
+        arena: nextArena ?? prev.arena,
+        auctionHouse: resolvedAh,
+      };
+    });
+  }, []);
+
+  // Resolve expired Auction House lots live while the modal is open
+  useEffect(() => {
+    if (!auctionModalOpen) return;
+    const settle = () => {
+      setSave((prev) => {
+        const cur = normalizeAuctionHouse(prev.auctionHouse);
+        const resolved = resolveExpiredAuctionLots(cur);
+        if (resolved === cur && prev.auctionHouse) return prev;
+        return { ...prev, auctionHouse: normalizeAuctionHouse(resolved) };
+      });
+    };
+    settle();
+    const timer = window.setInterval(settle, 2000);
+    return () => window.clearInterval(timer);
+  }, [auctionModalOpen]);
 
   // Persist save to localStorage + sync audio volumes + keep VIP ref fresh
   useEffect(() => {
@@ -535,6 +653,8 @@ export default function App() {
           const isArena = Boolean(summary.isArenaMode);
           const isCoopRaid = Boolean(summary.isCoopRaidMode);
           const isElementalTower = Boolean(summary.isElementalTowerMode);
+          const isCrystalDefense = Boolean(summary.isCrystalDefenseMode);
+          const isWorldBoss = Boolean(summary.isWorldBossMode);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
           const elTowerFloor = summary.elementalTowerFloor ?? 1;
@@ -542,6 +662,11 @@ export default function App() {
           const coopDiff = summary.coopDifficulty ?? 'normal';
           const bossRound = summary.bossRushRound ?? summary.stageReached ?? 1;
           const guildBossDamage = summary.guildBossDamage ?? 0;
+          const crystalWavesCleared = summary.crystalWavesCleared ?? summary.stageReached ?? 0;
+          const worldBossDamage = summary.worldBossDamage ?? 0;
+          const worldBossLiveRank =
+            summary.worldBossLiveRank ?? computeWorldBossLiveRank(worldBossDamage);
+          const wingFeathersGain = summary.wingFeathers ?? 0;
           const arenaRatingDelta = isArena ? (victory ? (opp?.rewardPoints ?? 24) : -12) : 0;
           const arenaCoinsGain = isArena ? (victory ? (opp?.rewardArenaCoins ?? 35) : 12) : 0;
 
@@ -549,6 +674,8 @@ export default function App() {
             ? victory
               ? 160
               : 55
+            : isCrystalDefense || isWorldBoss
+            ? 0
             : isCoopRaid
             ? victory
               ? 0
@@ -572,7 +699,7 @@ export default function App() {
             ? victory
               ? 18
               : 4
-            : isCoopRaid
+            : isCrystalDefense || isWorldBoss || isCoopRaid
             ? 0
             : isElementalTower
             ? Math.floor(elTowerFloor / 3) * 5 + 3
@@ -601,6 +728,10 @@ export default function App() {
             ? victory
               ? 95
               : 40
+            : isCrystalDefense
+            ? (victory ? 130 : crystalWavesCleared * 18) + summary.kills
+            : isWorldBoss
+            ? 110 + Math.min(150, Math.floor(worldBossDamage / 2000))
             : isCoopRaid
             ? victory
               ? 135
@@ -627,6 +758,8 @@ export default function App() {
             seasonXp: runSeasonXp,
             starDust: starDustGain,
             petEssence: petEssenceGain,
+            wingFeathers: wingFeathersGain,
+            worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
@@ -645,7 +778,11 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isArena
+              mode: isCrystalDefense
+                ? 'crystal_defense'
+                : isWorldBoss
+                ? 'world_boss'
+                : isArena
                 ? 'arena'
                 : isCoopRaid
                 ? 'coop_raid'
@@ -660,7 +797,11 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isArena
+              label: isCrystalDefense
+                ? `Thủ Thành Pha Lê · Đợt ${crystalWavesCleared}/${CRYSTAL_DEFENSE_TOTAL_WAVES}`
+                : isWorldBoss
+                ? `Boss Thế Giới · ${worldBossDamage.toLocaleString('vi-VN')} ST (#${worldBossLiveRank})`
+                : isArena
                 ? `Đấu Trường · ${summary.arenaOpponentName || opp?.name || 'Kình Địch'}`
                 : isCoopRaid
                 ? `Co-op Raid · ${coopDef.name}`
@@ -675,8 +816,10 @@ export default function App() {
                 : isTower
                 ? `Tháp Vô Tận · Tầng ${towerFloor}`
                 : `Chương ${summary.chapterId} · ${chName}`,
-              stageReached: isArena || isGuildBoss
+              stageReached: isArena || isGuildBoss || isWorldBoss
                 ? 1
+                : isCrystalDefense
+                ? crystalWavesCleared
                 : isElementalTower
                 ? elTowerFloor
                 : isBossRush
@@ -693,6 +836,43 @@ export default function App() {
               timestamp: Date.now(),
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isCrystalDefense) {
+              const cd = normalizeCrystalDefense(prev.crystalDefense);
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                starDust: (prev.starDust ?? 0) + starDustGain,
+                wingFeathers: (prev.wingFeathers ?? 0) + wingFeathersGain,
+                crystalDefense: {
+                  ...cd,
+                  bestWave: Math.max(cd.bestWave, crystalWavesCleared),
+                  totalClears: cd.totalClears + (victory ? 1 : 0),
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
+            if (isWorldBoss) {
+              const wb = normalizeWorldBoss(prev.worldBoss);
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                wingFeathers: (prev.wingFeathers ?? 0) + wingFeathersGain,
+                worldBoss: {
+                  ...wb,
+                  bestSingleDamage: Math.max(wb.bestSingleDamage, worldBossDamage),
+                  totalDailyDamage: wb.totalDailyDamage + worldBossDamage,
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
 
             if (isCoopRaid) {
               const coop = normalizeCoopRaid(prev.coopRaid);
@@ -1234,6 +1414,100 @@ export default function App() {
     [playerStats]
   );
 
+  const handleStartCrystalDefense = useCallback(() => {
+    const cd = normalizeCrystalDefense(save.crystalDefense);
+    if (cd.runsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeCrystalDefense(prev.crystalDefense);
+      if (cur.runsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        crystalDefense: { ...cur, runsRemaining: cur.runsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 3,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isCrystalDefenseMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startCrystalDefense(playerStats);
+  }, [save.crystalDefense, playerStats]);
+
+  const handleStartWorldBoss = useCallback(() => {
+    const wb = normalizeWorldBoss(save.worldBoss);
+    if (wb.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeWorldBoss(prev.worldBoss);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        worldBoss: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 12,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isWorldBossMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startWorldBoss(playerStats);
+  }, [save.worldBoss, playerStats]);
+
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -1325,6 +1599,8 @@ export default function App() {
         !destinyWheelOpen &&
         !nightMarketOpen &&
         !arenaModalOpen &&
+        !auctionModalOpen &&
+        !honorBoardOpen &&
         !profileModalTab &&
         !mailModalOpen &&
         !sweepResult &&
@@ -1333,7 +1609,11 @@ export default function App() {
         !gachaReveal
       ) {
         e.preventDefault();
-        if (gameMode === 'coop_raid') {
+        if (gameMode === 'crystal_defense') {
+          handleStartCrystalDefense();
+        } else if (gameMode === 'world_boss') {
+          handleStartWorldBoss();
+        } else if (gameMode === 'coop_raid') {
           handleStartCoopRaid(selectedCoopDifficulty);
         } else if (gameMode === 'elemental_tower') {
           handleStartElementalTower(selectedElementalTower);
@@ -1364,6 +1644,8 @@ export default function App() {
     destinyWheelOpen,
     nightMarketOpen,
     arenaModalOpen,
+    auctionModalOpen,
+    honorBoardOpen,
     profileModalTab,
     mailModalOpen,
     sweepResult,
@@ -1380,6 +1662,8 @@ export default function App() {
     handleStartDailyRift,
     handleStartCoopRaid,
     handleStartElementalTower,
+    handleStartCrystalDefense,
+    handleStartWorldBoss,
   ]);
 
   // Hero Handlers
@@ -1756,6 +2040,7 @@ export default function App() {
         ...prev,
         gems: prev.gems - BATTLE_PASS_PREMIUM_GEM_COST,
         nightMarket: addGemsSpent(prev, BATTLE_PASS_PREMIUM_GEM_COST),
+        topUpEvolution: addTopUpPoints(prev, 80),
         battlePass: { ...bp, premiumUnlocked: true },
       };
     });
@@ -2248,6 +2533,7 @@ export default function App() {
         ...prev,
         gems: prev.gems - VIP_MONTHLY_COST_GEMS,
         nightMarket: addGemsSpent(prev, VIP_MONTHLY_COST_GEMS),
+        topUpEvolution: addTopUpPoints(prev, 40),
         vip: { ...vip, activeUntilDate: nextUntil },
         dailySweeps: { ...sweeps, remaining: sweeps.remaining + 2 },
       };
@@ -2280,6 +2566,7 @@ export default function App() {
         ...prev,
         gems: prev.gems - STARTER_PACK_COST_GEMS,
         nightMarket: addGemsSpent(prev, STARTER_PACK_COST_GEMS),
+        topUpEvolution: addTopUpPoints(prev, 25),
         gold: prev.gold + STARTER_PACK_REWARDS.gold,
         petEssence: (prev.petEssence ?? 0) + STARTER_PACK_REWARDS.essence,
         starDust: (prev.starDust ?? 0) + STARTER_PACK_REWARDS.starDust,
@@ -3012,6 +3299,7 @@ export default function App() {
         ...prev,
         gems: prev.gems - GROWTH_FUND_PREMIUM_GEM_COST,
         nightMarket: addGemsSpent(prev, GROWTH_FUND_PREMIUM_GEM_COST),
+        topUpEvolution: addTopUpPoints(prev, 70),
         growthFund: { ...gf, premiumUnlocked: true },
       };
     });
@@ -3225,6 +3513,11 @@ export default function App() {
         }
       }
 
+      const topUpPts = Math.max(
+        15,
+        pack.currency === 'gems' ? pack.cost : Math.round(pack.cost / 25)
+      );
+
       soundEngine.playAchievement();
       return {
         ...prev,
@@ -3236,9 +3529,556 @@ export default function App() {
         inventory: nextInv,
         destinyWheel: nextWheel,
         nightMarket: addGemsSpent(prev, pack.currency === 'gems' ? pack.cost : 0),
+        topUpEvolution: addTopUpPoints(prev, topUpPts),
         commercialPackClaims: {
           ...claims,
           [pack.id]: count + 1,
+        },
+      };
+    });
+  }, []);
+
+  // Wave 7 Handlers: 3D Wings, Avatar Frames, Mythic Badges, Monthly Privilege Cards, Top-Up Evolution, Auction House & World Boss Milestones
+  const handleUnlockWing = useCallback((wingId: WingId, currency: 'gems' | 'feathers') => {
+    const def = WING_MAP[wingId];
+    if (!def) return;
+    setSave((prev) => {
+      const unlocked = prev.unlockedWings ?? [];
+      if (unlocked.includes(wingId)) return prev;
+      const feathers = prev.wingFeathers ?? 0;
+      if (currency === 'gems' && prev.gems < def.unlockGems) return prev;
+      if (currency === 'feathers' && feathers < def.unlockFeathers) return prev;
+
+      const nextUnlockedFrames = new Set<AvatarFrameId>(
+        prev.unlockedAvatarFrames ?? ['default_gold']
+      );
+      if (wingId === 'seraph_zodiac') {
+        nextUnlockedFrames.add('seraph_crown');
+      }
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: currency === 'gems' ? prev.gems - def.unlockGems : prev.gems,
+        wingFeathers: currency === 'feathers' ? feathers - def.unlockFeathers : feathers,
+        nightMarket: addGemsSpent(prev, currency === 'gems' ? def.unlockGems : 0),
+        unlockedWings: [...unlocked, wingId],
+        wingLevels: { ...(prev.wingLevels ?? {}), [wingId]: 1 },
+        equippedWingId: wingId,
+        unlockedAvatarFrames: Array.from(nextUnlockedFrames),
+      };
+    });
+  }, []);
+
+  const handleEquipWing = useCallback((wingId: WingId | null) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      if (wingId === null) return { ...prev, equippedWingId: null };
+      if (!(prev.unlockedWings ?? []).includes(wingId)) return prev;
+      return { ...prev, equippedWingId: wingId };
+    });
+  }, []);
+
+  const handleUpgradeWing = useCallback((wingId: WingId) => {
+    setSave((prev) => {
+      if (!(prev.unlockedWings ?? []).includes(wingId)) return prev;
+      const curLv = Math.max(1, prev.wingLevels?.[wingId] ?? 1);
+      if (curLv >= MAX_WING_LEVEL) return prev;
+      const cost = getWingUpgradeCost(curLv);
+      const feathers = prev.wingFeathers ?? 0;
+      if (feathers < cost.feathers || prev.gold < cost.gold) return prev;
+      soundEngine.playLevelUp();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        wingFeathers: feathers - cost.feathers,
+        wingLevels: { ...(prev.wingLevels ?? {}), [wingId]: curLv + 1 },
+      };
+    });
+  }, []);
+
+  const handleUnlockAvatarFrame = useCallback((frameId: AvatarFrameId) => {
+    const def = AVATAR_FRAME_MAP[frameId];
+    if (!def) return;
+    setSave((prev) => {
+      const unlocked = new Set<AvatarFrameId>(prev.unlockedAvatarFrames ?? ['default_gold']);
+      if (unlocked.has(frameId)) return prev;
+
+      const mp = normalizeMonthlyPrivilege(prev.monthlyPrivilege);
+      const wb = normalizeWorldBoss(prev.worldBoss);
+      const cd = normalizeCrystalDefense(prev.crystalDefense);
+      const hasRoyal = isMonthlyCardActive(mp.royal);
+      const canConditionUnlock =
+        (frameId === 'royal_vip' && hasRoyal) ||
+        (frameId === 'crystal_guardian' && cd.bestWave >= 4) ||
+        (frameId === 'world_dragon' && wb.bestSingleDamage >= 150000) ||
+        (frameId === 'seraph_crown' && (prev.unlockedWings ?? []).includes('seraph_zodiac'));
+
+      if (canConditionUnlock) {
+        unlocked.add(frameId);
+        soundEngine.playAchievement();
+        return {
+          ...prev,
+          unlockedAvatarFrames: Array.from(unlocked),
+          equippedAvatarFrameId: frameId,
+        };
+      }
+
+      if (!def.unlockGems || prev.gems < def.unlockGems) return prev;
+      unlocked.add(frameId);
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: prev.gems - def.unlockGems,
+        nightMarket: addGemsSpent(prev, def.unlockGems),
+        unlockedAvatarFrames: Array.from(unlocked),
+        equippedAvatarFrameId: frameId,
+      };
+    });
+  }, []);
+
+  const handleEquipAvatarFrame = useCallback((frameId: AvatarFrameId) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      const unlocked = prev.unlockedAvatarFrames ?? ['default_gold'];
+      if (!unlocked.includes(frameId)) return prev;
+      return { ...prev, equippedAvatarFrameId: frameId };
+    });
+  }, []);
+
+  const handleClaimMythicBadge = useCallback((badgeId: MythicBadgeId) => {
+    const def = MYTHIC_BADGE_MAP[badgeId];
+    if (!def) return;
+    setSave((prev) => {
+      const claimed = prev.claimedMythicBadges ?? [];
+      if (claimed.includes(badgeId)) return prev;
+      const statsNow = computePlayerStats(prev);
+      if (getMythicBadgeMetricValue(def, prev, statsNow.powerRating) < def.target) return prev;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        claimedMythicBadges: [...claimed, badgeId],
+        equippedMythicBadgeId: badgeId,
+      };
+    });
+  }, []);
+
+  const handleEquipMythicBadge = useCallback((badgeId: MythicBadgeId | null) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      if (badgeId === null) return { ...prev, equippedMythicBadgeId: null };
+      if (!(prev.claimedMythicBadges ?? []).includes(badgeId)) return prev;
+      return { ...prev, equippedMythicBadgeId: badgeId };
+    });
+  }, []);
+
+  const handleBuyMonthlyCard = useCallback((tier: MonthlyCardTier) => {
+    const def = MONTHLY_CARD_MAP[tier];
+    if (!def) return;
+    setSave((prev) => {
+      if (prev.gems < def.gemCost) return prev;
+      const mp = normalizeMonthlyPrivilege(prev.monthlyPrivilege);
+      const curSlot = tier === 'silver_astral' ? mp.silver : mp.royal;
+      const wasActive = isMonthlyCardActive(curSlot);
+      const nextUntil = getNextMonthlyExpiryDate(curSlot.activeUntilDate, def.durationDays);
+
+      const nextMp =
+        tier === 'silver_astral'
+          ? { ...mp, silver: { ...mp.silver, activeUntilDate: nextUntil } }
+          : { ...mp, royal: { ...mp.royal, activeUntilDate: nextUntil } };
+
+      const cd = normalizeCrystalDefense(prev.crystalDefense);
+      const ar = normalizeArena(prev.arena);
+      const nextFrames = new Set<AvatarFrameId>(prev.unlockedAvatarFrames ?? ['default_gold']);
+      if (tier === 'royal_zodiac') {
+        nextFrames.add('royal_vip');
+      }
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems - def.gemCost + def.instantGems,
+        wingFeathers: (prev.wingFeathers ?? 0) + def.instantFeathers,
+        nightMarket: addGemsSpent(prev, def.gemCost),
+        topUpEvolution: addTopUpPoints(prev, def.gemCost),
+        monthlyPrivilege: nextMp,
+        unlockedAvatarFrames: Array.from(nextFrames),
+        crystalDefense: !wasActive
+          ? { ...cd, runsRemaining: cd.runsRemaining + def.extraDefenseRuns }
+          : cd,
+        arena:
+          !wasActive && def.extraArenaTickets > 0
+            ? { ...ar, ticketsRemaining: ar.ticketsRemaining + def.extraArenaTickets }
+            : ar,
+      };
+    });
+  }, []);
+
+  const handleClaimMonthlyCardDaily = useCallback((tier: MonthlyCardTier) => {
+    const def = MONTHLY_CARD_MAP[tier];
+    if (!def) return;
+    const today = getTodayKey();
+    setSave((prev) => {
+      const mp = normalizeMonthlyPrivilege(prev.monthlyPrivilege);
+      const slot = tier === 'silver_astral' ? mp.silver : mp.royal;
+      if (!isMonthlyCardActive(slot, today) || slot.lastClaimDate === today) return prev;
+
+      const nextMp =
+        tier === 'silver_astral'
+          ? { ...mp, silver: { ...mp.silver, lastClaimDate: today } }
+          : { ...mp, royal: { ...mp.royal, lastClaimDate: today } };
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + def.dailyGold,
+        gems: prev.gems + def.dailyGems,
+        wingFeathers: (prev.wingFeathers ?? 0) + def.dailyFeathers,
+        starDust: (prev.starDust ?? 0) + def.dailyStarDust,
+        monthlyPrivilege: nextMp,
+      };
+    });
+  }, []);
+
+  const handleClaimTopUpEvolutionTier = useCallback((tierId: string) => {
+    const tier = TOPUP_EVOLUTION_MILESTONES.find((m) => m.id === tierId);
+    if (!tier) return;
+    setSave((prev) => {
+      const tu = normalizeTopUpEvolution(prev.topUpEvolution);
+      if (tu.points < tier.pointsRequired || tu.claimedTierIds.includes(tierId)) return prev;
+
+      let nextGold = prev.gold;
+      let nextGems = prev.gems;
+      let nextFeathers = prev.wingFeathers ?? 0;
+      let nextDust = prev.starDust ?? 0;
+      let nextInv = prev.inventory;
+      const nextWings = new Set<WingId>(prev.unlockedWings ?? []);
+      const nextWingLevels = { ...(prev.wingLevels ?? {}) };
+      const nextFrames = new Set<AvatarFrameId>(prev.unlockedAvatarFrames ?? ['default_gold']);
+
+      for (const rw of tier.rewards) {
+        if (rw.kind === 'gold') nextGold += rw.amount;
+        else if (rw.kind === 'gems') nextGems += rw.amount;
+        else if (rw.kind === 'feathers') nextFeathers += rw.amount;
+        else if (rw.kind === 'star_dust') nextDust += rw.amount;
+        else if (rw.kind === 'gear_s') {
+          nextInv = [...nextInv, rollChestGear(true, Rarity.LEGENDARY, true)];
+        } else if (rw.kind === 'wing' && rw.wingId) {
+          if (nextWings.has(rw.wingId)) {
+            nextFeathers += 45;
+          } else {
+            nextWings.add(rw.wingId);
+            nextWingLevels[rw.wingId] = nextWingLevels[rw.wingId] ?? 1;
+          }
+        } else if (rw.kind === 'frame' && rw.frameId) {
+          nextFrames.add(rw.frameId);
+        }
+      }
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: nextGold,
+        gems: nextGems,
+        wingFeathers: nextFeathers,
+        starDust: nextDust,
+        inventory: nextInv,
+        unlockedWings: Array.from(nextWings),
+        wingLevels: nextWingLevels,
+        unlockedAvatarFrames: Array.from(nextFrames),
+        topUpEvolution: {
+          ...tu,
+          claimedTierIds: [...tu.claimedTierIds, tierId],
+        },
+      };
+    });
+  }, []);
+
+  const handlePlaceAuctionBid = useCallback((lotId: string, bidAmount: number) => {
+    setSave((prev) => {
+      const ah = normalizeAuctionHouse(prev.auctionHouse);
+      const lotIdx = ah.lots.findIndex((l) => l.id === lotId && l.status === 'active');
+      if (lotIdx === -1) return prev;
+      const lot = ah.lots[lotIdx];
+      if (lot.isPlayerListing) return prev;
+      const minBid = Math.ceil(lot.currentBid * 1.1);
+      const actualBid = Math.max(minBid, bidAmount);
+      const deltaGems = actualBid - lot.playerBidAmount;
+      if (deltaGems <= 0 || prev.gems < deltaGems) return prev;
+
+      const nextLots = [...ah.lots];
+      nextLots[lotIdx] = {
+        ...lot,
+        currentBid: actualBid,
+        playerBidAmount: actualBid,
+        highestBidderIsPlayer: true,
+      };
+      soundEngine.playUiClick(1.1);
+      return {
+        ...prev,
+        gems: prev.gems - deltaGems,
+        nightMarket: addGemsSpent(prev, deltaGems),
+        auctionHouse: {
+          ...ah,
+          lots: nextLots,
+        },
+      };
+    });
+  }, []);
+
+  const handleBuyoutAuctionLot = useCallback((lotId: string) => {
+    setSave((prev) => {
+      const ah = normalizeAuctionHouse(prev.auctionHouse);
+      const lot = ah.lots.find((l) => l.id === lotId && l.status === 'active');
+      if (!lot || lot.isPlayerListing) return prev;
+      const deltaGems = Math.max(0, lot.buyoutPrice - lot.playerBidAmount);
+      if (prev.gems < deltaGems) return prev;
+
+      const claimEntry = {
+        id: `claim_buyout_${lot.id}_${Date.now()}`,
+        title: `Mua đứt thành công: ${lot.label}`,
+        gear: lot.gear,
+        socketGem: lot.socketGem,
+        reason: `Đã chốt mua đứt trên Sàn Đấu Giá (${lot.buyoutPrice} Ngọc Hồn).`,
+      };
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: prev.gems - deltaGems,
+        nightMarket: addGemsSpent(prev, deltaGems),
+        auctionHouse: {
+          ...ah,
+          lots: ah.lots.filter((l) => l.id !== lotId),
+          claimBox: [claimEntry, ...ah.claimBox],
+          totalTrades: ah.totalTrades + 1,
+        },
+      };
+    });
+  }, []);
+
+  const handleListAuctionGear = useCallback(
+    (gearUid: string, startBid: number, buyoutPrice: number) => {
+      setSave((prev) => {
+        const eqSet = new Set(Object.values(prev.equipped));
+        if (eqSet.has(gearUid)) return prev;
+        const item = prev.inventory.find((g) => g.uid === gearUid);
+        if (!item) return prev;
+        const tpl = GEAR_TEMPLATES[item.templateId];
+        if (!tpl) return prev;
+
+        const cleanStart = Math.max(5, Math.round(startBid));
+        const cleanBuyout = Math.max(cleanStart + 5, Math.round(buyoutPrice));
+        const now = Date.now();
+        const ah = normalizeAuctionHouse(prev.auctionHouse, now);
+        const lot: AuctionLotItem = {
+          id: `player_lot_g_${now}_${Math.random().toString(36).slice(2, 6)}`,
+          sellerName: 'Bạn (Ký Gửi)',
+          itemKind: 'gear',
+          gear: item,
+          label: `${tpl.name} (${item.rarity})`,
+          rarity: item.rarity,
+          startingBid: cleanStart,
+          currentBid: cleanStart,
+          buyoutPrice: cleanBuyout,
+          highestBidderIsPlayer: false,
+          playerBidAmount: 0,
+          endsAt: now + 90 * 1000,
+          status: 'active',
+          isPlayerListing: true,
+        };
+
+        soundEngine.playUiClick(1.08);
+        return {
+          ...prev,
+          inventory: prev.inventory.filter((g) => g.uid !== gearUid),
+          auctionHouse: {
+            ...ah,
+            lots: [lot, ...ah.lots],
+          },
+        };
+      });
+    },
+    []
+  );
+
+  const handleListAuctionGem = useCallback(
+    (gemUid: string, startBid: number, buyoutPrice: number) => {
+      setSave((prev) => {
+        const socketedSet = new Set<string>();
+        prev.inventory.forEach((g) => g.socketedGems?.forEach((id) => socketedSet.add(id)));
+        if (socketedSet.has(gemUid)) return prev;
+
+        const gemsPool = normalizeSocketGems(prev.socketGems);
+        const gem = gemsPool.find((g) => g.uid === gemUid);
+        if (!gem) return prev;
+
+        const cleanStart = Math.max(5, Math.round(startBid));
+        const cleanBuyout = Math.max(cleanStart + 5, Math.round(buyoutPrice));
+        const now = Date.now();
+        const ah = normalizeAuctionHouse(prev.auctionHouse, now);
+        const colorName =
+          gem.color === 'ruby'
+            ? 'Hồng Ngọc'
+            : gem.color === 'sapphire'
+            ? 'Lam Ngọc'
+            : gem.color === 'topaz'
+            ? 'Hoàng Ngọc'
+            : 'Lục Ngọc';
+
+        const lot: AuctionLotItem = {
+          id: `player_lot_m_${now}_${Math.random().toString(36).slice(2, 6)}`,
+          sellerName: 'Bạn (Ký Gửi)',
+          itemKind: 'socket_gem',
+          socketGem: gem,
+          label: `${colorName} Cấp ${gem.tier === 3 ? 'III' : gem.tier === 2 ? 'II' : 'I'}`,
+          rarity:
+            gem.tier === 3 ? Rarity.LEGENDARY : gem.tier === 2 ? Rarity.EPIC : Rarity.RARE,
+          startingBid: cleanStart,
+          currentBid: cleanStart,
+          buyoutPrice: cleanBuyout,
+          highestBidderIsPlayer: false,
+          playerBidAmount: 0,
+          endsAt: now + 90 * 1000,
+          status: 'active',
+          isPlayerListing: true,
+        };
+
+        soundEngine.playUiClick(1.08);
+        return {
+          ...prev,
+          socketGems: gemsPool.filter((g) => g.uid !== gemUid),
+          auctionHouse: {
+            ...ah,
+            lots: [lot, ...ah.lots],
+          },
+        };
+      });
+    },
+    []
+  );
+
+  const handleCancelAuctionListing = useCallback((lotId: string) => {
+    setSave((prev) => {
+      const ah = normalizeAuctionHouse(prev.auctionHouse);
+      const lot = ah.lots.find((l) => l.id === lotId && l.isPlayerListing);
+      if (!lot) return prev;
+
+      soundEngine.playUiClick();
+      return {
+        ...prev,
+        inventory: lot.gear ? [...prev.inventory, lot.gear] : prev.inventory,
+        socketGems: lot.socketGem
+          ? [...normalizeSocketGems(prev.socketGems), lot.socketGem]
+          : prev.socketGems,
+        auctionHouse: {
+          ...ah,
+          lots: ah.lots.filter((l) => l.id !== lotId),
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimAuctionEntry = useCallback((entryId: string) => {
+    setSave((prev) => {
+      const ah = normalizeAuctionHouse(prev.auctionHouse);
+      const entry = ah.claimBox.find((c) => c.id === entryId);
+      if (!entry) return prev;
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + (entry.gold ?? 0),
+        gems: prev.gems + (entry.gems ?? 0),
+        inventory: entry.gear ? [...prev.inventory, entry.gear] : prev.inventory,
+        socketGems: entry.socketGem
+          ? [...normalizeSocketGems(prev.socketGems), entry.socketGem]
+          : prev.socketGems,
+        auctionHouse: {
+          ...ah,
+          claimBox: ah.claimBox.filter((c) => c.id !== entryId),
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimAuctionAll = useCallback(() => {
+    setSave((prev) => {
+      const ah = normalizeAuctionHouse(prev.auctionHouse);
+      if (ah.claimBox.length === 0) return prev;
+
+      let goldGain = 0;
+      let gemsGain = 0;
+      const newGears: GearInstance[] = [];
+      const newGems: SocketGemInstance[] = [];
+      for (const entry of ah.claimBox) {
+        goldGain += entry.gold ?? 0;
+        gemsGain += entry.gems ?? 0;
+        if (entry.gear) newGears.push(entry.gear);
+        if (entry.socketGem) newGems.push(entry.socketGem);
+      }
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + goldGain,
+        gems: prev.gems + gemsGain,
+        inventory: newGears.length > 0 ? [...prev.inventory, ...newGears] : prev.inventory,
+        socketGems:
+          newGems.length > 0
+            ? [...normalizeSocketGems(prev.socketGems), ...newGems]
+            : prev.socketGems,
+        auctionHouse: {
+          ...ah,
+          claimBox: [],
+        },
+      };
+    });
+  }, []);
+
+  const handleRefreshAuctionLots = useCallback(() => {
+    setSave((prev) => {
+      if (prev.gems < 15) return prev;
+      const now = Date.now();
+      const ah = normalizeAuctionHouse(prev.auctionHouse, now);
+      const keptPlayerLots = ah.lots.filter((l) => l.isPlayerListing && l.status === 'active');
+      const freshMarket = generateRotatingAuctionLots(now);
+      soundEngine.playUiClick(1.1);
+      return {
+        ...prev,
+        gems: prev.gems - 15,
+        nightMarket: addGemsSpent(prev, 15),
+        auctionHouse: {
+          ...ah,
+          lastRefreshAt: now,
+          lots: [...keptPlayerLots, ...freshMarket],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimWorldBossMilestone = useCallback((milestoneId: string) => {
+    const ms = WORLD_BOSS_MILESTONES.find((m) => m.id === milestoneId);
+    if (!ms) return;
+    setSave((prev) => {
+      const wb = normalizeWorldBoss(prev.worldBoss);
+      if (wb.bestSingleDamage < ms.damageTarget || wb.claimedMilestoneIds.includes(milestoneId)) {
+        return prev;
+      }
+      const nextFrames = new Set<AvatarFrameId>(prev.unlockedAvatarFrames ?? ['default_gold']);
+      if (ms.rewardFrame) {
+        nextFrames.add(ms.rewardFrame);
+      }
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + ms.rewardGems,
+        wingFeathers: (prev.wingFeathers ?? 0) + ms.rewardFeathers,
+        starDust: (prev.starDust ?? 0) + ms.rewardStarDust,
+        unlockedAvatarFrames: Array.from(nextFrames),
+        worldBoss: {
+          ...wb,
+          claimedMilestoneIds: [...wb.claimedMilestoneIds, milestoneId],
         },
       };
     });
@@ -3315,7 +4155,10 @@ export default function App() {
               setPreviewHeroId(null);
             }
           }}
-          onOpenShopSection={(sec) => setShopSection(sec)}
+          onOpenShopSection={(sec) => {
+            setShopSection(sec);
+            setActiveLobbyTab('shop');
+          }}
           onGameModeChange={(mode) => {
             soundEngine.playUiClick();
             setGameMode(mode);
@@ -3328,6 +4171,8 @@ export default function App() {
           onStartDailyRift={handleStartDailyRift}
           onStartCoopRaid={handleStartCoopRaid}
           onStartElementalTower={handleStartElementalTower}
+          onStartCrystalDefense={handleStartCrystalDefense}
+          onStartWorldBoss={handleStartWorldBoss}
           onQuickSweepChapter={handleQuickSweepChapter}
           onToggleMute={handleToggleMute}
           onOpenRewardsModal={(tab) => setRewardsModalTab(tab)}
@@ -3343,6 +4188,8 @@ export default function App() {
           onOpenDestinyWheelModal={() => setDestinyWheelOpen(true)}
           onOpenNightMarketModal={() => setNightMarketOpen(true)}
           onOpenArenaModal={() => setArenaModalOpen(true)}
+          onOpenAuctionModal={() => setAuctionModalOpen(true)}
+          onOpenHonorBoard={() => setHonorBoardOpen(true)}
           onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
           onOpenMailModal={() => setMailModalOpen(true)}
           onOpenSettingsModal={() => setSettingsOpen(true)}
@@ -3357,6 +4204,11 @@ export default function App() {
           onEquipSkin={handleEquipSkin}
           onUnlockAura={handleUnlockAura}
           onEquipAura={handleEquipAura}
+          onUnlockWing={handleUnlockWing}
+          onEquipWing={handleEquipWing}
+          onUpgradeWing={handleUpgradeWing}
+          onUnlockAvatarFrame={handleUnlockAvatarFrame}
+          onEquipAvatarFrame={handleEquipAvatarFrame}
           onEquipGear={handleEquip}
           onUpgradeGear={handleUpgrade}
           onFuseGear={handleFuse}
@@ -3371,6 +4223,9 @@ export default function App() {
           onClaimAllGrowthFund={handleClaimAllGrowthFund}
           onBuyArenaShopOffer={handleBuyArenaShopOffer}
           onBuyCommercialPack={handleBuyCommercialPack}
+          onBuyMonthlyCard={handleBuyMonthlyCard}
+          onClaimMonthlyCardDaily={handleClaimMonthlyCardDaily}
+          onClaimTopUpEvolutionTier={handleClaimTopUpEvolutionTier}
           onEquipRune={handleEquipRune}
           onUnequipRune={handleUnequipRune}
           onFuseRune={handleFuseRune}
@@ -3437,8 +4292,11 @@ export default function App() {
           totalStages={
             (runSummary?.isArenaMode ?? hud.isArenaMode) ||
             (runSummary?.isGuildBossMode ?? hud.isGuildBossMode) ||
-            (runSummary?.isCoopRaidMode ?? hud.isCoopRaidMode)
+            (runSummary?.isCoopRaidMode ?? hud.isCoopRaidMode) ||
+            (runSummary?.isWorldBossMode ?? hud.isWorldBossMode)
               ? 1
+              : (runSummary?.isCrystalDefenseMode ?? hud.isCrystalDefenseMode)
+              ? CRYSTAL_DEFENSE_TOTAL_WAVES
               : (runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode)
               ? 3
               : activeChapter.stages.length
@@ -3464,6 +4322,22 @@ export default function App() {
           elementalTowerFloor={
             runSummary?.elementalTowerFloor ?? hud.elementalTowerFloor ?? 1
           }
+          isCrystalDefenseMode={runSummary?.isCrystalDefenseMode ?? hud.isCrystalDefenseMode}
+          crystalWavesCleared={
+            runSummary?.crystalWavesCleared ?? hud.crystalWave ?? 0
+          }
+          crystalHpPct={
+            runSummary?.crystalHpPct ??
+            Math.round(((hud.crystalHp ?? 0) / Math.max(1, hud.crystalMaxHp ?? 1)) * 100)
+          }
+          isWorldBossMode={runSummary?.isWorldBossMode ?? hud.isWorldBossMode}
+          worldBossDamage={
+            runSummary?.worldBossDamage ?? hud.worldBossTotalDamage ?? 0
+          }
+          worldBossLiveRank={
+            runSummary?.worldBossLiveRank ?? hud.worldBossRank ?? 9
+          }
+          wingFeathersEarned={runSummary?.wingFeathers ?? 0}
           kills={runSummary?.kills ?? hud.kills}
           goldEarned={runSummary?.gold ?? hud.runGold}
           gemsEarned={runSummary?.gems ?? hud.runGems}
@@ -3474,7 +4348,23 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isArenaMode ?? hud.isArenaMode)
+            (runSummary?.isCrystalDefenseMode ?? hud.isCrystalDefenseMode)
+              ? () => {
+                  if (normalizeCrystalDefense(save.crystalDefense).runsRemaining > 0) {
+                    handleStartCrystalDefense();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isWorldBossMode ?? hud.isWorldBossMode)
+              ? () => {
+                  if (normalizeWorldBoss(save.worldBoss).dailyRunsRemaining > 0) {
+                    handleStartWorldBoss();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isArenaMode ?? hud.isArenaMode)
               ? () => {
                   if (activeArenaOpponent && normalizeArena(save.arena).ticketsRemaining > 0) {
                     handleStartArenaDuel(activeArenaOpponent);
@@ -3695,6 +4585,39 @@ export default function App() {
         />
       )}
 
+      {phase === GamePhase.TITLE && enteredGame && auctionModalOpen && (
+        <AuctionHouseModal
+          save={save}
+          onPlaceBid={handlePlaceAuctionBid}
+          onBuyoutLot={handleBuyoutAuctionLot}
+          onListGear={handleListAuctionGear}
+          onListGem={handleListAuctionGem}
+          onCancelListing={handleCancelAuctionListing}
+          onClaimAll={handleClaimAuctionAll}
+          onClaimEntry={handleClaimAuctionEntry}
+          onRefreshLots={handleRefreshAuctionLots}
+          onClose={() => setAuctionModalOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && honorBoardOpen && (
+        <HonorLeaderboardModal
+          save={save}
+          powerRating={playerStats.powerRating}
+          heroName={(HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis).name}
+          onUnlockAvatarFrame={handleUnlockAvatarFrame}
+          onEquipAvatarFrame={handleEquipAvatarFrame}
+          onClaimMythicBadge={handleClaimMythicBadge}
+          onEquipMythicBadge={handleEquipMythicBadge}
+          onClaimWorldBossMilestone={handleClaimWorldBossMilestone}
+          onStartWorldBoss={() => {
+            setHonorBoardOpen(false);
+            handleStartWorldBoss();
+          }}
+          onClose={() => setHonorBoardOpen(false)}
+        />
+      )}
+
       <CombatPowerToast toast={powerToast} />
       <AchievementToast achievement={activeAchievementToast} />
 
@@ -3710,6 +4633,8 @@ export default function App() {
           coopDifficulty={transitionState.coopDifficulty}
           isElementalTowerMode={transitionState.isElementalTowerMode}
           elementalTowerId={transitionState.elementalTowerId}
+          isCrystalDefenseMode={transitionState.isCrystalDefenseMode}
+          isWorldBossMode={transitionState.isWorldBossMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

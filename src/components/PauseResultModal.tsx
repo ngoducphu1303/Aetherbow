@@ -2,7 +2,7 @@ import React from 'react';
 import { BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Trophy, Users } from 'lucide-react';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, DamageBreakdown, ElementalTowerId, GamePhase } from '../types/game';
-import { GoldCoinIcon, PetEssenceIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
+import { GoldCoinIcon, PetEssenceIcon, SoulGemIcon, StarDustIcon, WingFeatherIcon } from './GameIcons';
 
 interface PauseResultModalProps {
   phase: GamePhase.PAUSED | GamePhase.VICTORY | GamePhase.GAME_OVER;
@@ -24,6 +24,13 @@ interface PauseResultModalProps {
   isElementalTowerMode?: boolean;
   elementalTowerId?: ElementalTowerId;
   elementalTowerFloor?: number;
+  isCrystalDefenseMode?: boolean;
+  crystalWavesCleared?: number;
+  crystalHpPct?: number;
+  isWorldBossMode?: boolean;
+  worldBossDamage?: number;
+  worldBossLiveRank?: number;
+  wingFeathersEarned?: number;
   kills: number;
   goldEarned: number;
   gemsEarned: number;
@@ -58,6 +65,13 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   isElementalTowerMode = false,
   elementalTowerId = 'fire',
   elementalTowerFloor = 1,
+  isCrystalDefenseMode = false,
+  crystalWavesCleared = 0,
+  crystalHpPct = 0,
+  isWorldBossMode = false,
+  worldBossDamage = 0,
+  worldBossLiveRank = 9,
+  wingFeathersEarned = 0,
   kills,
   goldEarned,
   gemsEarned,
@@ -133,6 +147,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
           {isArenaMode
             ? `Đấu Trường Arena 1v1 · ${arenaOpponentName || 'Kình Địch'}`
+            : isCrystalDefenseMode
+            ? `Thủ Thành Pha Lê Tinh Linh · Đợt ${stageReached}/6`
+            : isWorldBossMode
+            ? `Boss Thế Giới Liên Server · Hạng #${worldBossLiveRank}`
             : isCoopRaidMode
             ? `Phó Bản Co-op 3D · ${COOP_DIFFICULTY_MAP[coopDifficulty]?.badge ?? 'TỔ ĐỘI'}`
             : isElementalTowerMode
@@ -154,6 +172,12 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? 'Chiến Thắng Đấu Trường!'
               : 'Thất Bại Tại Đấu Trường'
+            : isCrystalDefenseMode
+            ? isVictory
+              ? 'Bảo Vệ Thành Công Pha Lê!'
+              : 'Pha Lê Tinh Linh Vỡ Vụn'
+            : isWorldBossMode
+            ? 'Tổng Kết Boss Thế Giới!'
             : isCoopRaidMode
             ? isVictory
               ? 'Chinh Phục Phó Bản Co-op!'
@@ -183,6 +207,12 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? `Bạn đã đánh bại ${arenaOpponentName || 'đối thủ'} và nhận ${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm Xếp Hạng Arena!`
               : `Đối thủ ${arenaOpponentName || 'đối thủ'} đã thắng thế (${arenaRatingDelta} Điểm Arena). Hãy nâng cấp Bảo Thạch và tái đấu!`
+            : isCrystalDefenseMode
+            ? isVictory
+              ? `Pha Lê Tinh Linh còn ${crystalHpPct}% Sinh Lực sau 6 đợt công thành! Lông Vũ Tinh Tú đã chuyển vào Kho Cánh.`
+              : `Bạn đã bảo vệ Pha Lê qua ${crystalWavesCleared} đợt công thành. Lông Vũ thu thập được đã được bảo toàn.`
+            : isWorldBossMode
+            ? `Bạn gây ${worldBossDamage.toLocaleString('vi-VN')} sát thương lên Hắc Long Liên Server và đạt Hạng #${worldBossLiveRank}! Hãy vào Bảng Vinh Danh để nhận mốc thưởng.`
             : isCoopRaidMode
             ? isVictory
               ? 'Tổ đội 3 Anh Hùng đã tiêu diệt Chúa Tể Phó Bản! Chiến lợi phẩm & Bảo Thạch đã chuyển vào Kho Đồ.'
@@ -212,6 +242,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             <div className="text-[10px] text-slate-400 font-bold">
               {isArenaMode
                 ? 'Điểm Xếp Hạng'
+                : isCrystalDefenseMode
+                ? 'Đợt Thủ Thành'
+                : isWorldBossMode
+                ? 'Sát Thương Boss'
                 : isCoopRaidMode
                 ? 'Ải Phó Bản'
                 : isElementalTowerMode
@@ -237,6 +271,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             >
               {isArenaMode
                 ? `${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm`
+                : isCrystalDefenseMode
+                ? `${crystalWavesCleared}/6 (${crystalHpPct}%)`
+                : isWorldBossMode
+                ? worldBossDamage.toLocaleString('vi-VN')
                 : isCoopRaidMode
                 ? `${stageReached}/${totalStages}`
                 : isElementalTowerMode
@@ -273,22 +311,35 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             </div>
           </div>
 
-          {(starDustEarned > 0 || petEssenceEarned > 0) && (
+          {(starDustEarned > 0 || petEssenceEarned > 0 || wingFeathersEarned > 0) && (
             <>
-              <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-sky-200 font-bold">
-                  <StarDustIcon className="w-3.5 h-3.5 shrink-0" />
-                  <span>Bụi Tinh Tú</span>
-                </span>
-                <span className="font-mono-nums font-black text-sky-300">+{starDustEarned}</span>
-              </div>
-              <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-emerald-200 font-bold">
-                  <PetEssenceIcon className="w-3.5 h-3.5 shrink-0" />
-                  <span>Tinh Chất</span>
-                </span>
-                <span className="font-mono-nums font-black text-emerald-300">+{petEssenceEarned}</span>
-              </div>
+              {starDustEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-sky-200 font-bold">
+                    <StarDustIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>Bụi Tinh Tú</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-sky-300">+{starDustEarned}</span>
+                </div>
+              )}
+              {petEssenceEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-emerald-200 font-bold">
+                    <PetEssenceIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>Tinh Chất</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-emerald-300">+{petEssenceEarned}</span>
+                </div>
+              )}
+              {wingFeathersEarned > 0 && (
+                <div className="col-span-2 sm:col-span-4 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-sky-200 font-bold">
+                    <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>Lông Vũ Tinh Tú (Nâng Cấp Cánh 3D)</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-amber-300">+{wingFeathersEarned}</span>
+                </div>
+              )}
             </>
           )}
 
