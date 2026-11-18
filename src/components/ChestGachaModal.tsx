@@ -246,21 +246,20 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                     key={g.uid}
                     type="button"
                     onClick={() => flipCard(idx, g.rarity)}
-                    className={`relative rounded-2xl border p-2.5 min-h-[138px] flex flex-col items-center justify-center text-center transition-transform cursor-pointer ${
-                      flipped
-                        ? `a2-gacha-reveal ${RARITY_FRAME_CLASS[g.rarity]} a2-item-card`
-                        : 'bg-[#080d22] border-amber-300/50 hover:scale-[1.03]'
-                    }`}
+                    className="a2-flip-scene min-h-[144px] w-full text-center cursor-pointer"
                   >
-                    {!flipped ? (
-                      <>
+                    <div className={`a2-flip-card ${flipped ? 'is-flipped' : ''}`}>
+                      <div
+                        className="a2-flip-face rounded-2xl border border-amber-300/55 bg-[#080d22] flex flex-col items-center justify-center overflow-hidden hover:border-amber-200"
+                        style={{ boxShadow: `0 0 18px ${meta.color}28` }}
+                      >
                         {!cardBackFailed && (
                           <img
                             src={tarotCardBack}
                             alt="Thẻ Chưa Lật"
                             referrerPolicy="no-referrer"
                             onError={() => setCardBackFailed(true)}
-                            className="absolute inset-0 w-full h-full object-cover rounded-2xl opacity-55"
+                            className="absolute inset-0 w-full h-full object-cover opacity-55"
                           />
                         )}
                         <div className="relative z-10 flex flex-col items-center gap-1.5">
@@ -274,24 +273,28 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                             Chạm Lật
                           </span>
                         </div>
-                      </>
-                    ) : (
-                      <div className="a2-item-inner p-2 flex flex-col items-center justify-between gap-1.5 w-full h-full">
-                        <div className="flex items-center justify-between w-full text-[9px] font-black">
-                          <span className={meta.textClass}>{meta.label}</span>
-                          {tpl.isSTier && <span className="text-amber-300">[S]</span>}
-                        </div>
-                        <GearSlotSvg
-                          slot={tpl.slot}
-                          weaponArchetype={tpl.weaponArchetype}
-                          accentHex={tpl.visualAccentHex}
-                          className="w-11 h-11"
-                        />
-                        <div className="text-[11px] font-black text-white line-clamp-2 leading-tight">
-                          {tpl.name}
+                      </div>
+
+                      <div
+                        className={`a2-flip-face a2-flip-face-back rounded-2xl ${RARITY_FRAME_CLASS[g.rarity]} a2-item-card p-1`}
+                      >
+                        <div className="a2-item-inner p-2 flex flex-col items-center justify-between gap-1.5 w-full h-full">
+                          <div className="flex items-center justify-between w-full text-[9px] font-black">
+                            <span className={meta.textClass}>{meta.label}</span>
+                            {tpl.isSTier && <span className="text-amber-300">[S]</span>}
+                          </div>
+                          <GearSlotSvg
+                            slot={tpl.slot}
+                            weaponArchetype={tpl.weaponArchetype}
+                            accentHex={tpl.visualAccentHex}
+                            className="w-11 h-11"
+                          />
+                          <div className="text-[11px] font-black text-white line-clamp-2 leading-tight">
+                            {tpl.name}
+                          </div>
                         </div>
                       </div>
-                    )}
+                    </div>
                   </button>
                 );
               })}
@@ -307,21 +310,20 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                     key={r.uid}
                     type="button"
                     onClick={() => flipCard(idx, r.rarity)}
-                    className={`relative rounded-2xl border p-2.5 min-h-[138px] flex flex-col items-center justify-center text-center transition-transform cursor-pointer ${
-                      flipped
-                        ? `a2-gacha-reveal ${RARITY_FRAME_CLASS[r.rarity]} a2-item-card`
-                        : 'bg-[#080d22] border-purple-300/55 hover:scale-[1.03]'
-                    }`}
+                    className="a2-flip-scene min-h-[144px] w-full text-center cursor-pointer"
                   >
-                    {!flipped ? (
-                      <>
+                    <div className={`a2-flip-card ${flipped ? 'is-flipped' : ''}`}>
+                      <div
+                        className="a2-flip-face rounded-2xl border border-purple-300/55 bg-[#080d22] flex flex-col items-center justify-center overflow-hidden hover:border-purple-200"
+                        style={{ boxShadow: `0 0 18px ${meta.color}28` }}
+                      >
                         {!cardBackFailed && (
                           <img
                             src={tarotCardBack}
                             alt="Ngọc Chưa Lật"
                             referrerPolicy="no-referrer"
                             onError={() => setCardBackFailed(true)}
-                            className="absolute inset-0 w-full h-full object-cover rounded-2xl opacity-55"
+                            className="absolute inset-0 w-full h-full object-cover opacity-55"
                           />
                         )}
                         <div className="relative z-10 flex flex-col items-center gap-1.5">
@@ -335,22 +337,26 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                             Chạm Lật
                           </span>
                         </div>
-                      </>
-                    ) : (
-                      <div className="a2-item-inner p-2 flex flex-col items-center justify-between gap-1.5 w-full h-full">
-                        <div className="flex items-center justify-between w-full text-[9px] font-black">
-                          <span className={meta.textClass}>{meta.label}</span>
-                          <span className="text-slate-300">{def.archetype}</span>
-                        </div>
-                        <span
-                          className="w-10 h-10 rounded-full border-2 border-white shadow-md"
-                          style={{ backgroundColor: def.color }}
-                        />
-                        <div className="text-[11px] font-black text-white line-clamp-2 leading-tight">
-                          {def.name.split('(')[0].trim()}
+                      </div>
+
+                      <div
+                        className={`a2-flip-face a2-flip-face-back rounded-2xl ${RARITY_FRAME_CLASS[r.rarity]} a2-item-card p-1`}
+                      >
+                        <div className="a2-item-inner p-2 flex flex-col items-center justify-between gap-1.5 w-full h-full">
+                          <div className="flex items-center justify-between w-full text-[9px] font-black">
+                            <span className={meta.textClass}>{meta.label}</span>
+                            <span className="text-slate-300">{def.archetype}</span>
+                          </div>
+                          <span
+                            className="w-10 h-10 rounded-full border-2 border-white shadow-md"
+                            style={{ backgroundColor: def.color }}
+                          />
+                          <div className="text-[11px] font-black text-white line-clamp-2 leading-tight">
+                            {def.name.split('(')[0].trim()}
+                          </div>
                         </div>
                       </div>
-                    )}
+                    </div>
                   </button>
                 );
               })}
@@ -400,117 +406,223 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
             </div>
           </div>
         ) : (
-          /* === SINGLE ROLL 1x REVEAL === */
+          /* === SINGLE ROLL 1x 3D CARD FLIP REVEAL === */
           <div className="relative z-10 flex flex-col items-center gap-4 a2-gacha-reveal">
             <div className="flex items-center gap-1.5 text-xs font-black text-amber-300 uppercase tracking-wider">
               <Sparkles className="w-4 h-4" />
-              <span>Triệu Hồi Thành Công · {rMeta.label}</span>
+              <span>
+                {flippedIndices.has(0)
+                  ? `Triệu Hồi Thành Công · ${rMeta.label}`
+                  : 'Chạm Thẻ Bài Hoàng Đạo Để Lật Mở'}
+              </span>
             </div>
 
             {singleGear && gearTpl && (
               <>
-                <div className={`a2-item-card w-24 h-24 ${RARITY_FRAME_CLASS[singleGear.rarity]}`}>
-                  <div className="a2-item-inner flex items-center justify-center">
-                    <GearSlotSvg
-                      slot={gearTpl.slot}
-                      weaponArchetype={gearTpl.weaponArchetype}
-                      accentHex={gearTpl.visualAccentHex}
-                      className="w-14 h-14"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-display text-xl font-black text-white">
-                    {gearTpl.name}
-                  </h3>
-                  <div className={`text-xs font-bold mt-0.5 ${rMeta.textClass}`}>
-                    {rMeta.label} · {gearTpl.setName}
-                  </div>
-                  {gearStats && (
-                    <div className="flex flex-wrap justify-center gap-2.5 text-xs font-mono-nums text-amber-200 font-bold mt-2">
-                      {gearStats.atk > 0 && <span>+{gearStats.atk} ATK</span>}
-                      {gearStats.hp > 0 && <span>+{gearStats.hp} HP</span>}
-                      {gearStats.critChance > 0 && (
-                        <span>+{Math.round(gearStats.critChance * 100)}% Crit</span>
+                <button
+                  type="button"
+                  onClick={() => flipCard(0, singleGear.rarity)}
+                  className="a2-flip-scene w-32 h-40 cursor-pointer"
+                >
+                  <div className={`a2-flip-card ${flippedIndices.has(0) ? 'is-flipped' : ''}`}>
+                    <div
+                      className="a2-flip-face rounded-2xl border-2 border-amber-300/70 bg-[#080d22] flex flex-col items-center justify-center overflow-hidden"
+                      style={{ boxShadow: `0 0 28px ${rMeta.color}44` }}
+                    >
+                      {!cardBackFailed && (
+                        <img
+                          src={tarotCardBack}
+                          alt="Lá Bài Hoàng Đạo"
+                          referrerPolicy="no-referrer"
+                          onError={() => setCardBackFailed(true)}
+                          className="absolute inset-0 w-full h-full object-cover opacity-65"
+                        />
                       )}
-                      {gearStats.attackSpeed > 0 && (
-                        <span>+{Math.round(gearStats.attackSpeed * 100)}% Tốc bắn</span>
+                      <div className="relative z-10 flex flex-col items-center gap-2">
+                        <span
+                          className="w-10 h-10 rounded-full border-2 flex items-center justify-center text-sm font-black bg-slate-950/90"
+                          style={{ borderColor: rMeta.color, color: rMeta.color }}
+                        >
+                          ?
+                        </span>
+                        <span className="text-[11px] font-black text-amber-200 bg-slate-950/85 px-2.5 py-0.5 rounded">
+                          Chạm Lật Thẻ
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`a2-flip-face a2-flip-face-back a2-item-card rounded-2xl ${RARITY_FRAME_CLASS[singleGear.rarity]}`}
+                    >
+                      <div className="a2-item-inner flex flex-col items-center justify-center gap-1.5 p-2">
+                        <GearSlotSvg
+                          slot={gearTpl.slot}
+                          weaponArchetype={gearTpl.weaponArchetype}
+                          accentHex={gearTpl.visualAccentHex}
+                          className="w-16 h-16"
+                        />
+                        <span className={`text-[10px] font-black ${rMeta.textClass}`}>
+                          {rMeta.label} {gearTpl.isSTier ? '· [S]' : ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {flippedIndices.has(0) ? (
+                  <>
+                    <div>
+                      <h3 className="font-display text-xl font-black text-white">
+                        {gearTpl.name}
+                      </h3>
+                      <div className={`text-xs font-bold mt-0.5 ${rMeta.textClass}`}>
+                        {rMeta.label} · {gearTpl.setName}
+                      </div>
+                      {gearStats && (
+                        <div className="flex flex-wrap justify-center gap-2.5 text-xs font-mono-nums text-amber-200 font-bold mt-2">
+                          {gearStats.atk > 0 && <span>+{gearStats.atk} ATK</span>}
+                          {gearStats.hp > 0 && <span>+{gearStats.hp} HP</span>}
+                          {gearStats.critChance > 0 && (
+                            <span>+{Math.round(gearStats.critChance * 100)}% Crit</span>
+                          )}
+                          {gearStats.attackSpeed > 0 && (
+                            <span>+{Math.round(gearStats.attackSpeed * 100)}% Tốc bắn</span>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
 
-                <div className="w-full flex flex-wrap gap-2.5 pt-2">
+                    <div className="w-full flex flex-wrap gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onEquipGear(singleGear.uid);
+                          onClose();
+                        }}
+                        className="a2-emerald-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                      >
+                        Trang Bị Ngay
+                      </button>
+                      {canRollAgain && (
+                        <button
+                          type="button"
+                          onClick={() => onRollAgain(reveal.chestVariant, 1)}
+                          className="a2-yellow-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                        >
+                          Mở Thêm 1 Lần
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => {
-                      onEquipGear(singleGear.uid);
-                      onClose();
-                    }}
-                    className="a2-emerald-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                    onClick={() => flipCard(0, singleGear.rarity)}
+                    className="a2-yellow-btn px-6 py-2.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
                   >
-                    Trang Bị Ngay
+                    Lật Thẻ Ngay
                   </button>
-                  {canRollAgain && (
-                    <button
-                      type="button"
-                      onClick={() => onRollAgain(reveal.chestVariant, 1)}
-                      className="a2-yellow-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
-                    >
-                      Mở Thêm 1 Lần
-                    </button>
-                  )}
-                </div>
+                )}
               </>
             )}
 
             {singleRune && runeDef && (
               <>
-                <div className={`a2-item-card w-24 h-24 ${RARITY_FRAME_CLASS[singleRune.rarity]}`}>
-                  <div className="a2-item-inner flex items-center justify-center">
-                    <span
-                      className="w-12 h-12 rounded-full border-2 border-white shadow-lg"
-                      style={{ backgroundColor: runeDef.color }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-display text-xl font-black text-white">
-                    {runeDef.name}
-                  </h3>
-                  <div className={`text-xs font-bold mt-0.5 ${rMeta.textClass}`}>
-                    {rMeta.label} · {runeDef.archetype}
-                  </div>
-                  <p className="text-xs text-slate-200 mt-1.5 max-w-xs mx-auto">
-                    {runeDef.description}
-                  </p>
-                </div>
-
-                <div className="w-full flex flex-wrap gap-2.5 pt-2">
-                  {canEquipRune && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onEquipRune(singleRune.uid);
-                        onClose();
-                      }}
-                      className="a2-purple-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                <button
+                  type="button"
+                  onClick={() => flipCard(0, singleRune.rarity)}
+                  className="a2-flip-scene w-32 h-40 cursor-pointer"
+                >
+                  <div className={`a2-flip-card ${flippedIndices.has(0) ? 'is-flipped' : ''}`}>
+                    <div
+                      className="a2-flip-face rounded-2xl border-2 border-purple-300/70 bg-[#080d22] flex flex-col items-center justify-center overflow-hidden"
+                      style={{ boxShadow: `0 0 28px ${rMeta.color}44` }}
                     >
-                      Khảm Lên Đài
-                    </button>
-                  )}
-                  {canRollAgain && (
-                    <button
-                      type="button"
-                      onClick={() => onRollAgain(reveal.chestVariant, 1)}
-                      className="a2-yellow-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                      {!cardBackFailed && (
+                        <img
+                          src={tarotCardBack}
+                          alt="Thẻ Ngọc Hoàng Đạo"
+                          referrerPolicy="no-referrer"
+                          onError={() => setCardBackFailed(true)}
+                          className="absolute inset-0 w-full h-full object-cover opacity-65"
+                        />
+                      )}
+                      <div className="relative z-10 flex flex-col items-center gap-2">
+                        <span
+                          className="w-10 h-10 rounded-full border-2 flex items-center justify-center text-sm font-black bg-slate-950/90"
+                          style={{ borderColor: rMeta.color, color: rMeta.color }}
+                        >
+                          ?
+                        </span>
+                        <span className="text-[11px] font-black text-purple-200 bg-slate-950/85 px-2.5 py-0.5 rounded">
+                          Chạm Lật Thẻ
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`a2-flip-face a2-flip-face-back a2-item-card rounded-2xl ${RARITY_FRAME_CLASS[singleRune.rarity]}`}
                     >
-                      Mở Thêm 1 Lần
-                    </button>
-                  )}
-                </div>
+                      <div className="a2-item-inner flex flex-col items-center justify-center gap-2 p-2">
+                        <span
+                          className="w-14 h-14 rounded-full border-2 border-white shadow-lg"
+                          style={{ backgroundColor: runeDef.color }}
+                        />
+                        <span className={`text-[10px] font-black ${rMeta.textClass}`}>
+                          {rMeta.label}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {flippedIndices.has(0) ? (
+                  <>
+                    <div>
+                      <h3 className="font-display text-xl font-black text-white">
+                        {runeDef.name}
+                      </h3>
+                      <div className={`text-xs font-bold mt-0.5 ${rMeta.textClass}`}>
+                        {rMeta.label} · {runeDef.archetype}
+                      </div>
+                      <p className="text-xs text-slate-200 mt-1.5 max-w-xs mx-auto">
+                        {runeDef.description}
+                      </p>
+                    </div>
+
+                    <div className="w-full flex flex-wrap gap-2.5 pt-2">
+                      {canEquipRune && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onEquipRune(singleRune.uid);
+                            onClose();
+                          }}
+                          className="a2-purple-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                        >
+                          Khảm Lên Đài
+                        </button>
+                      )}
+                      {canRollAgain && (
+                        <button
+                          type="button"
+                          onClick={() => onRollAgain(reveal.chestVariant, 1)}
+                          className="a2-yellow-btn flex-1 py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                        >
+                          Mở Thêm 1 Lần
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => flipCard(0, singleRune.rarity)}
+                    className="a2-purple-btn px-6 py-2.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                  >
+                    Lật Thẻ Ngay
+                  </button>
+                )}
               </>
             )}
 

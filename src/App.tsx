@@ -188,11 +188,26 @@ import {
   normalizeWishPool,
   rollWishPoolBatch,
 } from './data/wave8Data';
+import {
+  ABYSSAL_GAUNTLET_TOTAL_WAVES,
+  ABYSSAL_MILESTONES,
+  ARTIFACT_MAP,
+  GUILD_WAR_WEEKLY_BOXES,
+  MAX_ARTIFACT_LEVEL,
+  MYSTIC_EXCHANGE_OFFERS,
+  PowerRecommendation,
+  evaluateDynamicTitleUnlocks,
+  getArtifactUpgradeCost,
+  normalizeAbyssalGauntlet,
+  normalizeGuildWar,
+  normalizeMysticExchange,
+} from './data/wave9Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
   ArenaOpponent,
+  ArtifactId,
   AuctionLotItem,
   AuraStyleId,
   AvatarFrameId,
@@ -200,6 +215,7 @@ import {
   CoopRaidDifficulty,
   DamageBreakdown,
   DestinyWheelPrize,
+  DynamicTitleId,
   ElementalTowerId,
   EncounterOffer,
   FlashDealItem,
@@ -333,6 +349,9 @@ export default function App() {
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
   const [gameMode, setGameMode] = useState<LobbyGameMode>('chapter');
   const [activeLobbyTab, setActiveLobbyTab] = useState<LobbyTab>('battle');
+  const [heroSubTabInitial, setHeroSubTabInitial] = useState<
+    'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts'
+  >('roster');
   const [shopSection, setShopSection] = useState<ShopSectionTab>('privilege');
   const [selectedCoopDifficulty, setSelectedCoopDifficulty] = useState<CoopRaidDifficulty>('normal');
   const [selectedElementalTower, setSelectedElementalTower] = useState<ElementalTowerId>('fire');
@@ -358,6 +377,8 @@ export default function App() {
     isCrystalDefenseMode?: boolean;
     isWorldBossMode?: boolean;
     isBloodMoonMode?: boolean;
+    isAbyssalMode?: boolean;
+    isGuildWarMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
@@ -442,6 +463,15 @@ export default function App() {
     awakeningCrystals?: number;
     starDust?: number;
     petEssence?: number;
+    isAbyssalMode?: boolean;
+    abyssalWave?: number;
+    abyssalScore?: number;
+    artifactShards?: number;
+    mysticTokens?: number;
+    isGuildWarMode?: boolean;
+    guildWarScore?: number;
+    guildWarNodes?: number;
+    guildCoins?: number;
     maxCombo?: number;
     damageBreakdown?: DamageBreakdown;
   } | null>(null);
@@ -505,6 +535,13 @@ export default function App() {
       effectiveWeaponAuraId !== 'none'
         ? Math.max(1, save.weaponAuraLevels?.[effectiveWeaponAuraId] ?? 1)
         : 1;
+    const effectiveArtifactId: ArtifactId | null =
+      save.equippedArtifactId && (save.unlockedArtifacts ?? []).includes(save.equippedArtifactId)
+        ? save.equippedArtifactId
+        : null;
+    const artifactLevel = effectiveArtifactId
+      ? Math.max(1, save.artifactLevels?.[effectiveArtifactId] ?? 1)
+      : 1;
 
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
@@ -524,6 +561,8 @@ export default function App() {
       mountLevel,
       weaponAuraId: effectiveWeaponAuraId,
       weaponAuraLevel,
+      artifactId: effectiveArtifactId,
+      artifactLevel,
     };
   }, [
     save,
@@ -587,6 +626,25 @@ export default function App() {
         changed = true;
       }
 
+      const normMx = normalizeMysticExchange(prev.mysticExchange);
+      if (!prev.mysticExchange || prev.mysticExchange.weekKey !== normMx.weekKey) {
+        changed = true;
+      }
+
+      const normAb = normalizeAbyssalGauntlet(prev.abyssalGauntlet);
+      if (!prev.abyssalGauntlet || prev.abyssalGauntlet.date !== normAb.date) {
+        changed = true;
+      }
+
+      const normGw = normalizeGuildWar(prev.guildWar);
+      if (
+        !prev.guildWar ||
+        prev.guildWar.lastRunDate !== normGw.lastRunDate ||
+        prev.guildWar.weekKey !== normGw.weekKey
+      ) {
+        changed = true;
+      }
+
       if (!changed) return prev;
       return {
         ...prev,
@@ -594,9 +652,26 @@ export default function App() {
         bloodMoon: normBm,
         arena: nextArena ?? prev.arena,
         auctionHouse: resolvedAh,
+        mysticExchange: normMx,
+        abyssalGauntlet: normAb,
+        guildWar: normGw,
       };
     });
   }, []);
+
+  // Auto-unlock Wave 9 Dynamic Titles when thresholds are met
+  useEffect(() => {
+    const nextUnlocked = evaluateDynamicTitleUnlocks(save, playerStats.powerRating);
+    const curUnlocked = save.unlockedDynamicTitles ?? ['none'];
+    if (nextUnlocked.some((id) => !curUnlocked.includes(id))) {
+      setSave((prev) => {
+        const latest = evaluateDynamicTitleUnlocks(prev, playerStats.powerRating);
+        const existing = prev.unlockedDynamicTitles ?? ['none'];
+        if (!latest.some((id) => !existing.includes(id))) return prev;
+        return { ...prev, unlockedDynamicTitles: latest };
+      });
+    }
+  }, [save, playerStats.powerRating]);
 
   // Resolve expired Auction House lots live while the modal is open
   useEffect(() => {
@@ -758,6 +833,8 @@ export default function App() {
           const isCrystalDefense = Boolean(summary.isCrystalDefenseMode);
           const isWorldBoss = Boolean(summary.isWorldBossMode);
           const isBloodMoon = Boolean(summary.isBloodMoonMode);
+          const isAbyssal = Boolean(summary.isAbyssalMode);
+          const isGuildWar = Boolean(summary.isGuildWarMode);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
           const elTowerFloor = summary.elementalTowerFloor ?? 1;
@@ -771,6 +848,13 @@ export default function App() {
             summary.worldBossLiveRank ?? computeWorldBossLiveRank(worldBossDamage);
           const bloodMoonScore = summary.bloodMoonScore ?? 0;
           const bloodMoonWave = summary.bloodMoonWave ?? summary.stageReached ?? 1;
+          const abyssalWave = summary.abyssalWave ?? summary.stageReached ?? 0;
+          const abyssalScore = summary.abyssalScore ?? 0;
+          const guildWarScore = summary.guildWarScore ?? 0;
+          const guildWarNodes = summary.guildWarNodes ?? summary.stageReached ?? 0;
+          const artifactShardsGain = summary.artifactShards ?? 0;
+          const mysticTokensGain = summary.mysticTokens ?? 0;
+          const guildWarCoinsGain = summary.guildCoins ?? 0;
           const mountShardsGain = summary.mountShards ?? 0;
           const awakeningCrystalsGain = summary.awakeningCrystals ?? 0;
           const wingFeathersGain = summary.wingFeathers ?? 0;
@@ -781,6 +865,10 @@ export default function App() {
             ? victory
               ? 160
               : 55
+            : isAbyssal
+            ? Math.min(460, 85 + abyssalWave * 35)
+            : isGuildWar
+            ? Math.min(440, 85 + Math.floor(guildWarScore / 10))
             : isBloodMoon
             ? Math.min(420, 80 + Math.floor(bloodMoonScore / 6))
             : isCrystalDefense || isWorldBoss
@@ -808,6 +896,10 @@ export default function App() {
             ? victory
               ? 18
               : 4
+            : isAbyssal
+            ? Math.min(28, 6 + abyssalWave * 2)
+            : isGuildWar
+            ? Math.min(26, 6 + Math.floor(guildWarScore / 180))
             : isBloodMoon
             ? Math.min(26, 6 + Math.floor(bloodMoonScore / 130))
             : isCrystalDefense || isWorldBoss || isCoopRaid
@@ -833,12 +925,18 @@ export default function App() {
           const petEssenceGain = summary.petEssence ?? 0;
           const guildCoinGain = isGuildBoss
             ? Math.min(180, 25 + Math.floor(guildBossDamage / 600))
+            : isGuildWar
+            ? guildWarCoinsGain
             : 0;
 
           const rawSeasonXp = isArena
             ? victory
               ? 95
               : 40
+            : isAbyssal
+            ? 90 + abyssalWave * 22 + summary.kills
+            : isGuildWar
+            ? 95 + Math.min(150, Math.floor(guildWarScore / 20))
             : isBloodMoon
             ? (victory ? 120 : 50) + Math.min(160, Math.floor(bloodMoonScore / 15))
             : isCrystalDefense
@@ -874,6 +972,9 @@ export default function App() {
             wingFeathers: wingFeathersGain,
             mountShards: mountShardsGain,
             awakeningCrystals: awakeningCrystalsGain,
+            artifactShards: artifactShardsGain,
+            mysticTokens: mysticTokensGain,
+            guildCoins: isGuildWar ? guildWarCoinsGain : undefined,
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
           });
@@ -893,7 +994,11 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isBloodMoon
+              mode: isAbyssal
+                ? 'abyssal_gauntlet'
+                : isGuildWar
+                ? 'guild_war'
+                : isBloodMoon
                 ? 'blood_moon'
                 : isCrystalDefense
                 ? 'crystal_defense'
@@ -914,7 +1019,11 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isBloodMoon
+              label: isAbyssal
+                ? `Hố Sâu Đột Biến · Đợt ${abyssalWave}/${ABYSSAL_GAUNTLET_TOTAL_WAVES}`
+                : isGuildWar
+                ? `Chiến Trường Bang · ${guildWarScore.toLocaleString('vi-VN')} ĐB`
+                : isBloodMoon
                 ? `Đêm Trăng Máu · ${bloodMoonScore.toLocaleString('vi-VN')} HT`
                 : isCrystalDefense
                 ? `Thủ Thành Pha Lê · Đợt ${crystalWavesCleared}/${CRYSTAL_DEFENSE_TOTAL_WAVES}`
@@ -937,6 +1046,10 @@ export default function App() {
                 : `Chương ${summary.chapterId} · ${chName}`,
               stageReached: isArena || isGuildBoss || isWorldBoss
                 ? 1
+                : isAbyssal
+                ? abyssalWave
+                : isGuildWar
+                ? guildWarNodes
                 : isBloodMoon
                 ? bloodMoonWave
                 : isCrystalDefense
@@ -957,6 +1070,64 @@ export default function App() {
               timestamp: Date.now(),
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isAbyssal) {
+              const ab = normalizeAbyssalGauntlet(prev.abyssalGauntlet);
+              const mx = normalizeMysticExchange(prev.mysticExchange);
+              const nextShards = mx.artifactShards + artifactShardsGain;
+              const nextTokens = mx.mysticTokens + mysticTokensGain;
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                artifactShards: nextShards,
+                mysticExchange: {
+                  ...mx,
+                  artifactShards: nextShards,
+                  mysticTokens: nextTokens,
+                },
+                abyssalGauntlet: {
+                  ...ab,
+                  bestWave: Math.max(ab.bestWave, abyssalWave),
+                  bestScore: Math.max(ab.bestScore, abyssalScore),
+                  totalClears: ab.totalClears + (victory ? 1 : 0),
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
+            if (isGuildWar) {
+              const gw = normalizeGuildWar(prev.guildWar);
+              const mx = normalizeMysticExchange(prev.mysticExchange);
+              const g = normalizeGuild(prev.guild);
+              const nextShards = mx.artifactShards + artifactShardsGain;
+              const nextTokens = mx.mysticTokens + mysticTokensGain;
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                artifactShards: nextShards,
+                mysticExchange: {
+                  ...mx,
+                  artifactShards: nextShards,
+                  mysticTokens: nextTokens,
+                },
+                guild: {
+                  ...g,
+                  guildCoins: g.guildCoins + guildCoinGain,
+                },
+                guildWar: {
+                  ...gw,
+                  weeklyScore: gw.weeklyScore + guildWarScore,
+                  totalNodesCaptured: gw.totalNodesCaptured + guildWarNodes,
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
 
             if (isBloodMoon) {
               const bm = normalizeBloodMoon(prev.bloodMoon);
@@ -1699,6 +1870,106 @@ export default function App() {
     engineRef.current?.startBloodMoonSurvival(playerStats);
   }, [save.bloodMoon, playerStats]);
 
+  const handleStartAbyssalGauntlet = useCallback(() => {
+    const ab = normalizeAbyssalGauntlet(save.abyssalGauntlet);
+    if (ab.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeAbyssalGauntlet(prev.abyssalGauntlet);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        abyssalGauntlet: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 9,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isAbyssalMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startAbyssalGauntlet(playerStats);
+  }, [save.abyssalGauntlet, playerStats]);
+
+  const handleStartGuildWar = useCallback(() => {
+    const gw = normalizeGuildWar(save.guildWar);
+    if (gw.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeGuildWar(prev.guildWar);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        guildWar: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 8,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isGuildWarMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startGuildWarBattle(playerStats);
+  }, [save.guildWar, playerStats]);
+
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -1802,7 +2073,11 @@ export default function App() {
         !gachaReveal
       ) {
         e.preventDefault();
-        if (gameMode === 'blood_moon') {
+        if (gameMode === 'abyssal_gauntlet') {
+          handleStartAbyssalGauntlet();
+        } else if (gameMode === 'guild_war') {
+          handleStartGuildWar();
+        } else if (gameMode === 'blood_moon') {
           handleStartBloodMoon();
         } else if (gameMode === 'crystal_defense') {
           handleStartCrystalDefense();
@@ -1862,6 +2137,8 @@ export default function App() {
     handleStartCrystalDefense,
     handleStartWorldBoss,
     handleStartBloodMoon,
+    handleStartAbyssalGauntlet,
+    handleStartGuildWar,
   ]);
 
   // Hero Handlers
@@ -4701,6 +4978,221 @@ export default function App() {
     });
   }, []);
 
+  // Wave 9 Handlers: 3D Mythic Artifacts, Mystic Merchant Exchange, Abyssal Milestones, Guild War Weekly Boxes, Dynamic Titles & Smart Power Advisor
+  const handleUnlockArtifact = useCallback(
+    (artifactId: ArtifactId, currency: 'gems' | 'shards') => {
+      const def = ARTIFACT_MAP[artifactId];
+      if (!def) return;
+      setSave((prev) => {
+        const unlocked = prev.unlockedArtifacts ?? [];
+        if (unlocked.includes(artifactId)) return prev;
+        const mx = normalizeMysticExchange(prev.mysticExchange);
+        if (currency === 'gems' && prev.gems < def.unlockGems) return prev;
+        if (currency === 'shards' && mx.artifactShards < def.unlockArtifactShards) return prev;
+        const nextShards =
+          currency === 'shards' ? mx.artifactShards - def.unlockArtifactShards : mx.artifactShards;
+
+        soundEngine.playAchievement();
+        return {
+          ...prev,
+          gems: currency === 'gems' ? prev.gems - def.unlockGems : prev.gems,
+          artifactShards: nextShards,
+          mysticExchange: { ...mx, artifactShards: nextShards },
+          nightMarket: addGemsSpent(prev, currency === 'gems' ? def.unlockGems : 0),
+          unlockedArtifacts: [...unlocked, artifactId],
+          artifactLevels: { ...(prev.artifactLevels ?? {}), [artifactId]: 1 },
+          equippedArtifactId: artifactId,
+        };
+      });
+    },
+    []
+  );
+
+  const handleEquipArtifact = useCallback((artifactId: ArtifactId | null) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      if (artifactId === null) return { ...prev, equippedArtifactId: null };
+      if (!(prev.unlockedArtifacts ?? []).includes(artifactId)) return prev;
+      return { ...prev, equippedArtifactId: artifactId };
+    });
+  }, []);
+
+  const handleUpgradeArtifact = useCallback((artifactId: ArtifactId) => {
+    setSave((prev) => {
+      if (!(prev.unlockedArtifacts ?? []).includes(artifactId)) return prev;
+      const curLv = Math.max(1, prev.artifactLevels?.[artifactId] ?? 1);
+      if (curLv >= MAX_ARTIFACT_LEVEL) return prev;
+      const cost = getArtifactUpgradeCost(curLv);
+      const mx = normalizeMysticExchange(prev.mysticExchange);
+      if (mx.artifactShards < cost.shards || prev.gold < cost.gold) return prev;
+      const nextShards = mx.artifactShards - cost.shards;
+      soundEngine.playLevelUp();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        artifactShards: nextShards,
+        mysticExchange: { ...mx, artifactShards: nextShards },
+        artifactLevels: { ...(prev.artifactLevels ?? {}), [artifactId]: curLv + 1 },
+      };
+    });
+  }, []);
+
+  const handleMysticExchange = useCallback((offerId: string) => {
+    const offer = MYSTIC_EXCHANGE_OFFERS.find((o) => o.id === offerId);
+    if (!offer) return;
+    setSave((prev) => {
+      const mx = normalizeMysticExchange(prev.mysticExchange);
+      const claimedCount = mx.weeklyClaims[offer.id] ?? 0;
+      if (claimedCount >= offer.weeklyLimit) return prev;
+
+      let nextDust = prev.starDust ?? 0;
+      let nextEssence = prev.petEssence ?? 0;
+      let nextFeathers = prev.wingFeathers ?? 0;
+      let nextShards = prev.mountShards ?? 0;
+      let nextCrystals = prev.awakeningCrystals ?? 0;
+      let nextTokens = mx.mysticTokens;
+      let nextArtShards = mx.artifactShards;
+      let nextGems = prev.gems;
+      let nextInv = prev.inventory;
+
+      if (offer.inputKind === 'starDust') {
+        if (nextDust < offer.inputAmount) return prev;
+        nextDust -= offer.inputAmount;
+      } else if (offer.inputKind === 'petEssence') {
+        if (nextEssence < offer.inputAmount) return prev;
+        nextEssence -= offer.inputAmount;
+      } else if (offer.inputKind === 'wingFeathers') {
+        if (nextFeathers < offer.inputAmount) return prev;
+        nextFeathers -= offer.inputAmount;
+      } else if (offer.inputKind === 'mountShards') {
+        if (nextShards < offer.inputAmount) return prev;
+        nextShards -= offer.inputAmount;
+      } else if (offer.inputKind === 'awakeningCrystals') {
+        if (nextCrystals < offer.inputAmount) return prev;
+        nextCrystals -= offer.inputAmount;
+      } else if (offer.inputKind === 'mysticTokens') {
+        if (nextTokens < offer.inputAmount) return prev;
+        nextTokens -= offer.inputAmount;
+      }
+
+      if (offer.outputKind === 'mysticTokens') nextTokens += offer.outputAmount;
+      else if (offer.outputKind === 'artifactShards') nextArtShards += offer.outputAmount;
+      else if (offer.outputKind === 'gems') nextGems += offer.outputAmount;
+      else if (offer.outputKind === 'mountShards') nextShards += offer.outputAmount;
+      else if (offer.outputKind === 'awakeningCrystals') nextCrystals += offer.outputAmount;
+      else if (offer.outputKind === 's_gear') {
+        nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC, true)];
+      }
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: nextGems,
+        starDust: nextDust,
+        petEssence: nextEssence,
+        wingFeathers: nextFeathers,
+        mountShards: nextShards,
+        awakeningCrystals: nextCrystals,
+        artifactShards: nextArtShards,
+        inventory: nextInv,
+        mysticExchange: {
+          ...mx,
+          mysticTokens: nextTokens,
+          artifactShards: nextArtShards,
+          weeklyClaims: {
+            ...mx.weeklyClaims,
+            [offer.id]: claimedCount + 1,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimAbyssalMilestone = useCallback((wave: number) => {
+    const ms = ABYSSAL_MILESTONES.find((m) => m.wave === wave);
+    if (!ms) return;
+    setSave((prev) => {
+      const ab = normalizeAbyssalGauntlet(prev.abyssalGauntlet);
+      if (ab.bestWave < ms.wave || ab.claimedMilestones.includes(ms.wave)) return prev;
+      const mx = normalizeMysticExchange(prev.mysticExchange);
+      const nextShards = mx.artifactShards + ms.rewardArtifactShards;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + ms.rewardGems,
+        artifactShards: nextShards,
+        mysticExchange: {
+          ...mx,
+          artifactShards: nextShards,
+          mysticTokens: mx.mysticTokens + ms.rewardMysticTokens,
+        },
+        abyssalGauntlet: {
+          ...ab,
+          claimedMilestones: [...ab.claimedMilestones, ms.wave],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimGuildWarBox = useCallback((score: number) => {
+    const box = GUILD_WAR_WEEKLY_BOXES.find((b) => b.score === score);
+    if (!box) return;
+    setSave((prev) => {
+      const gw = normalizeGuildWar(prev.guildWar);
+      if (gw.weeklyScore < box.score || gw.claimedWeeklyBoxes.includes(box.score)) return prev;
+      const mx = normalizeMysticExchange(prev.mysticExchange);
+      const g = normalizeGuild(prev.guild);
+      const nextShards = mx.artifactShards + box.rewardArtifactShards;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + box.rewardGems,
+        artifactShards: nextShards,
+        guild: {
+          ...g,
+          guildCoins: g.guildCoins + box.rewardGuildCoins,
+        },
+        mysticExchange: {
+          ...mx,
+          artifactShards: nextShards,
+          mysticTokens: mx.mysticTokens + box.rewardMysticTokens,
+        },
+        guildWar: {
+          ...gw,
+          claimedWeeklyBoxes: [...gw.claimedWeeklyBoxes, box.score],
+        },
+      };
+    });
+  }, []);
+
+  const handleSelectDynamicTitle = useCallback((id: DynamicTitleId) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      const unlocked = prev.unlockedDynamicTitles ?? ['none'];
+      if (!unlocked.includes(id)) return prev;
+      return { ...prev, equippedDynamicTitleId: id };
+    });
+  }, []);
+
+  const handlePowerAdvisorAction = useCallback((kind: PowerRecommendation['actionKind']) => {
+    if (kind === 'gear') {
+      setActiveLobbyTab('gear');
+    } else if (kind === 'artifacts') {
+      setHeroSubTabInitial('artifacts');
+      setActiveLobbyTab('heroes');
+    } else if (kind === 'mounts') {
+      setHeroSubTabInitial('mounts');
+      setActiveLobbyTab('heroes');
+    } else if (kind === 'talents') {
+      setTalentsModalOpen(true);
+    } else if (kind === 'constellation') {
+      setConstellationModalOpen(true);
+    } else if (kind === 'mystic_exchange') {
+      setShopSection('mystic_exchange');
+      setActiveLobbyTab('shop');
+    }
+  }, []);
+
   const activeChapter =
     CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
 
@@ -4759,6 +5251,7 @@ export default function App() {
           selectedChapterId={selectedChapterId}
           gameMode={gameMode}
           activeTab={activeLobbyTab}
+          heroSubTabInitial={heroSubTabInitial}
           shopSection={shopSection}
           previewHeroId={previewHeroId ?? save.selectedHeroId}
           cameraPreset={cameraPreset}
@@ -4770,10 +5263,17 @@ export default function App() {
           onChangeCameraPreset={handleChangeCameraPreset}
           onTabChange={(tab) => {
             soundEngine.playUiClick();
+            if (tab === 'heroes') {
+              setHeroSubTabInitial('roster');
+            }
             setActiveLobbyTab(tab);
             if (tab !== 'heroes') {
               setPreviewHeroId(null);
             }
+          }}
+          onOpenHeroSubTab={(sub) => {
+            setHeroSubTabInitial(sub);
+            setActiveLobbyTab('heroes');
           }}
           onOpenShopSection={(sec) => {
             setShopSection(sec);
@@ -4795,6 +5295,10 @@ export default function App() {
           onStartWorldBoss={handleStartWorldBoss}
           onStartBloodMoon={handleStartBloodMoon}
           onClaimBloodMoonMilestone={handleClaimBloodMoonMilestone}
+          onStartAbyssalGauntlet={handleStartAbyssalGauntlet}
+          onClaimAbyssalMilestone={handleClaimAbyssalMilestone}
+          onStartGuildWar={handleStartGuildWar}
+          onClaimGuildWarBox={handleClaimGuildWarBox}
           onQuickSweepChapter={handleQuickSweepChapter}
           onToggleMute={handleToggleMute}
           onOpenRewardsModal={(tab) => setRewardsModalTab(tab)}
@@ -4839,6 +5343,9 @@ export default function App() {
           onUnlockWeaponAura={handleUnlockWeaponAura}
           onEquipWeaponAura={handleEquipWeaponAura}
           onUpgradeWeaponAura={handleUpgradeWeaponAura}
+          onUnlockArtifact={handleUnlockArtifact}
+          onEquipArtifact={handleEquipArtifact}
+          onUpgradeArtifact={handleUpgradeArtifact}
           onEquipGear={handleEquip}
           onUpgradeGear={handleUpgrade}
           onFuseGear={handleFuse}
@@ -4861,6 +5368,8 @@ export default function App() {
           onClaimWishMilestone={handleClaimWishMilestone}
           onClaimFirstTopUp={handleClaimFirstTopUp}
           onBuyHotBundle={handleBuyHotBundle}
+          onMysticExchange={handleMysticExchange}
+          onPowerAdvisorAction={handlePowerAdvisorAction}
           onEquipRune={handleEquipRune}
           onUnequipRune={handleUnequipRune}
           onFuseRune={handleFuseRune}
@@ -4928,8 +5437,11 @@ export default function App() {
             (runSummary?.isArenaMode ?? hud.isArenaMode) ||
             (runSummary?.isGuildBossMode ?? hud.isGuildBossMode) ||
             (runSummary?.isCoopRaidMode ?? hud.isCoopRaidMode) ||
-            (runSummary?.isWorldBossMode ?? hud.isWorldBossMode)
+            (runSummary?.isWorldBossMode ?? hud.isWorldBossMode) ||
+            (runSummary?.isGuildWarMode ?? hud.isGuildWarMode)
               ? 1
+              : (runSummary?.isAbyssalMode ?? hud.isAbyssalMode)
+              ? ABYSSAL_GAUNTLET_TOTAL_WAVES
               : (runSummary?.isCrystalDefenseMode ?? hud.isCrystalDefenseMode)
               ? CRYSTAL_DEFENSE_TOTAL_WAVES
               : (runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode)
@@ -4975,9 +5487,18 @@ export default function App() {
           isBloodMoonMode={runSummary?.isBloodMoonMode ?? hud.isBloodMoonMode}
           bloodMoonScore={runSummary?.bloodMoonScore ?? hud.bloodMoonScore ?? 0}
           bloodMoonWave={runSummary?.bloodMoonWave ?? hud.bloodMoonWave ?? 1}
+          isAbyssalMode={runSummary?.isAbyssalMode ?? hud.isAbyssalMode}
+          abyssalWave={runSummary?.abyssalWave ?? hud.abyssalWave ?? 0}
+          abyssalScore={runSummary?.abyssalScore ?? hud.abyssalScore ?? 0}
+          isGuildWarMode={runSummary?.isGuildWarMode ?? hud.isGuildWarMode}
+          guildWarScore={runSummary?.guildWarScore ?? hud.guildWarScore ?? 0}
+          guildWarNodes={runSummary?.guildWarNodes ?? hud.guildWarNodes ?? 0}
           wingFeathersEarned={runSummary?.wingFeathers ?? 0}
           mountShardsEarned={runSummary?.mountShards ?? 0}
           awakeningCrystalsEarned={runSummary?.awakeningCrystals ?? 0}
+          artifactShardsEarned={runSummary?.artifactShards ?? 0}
+          mysticTokensEarned={runSummary?.mysticTokens ?? 0}
+          guildCoinsEarned={runSummary?.guildCoins ?? 0}
           kills={runSummary?.kills ?? hud.kills}
           goldEarned={runSummary?.gold ?? hud.runGold}
           gemsEarned={runSummary?.gems ?? hud.runGems}
@@ -4988,7 +5509,23 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isBloodMoonMode ?? hud.isBloodMoonMode)
+            (runSummary?.isAbyssalMode ?? hud.isAbyssalMode)
+              ? () => {
+                  if (normalizeAbyssalGauntlet(save.abyssalGauntlet).dailyRunsRemaining > 0) {
+                    handleStartAbyssalGauntlet();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isGuildWarMode ?? hud.isGuildWarMode)
+              ? () => {
+                  if (normalizeGuildWar(save.guildWar).dailyRunsRemaining > 0) {
+                    handleStartGuildWar();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isBloodMoonMode ?? hud.isBloodMoonMode)
               ? () => {
                   if (normalizeBloodMoon(save.bloodMoon).dailyRunsRemaining > 0) {
                     handleStartBloodMoon();
@@ -5133,6 +5670,8 @@ export default function App() {
           onUpgradeTech={handleUpgradeGuildTech}
           onClaimDamageTier={handleClaimGuildDamageTier}
           onStartGuildBoss={handleStartGuildBoss}
+          onStartGuildWar={handleStartGuildWar}
+          onClaimGuildWarBox={handleClaimGuildWarBox}
           onClose={() => setGuildModalOpen(false)}
         />
       )}
@@ -5179,6 +5718,7 @@ export default function App() {
           onClaimAchievement={handleClaimAchievement}
           onClaimSeasonMedal={handleClaimSeasonMedal}
           onSelectTitle={handleSelectTitle}
+          onSelectDynamicTitle={handleSelectDynamicTitle}
         />
       )}
 
@@ -5338,6 +5878,8 @@ export default function App() {
           isCrystalDefenseMode={transitionState.isCrystalDefenseMode}
           isWorldBossMode={transitionState.isWorldBossMode}
           isBloodMoonMode={transitionState.isBloodMoonMode}
+          isAbyssalMode={transitionState.isAbyssalMode}
+          isGuildWarMode={transitionState.isGuildWarMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

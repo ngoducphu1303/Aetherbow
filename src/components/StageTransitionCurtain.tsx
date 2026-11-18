@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Flame, Gem, Moon, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
+import { Compass, Flame, Gem, Moon, Shield, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
 import { CHAPTERS } from '../data/chaptersData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, ElementalTowerId } from '../types/game';
@@ -18,6 +18,8 @@ interface StageTransitionCurtainProps {
   isCrystalDefenseMode?: boolean;
   isWorldBossMode?: boolean;
   isBloodMoonMode?: boolean;
+  isAbyssalMode?: boolean;
+  isGuildWarMode?: boolean;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -36,6 +38,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   isCrystalDefenseMode = false,
   isWorldBossMode = false,
   isBloodMoonMode = false,
+  isAbyssalMode = false,
+  isGuildWarMode = false,
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
@@ -49,6 +53,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
           {isArenaMode ? (
             <Swords className="w-12 h-12 text-rose-400" />
+          ) : isGuildWarMode ? (
+            <Shield className="w-12 h-12 text-emerald-300" />
+          ) : isAbyssalMode ? (
+            <Sparkles className="w-12 h-12 text-purple-300" />
           ) : isBloodMoonMode ? (
             <Moon className="w-12 h-12 text-rose-400" />
           ) : isCrystalDefenseMode ? (
@@ -80,6 +88,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
           {isArenaMode
             ? 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
+            : isGuildWarMode
+            ? 'Chiến Trường Bang Hội 3D · 75 Giây'
+            : isAbyssalMode
+            ? 'Hố Sâu Đột Biến · 10 Đợt Khắc Nghiệt'
             : isBloodMoonMode
             ? 'Sinh Tồn Nhật Thực · 90 Giây'
             : isCrystalDefenseMode
@@ -103,6 +115,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
           {isArenaMode
             ? `VS · ${arenaOpponentName || 'Kình Địch'}`
+            : isGuildWarMode
+            ? 'Chiến Trường Bang Hội 3D'
+            : isAbyssalMode
+            ? 'Hố Sâu Đột Biến 3D'
             : isBloodMoonMode
             ? 'Đêm Trăng Máu Sinh Tồn 3D'
             : isCrystalDefenseMode
@@ -127,6 +143,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs text-slate-300 font-semibold">
           {isArenaMode
             ? 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
+            : isGuildWarMode
+            ? 'Chiếm giữ 3 Trụ Tinh Thể và tiêu diệt Hộ Vệ Chiến Trường trong 75 giây để tích Điểm Bang!'
+            : isAbyssalMode
+            ? 'Vượt 10 đợt quái đột biến tăng tiến cực hạn để thu thập Mảnh Thánh Khí & Ấn Thần Bí!'
             : isBloodMoonMode
             ? 'Hạ gục các đợt quái Huyết Nguyệt trong 90 giây để tích Huyết Tinh, săn Mảnh Thú Cưỡi & Tinh Thể!'
             : isCrystalDefenseMode

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check, Crown, Flame, Shield, Skull, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
 import guildSanctuaryArt from '../assets/images/guild_zodiac_sanctuary_1794982055649.jpg';
+import guildWarCitadelArt from '../assets/images/guild_war_citadel_1795010358440.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import {
   GUILD_BOSS_DAMAGE_TIERS,
@@ -12,9 +13,14 @@ import {
   getGuildLevelExpReq,
   normalizeGuild,
 } from '../data/wave4Data';
+import {
+  GUILD_WAR_MAX_DAILY_RUNS,
+  GUILD_WAR_WEEKLY_BOXES,
+  normalizeGuildWar,
+} from '../data/wave9Data';
 import { HERO_MAP } from '../data/heroesData';
 import { GuildTechId, SaveData } from '../types/game';
-import { GoldCoinIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
+import { ArtifactRelicIcon, GoldCoinIcon, MysticTokenIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
 
 interface ZodiacGuildModalProps {
   save: SaveData;
@@ -23,6 +29,8 @@ interface ZodiacGuildModalProps {
   onUpgradeTech: (techId: GuildTechId) => void;
   onClaimDamageTier: (tierId: string) => void;
   onStartGuildBoss: () => void;
+  onStartGuildWar?: () => void;
+  onClaimGuildWarBox?: (score: number) => void;
   onClose: () => void;
 }
 
@@ -33,12 +41,16 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
   onUpgradeTech,
   onClaimDamageTier,
   onStartGuildBoss,
+  onStartGuildWar,
+  onClaimGuildWarBox,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<'boss' | 'tech' | 'members'>('boss');
+  const [subTab, setSubTab] = useState<'boss' | 'war' | 'tech' | 'members'>('boss');
   const [imgErr, setImgErr] = useState(false);
+  const [warImgErr, setWarImgErr] = useState(false);
 
   const guild = normalizeGuild(save.guild);
+  const gw = normalizeGuildWar(save.guildWar);
   const expReq = getGuildLevelExpReq(guild.level);
   const expPct = Math.min(100, Math.round((guild.exp / Math.max(1, expReq)) * 100));
   const tributesLeft = Math.max(0, MAX_DAILY_GUILD_TRIBUTES - guild.tributeCountToday);
@@ -160,7 +172,7 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
         </div>
 
         {/* Sub-Tabs */}
-        <div className="px-4 sm:px-6 pt-3 pb-2 bg-[#060916] border-b border-amber-400/20 grid grid-cols-3 gap-2 shrink-0">
+        <div className="px-4 sm:px-6 pt-3 pb-2 bg-[#060916] border-b border-amber-400/20 grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -172,7 +184,20 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
             }`}
           >
             <Skull className="w-4 h-4 shrink-0" />
-            <span>Boss Bang Hội ({guild.bossRunsRemaining}/{MAX_DAILY_GUILD_BOSS_RUNS})</span>
+            <span>Boss Bang ({guild.bossRunsRemaining}/{MAX_DAILY_GUILD_BOSS_RUNS})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              setSubTab('war');
+            }}
+            className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              subTab === 'war' ? 'a2-emerald-btn' : 'a2-slate-btn text-slate-300'
+            }`}
+          >
+            <Swords className="w-4 h-4 shrink-0" />
+            <span>Chiến Trường ({gw.dailyRunsRemaining}/{GUILD_WAR_MAX_DAILY_RUNS})</span>
           </button>
           <button
             type="button"
@@ -303,6 +328,131 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
                         ) : (
                           <span className="text-[11px] font-bold text-slate-500">
                             Cần thêm {(tier.minDamage - guild.bestGuildBossDamage).toLocaleString('vi-VN')} ST
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {subTab === 'war' && (
+            <div className="space-y-4">
+              <div className="relative rounded-2xl overflow-hidden border border-emerald-400/45 bg-[#06111c]">
+                {!warImgErr && (
+                  <img
+                    src={guildWarCitadelArt}
+                    alt="Chiến Trường Bang Hội 3D"
+                    referrerPolicy="no-referrer"
+                    onError={() => setWarImgErr(true)}
+                    className="w-full h-36 sm:h-44 object-cover opacity-50"
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#060916]/95 via-[#071122]/85 to-transparent" />
+                <div className="relative z-[1] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-wider text-emerald-300">
+                      Chiến Trường Bang Hội 3D · 75 Giây
+                    </div>
+                    <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                      Chiếm 3 Trụ Tinh Thể &amp; Bảo Vệ Pháo Đài
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1 max-w-xl">
+                      Đứng gần 3 Trụ Tinh Thể để chiếm cứ điểm (+Điểm/s) và hạ gục Tướng Địch để tích Điểm Vinh Danh Tuần mở khóa Rương Thánh Khí!
+                    </p>
+                    <div className="flex flex-wrap gap-4 mt-2.5 text-xs font-mono-nums">
+                      <span className="text-amber-300 font-black">
+                        Điểm Tuần: {gw.weeklyScore.toLocaleString('vi-VN')}
+                      </span>
+                      <span className="text-emerald-300 font-bold">
+                        Tổng Trụ Đã Chiếm: {gw.totalNodesCaptured}
+                      </span>
+                    </div>
+                  </div>
+
+                  {onStartGuildWar && (
+                    <button
+                      type="button"
+                      disabled={gw.dailyRunsRemaining <= 0}
+                      onClick={() => {
+                        soundEngine.playUiClick(1.1);
+                        onStartGuildWar();
+                      }}
+                      className="a2-emerald-btn py-3 px-5 rounded-xl font-display font-black text-sm flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Swords className="w-4 h-4" />
+                      <span>
+                        {gw.dailyRunsRemaining > 0
+                          ? `XUẤT CHINH (${gw.dailyRunsRemaining}/${GUILD_WAR_MAX_DAILY_RUNS})`
+                          : 'Hết Lượt Hôm Nay'}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-display text-xs font-black uppercase tracking-wider text-amber-200 mb-2.5">
+                  Rương Vinh Danh Tuần Chiến Trường Bang
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {GUILD_WAR_WEEKLY_BOXES.map((box) => {
+                    const reached = gw.weeklyScore >= box.score;
+                    const claimed = gw.claimedWeeklyBoxes.includes(box.score);
+                    return (
+                      <div
+                        key={box.score}
+                        className={`rounded-2xl p-3.5 border flex flex-col justify-between gap-2.5 ${
+                          claimed
+                            ? 'bg-[#070b18]/75 border-slate-800'
+                            : reached
+                            ? 'cel-panel-ornate'
+                            : 'cel-panel'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-display text-sm font-black text-emerald-300">
+                              {box.title}
+                            </span>
+                            <span className="font-mono-nums text-[11px] font-bold text-amber-300">
+                              ≥ {box.score.toLocaleString('vi-VN')} đ
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2.5 text-[11px] font-mono-nums font-bold mt-2">
+                            <span className="flex items-center gap-1 text-purple-300">
+                              <SoulGemIcon className="w-3 h-3" />+{box.rewardGems}
+                            </span>
+                            <span className="text-amber-300">+{box.rewardGuildCoins} Xu</span>
+                            <span className="flex items-center gap-1 text-amber-200">
+                              <ArtifactRelicIcon className="w-3 h-3" />+{box.rewardArtifactShards}
+                            </span>
+                            <span className="flex items-center gap-1 text-cyan-300">
+                              <MysticTokenIcon className="w-3 h-3" />+{box.rewardMysticTokens}
+                            </span>
+                          </div>
+                        </div>
+
+                        {claimed ? (
+                          <span className="text-xs font-black text-emerald-400 flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" /> Đã Nhận Tuần Này
+                          </span>
+                        ) : reached && onClaimGuildWarBox ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playAchievement();
+                              onClaimGuildWarBox(box.score);
+                            }}
+                            className="a2-emerald-btn w-full py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                          >
+                            Nhận Quà Vinh Danh
+                          </button>
+                        ) : (
+                          <span className="text-[11px] font-bold text-slate-500">
+                            Cần thêm {(box.score - gw.weeklyScore).toLocaleString('vi-VN')} điểm
                           </span>
                         )}
                       </div>

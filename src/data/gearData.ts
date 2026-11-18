@@ -69,6 +69,14 @@ import {
   normalizeFirstTopUp,
   normalizeWishPool,
 } from './wave8Data';
+import {
+  DYNAMIC_TITLE_MAP,
+  evaluateHeroBonds,
+  getArtifactStats,
+  normalizeAbyssalGauntlet,
+  normalizeGuildWar,
+  normalizeMysticExchange,
+} from './wave9Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -713,6 +721,36 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const wAuraStats = getWeaponAuraStats(equippedWeaponAuraId, weaponAuraLevel);
   critDamage += wAuraStats.critDmg;
 
+  // Apply Equipped 3D Mythic Artifact, Hero Bonds & Dynamic Title
+  const equippedArtifactId =
+    save.equippedArtifactId && (save.unlockedArtifacts ?? []).includes(save.equippedArtifactId)
+      ? save.equippedArtifactId
+      : null;
+  let artifactLevel = 1;
+  if (equippedArtifactId) {
+    artifactLevel = Math.max(1, save.artifactLevels?.[equippedArtifactId] ?? 1);
+    const artStats = getArtifactStats(equippedArtifactId, artifactLevel);
+    attack += artStats.atk;
+    maxHp += artStats.hp;
+    critChance += artStats.crit;
+    bossDamageBonus += artStats.bossDmg;
+  }
+
+  const bondBonuses = evaluateHeroBonds(save);
+  critChance += bondBonuses.crit;
+  critDamage += bondBonuses.critDmg;
+
+  const equippedDynamicTitleId =
+    save.equippedDynamicTitleId &&
+    (save.unlockedDynamicTitles ?? ['none']).includes(save.equippedDynamicTitleId)
+      ? save.equippedDynamicTitleId
+      : 'none';
+  const dynTitleDef = DYNAMIC_TITLE_MAP[equippedDynamicTitleId];
+  if (dynTitleDef) {
+    attack += dynTitleDef.bonusAtk;
+    maxHp += dynTitleDef.bonusHp;
+  }
+
   // Apply Monthly Privilege Card passive buffs
   const monthlyPriv = normalizeMonthlyPrivilege(save.monthlyPrivilege);
   const hasSilverCard = isMonthlyCardActive(monthlyPriv.silver);
@@ -726,10 +764,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const tal = computeTalentBonuses(save.talents);
   attack = Math.round(
     (attack + tal.atk + constellation.atkFlat) *
-      (1 + runeAtkPct + subAtkPct + guildTech.atkPct + cardAtkPct + wAuraStats.atkPct)
+      (1 + runeAtkPct + subAtkPct + guildTech.atkPct + cardAtkPct + wAuraStats.atkPct + bondBonuses.atkPct)
   );
   maxHp = Math.round(
-    (maxHp + tal.hp + constellation.hpFlat) * (1 + runeHpPct + subHpPct + guildTech.hpPct)
+    (maxHp + tal.hp + constellation.hpFlat) * (1 + runeHpPct + subHpPct + guildTech.hpPct + bondBonuses.hpPct)
   );
   critChance = Math.min(
     0.92,
@@ -753,7 +791,9 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       constellation.totalStars * 18 +
       (equippedWingId ? wingLevel * 24 : 0) +
       (equippedMountId ? mountLevel * 32 : 0) +
-      (equippedWeaponAuraId !== 'none' ? weaponAuraLevel * 26 : 0)
+      (equippedWeaponAuraId !== 'none' ? weaponAuraLevel * 26 : 0) +
+      (equippedArtifactId ? artifactLevel * 38 : 0) +
+      bondBonuses.activeCount * 85
   );
 
   return {
@@ -789,6 +829,9 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     mountLevel,
     equippedWeaponAuraId,
     weaponAuraLevel,
+    equippedArtifactId,
+    artifactLevel,
+    activeBondCount: bondBonuses.activeCount,
   };
 }
 
@@ -962,6 +1005,15 @@ export function createInitialSaveData(): SaveData {
     claimedHotBundleIds: [],
     dispatch: normalizeDispatchState(),
     bloodMoon: normalizeBloodMoon(),
+    artifactShards: 14,
+    unlockedArtifacts: [],
+    artifactLevels: {},
+    equippedArtifactId: null,
+    mysticExchange: normalizeMysticExchange(),
+    abyssalGauntlet: normalizeAbyssalGauntlet(),
+    guildWar: normalizeGuildWar(),
+    unlockedDynamicTitles: ['none'],
+    equippedDynamicTitleId: 'none',
   };
 }
 

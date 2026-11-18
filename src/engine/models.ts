@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { WING_MAP } from '../data/wave7Data';
 import { MOUNT_MAP, WEAPON_AURA_MAP } from '../data/wave8Data';
+import { ARTIFACT_MAP } from '../data/wave9Data';
 import {
+  ArtifactId,
   CrownStyle,
   EnemyKind,
   MountId,
@@ -36,6 +38,8 @@ export interface HeroVisualConfig {
   mountLevel?: number;
   weaponAuraId?: WeaponAuraId;
   weaponAuraLevel?: number;
+  artifactId?: ArtifactId | null;
+  artifactLevel?: number;
 }
 
 export interface HeroModelRefs {
@@ -56,6 +60,7 @@ export interface HeroModelRefs {
   mountGroup?: THREE.Group;
   mountLegs?: THREE.Group[];
   weaponAuraGroup?: THREE.Group;
+  artifactGroup?: THREE.Group;
   hitMeshes: THREE.Mesh[];
 }
 
@@ -594,7 +599,15 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     bodyGroup.add(weaponAuraGroup);
   }
 
-  // 9. Composite 3D Zodiac Mount under Hero
+  // 9. Mythic 3D Artifact orbiting behind right shoulder
+  let artifactGroup: THREE.Group | undefined;
+  if (cfg.artifactId) {
+    artifactGroup = createMythicArtifactModel(cfg.artifactId, cfg.artifactLevel ?? 1);
+    artifactGroup.position.set(0.56, 1.38, -0.22);
+    bodyGroup.add(artifactGroup);
+  }
+
+  // 10. Composite 3D Zodiac Mount under Hero
   let mountGroup: THREE.Group | undefined;
   let mountLegs: THREE.Group[] | undefined;
   if (cfg.mountId) {
@@ -623,6 +636,7 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     mountGroup,
     mountLegs,
     weaponAuraGroup,
+    artifactGroup,
     hitMeshes,
   };
 }
@@ -1727,4 +1741,87 @@ function createZodiacMountModel(
 
   return { group, legs };
 }
+
+function createMythicArtifactModel(artifactId: ArtifactId, level: number): THREE.Group {
+  const def = ARTIFACT_MAP[artifactId];
+  const g = new THREE.Group();
+  const boost = 1 + Math.min(9, Math.max(0, level - 1)) * 0.08;
+  const scaleFactor = 1 + Math.min(9, Math.max(0, level - 1)) * 0.025;
+
+  const primaryMat = new THREE.MeshStandardMaterial({
+    color: def.primaryHex,
+    emissive: def.primaryHex,
+    emissiveIntensity: 1.15 * boost,
+    roughness: 0.18,
+    metalness: 0.55,
+  });
+  const secondaryMat = new THREE.MeshStandardMaterial({
+    color: def.secondaryHex,
+    emissive: def.secondaryHex,
+    emissiveIntensity: 1.45 * boost,
+    roughness: 0.12,
+    metalness: 0.35,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    roughness: 0.2,
+    metalness: 0.9,
+  });
+
+  if (artifactId === 'astral_astrolabe') {
+    const outerRing = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.024, 8, 28), goldMat);
+    const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.018, 8, 22), secondaryMat);
+    innerRing.rotation.x = Math.PI / 3;
+    innerRing.rotation.y = Math.PI / 5;
+    const starCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), primaryMat);
+    g.add(outerRing, innerRing, starCore);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const node = new THREE.Mesh(new THREE.OctahedronGeometry(0.042, 0), secondaryMat);
+      node.position.set(Math.cos(a) * 0.28, Math.sin(a) * 0.28, 0);
+      g.add(node);
+    }
+  } else if (artifactId === 'phoenix_orb') {
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 12), primaryMat);
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.02, 8, 24), secondaryMat);
+    halo.rotation.x = Math.PI / 2.6;
+    g.add(core, halo);
+    const flameWingGeo = makeBeveledWingGeo(0.26, 0.24, 0.022);
+    for (const side of [-1, 1] as const) {
+      const flare = new THREE.Mesh(flameWingGeo, primaryMat);
+      flare.position.set(side * 0.16, 0.03, -0.02);
+      flare.rotation.y = side > 0 ? -0.3 : Math.PI + 0.3;
+      g.add(flare);
+    }
+  } else if (artifactId === 'frost_prism') {
+    const diamond = new THREE.Mesh(new THREE.OctahedronGeometry(0.17, 0), primaryMat);
+    diamond.scale.set(0.82, 1.55, 0.82);
+    const crownRing = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.02, 6, 6), secondaryMat);
+    crownRing.rotation.x = Math.PI / 2;
+    g.add(diamond, crownRing);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.042, 0.18, 4), secondaryMat);
+      shard.position.set(Math.cos(a) * 0.24, Math.sin(a) * 0.06, Math.sin(a) * 0.24);
+      shard.rotation.z = -Math.cos(a) * 0.35;
+      g.add(shard);
+    }
+  } else {
+    // eclipse_chalice
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.07, 0.22, 12), goldMat);
+    cup.position.y = 0.04;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.08, 0.14, 10), goldMat);
+    stem.position.y = -0.12;
+    const chaliceGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), secondaryMat);
+    chaliceGem.position.y = 0.22;
+    const eclipseRing = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.022, 8, 26), primaryMat);
+    eclipseRing.rotation.y = 0.45;
+    eclipseRing.position.y = 0.08;
+    g.add(cup, stem, chaliceGem, eclipseRing);
+  }
+
+  g.scale.setScalar(scaleFactor);
+  return g;
+}
+
 

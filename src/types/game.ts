@@ -227,6 +227,9 @@ export interface ComputedPlayerStats {
   mountLevel?: number;
   equippedWeaponAuraId?: WeaponAuraId;
   weaponAuraLevel?: number;
+  equippedArtifactId?: ArtifactId | null;
+  artifactLevel?: number;
+  activeBondCount?: number;
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -871,7 +874,9 @@ export interface RunHistoryEntry {
     | 'elemental_tower'
     | 'crystal_defense'
     | 'world_boss'
-    | 'blood_moon';
+    | 'blood_moon'
+    | 'abyssal_gauntlet'
+    | 'guild_war';
   label: string;
   stageReached: number;
   kills: number;
@@ -964,6 +969,15 @@ export interface SaveData {
   claimedHotBundleIds?: string[];
   dispatch?: DispatchState;
   bloodMoon?: BloodMoonState;
+  artifactShards?: number;
+  unlockedArtifacts?: ArtifactId[];
+  artifactLevels?: Partial<Record<ArtifactId, number>>;
+  equippedArtifactId?: ArtifactId | null;
+  mysticExchange?: MysticExchangeState;
+  abyssalGauntlet?: AbyssalGauntletState;
+  guildWar?: GuildWarState;
+  unlockedDynamicTitles?: DynamicTitleId[];
+  equippedDynamicTitleId?: DynamicTitleId;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
@@ -1115,6 +1129,124 @@ export interface BloodMoonState {
   claimedMilestones: number[];
 }
 
+export type ArtifactId =
+  | 'astral_astrolabe'
+  | 'phoenix_orb'
+  | 'frost_prism'
+  | 'eclipse_chalice';
+
+export interface MythicArtifactDefinition {
+  id: ArtifactId;
+  name: string;
+  badge: string;
+  elementLabel: string;
+  desc: string;
+  primaryHex: number;
+  secondaryHex: number;
+  baseAtk: number;
+  baseHp: number;
+  baseCrit: number;
+  baseBossDmg: number;
+  atkPerLv: number;
+  hpPerLv: number;
+  critPerLv: number;
+  unlockGems: number;
+  unlockArtifactShards: number;
+}
+
+export interface HeroBondDefinition {
+  id: string;
+  name: string;
+  subtitle: string;
+  heroIds: HeroId[];
+  minTotalStars: number;
+  bonusAtkPct: number;
+  bonusHpPct: number;
+  bonusCrit: number;
+  bonusCritDmg: number;
+  accentColor: string;
+}
+
+export type MysticCurrencyKind =
+  | 'starDust'
+  | 'petEssence'
+  | 'wingFeathers'
+  | 'mountShards'
+  | 'awakeningCrystals'
+  | 'mysticTokens';
+
+export interface MysticExchangeOffer {
+  id: string;
+  title: string;
+  desc: string;
+  badge: string;
+  inputKind: MysticCurrencyKind;
+  inputAmount: number;
+  outputKind: 'mysticTokens' | 'artifactShards' | 'gems' | 'mountShards' | 'awakeningCrystals' | 's_gear';
+  outputAmount: number;
+  weeklyLimit: number;
+}
+
+export interface MysticExchangeState {
+  weekKey: string;
+  mysticTokens: number;
+  artifactShards: number;
+  weeklyClaims: Record<string, number>;
+}
+
+export interface AbyssalMilestone {
+  wave: number;
+  title: string;
+  rewardGems: number;
+  rewardArtifactShards: number;
+  rewardMysticTokens: number;
+}
+
+export interface AbyssalGauntletState {
+  date: string;
+  dailyRunsRemaining: number;
+  bestWave: number;
+  bestScore: number;
+  totalClears: number;
+  claimedMilestones: number[];
+}
+
+export interface GuildWarWeeklyBox {
+  score: number;
+  title: string;
+  rewardGems: number;
+  rewardGuildCoins: number;
+  rewardArtifactShards: number;
+  rewardMysticTokens: number;
+}
+
+export interface GuildWarState {
+  weekKey: string;
+  dailyRunsRemaining: number;
+  lastRunDate: string;
+  weeklyScore: number;
+  totalNodesCaptured: number;
+  claimedWeeklyBoxes: number[];
+}
+
+export type DynamicTitleId =
+  | 'none'
+  | 'star_challenger'
+  | 'dragon_slayer'
+  | 'abyss_conqueror'
+  | 'guild_champion'
+  | 'mythic_sovereign';
+
+export interface DynamicTitleDef {
+  id: DynamicTitleId;
+  title: string;
+  unlockHint: string;
+  gradientClass: string;
+  borderClass: string;
+  bonusAtk: number;
+  bonusHp: number;
+}
+
 export interface FloatingDamage {
   id: number;
   x: number;
@@ -1207,6 +1339,14 @@ export interface HudSnapshot {
   bloodMoonTimeLeft?: number;
   bloodMoonScore?: number;
   bloodMoonWave?: number;
+  isAbyssalMode?: boolean;
+  abyssalWave?: number;
+  abyssalTotalWaves?: number;
+  abyssalScore?: number;
+  isGuildWarMode?: boolean;
+  guildWarTimeLeft?: number;
+  guildWarScore?: number;
+  guildWarNodes?: number;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;

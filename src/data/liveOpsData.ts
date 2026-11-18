@@ -309,6 +309,42 @@ export function countClaimableAchievements(save: SaveData): number {
 
 export const EVENT_BANNERS = [
   {
+    id: 'event_mythic_artifacts',
+    badge: 'THÁNH KHÍ 3D · DUYÊN ĐỘI HÌNH',
+    title: 'Thánh Khí Thần Thoại 3D & Cộng Hưởng Đội Hình',
+    subtitle: 'Triệu hồi Thiên Bàn Tinh Tú, Hỏa Châu Phượng Hoàng bay hộ vệ sau vai & kích hoạt Duyên Anh Hùng!',
+    ctaLabel: 'Mở Thánh Khí',
+    target: 'mythic_artifact' as const,
+    accent: 'amber' as const,
+  },
+  {
+    id: 'event_abyssal_gauntlet',
+    badge: 'HỐ SÂU 10 ĐỢT · MỚI',
+    title: 'Phó Bản Hố Sâu Đột Biến 3D · Săn Mảnh Thánh Khí',
+    subtitle: 'Chinh phục 10 đợt quái đột biến tăng tiến cực hạn để mở khóa 4 mốc thưởng Mảnh Thánh Khí & Ấn Thần Bí!',
+    ctaLabel: 'Vào Hố Sâu 3D',
+    target: 'abyssal_gauntlet' as const,
+    accent: 'purple' as const,
+  },
+  {
+    id: 'event_guild_war',
+    badge: 'CHIẾN TRƯỜNG BANG · TUẦN',
+    title: 'Chiến Trường Bang Hội 3D · Chiếm Cứ Điểm Vinh Danh',
+    subtitle: 'Trấn giữ 3 Trụ Tinh Thể 75s và tiêu diệt Hộ Vệ Chiến Trường để tích Điểm Bang mở Rương Tuần!',
+    ctaLabel: 'Chiến Trường Bang',
+    target: 'guild_war' as const,
+    accent: 'emerald' as const,
+  },
+  {
+    id: 'event_mystic_exchange',
+    badge: 'THƯƠNG NHÂN THẦN BÍ',
+    title: 'Chợ Đổi Mảnh Dư & Kho Báu Thương Nhân Thần Bí',
+    subtitle: 'Chuyển hóa Bụi Tinh Tú, Tinh Chất, Lông Vũ dư thừa thành Ấn Thần Bí, Mảnh Thánh Khí & Thánh Vật [S]!',
+    ctaLabel: 'Mở Chợ Thần Bí',
+    target: 'mystic_exchange' as const,
+    accent: 'amber' as const,
+  },
+  {
     id: 'event_blood_moon',
     badge: 'SINH TỒN 90S · MỚI',
     title: 'Đêm Trăng Máu 3D · Săn Huyết Long & Báu Vật',

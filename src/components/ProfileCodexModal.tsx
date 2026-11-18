@@ -21,7 +21,8 @@ import {
   countClaimableSeasonMedals,
   getSeasonMedalCurrentValue,
 } from '../data/wave4Data';
-import { ComputedPlayerStats, SaveData } from '../types/game';
+import { DYNAMIC_TITLES, DYNAMIC_TITLE_MAP } from '../data/wave9Data';
+import { ComputedPlayerStats, DynamicTitleId, SaveData } from '../types/game';
 import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon, StarDustIcon } from './GameIcons';
 
 interface ProfileCodexModalProps {
@@ -32,6 +33,7 @@ interface ProfileCodexModalProps {
   onClaimAchievement: (id: string) => void;
   onClaimSeasonMedal: (medalId: string) => void;
   onSelectTitle: (title: string) => void;
+  onSelectDynamicTitle?: (id: DynamicTitleId) => void;
 }
 
 export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
@@ -42,6 +44,7 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
   onClaimAchievement,
   onClaimSeasonMedal,
   onSelectTitle,
+  onSelectDynamicTitle,
 }) => {
   const [tab, setTab] = useState<'profile' | 'achievements' | 'history' | 'codex'>(initialTab);
   const [codexSubTab, setCodexSubTab] = useState<'heroes' | 'enemies' | 'skills'>('heroes');
@@ -95,8 +98,21 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
               className="w-11 h-11 shrink-0"
             />
             <div>
-              <div className="text-[11px] font-bold text-amber-300">
-                {currentTitle} · Hạng #{myPlacement} Mùa 1
+              <div className="text-[11px] font-bold text-amber-300 flex flex-wrap items-center gap-2">
+                <span>
+                  {currentTitle} · Hạng #{myPlacement} Mùa 1
+                </span>
+                {save.equippedDynamicTitleId && save.equippedDynamicTitleId !== 'none' && (
+                  <span
+                    className={`px-2 py-0.5 rounded-lg border text-[10px] font-black ${
+                      DYNAMIC_TITLE_MAP[save.equippedDynamicTitleId]?.borderClass ?? 'border-amber-300/60'
+                    }`}
+                  >
+                    <span className={DYNAMIC_TITLE_MAP[save.equippedDynamicTitleId]?.gradientClass ?? 'text-amber-300'}>
+                      {DYNAMIC_TITLE_MAP[save.equippedDynamicTitleId]?.title}
+                    </span>
+                  </span>
+                )}
               </div>
               <h2 className="font-display text-lg sm:text-xl font-black text-white">
                 Hồ Sơ Chiến Binh · {activeHero.name}
@@ -249,6 +265,66 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                         >
                           {title}
                         </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Dynamic Shimmer Titles */}
+                <div className="cel-panel rounded-2xl p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <h3 className="font-display text-sm font-black text-amber-200">
+                      Danh Hiệu Động · Hào Quang Tên
+                    </h3>
+                    <span className="text-[10px] font-mono-nums font-bold text-sky-300">
+                      {(save.unlockedDynamicTitles ?? ['none']).filter((id) => id !== 'none').length}/{DYNAMIC_TITLES.length - 1} Đã Mở
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-3">
+                    Hiệu ứng chữ phát sáng chuyển sắc hiển thị trên Sảnh Chính và cộng vĩnh viễn chỉ số ATK/HP.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {DYNAMIC_TITLES.map((dt) => {
+                      const isUnlocked = (save.unlockedDynamicTitles ?? ['none']).includes(dt.id);
+                      const isEquipped = (save.equippedDynamicTitleId ?? 'none') === dt.id;
+                      return (
+                        <div
+                          key={dt.id}
+                          className={`rounded-xl p-3 border flex flex-col justify-between gap-2 ${
+                            isEquipped ? dt.borderClass : 'bg-[#070b1a] border-slate-800'
+                          }`}
+                        >
+                          <div>
+                            <div className={`font-display text-xs font-black ${dt.gradientClass}`}>
+                              {dt.title}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{dt.unlockHint}</div>
+                            {(dt.bonusAtk > 0 || dt.bonusHp > 0) && (
+                              <div className="text-[10px] font-mono-nums font-bold text-emerald-300 mt-1">
+                                +{dt.bonusAtk} ATK · +{dt.bonusHp} HP
+                              </div>
+                            )}
+                          </div>
+                          {onSelectDynamicTitle && (
+                            <button
+                              type="button"
+                              disabled={!isUnlocked || isEquipped}
+                              onClick={() => {
+                                soundEngine.playUiClick(1.08);
+                                onSelectDynamicTitle(dt.id);
+                              }}
+                              className={`w-full py-1.5 px-2.5 rounded-lg text-[11px] font-black cursor-pointer whitespace-nowrap disabled:cursor-not-allowed ${
+                                isEquipped
+                                  ? 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-300'
+                                  : isUnlocked
+                                  ? 'a2-yellow-btn'
+                                  : 'bg-slate-900 border border-slate-800 text-slate-500'
+                              }`}
+                            >
+                              {isEquipped ? 'Đang Trang Bị' : isUnlocked ? 'Trang Bị Danh Hiệu' : 'Chưa Mở Khóa'}
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                   </div>

@@ -2,7 +2,17 @@ import React from 'react';
 import { BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Trophy, Users } from 'lucide-react';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, DamageBreakdown, ElementalTowerId, GamePhase } from '../types/game';
-import { AwakenCrystalIcon, GoldCoinIcon, MountShardIcon, PetEssenceIcon, SoulGemIcon, StarDustIcon, WingFeatherIcon } from './GameIcons';
+import {
+  ArtifactRelicIcon,
+  AwakenCrystalIcon,
+  GoldCoinIcon,
+  MountShardIcon,
+  MysticTokenIcon,
+  PetEssenceIcon,
+  SoulGemIcon,
+  StarDustIcon,
+  WingFeatherIcon,
+} from './GameIcons';
 
 interface PauseResultModalProps {
   phase: GamePhase.PAUSED | GamePhase.VICTORY | GamePhase.GAME_OVER;
@@ -33,9 +43,18 @@ interface PauseResultModalProps {
   isBloodMoonMode?: boolean;
   bloodMoonScore?: number;
   bloodMoonWave?: number;
+  isAbyssalMode?: boolean;
+  abyssalWave?: number;
+  abyssalScore?: number;
+  isGuildWarMode?: boolean;
+  guildWarScore?: number;
+  guildWarNodes?: number;
   wingFeathersEarned?: number;
   mountShardsEarned?: number;
   awakeningCrystalsEarned?: number;
+  artifactShardsEarned?: number;
+  mysticTokensEarned?: number;
+  guildCoinsEarned?: number;
   kills: number;
   goldEarned: number;
   gemsEarned: number;
@@ -79,9 +98,18 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   isBloodMoonMode = false,
   bloodMoonScore = 0,
   bloodMoonWave = 0,
+  isAbyssalMode = false,
+  abyssalWave = 0,
+  abyssalScore = 0,
+  isGuildWarMode = false,
+  guildWarScore = 0,
+  guildWarNodes = 0,
   wingFeathersEarned = 0,
   mountShardsEarned = 0,
   awakeningCrystalsEarned = 0,
+  artifactShardsEarned = 0,
+  mysticTokensEarned = 0,
+  guildCoinsEarned = 0,
   kills,
   goldEarned,
   gemsEarned,
@@ -157,6 +185,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
           {isArenaMode
             ? `Đấu Trường Arena 1v1 · ${arenaOpponentName || 'Kình Địch'}`
+            : isGuildWarMode
+            ? `Chiến Trường Bang Hội 3D · Trụ ${guildWarNodes}/3`
+            : isAbyssalMode
+            ? `Hố Sâu Đột Biến 3D · Đợt ${abyssalWave}/10`
             : isBloodMoonMode
             ? `Đêm Trăng Máu Sinh Tồn · Đợt ${bloodMoonWave}`
             : isCrystalDefenseMode
@@ -184,6 +216,12 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? 'Chiến Thắng Đấu Trường!'
               : 'Thất Bại Tại Đấu Trường'
+            : isGuildWarMode
+            ? 'Tổng Kết Chiến Trường Bang!'
+            : isAbyssalMode
+            ? isVictory
+              ? 'Chinh Phục Hố Sâu Đột Biến!'
+              : 'Dừng Bước Tại Hố Sâu Đột Biến'
             : isBloodMoonMode
             ? isVictory
               ? 'Sống Sót Qua Đêm Trăng Máu!'
@@ -223,6 +261,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? `Bạn đã đánh bại ${arenaOpponentName || 'đối thủ'} và nhận ${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm Xếp Hạng Arena!`
               : `Đối thủ ${arenaOpponentName || 'đối thủ'} đã thắng thế (${arenaRatingDelta} Điểm Arena). Hãy nâng cấp Bảo Thạch và tái đấu!`
+            : isGuildWarMode
+            ? `Bạn đã chiếm ${guildWarNodes}/3 Trụ Tinh Thể và ghi ${guildWarScore.toLocaleString('vi-VN')} Điểm Bang Hội! Điểm Tuần & Xu Bang đã được cộng.`
+            : isAbyssalMode
+            ? `Bạn vượt qua ${abyssalWave}/10 đợt quái đột biến với ${abyssalScore.toLocaleString('vi-VN')} điểm! Mảnh Thánh Khí & Ấn Thần Bí đã lưu vào Kho.`
             : isBloodMoonMode
             ? `Bạn đã tích lũy ${bloodMoonScore.toLocaleString('vi-VN')} Huyết Tinh qua ${bloodMoonWave} đợt Trăng Máu! Mảnh Thú Cưỡi & Tinh Thể đã chuyển vào Kho.`
             : isCrystalDefenseMode
@@ -260,6 +302,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             <div className="text-[10px] text-slate-400 font-bold">
               {isArenaMode
                 ? 'Điểm Xếp Hạng'
+                : isGuildWarMode
+                ? 'Điểm Chiến Trường'
+                : isAbyssalMode
+                ? 'Đợt Hố Sâu'
                 : isBloodMoonMode
                 ? 'Huyết Tinh'
                 : isCrystalDefenseMode
@@ -291,6 +337,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             >
               {isArenaMode
                 ? `${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm`
+                : isGuildWarMode
+                ? `${guildWarScore.toLocaleString('vi-VN')} (${guildWarNodes}/3 Trụ)`
+                : isAbyssalMode
+                ? `${abyssalWave}/10 (${abyssalScore.toLocaleString('vi-VN')}đ)`
                 : isBloodMoonMode
                 ? bloodMoonScore.toLocaleString('vi-VN')
                 : isCrystalDefenseMode
@@ -333,7 +383,14 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             </div>
           </div>
 
-          {(starDustEarned > 0 || petEssenceEarned > 0 || wingFeathersEarned > 0 || mountShardsEarned > 0 || awakeningCrystalsEarned > 0) && (
+          {(starDustEarned > 0 ||
+            petEssenceEarned > 0 ||
+            wingFeathersEarned > 0 ||
+            mountShardsEarned > 0 ||
+            awakeningCrystalsEarned > 0 ||
+            artifactShardsEarned > 0 ||
+            mysticTokensEarned > 0 ||
+            guildCoinsEarned > 0) && (
             <>
               {starDustEarned > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
@@ -369,6 +426,33 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                     <span>Tinh Thể Thức Tỉnh</span>
                   </span>
                   <span className="font-mono-nums font-black text-rose-300">+{awakeningCrystalsEarned}</span>
+                </div>
+              )}
+              {artifactShardsEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-amber-200 font-bold">
+                    <ArtifactRelicIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>Mảnh Thánh Khí</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-amber-300">+{artifactShardsEarned}</span>
+                </div>
+              )}
+              {mysticTokensEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-cyan-200 font-bold">
+                    <MysticTokenIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>Ấn Thần Bí</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-cyan-300">+{mysticTokensEarned}</span>
+                </div>
+              )}
+              {guildCoinsEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-amber-200 font-bold">
+                    <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>Xu Bang Hội</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-amber-300">+{guildCoinsEarned}</span>
                 </div>
               )}
               {wingFeathersEarned > 0 && (

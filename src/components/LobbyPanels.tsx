@@ -26,9 +26,12 @@ import {
 import firstTopUpArt from '../assets/images/first_topup_treasury_1795007596297.jpg';
 import flashDealVaultArt from '../assets/images/flash_deal_vault_art_1794973982335.jpg';
 import growthFundVaultArt from '../assets/images/growth_fund_vault_1795004417139.jpg';
+import mysticMerchantArt from '../assets/images/mystic_merchant_exchange_1795010358872.jpg';
+import mythicArtifactsArt from '../assets/images/mythic_artifacts_sanctum_1795010356581.jpg';
 import petSanctuaryArt from '../assets/images/pet_sanctuary_art_1794977269592.jpg';
 import privilegeVaultArt from '../assets/images/privilege_royal_vault_1795005956277.jpg';
 import royalChestArt from '../assets/images/royal_zodiac_chest_1794971375438.jpg';
+import royalPrivilegeArt from '../assets/images/royal_privilege_showcase_1795010357812.jpg';
 import wishPoolArt from '../assets/images/wish_pool_sanctum_1795007596305.jpg';
 import zodiacMountsArt from '../assets/images/zodiac_mounts_sanctum_1795007595676.jpg';
 import zodiacWingsArt from '../assets/images/zodiac_wings_sanctum_1795005955367.jpg';
@@ -120,6 +123,19 @@ import {
   normalizeWishPool,
 } from '../data/wave8Data';
 import {
+  ARTIFACT_MAP,
+  HERO_BONDS,
+  MAX_ARTIFACT_LEVEL,
+  MYSTIC_CURRENCY_LABELS,
+  MYSTIC_EXCHANGE_OFFERS,
+  MYTHIC_ARTIFACTS,
+  evaluateHeroBonds,
+  getArtifactStats,
+  getArtifactUpgradeCost,
+  normalizeMysticExchange,
+} from '../data/wave9Data';
+import {
+  ArtifactId,
   AuraStyleId,
   AvatarFrameId,
   ComputedPlayerStats,
@@ -132,6 +148,7 @@ import {
   HotFlashBundle,
   MonthlyCardTier,
   MountId,
+  MysticCurrencyKind,
   PetId,
   Rarity,
   RuneInstance,
@@ -140,12 +157,14 @@ import {
   WingId,
 } from '../types/game';
 import {
+  ArtifactRelicIcon,
   AwakenCrystalIcon,
   ChestSvg,
   GearSlotSvg,
   GoldCoinIcon,
   HeroCrestSvg,
   MountShardIcon,
+  MysticTokenIcon,
   PetEssenceIcon,
   RARITY_FRAME_CLASS,
   SLOT_LABELS,
@@ -154,6 +173,7 @@ import {
   WingFeatherIcon,
   ZodiacAvatar,
 } from './GameIcons';
+import { StatDiffRow, UpgradeStatDiff } from './UpgradeStatDiff';
 
 interface GearPanelProps {
   save: SaveData;
@@ -621,6 +641,60 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                           )}
                         </div>
 
+                        {!atMaxLevel && (() => {
+                          const nextStats = getGearStats({
+                            ...selectedItem,
+                            level: selectedItem.level + 1,
+                          });
+                          const diffRows: StatDiffRow[] = [];
+                          if (nextStats.atk > gStats.atk || gStats.atk > 0) {
+                            diffRows.push({
+                              label: 'Công Kích (ATK)',
+                              current: `+${gStats.atk}`,
+                              next: `+${nextStats.atk}`,
+                              delta:
+                                nextStats.atk > gStats.atk
+                                  ? `+${nextStats.atk - gStats.atk}`
+                                  : undefined,
+                            });
+                          }
+                          if (nextStats.hp > gStats.hp || gStats.hp > 0) {
+                            diffRows.push({
+                              label: 'Sinh Lực (HP)',
+                              current: `+${gStats.hp}`,
+                              next: `+${nextStats.hp}`,
+                              delta:
+                                nextStats.hp > gStats.hp
+                                  ? `+${nextStats.hp - gStats.hp}`
+                                  : undefined,
+                            });
+                          }
+                          if (nextStats.critChance > gStats.critChance) {
+                            diffRows.push({
+                              label: 'Chí Mạng',
+                              current: `${Math.round(gStats.critChance * 100)}%`,
+                              next: `${Math.round(nextStats.critChance * 100)}%`,
+                              delta: `+${Math.round((nextStats.critChance - gStats.critChance) * 100)}%`,
+                            });
+                          }
+                          if (nextStats.damageReduction > gStats.damageReduction) {
+                            diffRows.push({
+                              label: 'Giảm Sát Thương',
+                              current: `${Math.round(gStats.damageReduction * 100)}%`,
+                              next: `${Math.round(nextStats.damageReduction * 100)}%`,
+                              delta: `+${Math.round((nextStats.damageReduction - gStats.damageReduction) * 100)}%`,
+                            });
+                          }
+                          return diffRows.length > 0 ? (
+                            <div className="mt-2">
+                              <UpgradeStatDiff
+                                title={`Dự kiến cường hóa Lv.${selectedItem.level} → Lv.${selectedItem.level + 1}`}
+                                rows={diffRows}
+                              />
+                            </div>
+                          ) : null;
+                        })()}
+
                         {substats.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-2">
                             {substats.map((sub) => (
@@ -1054,6 +1128,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
 interface HeroesPanelProps {
   save: SaveData;
   previewHeroId: HeroId;
+  initialSubTab?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts';
   onPreviewHero: (heroId: HeroId) => void;
   onSelectHero: (heroId: HeroId) => void;
   onUnlockHero: (heroId: HeroId, currency: 'gold' | 'gems') => void;
@@ -1076,6 +1151,9 @@ interface HeroesPanelProps {
   onUnlockWeaponAura?: (auraId: WeaponAuraId, currency: 'gems' | 'crystals') => void;
   onEquipWeaponAura?: (auraId: WeaponAuraId) => void;
   onUpgradeWeaponAura?: (auraId: WeaponAuraId) => void;
+  onUnlockArtifact?: (artifactId: ArtifactId, currency: 'gems' | 'shards') => void;
+  onEquipArtifact?: (artifactId: ArtifactId | null) => void;
+  onUpgradeArtifact?: (artifactId: ArtifactId) => void;
   onOpenWardrobe?: () => void;
   onPreviewUltimate?: (heroId: HeroId) => void;
   onRotateHero?: (deltaRad: number) => void;
@@ -1085,6 +1163,7 @@ interface HeroesPanelProps {
 export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   save,
   previewHeroId,
+  initialSubTab = 'roster',
   onPreviewHero,
   onSelectHero,
   onUnlockHero,
@@ -1107,15 +1186,21 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onUnlockWeaponAura,
   onEquipWeaponAura,
   onUpgradeWeaponAura,
+  onUnlockArtifact,
+  onEquipArtifact,
+  onUpgradeArtifact,
   onOpenWardrobe,
   onPreviewUltimate,
   onRotateHero,
   onResetHeroRotation,
 }) => {
-  const [heroSubTab, setHeroSubTab] = useState<'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts'>('roster');
+  const [heroSubTab, setHeroSubTab] = useState<
+    'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts'
+  >(initialSubTab);
   const [petBannerErr, setPetBannerErr] = useState(false);
   const [wingsBannerErr, setWingsBannerErr] = useState(false);
   const [mountsBannerErr, setMountsBannerErr] = useState(false);
+  const [artifactsBannerErr, setArtifactsBannerErr] = useState(false);
 
   const hero = HERO_MAP[previewHeroId] ?? HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const unlocked = save.unlockedHeroes.includes(hero.id);
@@ -1144,6 +1229,12 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const equippedWeaponAuraId = save.equippedWeaponAuraId ?? 'none';
   const awakeningCrystals = save.awakeningCrystals ?? 0;
   const petEssence = save.petEssence ?? 0;
+  const unlockedArtifacts = save.unlockedArtifacts ?? [];
+  const artifactLevels = save.artifactLevels ?? {};
+  const equippedArtifactId = save.equippedArtifactId ?? null;
+  const mxState = normalizeMysticExchange(save.mysticExchange);
+  const artifactShards = mxState.artifactShards;
+  const heroBondsSummary = evaluateHeroBonds(save);
 
   const handleHeroDragDown = (e: React.PointerEvent<HTMLDivElement>) => {
     dragRef.current = { active: true, lastX: e.clientX };
@@ -1411,6 +1502,22 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               >
                 <MountShardIcon className="w-3.5 h-3.5 shrink-0" />
                 <span>Thú Cưỡi &amp; Vũ Khí ({unlockedMounts.length}/{ZODIAC_MOUNTS.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  setHeroSubTab('artifacts');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  heroSubTab === 'artifacts'
+                    ? 'bg-gradient-to-b from-amber-300 via-yellow-400 to-orange-500 text-slate-950'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <ArtifactRelicIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Thánh Khí &amp; Duyên ({unlockedArtifacts.length}/{MYTHIC_ARTIFACTS.length})</span>
               </button>
             </div>
 
@@ -1985,6 +2092,27 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                             <div className="text-sky-300">+{Math.round(stats.aspd * 1000) / 10}%</div>
                           </div>
                         </div>
+
+                        {isOwned && !maxLv && (() => {
+                          const nextW = getWingStats(w.id, lv + 1);
+                          return (
+                            <div className="mt-2">
+                              <UpgradeStatDiff
+                                title={`Nâng Cấp Lv.${lv} → Lv.${lv + 1}`}
+                                rows={[
+                                  { label: 'ATK', current: `+${stats.atk}`, next: `+${nextW.atk}`, delta: `+${nextW.atk - stats.atk}` },
+                                  { label: 'HP', current: `+${stats.hp}`, next: `+${nextW.hp}`, delta: `+${nextW.hp - stats.hp}` },
+                                  {
+                                    label: 'Chí Mạng',
+                                    current: `+${(stats.crit * 100).toFixed(1)}%`,
+                                    next: `+${(nextW.crit * 100).toFixed(1)}%`,
+                                    delta: `+${((nextW.crit - stats.crit) * 100).toFixed(1)}%`,
+                                  },
+                                ]}
+                              />
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-1">
@@ -2209,6 +2337,27 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                             <div className="text-rose-300">+{Math.round(statsM.dr * 100)}%</div>
                           </div>
                         </div>
+
+                        {isOwned && !maxLv && (() => {
+                          const nextM = getMountStats(m.id, lv + 1);
+                          return (
+                            <div className="mt-2">
+                              <UpgradeStatDiff
+                                title={`Nâng Cấp Lv.${lv} → Lv.${lv + 1}`}
+                                rows={[
+                                  { label: 'ATK', current: `+${statsM.atk}`, next: `+${nextM.atk}`, delta: `+${nextM.atk - statsM.atk}` },
+                                  { label: 'HP', current: `+${statsM.hp}`, next: `+${nextM.hp}`, delta: `+${nextM.hp - statsM.hp}` },
+                                  {
+                                    label: 'Giảm ST',
+                                    current: `+${Math.round(statsM.dr * 100)}%`,
+                                    next: `+${Math.round(nextM.dr * 100)}%`,
+                                    delta: `+${Math.round((nextM.dr - statsM.dr) * 100)}%`,
+                                  },
+                                ]}
+                              />
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-1">
@@ -2309,10 +2458,36 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                           <h5 className="font-display text-sm font-black text-white">{wa.name}</h5>
                           <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">{wa.desc}</p>
                           {wa.id !== 'none' && (
-                            <div className="flex items-center gap-3 mt-2 text-[11px] font-mono-nums font-bold">
-                              <span className="text-amber-300">+{Math.round(waStats.atkPct * 1000) / 10}% ATK</span>
-                              <span className="text-rose-300">+{Math.round(waStats.critDmg * 1000) / 10}% ST Chí Mạng</span>
-                            </div>
+                            <>
+                              <div className="flex items-center gap-3 mt-2 text-[11px] font-mono-nums font-bold">
+                                <span className="text-amber-300">+{Math.round(waStats.atkPct * 1000) / 10}% ATK</span>
+                                <span className="text-rose-300">+{Math.round(waStats.critDmg * 1000) / 10}% ST Chí Mạng</span>
+                              </div>
+                              {isOwned && !maxLv && (() => {
+                                const nextWa = getWeaponAuraStats(wa.id, lv + 1);
+                                return (
+                                  <div className="mt-2">
+                                    <UpgradeStatDiff
+                                      title={`Thức Tỉnh Lv.${lv} → Lv.${lv + 1}`}
+                                      rows={[
+                                        {
+                                          label: '% ATK',
+                                          current: `+${(waStats.atkPct * 100).toFixed(1)}%`,
+                                          next: `+${(nextWa.atkPct * 100).toFixed(1)}%`,
+                                          delta: `+${((nextWa.atkPct - waStats.atkPct) * 100).toFixed(1)}%`,
+                                        },
+                                        {
+                                          label: 'ST Chí Mạng',
+                                          current: `+${(waStats.critDmg * 100).toFixed(1)}%`,
+                                          next: `+${(nextWa.critDmg * 100).toFixed(1)}%`,
+                                          delta: `+${((nextWa.critDmg - waStats.critDmg) * 100).toFixed(1)}%`,
+                                        },
+                                      ]}
+                                    />
+                                  </div>
+                                );
+                              })()}
+                            </>
                           )}
                         </div>
 
@@ -2379,6 +2554,300 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                             </>
                           )}
                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 6: MYTHIC ARTIFACTS 3D & HERO SYNERGY BONDS */}
+          {heroSubTab === 'artifacts' && (
+            <div className="space-y-5 pb-6">
+              <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-center">
+                <div className="md:col-span-5 h-32 md:h-40 bg-[#0b1229] relative overflow-hidden">
+                  {!artifactsBannerErr ? (
+                    <img
+                      src={mythicArtifactsArt}
+                      alt="Thánh Khí Thần Thoại 3D"
+                      referrerPolicy="no-referrer"
+                      onError={() => setArtifactsBannerErr(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-500/25 to-purple-500/25">
+                      <ArtifactRelicIcon className="w-12 h-12" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                </div>
+                <div className="md:col-span-7 p-4 flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                      Thánh Khí Thần Thoại 3D · Bay Hộ Vệ Sau Vai
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-[#070b1a] border border-amber-400/40 font-mono-nums text-xs font-black text-amber-200 flex items-center gap-1.5">
+                      <ArtifactRelicIcon className="w-3.5 h-3.5" />
+                      <span>{artifactShards} Mảnh Thánh Khí</span>
+                    </span>
+                  </div>
+                  <h4 className="font-display text-base sm:text-lg font-black text-white">
+                    Thánh Khí Hoàng Đạo 3D &amp; Cộng Hưởng Đội Hình
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Thánh Khí xoay quanh vai Anh Hùng trong cả Sảnh lẫn Chiến Đấu, cộng ATK, HP, Chí Mạng &amp; Sát Thương Boss. Săn Mảnh Thánh Khí từ <strong>Hố Sâu Đột Biến 3D</strong> và <strong>Chợ Thương Nhân</strong>!
+                  </p>
+                </div>
+              </div>
+
+              {/* 4 Mythic Artifacts */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {MYTHIC_ARTIFACTS.map((art) => {
+                  const isOwned = unlockedArtifacts.includes(art.id);
+                  const isEquipped = equippedArtifactId === art.id;
+                  const lv = Math.max(1, artifactLevels[art.id] ?? 1);
+                  const maxLv = lv >= MAX_ARTIFACT_LEVEL;
+                  const aStats = getArtifactStats(art.id, lv);
+                  const upCost = getArtifactUpgradeCost(lv);
+                  const pColor = `#${art.primaryHex.toString(16).padStart(6, '0')}`;
+                  const sColor = `#${art.secondaryHex.toString(16).padStart(6, '0')}`;
+
+                  return (
+                    <div
+                      key={art.id}
+                      className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
+                        isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="w-10 h-10 rounded-xl border border-amber-300/60 flex items-center justify-center shrink-0"
+                              style={{
+                                background: `linear-gradient(135deg, ${pColor}33, ${sColor}22)`,
+                              }}
+                            >
+                              <ArtifactRelicIcon className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <span className="text-[10px] font-black uppercase text-amber-300">
+                                {art.badge} {isOwned ? `· Lv.${lv}/${MAX_ARTIFACT_LEVEL}` : ''}
+                              </span>
+                              <h5 className="font-display text-sm sm:text-base font-black text-white">
+                                {art.name}
+                              </h5>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed">{art.desc}</p>
+
+                        <div className="grid grid-cols-4 gap-1.5 mt-2.5 text-center rounded-xl bg-[#070b1a] border border-amber-400/20 p-2 text-[10px] font-mono-nums font-bold">
+                          <div>
+                            <div className="text-slate-400">ATK</div>
+                            <div className="text-amber-300">+{aStats.atk}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">HP</div>
+                            <div className="text-emerald-300">+{aStats.hp}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Crit</div>
+                            <div className="text-rose-300">+{(aStats.crit * 100).toFixed(1)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">ST Boss</div>
+                            <div className="text-sky-300">+{Math.round(aStats.bossDmg * 100)}%</div>
+                          </div>
+                        </div>
+
+                        {isOwned && !maxLv && (() => {
+                          const nextA = getArtifactStats(art.id, lv + 1);
+                          return (
+                            <div className="mt-2">
+                              <UpgradeStatDiff
+                                title={`Nâng Thánh Khí Lv.${lv} → Lv.${lv + 1}`}
+                                rows={[
+                                  { label: 'ATK', current: `+${aStats.atk}`, next: `+${nextA.atk}`, delta: `+${nextA.atk - aStats.atk}` },
+                                  { label: 'HP', current: `+${aStats.hp}`, next: `+${nextA.hp}`, delta: `+${nextA.hp - aStats.hp}` },
+                                  {
+                                    label: 'ST Boss',
+                                    current: `+${Math.round(aStats.bossDmg * 100)}%`,
+                                    next: `+${Math.round(nextA.bossDmg * 100)}%`,
+                                    delta: `+${Math.round((nextA.bossDmg - aStats.bossDmg) * 100)}%`,
+                                  },
+                                ]}
+                              />
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {isOwned ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.05);
+                                onEquipArtifact?.(isEquipped ? null : art.id);
+                              }}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                                isEquipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                              }`}
+                            >
+                              {isEquipped ? 'Thu Hồi Thánh Khí' : 'Triệu Hồi Sau Vai'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={maxLv || artifactShards < upCost.shards || save.gold < upCost.gold}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUpgradeArtifact?.(art.id);
+                              }}
+                              className="a2-yellow-btn flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              {maxLv
+                                ? 'Cấp Tối Đa'
+                                : `Nâng (${upCost.shards} Mảnh + ${upCost.gold}V)`}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={artifactShards < art.unlockArtifactShards}
+                              onClick={() => {
+                                soundEngine.playVictory();
+                                onUnlockArtifact?.(art.id, 'shards');
+                              }}
+                              className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <ArtifactRelicIcon className="w-3.5 h-3.5" />
+                              <span>Đúc · {art.unlockArtifactShards} Mảnh</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={save.gems < art.unlockGems}
+                              onClick={() => {
+                                soundEngine.playVictory();
+                                onUnlockArtifact?.(art.id, 'gems');
+                              }}
+                              className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                              <span>Mở · {art.unlockGems} Ngọc</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Hero Synergy Bonds */}
+              <div className="pt-2 border-t border-amber-400/20">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div>
+                    <h4 className="font-display text-sm sm:text-base font-black text-amber-200">
+                      Cộng Hưởng Duyên Đội Hình ({heroBondsSummary.activeCount}/{HERO_BONDS.length} Kích Hoạt)
+                    </h4>
+                    <p className="text-[11px] text-slate-300">
+                      Chiêu mộ &amp; tăng sao các cặp Anh Hùng chỉ định để nhận vĩnh viễn % ATK, % HP &amp; Chí Mạng toàn đội.
+                    </p>
+                  </div>
+                  <span className="font-mono-nums text-xs font-black text-emerald-300">
+                    +{Math.round(heroBondsSummary.atkPct * 100)}% ATK · +{Math.round(heroBondsSummary.hpPct * 100)}% HP
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {HERO_BONDS.map((bond) => {
+                    const active = heroBondsSummary.activeIds.includes(bond.id);
+                    const starSum = bond.heroIds.reduce(
+                      (s, id) =>
+                        s +
+                        Math.max(
+                          0,
+                          save.heroStars?.[id] ?? (save.unlockedHeroes.includes(id) ? 1 : 0)
+                        ),
+                      0
+                    );
+                    const allOwned = bond.heroIds.every((id) => save.unlockedHeroes.includes(id));
+
+                    return (
+                      <div
+                        key={bond.id}
+                        className={`rounded-2xl p-4 border flex flex-col justify-between gap-2.5 ${
+                          active ? 'cel-panel-ornate' : 'cel-panel'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <h5
+                              className="font-display text-sm font-black"
+                              style={{ color: bond.accentColor }}
+                            >
+                              {bond.name}
+                            </h5>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-black font-mono-nums ${
+                                active
+                                  ? 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-300'
+                                  : 'bg-slate-900 border border-slate-700 text-slate-400'
+                              }`}
+                            >
+                              {active
+                                ? 'ĐÃ KÍCH HOẠT'
+                                : `Sao ${starSum}/${bond.minTotalStars}`}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-300">{bond.subtitle}</p>
+                          <div className="flex flex-wrap gap-2 mt-2.5">
+                            {bond.heroIds.map((hid) => {
+                              const hDef = HERO_MAP[hid];
+                              const hOwned = save.unlockedHeroes.includes(hid);
+                              const hStar = save.heroStars?.[hid] ?? (hOwned ? 1 : 0);
+                              return hDef ? (
+                                <button
+                                  key={hid}
+                                  type="button"
+                                  onClick={() => {
+                                    onPreviewHero(hid);
+                                    setHeroSubTab('roster');
+                                  }}
+                                  className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer ${
+                                    hOwned
+                                      ? 'bg-[#091229] border-amber-400/35 text-white'
+                                      : 'bg-slate-950/80 border-slate-800 text-slate-500'
+                                  }`}
+                                >
+                                  <span>{hDef.name}</span>
+                                  <span className="font-mono-nums text-amber-300">
+                                    {hOwned ? `★${hStar}` : 'Chưa mở'}
+                                  </span>
+                                </button>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-amber-400/15 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums font-bold">
+                          <span className="text-amber-300">
+                            +{Math.round(bond.bonusAtkPct * 100)}% ATK · +{Math.round(bond.bonusHpPct * 100)}% HP
+                          </span>
+                          <span className="text-sky-300">
+                            +{(bond.bonusCrit * 100).toFixed(1)}% Crit · +{Math.round(bond.bonusCritDmg * 100)}% ST Crit
+                          </span>
+                        </div>
+                        {!allOwned && (
+                          <div className="text-[10px] text-slate-400">
+                            Cần chiêu mộ đủ tất cả Anh Hùng trong duyên để kích hoạt.
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2726,7 +3195,14 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   );
 };
 
-export type ShopSectionTab = 'privilege' | 'wish_topup' | 'packs' | 'arena_shop' | 'deals' | 'gacha';
+export type ShopSectionTab =
+  | 'privilege'
+  | 'wish_topup'
+  | 'packs'
+  | 'arena_shop'
+  | 'mystic_exchange'
+  | 'deals'
+  | 'gacha';
 
 interface ShopPanelProps {
   save: SaveData;
@@ -2751,6 +3227,7 @@ interface ShopPanelProps {
   onClaimWishMilestone?: (count: number) => void;
   onClaimFirstTopUp?: (tierId: string) => void;
   onBuyHotBundle?: (bundleId: string) => void;
+  onMysticExchange?: (offerId: string) => void;
   onOpenVipModal: () => void;
   onOpenArenaModal: () => void;
 }
@@ -2775,6 +3252,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   onClaimWishMilestone,
   onClaimFirstTopUp,
   onBuyHotBundle,
+  onMysticExchange,
   onOpenVipModal,
   onOpenArenaModal,
 }) => {
@@ -2785,6 +3263,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const [privilegeImgFailed, setPrivilegeImgFailed] = useState(false);
   const [wishBannerFailed, setWishBannerFailed] = useState(false);
   const [topUpBannerFailed, setTopUpBannerFailed] = useState(false);
+  const [mysticImgFailed, setMysticImgFailed] = useState(false);
   const [oddsModalVariant, setOddsModalVariant] = useState<
     'iron' | 'mythic' | 'rune_bag' | 'rune_rare' | null
   >(null);
@@ -2895,6 +3374,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                 ['wish_topup', 'Hồ Ước & Nạp X2', wishMilestonesReady],
                 ['privilege', 'Thẻ Tháng & Tích Nạp', claimableWave7Count],
                 ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
+                ['mystic_exchange', 'Chợ Mảnh Dư', 0],
                 ['arena_shop', 'Shop Xu Arena', 0],
                 ['deals', 'Flash Sale', 0],
                 ['gacha', 'Triệu Hồi', 0],
@@ -3328,11 +3808,11 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
         {storeSection === 'privilege' && (
           <section className="space-y-4">
             <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-stretch">
-              <div className="md:col-span-5 relative min-h-[150px] bg-[#0b1229]">
+              <div className="md:col-span-5 relative min-h-[155px] bg-[#0b1229]">
                 {!privilegeImgFailed ? (
                   <img
-                    src={privilegeVaultArt}
-                    alt="Đặc Quyền Tháng & Nạp Tiến Hóa"
+                    src={royalPrivilegeArt || privilegeVaultArt}
+                    alt="Siêu Thị Đặc Quyền Hoàng Gia"
                     referrerPolicy="no-referrer"
                     onError={() => setPrivilegeImgFailed(true)}
                     className="w-full h-full object-cover"
@@ -3344,14 +3824,14 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
                 <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-mono-nums text-[10px] font-black shadow">
-                  ĐẶC QUYỀN HOÀNG GIA
+                  SIÊU THỊ ĐẶC QUYỀN
                 </span>
               </div>
 
               <div className="md:col-span-7 p-4 flex flex-col justify-between gap-2.5">
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
-                    Thẻ Đặc Quyền 30 Ngày &amp; Quà Tích Lũy Nạp Tiến Hóa
+                    Siêu Thị Thẻ Đặc Quyền 30 Ngày &amp; Nạp Tiến Hóa
                   </span>
                   <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
                     Hoàn Trả Ngọc Hồn Hằng Ngày + Tích Điểm Nhận Cánh Phượng Hoàng!
@@ -3370,6 +3850,27 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                       style={{ width: `${Math.min(100, Math.round((tu.points / 600) * 100))}%` }}
                     />
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Royal Privilege Tier Comparison Matrix */}
+            <div className="cel-panel rounded-2xl p-3.5 sm:p-4">
+              <div className="text-xs font-display font-black text-amber-200 mb-2.5">
+                So Sánh Quyền Lợi Đặc Quyền Cao Cấp
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]">
+                <div className="rounded-xl bg-[#070b1a] border border-sky-400/35 p-3">
+                  <div className="font-black text-sky-300">Thẻ Bạc Tinh Tú</div>
+                  <div className="text-slate-300 mt-1">+25 Ngọc/ngày · +1 lượt Thủ Pha Lê · +15% Vàng nhận</div>
+                </div>
+                <div className="rounded-xl bg-[#110c24] border border-amber-300/65 p-3">
+                  <div className="font-black text-amber-300">Thẻ Hoàng Gia (Best Value)</div>
+                  <div className="text-slate-200 mt-1">+55 Ngọc/ngày · +15% ATK toàn đội · +1 lượt Boss &amp; Thủ Pha Lê</div>
+                </div>
+                <div className="rounded-xl bg-[#190a1b] border border-purple-400/55 p-3">
+                  <div className="font-black text-purple-300">Đặc Quyền VIP</div>
+                  <div className="text-slate-200 mt-1">+2 Quét Nhanh · +25% XP Battle Pass · Khung VIP Độc Quyền</div>
                 </div>
               </div>
             </div>
@@ -3887,6 +4388,150 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
             </div>
           </section>
         )}
+
+        {/* SECTION 2.5: MYSTIC MERCHANT EXCHANGE (WAVE 9) */}
+        {storeSection === 'mystic_exchange' && (() => {
+          const mx = normalizeMysticExchange(save.mysticExchange);
+          const getBalance = (kind: MysticCurrencyKind) => {
+            if (kind === 'starDust') return save.starDust ?? 0;
+            if (kind === 'petEssence') return save.petEssence ?? 0;
+            if (kind === 'wingFeathers') return save.wingFeathers ?? 0;
+            if (kind === 'mountShards') return save.mountShards ?? 0;
+            if (kind === 'awakeningCrystals') return save.awakeningCrystals ?? 0;
+            return mx.mysticTokens;
+          };
+
+          return (
+            <section className="space-y-4">
+              <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-stretch">
+                <div className="md:col-span-5 relative min-h-[150px] bg-[#0b1229]">
+                  {!mysticImgFailed ? (
+                    <img
+                      src={mysticMerchantArt}
+                      alt="Chợ Đổi Mảnh Dư Thương Nhân Thần Bí"
+                      referrerPolicy="no-referrer"
+                      onError={() => setMysticImgFailed(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-cyan-500/25 to-purple-500/25 flex items-center justify-center">
+                      <MysticTokenIcon className="w-10 h-10" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                  <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-cyan-400 text-slate-950 font-mono-nums text-[10px] font-black shadow">
+                    THƯƠNG NHÂN TUẦN · {mx.weekKey}
+                  </span>
+                </div>
+
+                <div className="md:col-span-7 p-4 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">
+                      Chợ Đổi Mảnh Dư &amp; Kho Báu Thương Nhân Thần Bí
+                    </span>
+                    <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                      Thanh Lý Nguyên Liệu Dư → Ấn Thần Bí, Mảnh Thánh Khí &amp; Đồ [S]
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      Tái chế Bụi Tinh Tú, Tinh Chất Pet và Lông Vũ dư thừa để đổi Ấn Thần Bí, Ngọc Hồn, Mảnh Thánh Khí và Thánh Vật [S] giới hạn mỗi tuần.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-cyan-400/20 text-xs font-mono-nums font-black">
+                    <span className="px-2.5 py-1 rounded-lg bg-[#070b1a] border border-cyan-400/40 text-cyan-200 flex items-center gap-1">
+                      <MysticTokenIcon className="w-3.5 h-3.5" /> {mx.mysticTokens} Ấn Thần Bí
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-[#070b1a] border border-amber-400/40 text-amber-200 flex items-center gap-1">
+                      <ArtifactRelicIcon className="w-3.5 h-3.5" /> {mx.artifactShards} Mảnh Thánh Khí
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-[#070b1a] border border-sky-400/30 text-sky-200 flex items-center gap-1">
+                      <StarDustIcon className="w-3.5 h-3.5" /> {save.starDust ?? 0} Bụi
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {MYSTIC_EXCHANGE_OFFERS.map((offer) => {
+                  const used = mx.weeklyClaims[offer.id] ?? 0;
+                  const soldOut = used >= offer.weeklyLimit;
+                  const bal = getBalance(offer.inputKind);
+                  const canAfford = !soldOut && bal >= offer.inputAmount;
+
+                  return (
+                    <div
+                      key={offer.id}
+                      className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
+                        offer.outputKind === 's_gear' || offer.outputKind === 'artifactShards'
+                          ? 'cel-panel-ornate'
+                          : 'cel-panel'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="text-[10px] font-black tracking-wider text-cyan-300">
+                            {offer.badge}
+                          </span>
+                          <span className="font-mono-nums text-[10px] font-bold text-slate-300">
+                            Tuần: {used}/{offer.weeklyLimit}
+                          </span>
+                        </div>
+                        <h4 className="font-display text-sm font-black text-white">
+                          {offer.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                          {offer.desc}
+                        </p>
+                        <div className="mt-2.5 flex items-center justify-between text-[11px] font-mono-nums font-bold bg-[#070b1a] border border-slate-800 rounded-xl px-2.5 py-1.5">
+                          <span className={bal >= offer.inputAmount ? 'text-slate-200' : 'text-rose-400'}>
+                            Có: {bal}/{offer.inputAmount} {MYSTIC_CURRENCY_LABELS[offer.inputKind]}
+                          </span>
+                          <span className="text-emerald-300">
+                            +{offer.outputAmount}{' '}
+                            {offer.outputKind === 'mysticTokens'
+                              ? 'Ấn'
+                              : offer.outputKind === 'artifactShards'
+                              ? 'Mảnh TK'
+                              : offer.outputKind === 'gems'
+                              ? 'Ngọc'
+                              : 'Đồ [S]'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!canAfford}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onMysticExchange?.(offer.id);
+                        }}
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                          soldOut
+                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                            : canAfford
+                            ? 'a2-emerald-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {soldOut ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Hết Lượt Tuần</span>
+                          </>
+                        ) : (
+                          <span className="font-mono-nums">
+                            Đổi · {offer.inputAmount} {MYSTIC_CURRENCY_LABELS[offer.inputKind]}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* SECTION 3: DAILY FLASH SALE STOREFRONT */}
         {storeSection === 'deals' && (

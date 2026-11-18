@@ -18,6 +18,10 @@ import {
 } from '../data/wave7Data';
 import { BLOOD_MOON_DURATION_SEC } from '../data/wave8Data';
 import {
+  ABYSSAL_GAUNTLET_TOTAL_WAVES,
+  GUILD_WAR_DURATION_SEC,
+} from '../data/wave9Data';
+import {
   ArenaOpponent,
   ChapterDefinition,
   ComputedPlayerStats,
@@ -156,6 +160,7 @@ interface Projectile {
   storm: boolean;
   poison: boolean;
   mesh: THREE.Mesh;
+  trailMesh?: THREE.Mesh;
 }
 
 interface CoopAllyEntity {
@@ -282,6 +287,15 @@ export interface EngineCallbacks {
       awakeningCrystals?: number;
       starDust?: number;
       petEssence?: number;
+      isAbyssalMode?: boolean;
+      abyssalWave?: number;
+      abyssalScore?: number;
+      artifactShards?: number;
+      mysticTokens?: number;
+      isGuildWarMode?: boolean;
+      guildWarScore?: number;
+      guildWarNodes?: number;
+      guildCoins?: number;
       maxCombo?: number;
       damageBreakdown?: DamageBreakdown;
     }
@@ -350,6 +364,12 @@ export class GameEngine {
   private lightningPool: LightningArc[] = [];
   private shockwavePool: ShockwaveRing[] = [];
   private dangerLanePool: DangerLane[] = [];
+  private ultColumnPool: Array<{
+    active: boolean;
+    life: number;
+    maxLife: number;
+    mesh: THREE.Mesh;
+  }> = [];
 
   private phase: GamePhase = GamePhase.TITLE;
   private lobbyViewMode: 'battle' | 'gear' | 'heroes' | 'vault' = 'battle';
@@ -398,6 +418,23 @@ export class GameEngine {
   private bloodMoonWave = 0;
   private bloodMoonScore = 0;
   private bloodMoonSpawnTimer = 0;
+  private isAbyssalMode = false;
+  private abyssalWave = 0;
+  private abyssalScore = 0;
+  private isGuildWarMode = false;
+  private guildWarTimeLeft = GUILD_WAR_DURATION_SEC;
+  private guildWarScore = 0;
+  private guildWarNodesCaptured = 0;
+  private guildWarSpawnTimer = 0;
+  private guildWarNodes: Array<{
+    x: number;
+    z: number;
+    progress: number;
+    captured: boolean;
+    group: THREE.Group;
+    core: THREE.Mesh;
+    ring: THREE.Mesh;
+  }> = [];
   private starfallMesh!: THREE.InstancedMesh;
   private starfallEnabled = true;
   private starfallSeeds: Array<{
@@ -616,9 +653,12 @@ export class GameEngine {
   }
 
   private initPools(): void {
-    // Player projectile pool
+    // Player projectile pool + sleek elemental trail cones
     const arrowGeo = new THREE.ConeGeometry(0.12, 0.75, 6);
     arrowGeo.rotateX(Math.PI / 2);
+    const trailGeo = new THREE.ConeGeometry(0.11, 1.15, 5);
+    trailGeo.rotateX(-Math.PI / 2);
+    trailGeo.translate(0, 0, -0.68);
     for (let i = 0; i < 85; i++) {
       const mat = new THREE.MeshStandardMaterial({
         color: 0x7dd3fc,
@@ -627,6 +667,15 @@ export class GameEngine {
         roughness: 0.2,
       });
       const mesh = new THREE.Mesh(arrowGeo, mat);
+      const trailMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.56,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+      mesh.add(trailMesh);
       mesh.visible = false;
       this.projectilesGroup.add(mesh);
       this.arrowPool.push({
@@ -652,6 +701,7 @@ export class GameEngine {
         storm: false,
         poison: false,
         mesh,
+        trailMesh,
       });
     }
 
@@ -790,6 +840,29 @@ export class GameEngine {
         life: 0,
         maxLife: 0.4,
         maxRadius: 3,
+        mesh,
+      });
+    }
+
+    // Ultimate Burst Skybeam Column pool (pooled, zero per-frame allocations)
+    const ultColGeo = new THREE.CylinderGeometry(0.45, 0.92, 10.5, 16, 1, true);
+    ultColGeo.translate(0, 5.25, 0);
+    for (let i = 0; i < 8; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24,
+        transparent: true,
+        opacity: 0.65,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.Mesh(ultColGeo, mat);
+      mesh.visible = false;
+      this.particlesGroup.add(mesh);
+      this.ultColumnPool.push({
+        active: false,
+        life: 0,
+        maxLife: 0.55,
         mesh,
       });
     }
@@ -1252,6 +1325,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.currentChapter = ch;
     this.baseStats = stats;
 
@@ -1278,6 +1353,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1302,6 +1379,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1328,6 +1407,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.currentChapter = CHAPTERS[2] ?? CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1353,6 +1434,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.guildBossTimeLeft = 60;
     this.guildBossTotalDamage = 0;
     this.currentChapter = CHAPTERS[11] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
@@ -1393,6 +1476,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
 
     const chIdx = difficulty === 'mythic' ? 11 : difficulty === 'heroic' ? 8 : 5;
     this.currentChapter = CHAPTERS[chIdx] ?? CHAPTERS[0];
@@ -1514,6 +1599,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.elementalTowerId = towerId;
     this.elementalTowerFloor = Math.max(1, startFloor);
     this.currentChapter = CHAPTERS[(tDef.chapterId - 1) % CHAPTERS.length] ?? CHAPTERS[0];
@@ -1540,6 +1627,8 @@ export class GameEngine {
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.isArenaMode = true;
     this.arenaTimeLeft = 45;
     this.arenaOpponentName = opponent.name;
@@ -1702,6 +1791,8 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isWorldBossMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.isCrystalDefenseMode = true;
     this.crystalWave = 1;
     const baseCrystalHp = Math.round(1800 + stats.maxHp * 1.65);
@@ -1801,6 +1892,8 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.isWorldBossMode = true;
     this.worldBossTimeLeft = 60;
     this.worldBossTotalDamage = 0;
@@ -1839,6 +1932,8 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
     this.isBloodMoonMode = true;
     this.bloodMoonTimeLeft = BLOOD_MOON_DURATION_SEC;
     this.bloodMoonWave = 0;
@@ -1892,6 +1987,190 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
+  public startAbyssalGauntlet(stats: ComputedPlayerStats): void {
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
+    this.isGuildWarMode = false;
+    this.isAbyssalMode = true;
+    this.abyssalWave = 0;
+    this.abyssalScore = 0;
+    this.currentChapter = CHAPTERS[8] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    // Deep Abyssal Violet atmosphere
+    this.scene.background = new THREE.Color(0x110724);
+    this.scene.fog = new THREE.FogExp2(0x1b0b38, 0.02);
+    this.keyLight.color.setHex(0xc084fc);
+    this.hemiLight.color.setHex(0xa855f7);
+
+    this.resetRunState(stats);
+    this.ultCharge = 90;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'gauntlet',
+      true,
+      `HỐ SÂU ĐỘT BIẾN 3D · VƯỢT ${ABYSSAL_GAUNTLET_TOTAL_WAVES} ĐỢT SĂN MẢNH THÁNH KHÍ!`
+    );
+    this.spawnNextAbyssalWave();
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  private spawnNextAbyssalWave(): void {
+    this.abyssalWave += 1;
+    const w = this.abyssalWave;
+    const isBossWave = w % 3 === 0 || w === ABYSSAL_GAUNTLET_TOTAL_WAVES;
+    const groups: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> =
+      w === ABYSSAL_GAUNTLET_TOTAL_WAVES
+        ? [
+            { kind: EnemyKind.ZODIAC_BOSS, count: 1 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 3, isElite: true },
+            { kind: EnemyKind.DRAGON_WHELP, count: 2, isElite: true },
+          ]
+        : isBossWave
+        ? [
+            { kind: w >= 6 ? EnemyKind.TITAN_BOSS : EnemyKind.WARDEN_BOSS, count: 1 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 2, isElite: true },
+            { kind: EnemyKind.WISP, count: 2 },
+          ]
+        : [
+            { kind: EnemyKind.SKIRMISHER, count: 3 + Math.min(3, Math.floor(w / 2)) },
+            { kind: EnemyKind.IMP_ARCHER, count: 2 + Math.min(2, Math.floor(w / 3)) },
+            { kind: w >= 5 ? EnemyKind.GOLEM : EnemyKind.DRAGON_WHELP, count: 2, isElite: w >= 4 },
+          ];
+    const hpMult = 0.92 + w * 0.28;
+    const dmgMult = 0.95 + w * 0.14;
+    const bossTitle =
+      w === ABYSSAL_GAUNTLET_TOTAL_WAVES
+        ? 'Chúa Tể Hố Sâu Đột Biến'
+        : w >= 6
+        ? 'Dị Chủ Hư Không Tầng Sâu'
+        : 'Thống Soái Đột Biến';
+    this.spawnEnemyGroups(groups, hpMult, dmgMult, bossTitle);
+    this.stageBannerText = `HỐ SÂU ĐỘT BIẾN · ĐỢT ${w}/${ABYSSAL_GAUNTLET_TOTAL_WAVES}`;
+    this.stageBannerTimer = 2.4;
+    this.syncHudImmediate();
+  }
+
+  public startGuildWarBattle(stats: ComputedPlayerStats): void {
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = true;
+    this.guildWarTimeLeft = GUILD_WAR_DURATION_SEC;
+    this.guildWarScore = 0;
+    this.guildWarNodesCaptured = 0;
+    this.guildWarSpawnTimer = 0;
+    this.currentChapter = CHAPTERS[6] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    this.resetRunState(stats);
+    this.ultCharge = 90;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'courtyard',
+      true,
+      'CHIẾN TRƯỜNG BANG HỘI 3D · ĐỨNG TRONG VÒNG CHIẾM 3 TRỤ TINH THỂ!'
+    );
+
+    // Build 3 capturable Guild Citadel shrines
+    const shrineSpots: Array<[number, number]> = [
+      [-5.2, -3.6],
+      [5.2, -3.6],
+      [0, 3.8],
+    ];
+    this.guildWarNodes = shrineSpots.map(([nx, nz]) => {
+      const group = new THREE.Group();
+      group.position.set(nx, 0, nz);
+      const plinth = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.7, 0.85, 0.25, 16),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.7, roughness: 0.35 })
+      );
+      plinth.position.y = 0.12;
+      const core = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.42, 0),
+        new THREE.MeshStandardMaterial({
+          color: 0xf59e0b,
+          emissive: 0xd97706,
+          emissiveIntensity: 1.4,
+          roughness: 0.15,
+        })
+      );
+      core.scale.set(0.85, 1.5, 0.85);
+      core.position.y = 1.25;
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(2.15, 2.38, 36),
+        new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          transparent: true,
+          opacity: 0.65,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.05;
+      group.add(plinth, core, ring);
+      this.entitiesGroup.add(group);
+      return { x: nx, z: nz, progress: 0, captured: false, group, core, ring };
+    });
+
+    this.px = 0;
+    this.pz = 7.4;
+    this.hero.root.position.set(this.px, 0, this.pz);
+    this.heroShadow.position.set(this.px, 0.02, this.pz);
+
+    this.spawnGuildWarWave(1);
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  private spawnGuildWarWave(waveNum: number): void {
+    this.guildWarSpawnTimer = 14;
+    const groups: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> =
+      waveNum % 2 === 0
+        ? [
+            { kind: EnemyKind.WARDEN_BOSS, count: 1 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 2, isElite: true },
+            { kind: EnemyKind.IMP_ARCHER, count: 2 },
+          ]
+        : [
+            { kind: EnemyKind.SKIRMISHER, count: 4 },
+            { kind: EnemyKind.GOLEM, count: 2, isElite: waveNum >= 3 },
+            { kind: EnemyKind.WISP, count: 2 },
+          ];
+    this.spawnEnemyGroups(
+      groups,
+      0.95 + waveNum * 0.22,
+      0.95 + waveNum * 0.12,
+      'Thống Soái Đồn Trú Bang Địch'
+    );
+  }
+
   public previewLobbyUltimate(heroId: HeroId): void {
     if (this.phase !== GamePhase.TITLE) return;
     const heroDef = HERO_MAP[heroId] ?? HERO_MAP.artemis;
@@ -1899,6 +2178,7 @@ export class GameEngine {
     const hz = this.hero.root.position.z;
     soundEngine.unlock();
     soundEngine.playUltimate();
+    this.spawnUltColumn(hx, hz, heroDef.accentHex, 0.6);
     this.spawnShockwave(hx, hz, heroDef.accentHex, 4.9, 0.55);
     this.spawnShockwave(hx, hz, 0xfbbf24, 3.2, 0.42);
     this.spawnParticles(hx, 1.25, hz, heroDef.accentHex, 34);
@@ -2155,6 +2435,9 @@ export class GameEngine {
       this.crystalRefs = null;
     }
 
+    this.guildWarNodes?.forEach((n) => this.releaseObject(n.group));
+    this.guildWarNodes = [];
+
     this.arrowPool.forEach((p) => {
       p.active = false;
       p.coopAllyIndex = undefined;
@@ -2172,6 +2455,10 @@ export class GameEngine {
     this.shockwavePool.forEach((s) => {
       s.active = false;
       s.mesh.visible = false;
+    });
+    this.ultColumnPool?.forEach((c) => {
+      c.active = false;
+      c.mesh.visible = false;
     });
     this.dangerLanePool.forEach((l) => {
       l.active = false;
@@ -3052,8 +3339,10 @@ export class GameEngine {
     this.invulnTimer = Math.max(this.invulnTimer, 0.75);
     this.hitstopTimer = 0.045;
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.36);
-    this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 5.8, 0.45);
-    this.spawnParticles(this.px, 1.1, this.pz, this.weaponAccentHex, 28);
+    this.spawnUltColumn(this.px, this.pz, this.weaponAccentHex, 0.58);
+    this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 6.2, 0.48);
+    this.spawnShockwave(this.px, this.pz, 0xfde047, 3.8, 0.36);
+    this.spawnParticles(this.px, 1.1, this.pz, this.weaponAccentHex, 30);
     this.emitFloatingNumber(
       this.px,
       2.3,
@@ -3291,6 +3580,10 @@ export class GameEngine {
         this.hero.weaponAuraGroup.rotation.z += dt * 1.9;
         this.hero.weaponAuraGroup.rotation.y += dt * 1.1;
       }
+      if (this.hero.artifactGroup) {
+        this.hero.artifactGroup.rotation.y += dt * 1.35;
+        this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 2.6) * 0.07;
+      }
       this.hero.magicOrb.visible = true;
       this.hero.magicOrb.rotation.z += dt * 2.8;
       this.hero.bowGroup.visible = false;
@@ -3311,6 +3604,7 @@ export class GameEngine {
       this.updateStarfallWeather(dt);
       this.updateParticles(dt);
       this.updateShockwaves(dt);
+      this.updateUltColumns(dt);
       this.updateLightning(dt);
       return;
     }
@@ -3455,6 +3749,66 @@ export class GameEngine {
       });
     }
 
+    if (this.isGuildWarMode) {
+      this.guildWarTimeLeft = Math.max(0, this.guildWarTimeLeft - dt);
+      this.guildWarSpawnTimer -= dt;
+      if (this.guildWarTimeLeft > 3 && (this.guildWarSpawnTimer <= 0 || this.enemies.length === 0)) {
+        const waveNum = Math.max(1, Math.ceil((GUILD_WAR_DURATION_SEC - this.guildWarTimeLeft) / 14) + 1);
+        this.spawnGuildWarWave(waveNum);
+      }
+
+      for (const node of this.guildWarNodes) {
+        node.core.rotation.y += dt * (node.captured ? 2.4 : 1.1);
+        node.core.position.y = 1.25 + Math.sin(this.elapsed * 2.5 + node.x) * 0.1;
+        const dist = Math.hypot(this.px - node.x, this.pz - node.z);
+        if (node.captured) {
+          this.guildWarScore += dt * 14;
+        } else if (dist <= 2.4) {
+          node.progress = Math.min(100, node.progress + dt * 48);
+          if (node.progress >= 100) {
+            node.captured = true;
+            this.guildWarNodesCaptured += 1;
+            this.guildWarScore += 320;
+            const cMat = node.core.material as THREE.MeshStandardMaterial;
+            cMat.color.setHex(0x10b981);
+            cMat.emissive.setHex(0x059669);
+            const rMat = node.ring.material as THREE.MeshBasicMaterial;
+            rMat.color.setHex(0x34d399);
+            this.spawnShockwave(node.x, node.z, 0x34d399, 4.2, 0.45);
+            this.spawnParticles(node.x, 1.3, node.z, 0x34d399, 24);
+            this.emitFloatingNumber(node.x, 2.2, node.z, 320, true, false, undefined, 'CHIẾM TRỤ +320!');
+            soundEngine.playPickup(true);
+          }
+        }
+      }
+
+      if (this.guildWarTimeLeft <= 0) {
+        const finalScore = Math.max(120, Math.round(this.guildWarScore));
+        const guildCoins = 120 + this.guildWarNodesCaptured * 45 + Math.floor(finalScore / 20);
+        const artifactShards = Math.max(4, Math.min(18, 4 + Math.floor(finalScore / 260)));
+        const mysticTokens = Math.max(6, Math.min(26, 6 + Math.floor(finalScore / 180)));
+        soundEngine.playVictory();
+        this.phase = GamePhase.VICTORY;
+        this.syncHudImmediate();
+        this.callbacks.onRunEnded(true, {
+          chapterId: this.currentChapter.id,
+          stageReached: this.guildWarNodesCaptured,
+          kills: this.kills,
+          gold: this.runGold + 240 + Math.floor(finalScore * 0.25),
+          gems: this.runGems + 18 + this.guildWarNodesCaptured * 5,
+          isGuildWarMode: true,
+          guildWarScore: finalScore,
+          guildWarNodes: this.guildWarNodesCaptured,
+          guildCoins,
+          artifactShards,
+          mysticTokens,
+          maxCombo: this.maxRunCombo,
+          damageBreakdown: this.getDamageBreakdownSnapshot(),
+        });
+        return;
+      }
+    }
+
     if (this.hitstopTimer > 0) {
       this.hitstopTimer -= dt;
       this.updateCamera(dt);
@@ -3488,6 +3842,7 @@ export class GameEngine {
     this.updateLootOrbs(dt);
     this.updateParticles(dt);
     this.updateShockwaves(dt);
+    this.updateUltColumns(dt);
     this.updateLightning(dt);
     this.updatePortalAndShrine(dt);
     this.updateCamera(dt);
@@ -3686,6 +4041,10 @@ export class GameEngine {
       this.hero.weaponAuraGroup.rotation.z += dt * 2.2;
       this.hero.weaponAuraGroup.rotation.y += dt * 1.25;
     }
+    if (this.hero.artifactGroup) {
+      this.hero.artifactGroup.rotation.y += dt * 1.65;
+      this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 3.1) * 0.08;
+    }
 
     if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
       const flapSpeed = isMoving ? 8.5 : 3.6;
@@ -3872,6 +4231,12 @@ export class GameEngine {
       : this.weaponAccentHex;
     mat.color.setHex(color);
     mat.emissive.setHex(color);
+    if (proj.trailMesh) {
+      const trailMat = proj.trailMesh.material as THREE.MeshBasicMaterial;
+      trailMat.color.setHex(color);
+      trailMat.opacity = dmgSource === 'ultimate' ? 0.78 : 0.56;
+      proj.trailMesh.visible = true;
+    }
 
     if (this.baseStats.weaponArchetype === 'claw') {
       proj.mesh.scale.set(1.85, 0.58, 1.15);
@@ -5422,6 +5787,12 @@ export class GameEngine {
     if (this.isBloodMoonMode) {
       this.bloodMoonScore += e.isBoss ? 180 : e.isElite ? 65 : 28;
     }
+    if (this.isAbyssalMode) {
+      this.abyssalScore += e.isBoss ? 240 : e.isElite ? 85 : 35;
+    }
+    if (this.isGuildWarMode) {
+      this.guildWarScore += e.isBoss ? 220 : e.isElite ? 80 : 32;
+    }
 
     this.releaseObject(e.model.root);
     this.releaseObject(e.shadow);
@@ -5432,6 +5803,14 @@ export class GameEngine {
     if (this.enemies.length === 0) {
       if (this.isBloodMoonMode) {
         this.bloodMoonSpawnTimer = Math.min(this.bloodMoonSpawnTimer, 0.45);
+      } else if (this.isGuildWarMode) {
+        this.guildWarSpawnTimer = Math.min(this.guildWarSpawnTimer, 0.55);
+      } else if (this.isAbyssalMode) {
+        if (this.abyssalWave < ABYSSAL_GAUNTLET_TOTAL_WAVES) {
+          this.spawnNextAbyssalWave();
+        } else {
+          this.onStageCleared();
+        }
       } else if (
         this.isGuildBossMode ||
         this.isCoopRaidMode ||
@@ -5621,6 +6000,30 @@ export class GameEngine {
         isCrystalDefenseMode: true,
         crystalWavesCleared: CRYSTAL_DEFENSE_TOTAL_WAVES,
         crystalHpPct,
+        maxCombo: this.maxRunCombo,
+        damageBreakdown: this.getDamageBreakdownSnapshot(),
+      });
+      return;
+    }
+
+    if (this.isAbyssalMode) {
+      const finalScore = Math.max(0, Math.round(this.abyssalScore + ABYSSAL_GAUNTLET_TOTAL_WAVES * 120));
+      const artifactShards = 16 + Math.min(18, Math.floor(finalScore / 260));
+      const mysticTokens = 22 + Math.min(24, Math.floor(finalScore / 220));
+      soundEngine.playVictory();
+      this.phase = GamePhase.VICTORY;
+      this.syncHudImmediate();
+      this.callbacks.onRunEnded(true, {
+        chapterId: this.currentChapter.id,
+        stageReached: ABYSSAL_GAUNTLET_TOTAL_WAVES,
+        kills: this.kills,
+        gold: this.runGold + 340,
+        gems: this.runGems + 36,
+        isAbyssalMode: true,
+        abyssalWave: ABYSSAL_GAUNTLET_TOTAL_WAVES,
+        abyssalScore: finalScore,
+        artifactShards,
+        mysticTokens,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
       });
@@ -5844,7 +6247,11 @@ export class GameEngine {
       const stage = this.currentChapter.stages[this.stageIndex];
       this.callbacks.onRunEnded(false, {
         chapterId: this.currentChapter.id,
-        stageReached: this.isBloodMoonMode
+        stageReached: this.isAbyssalMode
+          ? this.abyssalWave
+          : this.isGuildWarMode
+          ? this.guildWarNodesCaptured
+          : this.isBloodMoonMode
           ? this.bloodMoonWave
           : this.isCrystalDefenseMode
           ? this.crystalWave
@@ -5894,6 +6301,23 @@ export class GameEngine {
         isBloodMoonMode: this.isBloodMoonMode,
         bloodMoonScore: this.isBloodMoonMode ? Math.round(this.bloodMoonScore) : undefined,
         bloodMoonWave: this.isBloodMoonMode ? this.bloodMoonWave : undefined,
+        isAbyssalMode: this.isAbyssalMode,
+        abyssalWave: this.isAbyssalMode ? Math.max(0, this.abyssalWave - 1) : undefined,
+        abyssalScore: this.isAbyssalMode ? Math.round(this.abyssalScore) : undefined,
+        artifactShards: this.isAbyssalMode
+          ? Math.max(3, (this.abyssalWave - 1) * 2)
+          : this.isGuildWarMode
+          ? Math.max(2, this.guildWarNodesCaptured * 2)
+          : undefined,
+        mysticTokens: this.isAbyssalMode
+          ? Math.max(4, (this.abyssalWave - 1) * 3)
+          : this.isGuildWarMode
+          ? Math.max(4, Math.floor(this.guildWarScore / 240))
+          : undefined,
+        isGuildWarMode: this.isGuildWarMode,
+        guildWarScore: this.isGuildWarMode ? Math.round(this.guildWarScore) : undefined,
+        guildWarNodes: this.isGuildWarMode ? this.guildWarNodesCaptured : undefined,
+        guildCoins: this.isGuildWarMode ? Math.max(40, Math.round(this.guildWarScore / 18)) : undefined,
         mountShards: this.isBloodMoonMode
           ? Math.max(2, Math.floor(this.bloodMoonScore / 180))
           : undefined,
@@ -6146,6 +6570,43 @@ export class GameEngine {
     }
   }
 
+  private spawnUltColumn(
+    x: number,
+    z: number,
+    colorHex: number,
+    duration = 0.58
+  ): void {
+    const col = this.ultColumnPool?.find((c) => !c.active);
+    if (!col) return;
+    col.active = true;
+    col.maxLife = duration;
+    col.life = duration;
+    const mat = col.mesh.material as THREE.MeshBasicMaterial;
+    mat.color.setHex(colorHex);
+    mat.opacity = 0.72;
+    col.mesh.position.set(x, 0.05, z);
+    col.mesh.scale.set(0.75, 1.0, 0.75);
+    col.mesh.visible = true;
+  }
+
+  private updateUltColumns(dt: number): void {
+    if (!this.ultColumnPool) return;
+    for (const col of this.ultColumnPool) {
+      if (!col.active) continue;
+      col.life -= dt;
+      if (col.life <= 0) {
+        col.active = false;
+        col.mesh.visible = false;
+        continue;
+      }
+      const p = 1 - col.life / col.maxLife;
+      const spread = 0.85 + p * 1.15;
+      col.mesh.scale.set(spread, 1 + p * 0.25, spread);
+      col.mesh.rotation.y += dt * 4.5;
+      (col.mesh.material as THREE.MeshBasicMaterial).opacity = 0.72 * (1 - p);
+    }
+  }
+
   private spawnLightningArc(
     x1: number,
     y1: number,
@@ -6321,8 +6782,10 @@ export class GameEngine {
       xpToNext: this.xpToNext,
       level: this.level,
       stage:
-        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
+        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode || this.isGuildWarMode
           ? 1
+          : this.isAbyssalMode
+          ? Math.max(1, this.abyssalWave)
           : this.isBloodMoonMode
           ? Math.max(1, this.bloodMoonWave)
           : this.isCrystalDefenseMode
@@ -6337,8 +6800,10 @@ export class GameEngine {
           ? this.towerFloor
           : stage.stageNumber,
       totalStages:
-        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
+        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode || this.isGuildWarMode
           ? 1
+          : this.isAbyssalMode
+          ? ABYSSAL_GAUNTLET_TOTAL_WAVES
           : this.isBloodMoonMode
           ? Math.max(1, this.bloodMoonWave)
           : this.isCrystalDefenseMode
@@ -6352,7 +6817,11 @@ export class GameEngine {
           : this.isTowerMode
           ? this.towerFloor
           : this.currentChapter.stages.length,
-      stageName: this.isBloodMoonMode
+      stageName: this.isAbyssalMode
+        ? `Hố Sâu Đột Biến · Đợt ${Math.max(1, this.abyssalWave)}/${ABYSSAL_GAUNTLET_TOTAL_WAVES}`
+        : this.isGuildWarMode
+        ? `Chiến Trường Bang · Trụ ${this.guildWarNodesCaptured}/3`
+        : this.isBloodMoonMode
         ? `Đêm Trăng Máu · Đợt ${Math.max(1, this.bloodMoonWave)}`
         : this.isCrystalDefenseMode
         ? `Thủ Thành Pha Lê · Đợt ${this.crystalWave}/${CRYSTAL_DEFENSE_TOTAL_WAVES}`
@@ -6373,7 +6842,11 @@ export class GameEngine {
         : this.isTowerMode
         ? `Tháp Vô Tận · Tầng ${this.towerFloor}`
         : stage.name,
-      chapterName: this.isBloodMoonMode
+      chapterName: this.isAbyssalMode
+        ? '🟣 Hố Sâu Đột Biến'
+        : this.isGuildWarMode
+        ? '🏰 Chiến Trường Bang'
+        : this.isBloodMoonMode
         ? '🌑 Đêm Trăng Máu'
         : this.isCrystalDefenseMode
         ? '💎 Thủ Thành Pha Lê'
@@ -6476,6 +6949,14 @@ export class GameEngine {
       bloodMoonTimeLeft: this.isBloodMoonMode ? Math.ceil(this.bloodMoonTimeLeft) : undefined,
       bloodMoonScore: this.isBloodMoonMode ? Math.round(this.bloodMoonScore) : undefined,
       bloodMoonWave: this.isBloodMoonMode ? this.bloodMoonWave : undefined,
+      isAbyssalMode: this.isAbyssalMode,
+      abyssalWave: this.isAbyssalMode ? this.abyssalWave : undefined,
+      abyssalTotalWaves: this.isAbyssalMode ? ABYSSAL_GAUNTLET_TOTAL_WAVES : undefined,
+      abyssalScore: this.isAbyssalMode ? Math.round(this.abyssalScore) : undefined,
+      isGuildWarMode: this.isGuildWarMode,
+      guildWarTimeLeft: this.isGuildWarMode ? Math.ceil(this.guildWarTimeLeft) : undefined,
+      guildWarScore: this.isGuildWarMode ? Math.round(this.guildWarScore) : undefined,
+      guildWarNodes: this.isGuildWarMode ? this.guildWarNodesCaptured : undefined,
       activeSkills: { ...this.activeSkills },
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,

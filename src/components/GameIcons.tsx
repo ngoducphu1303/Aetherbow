@@ -393,3 +393,49 @@ export const ZodiacAvatar: React.FC<{
     </div>
   );
 };
+
+export const ArtifactRelicIcon: React.FC<{ className?: string }> = ({
+  className = 'w-4 h-4',
+}) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="celArtifactShard" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#fef08a" />
+        <stop offset="55%" stopColor="#a855f7" />
+        <stop offset="100%" stopColor="#581c87" />
+      </linearGradient>
+    </defs>
+    <circle cx="12" cy="12" r="9" fill="none" stroke="#fbbf24" strokeWidth="1.6" />
+    <polygon
+      points="12,4 17,12 12,20 7,12"
+      fill="url(#celArtifactShard)"
+      stroke="#fef9c3"
+      strokeWidth="1.3"
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="12" r="2.2" fill="#fffbeb" />
+  </svg>
+);
+
+export const MysticTokenIcon: React.FC<{ className?: string }> = ({
+  className = 'w-4 h-4',
+}) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <defs>
+      <radialGradient id="celMysticToken" cx="35%" cy="30%" r="75%">
+        <stop offset="0%" stopColor="#cffafe" />
+        <stop offset="55%" stopColor="#06b6d4" />
+        <stop offset="100%" stopColor="#1e1b4b" />
+      </radialGradient>
+    </defs>
+    <polygon
+      points="12,2 20.5,7 20.5,17 12,22 3.5,17 3.5,7"
+      fill="url(#celMysticToken)"
+      stroke="#a5f3fc"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <polygon points="12,7 15.5,12 12,17 8.5,12" fill="#fef08a" opacity="0.9" />
+  </svg>
+);
+

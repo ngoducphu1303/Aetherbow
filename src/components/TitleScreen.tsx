@@ -36,6 +36,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import abyssalGauntletArt from '../assets/images/abyssal_gauntlet_arena_1795010358870.jpg';
 import bloodMoonArt from '../assets/images/blood_moon_nightmare_1795007597791.jpg';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
 import coopRaidArt from '../assets/images/coop_raid_portal_1795004418576.jpg';
@@ -43,6 +44,7 @@ import crystalDefenseArt from '../assets/images/crystal_defense_sanctum_17950059
 import dailyRiftArt from '../assets/images/daily_rift_portal_art_1794977270758.jpg';
 import elementalTrialsArt from '../assets/images/elemental_trials_spires_1795004418882.jpg';
 import eventZodiacBanner from '../assets/images/event_zodiac_banner_1794973981859.jpg';
+import guildWarCitadelArt from '../assets/images/guild_war_citadel_1795010358440.jpg';
 import worldBossArt from '../assets/images/world_boss_abyss_1795005956955.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
@@ -115,6 +117,21 @@ import {
   normalizeWishPool,
 } from '../data/wave8Data';
 import {
+  ABYSSAL_GAUNTLET_MAX_DAILY_RUNS,
+  ABYSSAL_GAUNTLET_TOTAL_WAVES,
+  ABYSSAL_MILESTONES,
+  DYNAMIC_TITLE_MAP,
+  GUILD_WAR_DURATION_SEC,
+  GUILD_WAR_MAX_DAILY_RUNS,
+  GUILD_WAR_WEEKLY_BOXES,
+  PowerRecommendation,
+  computePowerAdvisor,
+  countClaimableWave9Rewards,
+  normalizeAbyssalGauntlet,
+  normalizeGuildWar,
+} from '../data/wave9Data';
+import {
+  ArtifactId,
   AuraStyleId,
   AvatarFrameId,
   ComputedPlayerStats,
@@ -132,9 +149,11 @@ import {
   WingId,
 } from '../types/game';
 import {
+  ArtifactRelicIcon,
   AwakenCrystalIcon,
   GoldCoinIcon,
   MountShardIcon,
+  MysticTokenIcon,
   PetEssenceIcon,
   SoulGemIcon,
   StarDustIcon,
@@ -159,7 +178,9 @@ export type LobbyGameMode =
   | 'coop_raid'
   | 'crystal_defense'
   | 'world_boss'
-  | 'blood_moon';
+  | 'blood_moon'
+  | 'abyssal_gauntlet'
+  | 'guild_war';
 
 interface TitleScreenProps {
   save: SaveData;
@@ -167,6 +188,7 @@ interface TitleScreenProps {
   selectedChapterId: number;
   gameMode: LobbyGameMode;
   activeTab: LobbyTab;
+  heroSubTabInitial?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts';
   shopSection?: ShopSectionTab;
   previewHeroId: HeroId;
   cameraPreset?: LobbyCameraPreset;
@@ -177,6 +199,7 @@ interface TitleScreenProps {
   onSelectElementalTower: (t: ElementalTowerId) => void;
   onChangeCameraPreset?: (preset: LobbyCameraPreset) => void;
   onTabChange: (tab: LobbyTab) => void;
+  onOpenHeroSubTab?: (subTab: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts') => void;
   onOpenShopSection: (section: ShopSectionTab) => void;
   onGameModeChange: (mode: LobbyGameMode) => void;
   onPreviewHero: (heroId: HeroId) => void;
@@ -191,6 +214,10 @@ interface TitleScreenProps {
   onStartWorldBoss: () => void;
   onStartBloodMoon?: () => void;
   onClaimBloodMoonMilestone?: (score: number) => void;
+  onStartAbyssalGauntlet?: () => void;
+  onClaimAbyssalMilestone?: (wave: number) => void;
+  onStartGuildWar?: () => void;
+  onClaimGuildWarBox?: (score: number) => void;
   onQuickSweepChapter: (chapterId: number) => void;
   onToggleMute: () => void;
   onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome' | 'journey') => void;
@@ -236,6 +263,9 @@ interface TitleScreenProps {
   onUnlockWeaponAura?: (auraId: WeaponAuraId, currency: 'gems' | 'crystals') => void;
   onEquipWeaponAura?: (auraId: WeaponAuraId) => void;
   onUpgradeWeaponAura?: (auraId: WeaponAuraId) => void;
+  onUnlockArtifact?: (artifactId: ArtifactId, currency: 'gems' | 'shards') => void;
+  onEquipArtifact?: (artifactId: ArtifactId | null) => void;
+  onUpgradeArtifact?: (artifactId: ArtifactId) => void;
   onEquipGear: (uid: string) => void;
   onUpgradeGear: (uid: string) => void;
   onFuseGear: (uid: string) => void;
@@ -261,6 +291,8 @@ interface TitleScreenProps {
   onClaimWishMilestone?: (count: number) => void;
   onClaimFirstTopUp?: (tierId: string) => void;
   onBuyHotBundle?: (bundleId: string) => void;
+  onMysticExchange?: (offerId: string) => void;
+  onPowerAdvisorAction?: (kind: PowerRecommendation['actionKind']) => void;
   onEquipRune: (uid: string) => void;
   onUnequipRune: (uid: string) => void;
   onFuseRune: (uid: string) => void;
@@ -307,6 +339,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   selectedChapterId,
   gameMode,
   activeTab,
+  heroSubTabInitial = 'roster',
   shopSection = 'privilege',
   previewHeroId,
   cameraPreset = 'overview',
@@ -317,6 +350,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onSelectElementalTower,
   onChangeCameraPreset,
   onTabChange,
+  onOpenHeroSubTab,
   onOpenShopSection,
   onGameModeChange,
   onPreviewHero,
@@ -331,6 +365,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartWorldBoss,
   onStartBloodMoon,
   onClaimBloodMoonMilestone,
+  onStartAbyssalGauntlet,
+  onClaimAbyssalMilestone,
+  onStartGuildWar,
+  onClaimGuildWarBox,
   onQuickSweepChapter,
   onToggleMute,
   onOpenRewardsModal,
@@ -373,6 +411,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUnlockWeaponAura,
   onEquipWeaponAura,
   onUpgradeWeaponAura,
+  onUnlockArtifact,
+  onEquipArtifact,
+  onUpgradeArtifact,
   onEquipGear,
   onUpgradeGear,
   onFuseGear,
@@ -395,6 +436,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onClaimWishMilestone,
   onClaimFirstTopUp,
   onBuyHotBundle,
+  onMysticExchange,
+  onPowerAdvisorAction,
   onEquipRune,
   onUnequipRune,
   onFuseRune,
@@ -414,6 +457,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [crystalDefenseImgFailed, setCrystalDefenseImgFailed] = useState(false);
   const [worldBossImgFailed, setWorldBossImgFailed] = useState(false);
   const [bloodMoonImgFailed, setBloodMoonImgFailed] = useState(false);
+  const [abyssalImgFailed, setAbyssalImgFailed] = useState(false);
+  const [guildWarImgFailed, setGuildWarImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -485,6 +530,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     (m) => wishPoolState.totalWishes >= m.count && !wishPoolState.claimedMilestones.includes(m.count)
   ).length;
   const wave8Badges = countClaimableWave8Rewards(save);
+  const wave9Badges = countClaimableWave9Rewards(save);
+  const abyssalState = normalizeAbyssalGauntlet(save.abyssalGauntlet);
+  const guildWarState = normalizeGuildWar(save.guildWar);
+  const activeDynTitle =
+    save.equippedDynamicTitleId && save.equippedDynamicTitleId !== 'none'
+      ? DYNAMIC_TITLE_MAP[save.equippedDynamicTitleId]
+      : undefined;
+  const powerRec = computePowerAdvisor(save, stats);
   const equippedBadgeDef = save.equippedMythicBadgeId
     ? MYTHIC_BADGE_MAP[save.equippedMythicBadgeId]
     : undefined;
@@ -500,7 +553,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     claimableGfCount +
     auctionClaimCount +
     wave7RewardBadges +
-    wave8Badges;
+    wave8Badges +
+    wave9Badges;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -779,6 +833,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 <div className="font-display text-sm sm:text-lg font-black tracking-[0.18em] text-amber-200 drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
                   HOÀNG ĐẠO TINH GIỚI
                 </div>
+                {activeDynTitle && (
+                  <div className="mt-1 flex justify-center">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[10px] font-black tracking-wide shadow ${activeDynTitle.borderClass}`}
+                    >
+                      <Crown className="w-3 h-3 text-amber-300 shrink-0" />
+                      <span className={activeDynTitle.gradientClass}>{activeDynTitle.title}</span>
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-center gap-2.5 sm:gap-3 text-[11px] sm:text-xs font-mono-nums text-slate-200/95 mt-1 drop-shadow">
                   <span className="flex items-center gap-1">
                     <Sword className="w-3 h-3 text-amber-300" />
@@ -1142,6 +1206,40 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                           </span>
                         )}
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          if (onOpenHeroSubTab) {
+                            onOpenHeroSubTab('artifacts');
+                          } else {
+                            onTabChange('heroes');
+                          }
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                          <ArtifactRelicIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">Thánh Khí 3D</span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenShopSection('mystic_exchange');
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-cyan-200 truncate">
+                          <MysticTokenIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">Chợ Mảnh Dư</span>
+                        </span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1193,7 +1291,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       type="button"
                       onClick={() => {
                         soundEngine.playUiClick(1.05);
-                        if (activeEvent.target === 'blood_moon') onGameModeChange('blood_moon');
+                        if (activeEvent.target === 'mythic_artifact') {
+                          if (onOpenHeroSubTab) onOpenHeroSubTab('artifacts');
+                          else onTabChange('heroes');
+                        } else if (activeEvent.target === 'abyssal_gauntlet') {
+                          onGameModeChange('abyssal_gauntlet');
+                        } else if (activeEvent.target === 'guild_war') {
+                          onGameModeChange('guild_war');
+                        } else if (activeEvent.target === 'mystic_exchange') {
+                          onOpenShopSection('mystic_exchange');
+                        } else if (activeEvent.target === 'blood_moon') onGameModeChange('blood_moon');
                         else if (activeEvent.target === 'wish_pool') onOpenShopSection('wish_topup');
                         else if (activeEvent.target === 'wardrobe') onOpenWardrobe?.();
                         else if (activeEvent.target === 'dispatch') onOpenDispatch?.();
@@ -1225,7 +1332,31 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
 
             {/* Bottom-Docked Chapter / Tower Console */}
-            <div className="w-full max-w-xl mx-auto flex flex-col gap-2.5 pointer-events-auto">
+            <div className="w-full max-w-xl mx-auto flex flex-col gap-2 pointer-events-auto">
+              {/* Smart Power-Up Advisor Strip */}
+              <div className="cel-panel rounded-xl px-3 py-1.5 border border-emerald-400/35 flex items-center justify-between gap-2.5 bg-[#080f24]/95">
+                <div className="min-w-0 flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[9px] font-mono-nums font-black text-emerald-300 shrink-0">
+                    {powerRec.estGainLabel}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black text-amber-100 truncate">
+                      {powerRec.title}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.08);
+                    onPowerAdvisorAction?.(powerRec.actionKind);
+                  }}
+                  className="a2-emerald-btn px-2.5 py-1 rounded-lg text-[10px] font-black shrink-0 whitespace-nowrap cursor-pointer"
+                >
+                  {powerRec.ctaLabel}
+                </button>
+              </div>
+
               {chapterPickerOpen && (
                 <div className="cel-panel-ornate rounded-2xl p-3.5">
                   <div className="flex items-center justify-between mb-2.5">
@@ -1272,8 +1403,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               )}
 
               <div className="cel-panel-ornate rounded-2xl p-3.5 sm:p-4">
-                {/* 9-Mode Selector (3x3 Symmetric Grid) */}
-                <div className="grid grid-cols-3 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
+                {/* 11-Mode Selector Grid */}
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
                   <button
                     type="button"
                     onClick={() => onGameModeChange('chapter')}
@@ -1405,6 +1536,36 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   >
                     <Moon className="w-3 h-3 shrink-0" />
                     <span>Trăng Máu</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('abyssal_gauntlet');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'abyssal_gauntlet'
+                        ? 'bg-gradient-to-b from-purple-500 via-fuchsia-600 to-indigo-800 text-white shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Skull className="w-3 h-3 shrink-0" />
+                    <span>Hố Sâu 3D</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('guild_war');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'guild_war'
+                        ? 'bg-gradient-to-b from-emerald-400 via-teal-500 to-cyan-700 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Shield className="w-3 h-3 shrink-0" />
+                    <span>Chiến Bang</span>
                   </button>
                 </div>
 
@@ -2055,6 +2216,223 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </button>
                     </div>
                   </>
+                ) : gameMode === 'abyssal_gauntlet' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-purple-400/55 bg-[#090d1f] shrink-0">
+                        {!abyssalImgFailed ? (
+                          <img
+                            src={abyssalGauntletArt}
+                            alt="Phó Bản Hố Sâu Đột Biến 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setAbyssalImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Skull className="w-6 h-6 text-purple-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-purple-200 truncate">
+                            Phó Bản Hố Sâu Đột Biến ({ABYSSAL_GAUNTLET_TOTAL_WAVES} Đợt)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-amber-300 shrink-0">
+                            {abyssalState.dailyRunsRemaining}/{ABYSSAL_GAUNTLET_MAX_DAILY_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Vượt 10 đợt quái đột biến tăng tiến cực hạn để săn Mảnh Thánh Khí 3D &amp; Ấn Thần Bí!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-purple-400/20 py-1.5 px-1">
+                      <span className="text-purple-200 font-bold">
+                        Kỷ lục: Đợt {abyssalState.bestWave}/{ABYSSAL_GAUNTLET_TOTAL_WAVES}
+                      </span>
+                      <span className="flex items-center gap-1 text-amber-300 font-bold">
+                        <ArtifactRelicIcon className="w-3.5 h-3.5" /> Rơi Mảnh Thánh Khí
+                      </span>
+                      <span className="flex items-center gap-1 text-cyan-300 font-bold">
+                        <MysticTokenIcon className="w-3.5 h-3.5" /> Ấn Thần Bí
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {ABYSSAL_MILESTONES.map((ms) => {
+                        const met = abyssalState.bestWave >= ms.wave;
+                        const claimed = abyssalState.claimedMilestones.includes(ms.wave);
+                        return (
+                          <button
+                            key={ms.wave}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimAbyssalMilestone?.(ms.wave);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ Đợt ${ms.wave}`
+                              : met
+                              ? `Nhận Đ.${ms.wave} (+${ms.rewardArtifactShards}M)`
+                              : `Đợt ${ms.wave}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          if (onOpenHeroSubTab) onOpenHeroSubTab('artifacts');
+                          else onTabChange('heroes');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <ArtifactRelicIcon className="w-4 h-4 shrink-0" />
+                        <span>Thánh Khí</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={abyssalState.dailyRunsRemaining <= 0}
+                        onClick={onStartAbyssalGauntlet}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          abyssalState.dailyRunsRemaining > 0
+                            ? 'bg-gradient-to-b from-purple-400 via-fuchsia-600 to-indigo-800 text-white border border-purple-200/70 shadow-lg'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {abyssalState.dailyRunsRemaining > 0
+                            ? 'VÀO HỐ SÂU ĐỘT BIẾN'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {abyssalState.dailyRunsRemaining > 0 && <ChevronRight className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </>
+                ) : gameMode === 'guild_war' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-emerald-400/55 bg-[#090d1f] shrink-0">
+                        {!guildWarImgFailed ? (
+                          <img
+                            src={guildWarCitadelArt}
+                            alt="Chiến Trường Bang Hội 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setGuildWarImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Shield className="w-6 h-6 text-emerald-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-emerald-200 truncate">
+                            Chiến Trường Bang Hội 3D ({GUILD_WAR_DURATION_SEC}s)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-amber-300 shrink-0">
+                            {guildWarState.dailyRunsRemaining}/{GUILD_WAR_MAX_DAILY_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Chiếm 3 Trụ Tinh Thể &amp; hạ Hộ Vệ trong {GUILD_WAR_DURATION_SEC}s để tích Điểm Bang mở Quà Vinh Danh Tuần!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-emerald-400/20 py-1.5 px-1">
+                      <span className="text-emerald-300 font-bold">
+                        Điểm Tuần: {guildWarState.weeklyScore.toLocaleString('vi-VN')}
+                      </span>
+                      <span className="text-sky-300 font-bold">
+                        Cứ Điểm Chiếm: {guildWarState.totalNodesCaptured}
+                      </span>
+                      <span className="text-amber-300 font-bold">
+                        Rơi Xu Bang · Thánh Khí
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {GUILD_WAR_WEEKLY_BOXES.map((box) => {
+                        const met = guildWarState.weeklyScore >= box.score;
+                        const claimed = guildWarState.claimedWeeklyBoxes.includes(box.score);
+                        return (
+                          <button
+                            key={box.score}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimGuildWarBox?.(box.score);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ ${box.score}`
+                              : met
+                              ? `Nhận ${box.score} (+${box.rewardGems}N)`
+                              : `${box.score} ĐB`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onOpenGuildModal();
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Shield className="w-4 h-4 text-emerald-300 shrink-0" />
+                        <span>Bang Hội</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={guildWarState.dailyRunsRemaining <= 0}
+                        onClick={onStartGuildWar}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          guildWarState.dailyRunsRemaining > 0
+                            ? 'a2-emerald-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {guildWarState.dailyRunsRemaining > 0
+                            ? 'VÀO CHIẾN TRƯỜNG BANG'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {guildWarState.dailyRunsRemaining > 0 && <ChevronRight className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
@@ -2174,8 +2552,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         {activeTab === 'heroes' && (
           <LobbyHeroesPanel
+            key={heroSubTabInitial}
             save={save}
             previewHeroId={previewHeroId}
+            initialSubTab={heroSubTabInitial}
             onPreviewHero={onPreviewHero}
             onSelectHero={onSelectHero}
             onUnlockHero={onUnlockHero}
@@ -2198,6 +2578,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onUnlockWeaponAura={onUnlockWeaponAura}
             onEquipWeaponAura={onEquipWeaponAura}
             onUpgradeWeaponAura={onUpgradeWeaponAura}
+            onUnlockArtifact={onUnlockArtifact}
+            onEquipArtifact={onEquipArtifact}
+            onUpgradeArtifact={onUpgradeArtifact}
             onOpenWardrobe={onOpenWardrobe}
             onPreviewUltimate={onPreviewUltimate}
             onRotateHero={onRotateHero}
@@ -2238,6 +2621,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onClaimWishMilestone={onClaimWishMilestone}
             onClaimFirstTopUp={onClaimFirstTopUp}
             onBuyHotBundle={onBuyHotBundle}
+            onMysticExchange={onMysticExchange}
             onOpenVipModal={onOpenVipModal}
             onOpenArenaModal={onOpenArenaModal}
           />

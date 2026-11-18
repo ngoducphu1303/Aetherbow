@@ -245,6 +245,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span>
                 {hud.isArenaMode
                   ? `Đấu Trường 1v1 · ${hud.arenaTimeLeft ?? 45}s`
+                  : hud.isGuildWarMode
+                  ? `Chiến Trường Bang · ${hud.guildWarTimeLeft ?? 75}s`
+                  : hud.isAbyssalMode
+                  ? `Hố Sâu Đột Biến · Đợt ${hud.abyssalWave ?? 1}/${hud.abyssalTotalWaves ?? 10}`
                   : hud.isBloodMoonMode
                   ? `Đêm Trăng Máu · ${hud.bloodMoonTimeLeft ?? 90}s`
                   : hud.isCrystalDefenseMode
@@ -277,6 +281,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
               {hud.isArenaMode
                 ? `Đối thủ: ${hud.arenaOpponentName ?? 'Kình Địch'}`
+                : hud.isGuildWarMode
+                ? `Trụ Chiếm: ${hud.guildWarNodes ?? 0}/3 · Điểm: ${(hud.guildWarScore ?? 0).toLocaleString('vi-VN')}`
+                : hud.isAbyssalMode
+                ? `Điểm Hố Sâu: ${(hud.abyssalScore ?? 0).toLocaleString('vi-VN')} · Còn ${hud.enemiesRemaining} quái`
                 : hud.isBloodMoonMode
                 ? `Đợt ${hud.bloodMoonWave ?? 1} · Huyết Tinh: ${(hud.bloodMoonScore ?? 0).toLocaleString('vi-VN')}`
                 : hud.isCrystalDefenseMode
@@ -401,6 +409,53 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <div
                 className="h-full bg-gradient-to-r from-rose-600 via-pink-500 to-amber-300 transition-all duration-300"
                 style={{ width: `${Math.max(0, Math.min(100, ((hud.bloodMoonTimeLeft ?? 0) / 90) * 100))}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Abyssal Gauntlet Top Progress Strip */}
+        {hud.isAbyssalMode && (
+          <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#160826]/95 border border-purple-400/75 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+              <span className="flex items-center gap-1.5 text-purple-200">
+                <Skull className="w-3.5 h-3.5 text-purple-300" />
+                <span>Hố Sâu Đột Biến · Đợt {hud.abyssalWave ?? 1}/{hud.abyssalTotalWaves ?? 10}</span>
+              </span>
+              <span className="font-mono-nums text-amber-300">
+                {(hud.abyssalScore ?? 0).toLocaleString('vi-VN')} Điểm
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-950 border border-purple-500/35 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-amber-300 transition-all duration-300"
+                style={{
+                  width: `${Math.max(
+                    5,
+                    Math.min(100, ((hud.abyssalWave ?? 1) / Math.max(1, hud.abyssalTotalWaves ?? 10)) * 100)
+                  )}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Guild War Top Citadel Progress Strip */}
+        {hud.isGuildWarMode && (
+          <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#06181a]/95 border border-emerald-400/75 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+              <span className="flex items-center gap-1.5 text-emerald-200">
+                <Shield className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Chiến Trường Bang · Trụ {hud.guildWarNodes ?? 0}/3</span>
+              </span>
+              <span className="font-mono-nums text-amber-300">
+                {(hud.guildWarScore ?? 0).toLocaleString('vi-VN')} Điểm · {hud.guildWarTimeLeft ?? 75}s
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-950 border border-emerald-500/35 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-300 transition-all duration-300"
+                style={{ width: `${Math.max(0, Math.min(100, ((hud.guildWarTimeLeft ?? 0) / 75) * 100))}%` }}
               />
             </div>
           </div>
@@ -801,10 +856,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         <div className="flex items-center gap-2.5 shrink-0">
           <div className="relative shrink-0">
             {ultReady && (
-              <span
-                aria-hidden="true"
-                className="a2-ult-ready-ring absolute -inset-1 rounded-full border-2 border-dashed border-amber-300/90 pointer-events-none"
-              />
+              <>
+                <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-500 to-rose-500 border border-amber-200 text-[9px] font-black text-slate-950 whitespace-nowrap shadow-lg">
+                  TUYỆT KỸ ĐẦY
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="a2-ult-ready-ring absolute -inset-1 rounded-full border-2 border-dashed border-amber-300/90 pointer-events-none"
+                />
+              </>
             )}
             <button
               type="button"
