@@ -784,9 +784,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* MAIN CONTENT AREA */}
       <main key={activeTab} className="flex-1 min-h-0 flex flex-col a2-tab-enter">
         {activeTab === 'battle' && (
-          <div className="flex-1 flex flex-col justify-between px-3 sm:px-6 py-3 min-h-0 relative">
+          <div className="flex-1 flex flex-col justify-end px-3 sm:px-6 py-2 min-h-0 relative overflow-hidden">
             {/* Upper Perimeter: Left Journey & Arena | Center Quiet Title | Right Expandable Feature Dock + Event Banner */}
-            <div className="flex items-start justify-between gap-2 relative">
+            <div className="absolute inset-x-3 sm:inset-x-6 top-2.5 flex items-start justify-between gap-2 pointer-events-none z-10">
               {/* Left-Edge High-Signal Pillars: 7-Day Journey & Ranked PvP Arena */}
               <div className="pointer-events-auto flex flex-col gap-2 z-10 shrink-0">
                 <button
@@ -1353,8 +1353,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-[#090d1f] via-[#090d1f]/20 to-transparent" />
-                    <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between gap-2">
-                      <span className="px-1.5 py-0.5 rounded bg-[#070b18]/90 border border-amber-400/40 text-[9px] font-black tracking-wider text-amber-300">
+                    <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between gap-1.5">
+                      <span className="px-1.5 py-0.5 rounded bg-[#070b18]/90 border border-amber-400/40 text-[8px] font-black tracking-wider text-amber-300 truncate max-w-[125px] whitespace-nowrap">
                         {activeEvent.badge}
                       </span>
                       <div className="flex items-center gap-1">
@@ -1431,7 +1431,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
 
             {/* Bottom-Docked Chapter / Tower Console */}
-            <div className="w-full max-w-xl mx-auto flex flex-col gap-2 pointer-events-auto">
+            <div className="mt-auto w-full max-w-2xl mx-auto flex flex-col gap-1.5 pointer-events-auto relative z-10">
               {/* Commercial Highlight & Quick-Claim Ribbon */}
               <div className="grid grid-cols-3 gap-1.5">
                 <button
@@ -1440,7 +1440,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     soundEngine.playUiClick(1.06);
                     onOpenShopSection('chain_bank');
                   }}
-                  className={`cel-panel rounded-xl px-2.5 py-1.5 border flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${
+                  className={`cel-panel rounded-xl px-2.5 py-1 border flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${
                     freeChainStepReady
                       ? 'border-emerald-400/70 bg-[#071a18]/95 hover:border-emerald-300'
                       : 'border-amber-400/35 bg-[#080f24]/95 hover:border-amber-300'
@@ -1467,7 +1467,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     soundEngine.playUiClick(1.06);
                     onOpenShopSection('chain_bank');
                   }}
-                  className={`cel-panel rounded-xl px-2.5 py-1.5 border flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${
+                  className={`cel-panel rounded-xl px-2.5 py-1 border flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${
                     gemVault.storedGems >= GEM_VAULT_CLAIM_THRESHOLD
                       ? 'border-purple-400/70 bg-[#140a28]/95 hover:border-purple-300'
                       : 'border-purple-400/35 bg-[#080f24]/95 hover:border-purple-300'
@@ -1495,7 +1495,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     if (onOpenHeroSubTab) onOpenHeroSubTab('halos');
                     else onTabChange('heroes');
                   }}
-                  className="cel-panel rounded-xl px-2.5 py-1.5 border border-amber-400/40 bg-[#080f24]/95 hover:border-amber-300 flex items-center justify-between gap-1.5 cursor-pointer transition-colors"
+                  className="cel-panel rounded-xl px-2.5 py-1 border border-amber-400/40 bg-[#080f24]/95 hover:border-amber-300 flex items-center justify-between gap-1.5 cursor-pointer transition-colors"
                 >
                   <div className="min-w-0 text-left">
                     <div className="text-[10px] font-black text-amber-200 truncate">
@@ -1510,7 +1510,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
 
               {/* Smart Power-Up Advisor Strip */}
-              <div className="cel-panel rounded-xl px-3 py-1.5 border border-emerald-400/35 flex items-center justify-between gap-2.5 bg-[#080f24]/95">
+              <div className="cel-panel rounded-xl px-3 py-1 border border-emerald-400/35 flex items-center justify-between gap-2.5 bg-[#080f24]/95">
                 <div className="min-w-0 flex items-center gap-2">
                   <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[9px] font-mono-nums font-black text-emerald-300 shrink-0">
                     {powerRec.estGainLabel}
@@ -1527,15 +1527,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     soundEngine.playUiClick(1.08);
                     onPowerAdvisorAction?.(powerRec.actionKind);
                   }}
-                  className="a2-emerald-btn px-2.5 py-1 rounded-lg text-[10px] font-black shrink-0 whitespace-nowrap cursor-pointer"
+                  className="a2-emerald-btn px-2.5 py-0.5 rounded-lg text-[10px] font-black shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   {powerRec.ctaLabel}
                 </button>
               </div>
 
               {chapterPickerOpen && (
-                <div className="cel-panel-ornate rounded-2xl p-3.5">
-                  <div className="flex items-center justify-between mb-2.5">
+                <div className="cel-panel-ornate rounded-2xl p-3">
+                  <div className="flex items-center justify-between mb-2">
                     <span className="font-display text-xs font-black text-amber-200 uppercase tracking-wider">
                       Bản Đồ 12 Chương Hoàng Đạo
                     </span>
@@ -1547,7 +1547,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       Thu gọn
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-44 overflow-y-auto a2-scroll">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-40 overflow-y-auto a2-scroll">
                     {CHAPTERS.map((ch) => {
                       const unlocked = ch.id <= save.highestChapterCleared + 1;
                       const active = ch.id === selectedChapterId;
@@ -1559,7 +1559,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                             onSelectChapter(ch.id);
                             setChapterPickerOpen(false);
                           }}
-                          className={`px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center justify-between gap-1 cursor-pointer transition-colors whitespace-nowrap ${
+                          className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center justify-between gap-1 cursor-pointer transition-colors whitespace-nowrap ${
                             active
                               ? 'a2-yellow-btn'
                               : unlocked
@@ -1578,9 +1578,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </div>
               )}
 
-              <div className="cel-panel-ornate rounded-2xl p-3.5 sm:p-4">
-                {/* 11-Mode Selector Grid */}
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
+              <div className="cel-panel-ornate rounded-2xl p-2.5 sm:p-3">
+                {/* 12-Mode Selector Grid (2 compact rows on desktop) */}
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-2">
                   <button
                     type="button"
                     onClick={() => onGameModeChange('chapter')}
@@ -1777,7 +1777,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         <div className="flex items-center justify-center gap-2">
                           <span className="text-base">{selectedChapter.zodiacIcon}</span>
                           <h2 className="font-display text-base sm:text-lg font-black text-white truncate">
-                            Chương {selectedChapter.id} · {selectedChapter.name}
+                            {selectedChapter.name}
                           </h2>
                         </div>
                         <p className="text-[11px] text-slate-300 truncate mt-0.5">
@@ -1796,7 +1796,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </button>
                     </div>
 
-                    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-amber-400/15 py-2 px-1">
+                    <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-amber-400/15 py-1.5 px-1">
                       <span className="text-amber-300 font-bold">
                         Kỷ lục {bestStage}/{selectedChapter.stages.length} phòng
                       </span>
@@ -1812,11 +1812,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </span>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap sm:flex-nowrap items-center gap-2">
+                    <div className="mt-2 flex flex-wrap sm:flex-nowrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setChapterPickerOpen((v) => !v)}
-                        className="a2-slate-btn px-3 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                        className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
                       >
                         <Map className="w-4 h-4 text-amber-300 shrink-0" />
                         <span>12 Chương</span>
@@ -1827,7 +1827,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                           type="button"
                           disabled={dailySweeps.remaining <= 0}
                           onClick={() => onQuickSweepChapter(selectedChapter.id)}
-                          className={`px-3 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer ${
+                          className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer ${
                             dailySweeps.remaining > 0
                               ? 'a2-emerald-btn'
                               : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -1845,7 +1845,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         data-start="true"
                         disabled={!isChapterUnlocked}
                         onClick={onStartTrial}
-                        className={`flex-1 py-3 px-4 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                        className={`flex-1 py-2 px-4 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
                           isChapterUnlocked
                             ? 'a2-yellow-btn'
                             : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-not-allowed'

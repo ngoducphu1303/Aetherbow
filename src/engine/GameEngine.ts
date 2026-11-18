@@ -3615,43 +3615,49 @@ export class GameEngine {
     this.elapsed += dt;
 
     if (this.phase === GamePhase.TITLE) {
-      const sway = Math.sin(this.elapsed * 0.45) * 0.45;
-      let targetCamX = sway;
-      let targetCamY = 2.45;
-      let targetCamZ = 8.6;
+      const sway = Math.sin(this.elapsed * 0.45) * 0.32;
+      const hasMount = Boolean(this.hero.mountGroup);
+      const mountExtraZ = hasMount ? 1.55 : 0;
+      const mountExtraY = hasMount ? 0.34 : 0;
+      const mountLookY = hasMount ? 0.24 : 0;
+      const aspectExtraZ = Math.max(0, (1.45 - this.camera.aspect) * 2.5);
+
+      let targetCamX = sway * 0.35;
+      let targetCamY = 2.38 + mountExtraY;
+      let targetCamZ = 13.6 + mountExtraZ + aspectExtraZ;
       let lookX = 0;
-      let lookY = 0.72;
+      let lookY = -0.32 + mountLookY;
 
       if (this.lobbyCameraPreset === 'closeup') {
-        targetCamX = sway * 0.25;
-        targetCamY = 1.92;
-        targetCamZ = 6.95;
+        targetCamX = sway * 0.2;
+        targetCamY = 2.18 + mountExtraY;
+        targetCamZ = 11.6 + mountExtraZ + aspectExtraZ * 0.7;
         lookX = 0;
-        lookY = 0.92;
+        lookY = -0.14 + mountLookY;
       } else if (this.lobbyCameraPreset === 'wardrobe') {
-        targetCamX = 0.85 + sway * 0.16;
-        targetCamY = 2.1;
-        targetCamZ = 7.45;
-        lookX = 0.9;
-        lookY = 0.85;
+        targetCamX = 0.55 + sway * 0.14;
+        targetCamY = 2.28 + mountExtraY;
+        targetCamZ = 12.8 + mountExtraZ + aspectExtraZ;
+        lookX = 0.55;
+        lookY = -0.24 + mountLookY;
       } else if (this.lobbyViewMode === 'gear') {
-        targetCamX = sway * 0.35;
-        targetCamY = 2.18;
-        targetCamZ = 7.95;
+        targetCamX = sway * 0.25;
+        targetCamY = 2.32 + mountExtraY;
+        targetCamZ = 13.2 + mountExtraZ + aspectExtraZ;
         lookX = 0;
-        lookY = 0.05;
+        lookY = -0.38 + mountLookY;
       } else if (this.lobbyViewMode === 'heroes') {
-        targetCamX = 0.95 + sway * 0.2;
-        targetCamY = 2.15;
-        targetCamZ = 7.9;
-        lookX = 1.05;
-        lookY = 0.15;
+        targetCamX = 1.18 + sway * 0.16;
+        targetCamY = 2.3 + mountExtraY;
+        targetCamZ = 13.1 + mountExtraZ + aspectExtraZ;
+        lookX = 1.25;
+        lookY = -0.34 + mountLookY;
       }
 
       this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 4.5, dt);
       this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 4.5, dt);
       this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 4.5, dt);
-      this.camera.lookAt(lookX, lookY, 4.4);
+      this.camera.lookAt(lookX, lookY, 4.5);
 
       if (this.lobbyAutoSpinIdleTimer > 0) {
         this.lobbyAutoSpinIdleTimer -= dt;

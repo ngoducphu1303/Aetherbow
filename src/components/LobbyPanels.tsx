@@ -373,10 +373,10 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
             onPointerMove={handleStagePointerMove}
             onPointerUp={handleStagePointerUp}
             onPointerCancel={handleStagePointerUp}
-            className="flex flex-col items-center justify-between min-h-[210px] sm:min-h-[245px] cursor-grab active:cursor-grabbing touch-none select-none"
+            className="flex flex-col items-center justify-end gap-1.5 min-h-[250px] sm:min-h-[285px] cursor-grab active:cursor-grabbing touch-none select-none"
           >
-            <div className="flex items-center gap-1.5 pt-1">
-              <span className="text-[10px] font-bold text-amber-200/80 tracking-wide bg-[#080d22]/85 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-amber-200/90 tracking-wide bg-[#080d22]/90 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
                 Kéo xoay Anh Hùng 360°
               </span>
               {onResetHeroRotation && (
@@ -412,9 +412,9 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
 
             <div
               onPointerDown={(e) => e.stopPropagation()}
-              className="a2-pedestal w-full max-w-[300px] rounded-2xl p-2 flex items-center justify-around gap-2"
+              className="a2-pedestal w-full max-w-[300px] rounded-2xl p-1.5 flex items-center justify-around gap-2"
             >
-              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-2 flex items-center justify-between gap-1.5">
+              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-1.5">
                 <span className="flex items-center gap-1 text-[10px] sm:text-xs font-bold text-amber-200">
                   <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                   <span>Tấn Công</span>
@@ -423,7 +423,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                   {stats.attack}
                 </span>
               </div>
-              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-2 flex items-center justify-between gap-1.5">
+              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-1.5">
                 <span className="flex items-center gap-1 text-[10px] sm:text-xs font-bold text-emerald-200">
                   <Heart className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                   <span>Sinh Lực</span>
@@ -1011,7 +1011,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
 
           {/* Toolbar & Slot Filters */}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <div className="flex flex-wrap items-center gap-1.5">
               {(['ALL', ...Object.values(GearSlot)] as const).map((tab) => (
                 <button
                   key={tab}
@@ -1281,18 +1281,18 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto a2-scroll pointer-events-auto">
       {/* Upper Showcase (Live 3D Hero + Pet + Skin + Aura) */}
-      <div className="px-3 sm:px-6 pt-2 pb-4 shrink-0">
-        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
+      <div className="px-3 sm:px-6 pt-1.5 pb-3 shrink-0">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           {/* Left: Transparent 3D Hero Window (360° Drag-to-Rotate) + Celestial Nameplate */}
           <div
             onPointerDown={handleHeroDragDown}
             onPointerMove={handleHeroDragMove}
             onPointerUp={handleHeroDragUp}
             onPointerCancel={handleHeroDragUp}
-            className="md:col-span-6 flex flex-col items-center justify-between min-h-[205px] sm:min-h-[245px] cursor-grab active:cursor-grabbing touch-none select-none"
+            className="md:col-span-6 flex flex-col items-center justify-end gap-1.5 min-h-[255px] sm:min-h-[295px] cursor-grab active:cursor-grabbing touch-none select-none"
           >
-            <div className="flex items-center gap-1.5 pt-1">
-              <span className="text-[10px] font-bold text-amber-200/80 tracking-wide bg-[#080d22]/85 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-amber-200/90 tracking-wide bg-[#080d22]/90 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
                 Kéo xoay 360° ngắm Anh Hùng &amp; Tinh Linh
               </span>
               {onResetHeroRotation && (
@@ -1314,26 +1314,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
 
             <div
               onPointerDown={(e) => e.stopPropagation()}
-              className="cel-panel-ornate w-full max-w-[300px] text-center rounded-2xl px-4 py-2.5"
+              className="cel-panel-ornate w-full max-w-[290px] text-center rounded-2xl px-3.5 py-2"
             >
               <div className="flex items-center justify-center gap-2">
-                <span className="font-display text-lg font-black text-white">
+                <span className="font-display text-base sm:text-lg font-black text-white">
                   {hero.name}
                 </span>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
                   {hero.rarity}
                 </span>
               </div>
-              <div className="text-[11px] font-semibold text-slate-300 truncate mt-0.5">
+              <div className="text-[11px] font-semibold text-slate-300 truncate">
                 {hero.title} · {unlocked ? `★ ${star}/5` : 'Chưa Chiêu Mộ'}
               </div>
             </div>
           </div>
 
-          {/* Right: Hero Dossier Art-Card */}
+          {/* Right: Compact Hero Dossier Art-Card */}
           <div className="md:col-span-6 cel-panel-ornate rounded-2xl overflow-hidden">
-            <div className="px-4 py-2.5 bg-[#121c42] border-b border-amber-400/30 flex items-center justify-between gap-2">
-              <h3 className="font-display text-sm font-black text-amber-200 truncate">
+            <div className="px-3.5 py-2 bg-[#121c42] border-b border-amber-400/30 flex items-center justify-between gap-2">
+              <h3 className="font-display text-xs sm:text-sm font-black text-amber-200 truncate">
                 Nội Tại · {hero.skillName}
               </h3>
               <span className="text-xs font-mono-nums font-bold text-amber-300 shrink-0">
@@ -1341,16 +1341,16 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </span>
             </div>
 
-            <div className="p-4 flex flex-col gap-3">
-              <div className="text-xs font-bold text-emerald-300">
+            <div className="p-3 flex flex-col gap-2">
+              <div className="text-[11px] font-bold text-emerald-300">
                 Vai trò: {hero.role}
               </div>
-              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+              <p className="text-xs text-slate-200 leading-snug">
                 {hero.passiveDesc}
               </p>
 
               {/* Ultimate Callout + 3D Showcase Button */}
-              <div className="rounded-xl bg-[#141036] border border-purple-400/45 px-3.5 py-2.5">
+              <div className="rounded-xl bg-[#141036] border border-purple-400/45 px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-[11px] font-black text-purple-300">
                     <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
@@ -1367,19 +1367,19 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-slate-200 mt-1 leading-snug">
+                <p className="text-[11px] text-slate-200 mt-1 leading-snug">
                   {hero.ultDesc}
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-400/15">
+              <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-amber-400/15">
                 {unlocked ? (
                   <>
                     <button
                       type="button"
                       disabled={selected}
                       onClick={() => onSelectHero(hero.id)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                         selected
                           ? 'bg-emerald-950/80 border border-emerald-400/55 text-emerald-300 cursor-default'
                           : 'a2-emerald-btn'
@@ -1394,7 +1394,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         type="button"
                         disabled={save.gold < starCost.gold || save.gems < starCost.gems}
                         onClick={() => onUpgradeHeroStar(hero.id)}
-                        className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                           save.gold >= starCost.gold && save.gems >= starCost.gems
                             ? 'a2-yellow-btn'
                             : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -1417,7 +1417,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       type="button"
                       disabled={save.gold < hero.unlockGold}
                       onClick={() => onUnlockHero(hero.id, 'gold')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                         save.gold >= hero.unlockGold
                           ? 'a2-yellow-btn'
                           : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -1430,7 +1430,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       type="button"
                       disabled={save.gems < hero.unlockGems}
                       onClick={() => onUnlockHero(hero.id, 'gems')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                         save.gems >= hero.unlockGems
                           ? 'a2-purple-btn'
                           : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -1447,25 +1447,25 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
       </div>
 
       {/* Lower Vault: Sub-Tab Navigation + Content */}
-      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-4">
+      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-3">
         <div className="max-w-4xl mx-auto">
-          {/* Sub-Tabs */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3.5">
-            <div className="flex items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1 overflow-x-auto">
+          {/* Sub-Tabs — Zero Horizontal Scrollbar, Cleanly Wrapped Grid */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1 flex-1">
               <button
                 type="button"
                 onClick={() => {
                   soundEngine.playUiClick();
                   setHeroSubTab('roster');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'roster'
-                    ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950'
+                    ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <Crown className="w-3.5 h-3.5 shrink-0" />
-                <span>Chiêu Mộ &amp; Sao ({save.unlockedHeroes.length}/{HEROES.length})</span>
+                <span>Chiêu Mộ ({save.unlockedHeroes.length}/{HEROES.length})</span>
               </button>
 
               <button
@@ -1474,14 +1474,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('pets');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'pets'
-                    ? 'bg-gradient-to-b from-emerald-400 to-teal-600 text-slate-950'
+                    ? 'bg-gradient-to-b from-emerald-400 to-teal-600 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span>Tinh Linh 3D ({ownedPets.length}/{PETS_CATALOG.length})</span>
+                <span>Tinh Linh ({ownedPets.length}/{PETS_CATALOG.length})</span>
               </button>
 
               <button
@@ -1490,14 +1490,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('cosmetics');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'cosmetics'
-                    ? 'bg-gradient-to-b from-purple-400 to-fuchsia-600 text-white'
+                    ? 'bg-gradient-to-b from-purple-400 to-fuchsia-600 text-white shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <Palette className="w-3.5 h-3.5 shrink-0" />
-                <span>Trang Phục &amp; Hào Quang</span>
+                <span>Trang Phục</span>
               </button>
 
               <button
@@ -1506,14 +1506,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('wings');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'wings'
-                    ? 'bg-gradient-to-b from-sky-400 to-indigo-600 text-white'
+                    ? 'bg-gradient-to-b from-sky-400 to-indigo-600 text-white shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
-                <span>Cánh 3D &amp; Khung ({unlockedWings.length}/{ZODIAC_WINGS.length})</span>
+                <span>Cánh 3D ({unlockedWings.length}/{ZODIAC_WINGS.length})</span>
               </button>
 
               <button
@@ -1522,14 +1522,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('mounts');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'mounts'
-                    ? 'bg-gradient-to-b from-rose-400 to-amber-500 text-slate-950'
+                    ? 'bg-gradient-to-b from-rose-400 to-amber-500 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <MountShardIcon className="w-3.5 h-3.5 shrink-0" />
-                <span>Thú Cưỡi &amp; Vũ Khí ({unlockedMounts.length}/{ZODIAC_MOUNTS.length})</span>
+                <span>Thú Cưỡi ({unlockedMounts.length}/{ZODIAC_MOUNTS.length})</span>
               </button>
 
               <button
@@ -1538,14 +1538,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('artifacts');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'artifacts'
-                    ? 'bg-gradient-to-b from-amber-300 via-yellow-400 to-orange-500 text-slate-950'
+                    ? 'bg-gradient-to-b from-amber-300 via-yellow-400 to-orange-500 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <ArtifactRelicIcon className="w-3.5 h-3.5 shrink-0" />
-                <span>Thánh Khí &amp; Duyên ({unlockedArtifacts.length}/{MYTHIC_ARTIFACTS.length})</span>
+                <span>Thánh Khí ({unlockedArtifacts.length}/{MYTHIC_ARTIFACTS.length})</span>
               </button>
 
               <button
@@ -1554,7 +1554,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('halos');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'halos'
                     ? 'bg-gradient-to-b from-yellow-300 via-amber-400 to-rose-500 text-slate-950 shadow'
                     : 'text-amber-200 hover:text-white'
@@ -1563,9 +1563,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 <Crown className="w-3.5 h-3.5 shrink-0" />
                 <span>Hào Quang 3D ({unlockedHalos.length}/{DIVINE_HALO_CATALOG.length})</span>
               </button>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2">
               {onOpenWardrobe && (
                 <button
                   type="button"
@@ -1573,12 +1571,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     soundEngine.playUiClick();
                     onOpenWardrobe();
                   }}
-                  className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 text-sky-200 whitespace-nowrap cursor-pointer"
+                  className="ml-auto a2-slate-btn px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 text-sky-200 whitespace-nowrap cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>Phòng Thử Đồ 3D 360°</span>
+                  <span>Thử Đồ 360°</span>
                 </button>
               )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
 
               {heroSubTab === 'pets' && (
                 <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-emerald-300">
