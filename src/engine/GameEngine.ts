@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { disposeObjectResources } from './resources';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
 import { HERO_MAP } from '../data/heroesData';
@@ -245,6 +246,7 @@ export class GameEngine {
   private container: HTMLElement;
   private callbacks: EngineCallbacks;
   private isSoftwareGl: boolean;
+  private lowEndGpu = false;
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -425,6 +427,8 @@ export class GameEngine {
   private frameId = 0;
   private lastTime = performance.now();
   private disposed = false;
+  private pendingGpuSync: WebGLSync | null = null;
+  private contextLost = false;
 
   constructor(
     container: HTMLElement,
@@ -446,21 +450,22 @@ export class GameEngine {
       const ext = gl.getExtension('WEBGL_debug_renderer_info');
       const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
       const gpu = String(gl.getParameter(param));
+      const memory = (navigator as Navigator & {deviceMemory?: number}).deviceMemory;
+      this.lowEndGpu = /Intel.*(?:HD|UHD|Iris)|SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu) ||
+        (memory !== undefined && memory <= 4) || navigator.hardwareConcurrency <= 4;
       gl.getExtension('WEBGL_lose_context')?.loseContext();
       return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
     })();
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl,
-      powerPreference: 'high-performance',
+      antialias: !this.isSoftwareGl && !this.lowEndGpu,
+      powerPreference: 'low-power',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
-    this.renderer.setPixelRatio(
-      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2)
-    );
-    this.renderer.shadowMap.enabled = !this.isSoftwareGl;
+    this.renderer.setPixelRatio(this.getTargetPixelRatio());
+    this.renderer.shadowMap.enabled = !this.isSoftwareGl && !this.lowEndGpu;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.domElement.style.display = 'block';
@@ -480,7 +485,9 @@ export class GameEngine {
 
     // Mandatory studio environment reflection
     this.pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-    this.envRenderTarget = this.pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
+    const environment = new RoomEnvironment();
+    this.envRenderTarget = this.pmremGenerator.fromScene(environment, 0.04);
+    environment.dispose();
     this.scene.environment = this.envRenderTarget.texture;
 
     // 3-point lighting rig + warm/cool contrast
@@ -489,7 +496,7 @@ export class GameEngine {
 
     this.keyLight = new THREE.DirectionalLight(0xffe4b8, 1.85);
     this.keyLight.position.set(12, 22, 10);
-    this.keyLight.castShadow = !this.isSoftwareGl;
+    this.keyLight.castShadow = !this.isSoftwareGl && !this.lowEndGpu;
     this.keyLight.shadow.mapSize.set(1024, 1024);
     this.keyLight.shadow.camera.near = 2;
     this.keyLight.shadow.camera.far = 55;
@@ -809,8 +816,8 @@ export class GameEngine {
 
   private buildHero(): void {
     if (this.hero) {
-      this.entitiesGroup.remove(this.hero.root);
-      this.entitiesGroup.remove(this.heroShadow);
+      this.releaseObject(this.hero.root);
+      this.releaseObject(this.heroShadow);
     }
 
     this.hero = createHeroModel(this.heroVisualCfg);
@@ -844,7 +851,7 @@ export class GameEngine {
     this.hero.root.add(this.heroShieldMesh);
 
     // Clear old orbit orbs
-    this.orbitOrbMeshes.forEach((m) => this.entitiesGroup.remove(m));
+    this.orbitOrbMeshes.forEach((m) => this.releaseObject(m));
     this.orbitOrbMeshes = [];
     const bladeGeo = new THREE.OctahedronGeometry(0.24, 0);
     const bladeMat = new THREE.MeshStandardMaterial({
@@ -863,7 +870,7 @@ export class GameEngine {
     }
 
     if (this.lobbyHaloGroup) {
-      this.entitiesGroup.remove(this.lobbyHaloGroup);
+      this.releaseObject(this.lobbyHaloGroup);
     }
     const auraPrimary = this.heroVisualCfg.auraPrimaryHex ?? 0xfbbf24;
     const auraSecondary = this.heroVisualCfg.auraSecondaryHex ?? this.weaponAccentHex;
@@ -919,7 +926,7 @@ export class GameEngine {
     this.entitiesGroup.add(this.lobbyHaloGroup);
 
     if (this.combatAuraGroup) {
-      this.entitiesGroup.remove(this.combatAuraGroup);
+      this.releaseObject(this.combatAuraGroup);
     }
     this.combatAuraGroup = new THREE.Group();
     const combatRingOuter = new THREE.Mesh(
@@ -945,7 +952,7 @@ export class GameEngine {
   }
 
   private rebuildCompanions(): void {
-    this.companionModels.forEach((c) => this.entitiesGroup.remove(c));
+    this.companionModels.forEach((c) => this.releaseObject(c));
     this.companionModels = [];
 
     if (this.baseStats.heroId === 'wukong') {
@@ -971,7 +978,7 @@ export class GameEngine {
     const desiredPet = this.baseStats.equippedPetId ?? null;
     if (desiredPet !== this.builtPetId) {
       if (this.petModel) {
-        this.entitiesGroup.remove(this.petModel);
+        this.releaseObject(this.petModel);
         this.petModel = null;
       }
       this.builtPetId = desiredPet;
@@ -987,15 +994,21 @@ export class GameEngine {
     stats: ComputedPlayerStats,
     visualCfg: HeroVisualConfig
   ): void {
+    const visualChanged = JSON.stringify(this.heroVisualCfg) !== JSON.stringify(visualCfg);
+    const companionsChanged = this.baseStats.heroId !== stats.heroId ||
+      this.baseStats.equippedPetId !== stats.equippedPetId ||
+      this.baseStats.equippedRunes.includes('healing_sprite') !== stats.equippedRunes.includes('healing_sprite');
     this.baseStats = stats;
     this.heroVisualCfg = visualCfg;
     this.weaponAccentHex = visualCfg.weaponAccentHex;
-    this.buildHero();
+    // Tiến độ/tiền thưởng cập nhật save không đồng nghĩa ngoại hình thay đổi.
+    if (visualChanged) this.buildHero();
+    else if (companionsChanged) this.rebuildCompanions();
   }
 
   private buildArena(chapter: ChapterDefinition): void {
     while (this.arenaGroup.children.length > 0) {
-      this.arenaGroup.remove(this.arenaGroup.children[0]);
+      this.releaseObject(this.arenaGroup.children[0]);
     }
 
     this.scene.background = new THREE.Color(chapter.skyHex);
@@ -1568,7 +1581,7 @@ export class GameEngine {
   private closeShrineAndResume(): void {
     this.shrineUsed = true;
     if (this.shrineGroup) {
-      this.entitiesGroup.remove(this.shrineGroup);
+      this.releaseObject(this.shrineGroup);
       this.shrineGroup = null;
     }
     this.phase = GamePhase.PLAYING;
@@ -1589,29 +1602,35 @@ export class GameEngine {
     }
   }
 
+  private releaseObject(root: THREE.Object3D): void {
+    const retained = new Set<THREE.Texture>([this.contactShadowTex]);
+    if (this.envRenderTarget) retained.add(this.envRenderTarget.texture);
+    disposeObjectResources(root, retained);
+  }
+
   private clearCombatEntities(): void {
-    this.obstacles.forEach((o) => this.entitiesGroup.remove(o.mesh));
+    this.obstacles.forEach((o) => this.releaseObject(o.mesh));
     this.obstacles = [];
 
     this.urns.forEach((u) => {
-      this.entitiesGroup.remove(u.mesh);
-      this.entitiesGroup.remove(u.shadow);
+      this.releaseObject(u.mesh);
+      this.releaseObject(u.shadow);
     });
     this.urns = [];
 
     this.enemies.forEach((e) => {
-      this.entitiesGroup.remove(e.model.root);
-      this.entitiesGroup.remove(e.shadow);
-      this.entitiesGroup.remove(e.telegraphGroup);
-      this.entitiesGroup.remove(e.laserLine);
+      this.releaseObject(e.model.root);
+      this.releaseObject(e.shadow);
+      this.releaseObject(e.telegraphGroup);
+      this.releaseObject(e.laserLine);
     });
     this.enemies = [];
 
-    this.lootOrbs.forEach((o) => this.entitiesGroup.remove(o.mesh));
+    this.lootOrbs.forEach((o) => this.releaseObject(o.mesh));
     this.lootOrbs = [];
 
     if (this.shrineGroup) {
-      this.entitiesGroup.remove(this.shrineGroup);
+      this.releaseObject(this.shrineGroup);
       this.shrineGroup = null;
     }
 
@@ -2247,16 +2266,32 @@ export class GameEngine {
     window.addEventListener('pointerup', this.onPointerUp);
     window.addEventListener('pointercancel', this.onPointerUp);
     dom.addEventListener('webglcontextlost', this.onContextLost);
+    dom.addEventListener('webglcontextrestored', this.onContextRestored);
   }
 
   private onContextLost = (e: Event) => {
     e.preventDefault();
+    this.contextLost = true;
+    cancelAnimationFrame(this.frameId);
+    clearTimeout(this.frameId);
+    // Context đã mất tự hủy các sync handle cũ.
+    this.pendingGpuSync = null;
   };
 
+  private onContextRestored = () => this.resumeAfterContextRestore();
+
+  private resumeAfterContextRestore(): void {
+    if (this.disposed || !this.contextLost) return;
+    this.contextLost = false;
+    this.startLoop();
+  }
+
   private getTargetPixelRatio(): number {
-    if (this.isSoftwareGl || this.graphicsQuality === 'low') return 1;
-    const cap = this.graphicsQuality === 'medium' ? 1.5 : 2;
-    return Math.min(window.devicePixelRatio || 1, cap);
+    const low = this.isSoftwareGl || this.lowEndGpu || this.graphicsQuality === 'low';
+    const cap = low ? 1 : this.graphicsQuality === 'medium' ? 1.5 : 2;
+    const pixels = Math.max(1, this.container.clientWidth * this.container.clientHeight);
+    const budget = low ? 1_500_000 : 2_500_000;
+    return Math.min(window.devicePixelRatio || 1, cap, Math.sqrt(budget / pixels));
   }
 
   public applyRuntimeSettings(cfg: {
@@ -2265,18 +2300,19 @@ export class GameEngine {
     showDamageNumbers: boolean;
     starfallWeather?: boolean;
   }): void {
-    this.graphicsQuality = cfg.graphicsQuality;
+    const quality = this.isSoftwareGl || this.lowEndGpu ? 'low' : cfg.graphicsQuality;
+    this.graphicsQuality = quality;
     this.screenShakeEnabled = cfg.screenShake;
     this.showDamageNumbersEnabled = cfg.showDamageNumbers;
-    this.starfallEnabled = cfg.starfallWeather !== false;
+    this.starfallEnabled = !this.lowEndGpu && !this.isSoftwareGl && cfg.starfallWeather !== false;
     if (this.starfallMesh) {
       this.starfallMesh.visible = this.starfallEnabled;
     }
     this.particleDensityScale =
-      cfg.graphicsQuality === 'low' ? 0.45 : cfg.graphicsQuality === 'medium' ? 0.75 : 1.0;
+      quality === 'low' ? 0.45 : quality === 'medium' ? 0.75 : 1.0;
 
     if (!this.isSoftwareGl) {
-      const shadowsOn = cfg.graphicsQuality !== 'low';
+      const shadowsOn = quality !== 'low';
       this.renderer.shadowMap.enabled = shadowsOn;
       this.keyLight.castShadow = shadowsOn;
     }
@@ -2551,45 +2587,48 @@ export class GameEngine {
     const tick = () => {
       if (this.disposed) return;
       const now = performance.now();
+      if (document.hidden) {
+        // Tab ẩn không mô phỏng/render, tránh tiêu thụ GPU khi không chơi.
+        this.lastTime = now;
+        this.frameId = window.setTimeout(tick, 250);
+        return;
+      }
       const rawDt = (now - this.lastTime) / 1000;
       this.lastTime = now;
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
-
       this.update(dt);
       this.renderer.render(this.scene, this.camera);
-
-      if (this.isSoftwareGl) {
-        this.afterDraw(tick);
-      } else {
-        this.frameId = requestAnimationFrame(tick);
-      }
+      // Chỉ giữ tối đa một frame đang xử lý, kể cả GPU phần cứng chậm.
+      this.afterDraw(() => { this.frameId = requestAnimationFrame(tick); });
     };
-
-    if (this.isSoftwareGl) {
-      this.afterDraw(tick);
-    } else {
-      this.frameId = requestAnimationFrame(tick);
-    }
+    this.lastTime = performance.now();
+    this.frameId = requestAnimationFrame(tick);
   }
 
   private afterDraw(cb: () => void): void {
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    if (gl.isContextLost()) return;
     const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    this.pendingGpuSync = sync;
     gl.flush();
     const poll = () => {
-      if (this.disposed) {
-        if (sync) gl.deleteSync(sync);
+      if (this.disposed || gl.isContextLost()) {
+        if (sync && this.pendingGpuSync === sync) gl.deleteSync(sync);
+        this.pendingGpuSync = null;
         return;
       }
       const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
       if (state === gl.UNSIGNALED) {
-        this.frameId = window.setTimeout(poll, 5);
+        this.frameId = window.setTimeout(poll, 8);
       } else {
         if (sync) gl.deleteSync(sync);
-        this.frameId = window.setTimeout(cb, 80);
+        this.pendingGpuSync = null;
+        const fps = this.isSoftwareGl ? 12 : this.phase === GamePhase.TITLE ? 20 : 30;
+        const delay = Math.max(0, 1000 / fps - (performance.now() - this.lastTime));
+        this.frameId = window.setTimeout(cb, delay);
       }
     };
-    this.frameId = window.setTimeout(poll, 5);
+    this.frameId = window.setTimeout(poll, 8);
   }
 
   private update(dt: number): void {
@@ -4018,8 +4057,8 @@ export class GameEngine {
         if (!urn.alive) continue;
         if (Math.hypot(p.x - urn.x, p.z - urn.z) < urn.radius + p.radius) {
           urn.alive = false;
-          this.entitiesGroup.remove(urn.mesh);
-          this.entitiesGroup.remove(urn.shadow);
+          this.releaseObject(urn.mesh);
+          this.releaseObject(urn.shadow);
           this.spawnParticles(urn.x, 0.5, urn.z, 0xd97706, 12);
           this.spawnLootOrb(urn.x, urn.z, Math.random() < 0.45 ? 'heal' : 'gold', 18);
           soundEngine.playHit(false);
@@ -4383,10 +4422,10 @@ export class GameEngine {
       this.spawnLootOrb(e.x, e.z + 0.4, 'heal', Math.round(this.maxHp * 0.12));
     }
 
-    this.entitiesGroup.remove(e.model.root);
-    this.entitiesGroup.remove(e.shadow);
-    this.entitiesGroup.remove(e.telegraphGroup);
-    this.entitiesGroup.remove(e.laserLine);
+    this.releaseObject(e.model.root);
+    this.releaseObject(e.shadow);
+    this.releaseObject(e.telegraphGroup);
+    this.releaseObject(e.laserLine);
     this.enemies.splice(index, 1);
 
     if (this.enemies.length === 0) {
@@ -4765,7 +4804,7 @@ export class GameEngine {
       o.mesh.rotation.y += dt * 3.5;
 
       if (d < 0.72) {
-        this.entitiesGroup.remove(o.mesh);
+        this.releaseObject(o.mesh);
         this.lootOrbs.splice(i, 1);
 
         if (o.kind === 'gold') {
@@ -5196,9 +5235,14 @@ export class GameEngine {
   }
 
   public dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
+    if (this.pendingGpuSync) {
+      (this.renderer.getContext() as WebGL2RenderingContext).deleteSync(this.pendingGpuSync);
+      this.pendingGpuSync = null;
+    }
 
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onKeyDown);
@@ -5211,17 +5255,11 @@ export class GameEngine {
     const dom = this.renderer.domElement;
     dom.removeEventListener('pointerdown', this.onPointerDown);
     dom.removeEventListener('webglcontextlost', this.onContextLost);
+    dom.removeEventListener('webglcontextrestored', this.onContextRestored);
 
-    this.scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh || obj instanceof THREE.Line) {
-        obj.geometry.dispose();
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach((m) => m.dispose());
-        } else {
-          obj.material.dispose();
-        }
-      }
-    });
+    this.releaseObject(this.scene);
+    this.contactShadowTex.dispose();
+    this.keyLight.shadow.dispose();
     this.envRenderTarget.dispose();
     this.pmremGenerator.dispose();
     this.renderer.dispose();
