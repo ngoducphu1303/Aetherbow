@@ -309,6 +309,42 @@ export function countClaimableAchievements(save: SaveData): number {
 
 export const EVENT_BANNERS = [
   {
+    id: 'event_blood_moon',
+    badge: 'SINH TỒN 90S · MỚI',
+    title: 'Đêm Trăng Máu 3D · Săn Huyết Long & Báu Vật',
+    subtitle: 'Sinh tồn giữa biển quái Huyết Nguyệt 90s để tích Huyết Tinh, đổi Mảnh Thú Cưỡi & Tinh Thể!',
+    ctaLabel: 'Vào Trăng Máu',
+    target: 'blood_moon' as const,
+    accent: 'amber' as const,
+  },
+  {
+    id: 'event_wish_pool',
+    badge: 'RATE-UP SSR · X2 NẠP ĐẦU',
+    title: 'Hồ Ước Nguyện Thần Thoại & Kho Báu X2 Kim Cương',
+    subtitle: 'Chọn mục tiêu SSR yêu thích với bảo hiểm 30 lượt, mở khóa Huyết Long & Gói Nạp X2!',
+    ctaLabel: 'Mở Hồ Ước Nguyện',
+    target: 'wish_pool' as const,
+    accent: 'purple' as const,
+  },
+  {
+    id: 'event_wardrobe_3d',
+    badge: 'PHÒNG THỬ ĐỒ 360°',
+    title: 'Thử Thú Cưỡi Hoàng Đạo, Cánh & Hào Quang Vũ Khí 3D',
+    subtitle: 'Xoay 360 độ ngắm cận cảnh Skin, Đôi Cánh, Thú Cưỡi & Vòng Luân Vũ Khí ngay tại sảnh!',
+    ctaLabel: 'Mở Phòng Thử Đồ',
+    target: 'wardrobe' as const,
+    accent: 'emerald' as const,
+  },
+  {
+    id: 'event_companion_dispatch',
+    badge: 'THÁM HIỂM THỤ ĐỘNG',
+    title: 'Phái Cử Đồng Hành · Nhận Quà Offline Cực Đã',
+    subtitle: 'Giao nhiệm vụ cho các Anh Hùng dự bị thu thập Ngọc Hồn, Mảnh Thú Cưỡi & Tinh Thể.',
+    ctaLabel: 'Mở Phái Cử',
+    target: 'dispatch' as const,
+    accent: 'emerald' as const,
+  },
+  {
     id: 'event_world_boss',
     badge: 'LIÊN SERVER · TOP 1',
     title: 'Boss Thế Giới Cửu Thiên & Bảng Vinh Danh',

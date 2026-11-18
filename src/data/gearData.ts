@@ -61,6 +61,14 @@ import {
   normalizeTopUpEvolution,
   normalizeWorldBoss,
 } from './wave7Data';
+import {
+  getMountStats,
+  getWeaponAuraStats,
+  normalizeBloodMoon,
+  normalizeDispatchState,
+  normalizeFirstTopUp,
+  normalizeWishPool,
+} from './wave8Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -682,6 +690,29 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     wingAspd = wStats.aspd;
   }
 
+  // Apply Equipped 3D Zodiac Mount & Awakened Weapon Aura
+  const equippedMountId =
+    save.equippedMountId && (save.unlockedMounts ?? []).includes(save.equippedMountId)
+      ? save.equippedMountId
+      : null;
+  let mountLevel = 1;
+  if (equippedMountId) {
+    mountLevel = Math.max(1, save.mountLevels?.[equippedMountId] ?? 1);
+    const mStats = getMountStats(equippedMountId, mountLevel);
+    attack += mStats.atk;
+    maxHp += mStats.hp;
+    moveSpeedMult += mStats.moveSpeed;
+    damageReduction += mStats.dr;
+  }
+
+  const equippedWeaponAuraId =
+    save.equippedWeaponAuraId && (save.unlockedWeaponAuras ?? ['none']).includes(save.equippedWeaponAuraId)
+      ? save.equippedWeaponAuraId
+      : 'none';
+  const weaponAuraLevel = Math.max(1, save.weaponAuraLevels?.[equippedWeaponAuraId] ?? 1);
+  const wAuraStats = getWeaponAuraStats(equippedWeaponAuraId, weaponAuraLevel);
+  critDamage += wAuraStats.critDmg;
+
   // Apply Monthly Privilege Card passive buffs
   const monthlyPriv = normalizeMonthlyPrivilege(save.monthlyPrivilege);
   const hasSilverCard = isMonthlyCardActive(monthlyPriv.silver);
@@ -694,7 +725,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
   attack = Math.round(
-    (attack + tal.atk + constellation.atkFlat) * (1 + runeAtkPct + subAtkPct + guildTech.atkPct + cardAtkPct)
+    (attack + tal.atk + constellation.atkFlat) *
+      (1 + runeAtkPct + subAtkPct + guildTech.atkPct + cardAtkPct + wAuraStats.atkPct)
   );
   maxHp = Math.round(
     (maxHp + tal.hp + constellation.hpFlat) * (1 + runeHpPct + subHpPct + guildTech.hpPct)
@@ -719,7 +751,9 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       tal.stageHealPct * 600 +
       bossDamageBonus * 450 +
       constellation.totalStars * 18 +
-      (equippedWingId ? wingLevel * 24 : 0)
+      (equippedWingId ? wingLevel * 24 : 0) +
+      (equippedMountId ? mountLevel * 32 : 0) +
+      (equippedWeaponAuraId !== 'none' ? weaponAuraLevel * 26 : 0)
   );
 
   return {
@@ -751,6 +785,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     constellationLevels: constellation.levelsArray,
     equippedWingId,
     wingLevel,
+    equippedMountId,
+    mountLevel,
+    equippedWeaponAuraId,
+    weaponAuraLevel,
   };
 }
 
@@ -910,6 +948,20 @@ export function createInitialSaveData(): SaveData {
     auctionHouse: normalizeAuctionHouse(),
     crystalDefense: normalizeCrystalDefense(),
     worldBoss: normalizeWorldBoss(),
+    mountShards: 18,
+    awakeningCrystals: 12,
+    wishTickets: 3,
+    unlockedMounts: [],
+    mountLevels: {},
+    equippedMountId: null,
+    unlockedWeaponAuras: ['none'],
+    weaponAuraLevels: {},
+    equippedWeaponAuraId: 'none',
+    wishPool: normalizeWishPool(),
+    firstTopUp: normalizeFirstTopUp(),
+    claimedHotBundleIds: [],
+    dispatch: normalizeDispatchState(),
+    bloodMoon: normalizeBloodMoon(),
   };
 }
 

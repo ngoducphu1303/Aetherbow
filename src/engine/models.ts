@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { WING_MAP } from '../data/wave7Data';
+import { MOUNT_MAP, WEAPON_AURA_MAP } from '../data/wave8Data';
 import {
   CrownStyle,
   EnemyKind,
+  MountId,
   PetId,
   StageEventAfter,
   WeaponArchetype,
+  WeaponAuraId,
   WingId,
 } from '../types/game';
 import {
@@ -29,6 +32,10 @@ export interface HeroVisualConfig {
   constellationLevels?: number[];
   wingId?: WingId | null;
   wingLevel?: number;
+  mountId?: MountId | null;
+  mountLevel?: number;
+  weaponAuraId?: WeaponAuraId;
+  weaponAuraLevel?: number;
 }
 
 export interface HeroModelRefs {
@@ -46,6 +53,9 @@ export interface HeroModelRefs {
   wingGroup?: THREE.Group;
   leftWingPivot?: THREE.Group;
   rightWingPivot?: THREE.Group;
+  mountGroup?: THREE.Group;
+  mountLegs?: THREE.Group[];
+  weaponAuraGroup?: THREE.Group;
   hitMeshes: THREE.Mesh[];
 }
 
@@ -576,6 +586,25 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     bodyGroup.add(wingGroup);
   }
 
+  // 8. Awakened Weapon Aura (attached to bodyGroup near weapon/orb hand so visible in Lobby & Combat)
+  let weaponAuraGroup: THREE.Group | undefined;
+  if (cfg.weaponAuraId && cfg.weaponAuraId !== 'none') {
+    weaponAuraGroup = createWeaponAuraModel(cfg.weaponAuraId, cfg.weaponAuraLevel ?? 1);
+    weaponAuraGroup.position.set(0.28, 0.94, 0.34);
+    bodyGroup.add(weaponAuraGroup);
+  }
+
+  // 9. Composite 3D Zodiac Mount under Hero
+  let mountGroup: THREE.Group | undefined;
+  let mountLegs: THREE.Group[] | undefined;
+  if (cfg.mountId) {
+    const builtMount = createZodiacMountModel(cfg.mountId, cfg.mountLevel ?? 1);
+    mountGroup = builtMount.group;
+    mountLegs = builtMount.legs;
+    root.add(mountGroup);
+    bodyGroup.position.y = 0.68;
+  }
+
   return {
     root,
     bodyGroup,
@@ -591,6 +620,9 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     wingGroup,
     leftWingPivot,
     rightWingPivot,
+    mountGroup,
+    mountLegs,
+    weaponAuraGroup,
     hitMeshes,
   };
 }
@@ -1521,3 +1553,178 @@ export function createSpiritCrystalModel(): SpiritCrystalRefs {
   group.add(basePlinth, goldRim, coreMesh, outerRing, wardRing);
   return { group, coreMesh, outerRing, shards };
 }
+
+function createWeaponAuraModel(auraId: WeaponAuraId, level: number): THREE.Group {
+  const def = WEAPON_AURA_MAP[auraId] ?? WEAPON_AURA_MAP.solar_flare;
+  const g = new THREE.Group();
+  const boost = 1 + Math.min(9, Math.max(0, level - 1)) * 0.08;
+
+  const primaryMat = new THREE.MeshStandardMaterial({
+    color: def.primaryHex,
+    emissive: def.primaryHex,
+    emissiveIntensity: 1.3 * boost,
+    roughness: 0.16,
+    metalness: 0.45,
+  });
+  const secondaryMat = new THREE.MeshStandardMaterial({
+    color: def.secondaryHex,
+    emissive: def.secondaryHex,
+    emissiveIntensity: 1.5 * boost,
+    roughness: 0.12,
+    metalness: 0.35,
+  });
+
+  const outerRing = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.022, 8, 28), primaryMat);
+  const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.016, 6, 22), secondaryMat);
+  innerRing.rotation.x = Math.PI / 3;
+  g.add(outerRing, innerRing);
+
+  const shardGeo = new THREE.OctahedronGeometry(0.052, 0);
+  const shardCount = auraId === 'void_eclipse' ? 6 : 4;
+  for (let i = 0; i < shardCount; i++) {
+    const a = (i / shardCount) * Math.PI * 2;
+    const shard = new THREE.Mesh(shardGeo, i % 2 === 0 ? secondaryMat : primaryMat);
+    shard.position.set(Math.cos(a) * 0.34, Math.sin(a) * 0.34, 0);
+    shard.scale.set(0.75, 1.45, 0.75);
+    g.add(shard);
+  }
+
+  return g;
+}
+
+function createZodiacMountModel(
+  mountId: MountId,
+  level: number
+): { group: THREE.Group; legs: THREE.Group[] } {
+  const def = MOUNT_MAP[mountId];
+  const group = new THREE.Group();
+  const boost = 0.85 + Math.min(14, Math.max(0, level - 1)) * 0.06;
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: def.bodyHex,
+    roughness: 0.42,
+    metalness: 0.28,
+  });
+  const armorMat = new THREE.MeshStandardMaterial({
+    color: def.armorHex,
+    roughness: 0.24,
+    metalness: 0.86,
+  });
+  const maneMat = new THREE.MeshStandardMaterial({
+    color: def.maneHex,
+    emissive: def.maneHex,
+    emissiveIntensity: 0.55 * boost,
+    roughness: 0.3,
+    metalness: 0.35,
+  });
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: def.glowHex,
+    emissive: def.glowHex,
+    emissiveIntensity: 1.35 * boost,
+    roughness: 0.14,
+    metalness: 0.25,
+  });
+
+  // Barrel torso
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.52, 1.32), bodyMat);
+  torso.position.set(0, 0.66, -0.04);
+  torso.castShadow = true;
+  group.add(torso);
+
+  // Armored chestplate & saddle
+  const chestArmor = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.3, 0.56, 10), armorMat);
+  chestArmor.rotation.x = Math.PI / 4;
+  chestArmor.position.set(0, 0.74, 0.52);
+  chestArmor.castShadow = true;
+  const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.12, 0.58), armorMat);
+  saddle.position.set(0, 0.94, -0.02);
+  const saddleGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), glowMat);
+  saddleGem.position.set(0, 0.88, 0.68);
+  group.add(chestArmor, saddle, saddleGem);
+
+  // Neck + Armored Head
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 0.56, 10), bodyMat);
+  neck.position.set(0, 1.02, 0.58);
+  neck.rotation.x = 0.46;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.48), bodyMat);
+  head.position.set(0, 1.24, 0.82);
+  head.rotation.x = 0.18;
+  const helm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.14, 0.44), armorMat);
+  helm.position.set(0, 1.34, 0.82);
+  helm.rotation.x = 0.18;
+  group.add(neck, head, helm);
+
+  // Glowing eyes
+  const eyeGeo = new THREE.SphereGeometry(0.045, 8, 8);
+  for (const side of [-1, 1] as const) {
+    const eye = new THREE.Mesh(eyeGeo, glowMat);
+    eye.position.set(side * 0.15, 1.27, 0.96);
+    group.add(eye);
+  }
+
+  // Species-specific horns / mane / crests
+  if (mountId === 'aries_steed') {
+    for (const side of [-1, 1] as const) {
+      const horn = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.042, 6, 14, Math.PI * 1.3), armorMat);
+      horn.position.set(side * 0.2, 1.34, 0.72);
+      horn.rotation.y = side * (Math.PI / 2);
+      group.add(horn);
+    }
+  } else if (mountId === 'celestial_leo') {
+    const lionMane = new THREE.Mesh(new THREE.DodecahedronGeometry(0.34, 0), maneMat);
+    lionMane.position.set(0, 1.15, 0.65);
+    lionMane.scale.set(1.15, 1.15, 0.95);
+    group.add(lionMane);
+  } else if (mountId === 'frost_unicorn') {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.44, 8), glowMat);
+    horn.position.set(0, 1.48, 0.96);
+    horn.rotation.x = 0.45;
+    group.add(horn);
+  } else if (mountId === 'crimson_wyrm') {
+    for (const side of [-1, 1] as const) {
+      const drakeHorn = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.42, 6), armorMat);
+      drakeHorn.position.set(side * 0.14, 1.46, 0.72);
+      drakeHorn.rotation.x = -0.5;
+      drakeHorn.rotation.z = -side * 0.25;
+      const fin = new THREE.Mesh(makeBeveledWingGeo(0.45, 0.48, 0.03), glowMat);
+      fin.position.set(side * 0.45, 0.94, 0.05);
+      fin.rotation.y = side > 0 ? -0.3 : Math.PI + 0.3;
+      group.add(drakeHorn, fin);
+    }
+  }
+
+  // Mane crest & tail
+  const crest = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.46, 0.16), maneMat);
+  crest.position.set(0, 1.12, 0.42);
+  crest.rotation.x = 0.48;
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.56, 8), maneMat);
+  tail.position.set(0, 0.62, -0.78);
+  tail.rotation.x = -0.95;
+  group.add(crest, tail);
+
+  // 4 Articulated Legs
+  const legs: THREE.Group[] = [];
+  const legOffsets: Array<[number, number]> = [
+    [-0.24, 0.42],
+    [0.24, 0.42],
+    [-0.24, -0.44],
+    [0.24, -0.44],
+  ];
+  const legGeo = new THREE.CylinderGeometry(0.09, 0.072, 0.54, 8);
+  const hoofGeo = new THREE.CylinderGeometry(0.085, 0.095, 0.12, 8);
+  for (const [lx, lz] of legOffsets) {
+    const legPivot = new THREE.Group();
+    legPivot.position.set(lx, 0.52, lz);
+    const legMesh = new THREE.Mesh(legGeo, bodyMat);
+    legMesh.position.y = -0.25;
+    legMesh.castShadow = true;
+    const hoof = new THREE.Mesh(hoofGeo, armorMat);
+    hoof.position.y = -0.48;
+    legPivot.add(legMesh, hoof);
+    group.add(legPivot);
+    legs.push(legPivot);
+  }
+
+  return { group, legs };
+}
+

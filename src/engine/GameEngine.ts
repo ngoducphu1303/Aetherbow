@@ -16,6 +16,7 @@ import {
   CRYSTAL_DEFENSE_TOTAL_WAVES,
   computeWorldBossLiveRank,
 } from '../data/wave7Data';
+import { BLOOD_MOON_DURATION_SEC } from '../data/wave8Data';
 import {
   ArenaOpponent,
   ChapterDefinition,
@@ -32,6 +33,7 @@ import {
   HeroId,
   HudSnapshot,
   JoystickState,
+  LobbyCameraPreset,
   PetId,
   RuneId,
   SkillId,
@@ -273,6 +275,11 @@ export interface EngineCallbacks {
       isWorldBossMode?: boolean;
       worldBossDamage?: number;
       worldBossLiveRank?: number;
+      isBloodMoonMode?: boolean;
+      bloodMoonScore?: number;
+      bloodMoonWave?: number;
+      mountShards?: number;
+      awakeningCrystals?: number;
       starDust?: number;
       petEssence?: number;
       maxCombo?: number;
@@ -346,6 +353,7 @@ export class GameEngine {
 
   private phase: GamePhase = GamePhase.TITLE;
   private lobbyViewMode: 'battle' | 'gear' | 'heroes' | 'vault' = 'battle';
+  private lobbyCameraPreset: LobbyCameraPreset = 'overview';
   private lobbyDragActive = false;
   private lobbyDragPointerId: number | null = null;
   private lobbyDragLastX = 0;
@@ -385,6 +393,11 @@ export class GameEngine {
   private isWorldBossMode = false;
   private worldBossTimeLeft = 60;
   private worldBossTotalDamage = 0;
+  private isBloodMoonMode = false;
+  private bloodMoonTimeLeft = BLOOD_MOON_DURATION_SEC;
+  private bloodMoonWave = 0;
+  private bloodMoonScore = 0;
+  private bloodMoonSpawnTimer = 0;
   private starfallMesh!: THREE.InstancedMesh;
   private starfallEnabled = true;
   private starfallSeeds: Array<{
@@ -1238,6 +1251,7 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.currentChapter = ch;
     this.baseStats = stats;
 
@@ -1263,6 +1277,7 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1286,6 +1301,7 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1311,6 +1327,7 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.currentChapter = CHAPTERS[2] ?? CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1335,6 +1352,7 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.guildBossTimeLeft = 60;
     this.guildBossTotalDamage = 0;
     this.currentChapter = CHAPTERS[11] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
@@ -1374,6 +1392,7 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
 
     const chIdx = difficulty === 'mythic' ? 11 : difficulty === 'heroic' ? 8 : 5;
     this.currentChapter = CHAPTERS[chIdx] ?? CHAPTERS[0];
@@ -1494,6 +1513,7 @@ export class GameEngine {
     this.isElementalTowerMode = true;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.elementalTowerId = towerId;
     this.elementalTowerFloor = Math.max(1, startFloor);
     this.currentChapter = CHAPTERS[(tDef.chapterId - 1) % CHAPTERS.length] ?? CHAPTERS[0];
@@ -1519,6 +1539,7 @@ export class GameEngine {
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.isArenaMode = true;
     this.arenaTimeLeft = 45;
     this.arenaOpponentName = opponent.name;
@@ -1680,6 +1701,7 @@ export class GameEngine {
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
     this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
     this.isCrystalDefenseMode = true;
     this.crystalWave = 1;
     const baseCrystalHp = Math.round(1800 + stats.maxHp * 1.65);
@@ -1778,6 +1800,7 @@ export class GameEngine {
     this.isCoopRaidMode = false;
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
+    this.isBloodMoonMode = false;
     this.isWorldBossMode = true;
     this.worldBossTimeLeft = 60;
     this.worldBossTotalDamage = 0;
@@ -1800,6 +1823,72 @@ export class GameEngine {
       'Hắc Long Tinh Giới Liên Server'
     );
     this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  public startBloodMoonSurvival(stats: ComputedPlayerStats): void {
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
+    this.isBloodMoonMode = true;
+    this.bloodMoonTimeLeft = BLOOD_MOON_DURATION_SEC;
+    this.bloodMoonWave = 0;
+    this.bloodMoonScore = 0;
+    this.bloodMoonSpawnTimer = 0;
+    this.currentChapter = CHAPTERS[10] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    // Crimson Blood Moon atmosphere override
+    this.scene.background = new THREE.Color(0x22040b);
+    this.scene.fog = new THREE.FogExp2(0x2d0710, 0.021);
+    this.keyLight.color.setHex(0xfb7185);
+    this.hemiLight.color.setHex(0xf43f5e);
+
+    this.resetRunState(stats);
+    this.ultCharge = 80;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'pillars',
+      false,
+      'ĐÊM TRĂNG MÁU · SINH TỒN 90 GIÂY SĂN HUYẾT TINH!'
+    );
+    this.spawnNextBloodMoonWave();
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  private spawnNextBloodMoonWave(): void {
+    this.bloodMoonWave += 1;
+    this.bloodMoonSpawnTimer = 11.5;
+    const w = this.bloodMoonWave;
+    const groups: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> =
+      w % 3 === 0
+        ? [
+            { kind: EnemyKind.WARDEN_BOSS, count: 1 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 2 + Math.min(3, Math.floor(w / 2)), isElite: true },
+            { kind: EnemyKind.WISP, count: 2 },
+          ]
+        : [
+            { kind: EnemyKind.SKIRMISHER, count: 3 + Math.min(4, w) },
+            { kind: EnemyKind.DRAGON_WHELP, count: 1 + Math.min(3, Math.floor(w / 2)), isElite: w >= 4 },
+            { kind: EnemyKind.IMP_ARCHER, count: 2 },
+          ];
+    const hpMult = 0.85 + w * 0.24;
+    const dmgMult = 0.92 + w * 0.14;
+    const bossTitle = w >= 6 ? 'Thống Soái Nhật Thực Trăng Máu' : 'Tướng Quân Huyết Nguyệt';
+    this.spawnEnemyGroups(groups, hpMult, dmgMult, bossTitle);
+    this.stageBannerText = `ĐÊM TRĂNG MÁU · ĐỢT ${w}`;
+    this.stageBannerTimer = 2.0;
     this.syncHudImmediate();
   }
 
@@ -1911,6 +2000,10 @@ export class GameEngine {
 
   public setLobbyViewMode(mode: 'battle' | 'gear' | 'heroes' | 'vault'): void {
     this.lobbyViewMode = mode;
+  }
+
+  public setLobbyCameraPreset(preset: LobbyCameraPreset): void {
+    this.lobbyCameraPreset = preset;
   }
 
   public rotateLobbyHero(deltaRad: number): void {
@@ -3135,14 +3228,26 @@ export class GameEngine {
     this.elapsed += dt;
 
     if (this.phase === GamePhase.TITLE) {
-      const sway = Math.sin(this.elapsed * 0.45) * 0.55;
+      const sway = Math.sin(this.elapsed * 0.45) * 0.45;
       let targetCamX = sway;
       let targetCamY = 2.45;
       let targetCamZ = 8.6;
       let lookX = 0;
       let lookY = 0.72;
 
-      if (this.lobbyViewMode === 'gear') {
+      if (this.lobbyCameraPreset === 'closeup') {
+        targetCamX = sway * 0.25;
+        targetCamY = 1.92;
+        targetCamZ = 6.95;
+        lookX = 0;
+        lookY = 0.92;
+      } else if (this.lobbyCameraPreset === 'wardrobe') {
+        targetCamX = 0.85 + sway * 0.16;
+        targetCamY = 2.1;
+        targetCamZ = 7.45;
+        lookX = 0.9;
+        lookY = 0.85;
+      } else if (this.lobbyViewMode === 'gear') {
         targetCamX = sway * 0.35;
         targetCamY = 2.18;
         targetCamZ = 7.95;
@@ -3168,13 +3273,23 @@ export class GameEngine {
       }
       this.lobbyYaw = THREE.MathUtils.damp(this.lobbyYaw, this.lobbyTargetYaw, 8.5, dt);
 
+      const mountOffset = this.hero.mountGroup ? 0.68 : 0;
       this.hero.root.rotation.y = this.lobbyYaw;
-      this.hero.bodyGroup.position.y = Math.sin(this.elapsed * 2.2) * 0.04;
+      this.hero.bodyGroup.position.y = mountOffset + Math.sin(this.elapsed * 2.2) * 0.04;
       this.hero.capeTail.rotation.x = 0.22 + Math.sin(this.elapsed * 3.1) * 0.07;
       if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
         const flap = Math.sin(this.elapsed * 3.2) * 0.24;
         this.hero.leftWingPivot.rotation.y = 0.22 + flap;
         this.hero.rightWingPivot.rotation.y = -0.22 - flap;
+      }
+      if (this.hero.mountLegs) {
+        this.hero.mountLegs.forEach((leg, lIdx) => {
+          leg.rotation.x = Math.sin(this.elapsed * 2.4 + lIdx * 1.4) * 0.09;
+        });
+      }
+      if (this.hero.weaponAuraGroup) {
+        this.hero.weaponAuraGroup.rotation.z += dt * 1.9;
+        this.hero.weaponAuraGroup.rotation.y += dt * 1.1;
       }
       this.hero.magicOrb.visible = true;
       this.hero.magicOrb.rotation.z += dt * 2.8;
@@ -3284,6 +3399,39 @@ export class GameEngine {
           isWorldBossMode: true,
           worldBossDamage: totalDmg,
           worldBossLiveRank: liveRank,
+          maxCombo: this.maxRunCombo,
+          damageBreakdown: this.getDamageBreakdownSnapshot(),
+        });
+        return;
+      }
+    }
+
+    if (this.isBloodMoonMode) {
+      this.bloodMoonTimeLeft = Math.max(0, this.bloodMoonTimeLeft - dt);
+      this.bloodMoonSpawnTimer -= dt;
+      if (this.bloodMoonTimeLeft > 2 && (this.bloodMoonSpawnTimer <= 0 || this.enemies.length === 0)) {
+        this.spawnNextBloodMoonWave();
+      }
+      if (this.bloodMoonTimeLeft <= 0) {
+        const finalScore = Math.max(0, Math.round(this.bloodMoonScore + this.bloodMoonWave * 65));
+        const shards = Math.max(5, Math.min(26, 4 + Math.floor(finalScore / 140)));
+        const crystals = Math.max(3, Math.min(18, 2 + Math.floor(finalScore / 200)));
+        const feathers = Math.max(4, Math.min(18, 3 + Math.floor(finalScore / 220)));
+        soundEngine.playVictory();
+        this.phase = GamePhase.VICTORY;
+        this.syncHudImmediate();
+        this.callbacks.onRunEnded(true, {
+          chapterId: this.currentChapter.id,
+          stageReached: this.bloodMoonWave,
+          kills: this.kills,
+          gold: this.runGold + 220 + Math.floor(finalScore * 0.45),
+          gems: this.runGems + 14 + Math.min(30, Math.floor(finalScore / 150) * 2),
+          mountShards: shards,
+          awakeningCrystals: crystals,
+          wingFeathers: feathers,
+          isBloodMoonMode: true,
+          bloodMoonScore: finalScore,
+          bloodMoonWave: this.bloodMoonWave,
           maxCombo: this.maxRunCombo,
           damageBreakdown: this.getDamageBreakdownSnapshot(),
         });
@@ -3489,6 +3637,8 @@ export class GameEngine {
 
     const nearest = this.findNearestEnemy(this.px, this.pz);
 
+    const mountOffset = this.hero.mountGroup ? 0.68 : 0;
+
     if (isMoving) {
       if (speedMag > 0.3) {
         const moveYaw = Math.atan2(this.pvx, this.pvz);
@@ -3497,16 +3647,22 @@ export class GameEngine {
       const stride = Math.sin(this.elapsed * 16) * 0.52;
       this.hero.leftLeg.rotation.x = stride;
       this.hero.rightLeg.rotation.x = -stride;
-      this.hero.bodyGroup.position.y = Math.abs(Math.sin(this.elapsed * 16)) * 0.09;
+      this.hero.bodyGroup.position.y = mountOffset + Math.abs(Math.sin(this.elapsed * 16)) * 0.09;
       this.hero.bodyGroup.rotation.x = this.dashTimer > 0 ? 0.32 : 0.1;
       this.hero.capeTail.rotation.x = 0.34 + Math.sin(this.elapsed * 14) * 0.14;
+      if (this.hero.mountLegs) {
+        this.hero.mountLegs.forEach((leg, lIdx) => {
+          const phaseOffset = lIdx === 0 || lIdx === 3 ? 0 : Math.PI;
+          leg.rotation.x = Math.sin(this.elapsed * 17 + phaseOffset) * 0.58;
+        });
+      }
       if (!isThor) {
         this.volleyQueue = [];
       }
     } else {
       this.hero.leftLeg.rotation.x = THREE.MathUtils.damp(this.hero.leftLeg.rotation.x, 0, 14, dt);
       this.hero.rightLeg.rotation.x = THREE.MathUtils.damp(this.hero.rightLeg.rotation.x, 0, 14, dt);
-      this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, 0, 14, dt);
+      this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset, 14, dt);
       this.hero.bodyGroup.rotation.x = THREE.MathUtils.damp(this.hero.bodyGroup.rotation.x, 0, 14, dt);
       this.hero.capeTail.rotation.x = THREE.MathUtils.damp(
         this.hero.capeTail.rotation.x,
@@ -3514,11 +3670,21 @@ export class GameEngine {
         10,
         dt
       );
+      if (this.hero.mountLegs) {
+        this.hero.mountLegs.forEach((leg) => {
+          leg.rotation.x = THREE.MathUtils.damp(leg.rotation.x, 0, 12, dt);
+        });
+      }
 
       if (nearest) {
         const aimYaw = Math.atan2(nearest.x - this.px, nearest.z - this.pz);
         this.pFacing = this.lerpAngle(this.pFacing, aimYaw, 1 - Math.exp(-22 * dt));
       }
+    }
+
+    if (this.hero.weaponAuraGroup) {
+      this.hero.weaponAuraGroup.rotation.z += dt * 2.2;
+      this.hero.weaponAuraGroup.rotation.y += dt * 1.25;
     }
 
     if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
@@ -5138,6 +5304,9 @@ export class GameEngine {
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.14);
     }
 
+    const isSuperCrit =
+      isCrit && (dmgSource === 'ultimate' || finalDmg >= this.baseStats.attack * 3.1);
+
     this.emitFloatingNumber(
       e.x,
       1.7,
@@ -5146,7 +5315,8 @@ export class GameEngine {
       isCrit,
       false,
       blaze ? 'fire' : frost ? 'ice' : storm ? 'storm' : poison ? 'poison' : undefined,
-      label
+      label,
+      isSuperCrit
     );
 
     // Chain Lightning (Storm Skill or Thor Crit Passive)
@@ -5249,6 +5419,10 @@ export class GameEngine {
       this.spawnLootOrb(e.x, e.z + 0.4, 'heal', Math.round(this.maxHp * 0.12));
     }
 
+    if (this.isBloodMoonMode) {
+      this.bloodMoonScore += e.isBoss ? 180 : e.isElite ? 65 : 28;
+    }
+
     this.releaseObject(e.model.root);
     this.releaseObject(e.shadow);
     this.releaseObject(e.telegraphGroup);
@@ -5256,7 +5430,9 @@ export class GameEngine {
     this.enemies.splice(index, 1);
 
     if (this.enemies.length === 0) {
-      if (
+      if (this.isBloodMoonMode) {
+        this.bloodMoonSpawnTimer = Math.min(this.bloodMoonSpawnTimer, 0.45);
+      } else if (
         this.isGuildBossMode ||
         this.isCoopRaidMode ||
         this.isArenaMode ||
@@ -5668,7 +5844,9 @@ export class GameEngine {
       const stage = this.currentChapter.stages[this.stageIndex];
       this.callbacks.onRunEnded(false, {
         chapterId: this.currentChapter.id,
-        stageReached: this.isCrystalDefenseMode
+        stageReached: this.isBloodMoonMode
+          ? this.bloodMoonWave
+          : this.isCrystalDefenseMode
           ? this.crystalWave
           : this.isElementalTowerMode
           ? this.elementalTowerFloor
@@ -5705,11 +5883,22 @@ export class GameEngine {
           ? Math.max(2, (this.crystalWave - 1) * 3)
           : this.isWorldBossMode
           ? Math.max(4, Math.min(18, 4 + Math.floor(this.worldBossTotalDamage / 35000) * 2))
+          : this.isBloodMoonMode
+          ? Math.max(2, Math.floor(this.bloodMoonScore / 260))
           : undefined,
         isWorldBossMode: this.isWorldBossMode,
         worldBossDamage: this.isWorldBossMode ? Math.round(this.worldBossTotalDamage) : undefined,
         worldBossLiveRank: this.isWorldBossMode
           ? computeWorldBossLiveRank(Math.round(this.worldBossTotalDamage))
+          : undefined,
+        isBloodMoonMode: this.isBloodMoonMode,
+        bloodMoonScore: this.isBloodMoonMode ? Math.round(this.bloodMoonScore) : undefined,
+        bloodMoonWave: this.isBloodMoonMode ? this.bloodMoonWave : undefined,
+        mountShards: this.isBloodMoonMode
+          ? Math.max(2, Math.floor(this.bloodMoonScore / 180))
+          : undefined,
+        awakeningCrystals: this.isBloodMoonMode
+          ? Math.max(1, Math.floor(this.bloodMoonScore / 240))
           : undefined,
         starDust: this.isDailyRiftMode
           ? Math.max(15, this.dailyRiftStageIdx * 28)
@@ -6069,7 +6258,8 @@ export class GameEngine {
     isCrit: boolean,
     isHeal: boolean,
     element?: FloatingDamage['element'],
-    label?: string
+    label?: string,
+    isSuperCrit = false
   ): void {
     if (!this.showDamageNumbersEnabled && !label) return;
     _v2.set(wx, wy, wz);
@@ -6085,6 +6275,7 @@ export class GameEngine {
       y: sy,
       amount,
       isCrit,
+      isSuperCrit,
       isHeal,
       label,
       element,
@@ -6132,6 +6323,8 @@ export class GameEngine {
       stage:
         this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
           ? 1
+          : this.isBloodMoonMode
+          ? Math.max(1, this.bloodMoonWave)
           : this.isCrystalDefenseMode
           ? this.crystalWave
           : this.isElementalTowerMode
@@ -6146,6 +6339,8 @@ export class GameEngine {
       totalStages:
         this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
           ? 1
+          : this.isBloodMoonMode
+          ? Math.max(1, this.bloodMoonWave)
           : this.isCrystalDefenseMode
           ? CRYSTAL_DEFENSE_TOTAL_WAVES
           : this.isElementalTowerMode
@@ -6157,7 +6352,9 @@ export class GameEngine {
           : this.isTowerMode
           ? this.towerFloor
           : this.currentChapter.stages.length,
-      stageName: this.isCrystalDefenseMode
+      stageName: this.isBloodMoonMode
+        ? `Đêm Trăng Máu · Đợt ${Math.max(1, this.bloodMoonWave)}`
+        : this.isCrystalDefenseMode
         ? `Thủ Thành Pha Lê · Đợt ${this.crystalWave}/${CRYSTAL_DEFENSE_TOTAL_WAVES}`
         : this.isWorldBossMode
         ? 'Boss Thế Giới Liên Server · 60s'
@@ -6176,7 +6373,9 @@ export class GameEngine {
         : this.isTowerMode
         ? `Tháp Vô Tận · Tầng ${this.towerFloor}`
         : stage.name,
-      chapterName: this.isCrystalDefenseMode
+      chapterName: this.isBloodMoonMode
+        ? '🌑 Đêm Trăng Máu'
+        : this.isCrystalDefenseMode
         ? '💎 Thủ Thành Pha Lê'
         : this.isWorldBossMode
         ? '🐉 Boss Thế Giới'
@@ -6224,6 +6423,16 @@ export class GameEngine {
       bossHp: boss ? boss.hp : 0,
       bossMaxHp: boss ? boss.maxHp : 0,
       bossPhase: boss ? boss.bossPhase : 1,
+      bossLayers: boss ? (this.isWorldBossMode || this.isGuildBossMode ? 8 : 5) : undefined,
+      bossCurrentLayer: boss
+        ? Math.max(
+            1,
+            Math.ceil(
+              (Math.max(0, boss.hp) / Math.max(1, boss.maxHp)) *
+                (this.isWorldBossMode || this.isGuildBossMode ? 8 : 5)
+            )
+          )
+        : undefined,
       isTowerMode: this.isTowerMode,
       towerFloor: this.towerFloor,
       isBossRushMode: this.isBossRushMode,
@@ -6263,6 +6472,10 @@ export class GameEngine {
       worldBossRank: this.isWorldBossMode
         ? computeWorldBossLiveRank(Math.round(this.worldBossTotalDamage))
         : undefined,
+      isBloodMoonMode: this.isBloodMoonMode,
+      bloodMoonTimeLeft: this.isBloodMoonMode ? Math.ceil(this.bloodMoonTimeLeft) : undefined,
+      bloodMoonScore: this.isBloodMoonMode ? Math.round(this.bloodMoonScore) : undefined,
+      bloodMoonWave: this.isBloodMoonMode ? this.bloodMoonWave : undefined,
       activeSkills: { ...this.activeSkills },
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,

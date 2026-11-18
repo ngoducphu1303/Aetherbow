@@ -23,11 +23,14 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import firstTopUpArt from '../assets/images/first_topup_treasury_1795007596297.jpg';
 import flashDealVaultArt from '../assets/images/flash_deal_vault_art_1794973982335.jpg';
 import growthFundVaultArt from '../assets/images/growth_fund_vault_1795004417139.jpg';
 import petSanctuaryArt from '../assets/images/pet_sanctuary_art_1794977269592.jpg';
 import privilegeVaultArt from '../assets/images/privilege_royal_vault_1795005956277.jpg';
 import royalChestArt from '../assets/images/royal_zodiac_chest_1794971375438.jpg';
+import wishPoolArt from '../assets/images/wish_pool_sanctum_1795007596305.jpg';
+import zodiacMountsArt from '../assets/images/zodiac_mounts_sanctum_1795007595676.jpg';
 import zodiacWingsArt from '../assets/images/zodiac_wings_sanctum_1795005955367.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import {
@@ -98,26 +101,51 @@ import {
   normalizeTopUpEvolution,
 } from '../data/wave7Data';
 import {
+  FIRST_TOPUP_TIERS,
+  HOT_FLASH_BUNDLES,
+  MAX_MOUNT_LEVEL,
+  MAX_WEAPON_AURA_LEVEL,
+  WEAPON_AURAS,
+  WISH_MILESTONES,
+  WISH_PITY_LIMIT,
+  WISH_POOL_10_COST_GEMS,
+  WISH_POOL_COST_GEMS,
+  WISH_TARGET_CATALOG,
+  ZODIAC_MOUNTS,
+  getMountStats,
+  getMountUpgradeCost,
+  getWeaponAuraStats,
+  getWeaponAuraUpgradeCost,
+  normalizeFirstTopUp,
+  normalizeWishPool,
+} from '../data/wave8Data';
+import {
   AuraStyleId,
   AvatarFrameId,
   ComputedPlayerStats,
+  FirstTopUpTier,
   FlashDealItem,
   GearInstance,
   GearSlot,
   HeroId,
   HeroSkinId,
+  HotFlashBundle,
   MonthlyCardTier,
+  MountId,
   PetId,
   Rarity,
   RuneInstance,
   SaveData,
+  WeaponAuraId,
   WingId,
 } from '../types/game';
 import {
+  AwakenCrystalIcon,
   ChestSvg,
   GearSlotSvg,
   GoldCoinIcon,
   HeroCrestSvg,
+  MountShardIcon,
   PetEssenceIcon,
   RARITY_FRAME_CLASS,
   SLOT_LABELS,
@@ -142,6 +170,7 @@ interface GearPanelProps {
   ) => void;
   onSaveBuildPreset: (idx: number) => void;
   onApplyBuildPreset: (idx: number) => void;
+  onOpenWardrobe?: () => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
   onGoShop: () => void;
@@ -162,6 +191,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   onOpenForgeSubTab,
   onSaveBuildPreset,
   onApplyBuildPreset,
+  onOpenWardrobe,
   onRotateHero,
   onResetHeroRotation,
   onGoShop,
@@ -325,6 +355,20 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                   className="cel-panel w-6 h-6 rounded-lg flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
+                </button>
+              )}
+              {onOpenWardrobe && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    onOpenWardrobe();
+                  }}
+                  className="cel-panel px-2.5 h-6 rounded-lg flex items-center gap-1 text-[10px] font-black text-sky-200 hover:border-sky-300 cursor-pointer whitespace-nowrap"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-300" />
+                  <span>Phòng Thử Đồ 3D</span>
                 </button>
               )}
             </div>
@@ -1026,6 +1070,13 @@ interface HeroesPanelProps {
   onUpgradeWing?: (wingId: WingId) => void;
   onUnlockAvatarFrame?: (frameId: AvatarFrameId) => void;
   onEquipAvatarFrame?: (frameId: AvatarFrameId) => void;
+  onUnlockMount?: (mountId: MountId, currency: 'gems' | 'shards') => void;
+  onEquipMount?: (mountId: MountId | null) => void;
+  onUpgradeMount?: (mountId: MountId) => void;
+  onUnlockWeaponAura?: (auraId: WeaponAuraId, currency: 'gems' | 'crystals') => void;
+  onEquipWeaponAura?: (auraId: WeaponAuraId) => void;
+  onUpgradeWeaponAura?: (auraId: WeaponAuraId) => void;
+  onOpenWardrobe?: () => void;
   onPreviewUltimate?: (heroId: HeroId) => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
@@ -1050,13 +1101,21 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onUpgradeWing,
   onUnlockAvatarFrame,
   onEquipAvatarFrame,
+  onUnlockMount,
+  onEquipMount,
+  onUpgradeMount,
+  onUnlockWeaponAura,
+  onEquipWeaponAura,
+  onUpgradeWeaponAura,
+  onOpenWardrobe,
   onPreviewUltimate,
   onRotateHero,
   onResetHeroRotation,
 }) => {
-  const [heroSubTab, setHeroSubTab] = useState<'roster' | 'pets' | 'cosmetics' | 'wings'>('roster');
+  const [heroSubTab, setHeroSubTab] = useState<'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts'>('roster');
   const [petBannerErr, setPetBannerErr] = useState(false);
   const [wingsBannerErr, setWingsBannerErr] = useState(false);
+  const [mountsBannerErr, setMountsBannerErr] = useState(false);
 
   const hero = HERO_MAP[previewHeroId] ?? HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const unlocked = save.unlockedHeroes.includes(hero.id);
@@ -1076,6 +1135,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const wingFeathers = save.wingFeathers ?? 0;
   const unlockedFrames = save.unlockedAvatarFrames ?? ['default_gold'];
   const equippedFrameId = save.equippedAvatarFrameId ?? 'default_gold';
+  const unlockedMounts = save.unlockedMounts ?? [];
+  const mountLevels = save.mountLevels ?? {};
+  const equippedMountId = save.equippedMountId ?? null;
+  const mountShards = save.mountShards ?? 0;
+  const unlockedWeaponAuras = save.unlockedWeaponAuras ?? ['none'];
+  const weaponAuraLevels = save.weaponAuraLevels ?? {};
+  const equippedWeaponAuraId = save.equippedWeaponAuraId ?? 'none';
+  const awakeningCrystals = save.awakeningCrystals ?? 0;
   const petEssence = save.petEssence ?? 0;
 
   const handleHeroDragDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1329,21 +1396,66 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
                 <span>Cánh 3D &amp; Khung ({unlockedWings.length}/{ZODIAC_WINGS.length})</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  setHeroSubTab('mounts');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  heroSubTab === 'mounts'
+                    ? 'bg-gradient-to-b from-rose-400 to-amber-500 text-slate-950'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <MountShardIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Thú Cưỡi &amp; Vũ Khí ({unlockedMounts.length}/{ZODIAC_MOUNTS.length})</span>
+              </button>
             </div>
 
-            {heroSubTab === 'pets' && (
-              <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-emerald-300">
-                <PetEssenceIcon className="w-3.5 h-3.5 shrink-0" />
-                <span>Tinh Chất: {petEssence}</span>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {onOpenWardrobe && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    onOpenWardrobe();
+                  }}
+                  className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 text-sky-200 whitespace-nowrap cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>Phòng Thử Đồ 3D 360°</span>
+                </button>
+              )}
 
-            {heroSubTab === 'wings' && (
-              <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-sky-300">
-                <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
-                <span>Lông Vũ Tinh Tú: {wingFeathers}</span>
-              </div>
-            )}
+              {heroSubTab === 'pets' && (
+                <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-emerald-300">
+                  <PetEssenceIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span>Tinh Chất: {petEssence}</span>
+                </div>
+              )}
+
+              {heroSubTab === 'wings' && (
+                <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-sky-300">
+                  <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span>Lông Vũ Tinh Tú: {wingFeathers}</span>
+                </div>
+              )}
+
+              {heroSubTab === 'mounts' && (
+                <div className="flex items-center gap-1.5">
+                  <div className="cel-panel px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-amber-300">
+                    <MountShardIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{mountShards} Mảnh</span>
+                  </div>
+                  <div className="cel-panel px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-rose-300">
+                    <AwakenCrystalIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{awakeningCrystals} Tinh Thể</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* SUB-TAB 1: HERO ROSTER */}
@@ -2003,6 +2115,277 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
             </div>
           )}
+
+          {/* SUB-TAB 5: ZODIAC MOUNTS 3D & AWAKENED WEAPON AURAS */}
+          {heroSubTab === 'mounts' && (
+            <div className="space-y-4 pb-6">
+              <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-center">
+                <div className="md:col-span-5 h-32 md:h-36 bg-[#0b1229] relative">
+                  {!mountsBannerErr ? (
+                    <img
+                      src={zodiacMountsArt}
+                      alt="Thú Cưỡi Hoàng Đạo 3D"
+                      referrerPolicy="no-referrer"
+                      onError={() => setMountsBannerErr(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-rose-500/20 to-amber-500/20">
+                      <MountShardIcon className="w-10 h-10 text-amber-300" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                </div>
+                <div className="md:col-span-7 p-4 flex flex-col gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                    Kỵ Sĩ Tinh Giới &amp; Vũ Khí Thức Tỉnh 3D
+                  </span>
+                  <h4 className="font-display text-base sm:text-lg font-black text-white">
+                    Thú Cưỡi Hoàng Đạo 3D &amp; Vòng Luân Vũ Khí
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Thú Cưỡi xuất hiện trực tiếp dưới chân Anh Hùng trong cả Sảnh lẫn Trận Đấu, tăng ATK, HP, Giảm ST và Tốc chạy. Thu thập Mảnh Thú Cưỡi &amp; Tinh Thể từ Đêm Trăng Máu, Phái Cử hoặc Hồ Ước Nguyện!
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {ZODIAC_MOUNTS.map((m) => {
+                  const isOwned = unlockedMounts.includes(m.id);
+                  const isEquipped = equippedMountId === m.id;
+                  const lv = Math.max(1, mountLevels[m.id] ?? 1);
+                  const maxLv = lv >= MAX_MOUNT_LEVEL;
+                  const statsM = getMountStats(m.id, lv);
+                  const upCost = getMountUpgradeCost(lv);
+                  const pColor = `#${m.bodyHex.toString(16).padStart(6, '0')}`;
+                  const gColor = `#${m.glowHex.toString(16).padStart(6, '0')}`;
+
+                  return (
+                    <div
+                      key={m.id}
+                      className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
+                        isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/40 shadow-inner shrink-0"
+                              style={{
+                                background: `linear-gradient(135deg, ${pColor}33, ${gColor}44)`,
+                              }}
+                            >
+                              <MountShardIcon className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <span className="text-[10px] font-black uppercase text-amber-300">
+                                {m.badge} {isOwned ? `· Cấp ${lv}/${MAX_MOUNT_LEVEL}` : ''}
+                              </span>
+                              <h5 className="font-display text-sm sm:text-base font-black text-white">
+                                {m.name}
+                              </h5>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed">{m.desc}</p>
+
+                        <div className="grid grid-cols-4 gap-1.5 mt-2.5 text-center rounded-xl bg-[#070b1a] border border-amber-400/20 p-2 text-[10px] font-mono-nums font-bold">
+                          <div>
+                            <div className="text-slate-400">ATK</div>
+                            <div className="text-amber-300">+{statsM.atk}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">HP</div>
+                            <div className="text-emerald-300">+{statsM.hp}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Tốc</div>
+                            <div className="text-sky-300">+{Math.round(statsM.moveSpeed * 100)}%</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Giảm ST</div>
+                            <div className="text-rose-300">+{Math.round(statsM.dr * 100)}%</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {isOwned ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.05);
+                                onEquipMount?.(isEquipped ? null : m.id);
+                              }}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                                isEquipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                              }`}
+                            >
+                              {isEquipped ? 'Xuống Ngựa' : 'Cưỡi Ra Trận'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={maxLv || mountShards < upCost.shards || save.gold < upCost.gold}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUpgradeMount?.(m.id);
+                              }}
+                              className="a2-yellow-btn flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              {maxLv
+                                ? 'Cấp Tối Đa'
+                                : `Nâng Cấp (${upCost.shards} Mảnh + ${upCost.gold} Vàng)`}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={mountShards < m.unlockShards}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUnlockMount?.(m.id, 'shards');
+                              }}
+                              className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <MountShardIcon className="w-3.5 h-3.5" />
+                              <span>Mở · {m.unlockShards} Mảnh</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={save.gems < m.unlockGems}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUnlockMount?.(m.id, 'gems');
+                              }}
+                              className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                            >
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                              <span>Mở · {m.unlockGems} Ngọc</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Awakened Weapon Auras */}
+              <div className="pt-2 border-t border-amber-400/20">
+                <h4 className="font-display text-sm sm:text-base font-black text-amber-200 mb-2.5">
+                  Hào Quang Vũ Khí Thức Tỉnh
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {WEAPON_AURAS.map((wa) => {
+                    const isOwned = unlockedWeaponAuras.includes(wa.id);
+                    const isEquipped = equippedWeaponAuraId === wa.id;
+                    const lv = Math.max(1, weaponAuraLevels[wa.id] ?? 1);
+                    const maxLv = lv >= MAX_WEAPON_AURA_LEVEL;
+                    const waStats = getWeaponAuraStats(wa.id, lv);
+                    const upCost = getWeaponAuraUpgradeCost(lv);
+
+                    return (
+                      <div
+                        key={wa.id}
+                        className={`rounded-2xl p-4 flex flex-col justify-between gap-2.5 ${
+                          isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-[10px] font-black text-rose-300">
+                              {wa.badge} {isOwned && wa.id !== 'none' ? `· Cấp ${lv}/${MAX_WEAPON_AURA_LEVEL}` : ''}
+                            </span>
+                            {isEquipped && (
+                              <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[9px] font-black text-emerald-300">
+                                ĐANG KÍCH
+                              </span>
+                            )}
+                          </div>
+                          <h5 className="font-display text-sm font-black text-white">{wa.name}</h5>
+                          <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">{wa.desc}</p>
+                          {wa.id !== 'none' && (
+                            <div className="flex items-center gap-3 mt-2 text-[11px] font-mono-nums font-bold">
+                              <span className="text-amber-300">+{Math.round(waStats.atkPct * 1000) / 10}% ATK</span>
+                              <span className="text-rose-300">+{Math.round(waStats.critDmg * 1000) / 10}% ST Chí Mạng</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {isOwned ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isEquipped}
+                                onClick={() => {
+                                  soundEngine.playUiClick(1.05);
+                                  onEquipWeaponAura?.(wa.id);
+                                }}
+                                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                                  isEquipped ? 'a2-emerald-btn opacity-80 cursor-default' : 'a2-slate-btn'
+                                }`}
+                              >
+                                {isEquipped ? 'Đang Trang Bị' : 'Kích Hoạt'}
+                              </button>
+                              {wa.id !== 'none' && (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    maxLv || awakeningCrystals < upCost.crystals || save.gold < upCost.gold
+                                  }
+                                  onClick={() => {
+                                    soundEngine.playLevelUp();
+                                    onUpgradeWeaponAura?.(wa.id);
+                                  }}
+                                  className="a2-yellow-btn flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                                >
+                                  {maxLv
+                                    ? 'Tối Đa'
+                                    : `Thức Tỉnh (${upCost.crystals} TT + ${upCost.gold}V)`}
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={awakeningCrystals < wa.unlockCrystals}
+                                onClick={() => {
+                                  soundEngine.playLevelUp();
+                                  onUnlockWeaponAura?.(wa.id, 'crystals');
+                                }}
+                                className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                              >
+                                <AwakenCrystalIcon className="w-3.5 h-3.5" />
+                                <span>Mở · {wa.unlockCrystals} TT</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={save.gems < wa.unlockGems}
+                                onClick={() => {
+                                  soundEngine.playLevelUp();
+                                  onUnlockWeaponAura?.(wa.id, 'gems');
+                                }}
+                                className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                              >
+                                <SoulGemIcon className="w-3.5 h-3.5" />
+                                <span>Mở · {wa.unlockGems} Ngọc</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2343,12 +2726,13 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   );
 };
 
-export type ShopSectionTab = 'privilege' | 'packs' | 'arena_shop' | 'deals' | 'gacha';
+export type ShopSectionTab = 'privilege' | 'wish_topup' | 'packs' | 'arena_shop' | 'deals' | 'gacha';
 
 interface ShopPanelProps {
   save: SaveData;
   powerRating: number;
   initialSection?: ShopSectionTab;
+  wishLastOutcomes?: Array<{ label: string; rarity: 'R' | 'SR' | 'SSR'; isTargetHit: boolean }>;
   onOpenChestWithGacha: (
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare',
     count?: 1 | 10
@@ -2362,6 +2746,11 @@ interface ShopPanelProps {
   onBuyMonthlyCard?: (tier: MonthlyCardTier) => void;
   onClaimMonthlyCardDaily?: (tier: MonthlyCardTier) => void;
   onClaimTopUpEvolutionTier?: (tierId: string) => void;
+  onSelectWishTarget?: (targetId: string) => void;
+  onWishPoolRoll?: (count: 1 | 10) => void;
+  onClaimWishMilestone?: (count: number) => void;
+  onClaimFirstTopUp?: (tierId: string) => void;
+  onBuyHotBundle?: (bundleId: string) => void;
   onOpenVipModal: () => void;
   onOpenArenaModal: () => void;
 }
@@ -2370,6 +2759,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   save,
   powerRating,
   initialSection = 'privilege',
+  wishLastOutcomes = [],
   onOpenChestWithGacha,
   onBuyFlashDeal,
   onUnlockGrowthFundPremium,
@@ -2380,6 +2770,11 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   onBuyMonthlyCard,
   onClaimMonthlyCardDaily,
   onClaimTopUpEvolutionTier,
+  onSelectWishTarget,
+  onWishPoolRoll,
+  onClaimWishMilestone,
+  onClaimFirstTopUp,
+  onBuyHotBundle,
   onOpenVipModal,
   onOpenArenaModal,
 }) => {
@@ -2388,6 +2783,8 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const [vaultBannerFailed, setVaultBannerFailed] = useState(false);
   const [growthImgFailed, setGrowthImgFailed] = useState(false);
   const [privilegeImgFailed, setPrivilegeImgFailed] = useState(false);
+  const [wishBannerFailed, setWishBannerFailed] = useState(false);
+  const [topUpBannerFailed, setTopUpBannerFailed] = useState(false);
   const [oddsModalVariant, setOddsModalVariant] = useState<
     'iron' | 'mythic' | 'rune_bag' | 'rune_rare' | null
   >(null);
@@ -2409,6 +2806,15 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const mp = normalizeMonthlyPrivilege(save.monthlyPrivilege);
   const tu = normalizeTopUpEvolution(save.topUpEvolution);
   const claimableWave7Count = countClaimableWave7Rewards(save);
+  const wishPool = normalizeWishPool(save.wishPool);
+  const firstTopUp = normalizeFirstTopUp(save.firstTopUp);
+  const wishTickets = save.wishTickets ?? 0;
+  const claimedHotBundleIds = save.claimedHotBundleIds ?? [];
+  const wishMilestonesReady = WISH_MILESTONES.filter(
+    (m) => wishPool.totalWishes >= m.count && !wishPool.claimedMilestones.includes(m.count)
+  ).length;
+  const activeWishTarget =
+    WISH_TARGET_CATALOG.find((t) => t.id === wishPool.selectedTargetId) ?? WISH_TARGET_CATALOG[0];
 
   const chests: Array<{
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare';
@@ -2472,20 +2878,21 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   return (
     <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-4 pointer-events-auto">
       <div className="max-w-4xl mx-auto flex flex-col gap-5 pb-8">
-        {/* Commercial Storefront Header + 4-Tab Segmented Bar */}
+        {/* Commercial Storefront Header + Segmented Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-display text-lg sm:text-xl font-black text-amber-200">
               Thương Hội &amp; Kho Báu Hoàng Đạo
             </h2>
             <p className="text-xs text-slate-300 mt-0.5">
-              Quỹ Đầu Tư 800%, Cửa Hàng Xu Arena, Flash Sale mỗi ngày và Triệu Hồi Rương [S].
+              Hồ Ước Nguyện SSR, Nạp Đầu X2 Kim Cương, Gói Hot Giảm Sốc &amp; Quỹ Đầu Tư 800%.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
             {(
               [
+                ['wish_topup', 'Hồ Ước & Nạp X2', wishMilestonesReady],
                 ['privilege', 'Thẻ Tháng & Tích Nạp', claimableWave7Count],
                 ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
                 ['arena_shop', 'Shop Xu Arena', 0],
@@ -2516,6 +2923,406 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
             ))}
           </div>
         </div>
+
+        {/* SECTION WAVE 8: WISH POOL SSR + FIRST TOP-UP X2 + HOT FLASH BUNDLES */}
+        {storeSection === 'wish_topup' && (
+          <section className="space-y-5">
+            {/* 1. First Top-Up X2 Diamonds */}
+            <div className="cel-panel-ornate rounded-2xl overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-12 items-stretch border-b border-amber-400/20">
+                <div className="md:col-span-5 relative min-h-[140px] bg-[#0b1229]">
+                  {!topUpBannerFailed ? (
+                    <img
+                      src={firstTopUpArt}
+                      alt="Nạp Đầu X2 Kim Cương"
+                      referrerPolicy="no-referrer"
+                      onError={() => setTopUpBannerFailed(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-amber-500/25 to-purple-500/25 flex items-center justify-center">
+                      <SoulGemIcon className="w-10 h-10" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                  <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-rose-500 text-white text-[10px] font-black shadow">
+                    NẠP ĐẦU X2 NGỌC HỒN
+                  </span>
+                </div>
+                <div className="md:col-span-7 p-4 flex flex-col justify-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                    Kho Báu Tiếp Tế Hoàng Gia · Khuyến Mãi 100% Lần Đầu
+                  </span>
+                  <h3 className="font-display text-base sm:text-lg font-black text-white">
+                    Nạp Đầu Nhân Đôi Ngọc Hồn + Tặng Mảnh Thú Cưỡi &amp; Thánh Vật [S]
+                  </h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Mỗi mốc nạp nhận gấp đôi Ngọc Hồn ở lần kích hoạt đầu tiên và tự động cộng thẳng vào Quà Tích Lũy Nạp Tiến Hóa.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {FIRST_TOPUP_TIERS.map((tier: FirstTopUpTier) => {
+                  const firstClaimed = firstTopUp.claimedTierIds.includes(tier.id);
+                  const gemYield = firstClaimed
+                    ? tier.baseGems
+                    : tier.baseGems + tier.bonusGemsFirstTime;
+
+                  return (
+                    <div
+                      key={tier.id}
+                      className="rounded-2xl bg-[#070b1a] border border-amber-400/35 p-3.5 flex flex-col justify-between gap-2.5"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1.5 mb-1">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[9px] font-black ${
+                              firstClaimed
+                                ? 'bg-slate-800 text-slate-300'
+                                : 'bg-rose-500 text-white'
+                            }`}
+                          >
+                            {firstClaimed ? 'ĐÃ NHẬN X2' : tier.badge}
+                          </span>
+                          <span className="font-mono-nums text-xs font-black text-amber-300">
+                            {tier.priceLabel}
+                          </span>
+                        </div>
+                        <h4 className="font-display text-sm font-black text-white">{tier.title}</h4>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                          {tier.subtitle}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mt-2 text-[10px] font-mono-nums font-bold">
+                          <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-200">
+                            +{gemYield} Ngọc
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/35 text-amber-200">
+                            +{tier.bonusMountShards} Mảnh Thú
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-rose-500/15 border border-rose-400/35 text-rose-200">
+                            +{tier.bonusAwakeningCrystals} Tinh Thể
+                          </span>
+                          {tier.bonusSGear && (
+                            <span className="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/50 text-sky-200">
+                              +1 Thánh Vật [S]
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onClaimFirstTopUp?.(tier.id);
+                        }}
+                        className="a2-yellow-btn w-full py-2 px-3 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                      >
+                        {firstClaimed ? `Tiếp Tế +${tier.baseGems} Ngọc` : `Nhận Ngay X2 (+${gemYield} Ngọc)`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Hot Flash Bundles */}
+            <div className="space-y-2.5">
+              <h3 className="font-display text-sm sm:text-base font-black text-amber-200">
+                Gói Hot Giảm Giá Sốc (Giới Hạn 1 Lần)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {HOT_FLASH_BUNDLES.map((bundle: HotFlashBundle) => {
+                  const bought = claimedHotBundleIds.includes(bundle.id);
+                  const canAfford = !bought && save.gems >= bundle.costGems;
+                  return (
+                    <div
+                      key={bundle.id}
+                      className="cel-panel-ornate rounded-2xl p-4 flex flex-col justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="px-2 py-0.5 rounded bg-rose-500 text-white text-[10px] font-black">
+                            {bundle.badge}
+                          </span>
+                          <span className="text-[11px] font-mono-nums text-slate-400 line-through">
+                            {bundle.originalGemsLabel}
+                          </span>
+                        </div>
+                        <h4 className="font-display text-sm sm:text-base font-black text-white">
+                          {bundle.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-300 mt-0.5">{bundle.subtitle}</p>
+                        <div className="flex flex-wrap gap-1.5 mt-2 text-[10px] font-mono-nums font-bold">
+                          {bundle.rewardWishTickets > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-200">
+                              +{bundle.rewardWishTickets} Vé Ước Nguyện
+                            </span>
+                          )}
+                          {bundle.rewardMountShards > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/35 text-amber-200">
+                              +{bundle.rewardMountShards} Mảnh Thú Cưỡi
+                            </span>
+                          )}
+                          {bundle.rewardCrystals > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-rose-500/15 border border-rose-400/35 text-rose-200">
+                              +{bundle.rewardCrystals} Tinh Thể
+                            </span>
+                          )}
+                          {bundle.rewardFeathers > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-sky-500/15 border border-sky-400/35 text-sky-200">
+                              +{bundle.rewardFeathers} Lông Vũ
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/35 text-emerald-200">
+                            +{bundle.rewardGold} Vàng
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!canAfford}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onBuyHotBundle?.(bundle.id);
+                        }}
+                        className={`w-full py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                          bought
+                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                            : canAfford
+                            ? 'a2-purple-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {bought ? (
+                          <span>Đã Sở Hữu Gói Hot</span>
+                        ) : (
+                          <>
+                            <SoulGemIcon className="w-3.5 h-3.5" />
+                            <span className="font-mono-nums">Mua Ngay · {bundle.costGems} Ngọc</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. Rate-Up Wish Pool SSR */}
+            <div className="cel-panel-ornate rounded-2xl overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-12 items-stretch border-b border-amber-400/20">
+                <div className="md:col-span-5 relative min-h-[155px] bg-[#0b1229]">
+                  {!wishBannerFailed ? (
+                    <img
+                      src={wishPoolArt}
+                      alt="Hồ Ước Nguyện Rate-Up SSR"
+                      referrerPolicy="no-referrer"
+                      onError={() => setWishBannerFailed(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-sky-500/25 to-purple-500/25 flex items-center justify-center">
+                      <Sparkles className="w-10 h-10 text-sky-300" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                  <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-sky-400 text-slate-950 font-mono-nums text-[10px] font-black shadow">
+                    BẢO HIỂM {WISH_PITY_LIMIT} LƯỢT
+                  </span>
+                </div>
+
+                <div className="md:col-span-7 p-4 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-300">
+                        Hồ Ước Nguyện Định Hướng SSR
+                      </span>
+                      <span className="font-mono-nums text-xs font-black text-purple-200">
+                        Vé Ước Nguyện: {wishTickets}
+                      </span>
+                    </div>
+                    <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                      Mục Tiêu Chọn: {activeWishTarget.name}
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1">{activeWishTarget.desc}</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-mono-nums font-bold">
+                      <span className="text-amber-300">
+                        Tiến độ bảo hiểm SSR: {wishPool.pityCount}/{WISH_PITY_LIMIT}
+                      </span>
+                      <span className="text-slate-300">
+                        Tổng lượt ước: {wishPool.totalWishes}
+                      </span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-slate-950 border border-sky-400/35 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-sky-400 via-purple-400 to-amber-300 transition-all"
+                        style={{
+                          width: `${Math.min(100, Math.round((wishPool.pityCount / WISH_PITY_LIMIT) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* 4 Selectable Rate-Up Targets */}
+                <div>
+                  <div className="text-xs font-black text-amber-200 mb-2">
+                    1. Chọn Mục Tiêu SSR Tăng Tỷ Lệ Rơi (Rate-Up 65% · 100% khi đủ {WISH_PITY_LIMIT} lượt)
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {WISH_TARGET_CATALOG.map((target) => {
+                      const selected = wishPool.selectedTargetId === target.id;
+                      return (
+                        <button
+                          key={target.id}
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick(1.05);
+                            onSelectWishTarget?.(target.id);
+                          }}
+                          className={`rounded-2xl p-3 text-left border transition-colors cursor-pointer ${
+                            selected
+                              ? 'bg-amber-400/15 border-amber-300 ring-1 ring-amber-300/60'
+                              : 'bg-[#070b1a] border-slate-800 hover:border-amber-400/45'
+                          }`}
+                        >
+                          <div className="text-[9px] font-black tracking-wider text-amber-300">
+                            {target.badge}
+                          </div>
+                          <div className="text-xs font-black text-white mt-0.5">{target.name}</div>
+                          <div className="text-[10px] text-slate-400 mt-1 line-clamp-2">
+                            {target.desc}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Wish Roll Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    disabled={wishTickets < 1 && save.gems < WISH_POOL_COST_GEMS}
+                    onClick={() => {
+                      soundEngine.playChestRoll();
+                      onWishPoolRoll?.(1);
+                    }}
+                    className="a2-purple-btn py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>
+                      {wishTickets >= 1
+                        ? 'Ước Nguyện ×1 · 1 Vé'
+                        : `Ước Nguyện ×1 · ${WISH_POOL_COST_GEMS} Ngọc`}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={wishTickets < 10 && save.gems < WISH_POOL_10_COST_GEMS}
+                    onClick={() => {
+                      soundEngine.playChestRoll();
+                      onWishPoolRoll?.(10);
+                    }}
+                    className="a2-yellow-btn py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                  >
+                    <Crown className="w-4 h-4" />
+                    <span>
+                      {wishTickets >= 10
+                        ? 'Ước Nguyện ×10 · 10 Vé'
+                        : `Ước Nguyện ×10 · ${WISH_POOL_10_COST_GEMS} Ngọc (-10%)`}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Wish Milestones */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {WISH_MILESTONES.map((ms) => {
+                    const met = wishPool.totalWishes >= ms.count;
+                    const claimed = wishPool.claimedMilestones.includes(ms.count);
+                    return (
+                      <div
+                        key={ms.count}
+                        className="rounded-xl bg-[#070b1a] border border-slate-800 p-2.5 flex items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="text-xs font-black text-white">{ms.label}</div>
+                          <div className="text-[10px] font-mono-nums text-sky-300">
+                            +{ms.rewardGems}N · +{ms.rewardShards}M · +{ms.rewardCrystals}TT
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!met || claimed}
+                          onClick={() => {
+                            soundEngine.playVictory();
+                            onClaimWishMilestone?.(ms.count);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer ${
+                            claimed
+                              ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300'
+                              : met
+                              ? 'a2-emerald-btn'
+                              : 'bg-slate-900 text-slate-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {claimed ? 'Đã Nhận' : met ? 'Nhận Mốc' : `${wishPool.totalWishes}/${ms.count}`}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Recent Wish Results */}
+                {(wishLastOutcomes.length > 0 || wishPool.recentLogs.length > 0) && (
+                  <div className="rounded-2xl bg-[#070b1a] border border-amber-400/25 p-3 space-y-2">
+                    <div className="text-[11px] font-black text-amber-200">
+                      Kết Quả Triệu Hồi Hồ Ước Nguyện Gần Đây
+                    </div>
+                    {wishLastOutcomes.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                        {wishLastOutcomes.map((o, idx) => (
+                          <div
+                            key={idx}
+                            className={`rounded-xl px-2 py-1.5 border text-[10px] font-bold ${
+                              o.rarity === 'SSR'
+                                ? 'bg-amber-400/15 border-amber-300 text-amber-200'
+                                : o.rarity === 'SR'
+                                ? 'bg-purple-500/15 border-purple-400/50 text-purple-200'
+                                : 'bg-slate-900 border-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {o.label}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {wishPool.recentLogs.map((log, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-[10px] text-slate-200"
+                          >
+                            {log}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* SECTION 0: MONTHLY PRIVILEGE CARDS & TOP-UP EVOLUTION */}
         {storeSection === 'privilege' && (

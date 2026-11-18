@@ -2,7 +2,7 @@ import React from 'react';
 import { BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Trophy, Users } from 'lucide-react';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, DamageBreakdown, ElementalTowerId, GamePhase } from '../types/game';
-import { GoldCoinIcon, PetEssenceIcon, SoulGemIcon, StarDustIcon, WingFeatherIcon } from './GameIcons';
+import { AwakenCrystalIcon, GoldCoinIcon, MountShardIcon, PetEssenceIcon, SoulGemIcon, StarDustIcon, WingFeatherIcon } from './GameIcons';
 
 interface PauseResultModalProps {
   phase: GamePhase.PAUSED | GamePhase.VICTORY | GamePhase.GAME_OVER;
@@ -30,7 +30,12 @@ interface PauseResultModalProps {
   isWorldBossMode?: boolean;
   worldBossDamage?: number;
   worldBossLiveRank?: number;
+  isBloodMoonMode?: boolean;
+  bloodMoonScore?: number;
+  bloodMoonWave?: number;
   wingFeathersEarned?: number;
+  mountShardsEarned?: number;
+  awakeningCrystalsEarned?: number;
   kills: number;
   goldEarned: number;
   gemsEarned: number;
@@ -71,7 +76,12 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   isWorldBossMode = false,
   worldBossDamage = 0,
   worldBossLiveRank = 9,
+  isBloodMoonMode = false,
+  bloodMoonScore = 0,
+  bloodMoonWave = 0,
   wingFeathersEarned = 0,
+  mountShardsEarned = 0,
+  awakeningCrystalsEarned = 0,
   kills,
   goldEarned,
   gemsEarned,
@@ -147,6 +157,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
           {isArenaMode
             ? `Đấu Trường Arena 1v1 · ${arenaOpponentName || 'Kình Địch'}`
+            : isBloodMoonMode
+            ? `Đêm Trăng Máu Sinh Tồn · Đợt ${bloodMoonWave}`
             : isCrystalDefenseMode
             ? `Thủ Thành Pha Lê Tinh Linh · Đợt ${stageReached}/6`
             : isWorldBossMode
@@ -172,6 +184,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? 'Chiến Thắng Đấu Trường!'
               : 'Thất Bại Tại Đấu Trường'
+            : isBloodMoonMode
+            ? isVictory
+              ? 'Sống Sót Qua Đêm Trăng Máu!'
+              : 'Ngã Xuống Dưới Trăng Máu'
             : isCrystalDefenseMode
             ? isVictory
               ? 'Bảo Vệ Thành Công Pha Lê!'
@@ -207,6 +223,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? `Bạn đã đánh bại ${arenaOpponentName || 'đối thủ'} và nhận ${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm Xếp Hạng Arena!`
               : `Đối thủ ${arenaOpponentName || 'đối thủ'} đã thắng thế (${arenaRatingDelta} Điểm Arena). Hãy nâng cấp Bảo Thạch và tái đấu!`
+            : isBloodMoonMode
+            ? `Bạn đã tích lũy ${bloodMoonScore.toLocaleString('vi-VN')} Huyết Tinh qua ${bloodMoonWave} đợt Trăng Máu! Mảnh Thú Cưỡi & Tinh Thể đã chuyển vào Kho.`
             : isCrystalDefenseMode
             ? isVictory
               ? `Pha Lê Tinh Linh còn ${crystalHpPct}% Sinh Lực sau 6 đợt công thành! Lông Vũ Tinh Tú đã chuyển vào Kho Cánh.`
@@ -242,6 +260,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             <div className="text-[10px] text-slate-400 font-bold">
               {isArenaMode
                 ? 'Điểm Xếp Hạng'
+                : isBloodMoonMode
+                ? 'Huyết Tinh'
                 : isCrystalDefenseMode
                 ? 'Đợt Thủ Thành'
                 : isWorldBossMode
@@ -271,6 +291,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             >
               {isArenaMode
                 ? `${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm`
+                : isBloodMoonMode
+                ? bloodMoonScore.toLocaleString('vi-VN')
                 : isCrystalDefenseMode
                 ? `${crystalWavesCleared}/6 (${crystalHpPct}%)`
                 : isWorldBossMode
@@ -311,7 +333,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             </div>
           </div>
 
-          {(starDustEarned > 0 || petEssenceEarned > 0 || wingFeathersEarned > 0) && (
+          {(starDustEarned > 0 || petEssenceEarned > 0 || wingFeathersEarned > 0 || mountShardsEarned > 0 || awakeningCrystalsEarned > 0) && (
             <>
               {starDustEarned > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
@@ -329,6 +351,24 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                     <span>Tinh Chất</span>
                   </span>
                   <span className="font-mono-nums font-black text-emerald-300">+{petEssenceEarned}</span>
+                </div>
+              )}
+              {mountShardsEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-amber-200 font-bold">
+                    <MountShardIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>Mảnh Thú Cưỡi</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-amber-300">+{mountShardsEarned}</span>
+                </div>
+              )}
+              {awakeningCrystalsEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-rose-200 font-bold">
+                    <AwakenCrystalIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span>Tinh Thể Thức Tỉnh</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-rose-300">+{awakeningCrystalsEarned}</span>
                 </div>
               )}
               {wingFeathersEarned > 0 && (

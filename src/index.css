@@ -656,4 +656,25 @@
   animation: a2DockSlideUp 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-
+/* Wave 8: SuperCrit Combat Floating Number */
+@keyframes a2SuperCritFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.7);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -20px) scale(1.26);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-50%, -34px) scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -56px) scale(0.95);
+  }
+}
+.a2-supercrit-float {
+  animation: a2SuperCritFloat 920ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

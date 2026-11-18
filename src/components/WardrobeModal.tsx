@@ -1,0 +1,465 @@
+import React, { useState } from 'react';
+import {
+  Camera,
+  Check,
+  Eye,
+  RotateCcw,
+  RotateCw,
+  Shield,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { ZODIAC_AURAS, HERO_SKINS } from '../data/wave3Data';
+import { ZODIAC_WINGS } from '../data/wave7Data';
+import { WEAPON_AURAS, ZODIAC_MOUNTS } from '../data/wave8Data';
+import {
+  HeroSkinId,
+  LobbyCameraPreset,
+  MountId,
+  SaveData,
+  WardrobePreviewOverrides,
+  WeaponAuraId,
+  WingId,
+} from '../types/game';
+import { AwakenCrystalIcon, MountShardIcon, SoulGemIcon, WingFeatherIcon } from './GameIcons';
+
+interface WardrobeModalProps {
+  save: SaveData;
+  preview: WardrobePreviewOverrides;
+  cameraPreset: LobbyCameraPreset;
+  onChangePreview: (next: WardrobePreviewOverrides) => void;
+  onChangeCameraPreset: (preset: LobbyCameraPreset) => void;
+  onRotateHero: (deltaRad: number) => void;
+  onResetHeroRotation: () => void;
+  onSelectSkin: (skinId: HeroSkinId) => void;
+  onUnlockSkin: (skinId: HeroSkinId) => void;
+  onEquipWing: (wingId: WingId | null) => void;
+  onUnlockWing: (wingId: WingId) => void;
+  onEquipMount: (mountId: MountId | null) => void;
+  onUnlockMount: (mountId: MountId) => void;
+  onEquipWeaponAura: (auraId: WeaponAuraId) => void;
+  onUnlockWeaponAura: (auraId: WeaponAuraId) => void;
+  onClose: () => void;
+}
+
+type WardrobeTab = 'skins' | 'wings' | 'mounts' | 'weapon_auras';
+
+export const WardrobeModal: React.FC<WardrobeModalProps> = ({
+  save,
+  preview,
+  cameraPreset,
+  onChangePreview,
+  onChangeCameraPreset,
+  onRotateHero,
+  onResetHeroRotation,
+  onSelectSkin,
+  onUnlockSkin,
+  onEquipWing,
+  onUnlockWing,
+  onEquipMount,
+  onUnlockMount,
+  onEquipWeaponAura,
+  onUnlockWeaponAura,
+  onClose,
+}) => {
+  const [tab, setTab] = useState<WardrobeTab>('mounts');
+
+  const equippedSkin = save.equippedSkinByHero?.[save.selectedHeroId] ?? 'default';
+  const activeSkinPreview = preview.skinId ?? equippedSkin;
+  const activeWingPreview = preview.wingId !== undefined ? preview.wingId : (save.equippedWingId ?? null);
+  const activeMountPreview = preview.mountId !== undefined ? preview.mountId : (save.equippedMountId ?? null);
+  const activeWeaponAuraPreview =
+    preview.weaponAuraId !== undefined ? preview.weaponAuraId : (save.equippedWeaponAuraId ?? 'none');
+
+  const unlockedSkins = new Set<HeroSkinId>(save.unlockedSkins ?? ['default']);
+  const unlockedWings = new Set<WingId>(save.unlockedWings ?? []);
+  const unlockedMounts = new Set<MountId>(save.unlockedMounts ?? []);
+  const unlockedWeaponAuras = new Set<WeaponAuraId>(save.unlockedWeaponAuras ?? ['none']);
+
+  return (
+    <div className="fixed inset-0 z-40 pointer-events-none flex flex-col justify-between p-3 sm:p-5">
+      {/* Top 360 Viewport Controls Bar (Leaves center hero unobstructed) */}
+      <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 max-w-5xl w-full mx-auto bg-[#080d1e]/90 border border-amber-400/45 rounded-2xl px-3.5 py-2.5 shadow-2xl">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+          <div>
+            <div className="font-display text-sm sm:text-base font-black text-white leading-tight">
+              Phòng Thử Đồ 3D Xoay 360°
+            </div>
+            <div className="text-[10px] text-slate-300 font-semibold">
+              Kéo trực tiếp lên Anh Hùng giữa màn hình hoặc dùng nút xoay để ngắm 360°
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onRotateHero(-0.55)}
+            className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-sky-300" />
+            <span>Xoay Trái</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onRotateHero(0.55)}
+            className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer"
+          >
+            <RotateCw className="w-3.5 h-3.5 text-sky-300" />
+            <span>Xoay Phải</span>
+          </button>
+          <button
+            type="button"
+            onClick={onResetHeroRotation}
+            className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer"
+          >
+            Góc Chuẩn
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onChangeCameraPreset(cameraPreset === 'closeup' ? 'wardrobe' : 'closeup')
+            }
+            className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5 text-amber-300" />
+            <span>{cameraPreset === 'closeup' ? 'Toàn Thân' : 'Cận Cảnh'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng Phòng Thử Đồ"
+            className="px-3 py-1.5 rounded-xl bg-rose-600/85 hover:bg-rose-500 border border-rose-300/60 text-xs font-black text-white flex items-center gap-1 whitespace-nowrap cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Thoát</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Docked Drawer so Hero remains clear at center-top */}
+      <div className="pointer-events-auto w-full max-w-5xl mx-auto cel-panel-ornate rounded-3xl p-3.5 sm:p-4 max-h-[46vh] flex flex-col gap-3 a2-dock-enter">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: 'mounts', label: 'Thú Cưỡi 3D' },
+                { id: 'wings', label: 'Cánh Hoàng Đạo' },
+                { id: 'weapon_auras', label: 'Hào Quang Vũ Khí' },
+                { id: 'skins', label: 'Trang Phục Skin' },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer transition-colors ${
+                  tab === t.id
+                    ? 'a2-yellow-btn'
+                    : 'bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-white'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] font-mono-nums font-black">
+            <span className="flex items-center gap-1 text-purple-300">
+              <SoulGemIcon className="w-3.5 h-3.5" />
+              {save.gems}
+            </span>
+            <span className="flex items-center gap-1 text-amber-300">
+              <MountShardIcon className="w-3.5 h-3.5" />
+              {save.mountShards ?? 0}
+            </span>
+            <span className="flex items-center gap-1 text-sky-300">
+              <WingFeatherIcon className="w-3.5 h-3.5" />
+              {save.wingFeathers ?? 0}
+            </span>
+            <span className="flex items-center gap-1 text-rose-300">
+              <AwakenCrystalIcon className="w-3.5 h-3.5" />
+              {save.awakeningCrystals ?? 0}
+            </span>
+            <button
+              type="button"
+              onClick={() => onChangePreview({})}
+              className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-[10px] text-slate-300 hover:text-white cursor-pointer"
+            >
+              Hoàn Tác Thử
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pr-1">
+          {tab === 'mounts' &&
+            ZODIAC_MOUNTS.map((m) => {
+              const owned = unlockedMounts.has(m.id);
+              const equipped = save.equippedMountId === m.id;
+              const isPreviewing = activeMountPreview === m.id;
+              const hasShards = (save.mountShards ?? 0) >= m.unlockShards;
+              const hasGems = save.gems >= m.unlockGems;
+              const canUnlock = hasShards || hasGems;
+              return (
+                <div
+                  key={m.id}
+                  className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                    isPreviewing
+                      ? 'bg-amber-400/10 border-amber-300'
+                      : 'bg-[#080d1e] border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                      <span className="text-amber-300">{m.badge}</span>
+                      {equipped && <span className="text-emerald-300">ĐANG CƯỠI</span>}
+                    </div>
+                    <div className="text-xs font-black text-white">{m.name}</div>
+                    <div className="text-[10px] text-slate-300 mt-1">
+                      +{m.baseAtk} ATK · +{m.baseHp} HP · +{Math.round(m.baseMoveSpeed * 100)}% Tốc
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onChangePreview({ ...preview, mountId: m.id })}
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Mặc Thử</span>
+                    </button>
+                    {owned ? (
+                      <button
+                        type="button"
+                        onClick={() => onEquipMount(equipped ? null : m.id)}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                          equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                        }`}
+                      >
+                        {equipped ? 'Tháo' : 'Trang Bị'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!canUnlock}
+                        onClick={() => onUnlockMount(m.id)}
+                        className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
+                      >
+                        {hasShards ? `${m.unlockShards} Mảnh` : `${m.unlockGems} Ngọc`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+          {tab === 'wings' &&
+            ZODIAC_WINGS.map((w) => {
+              const owned = unlockedWings.has(w.id);
+              const equipped = save.equippedWingId === w.id;
+              const isPreviewing = activeWingPreview === w.id;
+              const hasFeathers = (save.wingFeathers ?? 0) >= w.unlockFeathers;
+              const hasGems = save.gems >= w.unlockGems;
+              const canUnlock = hasFeathers || hasGems;
+              return (
+                <div
+                  key={w.id}
+                  className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                    isPreviewing
+                      ? 'bg-sky-400/10 border-sky-300'
+                      : 'bg-[#080d1e] border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                      <span className="text-sky-300">{w.badge}</span>
+                      {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
+                    </div>
+                    <div className="text-xs font-black text-white">{w.name}</div>
+                    <div className="text-[10px] text-slate-300 mt-1">
+                      +{w.baseAtk} ATK · +{w.baseHp} HP · +{Math.round(w.baseCrit * 100)}% Chí Mạng
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onChangePreview({ ...preview, wingId: w.id })}
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Mặc Thử</span>
+                    </button>
+                    {owned ? (
+                      <button
+                        type="button"
+                        onClick={() => onEquipWing(equipped ? null : w.id)}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                          equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                        }`}
+                      >
+                        {equipped ? 'Tháo' : 'Trang Bị'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!canUnlock}
+                        onClick={() => onUnlockWing(w.id)}
+                        className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
+                      >
+                        {hasFeathers ? `${w.unlockFeathers} Lông` : `${w.unlockGems} Ngọc`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+          {tab === 'weapon_auras' &&
+            WEAPON_AURAS.map((wa) => {
+              const owned = unlockedWeaponAuras.has(wa.id);
+              const equipped = (save.equippedWeaponAuraId ?? 'none') === wa.id;
+              const isPreviewing = activeWeaponAuraPreview === wa.id;
+              const hasCrystals = (save.awakeningCrystals ?? 0) >= wa.unlockCrystals;
+              const hasGems = save.gems >= wa.unlockGems;
+              const canUnlock = hasCrystals || hasGems;
+              return (
+                <div
+                  key={wa.id}
+                  className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                    isPreviewing
+                      ? 'bg-rose-400/10 border-rose-300'
+                      : 'bg-[#080d1e] border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                      <span className="text-rose-300">{wa.badge}</span>
+                      {equipped && <span className="text-emerald-300">ĐANG KÍCH</span>}
+                    </div>
+                    <div className="text-xs font-black text-white">{wa.name}</div>
+                    <div className="text-[10px] text-slate-300 mt-1">
+                      {wa.id === 'none'
+                        ? wa.desc
+                        : `+${Math.round(wa.baseAtkPct * 100)}% ATK · +${Math.round(
+                            wa.baseCritDmg * 100
+                          )}% ST Chí Mạng`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onChangePreview({ ...preview, weaponAuraId: wa.id })}
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Mặc Thử</span>
+                    </button>
+                    {owned ? (
+                      <button
+                        type="button"
+                        onClick={() => onEquipWeaponAura(wa.id)}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                          equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                        }`}
+                      >
+                        {equipped ? 'Đang Dùng' : 'Trang Bị'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!canUnlock}
+                        onClick={() => onUnlockWeaponAura(wa.id)}
+                        className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
+                      >
+                        {hasCrystals ? `${wa.unlockCrystals} Tinh Thể` : `${wa.unlockGems} Ngọc`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+          {tab === 'skins' &&
+            HERO_SKINS.map((sk) => {
+              const owned = unlockedSkins.has(sk.id);
+              const equipped = equippedSkin === sk.id;
+              const isPreviewing = activeSkinPreview === sk.id;
+              const canUnlock = save.gems >= sk.unlockGems && save.gold >= sk.unlockGold;
+              return (
+                <div
+                  key={sk.id}
+                  className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                    isPreviewing
+                      ? 'bg-purple-400/10 border-purple-300'
+                      : 'bg-[#080d1e] border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                      <span className="text-purple-300">{sk.badge}</span>
+                      {equipped && <span className="text-emerald-300">ĐANG MẶC</span>}
+                    </div>
+                    <div className="text-xs font-black text-white">{sk.name}</div>
+                    <div className="text-[10px] text-slate-300 mt-1">
+                      +{sk.atkBonus} ATK · +{sk.hpBonus} HP
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onChangePreview({ ...preview, skinId: sk.id })}
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Mặc Thử</span>
+                    </button>
+                    {owned ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectSkin(sk.id)}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                          equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                        }`}
+                      >
+                        {equipped ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Đang Mặc
+                          </span>
+                        ) : (
+                          'Trang Bị'
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!canUnlock}
+                        onClick={() => onUnlockSkin(sk.id)}
+                        className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer"
+                      >
+                        {sk.unlockGems > 0 ? `${sk.unlockGems} Ngọc` : `${sk.unlockGold} Vàng`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+
+        {/* Quick Ground Aura Indicator */}
+        <div className="hidden sm:flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2">
+          <span className="flex items-center gap-1.5">
+            <Shield className="w-3.5 h-3.5 text-amber-300" />
+            <span>
+              Hào Quang Sảnh hiện tại:{' '}
+              <strong className="text-amber-200">
+                {ZODIAC_AURAS.find((a) => a.id === (save.equippedAuraId ?? 'zodiac_gold'))?.name ?? 'Hoàng Đạo'}
+              </strong>
+            </span>
+          </span>
+          <span>Mẹo: Nhấn &ldquo;Mặc Thử&rdquo; để xem trước mọi Thú Cưỡi, Cánh &amp; Hào Quang ngay trên mô hình 3D.</span>
+        </div>
+      </div>
+    </div>
+  );
+};

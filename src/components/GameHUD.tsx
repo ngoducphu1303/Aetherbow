@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Crown, Flame, Gem, Heart, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowUp, Crown, Flame, Gem, Heart, Moon, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import { SKILLS_CATALOG } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import {
@@ -130,6 +130,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           ? 'text-emerald-300'
           : d.element === 'playerHit'
           ? 'text-rose-400'
+          : d.isSuperCrit
+          ? 'text-amber-200'
           : d.isCrit
           ? 'text-amber-300'
           : d.element === 'fire'
@@ -142,7 +144,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           ? 'text-lime-400'
           : 'text-slate-100';
 
-        const animClass = d.isCrit || d.label ? 'a2-crit-float' : 'a2-dmg-float';
+        const animClass = d.isSuperCrit
+          ? 'a2-supercrit-float'
+          : d.isCrit || d.label
+          ? 'a2-crit-float'
+          : 'a2-dmg-float';
 
         return (
           <div
@@ -151,14 +157,25 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               left: `${d.x}px`,
               top: `${d.y}px`,
             }}
-            className={`absolute font-mono-nums font-black drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] ${animClass} ${
-              d.isCrit ? 'text-lg sm:text-xl' : 'text-xs sm:text-sm'
+            className={`absolute font-mono-nums font-black ${animClass} ${
+              d.isSuperCrit
+                ? 'text-xl sm:text-2xl drop-shadow-[0_0_12px_rgba(251,191,36,0.95)]'
+                : d.isCrit
+                ? 'text-lg sm:text-xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]'
+                : 'text-xs sm:text-sm drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]'
             } ${colorClass}`}
           >
+            {d.isSuperCrit && !d.label && (
+              <span className="mr-1 px-1 py-0.5 rounded bg-rose-600/90 border border-amber-300/80 text-[9px] text-amber-100 align-middle">
+                BẠO ĐỈNH
+              </span>
+            )}
             {d.label
               ? `${d.label} ${d.amount > 0 ? d.amount : ''}`
               : d.isHeal
               ? `+${d.amount}`
+              : d.isSuperCrit
+              ? `${d.amount}!!`
               : d.isCrit
               ? `${d.amount}!`
               : d.amount}
@@ -228,6 +245,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span>
                 {hud.isArenaMode
                   ? `Đấu Trường 1v1 · ${hud.arenaTimeLeft ?? 45}s`
+                  : hud.isBloodMoonMode
+                  ? `Đêm Trăng Máu · ${hud.bloodMoonTimeLeft ?? 90}s`
                   : hud.isCrystalDefenseMode
                   ? `Thủ Thành Pha Lê · Đợt ${hud.crystalWave ?? 1}/${hud.crystalTotalWaves ?? 6}`
                   : hud.isWorldBossMode
@@ -258,6 +277,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
               {hud.isArenaMode
                 ? `Đối thủ: ${hud.arenaOpponentName ?? 'Kình Địch'}`
+                : hud.isBloodMoonMode
+                ? `Đợt ${hud.bloodMoonWave ?? 1} · Huyết Tinh: ${(hud.bloodMoonScore ?? 0).toLocaleString('vi-VN')}`
                 : hud.isCrystalDefenseMode
                 ? `Bảo vệ Pha Lê · Còn ${hud.enemiesRemaining} quái công thành`
                 : hud.isWorldBossMode
@@ -364,51 +385,102 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
-        {/* Cinematic 2-Layer Boss HP Bar */}
-        {hud.bossName && !hud.isArenaMode && (
-          <div
-            className={`w-full max-w-md mx-auto rounded-2xl px-4 py-2 shadow-2xl border ${
-              hud.bossPhase === 2
-                ? 'bg-[#240713]/95 border-amber-400 shadow-[0_0_24px_rgba(244,63,94,0.45)]'
-                : 'bg-[#170914]/95 border-rose-500/70'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1.5">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                <span className="font-display text-rose-100 tracking-wide truncate">
-                  {hud.bossName}
-                </span>
-                {hud.bossPhase === 2 && (
-                  <span className="px-1.5 py-0.5 rounded bg-rose-600/90 border border-amber-300/80 text-[9px] font-black text-amber-100 whitespace-nowrap">
-                    PHA II · CUỒNG NỘ
-                  </span>
-                )}
-              </div>
-              <span className="font-mono-nums text-rose-200 shrink-0">
-                {hud.isWorldBossMode
-                  ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
-                  : hud.isGuildBossMode
-                  ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
-                  : `${Math.max(0, hud.bossHp)} / ${hud.bossMaxHp}`}
+        {/* Blood Moon Survival Top Progress Strip */}
+        {hud.isBloodMoonMode && (
+          <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#23060f]/95 border border-rose-500/75 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+              <span className="flex items-center gap-1.5 text-rose-200">
+                <Moon className="w-3.5 h-3.5 text-rose-400" />
+                <span>Đêm Trăng Máu · Đợt {hud.bloodMoonWave ?? 1}</span>
+              </span>
+              <span className="font-mono-nums text-amber-300">
+                {(hud.bloodMoonScore ?? 0).toLocaleString('vi-VN')} Huyết Tinh · {hud.bloodMoonTimeLeft ?? 90}s
               </span>
             </div>
-            <div className="hv2-boss-track">
+            <div className="h-2 rounded-full bg-slate-950 border border-rose-500/35 overflow-hidden">
               <div
-                className="h-full bg-amber-300/55 absolute top-0 left-0 transition-all duration-500"
-                style={{ width: `${Math.max(bossHpPct, bossGhostPct)}%` }}
-              />
-              <div
-                className={`h-full relative z-[1] transition-all duration-100 ${
-                  hud.bossPhase === 2
-                    ? 'bg-gradient-to-r from-red-600 via-orange-500 to-amber-300'
-                    : 'bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400'
-                }`}
-                style={{ width: `${bossHpPct}%` }}
+                className="h-full bg-gradient-to-r from-rose-600 via-pink-500 to-amber-300 transition-all duration-300"
+                style={{ width: `${Math.max(0, Math.min(100, ((hud.bloodMoonTimeLeft ?? 0) / 90) * 100))}%` }}
               />
             </div>
           </div>
         )}
+
+        {/* Cinematic Multi-Layer Boss HP Bar */}
+        {hud.bossName && !hud.isArenaMode && (() => {
+          const totalLayers = Math.max(1, hud.bossLayers ?? 1);
+          const curLayer = Math.max(1, Math.min(totalLayers, hud.bossCurrentLayer ?? 1));
+          const layerFrac = Math.max(
+            0,
+            Math.min(100, ((bossHpPct / 100) * totalLayers - (curLayer - 1)) * 100)
+          );
+          const layerPalette = [
+            'from-rose-600 via-rose-500 to-amber-400',
+            'from-amber-500 via-orange-400 to-yellow-300',
+            'from-emerald-500 via-teal-400 to-cyan-300',
+            'from-sky-500 via-blue-400 to-indigo-300',
+            'from-purple-600 via-fuchsia-500 to-pink-300',
+          ];
+          const underPalette = [
+            'bg-slate-950/90',
+            'bg-rose-700/75',
+            'bg-amber-600/75',
+            'bg-emerald-600/75',
+            'bg-sky-600/75',
+          ];
+          const barGrad =
+            hud.bossPhase === 2 && curLayer === 1
+              ? 'from-red-600 via-orange-500 to-amber-300'
+              : layerPalette[(curLayer - 1) % layerPalette.length];
+          const underBg =
+            curLayer > 1 ? underPalette[(curLayer - 1) % underPalette.length] : 'bg-slate-950/90';
+
+          return (
+            <div
+              className={`w-full max-w-md mx-auto rounded-2xl px-4 py-2 shadow-2xl border ${
+                hud.bossPhase === 2
+                  ? 'bg-[#240713]/95 border-amber-400 shadow-[0_0_24px_rgba(244,63,94,0.45)]'
+                  : 'bg-[#170914]/95 border-rose-500/70'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 text-xs font-black mb-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span className="font-display text-rose-100 tracking-wide truncate">
+                    {hud.bossName}
+                  </span>
+                  {totalLayers > 1 && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-300/70 font-mono-nums text-[9px] font-black text-amber-200 whitespace-nowrap">
+                      ×{curLayer}
+                    </span>
+                  )}
+                  {hud.bossPhase === 2 && (
+                    <span className="px-1.5 py-0.5 rounded bg-rose-600/90 border border-amber-300/80 text-[9px] font-black text-amber-100 whitespace-nowrap">
+                      PHA II
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono-nums text-rose-200 shrink-0">
+                  {hud.isWorldBossMode
+                    ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
+                    : hud.isGuildBossMode
+                    ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
+                    : `${Math.max(0, hud.bossHp)} / ${hud.bossMaxHp}`}
+                </span>
+              </div>
+              <div className={`hv2-boss-track ${underBg}`}>
+                <div
+                  className="h-full bg-white/35 absolute top-0 left-0 transition-all duration-300"
+                  style={{ width: `${Math.max(layerFrac, bossGhostPct > bossHpPct ? 100 : layerFrac)}%` }}
+                />
+                <div
+                  className={`h-full relative z-[1] transition-all duration-100 bg-gradient-to-r ${barGrad}`}
+                  style={{ width: `${layerFrac}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Crystal Defense Spirit Crystal HP Bar */}
         {hud.isCrystalDefenseMode && (() => {

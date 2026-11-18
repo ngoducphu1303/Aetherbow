@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Flame, Gem, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
+import { Compass, Flame, Gem, Moon, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
 import { CHAPTERS } from '../data/chaptersData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, ElementalTowerId } from '../types/game';
@@ -17,6 +17,7 @@ interface StageTransitionCurtainProps {
   elementalTowerId?: ElementalTowerId;
   isCrystalDefenseMode?: boolean;
   isWorldBossMode?: boolean;
+  isBloodMoonMode?: boolean;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -34,6 +35,7 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   elementalTowerId = 'fire',
   isCrystalDefenseMode = false,
   isWorldBossMode = false,
+  isBloodMoonMode = false,
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
@@ -47,6 +49,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
           {isArenaMode ? (
             <Swords className="w-12 h-12 text-rose-400" />
+          ) : isBloodMoonMode ? (
+            <Moon className="w-12 h-12 text-rose-400" />
           ) : isCrystalDefenseMode ? (
             <Gem className="w-12 h-12 text-cyan-300" />
           ) : isWorldBossMode ? (
@@ -76,6 +80,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
           {isArenaMode
             ? 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
+            : isBloodMoonMode
+            ? 'Sinh Tồn Nhật Thực · 90 Giây'
             : isCrystalDefenseMode
             ? 'Thánh Địa Pha Lê · 6 Đợt Công Thành'
             : isWorldBossMode
@@ -97,6 +103,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
           {isArenaMode
             ? `VS · ${arenaOpponentName || 'Kình Địch'}`
+            : isBloodMoonMode
+            ? 'Đêm Trăng Máu Sinh Tồn 3D'
             : isCrystalDefenseMode
             ? 'Thủ Thành Pha Lê Tinh Linh 3D'
             : isWorldBossMode
@@ -119,6 +127,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs text-slate-300 font-semibold">
           {isArenaMode
             ? 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
+            : isBloodMoonMode
+            ? 'Hạ gục các đợt quái Huyết Nguyệt trong 90 giây để tích Huyết Tinh, săn Mảnh Thú Cưỡi & Tinh Thể!'
             : isCrystalDefenseMode
             ? 'Đứng chắn trước Pha Lê Tinh Linh ở trung tâm, ngăn quái vật phá hủy qua 6 đợt để nhận Lông Vũ!'
             : isWorldBossMode

@@ -223,6 +223,10 @@ export interface ComputedPlayerStats {
   constellationLevels?: number[];
   equippedWingId?: WingId | null;
   wingLevel?: number;
+  equippedMountId?: MountId | null;
+  mountLevel?: number;
+  equippedWeaponAuraId?: WeaponAuraId;
+  weaponAuraLevel?: number;
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -866,7 +870,8 @@ export interface RunHistoryEntry {
     | 'coop_raid'
     | 'elemental_tower'
     | 'crystal_defense'
-    | 'world_boss';
+    | 'world_boss'
+    | 'blood_moon';
   label: string;
   stageReached: number;
   kills: number;
@@ -945,6 +950,169 @@ export interface SaveData {
   auctionHouse?: AuctionHouseState;
   crystalDefense?: CrystalDefenseState;
   worldBoss?: WorldBossState;
+  mountShards?: number;
+  awakeningCrystals?: number;
+  wishTickets?: number;
+  unlockedMounts?: MountId[];
+  mountLevels?: Partial<Record<MountId, number>>;
+  equippedMountId?: MountId | null;
+  unlockedWeaponAuras?: WeaponAuraId[];
+  weaponAuraLevels?: Partial<Record<WeaponAuraId, number>>;
+  equippedWeaponAuraId?: WeaponAuraId;
+  wishPool?: WishPoolState;
+  firstTopUp?: FirstTopUpState;
+  claimedHotBundleIds?: string[];
+  dispatch?: DispatchState;
+  bloodMoon?: BloodMoonState;
+}
+
+export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
+
+export interface MountDefinition {
+  id: MountId;
+  name: string;
+  badge: string;
+  rarity: 'Hiếm' | 'Sử Thi' | 'Huyền Thoại' | 'Thần Thoại';
+  desc: string;
+  bodyHex: number;
+  armorHex: number;
+  maneHex: number;
+  glowHex: number;
+  baseAtk: number;
+  baseHp: number;
+  baseMoveSpeed: number;
+  baseDr: number;
+  atkPerLv: number;
+  hpPerLv: number;
+  unlockGems: number;
+  unlockShards: number;
+}
+
+export type WeaponAuraId = 'none' | 'solar_flare' | 'astral_prism' | 'void_eclipse';
+
+export interface WeaponAuraDefinition {
+  id: WeaponAuraId;
+  name: string;
+  badge: string;
+  rarity: 'Cơ Bản' | 'Sử Thi' | 'Huyền Thoại' | 'Thần Thoại';
+  desc: string;
+  primaryHex: number;
+  secondaryHex: number;
+  baseAtkPct: number;
+  baseCritDmg: number;
+  atkPctPerLv: number;
+  critDmgPerLv: number;
+  unlockGems: number;
+  unlockCrystals: number;
+}
+
+export type LobbyCameraPreset = 'overview' | 'closeup' | 'wardrobe';
+
+export interface WardrobePreviewOverrides {
+  skinId?: HeroSkinId;
+  wingId?: WingId | null;
+  mountId?: MountId | null;
+  weaponAuraId?: WeaponAuraId;
+}
+
+export type WishTargetKind = 'hero' | 'wing' | 'mount' | 's_gear';
+
+export interface WishTargetItem {
+  id: string;
+  kind: WishTargetKind;
+  refId: string;
+  name: string;
+  badge: string;
+  desc: string;
+  accentColor: string;
+}
+
+export interface WishPoolState {
+  selectedTargetId: string;
+  pityCount: number;
+  totalWishes: number;
+  claimedMilestones: number[];
+  recentLogs: string[];
+}
+
+export interface FirstTopUpTier {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  priceLabel: string;
+  baseGems: number;
+  bonusGemsFirstTime: number;
+  topUpPoints: number;
+  bonusMountShards: number;
+  bonusAwakeningCrystals: number;
+  bonusSGear: boolean;
+  accent: 'sky' | 'amber' | 'rose';
+}
+
+export interface FirstTopUpState {
+  claimedTierIds: string[];
+}
+
+export interface HotFlashBundle {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  discountLabel: string;
+  originalGemsLabel: string;
+  costGems: number;
+  rewardGems: number;
+  rewardGold: number;
+  rewardMountShards: number;
+  rewardCrystals: number;
+  rewardWishTickets: number;
+  rewardFeathers: number;
+  topUpPoints: number;
+}
+
+export interface DispatchMissionDef {
+  id: string;
+  title: string;
+  region: string;
+  rank: 'A' | 'S' | 'SS';
+  durationSec: number;
+  rewardGold: number;
+  rewardGems: number;
+  rewardMountShards: number;
+  rewardCrystals: number;
+  rewardFeathers: number;
+  accentColor: string;
+}
+
+export interface DispatchSlotState {
+  slotIndex: number;
+  missionId: string | null;
+  heroId: HeroId | null;
+  startedAt: number;
+  endsAt: number;
+}
+
+export interface DispatchState {
+  slots: DispatchSlotState[];
+  completedCount: number;
+}
+
+export interface BloodMoonMilestone {
+  score: number;
+  title: string;
+  rewardGems: number;
+  rewardMountShards: number;
+  rewardCrystals: number;
+  rewardFeathers: number;
+}
+
+export interface BloodMoonState {
+  date: string;
+  dailyRunsRemaining: number;
+  bestScore: number;
+  totalClears: number;
+  claimedMilestones: number[];
 }
 
 export interface FloatingDamage {
@@ -953,6 +1121,7 @@ export interface FloatingDamage {
   y: number;
   amount: number;
   isCrit: boolean;
+  isSuperCrit?: boolean;
   isHeal?: boolean;
   label?: string;
   element?: 'fire' | 'ice' | 'storm' | 'poison' | 'playerHit';
@@ -1002,6 +1171,8 @@ export interface HudSnapshot {
   bossHp: number;
   bossMaxHp: number;
   bossPhase: 1 | 2;
+  bossLayers?: number;
+  bossCurrentLayer?: number;
   isTowerMode: boolean;
   towerFloor: number;
   isBossRushMode?: boolean;
@@ -1032,6 +1203,10 @@ export interface HudSnapshot {
   worldBossTimeLeft?: number;
   worldBossTotalDamage?: number;
   worldBossRank?: number;
+  isBloodMoonMode?: boolean;
+  bloodMoonTimeLeft?: number;
+  bloodMoonScore?: number;
+  bloodMoonWave?: number;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;

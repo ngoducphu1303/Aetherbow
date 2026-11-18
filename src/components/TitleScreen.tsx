@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -17,7 +18,9 @@ import {
   Lock,
   Mail,
   Map,
+  Moon,
   ScrollText,
+  Send,
   Settings,
   Shield,
   ShoppingBag,
@@ -33,6 +36,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import bloodMoonArt from '../assets/images/blood_moon_nightmare_1795007597791.jpg';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
 import coopRaidArt from '../assets/images/coop_raid_portal_1795004418576.jpg';
 import crystalDefenseArt from '../assets/images/crystal_defense_sanctum_1795005958099.jpg';
@@ -101,6 +105,16 @@ import {
   normalizeWorldBoss,
 } from '../data/wave7Data';
 import {
+  BLOOD_MOON_DURATION_SEC,
+  BLOOD_MOON_MAX_DAILY_RUNS,
+  BLOOD_MOON_MILESTONES,
+  WISH_MILESTONES,
+  countClaimableWave8Rewards,
+  normalizeBloodMoon,
+  normalizeDispatchState,
+  normalizeWishPool,
+} from '../data/wave8Data';
+import {
   AuraStyleId,
   AvatarFrameId,
   ComputedPlayerStats,
@@ -109,13 +123,18 @@ import {
   FlashDealItem,
   HeroId,
   HeroSkinId,
+  LobbyCameraPreset,
   MonthlyCardTier,
+  MountId,
   PetId,
   SaveData,
+  WeaponAuraId,
   WingId,
 } from '../types/game';
 import {
+  AwakenCrystalIcon,
   GoldCoinIcon,
+  MountShardIcon,
   PetEssenceIcon,
   SoulGemIcon,
   StarDustIcon,
@@ -139,7 +158,8 @@ export type LobbyGameMode =
   | 'daily_rift'
   | 'coop_raid'
   | 'crystal_defense'
-  | 'world_boss';
+  | 'world_boss'
+  | 'blood_moon';
 
 interface TitleScreenProps {
   save: SaveData;
@@ -149,10 +169,13 @@ interface TitleScreenProps {
   activeTab: LobbyTab;
   shopSection?: ShopSectionTab;
   previewHeroId: HeroId;
+  cameraPreset?: LobbyCameraPreset;
+  wishLastOutcomes?: Array<{ label: string; rarity: 'R' | 'SR' | 'SSR'; isTargetHit: boolean }>;
   selectedCoopDifficulty: CoopRaidDifficulty;
   selectedElementalTower: ElementalTowerId;
   onSelectCoopDifficulty: (d: CoopRaidDifficulty) => void;
   onSelectElementalTower: (t: ElementalTowerId) => void;
+  onChangeCameraPreset?: (preset: LobbyCameraPreset) => void;
   onTabChange: (tab: LobbyTab) => void;
   onOpenShopSection: (section: ShopSectionTab) => void;
   onGameModeChange: (mode: LobbyGameMode) => void;
@@ -166,6 +189,8 @@ interface TitleScreenProps {
   onStartElementalTower: (towerId: ElementalTowerId) => void;
   onStartCrystalDefense: () => void;
   onStartWorldBoss: () => void;
+  onStartBloodMoon?: () => void;
+  onClaimBloodMoonMilestone?: (score: number) => void;
   onQuickSweepChapter: (chapterId: number) => void;
   onToggleMute: () => void;
   onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome' | 'journey') => void;
@@ -184,6 +209,8 @@ interface TitleScreenProps {
   onOpenArenaModal: () => void;
   onOpenAuctionModal: () => void;
   onOpenHonorBoard: () => void;
+  onOpenWardrobe?: () => void;
+  onOpenDispatch?: () => void;
   onOpenProfileModal: (tab?: 'profile' | 'achievements' | 'history' | 'codex') => void;
   onOpenMailModal: () => void;
   onOpenSettingsModal: () => void;
@@ -203,6 +230,12 @@ interface TitleScreenProps {
   onUpgradeWing: (wingId: WingId) => void;
   onUnlockAvatarFrame: (frameId: AvatarFrameId) => void;
   onEquipAvatarFrame: (frameId: AvatarFrameId) => void;
+  onUnlockMount?: (mountId: MountId, currency: 'gems' | 'shards') => void;
+  onEquipMount?: (mountId: MountId | null) => void;
+  onUpgradeMount?: (mountId: MountId) => void;
+  onUnlockWeaponAura?: (auraId: WeaponAuraId, currency: 'gems' | 'crystals') => void;
+  onEquipWeaponAura?: (auraId: WeaponAuraId) => void;
+  onUpgradeWeaponAura?: (auraId: WeaponAuraId) => void;
   onEquipGear: (uid: string) => void;
   onUpgradeGear: (uid: string) => void;
   onFuseGear: (uid: string) => void;
@@ -223,6 +256,11 @@ interface TitleScreenProps {
   onBuyMonthlyCard: (tier: MonthlyCardTier) => void;
   onClaimMonthlyCardDaily: (tier: MonthlyCardTier) => void;
   onClaimTopUpEvolutionTier: (tierId: string) => void;
+  onSelectWishTarget?: (targetId: string) => void;
+  onWishPoolRoll?: (count: 1 | 10) => void;
+  onClaimWishMilestone?: (count: number) => void;
+  onClaimFirstTopUp?: (tierId: string) => void;
+  onBuyHotBundle?: (bundleId: string) => void;
   onEquipRune: (uid: string) => void;
   onUnequipRune: (uid: string) => void;
   onFuseRune: (uid: string) => void;
@@ -271,10 +309,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   activeTab,
   shopSection = 'privilege',
   previewHeroId,
+  cameraPreset = 'overview',
+  wishLastOutcomes = [],
   selectedCoopDifficulty,
   selectedElementalTower,
   onSelectCoopDifficulty,
   onSelectElementalTower,
+  onChangeCameraPreset,
   onTabChange,
   onOpenShopSection,
   onGameModeChange,
@@ -288,6 +329,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartElementalTower,
   onStartCrystalDefense,
   onStartWorldBoss,
+  onStartBloodMoon,
+  onClaimBloodMoonMilestone,
   onQuickSweepChapter,
   onToggleMute,
   onOpenRewardsModal,
@@ -303,6 +346,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenArenaModal,
   onOpenAuctionModal,
   onOpenHonorBoard,
+  onOpenWardrobe,
+  onOpenDispatch,
   onOpenProfileModal,
   onOpenMailModal,
   onOpenSettingsModal,
@@ -322,6 +367,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUpgradeWing,
   onUnlockAvatarFrame,
   onEquipAvatarFrame,
+  onUnlockMount,
+  onEquipMount,
+  onUpgradeMount,
+  onUnlockWeaponAura,
+  onEquipWeaponAura,
+  onUpgradeWeaponAura,
   onEquipGear,
   onUpgradeGear,
   onFuseGear,
@@ -339,6 +390,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onBuyMonthlyCard,
   onClaimMonthlyCardDaily,
   onClaimTopUpEvolutionTier,
+  onSelectWishTarget,
+  onWishPoolRoll,
+  onClaimWishMilestone,
+  onClaimFirstTopUp,
+  onBuyHotBundle,
   onEquipRune,
   onUnequipRune,
   onFuseRune,
@@ -357,6 +413,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [towerElImgFailed, setTowerElImgFailed] = useState(false);
   const [crystalDefenseImgFailed, setCrystalDefenseImgFailed] = useState(false);
   const [worldBossImgFailed, setWorldBossImgFailed] = useState(false);
+  const [bloodMoonImgFailed, setBloodMoonImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -418,6 +475,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const auctionState = normalizeAuctionHouse(save.auctionHouse);
   const auctionClaimCount = auctionState.claimBox.length;
   const wave7RewardBadges = countClaimableWave7Rewards(save);
+  const bloodMoonState = normalizeBloodMoon(save.bloodMoon);
+  const dispatchState = normalizeDispatchState(save.dispatch);
+  const dispatchReadyCount = dispatchState.slots.filter(
+    (s) => s.missionId && s.endsAt > 0 && Date.now() >= s.endsAt
+  ).length;
+  const wishPoolState = normalizeWishPool(save.wishPool);
+  const wishMilestonesReady = WISH_MILESTONES.filter(
+    (m) => wishPoolState.totalWishes >= m.count && !wishPoolState.claimedMilestones.includes(m.count)
+  ).length;
+  const wave8Badges = countClaimableWave8Rewards(save);
   const equippedBadgeDef = save.equippedMythicBadgeId
     ? MYTHIC_BADGE_MAP[save.equippedMythicBadgeId]
     : undefined;
@@ -432,7 +499,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     spendMilestoneReady +
     claimableGfCount +
     auctionClaimCount +
-    wave7RewardBadges;
+    wave7RewardBadges +
+    wave8Badges;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -650,6 +718,60 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     {arena.ticketsRemaining}
                   </span>
                 </button>
+
+                {onOpenDispatch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick();
+                      setFeatureDockOpen(false);
+                      onOpenDispatch();
+                    }}
+                    className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl border-sky-400/45 hover:border-amber-200 text-xs font-black text-sky-100 cursor-pointer whitespace-nowrap"
+                  >
+                    <Send className="w-4 h-4 text-sky-300 shrink-0" />
+                    <span className="hidden sm:inline">Phái Cử Đồng Hành</span>
+                    {dispatchReadyCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                        +{dispatchReadyCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                <div className="flex items-center gap-1.5">
+                  {onOpenWardrobe && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick();
+                        setFeatureDockOpen(false);
+                        onOpenWardrobe();
+                      }}
+                      className="cel-panel flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border-amber-300/45 hover:border-amber-200 text-[11px] font-black text-amber-200 cursor-pointer whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span className="hidden sm:inline">Thử Đồ 360°</span>
+                    </button>
+                  )}
+
+                  {onChangeCameraPreset && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick();
+                        onChangeCameraPreset(cameraPreset === 'closeup' ? 'overview' : 'closeup');
+                      }}
+                      title="Chuyển góc Camera Sảnh 3D"
+                      className="cel-panel flex items-center gap-1 px-2.5 py-1.5 rounded-xl border-sky-400/40 hover:border-sky-300 text-[11px] font-black text-sky-200 cursor-pointer whitespace-nowrap"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                      <span className="hidden sm:inline">
+                        {cameraPreset === 'closeup' ? 'Toàn Cảnh' : 'Cận Cảnh'}
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Center Celestial Crest & Unboxed Metrics */}
@@ -961,6 +1083,65 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                           Lv.{totalTalentLv}
                         </span>
                       </button>
+
+                      {onOpenWardrobe && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFeatureDockOpen(false);
+                            onOpenWardrobe();
+                          }}
+                          className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
+                            <Sparkles className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                            <span className="truncate">Thử Đồ 360°</span>
+                          </span>
+                        </button>
+                      )}
+
+                      {onOpenDispatch && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFeatureDockOpen(false);
+                            onOpenDispatch();
+                          }}
+                          className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-black text-emerald-200 truncate">
+                            <Send className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                            <span className="truncate">Phái Cử AI</span>
+                          </span>
+                          {dispatchReadyCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                              +{dispatchReadyCount}
+                            </span>
+                          )}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenShopSection('wish_topup');
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer col-span-2"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-rose-200 truncate">
+                          <Gem className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                          <span className="truncate">Hồ Ước SSR &amp; Nạp X2 Kim Cương</span>
+                        </span>
+                        {wishMilestonesReady > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{wishMilestonesReady}
+                          </span>
+                        )}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1012,7 +1193,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       type="button"
                       onClick={() => {
                         soundEngine.playUiClick(1.05);
-                        if (activeEvent.target === 'world_boss') onGameModeChange('world_boss');
+                        if (activeEvent.target === 'blood_moon') onGameModeChange('blood_moon');
+                        else if (activeEvent.target === 'wish_pool') onOpenShopSection('wish_topup');
+                        else if (activeEvent.target === 'wardrobe') onOpenWardrobe?.();
+                        else if (activeEvent.target === 'dispatch') onOpenDispatch?.();
+                        else if (activeEvent.target === 'world_boss') onGameModeChange('world_boss');
                         else if (activeEvent.target === 'crystal_defense') onGameModeChange('crystal_defense');
                         else if (activeEvent.target === 'auction_house') onOpenAuctionModal();
                         else if (activeEvent.target === 'constellation') onOpenConstellationModal();
@@ -1087,8 +1272,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               )}
 
               <div className="cel-panel-ornate rounded-2xl p-3.5 sm:p-4">
-                {/* 8-Mode Selector (2x4 Grid) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
+                {/* 9-Mode Selector (3x3 Symmetric Grid) */}
+                <div className="grid grid-cols-3 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
                   <button
                     type="button"
                     onClick={() => onGameModeChange('chapter')}
@@ -1205,6 +1390,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   >
                     <Trophy className="w-3 h-3 shrink-0" />
                     <span>Boss Thế Giới</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('blood_moon');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'blood_moon'
+                        ? 'bg-gradient-to-b from-rose-500 via-red-600 to-purple-800 text-white shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Moon className="w-3 h-3 shrink-0" />
+                    <span>Trăng Máu</span>
                   </button>
                 </div>
 
@@ -1747,6 +1947,114 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </button>
                     </div>
                   </>
+                ) : gameMode === 'blood_moon' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-rose-400/55 bg-[#090d1f] shrink-0">
+                        {!bloodMoonImgFailed ? (
+                          <img
+                            src={bloodMoonArt}
+                            alt="Đêm Trăng Máu Sinh Tồn 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setBloodMoonImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Moon className="w-6 h-6 text-rose-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-rose-200 truncate">
+                            Đêm Trăng Máu Sinh Tồn ({BLOOD_MOON_DURATION_SEC}s)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-amber-300 shrink-0">
+                            {bloodMoonState.dailyRunsRemaining}/{BLOOD_MOON_MAX_DAILY_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Săn quái Huyết Nguyệt tích Huyết Tinh để đổi Mảnh Thú Cưỡi, Tinh Thể &amp; Ngọc Hồn!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-rose-400/20 py-1.5 px-1">
+                      <span className="text-rose-300 font-bold">
+                        Kỷ lục: {bloodMoonState.bestScore.toLocaleString('vi-VN')} Huyết Tinh
+                      </span>
+                      <span className="flex items-center gap-1 text-amber-300 font-bold">
+                        <MountShardIcon className="w-3.5 h-3.5" /> Rơi Mảnh Thú Cưỡi
+                      </span>
+                      <span className="flex items-center gap-1 text-rose-200 font-bold">
+                        <AwakenCrystalIcon className="w-3.5 h-3.5" /> Rơi Tinh Thể
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {BLOOD_MOON_MILESTONES.map((ms) => {
+                        const met = bloodMoonState.bestScore >= ms.score;
+                        const claimed = bloodMoonState.claimedMilestones.includes(ms.score);
+                        return (
+                          <button
+                            key={ms.score}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimBloodMoonMilestone?.(ms.score);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ ${ms.score}`
+                              : met
+                              ? `Nhận ${ms.score} (+${ms.rewardGems}N)`
+                              : `${ms.score} HT`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onTabChange('heroes');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <MountShardIcon className="w-4 h-4 shrink-0" />
+                        <span>Thú Cưỡi 3D</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={bloodMoonState.dailyRunsRemaining <= 0}
+                        onClick={onStartBloodMoon}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          bloodMoonState.dailyRunsRemaining > 0
+                            ? 'bg-gradient-to-b from-rose-400 via-red-600 to-purple-800 text-white border border-rose-200/70 shadow-lg'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {bloodMoonState.dailyRunsRemaining > 0
+                            ? 'VÀO ĐÊM TRĂNG MÁU'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {bloodMoonState.dailyRunsRemaining > 0 && <ChevronRight className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
@@ -1857,6 +2165,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onOpenForgeSubTab={onOpenForgeSubTab}
             onSaveBuildPreset={onSaveBuildPreset}
             onApplyBuildPreset={onApplyBuildPreset}
+            onOpenWardrobe={onOpenWardrobe}
             onRotateHero={onRotateHero}
             onResetHeroRotation={onResetHeroRotation}
             onGoShop={() => onTabChange('shop')}
@@ -1883,6 +2192,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onUpgradeWing={onUpgradeWing}
             onUnlockAvatarFrame={onUnlockAvatarFrame}
             onEquipAvatarFrame={onEquipAvatarFrame}
+            onUnlockMount={onUnlockMount}
+            onEquipMount={onEquipMount}
+            onUpgradeMount={onUpgradeMount}
+            onUnlockWeaponAura={onUnlockWeaponAura}
+            onEquipWeaponAura={onEquipWeaponAura}
+            onUpgradeWeaponAura={onUpgradeWeaponAura}
+            onOpenWardrobe={onOpenWardrobe}
             onPreviewUltimate={onPreviewUltimate}
             onRotateHero={onRotateHero}
             onResetHeroRotation={onResetHeroRotation}
@@ -1906,6 +2222,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             save={save}
             powerRating={stats.powerRating}
             initialSection={shopSection}
+            wishLastOutcomes={wishLastOutcomes}
             onOpenChestWithGacha={onOpenChestWithGacha}
             onBuyFlashDeal={onBuyFlashDeal}
             onUnlockGrowthFundPremium={onUnlockGrowthFundPremium}
@@ -1916,6 +2233,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onBuyMonthlyCard={onBuyMonthlyCard}
             onClaimMonthlyCardDaily={onClaimMonthlyCardDaily}
             onClaimTopUpEvolutionTier={onClaimTopUpEvolutionTier}
+            onSelectWishTarget={onSelectWishTarget}
+            onWishPoolRoll={onWishPoolRoll}
+            onClaimWishMilestone={onClaimWishMilestone}
+            onClaimFirstTopUp={onClaimFirstTopUp}
+            onBuyHotBundle={onBuyHotBundle}
             onOpenVipModal={onOpenVipModal}
             onOpenArenaModal={onOpenArenaModal}
           />

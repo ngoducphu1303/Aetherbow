@@ -9,6 +9,7 @@ import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast'
 import { ConstellationModal } from './components/ConstellationModal';
 import { DailyRewardsModal } from './components/DailyRewardsModal';
 import { DestinyWheelModal } from './components/DestinyWheelModal';
+import { DispatchModal } from './components/DispatchModal';
 import { GameHUD } from './components/GameHUD';
 import { HonorLeaderboardModal } from './components/HonorLeaderboardModal';
 import { ShopSectionTab } from './components/LobbyPanels';
@@ -29,6 +30,7 @@ import { StageTransitionCurtain } from './components/StageTransitionCurtain';
 import { TalentsModal } from './components/TalentsModal';
 import { LobbyGameMode, LobbyTab, TitleScreen } from './components/TitleScreen';
 import { VipPrivilegeModal } from './components/VipPrivilegeModal';
+import { WardrobeModal } from './components/WardrobeModal';
 import { ZodiacGuildModal } from './components/ZodiacGuildModal';
 import { CHAPTERS } from './data/chaptersData';
 import {
@@ -164,6 +166,28 @@ import {
   normalizeWorldBoss,
   resolveExpiredAuctionLots,
 } from './data/wave7Data';
+import {
+  BLOOD_MOON_MILESTONES,
+  DISPATCH_SPEEDUP_GOLD,
+  FIRST_TOPUP_TIERS,
+  HOT_FLASH_BUNDLES,
+  MAX_MOUNT_LEVEL,
+  MAX_WEAPON_AURA_LEVEL,
+  MOUNT_MAP,
+  WEAPON_AURA_MAP,
+  WISH_MILESTONES,
+  WISH_POOL_10_COST_GEMS,
+  WISH_POOL_COST_GEMS,
+  WISH_TARGET_CATALOG,
+  getDispatchMissionDef,
+  getMountUpgradeCost,
+  getWeaponAuraUpgradeCost,
+  normalizeBloodMoon,
+  normalizeDispatchState,
+  normalizeFirstTopUp,
+  normalizeWishPool,
+  rollWishPoolBatch,
+} from './data/wave8Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
@@ -190,7 +214,9 @@ import {
   HeroSkinId,
   HudSnapshot,
   JoystickState,
+  LobbyCameraPreset,
   MonthlyCardTier,
+  MountId,
   MythicBadgeId,
   NightMarketOffer,
   PetId,
@@ -203,6 +229,8 @@ import {
   SocketGemColor,
   SocketGemInstance,
   TalentId,
+  WardrobePreviewOverrides,
+  WeaponAuraId,
   WheelOutcome,
   WingId,
 } from './types/game';
@@ -309,6 +337,13 @@ export default function App() {
   const [selectedCoopDifficulty, setSelectedCoopDifficulty] = useState<CoopRaidDifficulty>('normal');
   const [selectedElementalTower, setSelectedElementalTower] = useState<ElementalTowerId>('fire');
   const [previewHeroId, setPreviewHeroId] = useState<HeroId | null>(null);
+  const [cameraPreset, setCameraPreset] = useState<LobbyCameraPreset>('overview');
+  const [wardrobeOpen, setWardrobeOpen] = useState<boolean>(false);
+  const [dispatchOpen, setDispatchOpen] = useState<boolean>(false);
+  const [wardrobePreview, setWardrobePreview] = useState<WardrobePreviewOverrides>({});
+  const [wishLastOutcomes, setWishLastOutcomes] = useState<
+    Array<{ label: string; rarity: 'R' | 'SR' | 'SSR'; isTargetHit: boolean }>
+  >([]);
   const [transitionState, setTransitionState] = useState<{
     chapterId: number;
     isTowerMode: boolean;
@@ -322,6 +357,7 @@ export default function App() {
     elementalTowerId?: ElementalTowerId;
     isCrystalDefenseMode?: boolean;
     isWorldBossMode?: boolean;
+    isBloodMoonMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
@@ -399,6 +435,11 @@ export default function App() {
     isWorldBossMode?: boolean;
     worldBossDamage?: number;
     worldBossLiveRank?: number;
+    isBloodMoonMode?: boolean;
+    bloodMoonScore?: number;
+    bloodMoonWave?: number;
+    mountShards?: number;
+    awakeningCrystals?: number;
     starDust?: number;
     petEssence?: number;
     maxCombo?: number;
@@ -421,7 +462,11 @@ export default function App() {
     const aItem = save.inventory.find((g) => g.uid === aUid);
     const wTpl = wItem ? GEAR_TEMPLATES[wItem.templateId] : undefined;
     const aTpl = aItem ? GEAR_TEMPLATES[aItem.templateId] : undefined;
-    const activeSkinId = save.equippedSkinByHero?.[hero.id] ?? 'default';
+    const isWardrobePreviewActive = phase === GamePhase.TITLE && wardrobeOpen;
+    const activeSkinId =
+      (isWardrobePreviewActive ? wardrobePreview.skinId : undefined) ??
+      save.equippedSkinByHero?.[hero.id] ??
+      'default';
     const skinDef = SKIN_MAP[activeSkinId];
     const auraDef = AURA_MAP[save.equippedAuraId ?? 'zodiac_gold'] ?? AURA_MAP.zodiac_gold;
     const selCh = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
@@ -429,7 +474,37 @@ export default function App() {
       save.equippedWingId && (save.unlockedWings ?? []).includes(save.equippedWingId)
         ? save.equippedWingId
         : null;
-    const wingLevel = equippedWingId ? Math.max(1, save.wingLevels?.[equippedWingId] ?? 1) : 1;
+    const effectiveWingId =
+      isWardrobePreviewActive && wardrobePreview.wingId !== undefined
+        ? wardrobePreview.wingId
+        : equippedWingId;
+    const wingLevel = effectiveWingId ? Math.max(1, save.wingLevels?.[effectiveWingId] ?? 1) : 1;
+
+    const equippedMountId =
+      save.equippedMountId && (save.unlockedMounts ?? []).includes(save.equippedMountId)
+        ? save.equippedMountId
+        : null;
+    const effectiveMountId =
+      isWardrobePreviewActive && wardrobePreview.mountId !== undefined
+        ? wardrobePreview.mountId
+        : equippedMountId;
+    const mountLevel = effectiveMountId
+      ? Math.max(1, save.mountLevels?.[effectiveMountId] ?? 1)
+      : 1;
+
+    const equippedWeaponAuraId: WeaponAuraId =
+      save.equippedWeaponAuraId &&
+      (save.unlockedWeaponAuras ?? ['none']).includes(save.equippedWeaponAuraId)
+        ? save.equippedWeaponAuraId
+        : 'none';
+    const effectiveWeaponAuraId: WeaponAuraId =
+      isWardrobePreviewActive && wardrobePreview.weaponAuraId !== undefined
+        ? wardrobePreview.weaponAuraId
+        : equippedWeaponAuraId;
+    const weaponAuraLevel =
+      effectiveWeaponAuraId !== 'none'
+        ? Math.max(1, save.weaponAuraLevels?.[effectiveWeaponAuraId] ?? 1)
+        : 1;
 
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
@@ -443,12 +518,33 @@ export default function App() {
       auraSecondaryHex: auraDef.secondaryHex,
       pedestalTintHex: selCh.trimHex,
       constellationLevels: playerStats.constellationLevels,
-      wingId: equippedWingId,
+      wingId: effectiveWingId,
       wingLevel,
+      mountId: effectiveMountId,
+      mountLevel,
+      weaponAuraId: effectiveWeaponAuraId,
+      weaponAuraLevel,
     };
-  }, [save, displayHeroId, selectedChapterId, playerStats.constellationLevels]);
+  }, [
+    save,
+    displayHeroId,
+    selectedChapterId,
+    playerStats.constellationLevels,
+    phase,
+    wardrobeOpen,
+    wardrobePreview,
+  ]);
 
-  // Daily Wave 7 rollover bonus runs + initial Auction resolution
+  // Reset transient lobby overlays whenever leaving TITLE phase
+  useEffect(() => {
+    if (phase !== GamePhase.TITLE) {
+      setWardrobeOpen(false);
+      setWardrobePreview({});
+      setDispatchOpen(false);
+    }
+  }, [phase]);
+
+  // Daily Wave 7 & Wave 8 rollover bonus runs + initial Auction resolution
   useEffect(() => {
     const today = getTodayKey();
     setSave((prev) => {
@@ -480,6 +576,11 @@ export default function App() {
         changed = true;
       }
 
+      const normBm = normalizeBloodMoon(prev.bloodMoon);
+      if (!prev.bloodMoon || prev.bloodMoon.date !== today) {
+        changed = true;
+      }
+
       const normAh = normalizeAuctionHouse(prev.auctionHouse);
       const resolvedAh = resolveExpiredAuctionLots(normAh);
       if (resolvedAh !== normAh || !prev.auctionHouse) {
@@ -490,6 +591,7 @@ export default function App() {
       return {
         ...prev,
         crystalDefense: nextCd,
+        bloodMoon: normBm,
         arena: nextArena ?? prev.arena,
         auctionHouse: resolvedAh,
       };
@@ -655,6 +757,7 @@ export default function App() {
           const isElementalTower = Boolean(summary.isElementalTowerMode);
           const isCrystalDefense = Boolean(summary.isCrystalDefenseMode);
           const isWorldBoss = Boolean(summary.isWorldBossMode);
+          const isBloodMoon = Boolean(summary.isBloodMoonMode);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
           const elTowerFloor = summary.elementalTowerFloor ?? 1;
@@ -666,6 +769,10 @@ export default function App() {
           const worldBossDamage = summary.worldBossDamage ?? 0;
           const worldBossLiveRank =
             summary.worldBossLiveRank ?? computeWorldBossLiveRank(worldBossDamage);
+          const bloodMoonScore = summary.bloodMoonScore ?? 0;
+          const bloodMoonWave = summary.bloodMoonWave ?? summary.stageReached ?? 1;
+          const mountShardsGain = summary.mountShards ?? 0;
+          const awakeningCrystalsGain = summary.awakeningCrystals ?? 0;
           const wingFeathersGain = summary.wingFeathers ?? 0;
           const arenaRatingDelta = isArena ? (victory ? (opp?.rewardPoints ?? 24) : -12) : 0;
           const arenaCoinsGain = isArena ? (victory ? (opp?.rewardArenaCoins ?? 35) : 12) : 0;
@@ -674,6 +781,8 @@ export default function App() {
             ? victory
               ? 160
               : 55
+            : isBloodMoon
+            ? Math.min(420, 80 + Math.floor(bloodMoonScore / 6))
             : isCrystalDefense || isWorldBoss
             ? 0
             : isCoopRaid
@@ -699,6 +808,8 @@ export default function App() {
             ? victory
               ? 18
               : 4
+            : isBloodMoon
+            ? Math.min(26, 6 + Math.floor(bloodMoonScore / 130))
             : isCrystalDefense || isWorldBoss || isCoopRaid
             ? 0
             : isElementalTower
@@ -728,6 +839,8 @@ export default function App() {
             ? victory
               ? 95
               : 40
+            : isBloodMoon
+            ? (victory ? 120 : 50) + Math.min(160, Math.floor(bloodMoonScore / 15))
             : isCrystalDefense
             ? (victory ? 130 : crystalWavesCleared * 18) + summary.kills
             : isWorldBoss
@@ -759,6 +872,8 @@ export default function App() {
             starDust: starDustGain,
             petEssence: petEssenceGain,
             wingFeathers: wingFeathersGain,
+            mountShards: mountShardsGain,
+            awakeningCrystals: awakeningCrystalsGain,
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
           });
@@ -778,7 +893,9 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isCrystalDefense
+              mode: isBloodMoon
+                ? 'blood_moon'
+                : isCrystalDefense
                 ? 'crystal_defense'
                 : isWorldBoss
                 ? 'world_boss'
@@ -797,7 +914,9 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isCrystalDefense
+              label: isBloodMoon
+                ? `Đêm Trăng Máu · ${bloodMoonScore.toLocaleString('vi-VN')} HT`
+                : isCrystalDefense
                 ? `Thủ Thành Pha Lê · Đợt ${crystalWavesCleared}/${CRYSTAL_DEFENSE_TOTAL_WAVES}`
                 : isWorldBoss
                 ? `Boss Thế Giới · ${worldBossDamage.toLocaleString('vi-VN')} ST (#${worldBossLiveRank})`
@@ -818,6 +937,8 @@ export default function App() {
                 : `Chương ${summary.chapterId} · ${chName}`,
               stageReached: isArena || isGuildBoss || isWorldBoss
                 ? 1
+                : isBloodMoon
+                ? bloodMoonWave
                 : isCrystalDefense
                 ? crystalWavesCleared
                 : isElementalTower
@@ -836,6 +957,26 @@ export default function App() {
               timestamp: Date.now(),
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isBloodMoon) {
+              const bm = normalizeBloodMoon(prev.bloodMoon);
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                mountShards: (prev.mountShards ?? 0) + mountShardsGain,
+                awakeningCrystals: (prev.awakeningCrystals ?? 0) + awakeningCrystalsGain,
+                wingFeathers: (prev.wingFeathers ?? 0) + wingFeathersGain,
+                bloodMoon: {
+                  ...bm,
+                  bestScore: Math.max(bm.bestScore, bloodMoonScore),
+                  totalClears: bm.totalClears + (victory ? 1 : 0),
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
 
             if (isCrystalDefense) {
               const cd = normalizeCrystalDefense(prev.crystalDefense);
@@ -1508,6 +1649,56 @@ export default function App() {
     engineRef.current?.startWorldBoss(playerStats);
   }, [save.worldBoss, playerStats]);
 
+  const handleStartBloodMoon = useCallback(() => {
+    const bm = normalizeBloodMoon(save.bloodMoon);
+    if (bm.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeBloodMoon(prev.bloodMoon);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        bloodMoon: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 10,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isBloodMoonMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startBloodMoonSurvival(playerStats);
+  }, [save.bloodMoon, playerStats]);
+
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -1601,6 +1792,8 @@ export default function App() {
         !arenaModalOpen &&
         !auctionModalOpen &&
         !honorBoardOpen &&
+        !wardrobeOpen &&
+        !dispatchOpen &&
         !profileModalTab &&
         !mailModalOpen &&
         !sweepResult &&
@@ -1609,7 +1802,9 @@ export default function App() {
         !gachaReveal
       ) {
         e.preventDefault();
-        if (gameMode === 'crystal_defense') {
+        if (gameMode === 'blood_moon') {
+          handleStartBloodMoon();
+        } else if (gameMode === 'crystal_defense') {
           handleStartCrystalDefense();
         } else if (gameMode === 'world_boss') {
           handleStartWorldBoss();
@@ -1646,6 +1841,8 @@ export default function App() {
     arenaModalOpen,
     auctionModalOpen,
     honorBoardOpen,
+    wardrobeOpen,
+    dispatchOpen,
     profileModalTab,
     mailModalOpen,
     sweepResult,
@@ -1664,6 +1861,7 @@ export default function App() {
     handleStartElementalTower,
     handleStartCrystalDefense,
     handleStartWorldBoss,
+    handleStartBloodMoon,
   ]);
 
   // Hero Handlers
@@ -4084,6 +4282,425 @@ export default function App() {
     });
   }, []);
 
+  // Wave 8 Handlers: Zodiac Mounts, Weapon Auras, Camera Presets, Wardrobe 3D, Wish Pool SSR, First Top-Up X2, Hot Flash Bundles, Companion Dispatch & Blood Moon
+  const handleChangeCameraPreset = useCallback((preset: LobbyCameraPreset) => {
+    setCameraPreset(preset);
+    engineRef.current?.setLobbyCameraPreset(preset);
+  }, []);
+
+  const handleOpenWardrobe = useCallback(() => {
+    setWardrobeOpen(true);
+    setWardrobePreview({});
+    setCameraPreset('wardrobe');
+    engineRef.current?.setLobbyCameraPreset('wardrobe');
+  }, []);
+
+  const handleCloseWardrobe = useCallback(() => {
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setCameraPreset('overview');
+    engineRef.current?.setLobbyCameraPreset('overview');
+  }, []);
+
+  const handleUnlockMount = useCallback((mountId: MountId, currency: 'gems' | 'shards') => {
+    const def = MOUNT_MAP[mountId];
+    if (!def) return;
+    setSave((prev) => {
+      const unlocked = prev.unlockedMounts ?? [];
+      if (unlocked.includes(mountId)) return prev;
+      const shards = prev.mountShards ?? 0;
+      if (currency === 'gems' && prev.gems < def.unlockGems) return prev;
+      if (currency === 'shards' && shards < def.unlockShards) return prev;
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: currency === 'gems' ? prev.gems - def.unlockGems : prev.gems,
+        mountShards: currency === 'shards' ? shards - def.unlockShards : shards,
+        nightMarket: addGemsSpent(prev, currency === 'gems' ? def.unlockGems : 0),
+        unlockedMounts: [...unlocked, mountId],
+        mountLevels: { ...(prev.mountLevels ?? {}), [mountId]: 1 },
+        equippedMountId: mountId,
+      };
+    });
+  }, []);
+
+  const handleEquipMount = useCallback((mountId: MountId | null) => {
+    soundEngine.playUiClick(1.08);
+    setSave((prev) => {
+      if (mountId === null) return { ...prev, equippedMountId: null };
+      if (!(prev.unlockedMounts ?? []).includes(mountId)) return prev;
+      return { ...prev, equippedMountId: mountId };
+    });
+  }, []);
+
+  const handleUpgradeMount = useCallback((mountId: MountId) => {
+    setSave((prev) => {
+      if (!(prev.unlockedMounts ?? []).includes(mountId)) return prev;
+      const curLv = Math.max(1, prev.mountLevels?.[mountId] ?? 1);
+      if (curLv >= MAX_MOUNT_LEVEL) return prev;
+      const cost = getMountUpgradeCost(curLv);
+      const shards = prev.mountShards ?? 0;
+      if (shards < cost.shards || prev.gold < cost.gold) return prev;
+      soundEngine.playLevelUp();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        mountShards: shards - cost.shards,
+        mountLevels: { ...(prev.mountLevels ?? {}), [mountId]: curLv + 1 },
+      };
+    });
+  }, []);
+
+  const handleUnlockWeaponAura = useCallback(
+    (auraId: WeaponAuraId, currency: 'gems' | 'crystals') => {
+      const def = WEAPON_AURA_MAP[auraId];
+      if (!def || auraId === 'none') return;
+      setSave((prev) => {
+        const unlocked = prev.unlockedWeaponAuras ?? ['none'];
+        if (unlocked.includes(auraId)) return prev;
+        const crystals = prev.awakeningCrystals ?? 0;
+        if (currency === 'gems' && prev.gems < def.unlockGems) return prev;
+        if (currency === 'crystals' && crystals < def.unlockCrystals) return prev;
+
+        soundEngine.playAchievement();
+        return {
+          ...prev,
+          gems: currency === 'gems' ? prev.gems - def.unlockGems : prev.gems,
+          awakeningCrystals: currency === 'crystals' ? crystals - def.unlockCrystals : crystals,
+          nightMarket: addGemsSpent(prev, currency === 'gems' ? def.unlockGems : 0),
+          unlockedWeaponAuras: [...unlocked, auraId],
+          weaponAuraLevels: { ...(prev.weaponAuraLevels ?? {}), [auraId]: 1 },
+          equippedWeaponAuraId: auraId,
+        };
+      });
+    },
+    []
+  );
+
+  const handleEquipWeaponAura = useCallback((auraId: WeaponAuraId) => {
+    soundEngine.playUiClick(1.06);
+    setSave((prev) => {
+      const unlocked = prev.unlockedWeaponAuras ?? ['none'];
+      if (!unlocked.includes(auraId)) return prev;
+      return { ...prev, equippedWeaponAuraId: auraId };
+    });
+  }, []);
+
+  const handleUpgradeWeaponAura = useCallback((auraId: WeaponAuraId) => {
+    if (auraId === 'none') return;
+    setSave((prev) => {
+      if (!(prev.unlockedWeaponAuras ?? ['none']).includes(auraId)) return prev;
+      const curLv = Math.max(1, prev.weaponAuraLevels?.[auraId] ?? 1);
+      if (curLv >= MAX_WEAPON_AURA_LEVEL) return prev;
+      const cost = getWeaponAuraUpgradeCost(curLv);
+      const crystals = prev.awakeningCrystals ?? 0;
+      if (crystals < cost.crystals || prev.gold < cost.gold) return prev;
+      soundEngine.playLevelUp();
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        awakeningCrystals: crystals - cost.crystals,
+        weaponAuraLevels: { ...(prev.weaponAuraLevels ?? {}), [auraId]: curLv + 1 },
+      };
+    });
+  }, []);
+
+  const handleSelectWishTarget = useCallback((targetId: string) => {
+    setSave((prev) => {
+      const wp = normalizeWishPool(prev.wishPool);
+      return {
+        ...prev,
+        wishPool: { ...wp, selectedTargetId: targetId },
+      };
+    });
+  }, []);
+
+  const handleWishPoolRoll = useCallback(
+    (count: 1 | 10) => {
+      const curWp = normalizeWishPool(save.wishPool);
+      const tickets = save.wishTickets ?? 0;
+      const useTickets = tickets >= count;
+      const gemCost = count === 10 ? WISH_POOL_10_COST_GEMS : WISH_POOL_COST_GEMS;
+      if (!useTickets && save.gems < gemCost) return;
+
+      const targetDef =
+        WISH_TARGET_CATALOG.find((t) => t.id === curWp.selectedTargetId) ?? WISH_TARGET_CATALOG[0];
+      const { outcomes, nextPity } = rollWishPoolBatch(count, curWp.pityCount, targetDef.name);
+      setWishLastOutcomes(
+        outcomes.map((o) => ({ label: o.label, rarity: o.rarity, isTargetHit: o.isTargetHit }))
+      );
+      soundEngine.playVictory();
+
+      setSave((prev) => {
+        const wp = normalizeWishPool(prev.wishPool);
+        const curTickets = prev.wishTickets ?? 0;
+        const canUseTickets = curTickets >= count;
+        if (!canUseTickets && prev.gems < gemCost) return prev;
+
+        let nextGold = prev.gold;
+        let nextGems = canUseTickets ? prev.gems : prev.gems - gemCost;
+        let nextDust = prev.starDust ?? 0;
+        let nextShards = prev.mountShards ?? 0;
+        let nextCrystals = prev.awakeningCrystals ?? 0;
+        let nextFeathers = prev.wingFeathers ?? 0;
+        const nextInv = [...prev.inventory];
+        const nextMounts = new Set<MountId>(prev.unlockedMounts ?? []);
+        let nextEquippedMount = prev.equippedMountId ?? null;
+        const nextMountLevels = { ...(prev.mountLevels ?? {}) };
+        const nextWings = new Set<WingId>(prev.unlockedWings ?? []);
+        let nextEquippedWing = prev.equippedWingId ?? null;
+        const nextWingLevels = { ...(prev.wingLevels ?? {}) };
+        const nextHeroes = new Set<HeroId>(prev.unlockedHeroes);
+        const nextHeroStars = { ...prev.heroStars };
+
+        for (const out of outcomes) {
+          if (out.rewardKind === 'gold') nextGold += out.amount;
+          else if (out.rewardKind === 'star_dust') nextDust += out.amount;
+          else if (out.rewardKind === 'mount_shards') {
+            nextShards += out.amount;
+            if (out.rarity === 'SSR') nextCrystals += 10;
+          } else if (out.rewardKind === 'awaken_crystals') nextCrystals += out.amount;
+          else if (out.rewardKind === 'wing_feathers') nextFeathers += out.amount;
+          else if (out.rewardKind === 'epic_gear') {
+            nextInv.push(rollChestGear(false, Rarity.EPIC));
+          } else if (out.rewardKind === 'target') {
+            if (targetDef.kind === 'mount') {
+              const mId = targetDef.refId as MountId;
+              if (nextMounts.has(mId)) {
+                nextShards += 30;
+              } else {
+                nextMounts.add(mId);
+                nextMountLevels[mId] = 1;
+                if (!nextEquippedMount) nextEquippedMount = mId;
+              }
+            } else if (targetDef.kind === 'wing') {
+              const wId = targetDef.refId as WingId;
+              if (nextWings.has(wId)) {
+                nextFeathers += 28;
+              } else {
+                nextWings.add(wId);
+                nextWingLevels[wId] = 1;
+                if (!nextEquippedWing) nextEquippedWing = wId;
+              }
+            } else if (targetDef.kind === 'hero') {
+              const hId = targetDef.refId as HeroId;
+              if (!nextHeroes.has(hId)) {
+                nextHeroes.add(hId);
+              } else {
+                const curS = nextHeroStars[hId] ?? 0;
+                if (curS < 5) nextHeroStars[hId] = curS + 1;
+                else nextGems += 25;
+              }
+            } else {
+              nextInv.push(rollChestGear(true, Rarity.LEGENDARY, true));
+            }
+          }
+        }
+
+        const newLogs = [...outcomes.map((o) => o.label).reverse(), ...wp.recentLogs].slice(0, 8);
+
+        return {
+          ...prev,
+          gold: nextGold,
+          gems: nextGems,
+          wishTickets: canUseTickets ? curTickets - count : curTickets,
+          starDust: nextDust,
+          mountShards: nextShards,
+          awakeningCrystals: nextCrystals,
+          wingFeathers: nextFeathers,
+          inventory: nextInv,
+          unlockedMounts: Array.from(nextMounts),
+          mountLevels: nextMountLevels,
+          equippedMountId: nextEquippedMount,
+          unlockedWings: Array.from(nextWings),
+          wingLevels: nextWingLevels,
+          equippedWingId: nextEquippedWing,
+          unlockedHeroes: Array.from(nextHeroes),
+          heroStars: nextHeroStars,
+          nightMarket: addGemsSpent(prev, canUseTickets ? 0 : gemCost),
+          wishPool: {
+            ...wp,
+            pityCount: nextPity,
+            totalWishes: wp.totalWishes + count,
+            recentLogs: newLogs,
+          },
+        };
+      });
+    },
+    [save.wishPool, save.wishTickets, save.gems]
+  );
+
+  const handleClaimWishMilestone = useCallback((count: number) => {
+    const ms = WISH_MILESTONES.find((m) => m.count === count);
+    if (!ms) return;
+    setSave((prev) => {
+      const wp = normalizeWishPool(prev.wishPool);
+      if (wp.totalWishes < ms.count || wp.claimedMilestones.includes(ms.count)) return prev;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + ms.rewardGems,
+        mountShards: (prev.mountShards ?? 0) + ms.rewardShards,
+        awakeningCrystals: (prev.awakeningCrystals ?? 0) + ms.rewardCrystals,
+        wishPool: {
+          ...wp,
+          claimedMilestones: [...wp.claimedMilestones, ms.count],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimFirstTopUp = useCallback((tierId: string) => {
+    const tier = FIRST_TOPUP_TIERS.find((t) => t.id === tierId);
+    if (!tier) return;
+    setSave((prev) => {
+      const ftu = normalizeFirstTopUp(prev.firstTopUp);
+      const alreadyClaimed = ftu.claimedTierIds.includes(tier.id);
+      const gemGain = alreadyClaimed
+        ? tier.baseGems
+        : tier.baseGems + tier.bonusGemsFirstTime;
+      const nextInv = tier.bonusSGear
+        ? [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)]
+        : prev.inventory;
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + gemGain,
+        mountShards: (prev.mountShards ?? 0) + tier.bonusMountShards,
+        awakeningCrystals: (prev.awakeningCrystals ?? 0) + tier.bonusAwakeningCrystals,
+        inventory: nextInv,
+        topUpEvolution: addTopUpPoints(prev, tier.topUpPoints),
+        firstTopUp: alreadyClaimed
+          ? ftu
+          : { claimedTierIds: [...ftu.claimedTierIds, tier.id] },
+      };
+    });
+  }, []);
+
+  const handleBuyHotBundle = useCallback((bundleId: string) => {
+    const bundle = HOT_FLASH_BUNDLES.find((b) => b.id === bundleId);
+    if (!bundle) return;
+    setSave((prev) => {
+      const claimed = prev.claimedHotBundleIds ?? [];
+      if (claimed.includes(bundle.id) || prev.gems < bundle.costGems) return prev;
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: prev.gems - bundle.costGems + bundle.rewardGems,
+        gold: prev.gold + bundle.rewardGold,
+        mountShards: (prev.mountShards ?? 0) + bundle.rewardMountShards,
+        awakeningCrystals: (prev.awakeningCrystals ?? 0) + bundle.rewardCrystals,
+        wishTickets: (prev.wishTickets ?? 0) + bundle.rewardWishTickets,
+        wingFeathers: (prev.wingFeathers ?? 0) + bundle.rewardFeathers,
+        nightMarket: addGemsSpent(prev, bundle.costGems),
+        topUpEvolution: addTopUpPoints(prev, bundle.topUpPoints),
+        claimedHotBundleIds: [...claimed, bundle.id],
+      };
+    });
+  }, []);
+
+  const handleStartDispatch = useCallback(
+    (slotIndex: number, missionId: string, heroId: HeroId) => {
+      const mission = getDispatchMissionDef(missionId);
+      if (!mission) return;
+      setSave((prev) => {
+        if (!prev.unlockedHeroes.includes(heroId)) return prev;
+        const dispatch = normalizeDispatchState(prev.dispatch);
+        if (slotIndex < 0 || slotIndex >= dispatch.slots.length) return prev;
+        if (dispatch.slots[slotIndex].missionId !== null) return prev;
+        if (dispatch.slots.some((s) => s.heroId === heroId && s.missionId !== null)) return prev;
+
+        const now = Date.now();
+        const nextSlots = [...dispatch.slots];
+        nextSlots[slotIndex] = {
+          slotIndex,
+          missionId: mission.id,
+          heroId,
+          startedAt: now,
+          endsAt: now + mission.durationSec * 1000,
+        };
+        soundEngine.playUiClick(1.1);
+        return {
+          ...prev,
+          dispatch: { ...dispatch, slots: nextSlots },
+        };
+      });
+    },
+    []
+  );
+
+  const handleSpeedupDispatch = useCallback((slotIndex: number) => {
+    setSave((prev) => {
+      if (prev.gold < DISPATCH_SPEEDUP_GOLD) return prev;
+      const dispatch = normalizeDispatchState(prev.dispatch);
+      const slot = dispatch.slots[slotIndex];
+      if (!slot || !slot.missionId) return prev;
+      const nextSlots = [...dispatch.slots];
+      nextSlots[slotIndex] = { ...slot, endsAt: Date.now() };
+      soundEngine.playLevelUp();
+      return {
+        ...prev,
+        gold: prev.gold - DISPATCH_SPEEDUP_GOLD,
+        dispatch: { ...dispatch, slots: nextSlots },
+      };
+    });
+  }, []);
+
+  const handleClaimDispatch = useCallback((slotIndex: number) => {
+    setSave((prev) => {
+      const dispatch = normalizeDispatchState(prev.dispatch);
+      const slot = dispatch.slots[slotIndex];
+      if (!slot || !slot.missionId || Date.now() < slot.endsAt) return prev;
+      const mission = getDispatchMissionDef(slot.missionId);
+      if (!mission) return prev;
+
+      const nextSlots = [...dispatch.slots];
+      nextSlots[slotIndex] = {
+        slotIndex,
+        missionId: null,
+        heroId: null,
+        startedAt: 0,
+        endsAt: 0,
+      };
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gold: prev.gold + mission.rewardGold,
+        gems: prev.gems + mission.rewardGems,
+        mountShards: (prev.mountShards ?? 0) + mission.rewardMountShards,
+        awakeningCrystals: (prev.awakeningCrystals ?? 0) + mission.rewardCrystals,
+        wingFeathers: (prev.wingFeathers ?? 0) + mission.rewardFeathers,
+        dispatch: {
+          slots: nextSlots,
+          completedCount: dispatch.completedCount + 1,
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimBloodMoonMilestone = useCallback((score: number) => {
+    const ms = BLOOD_MOON_MILESTONES.find((m) => m.score === score);
+    if (!ms) return;
+    setSave((prev) => {
+      const bm = normalizeBloodMoon(prev.bloodMoon);
+      if (bm.bestScore < ms.score || bm.claimedMilestones.includes(ms.score)) return prev;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems + ms.rewardGems,
+        mountShards: (prev.mountShards ?? 0) + ms.rewardMountShards,
+        awakeningCrystals: (prev.awakeningCrystals ?? 0) + ms.rewardCrystals,
+        wingFeathers: (prev.wingFeathers ?? 0) + ms.rewardFeathers,
+        bloodMoon: {
+          ...bm,
+          claimedMilestones: [...bm.claimedMilestones, ms.score],
+        },
+      };
+    });
+  }, []);
+
   const activeChapter =
     CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
 
@@ -4144,10 +4761,13 @@ export default function App() {
           activeTab={activeLobbyTab}
           shopSection={shopSection}
           previewHeroId={previewHeroId ?? save.selectedHeroId}
+          cameraPreset={cameraPreset}
+          wishLastOutcomes={wishLastOutcomes}
           selectedCoopDifficulty={selectedCoopDifficulty}
           selectedElementalTower={selectedElementalTower}
           onSelectCoopDifficulty={(d) => setSelectedCoopDifficulty(d)}
           onSelectElementalTower={(t) => setSelectedElementalTower(t)}
+          onChangeCameraPreset={handleChangeCameraPreset}
           onTabChange={(tab) => {
             soundEngine.playUiClick();
             setActiveLobbyTab(tab);
@@ -4173,6 +4793,8 @@ export default function App() {
           onStartElementalTower={handleStartElementalTower}
           onStartCrystalDefense={handleStartCrystalDefense}
           onStartWorldBoss={handleStartWorldBoss}
+          onStartBloodMoon={handleStartBloodMoon}
+          onClaimBloodMoonMilestone={handleClaimBloodMoonMilestone}
           onQuickSweepChapter={handleQuickSweepChapter}
           onToggleMute={handleToggleMute}
           onOpenRewardsModal={(tab) => setRewardsModalTab(tab)}
@@ -4190,6 +4812,8 @@ export default function App() {
           onOpenArenaModal={() => setArenaModalOpen(true)}
           onOpenAuctionModal={() => setAuctionModalOpen(true)}
           onOpenHonorBoard={() => setHonorBoardOpen(true)}
+          onOpenWardrobe={handleOpenWardrobe}
+          onOpenDispatch={() => setDispatchOpen(true)}
           onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
           onOpenMailModal={() => setMailModalOpen(true)}
           onOpenSettingsModal={() => setSettingsOpen(true)}
@@ -4209,6 +4833,12 @@ export default function App() {
           onUpgradeWing={handleUpgradeWing}
           onUnlockAvatarFrame={handleUnlockAvatarFrame}
           onEquipAvatarFrame={handleEquipAvatarFrame}
+          onUnlockMount={handleUnlockMount}
+          onEquipMount={handleEquipMount}
+          onUpgradeMount={handleUpgradeMount}
+          onUnlockWeaponAura={handleUnlockWeaponAura}
+          onEquipWeaponAura={handleEquipWeaponAura}
+          onUpgradeWeaponAura={handleUpgradeWeaponAura}
           onEquipGear={handleEquip}
           onUpgradeGear={handleUpgrade}
           onFuseGear={handleFuse}
@@ -4226,6 +4856,11 @@ export default function App() {
           onBuyMonthlyCard={handleBuyMonthlyCard}
           onClaimMonthlyCardDaily={handleClaimMonthlyCardDaily}
           onClaimTopUpEvolutionTier={handleClaimTopUpEvolutionTier}
+          onSelectWishTarget={handleSelectWishTarget}
+          onWishPoolRoll={handleWishPoolRoll}
+          onClaimWishMilestone={handleClaimWishMilestone}
+          onClaimFirstTopUp={handleClaimFirstTopUp}
+          onBuyHotBundle={handleBuyHotBundle}
           onEquipRune={handleEquipRune}
           onUnequipRune={handleUnequipRune}
           onFuseRune={handleFuseRune}
@@ -4337,7 +4972,12 @@ export default function App() {
           worldBossLiveRank={
             runSummary?.worldBossLiveRank ?? hud.worldBossRank ?? 9
           }
+          isBloodMoonMode={runSummary?.isBloodMoonMode ?? hud.isBloodMoonMode}
+          bloodMoonScore={runSummary?.bloodMoonScore ?? hud.bloodMoonScore ?? 0}
+          bloodMoonWave={runSummary?.bloodMoonWave ?? hud.bloodMoonWave ?? 1}
           wingFeathersEarned={runSummary?.wingFeathers ?? 0}
+          mountShardsEarned={runSummary?.mountShards ?? 0}
+          awakeningCrystalsEarned={runSummary?.awakeningCrystals ?? 0}
           kills={runSummary?.kills ?? hud.kills}
           goldEarned={runSummary?.gold ?? hud.runGold}
           gemsEarned={runSummary?.gems ?? hud.runGems}
@@ -4348,7 +4988,15 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isCrystalDefenseMode ?? hud.isCrystalDefenseMode)
+            (runSummary?.isBloodMoonMode ?? hud.isBloodMoonMode)
+              ? () => {
+                  if (normalizeBloodMoon(save.bloodMoon).dailyRunsRemaining > 0) {
+                    handleStartBloodMoon();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isCrystalDefenseMode ?? hud.isCrystalDefenseMode)
               ? () => {
                   if (normalizeCrystalDefense(save.crystalDefense).runsRemaining > 0) {
                     handleStartCrystalDefense();
@@ -4618,6 +5266,60 @@ export default function App() {
         />
       )}
 
+      {phase === GamePhase.TITLE && enteredGame && dispatchOpen && (
+        <DispatchModal
+          save={save}
+          onStartDispatch={handleStartDispatch}
+          onSpeedupDispatch={handleSpeedupDispatch}
+          onClaimDispatch={handleClaimDispatch}
+          onClose={() => setDispatchOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && wardrobeOpen && (
+        <WardrobeModal
+          save={save}
+          preview={wardrobePreview}
+          cameraPreset={cameraPreset}
+          onChangePreview={setWardrobePreview}
+          onChangeCameraPreset={handleChangeCameraPreset}
+          onRotateHero={(deltaRad) => engineRef.current?.rotateLobbyHero(deltaRad)}
+          onResetHeroRotation={() => engineRef.current?.resetLobbyHeroRotation()}
+          onSelectSkin={(skinId) => handleEquipSkin(save.selectedHeroId, skinId)}
+          onUnlockSkin={(skinId) =>
+            handleUnlockSkin(skinId, SKIN_MAP[skinId]?.unlockGems > 0 ? 'gems' : 'gold')
+          }
+          onEquipWing={handleEquipWing}
+          onUnlockWing={(wingId) =>
+            handleUnlockWing(
+              wingId,
+              (save.wingFeathers ?? 0) >= (WING_MAP[wingId]?.unlockFeathers ?? Infinity)
+                ? 'feathers'
+                : 'gems'
+            )
+          }
+          onEquipMount={handleEquipMount}
+          onUnlockMount={(mountId) =>
+            handleUnlockMount(
+              mountId,
+              (save.mountShards ?? 0) >= (MOUNT_MAP[mountId]?.unlockShards ?? Infinity)
+                ? 'shards'
+                : 'gems'
+            )
+          }
+          onEquipWeaponAura={handleEquipWeaponAura}
+          onUnlockWeaponAura={(auraId) =>
+            handleUnlockWeaponAura(
+              auraId,
+              (save.awakeningCrystals ?? 0) >= (WEAPON_AURA_MAP[auraId]?.unlockCrystals ?? Infinity)
+                ? 'crystals'
+                : 'gems'
+            )
+          }
+          onClose={handleCloseWardrobe}
+        />
+      )}
+
       <CombatPowerToast toast={powerToast} />
       <AchievementToast achievement={activeAchievementToast} />
 
@@ -4635,6 +5337,7 @@ export default function App() {
           elementalTowerId={transitionState.elementalTowerId}
           isCrystalDefenseMode={transitionState.isCrystalDefenseMode}
           isWorldBossMode={transitionState.isWorldBossMode}
+          isBloodMoonMode={transitionState.isBloodMoonMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

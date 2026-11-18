@@ -312,6 +312,50 @@ export const WingFeatherIcon: React.FC<{ className?: string }> = ({
   </svg>
 );
 
+export const MountShardIcon: React.FC<{ className?: string }> = ({
+  className = 'w-4 h-4',
+}) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="celMountShard" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#fef08a" />
+        <stop offset="55%" stopColor="#f59e0b" />
+        <stop offset="100%" stopColor="#b45309" />
+      </linearGradient>
+    </defs>
+    <polygon
+      points="12,2 20,8 17,21 7,21 4,8"
+      fill="url(#celMountShard)"
+      stroke="#fef9c3"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <polygon points="12,6 16,10 12,17 8,10" fill="#fffbeb" opacity="0.7" />
+  </svg>
+);
+
+export const AwakenCrystalIcon: React.FC<{ className?: string }> = ({
+  className = 'w-4 h-4',
+}) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="celAwakenCrystal" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#fbcfe8" />
+        <stop offset="55%" stopColor="#f43f5e" />
+        <stop offset="100%" stopColor="#9f1239" />
+      </linearGradient>
+    </defs>
+    <polygon
+      points="12,2 19,12 12,22 5,12"
+      fill="url(#celAwakenCrystal)"
+      stroke="#ffe4e6"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <polygon points="12,6 15,12 12,18 9,12" fill="#fde047" opacity="0.75" />
+  </svg>
+);
+
 export const ZodiacAvatar: React.FC<{
   heroId: HeroId;
   accentHex: number;
