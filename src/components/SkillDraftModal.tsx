@@ -37,6 +37,83 @@ interface SkillDraftModalProps {
 
 const TAROT_CARD_ART = tarotCardArt;
 
+const CATEGORY_META: Record<SkillCategory, { label: string; pillClass: string }> = {
+  weapon: { label: 'Vũ Khí', pillClass: 'bg-sky-500/20 border-sky-300/50 text-sky-200' },
+  elemental: { label: 'Nguyên Tố', pillClass: 'bg-orange-500/20 border-orange-300/50 text-orange-200' },
+  circle: { label: 'Vòng Bảo Hộ', pillClass: 'bg-cyan-500/20 border-cyan-300/50 text-cyan-200' },
+  strike: { label: 'Kiếm Khí', pillClass: 'bg-purple-500/20 border-purple-300/50 text-purple-200' },
+  meteor: { label: 'Thiên Thạch', pillClass: 'bg-rose-500/20 border-rose-300/50 text-rose-200' },
+  sprite: { label: 'Tinh Linh', pillClass: 'bg-emerald-500/20 border-emerald-300/50 text-emerald-200' },
+  stat: { label: 'Thuộc Tính', pillClass: 'bg-amber-500/20 border-amber-300/50 text-amber-200' },
+};
+
+function getSkillComboTag(
+  skill: SkillDefinition,
+  currentStacks: Partial<Record<SkillId, number>>
+): { label: string; isEvolution: boolean } | null {
+  const has = (id: SkillId) => (currentStacks[id] ?? 0) > 0;
+  if (skill.id === 'super_blaze') {
+    return {
+      label: has('fire_arrow') ? 'Tiến Hóa: Hỏa Tiễn ★' : 'Hợp: Hỏa Tiễn',
+      isEvolution: has('fire_arrow'),
+    };
+  }
+  if (skill.id === 'super_freeze') {
+    return {
+      label: has('ice_arrow') ? 'Tiến Hóa: Băng Tiễn ★' : 'Hợp: Băng Tiễn',
+      isEvolution: has('ice_arrow'),
+    };
+  }
+  if (skill.id === 'super_bolt') {
+    return {
+      label: has('lightning_arrow') ? 'Tiến Hóa: Lôi Tiễn ★' : 'Hợp: Lôi Tiễn',
+      isEvolution: has('lightning_arrow'),
+    };
+  }
+  if (skill.id === 'super_circle') {
+    return {
+      label: has('orbit_orbs') ? 'Tiến Hóa: Cầu Xoay ★' : 'Hợp: Cầu Xoay',
+      isEvolution: has('orbit_orbs'),
+    };
+  }
+  if (skill.id === 'twin_strike') {
+    return {
+      label: has('flying_swords') ? 'Tiến Hóa: Kiếm Bay ★' : 'Hợp: Kiếm Bay',
+      isEvolution: has('flying_swords'),
+    };
+  }
+  if (skill.id === 'super_meteor') {
+    return {
+      label: has('meteor_shower') ? 'Tiến Hóa: Thiên Thạch ★' : 'Hợp: Thiên Thạch',
+      isEvolution: has('meteor_shower'),
+    };
+  }
+  if (
+    (skill.id === 'fire_arrow' ||
+      skill.id === 'ice_arrow' ||
+      skill.id === 'lightning_arrow' ||
+      skill.id === 'venom_arrow') &&
+    (has('front_arrow') || has('multishot') || has('diag_arrow'))
+  ) {
+    return { label: 'Cộng Hưởng: Đa Tiễn', isEvolution: false };
+  }
+  if (
+    (skill.id === 'front_arrow' ||
+      skill.id === 'diag_arrow' ||
+      skill.id === 'multishot' ||
+      skill.id === 'ricochet' ||
+      skill.id === 'pierce' ||
+      skill.id === 'tracking_eye') &&
+    (has('fire_arrow') || has('ice_arrow') || has('lightning_arrow'))
+  ) {
+    return { label: 'Cộng Hưởng: Nguyên Tố', isEvolution: false };
+  }
+  if (skill.id === 'power_trio' || skill.id === 'warriors_soul') {
+    return { label: 'Cộng Hưởng Toàn Diện', isEvolution: false };
+  }
+  return null;
+}
+
 const CategoryIcon: React.FC<{ category: SkillCategory; className?: string }> = ({
   category,
   className = 'w-5 h-5',
@@ -124,7 +201,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
           </h2>
           <p className="text-xs text-slate-300 mt-1">
             {isSkillMode
-              ? 'Kết hợp các thẻ bài cùng nguyên tố để tối ưu hóa hỏa lực đạn đạo 3D.'
+              ? 'Kết hợp các thẻ bài cùng nguyên tố để kích hoạt Cộng Hưởng & Tiến Hóa đạn đạo 3D.'
               : mode === 'angel'
               ? 'Thiên thần ban tặng một nguồn hồi phục trước chặng đường phía trước.'
               : mode === 'devil'
@@ -141,12 +218,14 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
               {skillChoices.map((skill) => {
                 const stack = currentStacks[skill.id] ?? 0;
                 const rMeta = SKILL_RARITY_META[skill.rarity];
+                const catMeta = CATEGORY_META[skill.category];
+                const comboTag = getSkillComboTag(skill, currentStacks);
                 return (
                   <button
                     key={skill.id}
                     type="button"
                     onClick={() => onPickSkill(skill.id)}
-                    className={`relative text-left rounded-2xl overflow-hidden border-2 ${rMeta.borderClass} bg-[#090d1e] hover:-translate-y-1.5 active:translate-y-0 transition-transform duration-150 cursor-pointer shadow-2xl group flex flex-col justify-between min-h-[245px] sm:min-h-[280px]`}
+                    className={`relative text-left rounded-2xl overflow-hidden border-2 ${rMeta.borderClass} bg-[#090d1e] hover:-translate-y-1.5 hover:shadow-[0_14px_34px_rgba(251,191,36,0.22)] active:translate-y-0 transition-all duration-150 cursor-pointer shadow-2xl group flex flex-col justify-between min-h-[268px] sm:min-h-[300px]`}
                   >
                     {/* Tarot Card Art Layer + Fallback */}
                     {!tarotArtFailed && (
@@ -156,28 +235,41 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                         aria-hidden="true"
                         referrerPolicy="no-referrer"
                         onError={() => setTarotArtFailed(true)}
-                        className="absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-70 transition-opacity duration-200 pointer-events-none"
+                        className="absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-75 transition-opacity duration-200 pointer-events-none"
                       />
                     )}
                     <div
                       className="absolute inset-0 pointer-events-none"
                       style={{
-                        background: `linear-gradient(180deg, rgba(6, 9, 22, 0.55) 0%, rgba(7, 10, 24, 0.82) 52%, rgba(5, 7, 17, 0.96) 100%)`,
+                        background: `linear-gradient(180deg, rgba(6, 9, 22, 0.52) 0%, rgba(7, 10, 24, 0.84) 52%, rgba(5, 7, 17, 0.97) 100%)`,
                       }}
                     />
 
                     {/* Card Top Metadata */}
                     <div className="relative z-10 p-4 flex flex-col items-center text-center flex-1">
-                      <div className="w-full flex items-center justify-between text-[11px] font-bold mb-3">
+                      <div className="w-full flex items-center justify-between gap-1 text-[11px] font-bold mb-2">
                         <span className={rMeta.badgeClass}>{rMeta.label}</span>
-                        <span className="font-mono-nums text-slate-300">
+                        <span className="font-mono-nums text-slate-200">
                           Cấp {stack + 1}/{skill.maxStacks}
                         </span>
                       </div>
 
+                      <div className="w-full flex flex-wrap items-center justify-center gap-1.5 mb-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-md border text-[10px] font-black whitespace-nowrap ${catMeta.pillClass}`}
+                        >
+                          {catMeta.label}
+                        </span>
+                        {stack > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-400/55 text-[10px] font-mono-nums font-black text-emerald-200 whitespace-nowrap">
+                            Đã có Lv.{stack}
+                          </span>
+                        )}
+                      </div>
+
                       {/* Emblem Medallion */}
                       <div
-                        className="w-12 h-12 rounded-2xl border border-amber-200/75 flex items-center justify-center shadow-[0_0_20px_rgba(0,0,0,0.65)] mb-3 text-slate-950"
+                        className="w-12 h-12 rounded-2xl border border-amber-200/80 flex items-center justify-center shadow-[0_0_22px_rgba(0,0,0,0.7)] mb-2.5 text-slate-950 group-hover:scale-105 transition-transform"
                         style={{
                           background: `radial-gradient(circle at 35% 30%, #ffffff 0%, ${skill.accentColor} 55%, #0f172a 130%)`,
                         }}
@@ -189,14 +281,26 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                         {skill.name}
                       </h3>
 
-                      <p className="text-xs text-slate-200/95 leading-relaxed mt-2">
+                      <p className="text-xs text-slate-200/95 leading-relaxed mt-1.5">
                         {skill.description}
                       </p>
+
+                      {comboTag && (
+                        <div
+                          className={`mt-2.5 px-2.5 py-1 rounded-lg border text-[10px] font-black tracking-wide whitespace-nowrap ${
+                            comboTag.isEvolution
+                              ? 'bg-amber-400/20 border-amber-300 text-amber-200 shadow-[0_0_12px_rgba(251,191,36,0.28)]'
+                              : 'bg-purple-500/20 border-purple-300/60 text-purple-200'
+                          }`}
+                        >
+                          {comboTag.label}
+                        </div>
+                      )}
                     </div>
 
                     {/* Card Footer */}
-                    <div className="relative z-10 px-4 py-2.5 border-t border-amber-300/20 bg-[#050814]/85 flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-amber-300">
-                      <span>Lĩnh Hội</span>
+                    <div className="relative z-10 px-4 py-2.5 border-t border-amber-300/25 bg-[#050814]/90 flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-amber-300">
+                      <span>Lĩnh Hội Thẻ Bài</span>
                       <span className="group-hover:translate-x-1 transition-transform">→</span>
                     </div>
                   </button>

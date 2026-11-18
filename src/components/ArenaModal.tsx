@@ -20,6 +20,7 @@ interface ArenaModalProps {
   onStartDuel: (opponent: ArenaOpponent) => void;
   onBuyTicket: () => void;
   onClaimRankTier: (tierId: string) => void;
+  onOpenArenaShop?: () => void;
   onClose: () => void;
 }
 
@@ -29,6 +30,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
   onStartDuel,
   onBuyTicket,
   onClaimRankTier,
+  onOpenArenaShop,
   onClose,
 }) => {
   const [subTab, setSubTab] = useState<'duel' | 'ranks' | 'ladder'>('duel');
@@ -135,6 +137,19 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
                 <span className="text-rose-300 font-bold">Thua: {arena.losses}</span>
                 <span className="text-amber-300 font-bold">Chuỗi thắng: ×{arena.streak}</span>
                 <span className="text-sky-300 font-bold">Xu Arena: {arena.arenaCoins}</span>
+                {onOpenArenaShop && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      onClose();
+                      onOpenArenaShop();
+                    }}
+                    className="px-2.5 py-0.5 rounded-lg bg-sky-500/20 border border-sky-300/65 text-[10px] font-black text-sky-200 hover:bg-sky-500/35 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    Shop Xu Arena →
+                  </button>
+                )}
               </div>
             </div>
 

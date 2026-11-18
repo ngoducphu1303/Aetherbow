@@ -216,6 +216,11 @@ export interface ComputedPlayerStats {
   equippedRunes: RuneId[];
   equippedPetId?: PetId | null;
   petAtk?: number;
+  constellationStars?: number;
+  constellationFireBonus?: number;
+  constellationIceBonus?: number;
+  constellationStormBonus?: number;
+  constellationLevels?: number[];
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -520,6 +525,13 @@ export interface ForgeRecipe {
   amount: number;
 }
 
+export interface CoopAllySummary {
+  heroId: HeroId;
+  name: string;
+  damage: number;
+  isMvp?: boolean;
+}
+
 export interface DamageBreakdown {
   basic: number;
   ultimate: number;
@@ -527,6 +539,7 @@ export interface DamageBreakdown {
   elemental: number;
   peakCrit: number;
   elapsedSeconds: number;
+  coopAllies?: CoopAllySummary[];
 }
 
 export interface BuildPreset {
@@ -661,9 +674,60 @@ export interface NoviceJourneyState {
   claimedDayMilestones: number[];
 }
 
+export type ElementalTowerId = 'fire' | 'ice' | 'storm';
+export type ConstellationElement = 'fire' | 'earth' | 'air' | 'water';
+export type ConstellationId =
+  | 'aries'
+  | 'taurus'
+  | 'gemini'
+  | 'cancer'
+  | 'leo'
+  | 'virgo'
+  | 'libra'
+  | 'scorpio'
+  | 'sagittarius'
+  | 'capricorn'
+  | 'aquarius'
+  | 'pisces';
+
+export type CoopRaidDifficulty = 'normal' | 'heroic' | 'mythic';
+
+export interface GrowthFundState {
+  premiumUnlocked: boolean;
+  claimedFreeIds: string[];
+  claimedPremiumIds: string[];
+}
+
+export interface ArenaShopState {
+  date: string;
+  purchasedCounts: Record<string, number>;
+}
+
+export interface CoopRaidState {
+  date: string;
+  dailyRewardsLeft: number;
+  highestDifficulty: CoopRaidDifficulty | null;
+  bestTeamDamage: number;
+  totalClears: number;
+}
+
+export interface ElementalTowersState {
+  fire: number;
+  ice: number;
+  storm: number;
+}
+
 export interface RunHistoryEntry {
   id: string;
-  mode: 'chapter' | 'tower' | 'boss_rush' | 'daily_rift' | 'guild_boss' | 'arena';
+  mode:
+    | 'chapter'
+    | 'tower'
+    | 'boss_rush'
+    | 'daily_rift'
+    | 'guild_boss'
+    | 'arena'
+    | 'coop_raid'
+    | 'elemental_tower';
   label: string;
   stageReached: number;
   kills: number;
@@ -723,6 +787,12 @@ export interface SaveData {
   nightMarket?: NightMarketState;
   arena?: ArenaState;
   noviceJourney?: NoviceJourneyState;
+  growthFund?: GrowthFundState;
+  arenaShop?: ArenaShopState;
+  constellations?: Partial<Record<ConstellationId, number>>;
+  coopRaid?: CoopRaidState;
+  elementalTowers?: ElementalTowersState;
+  commercialPackClaims?: Record<string, number>;
 }
 
 export interface FloatingDamage {
@@ -795,6 +865,12 @@ export interface HudSnapshot {
   arenaOpponentName?: string;
   arenaOpponentHp?: number;
   arenaOpponentMaxHp?: number;
+  isCoopRaidMode?: boolean;
+  coopDifficulty?: CoopRaidDifficulty;
+  coopAllies?: Array<{ heroId: HeroId; name: string; damage: number; ultCharge: number }>;
+  isElementalTowerMode?: boolean;
+  elementalTowerId?: ElementalTowerId;
+  elementalTowerFloor?: number;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;

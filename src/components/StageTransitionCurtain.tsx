@@ -1,6 +1,8 @@
 import React from 'react';
-import { Compass, Skull, Sparkles, Swords } from 'lucide-react';
+import { Compass, Flame, Skull, Snowflake, Sparkles, Swords, Users, Zap } from 'lucide-react';
 import { CHAPTERS } from '../data/chaptersData';
+import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
+import { CoopRaidDifficulty, ElementalTowerId } from '../types/game';
 
 interface StageTransitionCurtainProps {
   chapterId: number;
@@ -9,6 +11,10 @@ interface StageTransitionCurtainProps {
   isDailyRiftMode?: boolean;
   isGuildBossMode?: boolean;
   isArenaMode?: boolean;
+  isCoopRaidMode?: boolean;
+  coopDifficulty?: CoopRaidDifficulty;
+  isElementalTowerMode?: boolean;
+  elementalTowerId?: ElementalTowerId;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -20,10 +26,16 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   isDailyRiftMode = false,
   isGuildBossMode = false,
   isArenaMode = false,
+  isCoopRaidMode = false,
+  coopDifficulty = 'normal',
+  isElementalTowerMode = false,
+  elementalTowerId = 'fire',
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
   const ch = CHAPTERS.find((c) => c.id === chapterId) ?? CHAPTERS[0];
+  const elTower = ELEMENTAL_TOWER_MAP[elementalTowerId];
+  const coopDef = COOP_DIFFICULTY_MAP[coopDifficulty];
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-[#040611]/95 a2-curtain">
@@ -31,6 +43,16 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
           {isArenaMode ? (
             <Swords className="w-12 h-12 text-rose-400" />
+          ) : isCoopRaidMode ? (
+            <Users className="w-12 h-12 text-sky-300" />
+          ) : isElementalTowerMode ? (
+            elementalTowerId === 'fire' ? (
+              <Flame className="w-12 h-12 text-orange-400" />
+            ) : elementalTowerId === 'ice' ? (
+              <Snowflake className="w-12 h-12 text-sky-300" />
+            ) : (
+              <Zap className="w-12 h-12 text-purple-300" />
+            )
           ) : isGuildBossMode ? (
             <Skull className="w-12 h-12 text-amber-300" />
           ) : isDailyRiftMode ? (
@@ -46,6 +68,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
           {isArenaMode
             ? 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
+            : isCoopRaidMode
+            ? `Phó Bản Hợp Tác 3 Anh Hùng · ${coopDef.badge}`
+            : isElementalTowerMode
+            ? `Tháp Thí Luyện · ${elTower.badge}`
             : isGuildBossMode
             ? 'Thánh Điện Bang Hội Hoàng Đạo · 60 Giây'
             : isDailyRiftMode
@@ -59,6 +85,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
           {isArenaMode
             ? `VS · ${arenaOpponentName || 'Kình Địch'}`
+            : isCoopRaidMode
+            ? coopDef.name
+            : isElementalTowerMode
+            ? elTower.name
             : isGuildBossMode
             ? 'Boss Bang Hội · Ma Long'
             : isDailyRiftMode
@@ -73,6 +103,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         <div className="text-xs text-slate-300 font-semibold">
           {isArenaMode
             ? 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
+            : isCoopRaidMode
+            ? '2 Đồng Hành AI 3D sẽ tự động tấn công, né đạn & tung Tuyệt Kỹ cùng bạn!'
+            : isElementalTowerMode
+            ? elTower.ruleDesc
             : isGuildBossMode
             ? 'Gây tối đa sát thương trong 60 giây để mở rương hạng D → SS cho toàn Bang'
             : isDailyRiftMode
@@ -87,4 +121,3 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
     </div>
   );
 };
-

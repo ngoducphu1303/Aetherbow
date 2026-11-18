@@ -17,6 +17,8 @@ export interface HeroVisualConfig {
   weaponArchetype: WeaponArchetype;
   auraPrimaryHex?: number;
   auraSecondaryHex?: number;
+  pedestalTintHex?: number;
+  constellationLevels?: number[];
 }
 
 export interface HeroModelRefs {

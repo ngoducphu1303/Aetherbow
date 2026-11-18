@@ -6,11 +6,21 @@ import { CHAPTERS } from '../data/chaptersData';
 import { HERO_MAP } from '../data/heroesData';
 import { PET_MAP } from '../data/wave3Data';
 import {
+  CONSTELLATIONS,
+  CONSTELLATION_ELEMENT_META,
+  COOP_DIFFICULTY_MAP,
+  ELEMENTAL_TOWER_MAP,
+  selectCoopAiAllies,
+} from '../data/wave6Data';
+import {
   ArenaOpponent,
   ChapterDefinition,
   ComputedPlayerStats,
+  CoopAllySummary,
+  CoopRaidDifficulty,
   DailyRiftMutatorPair,
   DamageBreakdown,
+  ElementalTowerId,
   EnemyKind,
   FloatingDamage,
   GamePhase,
@@ -120,6 +130,7 @@ interface Projectile {
   isSword: boolean;
   homing: boolean;
   source?: 'basic' | 'ultimate' | 'pet' | 'elemental';
+  coopAllyIndex?: number;
   x: number;
   y: number;
   z: number;
@@ -137,6 +148,23 @@ interface Projectile {
   storm: boolean;
   poison: boolean;
   mesh: THREE.Mesh;
+}
+
+interface CoopAllyEntity {
+  heroId: HeroId;
+  name: string;
+  accentHex: number;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  facing: number;
+  attackTimer: number;
+  ultCharge: number;
+  damageDealt: number;
+  phaseAngle: number;
+  model: HeroModelRefs;
+  shadow: THREE.Mesh;
 }
 
 interface MeteorStrike {
@@ -227,6 +255,11 @@ export interface EngineCallbacks {
       guildBossDamage?: number;
       isArenaMode?: boolean;
       arenaOpponentName?: string;
+      isCoopRaidMode?: boolean;
+      coopDifficulty?: CoopRaidDifficulty;
+      isElementalTowerMode?: boolean;
+      elementalTowerId?: ElementalTowerId;
+      elementalTowerFloor?: number;
       starDust?: number;
       petEssence?: number;
       maxCombo?: number;
@@ -324,6 +357,13 @@ export class GameEngine {
   private isArenaMode = false;
   private arenaTimeLeft = 45;
   private arenaOpponentName = '';
+  private isCoopRaidMode = false;
+  private coopDifficulty: CoopRaidDifficulty = 'normal';
+  private coopAllies: CoopAllyEntity[] = [];
+  private isElementalTowerMode = false;
+  private elementalTowerId: ElementalTowerId = 'fire';
+  private elementalTowerFloor = 0;
+  private elementalWaveDefs: Array<Array<{ kind: EnemyKind; count: number; isElite?: boolean }>> = [];
   private starfallMesh!: THREE.InstancedMesh;
   private starfallEnabled = true;
   private starfallSeeds: Array<{
@@ -560,6 +600,7 @@ export class GameEngine {
         isEnemy: false,
         isSword: false,
         homing: false,
+        coopAllyIndex: undefined,
         x: 0,
         y: 1.0,
         z: 0,
@@ -874,12 +915,39 @@ export class GameEngine {
     }
     const auraPrimary = this.heroVisualCfg.auraPrimaryHex ?? 0xfbbf24;
     const auraSecondary = this.heroVisualCfg.auraSecondaryHex ?? this.weaponAccentHex;
+    const pedestalTint = this.heroVisualCfg.pedestalTintHex ?? this.currentChapter.trimHex;
+    const constellationLevels = this.heroVisualCfg.constellationLevels ?? this.baseStats.constellationLevels ?? [];
 
     this.lobbyHaloGroup = new THREE.Group();
     this.lobbyHaloGroup.position.set(0, 0.035, 4.5);
 
+    // Tiered Star Pedestal (Sảnh 3D Đổi Bệ Tinh Tú)
+    const pedestalBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.12, 1.32, 0.14, 32),
+      new THREE.MeshStandardMaterial({
+        color: 0x0b1024,
+        roughness: 0.32,
+        metalness: 0.84,
+      })
+    );
+    pedestalBase.position.y = -0.08;
+    pedestalBase.receiveShadow = true;
+
+    const pedestalTrim = new THREE.Mesh(
+      new THREE.TorusGeometry(1.15, 0.034, 8, 40),
+      new THREE.MeshStandardMaterial({
+        color: pedestalTint,
+        emissive: pedestalTint,
+        emissiveIntensity: 0.95,
+        roughness: 0.22,
+        metalness: 0.85,
+      })
+    );
+    pedestalTrim.rotation.x = Math.PI / 2;
+    pedestalTrim.position.y = -0.005;
+
     const outerHalo = new THREE.Mesh(
-      new THREE.RingGeometry(1.18, 1.34, 48),
+      new THREE.RingGeometry(1.22, 1.38, 48),
       new THREE.MeshBasicMaterial({
         color: auraPrimary,
         transparent: true,
@@ -894,7 +962,7 @@ export class GameEngine {
     outerHalo.rotation.x = -Math.PI / 2;
 
     const innerHalo = new THREE.Mesh(
-      new THREE.RingGeometry(0.84, 0.94, 36),
+      new THREE.RingGeometry(0.84, 0.96, 36),
       new THREE.MeshBasicMaterial({
         color: auraSecondary,
         transparent: true,
@@ -908,20 +976,33 @@ export class GameEngine {
     );
     innerHalo.rotation.x = -Math.PI / 2;
 
-    const nodeGeo = new THREE.OctahedronGeometry(0.11, 0);
-    const nodeMat = new THREE.MeshStandardMaterial({
-      color: auraSecondary,
-      emissive: auraSecondary,
-      emissiveIntensity: 1.5,
-      roughness: 0.2,
-    });
-    for (let i = 0; i < 6; i++) {
-      const ang = (i / 6) * Math.PI * 2;
-      const gem = new THREE.Mesh(nodeGeo, nodeMat);
-      gem.position.set(Math.cos(ang) * 1.25, 0.16, Math.sin(ang) * 1.25);
+    // 12 Constellation Orbital Star Crystals (Hào Quang 12 Chòm Sao)
+    const starCrystalGeo = new THREE.OctahedronGeometry(0.085, 0);
+    for (let i = 0; i < CONSTELLATIONS.length; i++) {
+      const cDef = CONSTELLATIONS[i];
+      const starLv = constellationLevels[i] ?? 0;
+      const elHex = CONSTELLATION_ELEMENT_META[cDef.element].hexNum;
+      const ang = (i / CONSTELLATIONS.length) * Math.PI * 2;
+      const isLit = starLv > 0;
+      const gemMat = new THREE.MeshStandardMaterial({
+        color: isLit ? elHex : 0x334155,
+        emissive: isLit ? elHex : 0x0f172a,
+        emissiveIntensity: isLit ? 1.2 + starLv * 0.28 : 0.2,
+        roughness: 0.2,
+        metalness: 0.5,
+      });
+      const gem = new THREE.Mesh(starCrystalGeo, gemMat);
+      const scale = isLit ? 0.85 + starLv * 0.14 : 0.55;
+      gem.scale.setScalar(scale);
+      gem.position.set(
+        Math.cos(ang) * 1.44,
+        isLit ? 0.18 + (i % 2) * 0.05 : 0.08,
+        Math.sin(ang) * 1.44
+      );
       this.lobbyHaloGroup.add(gem);
     }
-    this.lobbyHaloGroup.add(outerHalo, innerHalo);
+
+    this.lobbyHaloGroup.add(pedestalBase, pedestalTrim, outerHalo, innerHalo);
     this.lobbyHaloGroup.visible = this.phase === GamePhase.TITLE;
     this.entitiesGroup.add(this.lobbyHaloGroup);
 
@@ -1132,6 +1213,8 @@ export class GameEngine {
     this.dailyRiftPair = null;
     this.isGuildBossMode = false;
     this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
     this.currentChapter = ch;
     this.baseStats = stats;
 
@@ -1153,6 +1236,8 @@ export class GameEngine {
     this.dailyRiftPair = null;
     this.isGuildBossMode = false;
     this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1172,6 +1257,8 @@ export class GameEngine {
     this.dailyRiftPair = null;
     this.isGuildBossMode = false;
     this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
     this.currentChapter = CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1193,6 +1280,8 @@ export class GameEngine {
     this.dailyRiftStageIdx = 0;
     this.isGuildBossMode = false;
     this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
     this.currentChapter = CHAPTERS[2] ?? CHAPTERS[0];
     this.baseStats = stats;
 
@@ -1213,6 +1302,8 @@ export class GameEngine {
     this.dailyRiftPair = null;
     this.isGuildBossMode = true;
     this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
     this.guildBossTimeLeft = 60;
     this.guildBossTotalDamage = 0;
     this.currentChapter = CHAPTERS[11] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
@@ -1237,6 +1328,150 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
+  public startCoopRaid(stats: ComputedPlayerStats, difficulty: CoopRaidDifficulty): void {
+    const diffCfg = COOP_DIFFICULTY_MAP[difficulty];
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = true;
+    this.coopDifficulty = difficulty;
+    this.isElementalTowerMode = false;
+
+    const chIdx = difficulty === 'mythic' ? 11 : difficulty === 'heroic' ? 8 : 5;
+    this.currentChapter = CHAPTERS[chIdx] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    this.resetRunState(stats);
+    this.ultCharge = 80;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'sanctum',
+      true,
+      `PHÓ BẢN HỢP TÁC AI 3D · ${diffCfg.name.toUpperCase()}`
+    );
+
+    // Spawn 2 autonomous AI Hero Allies flanking player
+    const allies = selectCoopAiAllies(stats.heroId);
+    allies.forEach((allyDef, idx) => {
+      const ax = idx === 0 ? -4.2 : 4.2;
+      const az = 5.4;
+      const allyWeaponArchetype =
+        allyDef.id === 'cleo' || allyDef.id === 'rolla'
+          ? 'staff'
+          : allyDef.id === 'wukong' || allyDef.id === 'dracoola'
+          ? 'claw'
+          : 'bow';
+      const allyModel = createHeroModel({
+        weaponAccentHex: allyDef.accentHex,
+        cloakColorHex: allyDef.cloakHex,
+        hairColorHex: allyDef.hairHex,
+        eyeColor: allyDef.eyeColor,
+        cheekColor: allyDef.cheekColor,
+        crownStyle: allyDef.crownStyle,
+        weaponArchetype: allyWeaponArchetype,
+      });
+      allyModel.magicOrb.visible = false;
+      allyModel.bowGroup.visible = true;
+      allyModel.root.position.set(ax, 0, az);
+      allyModel.root.scale.setScalar(0.94);
+      this.entitiesGroup.add(allyModel.root);
+
+      const allyShadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2, 1.2),
+        new THREE.MeshBasicMaterial({
+          map: this.contactShadowTex,
+          transparent: true,
+          opacity: 0.44,
+          depthWrite: false,
+        })
+      );
+      allyShadow.rotation.x = -Math.PI / 2;
+      allyShadow.position.set(ax, 0.02, az);
+      this.entitiesGroup.add(allyShadow);
+
+      this.coopAllies.push({
+        heroId: allyDef.id,
+        name: allyDef.name,
+        accentHex: allyDef.accentHex,
+        x: ax,
+        z: az,
+        vx: 0,
+        vz: 0,
+        facing: Math.PI,
+        attackTimer: 0.35 + idx * 0.25,
+        ultCharge: 35 + idx * 15,
+        damageDealt: 0,
+        phaseAngle: idx * 2.1,
+        model: allyModel,
+        shadow: allyShadow,
+      });
+    });
+
+    const groups: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> =
+      difficulty === 'mythic'
+        ? [
+            { kind: EnemyKind.ZODIAC_BOSS, count: 1 },
+            { kind: EnemyKind.SHADOW_STALKER, count: 2, isElite: true },
+          ]
+        : difficulty === 'heroic'
+        ? [
+            { kind: EnemyKind.ZODIAC_BOSS, count: 1 },
+            { kind: EnemyKind.DRAGON_WHELP, count: 2, isElite: true },
+          ]
+        : [
+            { kind: EnemyKind.TITAN_BOSS, count: 1 },
+            { kind: EnemyKind.IMP_ARCHER, count: 2 },
+          ];
+
+    this.spawnEnemyGroups(
+      groups,
+      diffCfg.hpMult * 1.45,
+      diffCfg.dmgMult,
+      difficulty === 'mythic'
+        ? 'Ma Thần Liên Giới Tối Thượng'
+        : difficulty === 'heroic'
+        ? 'Hộ Vệ Tinh Giới Hư Không'
+        : 'Cự Thần Đền Nguyệt Thực'
+    );
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  public startElementalTower(
+    stats: ComputedPlayerStats,
+    towerId: ElementalTowerId,
+    startFloor = 1
+  ): void {
+    const tDef = ELEMENTAL_TOWER_MAP[towerId];
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = true;
+    this.elementalTowerId = towerId;
+    this.elementalTowerFloor = Math.max(1, startFloor);
+    this.currentChapter = CHAPTERS[(tDef.chapterId - 1) % CHAPTERS.length] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    this.resetRunState(stats);
+    this.rebuildCompanions();
+    this.loadElementalTowerFloor(this.elementalTowerFloor);
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
   public startArenaDuel(stats: ComputedPlayerStats, opponent: ArenaOpponent): void {
     this.isTowerMode = false;
     this.towerFloor = 0;
@@ -1245,6 +1480,8 @@ export class GameEngine {
     this.isDailyRiftMode = false;
     this.dailyRiftPair = null;
     this.isGuildBossMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
     this.isArenaMode = true;
     this.arenaTimeLeft = 45;
     this.arenaOpponentName = opponent.name;
@@ -1490,6 +1727,13 @@ export class GameEngine {
     if (ch.id !== this.currentChapter.id) {
       this.currentChapter = ch;
       this.buildArena(ch);
+      if (this.phase === GamePhase.TITLE) {
+        this.heroVisualCfg = {
+          ...this.heroVisualCfg,
+          pedestalTintHex: ch.trimHex,
+        };
+        this.buildHero();
+      }
     }
   }
 
@@ -1630,6 +1874,12 @@ export class GameEngine {
     this.lootOrbs.forEach((o) => this.releaseObject(o.mesh));
     this.lootOrbs = [];
 
+    this.coopAllies?.forEach((a) => {
+      this.releaseObject(a.model.root);
+      this.releaseObject(a.shadow);
+    });
+    this.coopAllies = [];
+
     if (this.shrineGroup) {
       this.releaseObject(this.shrineGroup);
       this.shrineGroup = null;
@@ -1637,6 +1887,7 @@ export class GameEngine {
 
     this.arrowPool.forEach((p) => {
       p.active = false;
+      p.coopAllyIndex = undefined;
       p.mesh.visible = false;
     });
     this.enemyOrbPool.forEach((p) => {
@@ -1657,6 +1908,77 @@ export class GameEngine {
       l.mesh.visible = false;
     });
     this.orbitOrbMeshes.forEach((m) => (m.visible = false));
+  }
+
+  private loadElementalTowerFloor(floor: number): void {
+    const tDef = ELEMENTAL_TOWER_MAP[this.elementalTowerId];
+    this.elementalTowerFloor = floor;
+    const isBossFloor = floor % 3 === 0;
+    const presets: Array<'courtyard' | 'pillars' | 'cross' | 'gauntlet' | 'sanctum'> = [
+      'courtyard',
+      'pillars',
+      'cross',
+      'gauntlet',
+      'sanctum',
+    ];
+    const preset = presets[(floor - 1) % presets.length];
+
+    const poolByElement: Record<ElementalTowerId, EnemyKind[]> = {
+      fire: [EnemyKind.DRAGON_WHELP, EnemyKind.SKIRMISHER, EnemyKind.IMP_ARCHER, EnemyKind.GOLEM],
+      ice: [EnemyKind.WISP, EnemyKind.GOLEM, EnemyKind.IMP_ARCHER, EnemyKind.SHADOW_STALKER],
+      storm: [EnemyKind.SHADOW_STALKER, EnemyKind.WISP, EnemyKind.SKIRMISHER, EnemyKind.DRAGON_WHELP],
+    };
+    const ePool = poolByElement[this.elementalTowerId];
+    const k1 = ePool[floor % ePool.length];
+    const k2 = ePool[(floor + 1) % ePool.length];
+
+    if (isBossFloor) {
+      const bossKind =
+        this.elementalTowerId === 'storm'
+          ? EnemyKind.ZODIAC_BOSS
+          : this.elementalTowerId === 'fire'
+          ? EnemyKind.TITAN_BOSS
+          : EnemyKind.WARDEN_BOSS;
+      this.elementalWaveDefs = [
+        [
+          { kind: bossKind, count: 1 },
+          { kind: k1, count: Math.min(3, 1 + Math.floor(floor / 4)), isElite: floor >= 4 },
+        ],
+      ];
+    } else {
+      const baseCount = Math.min(6, 2 + Math.floor(floor / 3));
+      this.elementalWaveDefs = [
+        [
+          { kind: k1, count: baseCount },
+          { kind: k2, count: Math.max(1, baseCount - 1), isElite: floor >= 3 },
+        ],
+      ];
+    }
+
+    this.setupStageArena(
+      preset,
+      isBossFloor,
+      isBossFloor
+        ? `THỦ LĨNH ${tDef.name.toUpperCase()} · TẦNG ${floor}`
+        : `${tDef.name} · Tầng ${floor} (+50% ST ${tDef.shortName})`
+    );
+    this.spawnElementalTowerWave(0);
+    this.syncHudImmediate();
+  }
+
+  private spawnElementalTowerWave(waveIdx: number): void {
+    const groups = this.elementalWaveDefs[waveIdx];
+    if (!groups) return;
+    this.waveIndex = waveIdx;
+    const hpMult = 0.95 + this.elementalTowerFloor * 0.25;
+    const dmgMult = 0.95 + this.elementalTowerFloor * 0.12;
+    const tDef = ELEMENTAL_TOWER_MAP[this.elementalTowerId];
+    this.spawnEnemyGroups(
+      groups,
+      hpMult,
+      dmgMult,
+      `Hộ Vệ ${tDef.name} · Tầng ${this.elementalTowerFloor}`
+    );
   }
 
   private loadTowerFloor(floor: number): void {
@@ -2784,6 +3106,7 @@ export class GameEngine {
 
     this.updateStarfallWeather(dt);
     this.updatePlayer(dt);
+    this.updateCoopAllies(dt);
     this.updatePassivesAndPeriodicSkills(dt);
     this.updateOrbitOrbs(dt);
     this.updateCompanions(dt);
@@ -3102,6 +3425,7 @@ export class GameEngine {
     proj.isEnemy = false;
     proj.isSword = false;
     proj.source = dmgSource;
+    proj.coopAllyIndex = undefined;
     proj.homing =
       this.baseStats.innateHoming ||
       (this.activeSkills.tracking_eye ?? 0) > 0 ||
@@ -3197,6 +3521,7 @@ export class GameEngine {
           proj.isEnemy = false;
           proj.isSword = true;
           proj.source = 'elemental';
+          proj.coopAllyIndex = undefined;
           proj.homing = true;
           proj.x = this.px + Math.sin(yaw) * 0.7;
           proj.y = 1.25;
@@ -3475,6 +3800,7 @@ export class GameEngine {
     proj.isEnemy = false;
     proj.isSword = false;
     proj.source = source;
+    proj.coopAllyIndex = undefined;
     proj.homing = true;
     proj.x = x;
     proj.y = 1.05;
@@ -3497,6 +3823,195 @@ export class GameEngine {
     mat.emissive.setHex(colorHex);
     proj.mesh.scale.set(0.95, 0.95, 1.15);
     proj.mesh.position.set(x, 1.05, z);
+    proj.mesh.rotation.set(0, yaw, 0);
+    proj.mesh.visible = true;
+  }
+
+  private updateCoopAllies(dt: number): void {
+    if (!this.isCoopRaidMode || this.coopAllies.length === 0) return;
+    const nearest = this.findNearestEnemy(this.px, this.pz);
+
+    for (let idx = 0; idx < this.coopAllies.length; idx++) {
+      const ally = this.coopAllies[idx];
+      const target = nearest ? this.findNearestEnemy(ally.x, ally.z) ?? nearest : null;
+
+      let steerX = 0;
+      let steerZ = 0;
+      if (target && target.spawnTimer <= 0) {
+        const dx = target.x - ally.x;
+        const dz = target.z - ally.z;
+        const dist = Math.hypot(dx, dz);
+        const dirX = dist > 0.01 ? dx / dist : 0;
+        const dirZ = dist > 0.01 ? dz / dist : 1;
+        // Maintain agile mid-range orbit while dodging active boss slams
+        const radial = dist < 4.8 ? -0.9 : dist > 7.8 ? 0.85 : 0;
+        const strafeDir = idx === 0 ? 1 : -1;
+        const wave = Math.cos(this.elapsed * 1.45 + ally.phaseAngle);
+        steerX = dirX * radial - dirZ * strafeDir * wave * 0.85;
+        steerZ = dirZ * radial + dirX * strafeDir * wave * 0.85;
+
+        for (const e of this.enemies) {
+          if (e.telegraphType === 'slam' || e.telegraphType === 'lunge') {
+            const sx = ally.x - e.slamX;
+            const sz = ally.z - e.slamZ;
+            const sd = Math.hypot(sx, sz);
+            if (sd < e.slamRadius + 1.4 && sd > 0.01) {
+              steerX += (sx / sd) * 1.8;
+              steerZ += (sz / sd) * 1.8;
+            }
+          }
+        }
+      } else {
+        // Follow near player
+        const fx = this.px + (idx === 0 ? -2.8 : 2.8) - ally.x;
+        const fz = this.pz + 1.2 - ally.z;
+        const fd = Math.hypot(fx, fz);
+        if (fd > 0.6) {
+          steerX = fx / fd;
+          steerZ = fz / fd;
+        }
+      }
+
+      const steerMag = Math.hypot(steerX, steerZ);
+      const allySpeed = 6.4;
+      const targetVx = steerMag > 0.08 ? (steerX / steerMag) * allySpeed : 0;
+      const targetVz = steerMag > 0.08 ? (steerZ / steerMag) * allySpeed : 0;
+      ally.vx = THREE.MathUtils.damp(ally.vx, targetVx, 10, dt);
+      ally.vz = THREE.MathUtils.damp(ally.vz, targetVz, 10, dt);
+
+      ally.x = THREE.MathUtils.clamp(ally.x + ally.vx * dt, -ARENA_HALF_W + 0.7, ARENA_HALF_W - 0.7);
+      ally.z = THREE.MathUtils.clamp(ally.z + ally.vz * dt, -ARENA_HALF_D + 0.7, ARENA_HALF_D - 0.7);
+
+      for (const obs of this.obstacles) {
+        const odx = ally.x - obs.x;
+        const odz = ally.z - obs.z;
+        const minD = 0.55 + obs.radius;
+        const od = Math.hypot(odx, odz);
+        if (od < minD && od > 0.01) {
+          ally.x = obs.x + (odx / od) * minD;
+          ally.z = obs.z + (odz / od) * minD;
+        }
+      }
+
+      const moving = Math.hypot(ally.vx, ally.vz) > 0.25;
+      if (target && target.spawnTimer <= 0) {
+        ally.facing = Math.atan2(target.x - ally.x, target.z - ally.z);
+      } else if (moving) {
+        ally.facing = Math.atan2(ally.vx, ally.vz);
+      }
+
+      ally.model.root.position.set(ally.x, 0, ally.z);
+      ally.model.root.rotation.y = ally.facing;
+      ally.shadow.position.set(ally.x, 0.02, ally.z);
+
+      if (moving) {
+        const stride = Math.sin(this.elapsed * 14 + ally.phaseAngle) * 0.45;
+        ally.model.leftLeg.rotation.x = stride;
+        ally.model.rightLeg.rotation.x = -stride;
+        ally.model.bodyGroup.position.y = Math.abs(Math.sin(this.elapsed * 14 + ally.phaseAngle)) * 0.07;
+      } else {
+        ally.model.leftLeg.rotation.x = THREE.MathUtils.damp(ally.model.leftLeg.rotation.x, 0, 12, dt);
+        ally.model.rightLeg.rotation.x = THREE.MathUtils.damp(ally.model.rightLeg.rotation.x, 0, 12, dt);
+        ally.model.bodyGroup.position.y = THREE.MathUtils.damp(ally.model.bodyGroup.position.y, 0, 12, dt);
+      }
+
+      if (target && target.spawnTimer <= 0) {
+        ally.attackTimer -= dt;
+        if (ally.attackTimer <= 0) {
+          ally.attackTimer = 0.52 + (idx % 2) * 0.08;
+          ally.ultCharge = Math.min(100, ally.ultCharge + 12);
+          const yaw = Math.atan2(target.x - ally.x, target.z - ally.z);
+          const dmg = this.baseStats.attack * (0.78 + idx * 0.08);
+          const isFire = ally.heroId === 'cleo';
+          const isIce = ally.heroId === 'rolla';
+          const isStorm = ally.heroId === 'thor';
+
+          // Trigger Ally Ultimate when ready
+          if (ally.ultCharge >= 100) {
+            ally.ultCharge = 0;
+            this.spawnShockwave(ally.x, ally.z, ally.accentHex, 4.4, 0.42);
+            this.spawnParticles(ally.x, 1.0, ally.z, ally.accentHex, 18);
+            this.emitFloatingNumber(
+              ally.x,
+              2.2,
+              ally.z,
+              0,
+              true,
+              false,
+              undefined,
+              `${ally.name.toUpperCase()} · TUYỆT KỸ!`
+            );
+            for (let k = -2; k <= 2; k++) {
+              this.fireCoopAllyProjectile(
+                idx,
+                ally.x,
+                ally.z,
+                yaw + k * 0.16,
+                dmg * 1.45,
+                ally.accentHex,
+                isFire,
+                isIce,
+                isStorm
+              );
+            }
+          } else {
+            this.fireCoopAllyProjectile(
+              idx,
+              ally.x,
+              ally.z,
+              yaw,
+              dmg,
+              ally.accentHex,
+              isFire,
+              isIce,
+              isStorm
+            );
+          }
+        }
+      }
+    }
+  }
+
+  private fireCoopAllyProjectile(
+    allyIdx: number,
+    x: number,
+    z: number,
+    yaw: number,
+    dmg: number,
+    colorHex: number,
+    blaze: boolean,
+    frost: boolean,
+    storm: boolean
+  ): void {
+    const proj = this.arrowPool.find((p) => !p.active);
+    if (!proj) return;
+    proj.active = true;
+    proj.isEnemy = false;
+    proj.isSword = false;
+    proj.source = 'basic';
+    proj.coopAllyIndex = allyIdx;
+    proj.homing = true;
+    proj.x = x + Math.sin(yaw) * 0.6;
+    proj.y = 1.02;
+    proj.z = z + Math.cos(yaw) * 0.6;
+    proj.vx = Math.sin(yaw) * 22;
+    proj.vz = Math.cos(yaw) * 22;
+    proj.damage = dmg;
+    proj.radius = 0.32;
+    proj.life = 2.0;
+    proj.pierceLeft = 1;
+    proj.ricochetLeft = 0;
+    proj.wallBounceLeft = 0;
+    proj.hitEnemyIds.clear();
+    proj.blaze = blaze;
+    proj.frost = frost;
+    proj.storm = storm;
+    proj.poison = false;
+    const mat = proj.mesh.material as THREE.MeshStandardMaterial;
+    mat.color.setHex(colorHex);
+    mat.emissive.setHex(colorHex);
+    proj.mesh.scale.set(1.0, 1.0, 1.25);
+    proj.mesh.position.set(proj.x, 1.02, proj.z);
     proj.mesh.rotation.set(0, yaw, 0);
     proj.mesh.visible = true;
   }
@@ -4108,7 +4623,8 @@ export class GameEngine {
             p.storm,
             p.poison,
             undefined,
-            p.source ?? (p.isSword ? 'elemental' : 'basic')
+            p.source ?? (p.isSword ? 'elemental' : 'basic'),
+            p.coopAllyIndex
           );
 
           // Hero on-hit passives
@@ -4217,7 +4733,8 @@ export class GameEngine {
     storm: boolean,
     poison = false,
     label?: string,
-    dmgSource: 'basic' | 'ultimate' | 'pet' | 'elemental' = 'basic'
+    dmgSource: 'basic' | 'ultimate' | 'pet' | 'elemental' = 'basic',
+    coopAllyIndex?: number
   ): void {
     let mult = 1.0;
     if (this.markedEnemyIds.has(e.id)) mult += 0.25;
@@ -4227,6 +4744,26 @@ export class GameEngine {
     if (e.chillTimer > 0 && ((this.activeSkills.super_freeze ?? 0) > 0 || this.hasRune('rune_frost'))) {
       mult += 0.25;
     }
+
+    // Constellation Elemental Mastery & Elemental Trial Tower Affinity (+50% matching element)
+    if (blaze) mult *= 1 + (this.baseStats.constellationFireBonus ?? 0);
+    if (frost) mult *= 1 + (this.baseStats.constellationIceBonus ?? 0);
+    if (storm) mult *= 1 + (this.baseStats.constellationStormBonus ?? 0);
+
+    if (this.isElementalTowerMode) {
+      const fireMatch =
+        blaze || this.baseStats.heroId === 'cleo' || this.baseStats.equippedPetId === 'solar_phoenix';
+      const iceMatch =
+        frost || this.baseStats.heroId === 'rolla' || this.baseStats.equippedPetId === 'frost_owl';
+      const stormMatch =
+        storm || this.baseStats.heroId === 'thor' || this.baseStats.equippedPetId === 'storm_dragonet';
+      const isMatch =
+        (this.elementalTowerId === 'fire' && fireMatch) ||
+        (this.elementalTowerId === 'ice' && iceMatch) ||
+        (this.elementalTowerId === 'storm' && stormMatch);
+      mult *= isMatch ? 1.5 : 0.94;
+    }
+
     const finalDmg = Math.max(1, Math.round(amount * mult));
     e.hp -= finalDmg;
     e.hitFlashTimer = 0.1;
@@ -4235,12 +4772,14 @@ export class GameEngine {
       this.guildBossTotalDamage += finalDmg;
     }
 
-    if (dmgSource === 'ultimate') this.dmgUltimate += finalDmg;
+    if (coopAllyIndex !== undefined && this.coopAllies[coopAllyIndex]) {
+      this.coopAllies[coopAllyIndex].damageDealt += finalDmg;
+    } else if (dmgSource === 'ultimate') this.dmgUltimate += finalDmg;
     else if (dmgSource === 'pet') this.dmgPet += finalDmg;
     else if (dmgSource === 'elemental') this.dmgElemental += finalDmg;
     else this.dmgBasic += finalDmg;
 
-    if (isCrit && finalDmg > this.peakCritDmg) {
+    if (isCrit && finalDmg > this.peakCritDmg && coopAllyIndex === undefined) {
       this.peakCritDmg = finalDmg;
     }
 
@@ -4430,8 +4969,14 @@ export class GameEngine {
     this.enemies.splice(index, 1);
 
     if (this.enemies.length === 0) {
-      if (this.isGuildBossMode) {
+      if (this.isGuildBossMode || this.isCoopRaidMode || this.isArenaMode) {
         this.onStageCleared();
+      } else if (this.isElementalTowerMode) {
+        if (this.waveIndex + 1 < this.elementalWaveDefs.length) {
+          this.spawnElementalTowerWave(this.waveIndex + 1);
+        } else {
+          this.onStageCleared();
+        }
       } else if (this.isDailyRiftMode) {
         if (this.waveIndex + 1 < this.dailyRiftWaveDefs.length) {
           this.spawnDailyRiftWave(this.waveIndex + 1);
@@ -4458,13 +5003,35 @@ export class GameEngine {
   }
 
   private getDamageBreakdownSnapshot(): DamageBreakdown {
+    const basic = Math.round(this.dmgBasic);
+    const ultimate = Math.round(this.dmgUltimate);
+    const pet = Math.round(this.dmgPet);
+    const elemental = Math.round(this.dmgElemental);
+    const playerTotal = basic + ultimate + pet + elemental;
+
+    let coopAlliesSummary: CoopAllySummary[] | undefined;
+    if (this.isCoopRaidMode && this.coopAllies.length > 0) {
+      const maxAllyDmg = Math.max(...this.coopAllies.map((a) => Math.round(a.damageDealt)));
+      const playerIsMvp = playerTotal >= maxAllyDmg;
+      coopAlliesSummary = this.coopAllies.map((a) => {
+        const d = Math.round(a.damageDealt);
+        return {
+          heroId: a.heroId,
+          name: a.name,
+          damage: d,
+          isMvp: !playerIsMvp && d === maxAllyDmg,
+        };
+      });
+    }
+
     return {
-      basic: Math.round(this.dmgBasic),
-      ultimate: Math.round(this.dmgUltimate),
-      pet: Math.round(this.dmgPet),
-      elemental: Math.round(this.dmgElemental),
+      basic,
+      ultimate,
+      pet,
+      elemental,
       peakCrit: Math.round(this.peakCritDmg),
       elapsedSeconds: Math.max(1, Math.round(this.runElapsedSeconds)),
+      coopAllies: coopAlliesSummary,
     };
   }
 
@@ -4496,6 +5063,49 @@ export class GameEngine {
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
       });
+      return;
+    }
+
+    if (this.isCoopRaidMode) {
+      const diffCfg = COOP_DIFFICULTY_MAP[this.coopDifficulty];
+      soundEngine.playVictory();
+      this.phase = GamePhase.VICTORY;
+      this.syncHudImmediate();
+      this.callbacks.onRunEnded(true, {
+        chapterId: this.currentChapter.id,
+        stageReached: 1,
+        kills: this.kills,
+        gold: this.runGold + diffCfg.rewardGold,
+        gems: this.runGems + diffCfg.rewardGems,
+        isCoopRaidMode: true,
+        coopDifficulty: this.coopDifficulty,
+        starDust: diffCfg.rewardStarDust,
+        petEssence: diffCfg.rewardPetEssence,
+        maxCombo: this.maxRunCombo,
+        damageBreakdown: this.getDamageBreakdownSnapshot(),
+      });
+      return;
+    }
+
+    if (this.isElementalTowerMode) {
+      this.portalOpen = true;
+      const isBossFloor = this.elementalTowerFloor % 3 === 0;
+      const tDef = ELEMENTAL_TOWER_MAP[this.elementalTowerId];
+      if (isBossFloor) {
+        this.runGold += 95 + this.elementalTowerFloor * 18;
+        this.runGems += 14;
+      }
+      const ev: StageEventAfter = isBossFloor ? 'valkyrie' : this.elementalTowerFloor % 2 === 0 ? 'angel' : 'none';
+      this.stageBannerText = `Hoàn Thành ${tDef.name} Tầng ${this.elementalTowerFloor}! Bước Vào Cổng Bắc Lên Tầng ${this.elementalTowerFloor + 1}`;
+      this.stageBannerTimer = 3.2;
+
+      if (ev !== 'none' && !this.shrineUsed) {
+        this.shrineKind = ev;
+        this.shrineGroup = createShrineModel(ev);
+        this.shrineGroup.position.set(0, 0, -2.5);
+        this.entitiesGroup.add(this.shrineGroup);
+      }
+      this.syncHudImmediate();
       return;
     }
 
@@ -4711,7 +5321,9 @@ export class GameEngine {
       const stage = this.currentChapter.stages[this.stageIndex];
       this.callbacks.onRunEnded(false, {
         chapterId: this.currentChapter.id,
-        stageReached: this.isDailyRiftMode
+        stageReached: this.isElementalTowerMode
+          ? this.elementalTowerFloor
+          : this.isDailyRiftMode
           ? this.dailyRiftStageIdx + 1
           : this.isBossRushMode
           ? this.bossRushRound
@@ -4730,8 +5342,21 @@ export class GameEngine {
         guildBossDamage: this.isGuildBossMode ? Math.round(this.guildBossTotalDamage) : undefined,
         isArenaMode: this.isArenaMode,
         arenaOpponentName: this.isArenaMode ? this.arenaOpponentName : undefined,
-        starDust: this.isDailyRiftMode ? Math.max(15, this.dailyRiftStageIdx * 28) : 0,
-        petEssence: this.isDailyRiftMode ? Math.max(4, this.dailyRiftStageIdx * 8) : 0,
+        isCoopRaidMode: this.isCoopRaidMode,
+        coopDifficulty: this.isCoopRaidMode ? this.coopDifficulty : undefined,
+        isElementalTowerMode: this.isElementalTowerMode,
+        elementalTowerId: this.isElementalTowerMode ? this.elementalTowerId : undefined,
+        elementalTowerFloor: this.isElementalTowerMode ? this.elementalTowerFloor : undefined,
+        starDust: this.isDailyRiftMode
+          ? Math.max(15, this.dailyRiftStageIdx * 28)
+          : this.isElementalTowerMode
+          ? Math.max(0, (this.elementalTowerFloor - 1) * 18)
+          : 0,
+        petEssence: this.isDailyRiftMode
+          ? Math.max(4, this.dailyRiftStageIdx * 8)
+          : this.isElementalTowerMode
+          ? Math.max(0, (this.elementalTowerFloor - 1) * 6)
+          : 0,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
       });
@@ -4846,7 +5471,9 @@ export class GameEngine {
       this.portal.vortex.rotation.z += dt * 2.8;
 
       if (this.pz < -ARENA_HALF_D + 1.4 && Math.abs(this.px) < 1.85) {
-        if (this.isDailyRiftMode) {
+        if (this.isElementalTowerMode) {
+          this.loadElementalTowerFloor(this.elementalTowerFloor + 1);
+        } else if (this.isDailyRiftMode) {
           this.loadDailyRiftStage(this.dailyRiftStageIdx + 1);
         } else if (this.isBossRushMode) {
           this.loadBossRushRound(this.bossRushRound + 1);
@@ -5114,10 +5741,13 @@ export class GameEngine {
     const boss = this.enemies.find((e) => e.isBoss && !e.isArenaRival);
     const rival = this.enemies.find((e) => e.isArenaRival);
     const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.artemis;
+    const elemDef = this.isElementalTowerMode ? ELEMENTAL_TOWER_MAP[this.elementalTowerId] : null;
     const isBossFloor = this.isArenaMode
       ? false
-      : this.isGuildBossMode
+      : this.isGuildBossMode || this.isCoopRaidMode
       ? true
+      : this.isElementalTowerMode
+      ? this.elementalTowerFloor % 3 === 0
       : this.isDailyRiftMode
       ? this.dailyRiftStageIdx >= this.dailyRiftTotalStages - 1
       : this.isBossRushMode
@@ -5133,25 +5763,35 @@ export class GameEngine {
       xp: this.xp,
       xpToNext: this.xpToNext,
       level: this.level,
-      stage: this.isArenaMode || this.isGuildBossMode
-        ? 1
-        : this.isDailyRiftMode
-        ? this.dailyRiftStageIdx + 1
-        : this.isBossRushMode
-        ? this.bossRushRound
-        : this.isTowerMode
-        ? this.towerFloor
-        : stage.stageNumber,
-      totalStages: this.isArenaMode || this.isGuildBossMode
-        ? 1
-        : this.isDailyRiftMode
-        ? this.dailyRiftTotalStages
-        : this.isBossRushMode
-        ? this.bossRushTotalRounds
-        : this.isTowerMode
-        ? this.towerFloor
-        : this.currentChapter.stages.length,
-      stageName: this.isArenaMode
+      stage:
+        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode
+          ? 1
+          : this.isElementalTowerMode
+          ? this.elementalTowerFloor
+          : this.isDailyRiftMode
+          ? this.dailyRiftStageIdx + 1
+          : this.isBossRushMode
+          ? this.bossRushRound
+          : this.isTowerMode
+          ? this.towerFloor
+          : stage.stageNumber,
+      totalStages:
+        this.isArenaMode || this.isGuildBossMode || this.isCoopRaidMode
+          ? 1
+          : this.isElementalTowerMode
+          ? this.elementalTowerFloor
+          : this.isDailyRiftMode
+          ? this.dailyRiftTotalStages
+          : this.isBossRushMode
+          ? this.bossRushTotalRounds
+          : this.isTowerMode
+          ? this.towerFloor
+          : this.currentChapter.stages.length,
+      stageName: this.isCoopRaidMode
+        ? `Phó Bản Hợp Tác AI · ${COOP_DIFFICULTY_MAP[this.coopDifficulty].name}`
+        : this.isElementalTowerMode && elemDef
+        ? `${elemDef.name} · Tầng ${this.elementalTowerFloor}`
+        : this.isArenaMode
         ? `Đấu Trường Arena · ${this.arenaOpponentName}`
         : this.isGuildBossMode
         ? 'Boss Bang Hội · Đấu Trường 60s'
@@ -5162,7 +5802,11 @@ export class GameEngine {
         : this.isTowerMode
         ? `Tháp Vô Tận · Tầng ${this.towerFloor}`
         : stage.name,
-      chapterName: this.isArenaMode
+      chapterName: this.isCoopRaidMode
+        ? '🤝 Co-op AI 3D'
+        : this.isElementalTowerMode && elemDef
+        ? `💠 ${elemDef.name}`
+        : this.isArenaMode
         ? '⚔️ Arena 1v1'
         : this.isGuildBossMode
         ? '🛡️ Boss Bang'
@@ -5215,6 +5859,19 @@ export class GameEngine {
       arenaOpponentName: this.isArenaMode ? this.arenaOpponentName : undefined,
       arenaOpponentHp: this.isArenaMode ? (rival ? Math.max(0, Math.round(rival.hp)) : 0) : undefined,
       arenaOpponentMaxHp: this.isArenaMode ? (rival ? rival.maxHp : 1) : undefined,
+      isCoopRaidMode: this.isCoopRaidMode,
+      coopDifficulty: this.isCoopRaidMode ? this.coopDifficulty : undefined,
+      coopAllies: this.isCoopRaidMode
+        ? this.coopAllies.map((a) => ({
+            heroId: a.heroId,
+            name: a.name,
+            damage: Math.round(a.damageDealt),
+            ultCharge: Math.round(a.ultCharge),
+          }))
+        : undefined,
+      isElementalTowerMode: this.isElementalTowerMode,
+      elementalTowerId: this.isElementalTowerMode ? this.elementalTowerId : undefined,
+      elementalTowerFloor: this.isElementalTowerMode ? this.elementalTowerFloor : undefined,
       activeSkills: { ...this.activeSkills },
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,

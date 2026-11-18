@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Crown, Flame, Heart, Pause, Skull, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowUp, Crown, Flame, Heart, Pause, Skull, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import { SKILLS_CATALOG } from '../data/skillsData';
+import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import {
   FloatingDamage,
   HudSnapshot,
@@ -227,6 +228,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span>
                 {hud.isArenaMode
                   ? `Đấu Trường 1v1 · ${hud.arenaTimeLeft ?? 45}s`
+                  : hud.isCoopRaidMode
+                  ? `Co-op Raid · ${
+                      hud.coopDifficulty === 'mythic'
+                        ? 'Thần Thoại'
+                        : hud.coopDifficulty === 'heroic'
+                        ? 'Anh Hùng'
+                        : 'Thường'
+                    } · Ải ${hud.stage}/${hud.totalStages}`
+                  : hud.isElementalTowerMode
+                  ? `${ELEMENTAL_TOWER_MAP[hud.elementalTowerId ?? 'fire']?.name ?? 'Tháp Hệ'} · Tầng ${
+                      hud.elementalTowerFloor ?? 1
+                    }`
                   : hud.isGuildBossMode
                   ? `Boss Bang Hội · ${hud.guildBossTimeLeft ?? 60}s`
                   : hud.isDailyRiftMode
@@ -245,6 +258,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 ? `Tổng ST: ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')}`
                 : hud.portalOpen
                 ? 'Cổng Bắc Đã Mở · Tiến Lên Phía Bắc!'
+                : hud.isCoopRaidMode
+                ? `Tổ Đội 3 Anh Hùng · Còn ${hud.enemiesRemaining} mục tiêu`
+                : hud.isElementalTowerMode
+                ? `+50% ST ${ELEMENTAL_TOWER_MAP[hud.elementalTowerId ?? 'fire']?.shortName ?? 'Hệ'} · Còn ${hud.enemiesRemaining} mục tiêu`
                 : `${
                     hud.isTowerMode || hud.isBossRushMode || hud.isDailyRiftMode
                       ? ''
@@ -382,6 +399,68 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           </div>
         )}
+        {/* Co-op AI Allies Live Strip & Elemental Tower Affinity Banner */}
+        {hud.isCoopRaidMode && hud.coopAllies && hud.coopAllies.length > 0 && (
+          <div className="max-w-5xl w-full mx-auto flex flex-wrap items-center justify-start gap-2 pointer-events-none">
+            {hud.coopAllies.map((ally) => {
+              const allyUlt = Math.max(0, Math.min(100, Math.round(ally.ultCharge)));
+              return (
+                <div
+                  key={ally.heroId}
+                  className="hv2-panel rounded-xl px-2.5 py-1.5 border border-sky-400/40 min-w-[155px]"
+                >
+                  <div className="flex items-center justify-between gap-2 text-[10px] font-black">
+                    <span className="flex items-center gap-1 text-sky-200 truncate">
+                      <Users className="w-3 h-3 text-sky-300 shrink-0" />
+                      <span>{ally.name}</span>
+                    </span>
+                    <span className="font-mono-nums text-amber-300 shrink-0">
+                      {ally.damage.toLocaleString('vi-VN')} ST
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <div className="flex-1 h-1.5 rounded-full bg-slate-950 overflow-hidden border border-sky-400/20">
+                      <div
+                        className="h-full bg-gradient-to-r from-sky-400 to-amber-300 transition-all duration-150"
+                        style={{ width: `${allyUlt}%` }}
+                      />
+                    </div>
+                    <span className="font-mono-nums text-[9px] font-bold text-slate-300">
+                      {allyUlt}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#070b1a]/90 border border-amber-400/30 text-[10px] font-black text-amber-200">
+              <span>{COOP_DIFFICULTY_MAP[hud.coopDifficulty ?? 'normal']?.badge}</span>
+            </div>
+          </div>
+        )}
+
+        {hud.isElementalTowerMode && (
+          <div className="max-w-5xl w-full mx-auto flex justify-start pointer-events-none">
+            <div
+              className={`hv2-panel rounded-xl px-3 py-1 border ${
+                ELEMENTAL_TOWER_MAP[hud.elementalTowerId ?? 'fire']?.borderClass ?? 'border-amber-400/40'
+              } text-[10px] font-black flex items-center gap-1.5`}
+            >
+              <Flame
+                className={`w-3.5 h-3.5 ${
+                  ELEMENTAL_TOWER_MAP[hud.elementalTowerId ?? 'fire']?.accentTextClass ?? 'text-orange-300'
+                }`}
+              />
+              <span
+                className={
+                  ELEMENTAL_TOWER_MAP[hud.elementalTowerId ?? 'fire']?.accentTextClass ?? 'text-orange-300'
+                }
+              >
+                Cộng Hưởng +50% Sát Thương Hệ {ELEMENTAL_TOWER_MAP[hud.elementalTowerId ?? 'fire']?.shortName}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Top-Right Tactical Arena Mini-Radar + Live Combo Chain */}
         <div className="max-w-5xl w-full mx-auto flex items-start justify-end gap-2.5 pointer-events-none">
           {hud.comboCount >= 2 && (

@@ -1,6 +1,7 @@
 import React from 'react';
-import { BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Trophy } from 'lucide-react';
-import { DamageBreakdown, GamePhase } from '../types/game';
+import { BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Trophy, Users } from 'lucide-react';
+import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
+import { CoopRaidDifficulty, DamageBreakdown, ElementalTowerId, GamePhase } from '../types/game';
 import { GoldCoinIcon, PetEssenceIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
 
 interface PauseResultModalProps {
@@ -18,6 +19,11 @@ interface PauseResultModalProps {
   isArenaMode?: boolean;
   arenaOpponentName?: string;
   arenaRatingDelta?: number;
+  isCoopRaidMode?: boolean;
+  coopDifficulty?: CoopRaidDifficulty;
+  isElementalTowerMode?: boolean;
+  elementalTowerId?: ElementalTowerId;
+  elementalTowerFloor?: number;
   kills: number;
   goldEarned: number;
   gemsEarned: number;
@@ -47,6 +53,11 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   isArenaMode = false,
   arenaOpponentName = '',
   arenaRatingDelta = 0,
+  isCoopRaidMode = false,
+  coopDifficulty = 'normal',
+  isElementalTowerMode = false,
+  elementalTowerId = 'fire',
+  elementalTowerFloor = 1,
   kills,
   goldEarned,
   gemsEarned,
@@ -122,6 +133,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
           {isArenaMode
             ? `Đấu Trường Arena 1v1 · ${arenaOpponentName || 'Kình Địch'}`
+            : isCoopRaidMode
+            ? `Phó Bản Co-op 3D · ${COOP_DIFFICULTY_MAP[coopDifficulty]?.badge ?? 'TỔ ĐỘI'}`
+            : isElementalTowerMode
+            ? `Tháp Thí Luyện · ${ELEMENTAL_TOWER_MAP[elementalTowerId]?.name ?? 'Nguyên Tố'}`
             : isGuildBossMode
             ? 'Thánh Điện Boss Bang Hội · 60 Giây'
             : isDailyRiftMode
@@ -139,6 +154,12 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? 'Chiến Thắng Đấu Trường!'
               : 'Thất Bại Tại Đấu Trường'
+            : isCoopRaidMode
+            ? isVictory
+              ? 'Chinh Phục Phó Bản Co-op!'
+              : 'Thất Bại Trong Phó Bản Co-op'
+            : isElementalTowerMode
+            ? 'Tổng Kết Tháp Nguyên Tố!'
             : isGuildBossMode
             ? 'Tổng Kết Sát Thương Bang Hội!'
             : isVictory
@@ -162,6 +183,12 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? isVictory
               ? `Bạn đã đánh bại ${arenaOpponentName || 'đối thủ'} và nhận ${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm Xếp Hạng Arena!`
               : `Đối thủ ${arenaOpponentName || 'đối thủ'} đã thắng thế (${arenaRatingDelta} Điểm Arena). Hãy nâng cấp Bảo Thạch và tái đấu!`
+            : isCoopRaidMode
+            ? isVictory
+              ? 'Tổ đội 3 Anh Hùng đã tiêu diệt Chúa Tể Phó Bản! Chiến lợi phẩm & Bảo Thạch đã chuyển vào Kho Đồ.'
+              : 'Tổ đội đã rút lui khỏi Phó Bản Co-op. Toàn bộ Vàng & Bụi Tinh Tú thu thập được đã lưu lại.'
+            : isElementalTowerMode
+            ? `Kỷ lục tầng ${ELEMENTAL_TOWER_MAP[elementalTowerId]?.name ?? 'Tháp Hệ'} cùng Bụi Tinh Tú và Tinh Chất đã lưu vào Kho Báu.`
             : isGuildBossMode
             ? `Bạn đã gây ${guildBossDamage.toLocaleString('vi-VN')} sát thương lên Thái Cổ Ma Long · Kỷ lục & Xu Bang đã được cập nhật!`
             : isVictory
@@ -185,6 +212,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             <div className="text-[10px] text-slate-400 font-bold">
               {isArenaMode
                 ? 'Điểm Xếp Hạng'
+                : isCoopRaidMode
+                ? 'Ải Phó Bản'
+                : isElementalTowerMode
+                ? 'Tầng Tháp Hệ'
                 : isGuildBossMode
                 ? 'Sát Thương Boss'
                 : isDailyRiftMode
@@ -206,6 +237,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             >
               {isArenaMode
                 ? `${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm`
+                : isCoopRaidMode
+                ? `${stageReached}/${totalStages}`
+                : isElementalTowerMode
+                ? `Tầng ${elementalTowerFloor}`
                 : isGuildBossMode
                 ? guildBossDamage.toLocaleString('vi-VN')
                 : isDailyRiftMode
@@ -323,6 +358,83 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Co-op Raid Team Damage & MVP Crown */}
+        {!isPause && isCoopRaidMode && damageBreakdown?.coopAllies && damageBreakdown.coopAllies.length > 0 && (() => {
+          const teamMembers = [
+            {
+              key: 'player',
+              name: 'Bạn (Đội Trưởng)',
+              damage: totalDamage,
+              isPlayer: true,
+              isMvp: !damageBreakdown.coopAllies!.some((a) => a.isMvp),
+            },
+            ...damageBreakdown.coopAllies!.map((a, idx) => ({
+              key: `${a.heroId}_${idx}`,
+              name: `${a.name} (AI)`,
+              damage: a.damage,
+              isPlayer: false,
+              isMvp: Boolean(a.isMvp),
+            })),
+          ].sort((a, b) => b.damage - a.damage);
+          const teamTotal = Math.max(1, teamMembers.reduce((s, m) => s + m.damage, 0));
+
+          return (
+            <div className="mb-4 text-left bg-[#060916]/95 border border-amber-400/35 rounded-2xl p-3.5">
+              <div className="flex items-center justify-between gap-2 mb-2.5">
+                <span className="flex items-center gap-1.5 text-xs font-black text-amber-300 uppercase tracking-wider">
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Tổ Đội Co-op &amp; Danh Hiệu MVP</span>
+                </span>
+                <span className="font-mono-nums text-[11px] font-bold text-slate-300">
+                  Tổng Đội {teamTotal.toLocaleString('vi-VN')}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {teamMembers.map((m) => {
+                  const pct = Math.round((m.damage / teamTotal) * 100);
+                  return (
+                    <div
+                      key={m.key}
+                      className={`rounded-xl px-3 py-2 border ${
+                        m.isMvp
+                          ? 'bg-amber-400/10 border-amber-300/75'
+                          : 'bg-[#090f24] border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[11px] font-black mb-1">
+                        <span className="flex items-center gap-1.5 text-white truncate">
+                          {m.isMvp && <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />}
+                          <span className="truncate">{m.name}</span>
+                          {m.isMvp && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-300 text-slate-950 text-[9px] font-black whitespace-nowrap">
+                              MVP
+                            </span>
+                          )}
+                        </span>
+                        <span className="font-mono-nums text-amber-200 shrink-0">
+                          {m.damage.toLocaleString('vi-VN')} ({pct}%)
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-950 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            m.isMvp
+                              ? 'bg-gradient-to-r from-amber-400 to-yellow-200'
+                              : m.isPlayer
+                              ? 'bg-gradient-to-r from-emerald-500 to-cyan-300'
+                              : 'bg-gradient-to-r from-sky-500 to-indigo-400'
+                          }`}
+                          style={{ width: `${Math.max(4, pct)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="flex flex-col gap-2.5">
           {isPause && onResume && (

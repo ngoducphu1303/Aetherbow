@@ -24,6 +24,7 @@ import {
   Zap,
 } from 'lucide-react';
 import flashDealVaultArt from '../assets/images/flash_deal_vault_art_1794973982335.jpg';
+import growthFundVaultArt from '../assets/images/growth_fund_vault_1795004417139.jpg';
 import petSanctuaryArt from '../assets/images/pet_sanctuary_art_1794977269592.jpg';
 import royalChestArt from '../assets/images/royal_zodiac_chest_1794971375438.jpg';
 import { soundEngine } from '../audio/soundEngine';
@@ -50,6 +51,7 @@ import {
   ZODIAC_AURAS,
   getPetStats,
   getPetUpgradeCost,
+  isVipActive,
   normalizePets,
 } from '../data/wave3Data';
 import {
@@ -64,8 +66,21 @@ import {
   getSocketGemBonuses,
   getSocketGemLabel,
   getSocketGemTierRoman,
+  normalizeArena,
   normalizeSocketGems,
 } from '../data/wave5Data';
+import {
+  ARENA_SHOP_OFFERS,
+  ArenaShopOffer,
+  COMMERCIAL_VALUE_PACKS,
+  CommercialPackItem,
+  GROWTH_FUND_MILESTONES,
+  GROWTH_FUND_PREMIUM_GEM_COST,
+  countClaimableGrowthFund,
+  isGrowthFundMilestoneMet,
+  normalizeArenaShop,
+  normalizeGrowthFund,
+} from '../data/wave6Data';
 import {
   AuraStyleId,
   ComputedPlayerStats,
@@ -327,6 +342,39 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
       {/* 2. LOWER CELESTIAL GEAR VAULT */}
       <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-4 flex flex-col gap-3">
         <div className="max-w-4xl w-full mx-auto flex flex-col gap-3.5">
+          {/* High-Craft Vault Telemetry Strip */}
+          {(() => {
+            const awakenedCount = save.inventory.filter((g) => (g.awakeningLevel ?? 0) > 0).length;
+            const equippedGemsCount = Object.values(save.equipped).reduce((sum, uid) => {
+              const g = save.inventory.find((x) => x.uid === uid);
+              return sum + (g?.socketedGems?.length ?? 0);
+            }, 0);
+            return (
+              <div className="cel-panel rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5 border border-amber-400/25">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span className="font-display text-xs sm:text-sm font-black text-amber-100">
+                    Kho Đồ Cao Cấp Hoàng Đạo
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono-nums font-bold">
+                  <span className="text-slate-200">
+                    Tổng Trang Bị: <strong className="text-white">{save.inventory.length}</strong>
+                  </span>
+                  <span className="text-amber-300">
+                    Thức Tỉnh: <strong>{awakenedCount}</strong>
+                  </span>
+                  <span className="text-purple-300">
+                    Bảo Thạch Khảm: <strong>{equippedGemsCount}</strong>
+                  </span>
+                  <span className="text-emerald-300">
+                    Lực Chiến: <strong>{stats.powerRating.toLocaleString('vi-VN')} LC</strong>
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
           {selectedItem && (
             <div className="cel-panel-ornate rounded-2xl p-3.5 sm:p-4">
               {(() => {
@@ -1940,23 +1988,44 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   );
 };
 
+export type ShopSectionTab = 'packs' | 'arena_shop' | 'deals' | 'gacha';
+
 interface ShopPanelProps {
   save: SaveData;
+  powerRating: number;
+  initialSection?: ShopSectionTab;
   onOpenChestWithGacha: (
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare',
     count?: 1 | 10
   ) => void;
   onBuyFlashDeal: (deal: FlashDealItem) => void;
+  onUnlockGrowthFundPremium: () => void;
+  onClaimGrowthFundReward: (milestoneId: string, tier: 'free' | 'premium') => void;
+  onClaimAllGrowthFund: () => void;
+  onBuyArenaShopOffer: (offer: ArenaShopOffer) => void;
+  onBuyCommercialPack: (pack: CommercialPackItem) => void;
+  onOpenVipModal: () => void;
+  onOpenArenaModal: () => void;
 }
 
 export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   save,
+  powerRating,
+  initialSection = 'packs',
   onOpenChestWithGacha,
   onBuyFlashDeal,
+  onUnlockGrowthFundPremium,
+  onClaimGrowthFundReward,
+  onClaimAllGrowthFund,
+  onBuyArenaShopOffer,
+  onBuyCommercialPack,
+  onOpenVipModal,
+  onOpenArenaModal,
 }) => {
-  const [storeSection, setStoreSection] = useState<'all' | 'deals' | 'gacha'>('all');
+  const [storeSection, setStoreSection] = useState<ShopSectionTab>(initialSection);
   const [chestImgFailed, setChestImgFailed] = useState(false);
   const [vaultBannerFailed, setVaultBannerFailed] = useState(false);
+  const [growthImgFailed, setGrowthImgFailed] = useState(false);
   const [oddsModalVariant, setOddsModalVariant] = useState<
     'iron' | 'mythic' | 'rune_bag' | 'rune_rare' | null
   >(null);
@@ -1968,6 +2037,13 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const today = getTodayKey();
   const flashState = normalizeFlashDeals(save.flashDeals);
   const dailyDeals = getDailyFlashDeals(today);
+
+  const gf = normalizeGrowthFund(save.growthFund);
+  const claimableGfCount = countClaimableGrowthFund(save, powerRating);
+  const arena = normalizeArena(save.arena);
+  const arenaShop = normalizeArenaShop(save.arenaShop);
+  const hasVip = isVipActive(save.vip);
+  const packClaims = save.commercialPackClaims ?? {};
 
   const chests: Array<{
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare';
@@ -2031,25 +2107,26 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   return (
     <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-4 pointer-events-auto">
       <div className="max-w-4xl mx-auto flex flex-col gap-5 pb-8">
-        {/* Commercial Storefront Header + Segmented Section Tabs */}
+        {/* Commercial Storefront Header + 4-Tab Segmented Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-display text-lg sm:text-xl font-black text-amber-200">
               Thương Hội &amp; Kho Báu Hoàng Đạo
             </h2>
             <p className="text-xs text-slate-300 mt-0.5">
-              Ưu đãi Flash Sale làm mới mỗi ngày và triệu hồi rương ×10 kèm bảo hiểm S-Tier.
+              Quỹ Đầu Tư 800%, Cửa Hàng Xu Arena, Flash Sale mỗi ngày và Triệu Hồi Rương [S].
             </p>
           </div>
 
-          <div className="flex items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
+          <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
             {(
               [
-                ['all', 'Tất Cả'],
-                ['deals', 'Flash Sale'],
-                ['gacha', 'Triệu Hồi'],
+                ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
+                ['arena_shop', 'Shop Xu Arena', 0],
+                ['deals', 'Flash Sale', 0],
+                ['gacha', 'Triệu Hồi', 0],
               ] as const
-            ).map(([k, label]) => (
+            ).map(([k, label, badge]) => (
               <button
                 key={k}
                 type="button"
@@ -2057,22 +2134,393 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                   soundEngine.playUiClick();
                   setStoreSection(k);
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   storeSection === k
                     ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                {label}
+                <span>{label}</span>
+                {badge > 0 && (
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-mono-nums text-[9px] font-black">
+                    +{badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
 
-        {/* SECTION 1: DAILY FLASH SALE STOREFRONT */}
-        {(storeSection === 'all' || storeSection === 'deals') && (
+        {/* SECTION 1: GROWTH FUND + VIP PASS + COMMERCIAL VALUE PACKS */}
+        {storeSection === 'packs' && (
+          <section className="space-y-4">
+            {/* Growth Fund Hero Card */}
+            <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-stretch">
+              <div className="md:col-span-5 relative min-h-[155px] bg-[#0b1229]">
+                {!growthImgFailed ? (
+                  <img
+                    src={growthFundVaultArt}
+                    alt="Quỹ Đầu Tư Trưởng Thành"
+                    referrerPolicy="no-referrer"
+                    onError={() => setGrowthImgFailed(true)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-amber-500/25 to-purple-500/25 flex items-center justify-center">
+                    <Crown className="w-10 h-10 text-amber-300" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-mono-nums text-[10px] font-black shadow">
+                  HOÀN TRẢ 800%
+                </span>
+              </div>
+
+              <div className="md:col-span-7 p-4 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
+                      Quỹ Đầu Tư Trưởng Thành Hoàng Đạo
+                    </span>
+                    <span className="font-mono-nums text-[11px] font-bold text-emerald-300">
+                      Chương {save.highestChapterCleared} · {powerRating.toLocaleString('vi-VN')} LC
+                    </span>
+                  </div>
+                  <h3 className="font-display text-base sm:text-lg font-black text-white">
+                    Hoàn Trả Tới 560 Ngọc Hồn + Trang Bị [S] &amp; Bảo Thạch III
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    Mọi người chơi đều nhận nhánh Miễn Phí. Mở khóa Quỹ Cao Cấp chỉ với{' '}
+                    <strong className="text-purple-300 font-mono-nums">
+                      {GROWTH_FUND_PREMIUM_GEM_COST} Ngọc Hồn
+                    </strong>{' '}
+                    để nhận gấp 8 lần giá trị qua 8 cột mốc!
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {!gf.premiumUnlocked ? (
+                    <button
+                      type="button"
+                      disabled={save.gems < GROWTH_FUND_PREMIUM_GEM_COST}
+                      onClick={() => {
+                        soundEngine.playVictory();
+                        onUnlockGrowthFundPremium();
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                        save.gems >= GROWTH_FUND_PREMIUM_GEM_COST
+                          ? 'a2-purple-btn'
+                          : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <SoulGemIcon className="w-3.5 h-3.5" />
+                      <span className="font-mono-nums">
+                        Mở Quỹ Cao Cấp · {GROWTH_FUND_PREMIUM_GEM_COST} Ngọc
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="px-3 py-2 rounded-xl bg-emerald-950/70 border border-emerald-500/45 text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Đã Kích Hoạt Quỹ Cao Cấp</span>
+                    </span>
+                  )}
+
+                  {claimableGfCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playVictory();
+                        onClaimAllGrowthFund();
+                      }}
+                      className="a2-yellow-btn px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer font-mono-nums"
+                    >
+                      Nhận Tất Cả ({claimableGfCount})
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick();
+                      onOpenVipModal();
+                    }}
+                    className="a2-slate-btn px-3.5 py-2 rounded-xl text-xs font-black text-amber-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer border border-amber-400/35 ml-auto"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{hasVip ? 'Thẻ Tháng VIP (Đang Bật)' : 'Đặc Quyền VIP'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Growth Fund 8-Milestone Track */}
+            <div className="space-y-2">
+              {GROWTH_FUND_MILESTONES.map((ms) => {
+                const met = isGrowthFundMilestoneMet(ms, save, powerRating);
+                const freeClaimed = gf.claimedFreeIds.includes(ms.id);
+                const premClaimed = gf.claimedPremiumIds.includes(ms.id);
+                const freeReady = met && !freeClaimed;
+                const premReady = met && gf.premiumUnlocked && !premClaimed;
+
+                return (
+                  <div
+                    key={ms.id}
+                    className={`rounded-2xl p-3 border flex flex-wrap items-center justify-between gap-3 ${
+                      met
+                        ? 'bg-[#0a132b]/95 border-amber-400/35'
+                        : 'bg-[#070b18]/90 border-slate-800'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                            met
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {met ? 'ĐẠT MỐC' : 'CHƯA ĐẠT'}
+                        </span>
+                        <span className="font-display text-xs sm:text-sm font-black text-white">
+                          {ms.title}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Free Tier */}
+                      <button
+                        type="button"
+                        disabled={!freeReady}
+                        onClick={() => onClaimGrowthFundReward(ms.id, 'free')}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                          freeClaimed
+                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                            : freeReady
+                            ? 'a2-emerald-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {freeClaimed && <Check className="w-3 h-3" />}
+                        <span>Miễn Phí: {ms.freeReward.label}</span>
+                      </button>
+
+                      {/* Premium Tier */}
+                      <button
+                        type="button"
+                        disabled={!premReady}
+                        onClick={() => onClaimGrowthFundReward(ms.id, 'premium')}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                          premClaimed
+                            ? 'bg-purple-950/60 border border-purple-500/40 text-purple-300 cursor-default'
+                            : premReady
+                            ? 'a2-yellow-btn'
+                            : 'bg-[#0d1124] border border-purple-400/30 text-purple-200/70 cursor-not-allowed'
+                        }`}
+                      >
+                        {premClaimed ? (
+                          <Check className="w-3 h-3" />
+                        ) : !gf.premiumUnlocked ? (
+                          <Lock className="w-3 h-3" />
+                        ) : null}
+                        <span>Cao Cấp: {ms.premiumReward.label}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Commercial Value Packs */}
+            <div className="pt-2 border-t border-amber-400/20 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-display text-sm sm:text-base font-black text-amber-200">
+                  Gói Thương Mại &amp; Rương Đặc Quyền
+                </h3>
+                <span className="text-[11px] text-slate-400">
+                  Mọi giao dịch Ngọc Hồn đều được cộng vào Tích Lũy Tiêu Ngọc Chợ Đêm
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {COMMERCIAL_VALUE_PACKS.map((pack) => {
+                  const claimed = packClaims[pack.id] ?? 0;
+                  const soldOut = claimed >= pack.maxClaims;
+                  const canAfford =
+                    !soldOut &&
+                    (pack.currency === 'gold' ? save.gold >= pack.cost : save.gems >= pack.cost);
+
+                  return (
+                    <div
+                      key={pack.id}
+                      className="cel-panel-ornate rounded-2xl p-4 flex flex-col justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="px-2 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-[10px] font-black text-amber-300">
+                            {pack.badge}
+                          </span>
+                          <span className="font-mono-nums text-[10px] font-bold text-slate-300">
+                            Đã mua: {claimed}/{pack.maxClaims}
+                          </span>
+                        </div>
+                        <h4 className="font-display text-sm sm:text-base font-black text-white">
+                          {pack.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                          {pack.subtitle}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                          {pack.rewards.map((rw, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-lg bg-[#070b1a] border border-sky-400/30 text-[10px] font-mono-nums font-bold text-sky-200"
+                            >
+                              {rw.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!canAfford}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onBuyCommercialPack(pack);
+                        }}
+                        className={`w-full py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                          soldOut
+                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                            : canAfford
+                            ? 'a2-purple-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {soldOut ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Đã Mua Tối Đa</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Sở Hữu ·</span>
+                            <span className="font-mono-nums">{pack.cost}</span>
+                            {pack.currency === 'gold' ? (
+                              <GoldCoinIcon className="w-3.5 h-3.5" />
+                            ) : (
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                            )}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* SECTION 2: ARENA COIN SHOP */}
+        {storeSection === 'arena_shop' && (
           <section className="space-y-3">
-            {/* Art Storefront Hero Banner */}
+            <div className="cel-panel-ornate rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-300">
+                  Cửa Hàng Vinh Quang Đấu Trường
+                </div>
+                <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                  Đổi Xu Arena Lấy Thánh Vật [S] &amp; Bảo Thạch III
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Tham gia Đấu Trường Arena 1v1 mỗi ngày để tích lũy Xu Arena. Giới hạn làm mới hằng ngày.
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <div className="px-3.5 py-2 rounded-xl bg-[#070b1a] border border-sky-400/40 text-xs font-mono-nums font-black text-sky-200">
+                  Xu Arena: <span className="text-amber-300">{arena.arenaCoins}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    onOpenArenaModal();
+                  }}
+                  className="a2-yellow-btn px-3.5 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+                >
+                  Vào Đấu Trường
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {ARENA_SHOP_OFFERS.map((offer) => {
+                const bought = arenaShop.purchasedCounts[offer.id] ?? 0;
+                const soldOut = bought >= offer.dailyLimit;
+                const canAfford = !soldOut && arena.arenaCoins >= offer.coinCost;
+
+                return (
+                  <div
+                    key={offer.id}
+                    className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
+                      offer.rewardKind === 'gear_s' || offer.rewardKind === 'socket_gem_t3'
+                        ? 'cel-panel-ornate'
+                        : 'cel-panel'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="text-[10px] font-black tracking-wider text-amber-300">
+                          {offer.badge}
+                        </span>
+                        <span className="font-mono-nums text-[10px] font-bold text-slate-300">
+                          Hôm nay: {bought}/{offer.dailyLimit}
+                        </span>
+                      </div>
+                      <h4 className="font-display text-sm font-black text-white">
+                        {offer.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                        {offer.subtitle}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!canAfford}
+                      onClick={() => {
+                        soundEngine.playVictory();
+                        onBuyArenaShopOffer(offer);
+                      }}
+                      className={`w-full py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                        soldOut
+                          ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                          : canAfford
+                          ? 'a2-emerald-btn'
+                          : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {soldOut ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Hết Lượt Hôm Nay</span>
+                        </>
+                      ) : (
+                        <span className="font-mono-nums">Đổi · {offer.coinCost} Xu Arena</span>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* SECTION 3: DAILY FLASH SALE STOREFRONT */}
+        {storeSection === 'deals' && (
+          <section className="space-y-3">
             <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 sm:grid-cols-12 items-center">
               <div className="sm:col-span-5 h-32 sm:h-36 bg-[#0b1229] relative overflow-hidden">
                 {!vaultBannerFailed ? (
@@ -2110,7 +2558,6 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
               </div>
             </div>
 
-            {/* 4 Daily Deal Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {dailyDeals.map((deal) => {
                 const isBought = flashState.purchasedIds.includes(deal.id);
@@ -2134,9 +2581,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                       <div className="flex items-center justify-between gap-2 mb-1.5">
                         <span
                           className={`text-[10px] font-black tracking-wider ${
-                            deal.currency === 'free'
-                              ? 'text-emerald-300'
-                              : 'text-amber-300'
+                            deal.currency === 'free' ? 'text-emerald-300' : 'text-amber-300'
                           }`}
                         >
                           {deal.badge}
@@ -2197,10 +2642,10 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
           </section>
         )}
 
-        {/* SECTION 2: TREASURE CHEST GACHA */}
-        {(storeSection === 'all' || storeSection === 'gacha') && (
+        {/* SECTION 4: TREASURE CHEST GACHA */}
+        {storeSection === 'gacha' && (
           <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-400/20">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
               <div className="text-sm font-display font-black text-amber-200">
                 Triệu Hồi Rương Tinh Giới (×10 Giảm 10%)
               </div>
@@ -2348,4 +2793,5 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
     </div>
   );
 };
+
 

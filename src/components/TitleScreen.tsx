@@ -33,7 +33,9 @@ import {
   Zap,
 } from 'lucide-react';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
+import coopRaidArt from '../assets/images/coop_raid_portal_1795004418576.jpg';
 import dailyRiftArt from '../assets/images/daily_rift_portal_art_1794977270758.jpg';
+import elementalTrialsArt from '../assets/images/elemental_trials_spires_1795004418882.jpg';
 import eventZodiacBanner from '../assets/images/event_zodiac_banner_1794973981859.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
@@ -69,8 +71,24 @@ import {
   normalizeNightMarket,
 } from '../data/wave5Data';
 import {
+  ArenaShopOffer,
+  COOP_DIFFICULTY_MAP,
+  COOP_RAID_DIFFICULTIES,
+  COOP_RAID_MAX_DAILY_REWARDS,
+  CommercialPackItem,
+  ELEMENTAL_TOWERS,
+  ELEMENTAL_TOWER_MAP,
+  computeConstellationBonuses,
+  countClaimableGrowthFund,
+  normalizeCoopRaid,
+  normalizeElementalTowers,
+  selectCoopAiAllies,
+} from '../data/wave6Data';
+import {
   AuraStyleId,
   ComputedPlayerStats,
+  CoopRaidDifficulty,
+  ElementalTowerId,
   FlashDealItem,
   HeroId,
   HeroSkinId,
@@ -89,29 +107,46 @@ import {
   LobbyHeroesPanel,
   LobbyRunesPanel,
   LobbyShopPanel,
+  ShopSectionTab,
 } from './LobbyPanels';
 
 export type LobbyTab = 'battle' | 'gear' | 'heroes' | 'runes' | 'shop';
+export type LobbyGameMode =
+  | 'chapter'
+  | 'tower'
+  | 'elemental_tower'
+  | 'boss_rush'
+  | 'daily_rift'
+  | 'coop_raid';
 
 interface TitleScreenProps {
   save: SaveData;
   stats: ComputedPlayerStats;
   selectedChapterId: number;
-  gameMode: 'chapter' | 'tower' | 'boss_rush' | 'daily_rift';
+  gameMode: LobbyGameMode;
   activeTab: LobbyTab;
+  shopSection?: ShopSectionTab;
   previewHeroId: HeroId;
+  selectedCoopDifficulty: CoopRaidDifficulty;
+  selectedElementalTower: ElementalTowerId;
+  onSelectCoopDifficulty: (d: CoopRaidDifficulty) => void;
+  onSelectElementalTower: (t: ElementalTowerId) => void;
   onTabChange: (tab: LobbyTab) => void;
-  onGameModeChange: (mode: 'chapter' | 'tower' | 'boss_rush' | 'daily_rift') => void;
+  onOpenShopSection: (section: ShopSectionTab) => void;
+  onGameModeChange: (mode: LobbyGameMode) => void;
   onPreviewHero: (heroId: HeroId) => void;
   onSelectChapter: (chapterId: number) => void;
   onStartTrial: () => void;
   onStartTower: () => void;
   onStartBossRush: () => void;
   onStartDailyRift: () => void;
+  onStartCoopRaid: (difficulty: CoopRaidDifficulty) => void;
+  onStartElementalTower: (towerId: ElementalTowerId) => void;
   onQuickSweepChapter: (chapterId: number) => void;
   onToggleMute: () => void;
   onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome' | 'journey') => void;
   onOpenTalentsModal: () => void;
+  onOpenConstellationModal: () => void;
   onOpenBattlePassModal: () => void;
   onOpenVipModal: () => void;
   onOpenForgeModal: () => void;
@@ -149,6 +184,11 @@ interface TitleScreenProps {
     count?: 1 | 10
   ) => void;
   onBuyFlashDeal: (deal: FlashDealItem) => void;
+  onUnlockGrowthFundPremium: () => void;
+  onClaimGrowthFundReward: (milestoneId: string, tier: 'free' | 'premium') => void;
+  onClaimAllGrowthFund: () => void;
+  onBuyArenaShopOffer: (offer: ArenaShopOffer) => void;
+  onBuyCommercialPack: (pack: CommercialPackItem) => void;
   onEquipRune: (uid: string) => void;
   onUnequipRune: (uid: string) => void;
   onFuseRune: (uid: string) => void;
@@ -195,8 +235,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   selectedChapterId,
   gameMode,
   activeTab,
+  shopSection = 'packs',
   previewHeroId,
+  selectedCoopDifficulty,
+  selectedElementalTower,
+  onSelectCoopDifficulty,
+  onSelectElementalTower,
   onTabChange,
+  onOpenShopSection,
   onGameModeChange,
   onPreviewHero,
   onSelectChapter,
@@ -204,10 +250,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartTower,
   onStartBossRush,
   onStartDailyRift,
+  onStartCoopRaid,
+  onStartElementalTower,
   onQuickSweepChapter,
   onToggleMute,
   onOpenRewardsModal,
   onOpenTalentsModal,
+  onOpenConstellationModal,
   onOpenBattlePassModal,
   onOpenVipModal,
   onOpenForgeModal,
@@ -239,6 +288,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onApplyBuildPreset,
   onOpenChestWithGacha,
   onBuyFlashDeal,
+  onUnlockGrowthFundPremium,
+  onClaimGrowthFundReward,
+  onClaimAllGrowthFund,
+  onBuyArenaShopOffer,
+  onBuyCommercialPack,
   onEquipRune,
   onUnequipRune,
   onFuseRune,
@@ -253,6 +307,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [eventImgFailed, setEventImgFailed] = useState(false);
   const [bossArenaImgFailed, setBossArenaImgFailed] = useState(false);
   const [riftImgFailed, setRiftImgFailed] = useState(false);
+  const [coopImgFailed, setCoopImgFailed] = useState(false);
+  const [towerElImgFailed, setTowerElImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -295,6 +351,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       nightMarket.totalGemsSpent >= m.gems &&
       !nightMarket.claimedSpendMilestones.includes(m.gems)
   ).length;
+  const constellationSummary = computeConstellationBonuses(save.constellations);
+  const claimableGfCount = countClaimableGrowthFund(save, stats.powerRating);
+  const coopState = normalizeCoopRaid(save.coopRaid);
+  const coopAllies = selectCoopAiAllies(save.selectedHeroId);
+  const activeCoopDiff = COOP_DIFFICULTY_MAP[selectedCoopDifficulty] ?? COOP_RAID_DIFFICULTIES[0];
+  const elementalTowers = normalizeElementalTowers(save.elementalTowers);
+  const activeElTower = ELEMENTAL_TOWER_MAP[selectedElementalTower] ?? ELEMENTAL_TOWERS[0];
+
   const dockTotalBadges =
     claimableCount +
     bpClaimable +
@@ -302,7 +366,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     (!vip.starterPackClaimed ? 1 : 0) +
     destinyReadyCount +
     guild.bossRunsRemaining +
-    spendMilestoneReady;
+    spendMilestoneReady +
+    claimableGfCount;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -706,13 +771,51 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         onClick={() => {
                           soundEngine.playUiClick();
                           setFeatureDockOpen(false);
-                          onOpenTalentsModal();
+                          onOpenConstellationModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">12 Chòm Sao</span>
+                        </span>
+                        <span className="text-[9px] font-mono-nums font-black text-amber-300">
+                          {constellationSummary.totalStars}★
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenShopSection('packs');
                         }}
                         className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
                       >
                         <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                          <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span className="truncate">Quỹ &amp; Shop Xu</span>
+                        </span>
+                        {claimableGfCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{claimableGfCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenTalentsModal();
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer col-span-2"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
                           <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                          <span className="truncate">Thiên Phú</span>
+                          <span className="truncate">Bảng Thiên Phú Vĩnh Viễn</span>
                         </span>
                         <span className="text-[9px] font-mono-nums font-black text-amber-300">
                           Lv.{totalTalentLv}
@@ -769,11 +872,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       type="button"
                       onClick={() => {
                         soundEngine.playUiClick(1.05);
-                        if (activeEvent.target === 'night_market') onOpenNightMarketModal();
+                        if (activeEvent.target === 'constellation') onOpenConstellationModal();
+                        else if (activeEvent.target === 'coop_raid') onGameModeChange('coop_raid');
+                        else if (activeEvent.target === 'elemental_tower') onGameModeChange('elemental_tower');
+                        else if (activeEvent.target === 'night_market') onOpenNightMarketModal();
                         else if (activeEvent.target === 'arena') onOpenArenaModal();
                         else if (activeEvent.target === 'destiny_wheel') onOpenDestinyWheelModal();
                         else if (activeEvent.target === 'guild') onOpenGuildModal();
-                        else if (activeEvent.target === 'shop') onTabChange('shop');
+                        else if (activeEvent.target === 'shop') onOpenShopSection('packs');
                         else if (activeEvent.target === 'battlepass') onOpenBattlePassModal();
                         else if (activeEvent.target === 'vip') onOpenVipModal();
                         else if (activeEvent.target === 'daily_rift') onGameModeChange('daily_rift');
@@ -838,18 +944,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               )}
 
               <div className="cel-panel-ornate rounded-2xl p-3.5 sm:p-4">
-                {/* 4-Mode Selector */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
+                {/* 6-Mode Selector */}
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-[#060914] border border-amber-400/25 rounded-xl p-1 mb-3">
                   <button
                     type="button"
                     onClick={() => onGameModeChange('chapter')}
-                    className={`py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
                       gameMode === 'chapter'
                         ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
-                    <Swords className="w-3.5 h-3.5 shrink-0" />
+                    <Swords className="w-3 h-3 shrink-0" />
                     <span>Thử Thách</span>
                   </button>
                   <button
@@ -858,14 +964,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       setChapterPickerOpen(false);
                       onGameModeChange('tower');
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
                       gameMode === 'tower'
                         ? 'bg-gradient-to-b from-purple-400 to-purple-700 text-white shadow'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
-                    <Compass className="w-3.5 h-3.5 shrink-0" />
+                    <Compass className="w-3 h-3 shrink-0" />
                     <span>Tháp Vô Tận</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('elemental_tower');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'elemental_tower'
+                        ? 'bg-gradient-to-b from-sky-400 to-blue-600 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Zap className="w-3 h-3 shrink-0" />
+                    <span>Tháp Hệ</span>
                   </button>
                   <button
                     type="button"
@@ -873,13 +994,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       setChapterPickerOpen(false);
                       onGameModeChange('boss_rush');
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
                       gameMode === 'boss_rush'
                         ? 'bg-gradient-to-b from-rose-400 to-rose-700 text-white shadow'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
-                    <Flame className="w-3.5 h-3.5 shrink-0" />
+                    <Flame className="w-3 h-3 shrink-0" />
                     <span>Săn Boss</span>
                   </button>
                   <button
@@ -888,14 +1009,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       setChapterPickerOpen(false);
                       onGameModeChange('daily_rift');
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
                       gameMode === 'daily_rift'
                         ? 'bg-gradient-to-b from-emerald-400 to-teal-600 text-slate-950 shadow'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <Sparkles className="w-3 h-3 shrink-0" />
                     <span>Bí Cảnh</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('coop_raid');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'coop_raid'
+                        ? 'bg-gradient-to-b from-amber-400 via-orange-500 to-rose-600 text-white shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Users className="w-3 h-3 shrink-0" />
+                    <span>Co-op AI</span>
                   </button>
                 </div>
 
@@ -1106,6 +1242,184 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </button>
                     </div>
                   </>
+                ) : gameMode === 'elemental_tower' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-sky-400/45 bg-[#090d1f] shrink-0">
+                        {!towerElImgFailed ? (
+                          <img
+                            src={elementalTrialsArt}
+                            alt={activeElTower.name}
+                            referrerPolicy="no-referrer"
+                            onError={() => setTowerElImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Zap className="w-6 h-6 text-sky-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className={`font-display text-sm sm:text-base font-black truncate ${activeElTower.accentTextClass}`}>
+                            {activeElTower.name}
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-amber-300 shrink-0">
+                            Kỷ lục: Tầng {elementalTowers[activeElTower.id] ?? 0}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          {activeElTower.ruleDesc}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                      {ELEMENTAL_TOWERS.map((t) => {
+                        const isSel = t.id === activeElTower.id;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              onSelectElementalTower(t.id);
+                            }}
+                            className={`px-2 py-1.5 rounded-xl border text-[11px] font-black flex items-center justify-between cursor-pointer ${
+                              isSel
+                                ? `${t.btnClass} shadow`
+                                : 'bg-[#070b1a] border-slate-800 text-slate-300 hover:border-amber-300/60'
+                            }`}
+                          >
+                            <span>Hệ {t.shortName}</span>
+                            <span className="font-mono-nums text-[10px] opacity-90">
+                              T.{elementalTowers[t.id] ?? 0}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-sky-200 font-semibold px-1">
+                      <span className="truncate">{activeElTower.synergyDesc}</span>
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onOpenConstellationModal();
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                        <span>12 Chòm Sao</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onStartElementalTower(activeElTower.id)}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${activeElTower.btnClass}`}
+                      >
+                        <span>CHINH PHỤC THÁP HỆ</span>
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </>
+                ) : gameMode === 'coop_raid' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-amber-400/50 bg-[#090d1f] shrink-0">
+                        {!coopImgFailed ? (
+                          <img
+                            src={coopRaidArt}
+                            alt="Phó Bản Hợp Tác 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setCoopImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Users className="w-6 h-6 text-amber-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-amber-200 truncate">
+                            Phó Bản Hợp Tác 3D · 2 Đồng Hành AI
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            Thưởng chính: {coopState.dailyRewardsLeft}/{COOP_RAID_MAX_DAILY_REWARDS}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Tổ đội cùng <strong className="text-sky-300">{coopAllies[0].name}</strong> &amp;{' '}
+                          <strong className="text-purple-300">{coopAllies[1].name}</strong> săn Boss Liên Giới!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                      {COOP_RAID_DIFFICULTIES.map((diff) => {
+                        const isSel = diff.id === activeCoopDiff.id;
+                        return (
+                          <button
+                            key={diff.id}
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              onSelectCoopDifficulty(diff.id);
+                            }}
+                            className={`px-2 py-1.5 rounded-xl border text-[10px] font-black text-center cursor-pointer ${
+                              isSel
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-300 hover:border-amber-300/60'
+                            }`}
+                          >
+                            <div className="truncate">
+                              {diff.id === 'normal' ? 'Thường' : diff.id === 'heroic' ? 'Anh Hùng' : 'Thần Thoại'}
+                            </div>
+                            <div className="font-mono-nums text-[9px] opacity-85">
+                              Đề xuất {diff.recommendedPower} LC
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono-nums text-amber-200 px-1">
+                      <span>Thưởng: +{activeCoopDiff.rewardGold} Vàng · +{activeCoopDiff.rewardGems} Ngọc</span>
+                      <span className="text-purple-300 font-bold">
+                        +{activeCoopDiff.rewardStarDust} Bụi · Bảo Thạch Cấp {activeCoopDiff.socketGemTier}
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onOpenForgeSubTab('sockets');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Gem className="w-4 h-4 text-purple-300 shrink-0" />
+                        <span>Bảo Thạch</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onStartCoopRaid(activeCoopDiff.id)}
+                        className="flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer bg-gradient-to-b from-amber-300 via-orange-400 to-rose-600 text-slate-950 border border-amber-100/80 shadow-lg"
+                      >
+                        <span>VÀO PHÓ BẢN CO-OP</span>
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
@@ -1256,9 +1570,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         {activeTab === 'shop' && (
           <LobbyShopPanel
+            key={shopSection}
             save={save}
+            powerRating={stats.powerRating}
+            initialSection={shopSection}
             onOpenChestWithGacha={onOpenChestWithGacha}
             onBuyFlashDeal={onBuyFlashDeal}
+            onUnlockGrowthFundPremium={onUnlockGrowthFundPremium}
+            onClaimGrowthFundReward={onClaimGrowthFundReward}
+            onClaimAllGrowthFund={onClaimAllGrowthFund}
+            onBuyArenaShopOffer={onBuyArenaShopOffer}
+            onBuyCommercialPack={onBuyCommercialPack}
+            onOpenVipModal={onOpenVipModal}
+            onOpenArenaModal={onOpenArenaModal}
           />
         )}
       </main>

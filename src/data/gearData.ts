@@ -43,6 +43,14 @@ import {
   normalizeNoviceJourney,
   normalizeSocketGems,
 } from './wave5Data';
+import {
+  computeConstellationBonuses,
+  normalizeArenaShop,
+  normalizeConstellations,
+  normalizeCoopRaid,
+  normalizeElementalTowers,
+  normalizeGrowthFund,
+} from './wave6Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -642,24 +650,36 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     }
   }
 
-  // Apply Zodiac Guild Tech multipliers
+  // Apply Zodiac Guild Tech + 12 Constellations + Talents
   const guildTech = computeGuildTechBonuses(save.guild);
+  const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
-  attack = Math.round((attack + tal.atk) * (1 + runeAtkPct + subAtkPct + guildTech.atkPct));
-  maxHp = Math.round((maxHp + tal.hp) * (1 + runeHpPct + subHpPct + guildTech.hpPct));
-  critChance = Math.min(0.88, critChance + tal.critChance + guildTech.critBonus);
-  attackSpeedMult += tal.aspdMult;
+  attack = Math.round(
+    (attack + tal.atk + constellation.atkFlat) * (1 + runeAtkPct + subAtkPct + guildTech.atkPct)
+  );
+  maxHp = Math.round(
+    (maxHp + tal.hp + constellation.hpFlat) * (1 + runeHpPct + subHpPct + guildTech.hpPct)
+  );
+  critChance = Math.min(
+    0.92,
+    critChance + tal.critChance + guildTech.critBonus + constellation.critBonus
+  );
+  attackSpeedMult += tal.aspdMult + constellation.aspdBonus;
   moveSpeedMult += tal.moveSpeedMult;
-  damageReduction = Math.min(0.68, damageReduction + tal.damageReduction);
+  damageReduction = Math.min(
+    0.72,
+    damageReduction + tal.damageReduction + constellation.drBonus
+  );
   const moveSpeed = 7.6 * moveSpeedMult;
-  const goldGainMult = tal.goldGainMult + guildTech.goldPct;
+  const goldGainMult = tal.goldGainMult + guildTech.goldPct + constellation.goldBonus;
 
   const powerRating = Math.round(
     attack * attackSpeedMult * (1 + critChance * 0.85) * 3.1 +
       maxHp * 0.36 +
       damageReduction * 420 +
       tal.stageHealPct * 600 +
-      bossDamageBonus * 450
+      bossDamageBonus * 450 +
+      constellation.totalStars * 18
   );
 
   return {
@@ -684,6 +704,11 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     equippedRunes,
     equippedPetId,
     petAtk,
+    constellationStars: constellation.totalStars,
+    constellationFireBonus: constellation.fireDmgBonus,
+    constellationIceBonus: constellation.iceDmgBonus,
+    constellationStormBonus: constellation.stormDmgBonus,
+    constellationLevels: constellation.levelsArray,
   };
 }
 
@@ -824,6 +849,12 @@ export function createInitialSaveData(): SaveData {
     nightMarket: normalizeNightMarket(),
     arena: normalizeArena(),
     noviceJourney: normalizeNoviceJourney(),
+    growthFund: normalizeGrowthFund(),
+    arenaShop: normalizeArenaShop(),
+    constellations: normalizeConstellations(),
+    coopRaid: normalizeCoopRaid(),
+    elementalTowers: normalizeElementalTowers(),
+    commercialPackClaims: {},
   };
 }
 

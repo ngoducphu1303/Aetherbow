@@ -309,6 +309,42 @@ export function countClaimableAchievements(save: SaveData): number {
 
 export const EVENT_BANNERS = [
   {
+    id: 'event_constellation',
+    badge: '12 CHÒM SAO',
+    title: 'Bản Đồ 12 Chòm Sao · Thức Tỉnh Bệ Tinh Tú 3D',
+    subtitle: 'Thắp sáng 12 cung Hoàng Đạo để kích hoạt Cộng Hưởng 4 Nguyên Tố và Hào Quang 3D!',
+    ctaLabel: 'Mở 12 Chòm Sao',
+    target: 'constellation' as const,
+    accent: 'purple' as const,
+  },
+  {
+    id: 'event_coop_raid',
+    badge: 'PHÓ BẢN AI 3D',
+    title: 'Phó Bản Hợp Tác 3D · 2 Đồng Hành AI Sát Cánh',
+    subtitle: 'Lập tổ đội 3 Anh Hùng đối đầu Ma Thú Liên Giới, nhận Bảo Thạch III & đoạt MVP!',
+    ctaLabel: 'Vào Co-op Raid',
+    target: 'coop_raid' as const,
+    accent: 'amber' as const,
+  },
+  {
+    id: 'event_elemental_tower',
+    badge: 'THÁP NGUYÊN TỐ',
+    title: 'Tháp Thí Luyện Hỏa · Băng · Lôi +50% Khắc Chế',
+    subtitle: 'Chinh phục 3 ngọn tháp nguyên tố riêng biệt để cày Bụi Tinh Tú & Bảo Thạch.',
+    ctaLabel: 'Chọn Tháp Hệ',
+    target: 'elemental_tower' as const,
+    accent: 'emerald' as const,
+  },
+  {
+    id: 'event_growth_fund',
+    badge: 'QUỸ ĐẦU TƯ · 800%',
+    title: 'Quỹ Đầu Tư Trưởng Thành & Cửa Hàng Xu Arena',
+    subtitle: 'Nhận hoàn trả hàng trăm Ngọc Hồn theo Chương và đổi Xu Arena lấy Thánh Vật [S]!',
+    ctaLabel: 'Mở Quỹ & Shop',
+    target: 'shop' as const,
+    accent: 'amber' as const,
+  },
+  {
     id: 'event_night_market',
     badge: 'CHỢ ĐÊM HOÀNG ĐẠO',
     title: 'Chợ Đêm Giảm Đến 60% & Quà Tích Lũy Tiêu Ngọc',

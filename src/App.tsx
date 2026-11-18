@@ -5,9 +5,11 @@ import { ArenaModal } from './components/ArenaModal';
 import { BattlePassModal } from './components/BattlePassModal';
 import { ChestGachaModal, GachaRevealState } from './components/ChestGachaModal';
 import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
+import { ConstellationModal } from './components/ConstellationModal';
 import { DailyRewardsModal } from './components/DailyRewardsModal';
 import { DestinyWheelModal } from './components/DestinyWheelModal';
 import { GameHUD } from './components/GameHUD';
+import { ShopSectionTab } from './components/LobbyPanels';
 import { MailModal } from './components/MailModal';
 import { NightMarketModal } from './components/NightMarketModal';
 import { OnboardingTour } from './components/OnboardingTour';
@@ -23,7 +25,7 @@ import { SkillDraftModal } from './components/SkillDraftModal';
 import { SplashGate } from './components/SplashGate';
 import { StageTransitionCurtain } from './components/StageTransitionCurtain';
 import { TalentsModal } from './components/TalentsModal';
-import { LobbyTab, TitleScreen } from './components/TitleScreen';
+import { LobbyGameMode, LobbyTab, TitleScreen } from './components/TitleScreen';
 import { VipPrivilegeModal } from './components/VipPrivilegeModal';
 import { ZodiacGuildModal } from './components/ZodiacGuildModal';
 import { CHAPTERS } from './data/chaptersData';
@@ -121,14 +123,33 @@ import {
   normalizeNoviceJourney,
   normalizeSocketGems,
 } from './data/wave5Data';
+import {
+  ArenaShopOffer,
+  COOP_DIFFICULTY_MAP,
+  CommercialPackItem,
+  ELEMENTAL_TOWER_MAP,
+  GROWTH_FUND_MILESTONES,
+  GROWTH_FUND_PREMIUM_GEM_COST,
+  MAX_CONSTELLATION_LEVEL,
+  getConstellationUpgradeCost,
+  isGrowthFundMilestoneMet,
+  normalizeArenaShop,
+  normalizeConstellations,
+  normalizeCoopRaid,
+  normalizeElementalTowers,
+  normalizeGrowthFund,
+} from './data/wave6Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
   ArenaOpponent,
   AuraStyleId,
+  ConstellationId,
+  CoopRaidDifficulty,
   DamageBreakdown,
   DestinyWheelPrize,
+  ElementalTowerId,
   EncounterOffer,
   FlashDealItem,
   FloatingDamage,
@@ -224,6 +245,8 @@ const INITIAL_HUD: HudSnapshot = {
   arenaOpponentName: '',
   arenaOpponentHp: 0,
   arenaOpponentMaxHp: 1,
+  isCoopRaidMode: false,
+  isElementalTowerMode: false,
   activeSkills: {},
   stageBannerText: null,
   comboCount: 0,
@@ -244,8 +267,11 @@ export default function App() {
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
   const [phase, setPhase] = useState<GamePhase>(GamePhase.TITLE);
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
-  const [gameMode, setGameMode] = useState<'chapter' | 'tower' | 'boss_rush' | 'daily_rift'>('chapter');
+  const [gameMode, setGameMode] = useState<LobbyGameMode>('chapter');
   const [activeLobbyTab, setActiveLobbyTab] = useState<LobbyTab>('battle');
+  const [shopSection, setShopSection] = useState<ShopSectionTab>('packs');
+  const [selectedCoopDifficulty, setSelectedCoopDifficulty] = useState<CoopRaidDifficulty>('normal');
+  const [selectedElementalTower, setSelectedElementalTower] = useState<ElementalTowerId>('fire');
   const [previewHeroId, setPreviewHeroId] = useState<HeroId | null>(null);
   const [transitionState, setTransitionState] = useState<{
     chapterId: number;
@@ -254,6 +280,10 @@ export default function App() {
     isDailyRiftMode?: boolean;
     isGuildBossMode?: boolean;
     isArenaMode?: boolean;
+    isCoopRaidMode?: boolean;
+    coopDifficulty?: CoopRaidDifficulty;
+    isElementalTowerMode?: boolean;
+    elementalTowerId?: ElementalTowerId;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
@@ -261,6 +291,7 @@ export default function App() {
     'checkin' | 'quests' | 'welcome' | 'journey' | null
   >(null);
   const [talentsModalOpen, setTalentsModalOpen] = useState<boolean>(false);
+  const [constellationModalOpen, setConstellationModalOpen] = useState<boolean>(false);
   const [battlePassOpen, setBattlePassOpen] = useState<boolean>(false);
   const [vipModalOpen, setVipModalOpen] = useState<boolean>(false);
   const [forgeConfig, setForgeConfig] = useState<{
@@ -316,6 +347,11 @@ export default function App() {
     isArenaMode?: boolean;
     arenaOpponentName?: string;
     arenaRatingDelta?: number;
+    isCoopRaidMode?: boolean;
+    coopDifficulty?: CoopRaidDifficulty;
+    isElementalTowerMode?: boolean;
+    elementalTowerId?: ElementalTowerId;
+    elementalTowerFloor?: number;
     starDust?: number;
     petEssence?: number;
     maxCombo?: number;
@@ -341,6 +377,7 @@ export default function App() {
     const activeSkinId = save.equippedSkinByHero?.[hero.id] ?? 'default';
     const skinDef = SKIN_MAP[activeSkinId];
     const auraDef = AURA_MAP[save.equippedAuraId ?? 'zodiac_gold'] ?? AURA_MAP.zodiac_gold;
+    const selCh = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
 
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
@@ -352,8 +389,10 @@ export default function App() {
       weaponArchetype: wTpl?.weaponArchetype ?? 'bow',
       auraPrimaryHex: auraDef.primaryHex,
       auraSecondaryHex: auraDef.secondaryHex,
+      pedestalTintHex: selCh.trimHex,
+      constellationLevels: playerStats.constellationLevels,
     };
-  }, [save, displayHeroId]);
+  }, [save, displayHeroId, selectedChapterId, playerStats.constellationLevels]);
 
   // Persist save to localStorage + sync audio volumes + keep VIP ref fresh
   useEffect(() => {
@@ -494,8 +533,13 @@ export default function App() {
           const isDailyRift = Boolean(summary.isDailyRiftMode);
           const isGuildBoss = Boolean(summary.isGuildBossMode);
           const isArena = Boolean(summary.isArenaMode);
+          const isCoopRaid = Boolean(summary.isCoopRaidMode);
+          const isElementalTower = Boolean(summary.isElementalTowerMode);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
+          const elTowerFloor = summary.elementalTowerFloor ?? 1;
+          const elTowerId = summary.elementalTowerId ?? 'fire';
+          const coopDiff = summary.coopDifficulty ?? 'normal';
           const bossRound = summary.bossRushRound ?? summary.stageReached ?? 1;
           const guildBossDamage = summary.guildBossDamage ?? 0;
           const arenaRatingDelta = isArena ? (victory ? (opp?.rewardPoints ?? 24) : -12) : 0;
@@ -505,6 +549,12 @@ export default function App() {
             ? victory
               ? 160
               : 55
+            : isCoopRaid
+            ? victory
+              ? 0
+              : 45
+            : isElementalTower
+            ? elTowerFloor * 22
             : isGuildBoss
             ? Math.min(480, 90 + Math.floor(guildBossDamage / 250))
             : isDailyRift
@@ -522,6 +572,10 @@ export default function App() {
             ? victory
               ? 18
               : 4
+            : isCoopRaid
+            ? 0
+            : isElementalTower
+            ? Math.floor(elTowerFloor / 3) * 5 + 3
             : isGuildBoss
             ? Math.min(24, 4 + Math.floor(guildBossDamage / 4000))
             : isDailyRift
@@ -547,6 +601,12 @@ export default function App() {
             ? victory
               ? 95
               : 40
+            : isCoopRaid
+            ? victory
+              ? 135
+              : 45
+            : isElementalTower
+            ? elTowerFloor * 24 + summary.kills
             : isGuildBoss
             ? 85 + Math.min(140, Math.floor(guildBossDamage / 500))
             : isDailyRift
@@ -580,11 +640,17 @@ export default function App() {
             const nextCareer = { ...career, totalRuns: career.totalRuns + 1 };
             const chName =
               CHAPTERS.find((c) => c.id === summary.chapterId)?.name ?? `Chương ${summary.chapterId}`;
+            const elDef = ELEMENTAL_TOWER_MAP[elTowerId];
+            const coopDef = COOP_DIFFICULTY_MAP[coopDiff];
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
               mode: isArena
                 ? 'arena'
+                : isCoopRaid
+                ? 'coop_raid'
+                : isElementalTower
+                ? 'elemental_tower'
                 : isGuildBoss
                 ? 'guild_boss'
                 : isDailyRift
@@ -596,6 +662,10 @@ export default function App() {
                 : 'chapter',
               label: isArena
                 ? `Đấu Trường · ${summary.arenaOpponentName || opp?.name || 'Kình Địch'}`
+                : isCoopRaid
+                ? `Co-op Raid · ${coopDef.name}`
+                : isElementalTower
+                ? `${elDef.name} · Tầng ${elTowerFloor}`
                 : isGuildBoss
                 ? `Boss Bang Hội · ${guildBossDamage.toLocaleString('vi-VN')} ST`
                 : isDailyRift
@@ -607,6 +677,8 @@ export default function App() {
                 : `Chương ${summary.chapterId} · ${chName}`,
               stageReached: isArena || isGuildBoss
                 ? 1
+                : isElementalTower
+                ? elTowerFloor
                 : isBossRush
                 ? bossRound
                 : isTower
@@ -621,6 +693,78 @@ export default function App() {
               timestamp: Date.now(),
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isCoopRaid) {
+              const coop = normalizeCoopRaid(prev.coopRaid);
+              const playerTotal = summary.damageBreakdown
+                ? summary.damageBreakdown.basic +
+                  summary.damageBreakdown.ultimate +
+                  summary.damageBreakdown.pet +
+                  summary.damageBreakdown.elemental
+                : 0;
+              const alliesTotal = (summary.damageBreakdown?.coopAllies ?? []).reduce(
+                (s, a) => s + a.damage,
+                0
+              );
+              const teamDamage = Math.round(playerTotal + alliesTotal);
+              const canClaimDaily = victory && coop.dailyRewardsLeft > 0;
+              const diffRank: Record<CoopRaidDifficulty, number> = {
+                normal: 1,
+                heroic: 2,
+                mythic: 3,
+              };
+              const prevBestDiff = coop.highestDifficulty ? diffRank[coop.highestDifficulty] : 0;
+              const nextHighestDiff =
+                victory && diffRank[coopDiff] > prevBestDiff ? coopDiff : coop.highestDifficulty;
+              let nextSocketGems = normalizeSocketGems(prev.socketGems);
+              if (canClaimDaily) {
+                const randColor =
+                  SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+                nextSocketGems = [...nextSocketGems, createSocketGem(randColor, coopDef.socketGemTier)];
+              }
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                starDust:
+                  (prev.starDust ?? 0) +
+                  (canClaimDaily ? starDustGain : Math.round(starDustGain * 0.4)),
+                petEssence:
+                  (prev.petEssence ?? 0) +
+                  (canClaimDaily ? petEssenceGain : Math.round(petEssenceGain * 0.4)),
+                socketGems: nextSocketGems,
+                coopRaid: {
+                  ...coop,
+                  dailyRewardsLeft: canClaimDaily
+                    ? coop.dailyRewardsLeft - 1
+                    : coop.dailyRewardsLeft,
+                  highestDifficulty: nextHighestDiff,
+                  bestTeamDamage: Math.max(coop.bestTeamDamage, teamDamage),
+                  totalClears: coop.totalClears + (victory ? 1 : 0),
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
+
+            if (isElementalTower) {
+              const elState = normalizeElementalTowers(prev.elementalTowers);
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                starDust: (prev.starDust ?? 0) + starDustGain,
+                petEssence: (prev.petEssence ?? 0) + petEssenceGain,
+                elementalTowers: {
+                  ...elState,
+                  [elTowerId]: Math.max(elState[elTowerId] ?? 0, elTowerFloor),
+                },
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
 
             if (isArena) {
               const ar = normalizeArena(prev.arena);
@@ -1013,6 +1157,83 @@ export default function App() {
     [save.arena, playerStats]
   );
 
+  const handleStartCoopRaid = useCallback(
+    (difficulty: CoopRaidDifficulty) => {
+      soundEngine.unlock();
+      setSelectedCoopDifficulty(difficulty);
+      setEnteredGame(true);
+      setRewardsModalTab(null);
+      setTalentsModalOpen(false);
+      setConstellationModalOpen(false);
+      setMailModalOpen(false);
+      setVipModalOpen(false);
+      setForgeConfig((prev) => ({ ...prev, open: false }));
+      setGuildModalOpen(false);
+      setDestinyWheelOpen(false);
+      setNightMarketOpen(false);
+      setArenaModalOpen(false);
+      setGachaReveal(null);
+      setPreviewHeroId(null);
+      setRunSummary(null);
+      setDamages([]);
+      setTransitionState({
+        chapterId: difficulty === 'mythic' ? 11 : difficulty === 'heroic' ? 7 : 4,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isCoopRaidMode: true,
+        coopDifficulty: difficulty,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startCoopRaid(playerStats, difficulty);
+    },
+    [playerStats]
+  );
+
+  const handleStartElementalTower = useCallback(
+    (towerId: ElementalTowerId) => {
+      soundEngine.unlock();
+      setSelectedElementalTower(towerId);
+      setEnteredGame(true);
+      setRewardsModalTab(null);
+      setTalentsModalOpen(false);
+      setConstellationModalOpen(false);
+      setMailModalOpen(false);
+      setVipModalOpen(false);
+      setForgeConfig((prev) => ({ ...prev, open: false }));
+      setGuildModalOpen(false);
+      setDestinyWheelOpen(false);
+      setNightMarketOpen(false);
+      setArenaModalOpen(false);
+      setGachaReveal(null);
+      setPreviewHeroId(null);
+      setRunSummary(null);
+      setDamages([]);
+      const elDef = ELEMENTAL_TOWER_MAP[towerId];
+      setTransitionState({
+        chapterId: elDef.chapterId,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isElementalTowerMode: true,
+        elementalTowerId: towerId,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startElementalTower(playerStats, towerId, 1);
+    },
+    [playerStats]
+  );
+
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
     if (!ch) return;
@@ -1096,6 +1317,7 @@ export default function App() {
         activeLobbyTab === 'battle' &&
         !rewardsModalTab &&
         !talentsModalOpen &&
+        !constellationModalOpen &&
         !battlePassOpen &&
         !vipModalOpen &&
         !forgeConfig.open &&
@@ -1111,7 +1333,11 @@ export default function App() {
         !gachaReveal
       ) {
         e.preventDefault();
-        if (gameMode === 'daily_rift') {
+        if (gameMode === 'coop_raid') {
+          handleStartCoopRaid(selectedCoopDifficulty);
+        } else if (gameMode === 'elemental_tower') {
+          handleStartElementalTower(selectedElementalTower);
+        } else if (gameMode === 'daily_rift') {
           handleStartDailyRift();
         } else if (gameMode === 'tower') {
           handleStartTower();
@@ -1130,6 +1356,7 @@ export default function App() {
     activeLobbyTab,
     rewardsModalTab,
     talentsModalOpen,
+    constellationModalOpen,
     battlePassOpen,
     vipModalOpen,
     forgeConfig.open,
@@ -1144,11 +1371,15 @@ export default function App() {
     onboardingOpen,
     gachaReveal,
     gameMode,
+    selectedCoopDifficulty,
+    selectedElementalTower,
     handlePause,
     handleStartTrial,
     handleStartTower,
     handleStartBossRush,
     handleStartDailyRift,
+    handleStartCoopRaid,
+    handleStartElementalTower,
   ]);
 
   // Hero Handlers
@@ -2752,6 +2983,267 @@ export default function App() {
     engineRef.current?.previewLobbyUltimate(heroId);
   }, []);
 
+  const handleUpgradeConstellation = useCallback((id: ConstellationId) => {
+    setSave((prev) => {
+      const levels = normalizeConstellations(prev.constellations);
+      const curLv = levels[id] ?? 0;
+      if (curLv >= MAX_CONSTELLATION_LEVEL) return prev;
+      const cost = getConstellationUpgradeCost(curLv);
+      const dust = prev.starDust ?? 0;
+      if (dust < cost.starDust || prev.gold < cost.gold) return prev;
+      soundEngine.playLevelUp();
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        starDust: dust - cost.starDust,
+        constellations: { ...levels, [id]: curLv + 1 },
+        dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
+      };
+    });
+  }, []);
+
+  const handleUnlockGrowthFundPremium = useCallback(() => {
+    setSave((prev) => {
+      const gf = normalizeGrowthFund(prev.growthFund);
+      if (gf.premiumUnlocked || prev.gems < GROWTH_FUND_PREMIUM_GEM_COST) return prev;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gems: prev.gems - GROWTH_FUND_PREMIUM_GEM_COST,
+        nightMarket: addGemsSpent(prev, GROWTH_FUND_PREMIUM_GEM_COST),
+        growthFund: { ...gf, premiumUnlocked: true },
+      };
+    });
+  }, []);
+
+  const handleClaimGrowthFundReward = useCallback(
+    (milestoneId: string, tier: 'free' | 'premium') => {
+      const ms = GROWTH_FUND_MILESTONES.find((m) => m.id === milestoneId);
+      if (!ms) return;
+      setSave((prev) => {
+        const gf = normalizeGrowthFund(prev.growthFund);
+        const statsNow = computePlayerStats(prev);
+        if (!isGrowthFundMilestoneMet(ms, prev, statsNow.powerRating)) return prev;
+        if (tier === 'free' && gf.claimedFreeIds.includes(milestoneId)) return prev;
+        if (tier === 'premium' && (!gf.premiumUnlocked || gf.claimedPremiumIds.includes(milestoneId))) {
+          return prev;
+        }
+
+        const spec = tier === 'free' ? ms.freeReward : ms.premiumReward;
+        let nextGold = prev.gold;
+        let nextGems = prev.gems;
+        let nextDust = prev.starDust ?? 0;
+        let nextEssence = prev.petEssence ?? 0;
+        let nextSocketGems = normalizeSocketGems(prev.socketGems);
+        let nextInv = prev.inventory;
+
+        if (spec.kind === 'gold') nextGold += spec.amount;
+        else if (spec.kind === 'gems') nextGems += spec.amount;
+        else if (spec.kind === 'star_dust') nextDust += spec.amount;
+        else if (spec.kind === 'pet_essence') nextEssence += spec.amount;
+        else if (spec.kind === 'socket_gem') {
+          const randColor =
+            SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+          const gemTier = spec.amount >= 3 ? 3 : spec.amount === 2 ? 2 : 1;
+          nextSocketGems = [...nextSocketGems, createSocketGem(randColor, gemTier)];
+        } else if (spec.kind === 'gear_s') {
+          nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+        }
+
+        soundEngine.playVictory();
+        return {
+          ...prev,
+          gold: nextGold,
+          gems: nextGems,
+          starDust: nextDust,
+          petEssence: nextEssence,
+          socketGems: nextSocketGems,
+          inventory: nextInv,
+          growthFund: {
+            ...gf,
+            claimedFreeIds:
+              tier === 'free' ? [...gf.claimedFreeIds, milestoneId] : gf.claimedFreeIds,
+            claimedPremiumIds:
+              tier === 'premium' ? [...gf.claimedPremiumIds, milestoneId] : gf.claimedPremiumIds,
+          },
+        };
+      });
+    },
+    []
+  );
+
+  const handleClaimAllGrowthFund = useCallback(() => {
+    setSave((prev) => {
+      const gf = normalizeGrowthFund(prev.growthFund);
+      const statsNow = computePlayerStats(prev);
+      let nextGold = prev.gold;
+      let nextGems = prev.gems;
+      let nextDust = prev.starDust ?? 0;
+      let nextEssence = prev.petEssence ?? 0;
+      let nextSocketGems = normalizeSocketGems(prev.socketGems);
+      let nextInv = prev.inventory;
+      const claimedFree = [...gf.claimedFreeIds];
+      const claimedPrem = [...gf.claimedPremiumIds];
+      let anyClaimed = false;
+
+      const applySpec = (spec: (typeof GROWTH_FUND_MILESTONES)[number]['freeReward']) => {
+        if (spec.kind === 'gold') nextGold += spec.amount;
+        else if (spec.kind === 'gems') nextGems += spec.amount;
+        else if (spec.kind === 'star_dust') nextDust += spec.amount;
+        else if (spec.kind === 'pet_essence') nextEssence += spec.amount;
+        else if (spec.kind === 'socket_gem') {
+          const randColor =
+            SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+          const gemTier = spec.amount >= 3 ? 3 : spec.amount === 2 ? 2 : 1;
+          nextSocketGems = [...nextSocketGems, createSocketGem(randColor, gemTier)];
+        } else if (spec.kind === 'gear_s') {
+          nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+        }
+      };
+
+      for (const ms of GROWTH_FUND_MILESTONES) {
+        if (!isGrowthFundMilestoneMet(ms, prev, statsNow.powerRating)) continue;
+        if (!claimedFree.includes(ms.id)) {
+          claimedFree.push(ms.id);
+          applySpec(ms.freeReward);
+          anyClaimed = true;
+        }
+        if (gf.premiumUnlocked && !claimedPrem.includes(ms.id)) {
+          claimedPrem.push(ms.id);
+          applySpec(ms.premiumReward);
+          anyClaimed = true;
+        }
+      }
+
+      if (!anyClaimed) return prev;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: nextGold,
+        gems: nextGems,
+        starDust: nextDust,
+        petEssence: nextEssence,
+        socketGems: nextSocketGems,
+        inventory: nextInv,
+        growthFund: {
+          ...gf,
+          claimedFreeIds: claimedFree,
+          claimedPremiumIds: claimedPrem,
+        },
+      };
+    });
+  }, []);
+
+  const handleBuyArenaShopOffer = useCallback((offer: ArenaShopOffer) => {
+    setSave((prev) => {
+      const ar = normalizeArena(prev.arena);
+      const shop = normalizeArenaShop(prev.arenaShop);
+      const bought = shop.purchasedCounts[offer.id] ?? 0;
+      if (bought >= offer.dailyLimit || ar.arenaCoins < offer.coinCost) return prev;
+
+      let nextGems = prev.gems;
+      let nextDust = prev.starDust ?? 0;
+      let nextEssence = prev.petEssence ?? 0;
+      let nextSocketGems = normalizeSocketGems(prev.socketGems);
+      let nextInv = prev.inventory;
+      let nextWheel = normalizeDestinyWheel(prev.destinyWheel);
+
+      if (offer.rewardKind === 'gear_s') {
+        nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+      } else if (offer.rewardKind === 'socket_gem_t3') {
+        const randColor =
+          SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+        nextSocketGems = [...nextSocketGems, createSocketGem(randColor, 3)];
+      } else if (offer.rewardKind === 'gems') {
+        nextGems += offer.amount;
+      } else if (offer.rewardKind === 'destiny_ticket') {
+        nextWheel = { ...nextWheel, tickets: nextWheel.tickets + offer.amount };
+      } else if (offer.rewardKind === 'star_dust') {
+        nextDust += offer.amount;
+      } else if (offer.rewardKind === 'pet_essence') {
+        nextEssence += offer.amount;
+      }
+
+      soundEngine.playVictory();
+      return {
+        ...prev,
+        gems: nextGems,
+        starDust: nextDust,
+        petEssence: nextEssence,
+        socketGems: nextSocketGems,
+        inventory: nextInv,
+        destinyWheel: nextWheel,
+        arena: {
+          ...ar,
+          arenaCoins: ar.arenaCoins - offer.coinCost,
+        },
+        arenaShop: {
+          ...shop,
+          purchasedCounts: {
+            ...shop.purchasedCounts,
+            [offer.id]: bought + 1,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const handleBuyCommercialPack = useCallback((pack: CommercialPackItem) => {
+    setSave((prev) => {
+      const claims = prev.commercialPackClaims ?? {};
+      const count = claims[pack.id] ?? 0;
+      if (count >= pack.maxClaims) return prev;
+      if (pack.currency === 'gold' && prev.gold < pack.cost) return prev;
+      if (pack.currency === 'gems' && prev.gems < pack.cost) return prev;
+
+      let nextGold = pack.currency === 'gold' ? prev.gold - pack.cost : prev.gold;
+      let nextGems = pack.currency === 'gems' ? prev.gems - pack.cost : prev.gems;
+      let nextDust = prev.starDust ?? 0;
+      let nextEssence = prev.petEssence ?? 0;
+      let nextSocketGems = normalizeSocketGems(prev.socketGems);
+      let nextInv = prev.inventory;
+      let nextWheel = normalizeDestinyWheel(prev.destinyWheel);
+
+      for (const rw of pack.rewards) {
+        if (rw.kind === 'gold') nextGold += rw.amount;
+        else if (rw.kind === 'gems') nextGems += rw.amount;
+        else if (rw.kind === 'star_dust') nextDust += rw.amount;
+        else if (rw.kind === 'pet_essence') nextEssence += rw.amount;
+        else if (rw.kind === 'destiny_ticket') {
+          nextWheel = { ...nextWheel, tickets: nextWheel.tickets + rw.amount };
+        } else if (rw.kind === 'socket_gem_t2') {
+          for (let i = 0; i < rw.amount; i++) {
+            const randColor =
+              SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
+            nextSocketGems = [...nextSocketGems, createSocketGem(randColor, 2)];
+          }
+        } else if (rw.kind === 'gear_s') {
+          for (let i = 0; i < rw.amount; i++) {
+            nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+          }
+        }
+      }
+
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: nextGold,
+        gems: nextGems,
+        starDust: nextDust,
+        petEssence: nextEssence,
+        socketGems: nextSocketGems,
+        inventory: nextInv,
+        destinyWheel: nextWheel,
+        nightMarket: addGemsSpent(prev, pack.currency === 'gems' ? pack.cost : 0),
+        commercialPackClaims: {
+          ...claims,
+          [pack.id]: count + 1,
+        },
+      };
+    });
+  }, []);
+
   const activeChapter =
     CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
 
@@ -2810,7 +3302,12 @@ export default function App() {
           selectedChapterId={selectedChapterId}
           gameMode={gameMode}
           activeTab={activeLobbyTab}
+          shopSection={shopSection}
           previewHeroId={previewHeroId ?? save.selectedHeroId}
+          selectedCoopDifficulty={selectedCoopDifficulty}
+          selectedElementalTower={selectedElementalTower}
+          onSelectCoopDifficulty={(d) => setSelectedCoopDifficulty(d)}
+          onSelectElementalTower={(t) => setSelectedElementalTower(t)}
           onTabChange={(tab) => {
             soundEngine.playUiClick();
             setActiveLobbyTab(tab);
@@ -2818,6 +3315,7 @@ export default function App() {
               setPreviewHeroId(null);
             }
           }}
+          onOpenShopSection={(sec) => setShopSection(sec)}
           onGameModeChange={(mode) => {
             soundEngine.playUiClick();
             setGameMode(mode);
@@ -2828,10 +3326,13 @@ export default function App() {
           onStartTower={handleStartTower}
           onStartBossRush={handleStartBossRush}
           onStartDailyRift={handleStartDailyRift}
+          onStartCoopRaid={handleStartCoopRaid}
+          onStartElementalTower={handleStartElementalTower}
           onQuickSweepChapter={handleQuickSweepChapter}
           onToggleMute={handleToggleMute}
           onOpenRewardsModal={(tab) => setRewardsModalTab(tab)}
           onOpenTalentsModal={() => setTalentsModalOpen(true)}
+          onOpenConstellationModal={() => setConstellationModalOpen(true)}
           onOpenBattlePassModal={() => setBattlePassOpen(true)}
           onOpenVipModal={() => setVipModalOpen(true)}
           onOpenForgeModal={() => setForgeConfig({ open: true, subTab: 'salvage' })}
@@ -2865,6 +3366,11 @@ export default function App() {
           onApplyBuildPreset={handleApplyBuildPreset}
           onOpenChestWithGacha={handleOpenChestWithGacha}
           onBuyFlashDeal={handleBuyFlashDeal}
+          onUnlockGrowthFundPremium={handleUnlockGrowthFundPremium}
+          onClaimGrowthFundReward={handleClaimGrowthFundReward}
+          onClaimAllGrowthFund={handleClaimAllGrowthFund}
+          onBuyArenaShopOffer={handleBuyArenaShopOffer}
+          onBuyCommercialPack={handleBuyCommercialPack}
           onEquipRune={handleEquipRune}
           onUnequipRune={handleUnequipRune}
           onFuseRune={handleFuseRune}
@@ -2930,7 +3436,8 @@ export default function App() {
           stageReached={runSummary?.stageReached ?? hud.stage}
           totalStages={
             (runSummary?.isArenaMode ?? hud.isArenaMode) ||
-            (runSummary?.isGuildBossMode ?? hud.isGuildBossMode)
+            (runSummary?.isGuildBossMode ?? hud.isGuildBossMode) ||
+            (runSummary?.isCoopRaidMode ?? hud.isCoopRaidMode)
               ? 1
               : (runSummary?.isDailyRiftMode ?? hud.isDailyRiftMode)
               ? 3
@@ -2948,6 +3455,15 @@ export default function App() {
             runSummary?.arenaOpponentName ?? hud.arenaOpponentName ?? activeArenaOpponent?.name ?? ''
           }
           arenaRatingDelta={runSummary?.arenaRatingDelta ?? 0}
+          isCoopRaidMode={runSummary?.isCoopRaidMode ?? hud.isCoopRaidMode}
+          coopDifficulty={runSummary?.coopDifficulty ?? hud.coopDifficulty ?? selectedCoopDifficulty}
+          isElementalTowerMode={runSummary?.isElementalTowerMode ?? hud.isElementalTowerMode}
+          elementalTowerId={
+            runSummary?.elementalTowerId ?? hud.elementalTowerId ?? selectedElementalTower
+          }
+          elementalTowerFloor={
+            runSummary?.elementalTowerFloor ?? hud.elementalTowerFloor ?? 1
+          }
           kills={runSummary?.kills ?? hud.kills}
           goldEarned={runSummary?.gold ?? hud.runGold}
           gemsEarned={runSummary?.gems ?? hud.runGems}
@@ -2966,6 +3482,13 @@ export default function App() {
                     handleReturnTitle();
                   }
                 }
+              : (runSummary?.isCoopRaidMode ?? hud.isCoopRaidMode)
+              ? () => handleStartCoopRaid(runSummary?.coopDifficulty ?? hud.coopDifficulty ?? selectedCoopDifficulty)
+              : (runSummary?.isElementalTowerMode ?? hud.isElementalTowerMode)
+              ? () =>
+                  handleStartElementalTower(
+                    runSummary?.elementalTowerId ?? hud.elementalTowerId ?? selectedElementalTower
+                  )
               : (runSummary?.isGuildBossMode ?? hud.isGuildBossMode)
               ? () => {
                   if (normalizeGuild(save.guild).bossRunsRemaining > 0) {
@@ -3015,6 +3538,14 @@ export default function App() {
           stats={playerStats}
           onUpgradeTalent={handleUpgradeTalent}
           onClose={() => setTalentsModalOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && constellationModalOpen && (
+        <ConstellationModal
+          save={save}
+          onUpgradeConstellation={handleUpgradeConstellation}
+          onClose={() => setConstellationModalOpen(false)}
         />
       )}
 
@@ -3093,6 +3624,10 @@ export default function App() {
           onStartDuel={handleStartArenaDuel}
           onBuyTicket={handleBuyArenaTicket}
           onClaimRankTier={handleClaimArenaRankTier}
+          onOpenArenaShop={() => {
+            setActiveLobbyTab('shop');
+            setShopSection('arena_shop');
+          }}
           onClose={() => setArenaModalOpen(false)}
         />
       )}
@@ -3171,6 +3706,10 @@ export default function App() {
           isDailyRiftMode={transitionState.isDailyRiftMode}
           isGuildBossMode={transitionState.isGuildBossMode}
           isArenaMode={transitionState.isArenaMode}
+          isCoopRaidMode={transitionState.isCoopRaidMode}
+          coopDifficulty={transitionState.coopDifficulty}
+          isElementalTowerMode={transitionState.isElementalTowerMode}
+          elementalTowerId={transitionState.elementalTowerId}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />
