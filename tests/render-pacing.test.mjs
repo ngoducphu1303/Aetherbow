@@ -69,3 +69,42 @@ test('GPU phần cứng cũng phải hoàn tất frame trước khi xếp frame 
     assert.equal(waited, 1, 'không đẩy vô hạn lệnh render lên GPU chậm');
   } finally {globalThis.requestAnimationFrame = oldRaf; globalThis.document = oldDocument;}
 });
+
+test('chỉ hiện canvas sau frame đầu tiên có đủ mô hình đã trang bị', () => {
+  const oldWindow = globalThis.window;
+  const oldRaf = globalThis.requestAnimationFrame;
+  const oldDocument = globalThis.document;
+  const events = [];
+  let next;
+  globalThis.window = {setTimeout(callback) {next = callback; return 1;}};
+  globalThis.requestAnimationFrame = callback => {next = callback; return 1;};
+  globalThis.document = {hidden: false};
+
+  const canvas = {style: {visibility: 'hidden'}};
+  const engine = Object.create(GameEngine.prototype);
+  Object.assign(engine, {
+    disposed: false,
+    appearanceBlocked: true,
+    appearanceStatus: 'loading',
+    callbacks: {onAppearanceStatusChange(status) {events.push(status);}},
+    renderer: {domElement: canvas, render() {events.push('render');}},
+    update() {events.push('update');},
+    afterDraw() {},
+  });
+
+  try {
+    engine.startLoop();
+    next();
+    assert.deepEqual(events, []);
+    assert.equal(canvas.style.visibility, 'hidden');
+
+    engine.appearanceBlocked = false;
+    next();
+    assert.deepEqual(events, ['update', 'render', 'ready']);
+    assert.equal(canvas.style.visibility, 'visible');
+  } finally {
+    globalThis.window = oldWindow;
+    globalThis.requestAnimationFrame = oldRaf;
+    globalThis.document = oldDocument;
+  }
+});

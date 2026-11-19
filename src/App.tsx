@@ -350,7 +350,7 @@ import {
   normalizeZodiacRelics,
   resolveAstralBoardRoll,
 } from './data/wave14Data';
-import { GameEngine } from './engine/GameEngine';
+import { GameEngine, type AppearanceStatus } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
@@ -537,6 +537,8 @@ export default function App() {
   const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
   const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
+  const [entryRequested, setEntryRequested] = useState(false);
+  const [appearanceStatus, setAppearanceStatus] = useState<AppearanceStatus>('loading');
   const [phase, setPhase] = useState<GamePhase>(GamePhase.TITLE);
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
   const selectedChapterIdRef = useRef<number>(1);
@@ -1134,6 +1136,7 @@ export default function App() {
     const engine = new GameEngine(
       mount,
       {
+        onAppearanceStatusChange: setAppearanceStatus,
         onHudUpdate: (snap) => {
           setHud(snap);
         },
@@ -4966,18 +4969,25 @@ export default function App() {
     document.body.dataset.state = stateLabel;
   }, [phase]);
 
+  useEffect(() => {
+    if (!entryRequested || appearanceStatus !== 'ready') return;
+    setEntryRequested(false);
+    setEnteredGame(true);
+    if (!save.onboardingCompleted) setOnboardingOpen(true);
+  }, [entryRequested, appearanceStatus, save.onboardingCompleted]);
+
   // Support ?autostart=1 to skip TitleScreen/SplashGate and start gameplay directly
   const autostartDoneRef = useRef<boolean>(false);
   useEffect(() => {
     if (autostartDoneRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('autostart') === '1' && engineRef.current) {
+    if (params.get('autostart') === '1' && engineRef.current && appearanceStatus === 'ready') {
       autostartDoneRef.current = true;
       setEnteredGame(true);
       setOnboardingOpen(false);
       handleStartTrial();
     }
-  }, [handleStartTrial]);
+  }, [appearanceStatus, handleStartTrial]);
 
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
@@ -8981,16 +8991,31 @@ export default function App() {
       {phase === GamePhase.TITLE && !enteredGame && (
         <SplashGate
           save={save}
+          entryStatus={appearanceStatus === 'error' ? 'error' : entryRequested ? 'waiting' : 'idle'}
           onEnterGame={() => {
             soundEngine.unlock();
             soundEngine.playVictory();
-            setEnteredGame(true);
-            if (!save.onboardingCompleted) {
-              setOnboardingOpen(true);
-            }
+            if (appearanceStatus === 'error') engineRef.current?.retryAppearance();
+            setEntryRequested(true);
           }}
           onToggleMute={handleToggleMute}
         />
+      )}
+
+      {enteredGame && appearanceStatus !== 'ready' && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-[#050813] text-amber-100">
+          {appearanceStatus === 'error' ? (
+            <div className="flex flex-col items-center gap-4">
+              <p role="alert">Không tải được mô hình 3D.</p>
+              <button type="button" className="a2-yellow-btn rounded-xl px-5 py-2"
+                onClick={() => engineRef.current?.retryAppearance()}>
+                Thử lại
+              </button>
+            </div>
+          ) : (
+            <p role="status">Đang tải mô hình 3D…</p>
+          )}
+        </div>
       )}
 
       {phase === GamePhase.TITLE && enteredGame && (

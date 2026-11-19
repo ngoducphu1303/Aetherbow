@@ -330,7 +330,10 @@ interface DangerLane {
   fillMesh: THREE.Mesh;
 }
 
+export type AppearanceStatus = 'loading' | 'ready' | 'error';
+
 export interface EngineCallbacks {
+  onAppearanceStatusChange?: (status: AppearanceStatus) => void;
   onHudUpdate: (hud: HudSnapshot) => void;
   onFloatingDamage: (dmg: FloatingDamage) => void;
   onJoystickUpdate: (joy: JoystickState) => void;
@@ -454,8 +457,12 @@ export class GameEngine {
   private artemisModel?: THREE.Group;
   private artemisMotion?: ReturnType<typeof createArtemisMotion>;
   private artemisModelLoading = false;
+  private artemisModelFailed = false;
   private dragonMount?: THREE.Group;
   private dragonMountLoading = false;
+  private dragonMountFailed = false;
+  private appearanceBlocked = false;
+  private appearanceStatus: AppearanceStatus = 'loading';
   private heroShadow!: THREE.Mesh;
   private heroShieldMesh!: THREE.Mesh;
   private lobbyHaloGroup: THREE.Group | null = null;
@@ -796,6 +803,7 @@ export class GameEngine {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.style.visibility = 'hidden';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
     container.appendChild(this.renderer.domElement);
@@ -856,7 +864,7 @@ export class GameEngine {
     this.buildHero();
     this.buildArena(this.currentChapter);
 
-    if (!this.isSoftwareGl) {
+    if (!this.isSoftwareGl && !this.appearanceBlocked) {
       this.renderer.compile(this.scene, this.camera);
     }
 
@@ -1180,6 +1188,48 @@ export class GameEngine {
     this.scene.add(this.reticleMesh);
   }
 
+  private setAppearanceStatus(status: AppearanceStatus): void {
+    if (this.appearanceStatus === status) return;
+    this.appearanceStatus = status;
+    this.renderer.domElement.style.visibility = status === 'ready' ? 'visible' : 'hidden';
+    this.callbacks.onAppearanceStatusChange?.(status);
+  }
+
+  private wantsDragonMount(): boolean {
+    return this.heroVisualCfg.mountId === 'azure_dragon' && !this.heroVisualCfg.astralSteedId;
+  }
+
+  private refreshAppearanceGate(): void {
+    const artemisPending = this.baseStats.heroId === 'artemis' &&
+      this.artemisModel?.parent !== this.hero.bodyGroup;
+    const dragonPending = this.wantsDragonMount() &&
+      (!this.dragonMount || this.dragonMount.parent !== this.hero.mountGroup);
+
+    this.appearanceBlocked = artemisPending || dragonPending;
+    if (this.appearanceBlocked) {
+      const failed = (artemisPending && this.artemisModelFailed) ||
+        (dragonPending && this.dragonMountFailed);
+      this.setAppearanceStatus(failed ? 'error' : 'loading');
+    } else if (this.appearanceStatus === 'error') {
+      this.setAppearanceStatus('loading');
+    }
+  }
+
+  public retryAppearance(): void {
+    this.artemisModelFailed = false;
+    this.dragonMountFailed = false;
+    if (this.baseStats.heroId === 'artemis') this.useArtemisModel();
+    this.useDragonMount();
+    this.refreshAppearanceGate();
+  }
+
+  private async loadAppearanceAsset(path: string) {
+    const url = new URL(`${import.meta.env.BASE_URL}assets/${path}`, document.baseURI);
+    const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${path}`);
+    return new GLTFLoader().parseAsync(await response.arrayBuffer(), new URL('.', url).href);
+  }
+
   private useArtemisModel(): void {
     if (this.artemisModel) {
       const meshes: THREE.Mesh[] = [];
@@ -1194,9 +1244,9 @@ export class GameEngine {
       return;
     }
 
-    if (this.artemisModelLoading) return;
+    if (this.artemisModelLoading || this.artemisModelFailed) return;
     this.artemisModelLoading = true;
-    new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/heroes/golden-dress-girl.glb`)
+    this.loadAppearanceAsset('heroes/golden-dress-girl.glb')
       .then(({ scene }) => {
         if (this.disposed) {
           this.releaseObject(scene);
@@ -1214,23 +1264,29 @@ export class GameEngine {
         this.artemisModel = scene;
         if (this.baseStats.heroId === 'artemis') this.useArtemisModel();
       })
-      .catch((error) => console.warn('Could not load the Artemis appearance.', error))
-      .finally(() => { this.artemisModelLoading = false; });
+      .catch((error) => {
+        this.artemisModelFailed = true;
+        console.warn('Could not load the Artemis appearance.', error);
+      })
+      .finally(() => {
+        this.artemisModelLoading = false;
+        if (!this.disposed) this.refreshAppearanceGate();
+      });
   }
 
   private useDragonMount(): void {
     const mount = this.hero.mountGroup;
-    if (!mount || this.heroVisualCfg.mountId !== 'azure_dragon' || this.heroVisualCfg.astralSteedId) return;
+    if (!mount || !this.wantsDragonMount()) return;
 
     if (this.dragonMount) {
-      for (const part of mount.children) part.visible = false;
-      mount.add(this.dragonMount);
+      for (const part of mount.children) part.visible = part === this.dragonMount;
+      if (this.dragonMount.parent !== mount) mount.add(this.dragonMount);
       return;
     }
 
-    if (this.dragonMountLoading) return;
+    if (this.dragonMountLoading || this.dragonMountFailed) return;
     this.dragonMountLoading = true;
-    new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/mounts/dragon.glb`)
+    this.loadAppearanceAsset('mounts/dragon.glb')
       .then(({ scene }) => {
         if (this.disposed) {
           this.releaseObject(scene);
@@ -1254,8 +1310,14 @@ export class GameEngine {
         this.dragonMount.add(scene, saddle);
         this.useDragonMount();
       })
-      .catch((error) => console.warn('Could not load the Thanh Long mount.', error))
-      .finally(() => { this.dragonMountLoading = false; });
+      .catch((error) => {
+        this.dragonMountFailed = true;
+        console.warn('Could not load the Thanh Long mount.', error);
+      })
+      .finally(() => {
+        this.dragonMountLoading = false;
+        if (!this.disposed) this.refreshAppearanceGate();
+      });
   }
 
   private updateDragonRide(moving: boolean): number {
@@ -1357,6 +1419,7 @@ export class GameEngine {
     this.entitiesGroup.add(this.combatAuraGroup);
 
     this.rebuildCompanions();
+    this.refreshAppearanceGate();
   }
 
   private rebuildCompanions(): void {
@@ -5354,11 +5417,22 @@ export class GameEngine {
         this.frameId = window.setTimeout(tick, 250);
         return;
       }
+      if (this.appearanceBlocked) {
+        this.lastTime = now;
+        this.frameId = window.setTimeout(tick, 50);
+        return;
+      }
       const rawDt = (now - this.lastTime) / 1000;
       this.lastTime = now;
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
       this.update(dt);
+      // A loadout can change inside update via a phase or equipment callback.
+      if (this.appearanceBlocked) {
+        this.frameId = window.setTimeout(tick, 50);
+        return;
+      }
       this.renderer.render(this.scene, this.camera);
+      if (this.appearanceStatus === 'loading') this.setAppearanceStatus('ready');
       // Chỉ giữ tối đa một frame đang xử lý, kể cả GPU phần cứng chậm.
       this.afterDraw(() => { this.frameId = requestAnimationFrame(tick); });
     };
