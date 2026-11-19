@@ -4,6 +4,8 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObjectResources } from './resources';
 import { createArtemisMotion } from './artemisMotion';
+import { createDragonMountMotion } from './dragonMountMotion';
+import { discardModelDownload, downloadModel, getModelAssetUrl, type ModelAsset } from './modelAssets';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
 import {
@@ -460,6 +462,8 @@ export class GameEngine {
   private artemisModelLoading = false;
   private artemisModelFailed = false;
   private dragonMount?: THREE.Group;
+  private dragonMotion?: ReturnType<typeof createDragonMountMotion>;
+  private readonly dragonSeat = new THREE.Vector3();
   private dragonMountLoading = false;
   private dragonMountFailed = false;
   private appearanceBlocked = false;
@@ -1224,12 +1228,15 @@ export class GameEngine {
     this.refreshAppearanceGate();
   }
 
-  private async loadAppearanceAsset(path: string) {
-    const url = new URL(`${import.meta.env.BASE_URL}assets/${path}?v=2`, document.baseURI);
-    const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${path}`);
-    return new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
-      .parseAsync(await response.arrayBuffer(), new URL('.', url).href);
+  private async loadAppearanceAsset(path: ModelAsset) {
+    const url = getModelAssetUrl(path);
+    const data = await downloadModel(path);
+    try {
+      return await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(data, new URL('.', url).href);
+    } catch (error) {
+      discardModelDownload(path, data);
+      throw error;
+    }
   }
 
   private useArtemisModel(): void {
@@ -1295,7 +1302,14 @@ export class GameEngine {
           return;
         }
 
-        scene.scale.setScalar(9.2);
+        const modelScale = 8.2;
+        scene.scale.setScalar(modelScale);
+        try {
+          this.dragonMotion = createDragonMountMotion(scene);
+        } catch (error) {
+          this.releaseObject(scene);
+          throw error;
+        }
         scene.traverse((object) => {
           if (object instanceof THREE.Mesh) object.castShadow = true;
         });
@@ -1303,13 +1317,14 @@ export class GameEngine {
           new THREE.SphereGeometry(1, 20, 12),
           new THREE.MeshStandardMaterial({ color: 0x462d27, roughness: 0.78 })
         );
-        saddle.scale.set(0.34, 0.075, 0.24);
-        saddle.position.set(0, 0.87, -0.36);
+        // In the saddle joint, +Z is up and +Y points down the dragon's back.
+        saddle.scale.set(0.32 / modelScale, 0.27 / modelScale, 0.065 / modelScale);
         saddle.castShadow = true;
+        this.dragonMotion.saddle.add(saddle);
 
         this.dragonMount = new THREE.Group();
         this.dragonMount.name = 'Thanh Long';
-        this.dragonMount.add(scene, saddle);
+        this.dragonMount.add(scene);
         this.useDragonMount();
       })
       .catch((error) => {
@@ -1322,18 +1337,20 @@ export class GameEngine {
       });
   }
 
-  private updateDragonRide(moving: boolean): number {
+  private updateDragonRide(dt: number, speed: number): number {
+    if (!this.dragonMotion) return 0.68;
+
+    this.dragonMotion.update(dt, this.elapsed, speed);
+    this.dragonMotion.saddle.getWorldPosition(this.dragonSeat);
+    this.hero.root.worldToLocal(this.dragonSeat);
+    this.hero.bodyGroup.position.z = this.dragonSeat.z;
+
     const artemis = this.artemisModel?.parent === this.hero.bodyGroup;
-    const bob = moving
-      ? 0.065 + Math.sin(this.elapsed * 13) * 0.055
-      : Math.sin(this.elapsed * 2.7) * 0.018;
-    if (this.dragonMount) this.dragonMount.position.y = bob;
-    this.hero.bodyGroup.position.z = -0.36;
     if (!artemis) {
       this.hero.leftLeg.rotation.set(-0.88, 0, -0.54);
       this.hero.rightLeg.rotation.set(-0.88, 0, 0.54);
     }
-    return (artemis ? -0.03 : 0.43) + bob;
+    return this.dragonSeat.y - (artemis ? 0.92 : 0.49);
   }
 
   private buildHero(): void {
@@ -5560,7 +5577,7 @@ export class GameEngine {
       }
 
       const onDragon = Boolean(this.dragonMount && this.dragonMount.parent === this.hero.mountGroup);
-      const mountOffset = onDragon ? this.updateDragonRide(false) : this.hero.mountGroup ? 0.68 : 0;
+      const mountOffset = onDragon ? this.updateDragonRide(dt, 0) : this.hero.mountGroup ? 0.68 : 0;
       const poseFloatY = this.lobbyHeroPose === 'astral_float' ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1 : Math.sin(this.elapsed * 2.2) * 0.04;
       const targetBodyTiltX = this.lobbyHeroPose === 'aim_ready' ? 0.1 : this.lobbyHeroPose === 'astral_float' ? -0.08 : 0;
       const targetDrawArmX = this.lobbyHeroPose === 'victory_salute' ? -1.15 : this.lobbyHeroPose === 'aim_ready' ? -0.45 : 0;
@@ -5570,7 +5587,9 @@ export class GameEngine {
         (this.heroVisualCfg.mythicWeaponTier ?? 0) >= 1;
 
       this.hero.root.rotation.y = this.lobbyYaw;
-      this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset + (onDragon ? 0 : poseFloatY), 6, dt);
+      this.hero.bodyGroup.position.y = onDragon
+        ? mountOffset
+        : THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset + poseFloatY, 6, dt);
       this.hero.bodyGroup.rotation.x = THREE.MathUtils.damp(this.hero.bodyGroup.rotation.x, targetBodyTiltX, 6, dt);
       this.hero.drawArm.rotation.x = THREE.MathUtils.damp(this.hero.drawArm.rotation.x, targetDrawArmX, 6, dt);
       this.hero.capeTail.rotation.x = 0.22 + Math.sin(this.elapsed * 3.1) * 0.07;
@@ -5586,7 +5605,7 @@ export class GameEngine {
         this.hero.celestialWingLeft.rotation.z = Math.cos(this.elapsed * 2.8) * 0.06;
         this.hero.celestialWingRight.rotation.z = -Math.cos(this.elapsed * 2.8) * 0.06;
       }
-      if (this.hero.mountLegs) {
+      if (this.hero.mountLegs && !onDragon) {
         this.hero.mountLegs.forEach((leg, lIdx) => {
           leg.rotation.x = Math.sin(this.elapsed * 2.4 + lIdx * 1.4) * 0.09;
         });
@@ -6491,6 +6510,8 @@ export class GameEngine {
       this.pvz = THREE.MathUtils.damp(this.pvz, targetVz, 18, dt);
     }
 
+    const beforeMoveX = this.px;
+    const beforeMoveZ = this.pz;
     this.px += this.pvx * dt;
     this.pz += this.pvz * dt;
 
@@ -6546,7 +6567,7 @@ export class GameEngine {
       this.hero.bodyGroup.position.y = mountOffset + Math.abs(Math.sin(this.elapsed * 16)) * 0.09;
       this.hero.bodyGroup.rotation.x = this.dashTimer > 0 ? 0.32 : 0.1;
       this.hero.capeTail.rotation.x = 0.34 + Math.sin(this.elapsed * 14) * 0.14;
-      if (this.hero.mountLegs) {
+      if (this.hero.mountLegs && !onDragon) {
         this.hero.mountLegs.forEach((leg, lIdx) => {
           const phaseOffset = lIdx === 0 || lIdx === 3 ? 0 : Math.PI;
           leg.rotation.x = Math.sin(this.elapsed * 17 + phaseOffset) * 0.58;
@@ -6566,7 +6587,7 @@ export class GameEngine {
         10,
         dt
       );
-      if (this.hero.mountLegs) {
+      if (this.hero.mountLegs && !onDragon) {
         this.hero.mountLegs.forEach((leg) => {
           leg.rotation.x = THREE.MathUtils.damp(leg.rotation.x, 0, 12, dt);
         });
@@ -6579,8 +6600,9 @@ export class GameEngine {
     }
 
     if (onDragon) {
-      this.hero.bodyGroup.position.y = this.updateDragonRide(isMoving);
-      this.hero.bodyGroup.rotation.x = isMoving ? 0.07 : 0;
+      const travelSpeed = Math.hypot(this.px - beforeMoveX, this.pz - beforeMoveZ) / dt;
+      this.hero.bodyGroup.position.y = this.updateDragonRide(dt, travelSpeed);
+      this.hero.bodyGroup.rotation.x = travelSpeed > 0.3 ? 0.07 : 0;
     }
 
     if (this.hero.weaponAuraGroup) {
@@ -10348,6 +10370,7 @@ export class GameEngine {
     if (this.dragonMount) {
       this.releaseObject(this.dragonMount);
       this.dragonMount = undefined;
+      this.dragonMotion = undefined;
     }
     this.releaseObject(this.scene);
     this.contactShadowTex.dispose();

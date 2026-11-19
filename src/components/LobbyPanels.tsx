@@ -131,6 +131,7 @@ import {
   WISH_POOL_COST_GEMS,
   WISH_TARGET_CATALOG,
   ZODIAC_MOUNTS,
+  getMountAppearance,
   getMountStats,
   getMountUpgradeCost,
   getWeaponAuraStats,
@@ -1152,7 +1153,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const equippedFrameId = save.equippedAvatarFrameId ?? 'default_gold';
   const unlockedMounts = save.unlockedMounts ?? [];
   const mountLevels = save.mountLevels ?? {};
-  const equippedMountId = save.equippedMountId ?? null;
+  const { mountId: equippedMountId } = getMountAppearance(save);
   const mountShards = save.mountShards ?? 0;
   const unlockedWeaponAuras = save.unlockedWeaponAuras ?? ['none'];
   const weaponAuraLevels = save.weaponAuraLevels ?? {};

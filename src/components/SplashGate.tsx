@@ -1,11 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { Play, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { Play, RotateCcw, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import splashArtSrc from '../assets/images/celestial_sanctuary_backdrop_1794971371758.jpg';
 import { CHAPTERS } from '../data/chaptersData';
+import type { AppearanceStatus } from '../engine/GameEngine';
+import { getModelDownloadProgress, subscribeToModelDownloads } from '../engine/modelAssets';
 import { SaveData } from '../types/game';
 
 interface SplashGateProps {
   save: SaveData;
+  appearanceStatus: AppearanceStatus;
+  onRetryModels: () => void;
   onEnterGame: () => void;
   onToggleMute: () => void;
 }
@@ -14,21 +18,26 @@ const SPLASH_ART_SRC = splashArtSrc;
 
 export const SplashGate: React.FC<SplashGateProps> = ({
   save,
+  appearanceStatus,
+  onRetryModels,
   onEnterGame,
   onToggleMute,
 }) => {
   const [imgFailed, setImgFailed] = useState(false);
+  const progress = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadProgress);
+  const ready = progress.status === 'ready' && appearanceStatus === 'ready';
+  const failed = progress.status === 'error' || appearanceStatus === 'error';
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Enter' || e.code === 'Space') {
-        e.preventDefault();
-        onEnterGame();
-      }
+      if (e.repeat || (e.code !== 'Enter' && e.code !== 'Space')) return;
+      if (e.target instanceof HTMLElement && e.target.closest('button, a, input, textarea, select')) return;
+      e.preventDefault();
+      if (ready) onEnterGame();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onEnterGame]);
+  }, [onEnterGame, ready]);
 
   return (
     <div className="fixed inset-0 z-30 pointer-events-auto flex flex-col justify-between overflow-hidden bg-[#050813]">
@@ -144,14 +153,43 @@ export const SplashGate: React.FC<SplashGateProps> = ({
           <span>8 Anh Hùng Chibi · 12 Chương Hoàng Đạo · Điện Thần 3D</span>
         </div>
 
+        <div className="w-full rounded-2xl border border-amber-200/30 bg-[#090d1b]/90 p-3 shadow-xl">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold text-amber-100">
+            <span role={failed ? 'alert' : 'status'}>
+              {failed ? 'Không tải được mô hình 3D' : ready ? 'Mô hình 3D đã sẵn sàng' : progress.status === 'ready'
+                ? 'Đang chuẩn bị ngoại hình đã trang bị…' : 'Đang tải mô hình 3D…'}
+            </span>
+            <span className="tabular-nums">{progress.percent}%</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Tiến độ tải mô hình 3D"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress.percent}
+            className="h-2 overflow-hidden rounded-full bg-amber-200/15"
+          >
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-200 transition-[width] duration-150 motion-reduce:transition-none"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          <div className="mt-2 text-right text-[10px] tabular-nums text-slate-300">
+            {progress.completed}/{progress.total} mô hình
+          </div>
+        </div>
+
         <button
           type="button"
-          data-start="true"
-          onClick={onEnterGame}
-          className="a2-yellow-btn w-full py-4 px-8 rounded-2xl font-display font-black text-base sm:text-lg tracking-[0.12em] flex items-center justify-center gap-3 cursor-pointer whitespace-nowrap"
+          data-start={ready ? 'true' : undefined}
+          disabled={!ready && !failed}
+          onClick={failed ? onRetryModels : onEnterGame}
+          className="a2-yellow-btn w-full py-4 px-8 rounded-2xl font-display font-black text-base sm:text-lg tracking-[0.12em] flex items-center justify-center gap-3 cursor-pointer whitespace-nowrap disabled:cursor-wait disabled:opacity-55"
         >
-          <Play className="w-5 h-5 fill-current shrink-0" />
-          <span>CHẠM ĐỂ VÀO GAME</span>
+          {failed ? <RotateCcw className="w-5 h-5 shrink-0" /> : ready
+            ? <Play className="w-5 h-5 fill-current shrink-0" />
+            : <span aria-hidden="true" className="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />}
+          <span>{failed ? 'THỬ LẠI' : ready ? 'CHẠM ĐỂ VÀO GAME' : 'ĐANG TẢI'}</span>
         </button>
 
         <div className="text-[11px] text-slate-300/85 text-center tracking-wide">

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { ZODIAC_AURAS, HERO_SKINS } from '../data/wave3Data';
 import { ZODIAC_WINGS } from '../data/wave7Data';
-import { WEAPON_AURAS, ZODIAC_MOUNTS } from '../data/wave8Data';
+import { getMountAppearance, WEAPON_AURAS, ZODIAC_MOUNTS } from '../data/wave8Data';
 import { DIVINE_HALO_CATALOG } from '../data/wave10Data';
 import {
   HaloId,
@@ -73,7 +73,8 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   const equippedSkin = save.equippedSkinByHero?.[save.selectedHeroId] ?? 'default';
   const activeSkinPreview = preview.skinId ?? equippedSkin;
   const activeWingPreview = preview.wingId !== undefined ? preview.wingId : (save.equippedWingId ?? null);
-  const activeMountPreview = preview.mountId !== undefined ? preview.mountId : (save.equippedMountId ?? null);
+  const { mountId: equippedMountId } = getMountAppearance(save);
+  const activeMountPreview = getMountAppearance(save, preview.mountId).mountId;
   const activeWeaponAuraPreview =
     preview.weaponAuraId !== undefined ? preview.weaponAuraId : (save.equippedWeaponAuraId ?? 'none');
   const activeHaloPreview =
@@ -271,7 +272,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
           {tab === 'mounts' &&
             ZODIAC_MOUNTS.map((m) => {
               const owned = unlockedMounts.has(m.id);
-              const equipped = save.equippedMountId === m.id;
+              const equipped = equippedMountId === m.id;
               const isPreviewing = activeMountPreview === m.id;
               const hasShards = (save.mountShards ?? 0) >= m.unlockShards;
               const hasGems = save.gems >= m.unlockGems;
@@ -307,7 +308,10 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                     {owned ? (
                       <button
                         type="button"
-                        onClick={() => onEquipMount(equipped ? null : m.id)}
+                        onClick={() => {
+                          onEquipMount(equipped ? null : m.id);
+                          onChangePreview({ ...preview, mountId: undefined });
+                        }}
                         className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
                           equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
                         }`}
@@ -318,7 +322,10 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                       <button
                         type="button"
                         disabled={!canUnlock}
-                        onClick={() => onUnlockMount(m.id)}
+                        onClick={() => {
+                          onUnlockMount(m.id);
+                          onChangePreview({ ...preview, mountId: undefined });
+                        }}
                         className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
                       >
                         {m.unlockShards === 0 && m.unlockGems === 0

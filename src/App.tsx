@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementToast } from './components/AchievementToast';
 import { ArenaModal } from './components/ArenaModal';
@@ -219,6 +219,7 @@ import {
   WISH_POOL_COST_GEMS,
   WISH_TARGET_CATALOG,
   getDispatchMissionDef,
+  getMountAppearance,
   getMountUpgradeCost,
   getWeaponAuraUpgradeCost,
   normalizeBloodMoon,
@@ -351,6 +352,7 @@ import {
   resolveAstralBoardRoll,
 } from './data/wave14Data';
 import { GameEngine, type AppearanceStatus } from './engine/GameEngine';
+import { getModelDownloadStatus, preloadGameModels, subscribeToModelDownloads } from './engine/modelAssets';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
@@ -538,6 +540,8 @@ export default function App() {
   const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
   const [appearanceStatus, setAppearanceStatus] = useState<AppearanceStatus>('loading');
+  const modelDownloadStatus = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadStatus);
+  const canEnterGame = modelDownloadStatus === 'ready' && appearanceStatus === 'ready';
   const [phase, setPhase] = useState<GamePhase>(GamePhase.TITLE);
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
   const selectedChapterIdRef = useRef<number>(1);
@@ -783,14 +787,10 @@ export default function App() {
         : equippedWingId;
     const wingLevel = effectiveWingId ? Math.max(1, save.wingLevels?.[effectiveWingId] ?? 1) : 1;
 
-    const equippedMountId =
-      save.equippedMountId && (save.unlockedMounts ?? []).includes(save.equippedMountId)
-        ? save.equippedMountId
-        : null;
-    const effectiveMountId =
-      isWardrobePreviewActive && wardrobePreview.mountId !== undefined
-        ? wardrobePreview.mountId
-        : equippedMountId;
+    const { mountId: effectiveMountId, astralSteedId: effectiveAstralSteedId } = getMountAppearance(
+      save,
+      isWardrobePreviewActive ? wardrobePreview.mountId : undefined
+    );
     const mountLevel = effectiveMountId
       ? Math.max(1, save.mountLevels?.[effectiveMountId] ?? 1)
       : 1;
@@ -836,11 +836,6 @@ export default function App() {
     const warBannerLevel = effectiveWarBannerId
       ? Math.max(1, save.warBannerLevels?.[effectiveWarBannerId] ?? 1)
       : 1;
-    const effectiveAstralSteedId: AstralSteedId | null =
-      save.equippedAstralSteedId &&
-      (save.unlockedAstralSteeds ?? []).includes(save.equippedAstralSteedId)
-        ? save.equippedAstralSteedId
-        : null;
     const astralSteedStar = effectiveAstralSteedId
       ? Math.max(1, save.astralSteedStars?.[effectiveAstralSteedId] ?? 1)
       : 1;
@@ -1126,6 +1121,13 @@ export default function App() {
     prevPowerRef.current = nextPower;
     return undefined;
   }, [playerStats.powerRating, enteredGame, phase]);
+
+  useEffect(() => { preloadGameModels(); }, []);
+
+  const retryStartupModels = useCallback(() => {
+    preloadGameModels();
+    engineRef.current?.retryAppearance();
+  }, []);
 
   // Initialize Three.js engine once
   useEffect(() => {
@@ -4432,6 +4434,7 @@ export default function App() {
           unlockedAstralSteeds: [...owned, steedId],
           astralSteedStars: { ...(prev.astralSteedStars ?? {}), [steedId]: 1 },
           equippedAstralSteedId: steedId,
+          mountAppearance: 'astral',
           honorFeed: appendHonorEntry(
             prev.honorFeed,
             'THÚ CƯỠI TINH GIỚI 3D',
@@ -4450,7 +4453,7 @@ export default function App() {
   const handleEquipSteed = useCallback((steedId: AstralSteedId | null) => {
     setSave((prev) => {
       if (steedId && !(prev.unlockedAstralSteeds ?? []).includes(steedId)) return prev;
-      return { ...prev, equippedAstralSteedId: steedId };
+      return { ...prev, equippedAstralSteedId: steedId, mountAppearance: steedId ? 'astral' : prev.mountAppearance };
     });
   }, []);
 
@@ -4772,6 +4775,7 @@ export default function App() {
             ? { ...(prev.astralSteedStars ?? {}), [ms.unlockSteedId!]: 1 }
             : prev.astralSteedStars,
           equippedAstralSteedId: grantSteed ? ms.unlockSteedId! : prev.equippedAstralSteedId,
+          mountAppearance: grantSteed ? 'astral' : prev.mountAppearance,
           carnival7Day: {
             ...c7,
             claimedMilestones: [...c7.claimedMilestones, pointsTarget],
@@ -4818,6 +4822,7 @@ export default function App() {
             ? { ...(prev.astralSteedStars ?? {}), [def.unlockSteedId!]: 1 }
             : prev.astralSteedStars,
           equippedAstralSteedId: grantSteed ? def.unlockSteedId! : prev.equippedAstralSteedId,
+          mountAppearance: grantSteed ? 'astral' : prev.mountAppearance,
           unlockedVipFrames: grantFrame ? [...ownedVipFrames, def.unlockVipFrameId!] : ownedVipFrames,
           equippedVipFrameId: grantFrame ? def.unlockVipFrameId! : prev.equippedVipFrameId,
           topUpEvolution: addTopUpPoints(prev, def.topUpPoints),
@@ -4896,6 +4901,7 @@ export default function App() {
         }
         if ((prev.unlockedAstralSteeds ?? []).includes(profile.astralSteedId)) {
           next.equippedAstralSteedId = profile.astralSteedId;
+          next.mountAppearance = 'astral';
           syncedParts.push(ASTRAL_STEED_MAP[profile.astralSteedId]?.name ?? 'Thú Cưỡi 3D');
         }
         if ((prev.unlockedWarBanners ?? []).includes(profile.warBannerId)) {
@@ -4973,13 +4979,13 @@ export default function App() {
   useEffect(() => {
     if (autostartDoneRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('autostart') === '1' && engineRef.current && appearanceStatus === 'ready') {
+    if (params.get('autostart') === '1' && engineRef.current && canEnterGame) {
       autostartDoneRef.current = true;
       setEnteredGame(true);
       setOnboardingOpen(false);
       handleStartTrial();
     }
-  }, [appearanceStatus, handleStartTrial]);
+  }, [canEnterGame, handleStartTrial]);
 
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
@@ -7725,6 +7731,7 @@ export default function App() {
         unlockedMounts: [...unlocked, mountId],
         mountLevels: { ...(prev.mountLevels ?? {}), [mountId]: 1 },
         equippedMountId: mountId,
+        mountAppearance: 'zodiac',
       };
     });
   }, []);
@@ -7734,7 +7741,7 @@ export default function App() {
     setSave((prev) => {
       if (mountId === null) return { ...prev, equippedMountId: null };
       if (!(prev.unlockedMounts ?? []).includes(mountId)) return prev;
-      return { ...prev, equippedMountId: mountId };
+      return { ...prev, equippedMountId: mountId, mountAppearance: 'zodiac' };
     });
   }, []);
 
@@ -8983,7 +8990,10 @@ export default function App() {
       {phase === GamePhase.TITLE && !enteredGame && (
         <SplashGate
           save={save}
+          appearanceStatus={appearanceStatus}
+          onRetryModels={retryStartupModels}
           onEnterGame={() => {
+            if (!canEnterGame) return;
             soundEngine.unlock();
             soundEngine.playVictory();
             setEnteredGame(true);

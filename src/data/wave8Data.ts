@@ -126,6 +126,20 @@ export const MOUNT_MAP: Record<MountId, MountDefinition> = ZODIAC_MOUNTS.reduce(
   {} as Record<MountId, MountDefinition>
 );
 
+export function getMountAppearance(save: SaveData, previewMountId?: MountId | null) {
+  if (previewMountId !== undefined) return { mountId: previewMountId, astralSteedId: null };
+
+  const mountId = save.equippedMountId && save.unlockedMounts?.includes(save.equippedMountId)
+    ? save.equippedMountId
+    : null;
+  const astralSteedId = save.equippedAstralSteedId && save.unlockedAstralSteeds?.includes(save.equippedAstralSteedId)
+    ? save.equippedAstralSteedId
+    : null;
+  const showZodiac = mountId && (!astralSteedId || save.mountAppearance === 'zodiac' ||
+    (save.mountAppearance !== 'astral' && mountId === 'azure_dragon'));
+  return showZodiac ? { mountId, astralSteedId: null } : { mountId: null, astralSteedId };
+}
+
 export function getMountStats(mountId: MountId, level: number) {
   const def = MOUNT_MAP[mountId];
   const lv = Math.max(1, Math.min(MAX_MOUNT_LEVEL, level));

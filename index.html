@@ -16,12 +16,12 @@
         try {
           appearanceSave = JSON.parse(localStorage.getItem('artemis_3d_save_v1') || 'null');
         } catch {}
-        function preloadAppearance(path) {
+        function preloadAppearance(path, version = 2) {
           const link = document.createElement('link');
           link.rel = 'preload';
           link.as = 'fetch';
           link.crossOrigin = 'anonymous';
-          link.href = '%BASE_URL%assets/' + path + '?v=2';
+          link.href = '%BASE_URL%assets/' + path + '?v=' + version;
           document.head.append(link);
         }
         const heroId = appearanceSave?.selectedHeroId || 'artemis';
@@ -29,9 +29,10 @@
         const hasAstralSteed = activeSteed && Array.isArray(appearanceSave.unlockedAstralSteeds) &&
           appearanceSave.unlockedAstralSteeds.includes(activeSteed);
         if (heroId === 'artemis') preloadAppearance('heroes/golden-dress-girl.glb');
-        if (!hasAstralSteed && appearanceSave?.equippedMountId === 'azure_dragon' &&
+        if ((!hasAstralSteed || appearanceSave?.mountAppearance !== 'astral') &&
+            appearanceSave?.equippedMountId === 'azure_dragon' &&
             Array.isArray(appearanceSave.unlockedMounts) && appearanceSave.unlockedMounts.includes('azure_dragon')) {
-          preloadAppearance('mounts/dragon.glb');
+          preloadAppearance('mounts/dragon.glb', 3);
         }
       })();
     </script>

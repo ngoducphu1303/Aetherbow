@@ -1196,6 +1196,7 @@ export interface SaveData {
   unlockedMounts?: MountId[];
   mountLevels?: Partial<Record<MountId, number>>;
   equippedMountId?: MountId | null;
+  mountAppearance?: 'zodiac' | 'astral';
   unlockedWeaponAuras?: WeaponAuraId[];
   weaponAuraLevels?: Partial<Record<WeaponAuraId, number>>;
   equippedWeaponAuraId?: WeaponAuraId;

@@ -18,6 +18,7 @@ import astralMountsArt from '../assets/images/astral_mounts_race_1795056418828.j
 import soulRingsArt from '../assets/images/soul_rings_jade_1795056419045.jpg';
 import royalAuctionArt from '../assets/images/royal_blindbox_auction_1795056419153.jpg';
 import { soundEngine } from '../audio/soundEngine';
+import { getMountAppearance } from '../data/wave8Data';
 import {
   ASTRAL_STEED_DEFS,
   ASTRAL_STEED_MAX_STAR,
@@ -106,7 +107,7 @@ export const Wave13TreasuryModal: React.FC<Wave13TreasuryModalProps> = ({
     () => new Set<AstralSteedId>(save.unlockedAstralSteeds ?? []),
     [save.unlockedAstralSteeds]
   );
-  const equippedSteed = save.equippedAstralSteedId ?? null;
+  const { astralSteedId: equippedSteed } = getMountAppearance(save);
   const raceState = useMemo(() => normalizeStarlightRace(save.starlightRace), [save.starlightRace]);
   const soulRings = useMemo(() => normalizeSoulRings(save.soulRings), [save.soulRings]);
   const soulRingBonuses = useMemo(() => computeSoulRingBonuses(soulRings), [soulRings]);
