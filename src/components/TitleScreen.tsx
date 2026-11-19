@@ -578,6 +578,25 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     }
   }, [activeTab, uiHidden]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (guideOpen) {
+        setGuideOpen(false);
+      } else if (modeDetailOpen) {
+        setModeDetailOpen(false);
+      } else if (modeDrawerOpen) {
+        setModeDrawerOpen(false);
+      } else if (eventsHubOpen) {
+        setEventsHubOpen(false);
+      } else if (skyPickerOpen) {
+        setSkyPickerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [guideOpen, modeDetailOpen, modeDrawerOpen, eventsHubOpen, skyPickerOpen]);
+
   const selectedChapter = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
   const isChapterUnlocked = selectedChapter.id <= save.highestChapterCleared + 1;
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;

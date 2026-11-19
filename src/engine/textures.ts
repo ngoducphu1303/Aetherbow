@@ -416,3 +416,109 @@ export function createTargetReticleTexture(colorHex = '#fbbf24'): THREE.CanvasTe
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+export function createCelestialPortalTexture(
+  goldHex = '#fbbf24',
+  crystalHex = '#38bdf8'
+): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const c = size / 2;
+
+  // Deep cosmic sapphire-to-indigo vortex backdrop
+  const bgGrad = ctx.createRadialGradient(c, c, 12, c, c, c);
+  bgGrad.addColorStop(0, '#1e3a8a');
+  bgGrad.addColorStop(0.28, '#172554');
+  bgGrad.addColorStop(0.62, '#0c1330');
+  bgGrad.addColorStop(0.92, '#060918');
+  bgGrad.addColorStop(1, '#040610');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, size, size);
+
+  // Subtle luminous crystal nebula wisps
+  for (let i = 0; i < 6; i++) {
+    const ang = (i / 6) * Math.PI * 2 + 0.35;
+    const nx = c + Math.cos(ang) * 92;
+    const ny = c + Math.sin(ang) * 92;
+    const neb = ctx.createRadialGradient(nx, ny, 8, nx, ny, 130);
+    neb.addColorStop(0, i % 2 === 0 ? 'rgba(56, 189, 248, 0.24)' : 'rgba(251, 191, 36, 0.16)');
+    neb.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = neb;
+    ctx.beginPath();
+    ctx.arc(nx, ny, 130, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Concentric golden astrolabe rings & 12 zodiac meridian rays
+  ctx.strokeStyle = goldHex;
+  ctx.globalAlpha = 0.42;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(c, c, 212, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = 1.6;
+  ctx.setLineDash([8, 8]);
+  ctx.beginPath();
+  ctx.arc(c, c, 168, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = crystalHex;
+  ctx.globalAlpha = 0.36;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(c, c, 118, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 12 radial zodiac spokes & star nodes
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    ctx.strokeStyle = goldHex;
+    ctx.globalAlpha = i % 3 === 0 ? 0.34 : 0.16;
+    ctx.lineWidth = i % 3 === 0 ? 2 : 1.2;
+    ctx.beginPath();
+    ctx.moveTo(c + Math.cos(a) * 64, c + Math.sin(a) * 64);
+    ctx.lineTo(c + Math.cos(a) * 212, c + Math.sin(a) * 212);
+    ctx.stroke();
+
+    ctx.fillStyle = '#fef08a';
+    ctx.globalAlpha = 0.72;
+    ctx.beginPath();
+    ctx.arc(c + Math.cos(a) * 190, c + Math.sin(a) * 190, i % 3 === 0 ? 4.2 : 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Crisp deterministic starfield inside portal
+  for (let i = 0; i < 110; i++) {
+    const seedA = (i * 137.508) % 360;
+    const rad = Math.sqrt((i + 1) / 112) * 224;
+    const sx = c + Math.cos((seedA * Math.PI) / 180) * rad;
+    const sy = c + Math.sin((seedA * Math.PI) / 180) * rad;
+    const sr = i % 9 === 0 ? 2.6 : i % 3 === 0 ? 1.6 : 1.0;
+    ctx.fillStyle = i % 5 === 0 ? '#fde68a' : i % 4 === 0 ? '#bae6fd' : '#ffffff';
+    ctx.globalAlpha = 0.45 + (i % 5) * 0.11;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Soft radiant heart glow
+  ctx.globalAlpha = 1;
+  const core = ctx.createRadialGradient(c, c, 4, c, c, 86);
+  core.addColorStop(0, 'rgba(224, 242, 254, 0.55)');
+  core.addColorStop(0.45, 'rgba(56, 189, 248, 0.22)');
+  core.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(c, c, 86, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}

@@ -24,6 +24,7 @@ import {
   WingId,
 } from '../types/game';
 import {
+  createCelestialPortalTexture,
   createEngravedArmorTexture,
   createFabricWeaveTexture,
   createGoblinFaceTexture,
@@ -2427,6 +2428,7 @@ export interface CelestialSanctuaryRefs {
   group: THREE.Group;
   outerArchRing: THREE.Mesh;
   innerArchRing: THREE.Mesh;
+  archVeil: THREE.Mesh;
   floatingCrystals: THREE.Object3D[];
   dustMesh: THREE.InstancedMesh;
   dustCount: number;
@@ -2486,13 +2488,16 @@ export function createCelestialSanctuaryBackdrop(
     roughness: 0.14,
     metalness: 0.25,
   });
+  const portalTex = createCelestialPortalTexture(
+    `#${new THREE.Color(goldHex).getHexString()}`,
+    `#${new THREE.Color(crystalHex).getHexString()}`
+  );
   const veilMat = new THREE.MeshBasicMaterial({
-    color: crystalHex,
+    map: portalTex,
     transparent: true,
-    opacity: 0.16,
+    opacity: 0.94,
     side: THREE.DoubleSide,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
   });
 
   // 1. Grand Polished Celestial Marble Sanctuary Floor (covers full lobby view)
@@ -2736,6 +2741,7 @@ export function createCelestialSanctuaryBackdrop(
     group,
     outerArchRing,
     innerArchRing,
+    archVeil,
     floatingCrystals,
     dustMesh,
     dustCount,

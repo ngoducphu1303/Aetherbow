@@ -1203,8 +1203,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <div className="absolute inset-6 rounded-full border border-sky-400/15" />
               <div className="absolute inset-y-0 left-1/2 w-px bg-amber-300/12" />
               <div className="absolute inset-x-0 top-1/2 h-px bg-amber-300/12" />
-              <span className="absolute top-0.5 right-1.5 text-[7px] font-mono-nums font-black text-amber-300/70">
-                RADAR
+              <span className="absolute top-0.5 right-1.5 text-[7px] font-display font-black text-amber-300/80 tracking-wider">
+                BẢN ĐỒ
               </span>
               {/* North Portal Beacon */}
               <span

@@ -1745,9 +1745,9 @@ export class GameEngine {
       map: floorTex,
       bumpMap: bumpTex,
       bumpScale: 0.036,
-      roughness: 0.54,
-      metalness: 0.16,
-      envMapIntensity: 1.15,
+      roughness: 0.42,
+      metalness: 0.24,
+      envMapIntensity: 1.25,
     });
     this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
     this.floorMesh.position.set(0, -0.7, 0);
@@ -5914,10 +5914,11 @@ export class GameEngine {
           wp.rotation.z = idx === 0 ? sFlap : -sFlap;
         });
       }
-      this.hero.magicOrb.visible = !showWeaponInLobby;
+      const hasRealisticArtemis = this.artemisModel?.parent === this.hero.bodyGroup;
+      this.hero.magicOrb.visible = !showWeaponInLobby && !hasRealisticArtemis;
       this.hero.magicOrb.rotation.z += dt * 2.8;
       this.hero.bowGroup.visible = showWeaponInLobby;
-      if (this.artemisModel?.parent === this.hero.bodyGroup) {
+      if (hasRealisticArtemis) {
         this.hero.nockedArrow.visible = showWeaponInLobby;
         this.artemisMotion?.update(dt, this.elapsed, 0, showWeaponInLobby, 0.35, this.hero.bowGroup, onDragon);
       }
@@ -5930,6 +5931,7 @@ export class GameEngine {
         this.arenaGroup.visible = false;
         this.lobbySanctuary.outerArchRing.rotation.z += dt * 0.14;
         this.lobbySanctuary.innerArchRing.rotation.z -= dt * 0.26;
+        this.lobbySanctuary.archVeil.rotation.z += dt * 0.085;
         for (let i = 0; i < this.lobbySanctuary.floatingCrystals.length; i++) {
           const fc = this.lobbySanctuary.floatingCrystals[i];
           const baseY = (fc.userData.baseY as number | undefined) ?? 2.2;
