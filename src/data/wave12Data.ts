@@ -21,6 +21,7 @@ import {
   WarBannerId,
 } from '../types/game';
 import { getTodayKey } from './questsData';
+import { countUnclaimedEligibleMail, isEarlyFeatureUnlocked } from './earlyProgressionData';
 import {
   canClaimWeekendPassDaily,
   computeCodexSummary,
@@ -245,6 +246,17 @@ export function getMythicWeaponBonuses(m?: Partial<MythicWeaponState>): {
   lifeStealPct: number;
 } {
   const st = normalizeMythicWeapon(m);
+  if (st.tier === 0 && st.totalReforges === 0) {
+    return {
+      tier: 0,
+      atkPct: 0,
+      critBonus: 0,
+      critDmgBonus: 0,
+      bossDmgBonus: 0,
+      aspdBonus: 0,
+      lifeStealPct: 0,
+    };
+  }
   const tierDef = MYTHIC_WEAPON_TIERS[st.tier] ?? MYTHIC_WEAPON_TIERS[0];
   let atkPct = tierDef.atkPctBonus;
   let critBonus = 0;
@@ -835,7 +847,7 @@ export function previewLobbyClaimAll(save: SaveData): ClaimAllPreview {
     });
   }
 
-  const mailCount = (save.mailInbox ?? []).filter((m) => !m.claimed).length;
+  const mailCount = countUnclaimedEligibleMail(save);
   if (mailCount > 0) {
     sources.push({
       id: 'mail',
@@ -843,6 +855,12 @@ export function previewLobbyClaimAll(save: SaveData): ClaimAllPreview {
       detail: `${mailCount} thư có quà đính kèm`,
       count: mailCount,
     });
+  }
+
+  // Late-game meta lobby rewards unlock once the player reaches Chapter 3 (highestChapterCleared >= 2)
+  if (!isEarlyFeatureUnlocked(save, 'meta_events').unlocked) {
+    const totalClaimableCount = sources.reduce((s, x) => s + x.count, 0);
+    return { totalClaimableCount, sources };
   }
 
   const codexCount = countClaimableCodexRanks(save);

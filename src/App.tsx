@@ -52,12 +52,23 @@ import {
   RARITY_META,
   RARITY_ORDER,
   computePlayerStats,
+  craftEarlyTargetGear,
   createInitialSaveData,
   getGearPowerScore,
   getUpgradeCost,
-  rollChestGear,
   rollChestGearBatch,
+  rollProgressionGatedGear,
 } from './data/gearData';
+import {
+  RARITY_RANK,
+  applyEarlyRunMilestones,
+  claimMailsUnified,
+  deleteClaimedMailsUnified,
+  getEarlyProgressionPolicy,
+  isEarlyFeatureUnlocked,
+  migrateSaveData,
+  normalizeEarlyForgeProgress,
+} from './data/earlyProgressionData';
 import { HERO_MAP, getHeroStarUpgradeCost } from './data/heroesData';
 import {
   ACHIEVEMENTS_CATALOG,
@@ -390,6 +401,7 @@ import {
   WarBannerId,
   ZodiacRelicId,
   WardrobePreviewOverrides,
+  DefeatCauseInfo,
   WeaponAuraId,
   WheelOutcome,
   WingId,
@@ -440,7 +452,7 @@ function loadSaveData(): SaveData {
     ) {
       return createInitialSaveData();
     }
-    return parsed;
+    return migrateSaveData(parsed);
   } catch {
     return createInitialSaveData();
   }
@@ -704,6 +716,9 @@ export default function App() {
     warCrests?: number;
     maxCombo?: number;
     damageBreakdown?: DamageBreakdown;
+    defeatCause?: DefeatCauseInfo;
+    milestoneNotes?: string[];
+    prevBestStage?: number;
   } | null>(null);
 
   const playerStats = useMemo(() => computePlayerStats(save), [save]);
@@ -1111,10 +1126,21 @@ export default function App() {
           setRerollUsed(false);
           setPhase(GamePhase.SKILL_DRAFT);
         },
-        onRequestEncounter: (kind, currentSkills) => {
+        onRequestEncounter: (kind, currentSkills, context) => {
           if (kind === 'valkyrie') {
-            const rolled = rollSkillChoices(currentSkills, 3, 'epic');
-            const choices = rolled.length > 0 ? rolled : rollSkillChoices(currentSkills, 3);
+            const rolled = rollSkillChoices(currentSkills, 3, 'epic', {
+              chapterId: context?.chapterId,
+              stage: context?.stage,
+              isValkyrie: true,
+            });
+            const choices =
+              rolled.length > 0
+                ? rolled
+                : rollSkillChoices(currentSkills, 3, undefined, {
+                    chapterId: context?.chapterId,
+                    stage: context?.stage,
+                    isValkyrie: true,
+                  });
             if (choices.length === 0) {
               engine.resumeFromDraft();
               return;
@@ -1364,6 +1390,7 @@ export default function App() {
             guildCoins: isGuildWar ? guildWarCoinsGain : undefined,
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
+            defeatCause: summary.defeatCause,
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
 
@@ -1942,7 +1969,7 @@ export default function App() {
             }
 
             const prevBest = prev.bestStagePerChapter[summary.chapterId] ?? 0;
-            return {
+            const baseNext: SaveData = {
               ...prev,
               gold: prev.gold + totalGold,
               gems: prev.gems + totalGems,
@@ -1958,6 +1985,22 @@ export default function App() {
               career: nextCareer,
               runHistory: nextHistory,
             };
+            const { nextSave: withMilestones, grants } = applyEarlyRunMilestones(
+              baseNext,
+              summary.chapterId,
+              summary.stageReached,
+              victory
+            );
+            setRunSummary((cur) =>
+              cur
+                ? {
+                    ...cur,
+                    prevBestStage: prevBest,
+                    milestoneNotes: grants.length > 0 ? grants : undefined,
+                  }
+                : cur
+            );
+            return withMilestones;
           });
         },
         onProgressEvent: ({ killsDelta, stageCleared, bossKilled, maxCombo, seenEnemyKind }) => {
@@ -3185,21 +3228,19 @@ export default function App() {
         claimedBundles += 1;
       }
 
-      // 4. Mail Inbox
-      const inbox = normalizeMailInbox(next.mailInbox);
-      let mailChanged = false;
-      const nextInbox = inbox.map((m) => {
-        if (m.claimed) return m;
-        next.gold += m.rewardGold ?? 0;
-        next.gems += m.rewardGems ?? 0;
-        totalGemsGained += m.rewardGems ?? 0;
-        totalGoldGained += m.rewardGold ?? 0;
-        claimedBundles += 1;
-        mailChanged = true;
-        return { ...m, claimed: true };
-      });
-      if (mailChanged) next.mailInbox = nextInbox;
+      // 4. Mail Inbox (Unified persistent ledger + progression eligibility)
+      const mailRes = claimMailsUnified(next, (rarity, sTier) =>
+        rollProgressionGatedGear(next, true, rarity, sTier)
+      );
+      if (mailRes.claimedCount > 0) {
+        next = mailRes.nextSave;
+        totalGoldGained += mailRes.goldGain;
+        totalGemsGained += mailRes.gemsGain;
+        claimedBundles += mailRes.claimedCount;
+      }
 
+      // 5-17. Late-game Meta Events (Waves 10-14) unlock once entering Chapter 3
+      if (isEarlyFeatureUnlocked(next, 'meta_events').unlocked) {
       // 5. Codex Ranks
       const codex = computeCodexSummary(next);
       const claimedCodex = [...(next.codexClaimedRanks ?? [])];
@@ -3515,6 +3556,7 @@ export default function App() {
           guildCoins: guildForGs.guildCoins + gsCoinsGain,
         };
       }
+      } // end meta_events unlock guard
 
       return next;
     });
@@ -4072,7 +4114,7 @@ export default function App() {
           next.unlockedRoyal3DTitles = [...owned, offer.targetTitleId];
           next.equippedRoyal3DTitleId = offer.targetTitleId;
         } else if (offer.rewardKind === 's_tier_chest') {
-          const rolled = rollChestGear(true, Rarity.EPIC, true);
+          const rolled = rollProgressionGatedGear(prev, true, Rarity.EPIC, true);
           next.inventory = [...prev.inventory, rolled];
         } else if (offer.rewardKind === 'zodiac_relic_essence') {
           const relics = normalizeZodiacRelics(prev.zodiacRelics);
@@ -4703,6 +4745,7 @@ export default function App() {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
     if (!ch) return;
     setSave((prev) => {
+      if (!isEarlyFeatureUnlocked(prev, 'sweep').unlocked) return prev;
       if (chapterId > prev.highestChapterCleared) return prev;
       const hasVip = isVipActive(prev.vip);
       const sweeps = normalizeDailySweeps(prev.dailySweeps, hasVip);
@@ -4714,7 +4757,7 @@ export default function App() {
       const xpGain = hasVip ? Math.round(rawXpGain * 1.25) : rawXpGain;
       let bonusGear: GearInstance | undefined;
       if (Math.random() < 0.45) {
-        bonusGear = rollChestGear(false, chapterId >= 4 ? Rarity.RARE : undefined);
+        bonusGear = rollProgressionGatedGear(prev, false, chapterId >= 4 ? Rarity.RARE : undefined);
       }
 
       const bp = normalizeBattlePass(prev.battlePass);
@@ -4909,6 +4952,7 @@ export default function App() {
 
   const handleUpgradeHeroStar = (heroId: HeroId) => {
     setSave((prev) => {
+      if (!isEarlyFeatureUnlocked(prev, 'hero_star').unlocked) return prev;
       const currentStar = prev.heroStars[heroId] ?? 0;
       if (currentStar >= 5) return prev;
       const cost = getHeroStarUpgradeCost(currentStar);
@@ -5114,18 +5158,7 @@ export default function App() {
       soundEngine.playVictory();
       let nextInventory = prev.inventory;
       if (reward.bonusRarity) {
-        const pool =
-          reward.bonusRarity === Rarity.EPIC
-            ? ALL_TEMPLATE_LIST.filter((t) => t.isSTier)
-            : ALL_TEMPLATE_LIST.filter((t) => t.setName !== 'Khởi Đầu');
-        const tpl =
-          pool[Math.floor(Math.random() * pool.length)] ?? ALL_TEMPLATE_LIST[0];
-        const bonusGear: GearInstance = {
-          uid: `checkin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          templateId: tpl.templateId,
-          rarity: reward.bonusRarity,
-          level: 1,
-        };
+        const bonusGear = rollProgressionGatedGear(prev, true, reward.bonusRarity, false);
         nextInventory = [...prev.inventory, bonusGear];
       }
       return {
@@ -5163,27 +5196,70 @@ export default function App() {
     setSave((prev) => {
       if (prev.welcomeGiftClaimed) return prev;
       soundEngine.playVictory();
-      const pool = ALL_TEMPLATE_LIST.filter((t) => t.setName !== 'Khởi Đầu');
-      const tpl =
-        pool[Math.floor(Math.random() * pool.length)] ?? ALL_TEMPLATE_LIST[0];
-      const giftGear: GearInstance = {
-        uid: `welcome_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        templateId: tpl.templateId,
-        rarity: Rarity.RARE,
-        level: 1,
-      };
+      const fp = normalizeEarlyForgeProgress(prev.earlyForgeProgress);
       return {
         ...prev,
-        gold: prev.gold + 300,
-        gems: prev.gems + 35,
-        inventory: [...prev.inventory, giftGear],
+        gold: prev.gold + 30,
+        gems: prev.gems + 10,
+        earlyForgeProgress: {
+          ...fp,
+          rareShards: fp.rareShards + 2,
+        },
         welcomeGiftClaimed: true,
+      };
+    });
+  }, []);
+
+  const handleCraftEarlyTargetGear = useCallback(
+    (tier: 'rare' | 'epic' | 's_tier') => {
+      setSave((prev) => {
+        const res = craftEarlyTargetGear(prev, tier);
+        if (!res.ok || !res.nextSave || !res.item) return prev;
+        soundEngine.playForgeCraft();
+        const tpl = GEAR_TEMPLATES[res.item.templateId];
+        triggerUpgradeCelebration(
+          'Chế Tạo Trang Bị Mục Tiêu',
+          `${tpl?.name ?? 'Trang Bị'} (${RARITY_META[res.item.rarity].label})`
+        );
+        return res.nextSave;
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleQuickUpgradeWeapon = useCallback(() => {
+    setSave((prev) => {
+      const wUid = prev.equipped[GearSlot.WEAPON];
+      if (!wUid) return prev;
+      const idx = prev.inventory.findIndex((g) => g.uid === wUid);
+      if (idx === -1) return prev;
+      const item = prev.inventory[idx];
+      const maxLv = RARITY_META[item.rarity].maxLevel;
+      const cost = getUpgradeCost(item);
+      if (item.level >= maxLv || prev.gold < cost) return prev;
+      soundEngine.playLevelUp();
+      const nextInv = [...prev.inventory];
+      nextInv[idx] = { ...item, level: item.level + 1 };
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      return {
+        ...prev,
+        gold: prev.gold - cost,
+        inventory: nextInv,
+        dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
       };
     });
   }, []);
 
   const handleOpenChestWithGacha = useCallback(
     (variant: GachaRevealState['chestVariant'], count: 1 | 10 = 1) => {
+      const reqFeature =
+        variant === 'iron'
+          ? 'iron_chest'
+          : variant === 'mythic'
+          ? 'mythic_chest'
+          : 'runes';
+      if (!isEarlyFeatureUnlocked(save, reqFeature).unlocked) return;
+
       const unitCost =
         variant === 'iron'
           ? 120
@@ -5202,7 +5278,8 @@ export default function App() {
 
       if (variant === 'iron' || variant === 'mythic') {
         const isPremium = variant === 'mythic';
-        const { items, nextPity } = rollChestGearBatch(isPremium, count, save.pity);
+        const policy = getEarlyProgressionPolicy(save);
+        const { items, nextPity } = rollChestGearBatch(isPremium, count, save.pity, { policy });
         setSave((prev) => {
           const dq = normalizeDailyQuests(prev.dailyQuests);
           const career = normalizeCareer(prev.career);
@@ -5246,7 +5323,7 @@ export default function App() {
         setGachaReveal({ chestVariant: variant, count, runes: items });
       }
     },
-    [save.gold, save.gems, save.pity]
+    [save]
   );
 
   // Battle Pass, Achievements & Settings Handlers
@@ -5270,6 +5347,7 @@ export default function App() {
       const tier = BATTLE_PASS_TIERS.find((t) => t.level === level);
       if (!tier) return;
       setSave((prev) => {
+        if (!isEarlyFeatureUnlocked(prev, 'battle_pass').unlocked) return prev;
         const bp = normalizeBattlePass(prev.battlePass);
         const info = getBattlePassLevelInfo(bp.xp);
         const maxReached = info.isMax ? BATTLE_PASS_MAX_TIER : info.level;
@@ -5284,7 +5362,7 @@ export default function App() {
         let gemsGain = reward.kind === 'gems' ? reward.amount : 0;
         let nextInv = prev.inventory;
         if (reward.kind === 'gear') {
-          const item = rollChestGear(true, reward.rarity ?? Rarity.EPIC, reward.sTier);
+          const item = rollProgressionGatedGear(prev, true, reward.rarity ?? Rarity.EPIC, reward.sTier);
           nextInv = [...prev.inventory, item];
         }
         soundEngine.playVictory();
@@ -5307,6 +5385,7 @@ export default function App() {
 
   const handleClaimAllBattlePass = useCallback(() => {
     setSave((prev) => {
+      if (!isEarlyFeatureUnlocked(prev, 'battle_pass').unlocked) return prev;
       const bp = normalizeBattlePass(prev.battlePass);
       const info = getBattlePassLevelInfo(bp.xp);
       const maxReached = info.isMax ? BATTLE_PASS_MAX_TIER : info.level;
@@ -5323,7 +5402,10 @@ export default function App() {
           nextFree.push(tier.level);
           if (tier.free.kind === 'gold') goldGain += tier.free.amount;
           else if (tier.free.kind === 'gems') gemsGain += tier.free.amount;
-          else newGear.push(rollChestGear(true, tier.free.rarity ?? Rarity.EPIC, tier.free.sTier));
+          else
+            newGear.push(
+              rollProgressionGatedGear(prev, true, tier.free.rarity ?? Rarity.EPIC, tier.free.sTier)
+            );
         }
         if (bp.premiumUnlocked && !nextPrem.includes(tier.level)) {
           nextPrem.push(tier.level);
@@ -5331,7 +5413,12 @@ export default function App() {
           else if (tier.premium.kind === 'gems') gemsGain += tier.premium.amount;
           else
             newGear.push(
-              rollChestGear(true, tier.premium.rarity ?? Rarity.EPIC, tier.premium.sTier)
+              rollProgressionGatedGear(
+                prev,
+                true,
+                tier.premium.rarity ?? Rarity.EPIC,
+                tier.premium.sTier
+              )
             );
         }
       }
@@ -5499,6 +5586,16 @@ export default function App() {
   // Flash Sale & Mail Inbox Handlers
   const handleBuyFlashDeal = useCallback((deal: FlashDealItem) => {
     setSave((prev) => {
+      if (!isEarlyFeatureUnlocked(prev, 'flash_deals').unlocked) return prev;
+      const policy = getEarlyProgressionPolicy(prev);
+      if (deal.rewardKind === 'gear_s' && !policy.allowSTier) return prev;
+      if (
+        (deal.rewardKind === 'gear_epic' || deal.rewardKind === 'rune_epic') &&
+        RARITY_RANK[policy.maxGearRarity] < RARITY_RANK[Rarity.EPIC]
+      ) {
+        return prev;
+      }
+
       const flash = normalizeFlashDeals(prev.flashDeals);
       if (flash.purchasedIds.includes(deal.id)) return prev;
       if (deal.currency === 'gold' && prev.gold < deal.price) return prev;
@@ -5514,9 +5611,9 @@ export default function App() {
       if (deal.rewardKind === 'gold') nextGold += deal.amount;
       else if (deal.rewardKind === 'gems') nextGems += deal.amount;
       else if (deal.rewardKind === 'gear_epic') {
-        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC)];
+        nextInv = [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC)];
       } else if (deal.rewardKind === 'gear_s') {
-        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)];
+        nextInv = [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)];
       } else if (deal.rewardKind === 'rune_epic') {
         const { items } = rollRuneChestBatch(true, 1, prev.pity);
         const epicRune = items[0]
@@ -5543,69 +5640,35 @@ export default function App() {
 
   const handleClaimMail = useCallback((mailId: string) => {
     setSave((prev) => {
-      const inbox = normalizeMailInbox(prev.mailInbox);
-      const target = inbox.find((m) => m.id === mailId);
-      if (!target || target.claimed) return prev;
-
-      let nextInv = prev.inventory;
-      if (target.bonusGearRarity) {
-        nextInv = [
-          ...prev.inventory,
-          rollChestGear(true, target.bonusGearRarity, target.bonusSTier),
-        ];
-      }
-
+      const res = claimMailsUnified(
+        prev,
+        (rarity, sTier) => rollProgressionGatedGear(prev, true, rarity, sTier),
+        mailId
+      );
+      if (res.claimedCount === 0) return prev;
       soundEngine.playVictory();
-      return {
-        ...prev,
-        gold: prev.gold + target.rewardGold,
-        gems: prev.gems + target.rewardGems,
-        inventory: nextInv,
-        mailInbox: inbox.map((m) => (m.id === mailId ? { ...m, claimed: true } : m)),
-      };
+      return res.nextSave;
     });
   }, []);
 
   const handleClaimAllMail = useCallback(() => {
     setSave((prev) => {
-      const inbox = normalizeMailInbox(prev.mailInbox);
-      const unclaimed = inbox.filter((m) => !m.claimed);
-      if (unclaimed.length === 0) return prev;
-
-      let goldGain = 0;
-      let gemsGain = 0;
-      const bonusGears: GearInstance[] = [];
-      for (const m of unclaimed) {
-        goldGain += m.rewardGold;
-        gemsGain += m.rewardGems;
-        if (m.bonusGearRarity) {
-          bonusGears.push(rollChestGear(true, m.bonusGearRarity, m.bonusSTier));
-        }
-      }
-
+      const res = claimMailsUnified(prev, (rarity, sTier) =>
+        rollProgressionGatedGear(prev, true, rarity, sTier)
+      );
+      if (res.claimedCount === 0) return prev;
       soundEngine.playVictory();
-      return {
-        ...prev,
-        gold: prev.gold + goldGain,
-        gems: prev.gems + gemsGain,
-        inventory: [...prev.inventory, ...bonusGears],
-        mailInbox: inbox.map((m) => ({ ...m, claimed: true })),
-      };
+      return res.nextSave;
     });
   }, []);
 
   const handleDeleteClaimedMail = useCallback(() => {
-    setSave((prev) => {
-      const inbox = normalizeMailInbox(prev.mailInbox);
-      return {
-        ...prev,
-        mailInbox: inbox.filter((m) => !m.claimed),
-      };
-    });
+    setSave((prev) => deleteClaimedMailsUnified(prev));
   }, []);
 
   const handleUpgradeTalent = useCallback((id: TalentId) => {
     setSave((prev) => {
+      if (!isEarlyFeatureUnlocked(prev, 'talents').unlocked) return prev;
       const def = TALENT_MAP[id];
       const level = getTalentLevel(prev.talents, id);
       if (level >= def.maxLevel) return prev;
@@ -5777,9 +5840,15 @@ export default function App() {
 
   const handleClaimStarterPack = useCallback(() => {
     setSave((prev) => {
+      if (!isEarlyFeatureUnlocked(prev, 'starter_pack').unlocked) return prev;
       const vip = normalizeVip(prev.vip);
       if (vip.starterPackClaimed || prev.gems < STARTER_PACK_COST_GEMS) return prev;
-      const starterGear = rollChestGear(true, STARTER_PACK_REWARDS.gearRarity, STARTER_PACK_REWARDS.sTier);
+      const starterGear = rollProgressionGatedGear(
+        prev,
+        true,
+        STARTER_PACK_REWARDS.gearRarity,
+        STARTER_PACK_REWARDS.sTier
+      );
       soundEngine.playVictory();
       return {
         ...prev,
@@ -5827,6 +5896,20 @@ export default function App() {
 
   const handleCraftForgeRecipe = useCallback((recipe: ForgeRecipe) => {
     setSave((prev) => {
+      if (!isEarlyFeatureUnlocked(prev, 'forge').unlocked) return prev;
+      const policy = getEarlyProgressionPolicy(prev);
+      const isSTierRecipe =
+        recipe.rewardKind === 'gear_s_weapon' ||
+        recipe.rewardKind === 'gear_s_armor' ||
+        recipe.rewardKind === 'gear_s_accessory';
+      if (isSTierRecipe && !policy.allowSTier) return prev;
+      if (
+        recipe.rewardKind === 'gear_epic_any' &&
+        RARITY_RANK[policy.maxGearRarity] < RARITY_RANK[Rarity.EPIC]
+      ) {
+        return prev;
+      }
+
       const currentDust = prev.starDust ?? 0;
       if (currentDust < recipe.starDustCost || prev.gold < recipe.goldCost) return prev;
 
@@ -5836,7 +5919,7 @@ export default function App() {
       if (recipe.rewardKind === 'pet_essence') {
         nextEssence += recipe.amount;
       } else if (recipe.rewardKind === 'gear_epic_any') {
-        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC)];
+        nextInv = [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC)];
       } else {
         const pool = ALL_TEMPLATE_LIST.filter((t) => {
           if (!t.isSTier) return false;
@@ -6118,8 +6201,8 @@ export default function App() {
           else if (p.kind === 'gems') gemsGain += p.amount;
           else if (p.kind === 'star_dust') dustGain += p.amount;
           else if (p.kind === 'pet_essence') essenceGain += p.amount;
-          else if (p.kind === 'gear_epic') newGear.push(rollChestGear(true, Rarity.EPIC));
-          else if (p.kind === 'gear_s') newGear.push(rollChestGear(true, Rarity.EPIC, true));
+          else if (p.kind === 'gear_epic') newGear.push(rollProgressionGatedGear(prev, true, Rarity.EPIC));
+          else if (p.kind === 'gear_s') newGear.push(rollProgressionGatedGear(prev, true, Rarity.EPIC, true));
         }
 
         return {
@@ -6158,7 +6241,7 @@ export default function App() {
       const nextInv = ms.gearS
         ? [
             ...prev.inventory,
-            rollChestGear(true, ms.spins >= 50 ? Rarity.LEGENDARY : Rarity.EPIC, true),
+            rollProgressionGatedGear(prev, true, ms.spins >= 50 ? Rarity.LEGENDARY : Rarity.EPIC, true),
           ]
         : prev.inventory;
       return {
@@ -6227,7 +6310,7 @@ export default function App() {
           SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
         nextSocketGems = [...nextSocketGems, createSocketGem(randColor, 2)];
       } else if (offer.rewardKind === 'gear_s') {
-        nextInv = [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)];
+        nextInv = [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)];
       }
 
       const spentGems = offer.currency === 'gems' ? offer.price : 0;
@@ -6275,7 +6358,7 @@ export default function App() {
       }
 
       const nextInv = ms.gearS
-        ? [...prev.inventory, rollChestGear(true, ms.gearRarity ?? Rarity.EPIC, true)]
+        ? [...prev.inventory, rollProgressionGatedGear(prev, true, ms.gearRarity ?? Rarity.EPIC, true)]
         : prev.inventory;
 
       soundEngine.playAchievement();
@@ -6555,7 +6638,7 @@ export default function App() {
           const gemTier = spec.amount >= 3 ? 3 : spec.amount === 2 ? 2 : 1;
           nextSocketGems = [...nextSocketGems, createSocketGem(randColor, gemTier)];
         } else if (spec.kind === 'gear_s') {
-          nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+          nextInv = [...nextInv, rollProgressionGatedGear(prev, true, Rarity.EPIC)];
         }
 
         soundEngine.playVictory();
@@ -6605,7 +6688,7 @@ export default function App() {
           const gemTier = spec.amount >= 3 ? 3 : spec.amount === 2 ? 2 : 1;
           nextSocketGems = [...nextSocketGems, createSocketGem(randColor, gemTier)];
         } else if (spec.kind === 'gear_s') {
-          nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+          nextInv = [...nextInv, rollProgressionGatedGear(prev, true, Rarity.EPIC)];
         }
       };
 
@@ -6657,7 +6740,7 @@ export default function App() {
       let nextWheel = normalizeDestinyWheel(prev.destinyWheel);
 
       if (offer.rewardKind === 'gear_s') {
-        nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+        nextInv = [...nextInv, rollProgressionGatedGear(prev, true, Rarity.EPIC)];
       } else if (offer.rewardKind === 'socket_gem_t3') {
         const randColor =
           SOCKET_GEM_COLORS[Math.floor(Math.random() * SOCKET_GEM_COLORS.length)] ?? 'ruby';
@@ -6727,7 +6810,7 @@ export default function App() {
           }
         } else if (rw.kind === 'gear_s') {
           for (let i = 0; i < rw.amount; i++) {
-            nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC)];
+            nextInv = [...nextInv, rollProgressionGatedGear(prev, true, Rarity.EPIC)];
           }
         }
       }
@@ -6981,7 +7064,7 @@ export default function App() {
         else if (rw.kind === 'feathers') nextFeathers += rw.amount;
         else if (rw.kind === 'star_dust') nextDust += rw.amount;
         else if (rw.kind === 'gear_s') {
-          nextInv = [...nextInv, rollChestGear(true, Rarity.LEGENDARY, true)];
+          nextInv = [...nextInv, rollProgressionGatedGear(prev, true, Rarity.LEGENDARY, true)];
         } else if (rw.kind === 'wing' && rw.wingId) {
           if (nextWings.has(rw.wingId)) {
             nextFeathers += 45;
@@ -7484,7 +7567,7 @@ export default function App() {
           } else if (out.rewardKind === 'awaken_crystals') nextCrystals += out.amount;
           else if (out.rewardKind === 'wing_feathers') nextFeathers += out.amount;
           else if (out.rewardKind === 'epic_gear') {
-            nextInv.push(rollChestGear(false, Rarity.EPIC));
+            nextInv.push(rollProgressionGatedGear(prev, false, Rarity.EPIC));
           } else if (out.rewardKind === 'target') {
             if (targetDef.kind === 'mount') {
               const mId = targetDef.refId as MountId;
@@ -7514,7 +7597,7 @@ export default function App() {
                 else nextGems += 25;
               }
             } else {
-              nextInv.push(rollChestGear(true, Rarity.LEGENDARY, true));
+              nextInv.push(rollProgressionGatedGear(prev, true, Rarity.LEGENDARY, true));
             }
           }
         }
@@ -7582,7 +7665,7 @@ export default function App() {
         ? tier.baseGems
         : tier.baseGems + tier.bonusGemsFirstTime;
       const nextInv = tier.bonusSGear
-        ? [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)]
+        ? [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)]
         : prev.inventory;
 
       soundEngine.playAchievement();
@@ -7829,7 +7912,7 @@ export default function App() {
       else if (offer.outputKind === 'mountShards') nextShards += offer.outputAmount;
       else if (offer.outputKind === 'awakeningCrystals') nextCrystals += offer.outputAmount;
       else if (offer.outputKind === 's_gear') {
-        nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC, true)];
+        nextInv = [...nextInv, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)];
       }
 
       soundEngine.playVictory();
@@ -8051,7 +8134,7 @@ export default function App() {
       const nextArtShards = mx.artifactShards + step.rewardArtifactShards;
       let nextInv = prev.inventory;
       if (step.rewardSGear) {
-        nextInv = [...nextInv, rollChestGear(true, Rarity.EPIC, true)];
+        nextInv = [...nextInv, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)];
       }
       let nextUnlockedHalos = prev.unlockedHalos ?? [];
       let nextEquippedHalo = prev.equippedHaloId ?? null;
@@ -8396,7 +8479,7 @@ export default function App() {
         }
 
         const nextInv = grantSGear
-          ? [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)]
+          ? [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)]
           : prev.inventory;
         const mx = normalizeMysticExchange(prev.mysticExchange);
         const nextShards = mx.artifactShards + bonusShards;
@@ -8491,7 +8574,7 @@ export default function App() {
         if (wp.purchasedPackIds.includes(pack.id) || prev.gems < pack.costGems) return prev;
         const fest = normalizeFestivalState(prev.festivalState);
         const nextInv = pack.rewardSGear
-          ? [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)]
+          ? [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)]
           : prev.inventory;
 
         soundEngine.playVictory();
@@ -8736,6 +8819,7 @@ export default function App() {
           onSaveBuildPreset={handleSaveBuildPreset}
           onApplyBuildPreset={handleApplyBuildPreset}
           onOpenChestWithGacha={handleOpenChestWithGacha}
+          onCraftEarlyTargetGear={handleCraftEarlyTargetGear}
           onBuyFlashDeal={handleBuyFlashDeal}
           onUnlockGrowthFundPremium={handleUnlockGrowthFundPremium}
           onClaimGrowthFundReward={handleClaimGrowthFundReward}
@@ -8955,6 +9039,11 @@ export default function App() {
           maxCombo={runSummary?.maxCombo ?? hud.comboCount}
           damageBreakdown={runSummary?.damageBreakdown}
           seasonXpEarned={runSummary?.seasonXp ?? 0}
+          save={save}
+          defeatCause={runSummary?.defeatCause}
+          milestoneNotes={runSummary?.milestoneNotes}
+          prevBestStage={runSummary?.prevBestStage}
+          onQuickUpgradeWeapon={handleQuickUpgradeWeapon}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
             (runSummary?.isSkyCitadelMode ?? hud.isSkyCitadelMode)

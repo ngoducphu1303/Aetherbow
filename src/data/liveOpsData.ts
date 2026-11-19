@@ -13,6 +13,12 @@ import {
   SaveData,
 } from '../types/game';
 import { getTodayKey } from './questsData';
+import {
+  SYSTEM_MAIL_TEMPLATES,
+  countUnclaimedEligibleMail,
+} from './earlyProgressionData';
+
+export { SYSTEM_MAIL_TEMPLATES };
 
 export const DEFAULT_SETTINGS: GameSettings = {
   masterVol: 0.85,
@@ -838,55 +844,42 @@ export function getDailyFlashDeals(dateKey: string): FlashDealItem[] {
   return picked;
 }
 
-export const SYSTEM_MAIL_TEMPLATES: Omit<MailItem, 'claimed'>[] = [
-  {
-    id: 'mail_grand_launch',
-    title: 'Thư Chào Mừng Tinh Giới Hoàng Đạo',
-    sender: 'Hội Đồng Hoàng Đạo',
-    body: 'Chào mừng Chiến Binh bước vào Hoàng Đạo Tinh Giới! Nhận ngay gói tiếp tế mở đầu gồm Vàng, Ngọc Hồn và Trang Bị Hiếm.',
-    date: 'Mùa 1 · Khởi Nguyên',
-    rewardGold: 350,
-    rewardGems: 25,
-    bonusGearRarity: Rarity.RARE,
-  },
-  {
-    id: 'mail_boss_rush_open',
-    title: 'Khai Mở Đấu Trường Săn Boss Liên Hoàn',
-    sender: 'Đấu Trường Nhật Thực',
-    body: 'Chế độ Săn Boss Liên Hoàn 5 vòng đã chính thức khai mở! Sử dụng Ngọc Hồn này để triệu hồi trang bị hoặc mở khóa Anh Hùng.',
-    date: 'Sự Kiện Mới',
-    rewardGold: 200,
-    rewardGems: 30,
-  },
-  {
-    id: 'mail_season1_celebration',
-    title: 'Tri Ân Chiến Binh Mùa 1',
-    sender: 'Thủ Thư Tinh Tú',
-    body: 'Chúc bạn chinh phục đỉnh Tháp Vô Tận và Bảng Vinh Danh Mùa 1! Đừng quên ghé Cửa Hàng Flash Sale mỗi ngày.',
-    date: 'Quà Mùa 1',
-    rewardGold: 400,
-    rewardGems: 20,
-    bonusGearRarity: Rarity.EPIC,
-    bonusSTier: true,
-  },
-];
+export function normalizeMailInbox(
+  existing?: MailItem[],
+  claimedMailIds?: string[],
+  deletedMailIds?: string[]
+): MailItem[] {
+  const claimedSet = new Set<string>(claimedMailIds ?? []);
+  const deletedSet = new Set<string>(deletedMailIds ?? []);
+  const existingMap = new Map<string, MailItem>();
+  for (const m of existing ?? []) {
+    if (m.claimed) claimedSet.add(m.id);
+    existingMap.set(m.id, m);
+  }
 
-export function normalizeMailInbox(existing?: MailItem[]): MailItem[] {
-  const existingMap = new Map((existing ?? []).map((m) => [m.id, m]));
-  const merged: MailItem[] = SYSTEM_MAIL_TEMPLATES.map((tpl) => {
+  const merged: MailItem[] = [];
+  for (const tpl of SYSTEM_MAIL_TEMPLATES) {
+    if (deletedSet.has(tpl.id)) continue;
     const prev = existingMap.get(tpl.id);
-    return prev ? prev : { ...tpl, claimed: false };
-  });
+    merged.push({
+      ...tpl,
+      claimed: claimedSet.has(tpl.id) || Boolean(prev?.claimed),
+    });
+  }
   (existing ?? []).forEach((m) => {
+    if (deletedSet.has(m.id)) return;
     if (!SYSTEM_MAIL_TEMPLATES.some((t) => t.id === m.id)) {
-      merged.push(m);
+      merged.push({
+        ...m,
+        claimed: claimedSet.has(m.id) || m.claimed,
+      });
     }
   });
   return merged;
 }
 
 export function countUnreadMail(save: SaveData): number {
-  return normalizeMailInbox(save.mailInbox).filter((m) => !m.claimed).length;
+  return countUnclaimedEligibleMail(save);
 }
 
 export function computeSeasonScore(save: SaveData, powerRating: number): number {

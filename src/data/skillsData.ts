@@ -328,6 +328,52 @@ export const SKILLS_CATALOG: Record<SkillId, SkillDefinition> = {
   },
 };
 
+export const SKILL_BUILD_TAG_META = {
+  aoe: { label: 'Dọn Nhóm', shortDesc: 'Tối ưu quét bầy quái đông' },
+  boss: { label: 'Đánh Boss', shortDesc: 'Tập trung dồn sát thương đơn mục tiêu' },
+  sustain: { label: 'Sinh Tồn', shortDesc: 'Tăng máu, khiên và hồi phục ổn định' },
+  hybrid: { label: 'Linh Hoạt', shortDesc: 'Tăng sức mạnh toàn diện cho mọi hướng build' },
+} as const;
+
+const SKILL_BUILD_TAG_MAP: Record<SkillId, 'aoe' | 'boss' | 'sustain' | 'hybrid'> = {
+  warriors_soul: 'boss',
+  power_trio: 'hybrid',
+  multishot: 'boss',
+  super_meteor: 'aoe',
+  sacred_protection: 'sustain',
+  diag_arrow: 'aoe',
+  tracking_eye: 'boss',
+  super_blaze: 'aoe',
+  super_bolt: 'aoe',
+  super_freeze: 'boss',
+  super_circle: 'aoe',
+  twin_strike: 'boss',
+  laser_sprite: 'boss',
+  revive: 'sustain',
+  atk_boost: 'boss',
+  aspd_boost: 'boss',
+  front_arrow: 'boss',
+  ricochet: 'aoe',
+  pierce: 'aoe',
+  fire_arrow: 'aoe',
+  lightning_arrow: 'aoe',
+  ice_arrow: 'boss',
+  venom_arrow: 'boss',
+  flying_swords: 'boss',
+  meteor_shower: 'aoe',
+  bomb_sprite: 'aoe',
+  fountain_of_life: 'sustain',
+  bouncy_wall: 'aoe',
+  rear_arrow: 'aoe',
+  orbit_orbs: 'aoe',
+  crit_mastery: 'boss',
+  bloodthirst: 'sustain',
+};
+
+for (const skill of Object.values(SKILLS_CATALOG)) {
+  skill.buildTag = SKILL_BUILD_TAG_MAP[skill.id];
+}
+
 export const ALL_SKILLS_LIST: SkillDefinition[] = Object.values(SKILLS_CATALOG);
 
 const RARITY_WEIGHT: Record<SkillRarity, number> = {
@@ -337,36 +383,100 @@ const RARITY_WEIGHT: Record<SkillRarity, number> = {
   legend: 9,
 };
 
+export interface SkillRollContext {
+  chapterId?: number;
+  stage?: number;
+  isValkyrie?: boolean;
+  rng?: () => number;
+}
+
+function pickWeightedFromPool(
+  pool: SkillDefinition[],
+  rng: () => number
+): SkillDefinition | null {
+  if (pool.length === 0) return null;
+  const totalWeight = pool.reduce((sum, s) => sum + RARITY_WEIGHT[s.rarity], 0);
+  let r = rng() * totalWeight;
+  for (let i = 0; i < pool.length; i++) {
+    r -= RARITY_WEIGHT[pool[i].rarity];
+    if (r <= 0) return pool[i];
+  }
+  return pool[0];
+}
+
+// Chapter 1 Valkyrie milestones (Stages 2, 6, 10) guarantee clear build identity choices:
+// Card 1: AoE / Mob-Clear pillar, Card 2: Single-Target Boss pillar, Card 3: Sustain / Flex pillar.
+const CH1_VALKYRIE_PILLARS: Record<
+  number,
+  { aoe: SkillId[]; boss: SkillId[]; third: SkillId[] }
+> = {
+  2: {
+    aoe: ['ricochet', 'diag_arrow', 'lightning_arrow', 'pierce'],
+    boss: ['front_arrow', 'ice_arrow', 'crit_mastery', 'venom_arrow'],
+    third: ['fountain_of_life', 'bloodthirst', 'atk_boost', 'aspd_boost'],
+  },
+  6: {
+    aoe: ['super_bolt', 'diag_arrow', 'super_blaze', 'meteor_shower', 'bomb_sprite'],
+    boss: ['tracking_eye', 'multishot', 'super_freeze', 'twin_strike', 'atk_boost'],
+    third: ['sacred_protection', 'fountain_of_life', 'power_trio', 'aspd_boost'],
+  },
+  10: {
+    aoe: ['super_meteor', 'super_bolt', 'super_circle', 'diag_arrow'],
+    boss: ['multishot', 'warriors_soul', 'tracking_eye', 'super_freeze'],
+    third: ['sacred_protection', 'revive', 'power_trio', 'atk_boost'],
+  },
+};
+
 export function rollSkillChoices(
   currentStacks: Partial<Record<SkillId, number>>,
   count = 3,
-  minRarity?: SkillRarity
+  minRarity?: SkillRarity,
+  context?: SkillRollContext
 ): SkillDefinition[] {
+  const rng = context?.rng ?? Math.random;
   const rankOrder: SkillRarity[] = ['common', 'rare', 'epic', 'legend'];
   const minRankIdx = minRarity ? rankOrder.indexOf(minRarity) : 0;
 
-  const pool = Object.values(SKILLS_CATALOG).filter(
-    (skill) =>
-      (currentStacks[skill.id] ?? 0) < skill.maxStacks &&
-      rankOrder.indexOf(skill.rarity) >= minRankIdx
-  );
+  const isEligible = (skill: SkillDefinition, respectMinRarity = true) =>
+    (currentStacks[skill.id] ?? 0) < skill.maxStacks &&
+    (!respectMinRarity || rankOrder.indexOf(skill.rarity) >= minRankIdx);
 
   const picked: SkillDefinition[] = [];
-  const remaining = [...pool];
+  const pickedIds = new Set<SkillId>();
 
-  while (picked.length < count && remaining.length > 0) {
-    const totalWeight = remaining.reduce((sum, s) => sum + RARITY_WEIGHT[s.rarity], 0);
-    let r = Math.random() * totalWeight;
-    let chosenIdx = 0;
-    for (let i = 0; i < remaining.length; i++) {
-      r -= RARITY_WEIGHT[remaining[i].rarity];
-      if (r <= 0) {
-        chosenIdx = i;
-        break;
+  // Chapter 1 Valkyrie Stages 2/6/10: guarantee 1 AoE + 1 Boss + 1 Sustain/Flex meaningful choice
+  if (
+    context?.isValkyrie &&
+    context.chapterId === 1 &&
+    context.stage &&
+    CH1_VALKYRIE_PILLARS[context.stage] &&
+    count >= 3
+  ) {
+    const pillars = CH1_VALKYRIE_PILLARS[context.stage];
+    const lanes = [pillars.aoe, pillars.boss, pillars.third];
+    for (const laneIds of lanes) {
+      const lanePool = laneIds
+        .map((id) => SKILLS_CATALOG[id])
+        .filter((s) => s && !pickedIds.has(s.id) && isEligible(s, false));
+      const chosen = pickWeightedFromPool(lanePool, rng);
+      if (chosen) {
+        picked.push(chosen);
+        pickedIds.add(chosen.id);
       }
     }
-    picked.push(remaining[chosenIdx]);
-    remaining.splice(chosenIdx, 1);
+  }
+
+  const remaining = Object.values(SKILLS_CATALOG).filter(
+    (skill) => !pickedIds.has(skill.id) && isEligible(skill, true)
+  );
+
+  while (picked.length < count && remaining.length > 0) {
+    const chosen = pickWeightedFromPool(remaining, rng);
+    if (!chosen) break;
+    picked.push(chosen);
+    pickedIds.add(chosen.id);
+    const idx = remaining.findIndex((s) => s.id === chosen.id);
+    if (idx >= 0) remaining.splice(idx, 1);
   }
 
   return picked;

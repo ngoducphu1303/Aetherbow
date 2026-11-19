@@ -42,6 +42,7 @@ import {
   CoopRaidDifficulty,
   DailyRiftMutatorPair,
   DamageBreakdown,
+  DefeatCauseInfo,
   ElementalTowerId,
   EnemyKind,
   FloatingDamage,
@@ -151,6 +152,7 @@ interface EnemyEntity {
   laneAngles: number[];
   bossPhase: 1 | 2;
   phaseTransitioned: boolean;
+  patternCounter?: number;
   breakShield?: number;
   maxBreakShield?: number;
   stunTimer?: number;
@@ -175,6 +177,7 @@ interface Projectile {
   isSword: boolean;
   homing: boolean;
   source?: 'basic' | 'ultimate' | 'pet' | 'elemental';
+  enemySourceKind?: 'boss_lane' | 'boss_projectile' | 'ranged_barrage';
   coopAllyIndex?: number;
   x: number;
   y: number;
@@ -282,7 +285,8 @@ export interface EngineCallbacks {
   onRequestSkillDraft: (skills: Partial<Record<SkillId, number>>) => void;
   onRequestEncounter: (
     kind: StageEventAfter,
-    skills: Partial<Record<SkillId, number>>
+    skills: Partial<Record<SkillId, number>>,
+    context?: { chapterId: number; stage: number }
   ) => void;
   onRunEnded: (
     victory: boolean,
@@ -356,6 +360,7 @@ export interface EngineCallbacks {
       mythicShards?: number;
       maxCombo?: number;
       damageBreakdown?: DamageBreakdown;
+      defeatCause?: DefeatCauseInfo;
     }
   ) => void;
   onProgressEvent?: (ev: {
@@ -441,6 +446,7 @@ export class GameEngine {
   private lobbyYaw = 0.18;
   private lobbyTargetYaw = 0.18;
   private lobbyAutoSpinIdleTimer = 0;
+  private lastDamageSource: DefeatCauseInfo | null = null;
   private currentChapter: ChapterDefinition = CHAPTERS[0];
   private isTowerMode = false;
   private towerFloor = 0;
@@ -977,33 +983,18 @@ export class GameEngine {
     }
 
     // 3D Red Danger Lane pool (Boss linear / cross danger corridors)
-    const laneOuterGeo = new THREE.PlaneGeometry(1.18, 16);
+    const laneOuterGeo = new THREE.PlaneGeometry(1.32, 16);
     laneOuterGeo.translate(0, 0, 8);
-    const laneFillGeo = new THREE.PlaneGeometry(1.04, 16);
+    const laneFillGeo = new THREE.PlaneGeometry(1.06, 16);
     laneFillGeo.translate(0, 0, 8);
     for (let i = 0; i < 8; i++) {
       const group = new THREE.Group();
       const outer = new THREE.Mesh(
         laneOuterGeo,
         new THREE.MeshBasicMaterial({
-          color: 0xef4444,
+          color: 0xfef08a,
           transparent: true,
-          opacity: 0.24,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-          polygonOffset: true,
-          polygonOffsetFactor: -2,
-          polygonOffsetUnits: -2,
-        })
-      );
-      outer.rotation.x = -Math.PI / 2;
-
-      const fillMesh = new THREE.Mesh(
-        laneFillGeo,
-        new THREE.MeshBasicMaterial({
-          color: 0xf43f5e,
-          transparent: true,
-          opacity: 0.55,
+          opacity: 0.42,
           side: THREE.DoubleSide,
           depthWrite: false,
           polygonOffset: true,
@@ -1011,9 +1002,26 @@ export class GameEngine {
           polygonOffsetUnits: -3,
         })
       );
+      outer.rotation.x = -Math.PI / 2;
+      outer.renderOrder = 7;
+
+      const fillMesh = new THREE.Mesh(
+        laneFillGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xf43f5e,
+          transparent: true,
+          opacity: 0.68,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+          polygonOffsetUnits: -4,
+        })
+      );
       fillMesh.rotation.x = -Math.PI / 2;
-      fillMesh.position.y = 0.01;
+      fillMesh.position.y = 0.015;
       fillMesh.scale.set(0.1, 1, 1);
+      fillMesh.renderOrder = 8;
 
       group.add(outer, fillMesh);
       group.visible = false;
@@ -3969,11 +3977,27 @@ export class GameEngine {
 
     const telegraphGroup = new THREE.Group();
     const outerRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.88, 1.0, 28),
+      new THREE.RingGeometry(0.84, 1.02, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0xfef08a,
+        transparent: true,
+        opacity: 0.94,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      })
+    );
+    outerRing.rotation.x = -Math.PI / 2;
+    outerRing.renderOrder = 9;
+
+    const telegraphFill = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 28),
       new THREE.MeshBasicMaterial({
         color: 0xf43f5e,
         transparent: true,
-        opacity: 0.78,
+        opacity: 0.36,
         side: THREE.DoubleSide,
         depthWrite: false,
         polygonOffset: true,
@@ -3981,26 +4005,12 @@ export class GameEngine {
         polygonOffsetUnits: -2,
       })
     );
-    outerRing.rotation.x = -Math.PI / 2;
-
-    const telegraphFill = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 28),
-      new THREE.MeshBasicMaterial({
-        color: 0xef4444,
-        transparent: true,
-        opacity: 0.28,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      })
-    );
     telegraphFill.rotation.x = -Math.PI / 2;
     telegraphFill.scale.setScalar(0.15);
+    telegraphFill.renderOrder = 8;
 
     telegraphGroup.add(outerRing, telegraphFill);
-    telegraphGroup.position.set(x, 0.05, z);
+    telegraphGroup.position.set(x, 0.06, z);
     telegraphGroup.visible = false;
     this.entitiesGroup.add(telegraphGroup);
 
@@ -6157,12 +6167,14 @@ export class GameEngine {
     vx: number,
     vz: number,
     damage: number,
-    colorHex = 0xf43f5e
+    colorHex = 0xf43f5e,
+    enemySourceKind: 'boss_lane' | 'boss_projectile' | 'ranged_barrage' = 'ranged_barrage'
   ): void {
     const proj = this.enemyOrbPool.find((p) => !p.active);
     if (!proj) return;
     proj.active = true;
     proj.isEnemy = true;
+    proj.enemySourceKind = enemySourceKind;
     proj.x = x;
     proj.y = 0.98;
     proj.z = z;
@@ -6313,9 +6325,14 @@ export class GameEngine {
           }
           this.executeEnemyAttack(e, isEnraged);
           e.telegraphType = 'none';
+          // Deliberate punish recovery windows per boss archetype so players can dodge then counterattack cleanly
           e.attackTimer = e.isBoss
             ? isEnraged
-              ? 1.05
+              ? 1.15
+              : e.kind === EnemyKind.WARDEN_BOSS
+              ? 1.55
+              : e.kind === EnemyKind.TITAN_BOSS
+              ? 1.5
               : 1.45
             : 1.85 + Math.random() * 0.8;
         }
@@ -6420,36 +6437,60 @@ export class GameEngine {
           e.vx = dirX * e.speed * (isEnraged ? 0.92 : 0.68) * slowMult;
           e.vz = dirZ * e.speed * (isEnraged ? 0.92 : 0.68) * slowMult;
           if (e.attackTimer <= 0) {
-            const roll = Math.random();
             const baseYaw = Math.atan2(dirX, dirZ);
-            if (roll < 0.34) {
+            const step = e.patternCounter ?? 0;
+            e.patternCounter = step + 1;
+
+            // Signature readable boss pattern cycles:
+            // WARDEN_BOSS (Ares, St.4): Slam <-> 3-Shot Fan (teaches circle telegraph & counter window)
+            // TITAN_BOSS (Boreas, St.8): Dual/Triple Lanes -> 5-Shot Fan -> Slam (teaches lane sidestep)
+            // ZODIAC_BOSS (Solar Lion, St.12): Phase I Lane -> Slam -> Fan; Phase II 3-Lane -> Slam -> Spiral
+            let chosenPattern: 'lane' | 'shot' | 'slam' | 'spiral';
+            if (e.kind === EnemyKind.WARDEN_BOSS) {
+              chosenPattern = step % 2 === 0 ? 'slam' : 'shot';
+            } else if (e.kind === EnemyKind.TITAN_BOSS) {
+              const cycle: Array<'lane' | 'shot' | 'slam'> = ['lane', 'shot', 'slam'];
+              chosenPattern = cycle[step % cycle.length];
+            } else if (e.kind === EnemyKind.ZODIAC_BOSS) {
+              const cycle: Array<'lane' | 'shot' | 'slam' | 'spiral'> = isEnraged
+                ? ['lane', 'slam', 'spiral']
+                : ['lane', 'slam', 'shot'];
+              chosenPattern = cycle[step % cycle.length];
+            } else {
+              const roll = Math.random();
+              chosenPattern =
+                roll < 0.34 ? 'lane' : roll < 0.62 ? 'shot' : roll < 0.86 ? 'slam' : 'spiral';
+            }
+
+            if (chosenPattern === 'lane') {
               e.telegraphType = 'lane';
-              e.telegraphDuration = isEnraged ? 0.75 : 0.88;
+              e.telegraphDuration = isEnraged ? 0.76 : 0.9;
               e.telegraphTimer = e.telegraphDuration;
               e.laneAngles = isEnraged
                 ? [baseYaw - 0.36, baseYaw, baseYaw + 0.36]
-                : [baseYaw - 0.22, baseYaw + 0.22];
+                : [baseYaw - 0.24, baseYaw + 0.24];
               soundEngine.playBossTelegraph();
-            } else if (roll < 0.62) {
+            } else if (chosenPattern === 'shot') {
               e.telegraphType = 'shot';
-              e.telegraphDuration = isEnraged ? 0.56 : 0.72;
+              e.telegraphDuration = isEnraged ? 0.58 : 0.72;
               e.telegraphTimer = e.telegraphDuration;
               e.aimX = dirX;
               e.aimZ = dirZ;
-            } else if (roll < 0.86) {
+            } else if (chosenPattern === 'slam') {
               e.telegraphType = 'slam';
-              e.telegraphDuration = isEnraged ? 0.75 : 0.9;
+              e.telegraphDuration = isEnraged ? 0.76 : 0.94;
               e.telegraphTimer = e.telegraphDuration;
               e.slamX = this.px;
               e.slamZ = this.pz;
-              e.slamRadius = e.kind === EnemyKind.ZODIAC_BOSS || isEnraged ? 3.8 : 3.0;
+              e.slamRadius = e.kind === EnemyKind.ZODIAC_BOSS || isEnraged ? 3.6 : 3.0;
               soundEngine.playBossTelegraph();
             } else {
               e.telegraphType = 'spiral';
-              e.telegraphDuration = 0.62;
-              e.telegraphTimer = 0.62;
+              e.telegraphDuration = 0.64;
+              e.telegraphTimer = 0.64;
               e.aimX = dirX;
               e.aimZ = dirZ;
+              soundEngine.playBossTelegraph();
             }
             e.vx = 0;
             e.vz = 0;
@@ -6525,7 +6566,21 @@ export class GameEngine {
       }
 
       if (Math.hypot(this.px - e.x, this.pz - e.z) < e.radius + 0.52) {
-        this.damagePlayer(e.damage);
+        this.damagePlayer(
+          e.damage,
+          e.isBoss
+            ? {
+                code: 'boss_contact',
+                label: `Áp sát trực diện ${e.bossTitle ?? 'Boss'}`,
+                tip: 'Thả diều vòng quanh sân, chỉ dừng bắn trong 1.5s ngay sau khi Boss vừa tung chiêu.',
+                enemyName: e.bossTitle,
+              }
+            : {
+                code: 'melee_swarm',
+                label: 'Bị quái cận chiến áp sát',
+                tip: 'Di chuyển theo vòng tròn quanh mép sàn và ưu tiên Đạn Nảy hoặc Băng Tiễn để giữ khoảng cách.',
+              }
+        );
       }
 
       e.model.root.position.set(e.x, 0, e.z);
@@ -6574,7 +6629,11 @@ export class GameEngine {
       e.z += e.aimZ * 2.4;
       this.spawnParticles(e.x, 0.6, e.z, 0xfacc15, 6);
       if (Math.hypot(this.px - e.x, this.pz - e.z) < e.radius + 0.9) {
-        this.damagePlayer(e.damage);
+        this.damagePlayer(e.damage, {
+          code: 'melee_swarm',
+          label: 'Cú lao tới của quái cận chiến',
+          tip: 'Bước ngang khi vòng báo màu vàng xuất hiện dưới chân quái rồi bắn phản công.',
+        });
       }
     } else if (e.telegraphType === 'shot') {
       const baseYaw = Math.atan2(e.aimX, e.aimZ);
@@ -6597,7 +6656,8 @@ export class GameEngine {
             Math.sin(a) * 11.2,
             Math.cos(a) * 11.2,
             e.damage,
-            e.kind === EnemyKind.ZODIAC_BOSS ? this.currentChapter.trimHex : 0xa855f7
+            e.kind === EnemyKind.ZODIAC_BOSS ? this.currentChapter.trimHex : 0xa855f7,
+            'boss_projectile'
           );
         }
       } else if (e.kind === EnemyKind.DRAGON_WHELP) {
@@ -6609,7 +6669,8 @@ export class GameEngine {
             Math.sin(a) * 10.2,
             Math.cos(a) * 10.2,
             e.damage,
-            0xf97316
+            0xf97316,
+            'ranged_barrage'
           );
         }
       } else {
@@ -6624,7 +6685,8 @@ export class GameEngine {
             ? 0x22d3ee
             : e.kind === EnemyKind.SHADOW_STALKER
             ? 0xc084fc
-            : 0xf43f5e
+            : 0xf43f5e,
+          'ranged_barrage'
         );
       }
     } else if (e.telegraphType === 'lane') {
@@ -6639,7 +6701,8 @@ export class GameEngine {
             Math.sin(ang) * speed,
             Math.cos(ang) * speed,
             e.damage * 1.05,
-            0xf43f5e
+            0xf43f5e,
+            'boss_lane'
           );
         }
       });
@@ -6650,7 +6713,12 @@ export class GameEngine {
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.34);
         soundEngine.playMeteorImpact();
         if (Math.hypot(this.px - e.slamX, this.pz - e.slamZ) <= e.slamRadius + 0.35) {
-          this.damagePlayer(e.damage * 1.15);
+          this.damagePlayer(e.damage * 1.15, {
+            code: 'boss_slam',
+            label: `Vòng Chấn Động của ${e.bossTitle ?? 'Boss'}`,
+            tip: 'Rời khỏi vòng cảnh báo vàng-đỏ trước khi vòng đầy, sau đó tận dụng 1.5s hồi chiêu để xả đạn.',
+            enemyName: e.bossTitle,
+          });
         }
       }
       const ringCount = e.isBoss
@@ -6674,7 +6742,8 @@ export class GameEngine {
           Math.sin(a) * 8.4,
           Math.cos(a) * 8.4,
           e.damage * 0.85,
-          e.kind === EnemyKind.ZODIAC_BOSS ? this.currentChapter.trimHex : 0xf97316
+          e.kind === EnemyKind.ZODIAC_BOSS ? this.currentChapter.trimHex : 0xf97316,
+          e.isBoss ? 'boss_projectile' : 'ranged_barrage'
         );
       }
     }
@@ -6924,7 +6993,25 @@ export class GameEngine {
       if (Math.hypot(p.x - this.px, p.z - this.pz) < 0.5 + p.radius) {
         p.active = false;
         p.mesh.visible = false;
-        this.damagePlayer(p.damage);
+        const orbCause: DefeatCauseInfo =
+          p.enemySourceKind === 'boss_lane'
+            ? {
+                code: 'boss_lane',
+                label: 'Làn đạn nguy hiểm của Boss',
+                tip: 'Bước ngang vuông góc với vệt cảnh báo đỏ-vàng thay vì lùi thẳng theo hướng tia đạn.',
+              }
+            : p.enemySourceKind === 'boss_projectile'
+            ? {
+                code: 'boss_projectile',
+                label: 'Loạt đạn quạt / vòng xoáy của Boss',
+                tip: 'Giữ khoảng cách trung bình để khe hở giữa các viên đạn mở rộng rồi luồn qua nhẹ nhàng.',
+              }
+            : {
+                code: 'ranged_barrage',
+                label: 'Mưa đạn từ quái tầm xa',
+                tip: 'Tận dụng cột đá làm lá chắn và ưu tiên kỹ năng Đạn Nảy / Tên Chéo để dọn quái tầm xa sớm.',
+              };
+        this.damagePlayer(p.damage, orbCause);
       }
     }
   }
@@ -7802,8 +7889,17 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  private damagePlayer(rawAmount: number): void {
+  private damagePlayer(rawAmount: number, cause?: DefeatCauseInfo): void {
     if (this.invulnTimer > 0 || this.phase !== GamePhase.PLAYING) return;
+    if (cause) {
+      this.lastDamageSource = cause;
+    } else if (!this.lastDamageSource) {
+      this.lastDamageSource = {
+        code: 'unknown',
+        label: 'Sát thương liên tiếp trong giao tranh',
+        tip: 'Di chuyển sau mỗi loạt bắn để tránh bị kẹt góc và giữ lượng máu ổn định trước phòng Boss.',
+      };
+    }
     this.invulnTimer = 0.55;
     this.hitFlashTimer = 0.22;
     this.lastPlayerHitAt = performance.now();
@@ -7966,6 +8062,7 @@ export class GameEngine {
           : 0,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
+        defeatCause: this.lastDamageSource ?? undefined,
       });
     }
   }
@@ -8107,7 +8204,10 @@ export class GameEngine {
         } else {
           this.phase = GamePhase.ANGEL_DEVIL;
         }
-        this.callbacks.onRequestEncounter(this.shrineKind, { ...this.activeSkills });
+        this.callbacks.onRequestEncounter(this.shrineKind, { ...this.activeSkills }, {
+          chapterId: this.currentChapter.id,
+          stage: this.stageIndex + 1,
+        });
       }
     }
   }

@@ -126,6 +126,16 @@ import {
   normalizeSkyCitadel,
   normalizeZodiacRelics,
 } from './wave14Data';
+import {
+  EARLY_FORGE_COSTS,
+  EarlyProgressionPolicy,
+  PROGRESSION_SCHEMA_VERSION,
+  RARITY_RANK,
+  clampRarityToPolicy,
+  getBestCh1Stage,
+  getEarlyProgressionPolicy,
+  normalizeEarlyForgeProgress,
+} from './earlyProgressionData';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -977,7 +987,7 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       (equippedCelestialWingId ? celestialWingStar * 130 : 0) +
       zodiacRelicBonuses.totalStars * 75 +
       guildSanctuaryBonuses.totalLevel * 36 +
-      (save.unlockedRoyal3DTitles?.length ?? 1) * 55
+      (save.unlockedRoyal3DTitles?.length ?? 0) * 55
   );
 
   return {
@@ -1037,54 +1047,33 @@ export function createInitialSaveData(): SaveData {
     rarity: Rarity.COMMON,
     level: 1,
   };
-  const starterNecklace: GearInstance = {
-    uid: 'starter_neck_1',
-    templateId: 'wooden_charm',
-    rarity: Rarity.COMMON,
-    level: 1,
-  };
-  const starterRing: GearInstance = {
-    uid: 'starter_ring_1',
-    templateId: 'copper_ring',
-    rarity: Rarity.COMMON,
-    level: 1,
-  };
   const starterArmor: GearInstance = {
     uid: 'starter_armor_1',
     templateId: 'cloth_vest',
     rarity: Rarity.COMMON,
     level: 1,
   };
-  const starterHelmet: GearInstance = {
-    uid: 'starter_helm_1',
-    templateId: 'leather_cap',
-    rarity: Rarity.COMMON,
-    level: 1,
-  };
-  const starterBoots: GearInstance = {
-    uid: 'starter_boots_1',
-    templateId: 'worn_boots',
-    rarity: Rarity.COMMON,
-    level: 1,
-  };
-
-  const starterRune = {
-    uid: 'starter_rune_1',
-    runeId: 'arrow_rain' as RuneId,
-    rarity: Rarity.RARE,
-  };
 
   return {
-    gold: 260,
-    gems: 45,
-    starDust: 120,
-    petEssence: 40,
+    progressionSchemaVersion: PROGRESSION_SCHEMA_VERSION,
+    claimedMailIds: [],
+    deletedMailIds: [],
+    earlyMilestonesClaimed: [],
+    earlyForgeProgress: {
+      rareShards: 0,
+      epicShards: 0,
+      sTierBlueprints: 0,
+    },
+    gold: 40,
+    gems: 0,
+    starDust: 0,
+    petEssence: 0,
     highestChapterCleared: 0,
     bestStagePerChapter: {},
     selectedHeroId: 'artemis',
     unlockedHeroes: ['artemis', 'alex'],
     heroStars: {
-      artemis: 1,
+      artemis: 0,
       alex: 0,
       thor: 0,
       wukong: 0,
@@ -1095,22 +1084,11 @@ export function createInitialSaveData(): SaveData {
     },
     equipped: {
       [GearSlot.WEAPON]: starterWeapon.uid,
-      [GearSlot.NECKLACE]: starterNecklace.uid,
-      [GearSlot.RING]: starterRing.uid,
       [GearSlot.ARMOR]: starterArmor.uid,
-      [GearSlot.HELMET]: starterHelmet.uid,
-      [GearSlot.BOOTS]: starterBoots.uid,
     },
-    inventory: [
-      starterWeapon,
-      starterNecklace,
-      starterRing,
-      starterArmor,
-      starterHelmet,
-      starterBoots,
-    ],
-    equippedRunes: [starterRune.uid],
-    runeInventory: [starterRune],
+    inventory: [starterWeapon, starterArmor],
+    equippedRunes: [],
+    runeInventory: [],
     muted: false,
     talents: {},
     bestTowerFloor: 0,
@@ -1140,7 +1118,7 @@ export function createInitialSaveData(): SaveData {
     onboardingCompleted: false,
     equippedTitle: 'Tân Binh Tinh Giới',
     bestBossRushRound: 0,
-    mailInbox: normalizeMailInbox(),
+    mailInbox: normalizeMailInbox(undefined, [], []),
     flashDeals: { date: getTodayKey(), purchasedIds: [] },
     dailySweeps: { date: getTodayKey(), remaining: MAX_DAILY_SWEEPS },
     runHistory: [],
@@ -1163,7 +1141,7 @@ export function createInitialSaveData(): SaveData {
     guild: normalizeGuild(),
     destinyWheel: normalizeDestinyWheel(),
     seasonMedalsClaimed: [],
-    socketGems: [createSocketGem('ruby', 1), createSocketGem('sapphire', 1)],
+    socketGems: [],
     nightMarket: normalizeNightMarket(),
     arena: normalizeArena(),
     noviceJourney: normalizeNoviceJourney(),
@@ -1173,7 +1151,7 @@ export function createInitialSaveData(): SaveData {
     coopRaid: normalizeCoopRaid(),
     elementalTowers: normalizeElementalTowers(),
     commercialPackClaims: {},
-    wingFeathers: 22,
+    wingFeathers: 0,
     unlockedWings: [],
     wingLevels: {},
     equippedWingId: null,
@@ -1186,9 +1164,9 @@ export function createInitialSaveData(): SaveData {
     auctionHouse: normalizeAuctionHouse(),
     crystalDefense: normalizeCrystalDefense(),
     worldBoss: normalizeWorldBoss(),
-    mountShards: 18,
-    awakeningCrystals: 12,
-    wishTickets: 3,
+    mountShards: 0,
+    awakeningCrystals: 0,
+    wishTickets: 0,
     unlockedMounts: [],
     mountLevels: {},
     equippedMountId: null,
@@ -1200,7 +1178,7 @@ export function createInitialSaveData(): SaveData {
     claimedHotBundleIds: [],
     dispatch: normalizeDispatchState(),
     bloodMoon: normalizeBloodMoon(),
-    artifactShards: 14,
+    artifactShards: 0,
     unlockedArtifacts: [],
     artifactLevels: {},
     equippedArtifactId: null,
@@ -1209,7 +1187,7 @@ export function createInitialSaveData(): SaveData {
     guildWar: normalizeGuildWar(),
     unlockedDynamicTitles: ['none'],
     equippedDynamicTitleId: 'none',
-    divineCrystals: 16,
+    divineCrystals: 0,
     unlockedHalos: [],
     haloLevels: {},
     equippedHaloId: null,
@@ -1218,16 +1196,16 @@ export function createInitialSaveData(): SaveData {
     pantheonExpedition: normalizePantheonExpedition(),
     lobbySkyTheme: 'golden_galaxy',
     unlockedSkyThemes: ['golden_galaxy', 'dawn_sanctum'],
-    spiritCores: 10,
+    spiritCores: 0,
     evolvedPets: [],
     festivalState: normalizeFestivalState(),
     codexClaimedRanks: [],
     championship: normalizeChampionshipState(),
     weekendPass: normalizeWeekendPrivilege(),
     honorFeed: [...DEFAULT_HONOR_FEED],
-    reforgeStones: 18,
-    mythicShards: 12,
-    warCrests: 14,
+    reforgeStones: 0,
+    mythicShards: 0,
+    warCrests: 0,
     mythicWeapon: normalizeMythicWeapon(),
     treasureWheel: normalizeTreasureWheel(),
     supremeMonthly: normalizeSupremeMonthly(),
@@ -1237,10 +1215,10 @@ export function createInitialSaveData(): SaveData {
     equippedWarBannerId: null,
     crystalVault: normalizeCrystalVault(),
     lobbyHeroPose: 'heroic',
-    // Wave 13 initial defaults
-    starlightGrass: 24,
-    dragonScales: 12,
-    blindBoxTickets: 2,
+    // Wave 13 initial defaults (unlocked progressively via Chapter milestones)
+    starlightGrass: 0,
+    dragonScales: 0,
+    blindBoxTickets: 0,
     unlockedAstralSteeds: [],
     astralSteedStars: {},
     equippedAstralSteedId: null,
@@ -1254,32 +1232,63 @@ export function createInitialSaveData(): SaveData {
     equippedVipFrameId: null,
     carnival7Day: normalizeCarnival7Day(),
     evolvingFirstTopUp: normalizeEvolvingFirstTopUp(),
-    // Wave 14 initial defaults
-    celestialFeathers: 24,
-    unlockedCelestialWings: ['seraph_azure'],
-    celestialWingStars: { seraph_azure: 1 },
-    equippedCelestialWingId: 'seraph_azure',
+    // Wave 14 initial defaults (Celestial Wing & Royal 3D Title earned at Ch.1 & Ch.2 clears)
+    celestialFeathers: 0,
+    unlockedCelestialWings: [],
+    celestialWingStars: {},
+    equippedCelestialWingId: null,
     skyCitadel: normalizeSkyCitadel(),
     astralBoard: normalizeAstralBoard(),
     zodiacRelics: normalizeZodiacRelics(),
     guildSanctuary: normalizeGuildSanctuary(),
     mythicShardShop: normalizeMythicShardShop(),
     sanctuaryFloorTheme: 'marble_gold',
-    unlockedRoyal3DTitles: ['title_sky_sovereign'],
-    equippedRoyal3DTitleId: 'title_sky_sovereign',
+    unlockedRoyal3DTitles: [],
+    equippedRoyal3DTitleId: null,
   };
 }
 
-export function rollChestGear(isPremium: boolean, forceMinRarity?: Rarity, forceSTier?: boolean): GearInstance {
+export interface RollGearOptions {
+  maxRarity?: Rarity;
+  allowSTier?: boolean;
+  rng?: () => number;
+  preferredSlot?: GearSlot;
+}
+
+export function rollChestGear(
+  isPremium: boolean,
+  forceMinRarity?: Rarity,
+  forceSTier?: boolean,
+  options?: RollGearOptions
+): GearInstance {
+  const rng = options?.rng ?? Math.random;
+  const allowSTier = options?.allowSTier ?? true;
+  const effectiveForceSTier = Boolean(forceSTier && allowSTier);
+
+  let eligibleTemplates = allowSTier
+    ? ALL_TEMPLATE_LIST
+    : ALL_TEMPLATE_LIST.filter((t) => !t.isSTier);
+
+  if (options?.preferredSlot) {
+    const slotFiltered = eligibleTemplates.filter((t) => t.slot === options.preferredSlot);
+    if (slotFiltered.length > 0) {
+      eligibleTemplates = slotFiltered;
+    }
+  }
+
   let pool = isPremium
-    ? ALL_TEMPLATE_LIST.filter((t) => t.isSTier || t.setName !== 'Khởi Đầu')
-    : ALL_TEMPLATE_LIST;
-  if (forceSTier) {
-    const sPool = ALL_TEMPLATE_LIST.filter((t) => t.isSTier);
+    ? eligibleTemplates.filter((t) => t.isSTier || t.setName !== 'Khởi Đầu')
+    : eligibleTemplates;
+  if (pool.length === 0) {
+    pool = eligibleTemplates;
+  }
+  if (effectiveForceSTier) {
+    const sPool = eligibleTemplates.filter((t) => t.isSTier);
     if (sPool.length > 0) pool = sPool;
   }
-  const template = pool[Math.floor(Math.random() * pool.length)];
-  const r = Math.random();
+
+  const template = pool[Math.floor(rng() * pool.length)];
+  const r = rng();
   let rarity = Rarity.COMMON;
   if (isPremium) {
     if (r < 0.14) rarity = Rarity.LEGENDARY;
@@ -1297,8 +1306,12 @@ export function rollChestGear(isPremium: boolean, forceMinRarity?: Rarity, force
     if (curIdx < minIdx) rarity = forceMinRarity;
   }
 
+  if (options?.maxRarity) {
+    rarity = clampRarityToPolicy(rarity, options.maxRarity);
+  }
+
   const gear: GearInstance = {
-    uid: `gear_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    uid: `gear_${Date.now()}_${Math.floor(rng() * 1e9).toString(36)}`,
     templateId: template.templateId,
     rarity,
     level: 1,
@@ -1308,43 +1321,191 @@ export function rollChestGear(isPremium: boolean, forceMinRarity?: Rarity, force
   return gear;
 }
 
+export function rollProgressionGatedGear(
+  save: Pick<SaveData, 'highestChapterCleared' | 'bestStagePerChapter'>,
+  isPremium: boolean,
+  forceMinRarity?: Rarity,
+  forceSTier?: boolean,
+  rng?: () => number,
+  preferredSlot?: GearSlot
+): GearInstance {
+  const policy = getEarlyProgressionPolicy(save);
+  return rollChestGear(isPremium, forceMinRarity, forceSTier, {
+    maxRarity: policy.maxGearRarity,
+    allowSTier: policy.allowSTier,
+    rng,
+    preferredSlot,
+  });
+}
+
 export function rollChestGearBatch(
   isPremium: boolean,
   count: number,
-  currentPity?: Partial<PityState>
+  currentPity?: Partial<PityState>,
+  options?: { policy?: EarlyProgressionPolicy; rng?: () => number }
 ): { items: GearInstance[]; nextPity: PityState } {
   const pity = normalizePity(currentPity);
   const items: GearInstance[] = [];
   let hasRarePlus = false;
+  const policy = options?.policy;
+  const maxRarity = policy?.maxGearRarity;
+  const allowSTier = policy ? policy.allowSTier : true;
+  const canRollEpic = !maxRarity || RARITY_RANK[maxRarity] >= RARITY_RANK[Rarity.EPIC];
+  const canRollRare = !maxRarity || RARITY_RANK[maxRarity] >= RARITY_RANK[Rarity.RARE];
 
   for (let i = 0; i < count; i++) {
     if (isPremium) {
-      const needSTier = pity.mythicRollsSinceSTier >= 24;
-      const needEpic = pity.mythicRollsSinceEpic >= 9;
+      const needSTier = allowSTier && pity.mythicRollsSinceSTier >= 24;
+      const needEpic = canRollEpic && pity.mythicRollsSinceEpic >= 9;
       const item = rollChestGear(
         true,
         needEpic ? Rarity.EPIC : undefined,
-        needSTier
+        needSTier,
+        { maxRarity, allowSTier, rng: options?.rng }
       );
       const tpl = GEAR_TEMPLATES[item.templateId];
-      if (item.rarity === Rarity.EPIC || item.rarity === Rarity.LEGENDARY || item.rarity === Rarity.MYTHIC) {
-        pity.mythicRollsSinceEpic = 0;
+
+      // Preserve pity progress when Epic or S-Tier pool is still locked:
+      // never reset pity before the pool opens, capping at threshold - 1 so the very first roll
+      // after unlocking immediately honors accumulated pity.
+      if (canRollEpic) {
+        if (
+          item.rarity === Rarity.EPIC ||
+          item.rarity === Rarity.LEGENDARY ||
+          item.rarity === Rarity.MYTHIC
+        ) {
+          pity.mythicRollsSinceEpic = 0;
+        } else {
+          pity.mythicRollsSinceEpic++;
+        }
       } else {
-        pity.mythicRollsSinceEpic++;
+        pity.mythicRollsSinceEpic = Math.min(9, pity.mythicRollsSinceEpic + 1);
       }
-      if (tpl?.isSTier) {
-        pity.mythicRollsSinceSTier = 0;
+
+      if (allowSTier) {
+        if (tpl?.isSTier) {
+          pity.mythicRollsSinceSTier = 0;
+        } else {
+          pity.mythicRollsSinceSTier++;
+        }
       } else {
-        pity.mythicRollsSinceSTier++;
+        pity.mythicRollsSinceSTier = Math.min(24, pity.mythicRollsSinceSTier + 1);
       }
+
       items.push(item);
     } else {
-      const forceRare = count >= 10 && i === count - 1 && !hasRarePlus;
-      const item = rollChestGear(false, forceRare ? Rarity.RARE : undefined);
+      const forceRare = canRollRare && count >= 10 && i === count - 1 && !hasRarePlus;
+      const item = rollChestGear(false, forceRare ? Rarity.RARE : undefined, false, {
+        maxRarity,
+        allowSTier,
+        rng: options?.rng,
+      });
       if (item.rarity !== Rarity.COMMON) hasRarePlus = true;
       items.push(item);
     }
   }
 
   return { items, nextPity: pity };
+}
+
+export function craftEarlyTargetGear(
+  save: SaveData,
+  tier: 'rare' | 'epic' | 's_tier',
+  rng?: () => number
+): { ok: boolean; reason?: string; item?: GearInstance; nextSave?: SaveData } {
+  const fp = normalizeEarlyForgeProgress(save.earlyForgeProgress);
+  const ch = Math.max(0, Math.floor(save.highestChapterCleared ?? 0));
+  const st1 = getBestCh1Stage(save);
+
+  if (tier === 'rare') {
+    if (ch < 1 && st1 < 4) {
+      return { ok: false, reason: 'Cần vượt Phụ Boss Ares (Ải 4 Ch.1) để chế tạo Trang Bị Hiếm.' };
+    }
+    if (fp.rareShards < EARLY_FORGE_COSTS.rareShards) {
+      return {
+        ok: false,
+        reason: `Cần ${EARLY_FORGE_COSTS.rareShards} Mảnh Hiếm (hiện có ${fp.rareShards}).`,
+      };
+    }
+    const hasRareWeapon = save.inventory.some(
+      (g) => GEAR_TEMPLATES[g.templateId]?.slot === GearSlot.WEAPON && RARITY_RANK[g.rarity] >= RARITY_RANK[Rarity.RARE]
+    );
+    const item = rollChestGear(true, Rarity.RARE, false, {
+      maxRarity: Rarity.RARE,
+      allowSTier: false,
+      rng,
+      preferredSlot: hasRareWeapon ? undefined : GearSlot.WEAPON,
+    });
+    return {
+      ok: true,
+      item,
+      nextSave: {
+        ...save,
+        earlyForgeProgress: { ...fp, rareShards: fp.rareShards - EARLY_FORGE_COSTS.rareShards },
+        inventory: [...save.inventory, item],
+      },
+    };
+  }
+
+  if (tier === 'epic') {
+    if (ch < 1) {
+      return { ok: false, reason: 'Cần vượt Chương 1 để chế tạo Trang Bị Sử Thi.' };
+    }
+    if (fp.epicShards < EARLY_FORGE_COSTS.epicShards) {
+      return {
+        ok: false,
+        reason: `Cần ${EARLY_FORGE_COSTS.epicShards} Mảnh Sử Thi (hiện có ${fp.epicShards}).`,
+      };
+    }
+    const hasEpicWeapon = save.inventory.some(
+      (g) => GEAR_TEMPLATES[g.templateId]?.slot === GearSlot.WEAPON && RARITY_RANK[g.rarity] >= RARITY_RANK[Rarity.EPIC]
+    );
+    const item = rollChestGear(true, Rarity.EPIC, false, {
+      maxRarity: Rarity.EPIC,
+      allowSTier: false,
+      rng,
+      preferredSlot: hasEpicWeapon ? undefined : GearSlot.WEAPON,
+    });
+    return {
+      ok: true,
+      item,
+      nextSave: {
+        ...save,
+        earlyForgeProgress: { ...fp, epicShards: fp.epicShards - EARLY_FORGE_COSTS.epicShards },
+        inventory: [...save.inventory, item],
+      },
+    };
+  }
+
+  // tier === 's_tier'
+  if (ch < 2) {
+    return { ok: false, reason: 'Cần vượt Chương 2 (mở Chương 3) để chế tạo Trang Bị [S].' };
+  }
+  if (fp.sTierBlueprints < EARLY_FORGE_COSTS.sTierBlueprints) {
+    return {
+      ok: false,
+      reason: `Cần ${EARLY_FORGE_COSTS.sTierBlueprints} Bản Vẽ [S] (hiện có ${fp.sTierBlueprints}).`,
+    };
+  }
+  const hasSWeapon = save.inventory.some(
+    (g) => GEAR_TEMPLATES[g.templateId]?.slot === GearSlot.WEAPON && GEAR_TEMPLATES[g.templateId]?.isSTier
+  );
+  const item = rollChestGear(true, Rarity.EPIC, true, {
+    maxRarity: Rarity.LEGENDARY,
+    allowSTier: true,
+    rng,
+    preferredSlot: hasSWeapon ? undefined : GearSlot.WEAPON,
+  });
+  return {
+    ok: true,
+    item,
+    nextSave: {
+      ...save,
+      earlyForgeProgress: {
+        ...fp,
+        sTierBlueprints: fp.sTierBlueprints - EARLY_FORGE_COSTS.sTierBlueprints,
+      },
+      inventory: [...save.inventory, item],
+    },
+  };
 }

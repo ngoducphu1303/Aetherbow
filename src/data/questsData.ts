@@ -69,8 +69,8 @@ export const DAILY_QUESTS: DailyQuestDef[] = [
     title: 'Cường hóa trang bị hoặc nâng cấp 1 lần',
     metric: 'upgrades',
     target: 1,
-    rewardGold: 110,
-    rewardGems: 10,
+    rewardGold: 60,
+    rewardGems: 5,
   },
   {
     id: 'dq_chest_1',
@@ -91,13 +91,13 @@ export interface CheckInDayReward {
 }
 
 export const CHECK_IN_REWARDS: CheckInDayReward[] = [
-  { day: 1, label: '150 Vàng', gold: 150, gems: 10 },
+  { day: 1, label: '35 Vàng · 5 Ngọc', gold: 35, gems: 5 },
   { day: 2, label: '25 Ngọc Hồn', gold: 80, gems: 25 },
   { day: 3, label: '240 Vàng', gold: 240, gems: 15 },
   { day: 4, label: 'Trang Bị Hiếm', gold: 100, gems: 15, bonusRarity: Rarity.RARE },
   { day: 5, label: '350 Vàng', gold: 350, gems: 20 },
   { day: 6, label: '45 Ngọc Hồn', gold: 150, gems: 45 },
-  { day: 7, label: 'Trang Bị Sử Thi [S]', gold: 300, gems: 50, bonusRarity: Rarity.EPIC },
+  { day: 7, label: 'Trang Bị Sử Thi', gold: 300, gems: 50, bonusRarity: Rarity.EPIC },
 ];
 
 export function countClaimableWelfare(save: {

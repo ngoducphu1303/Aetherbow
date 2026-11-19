@@ -389,11 +389,11 @@ export function normalizeSoulRings(sr?: Partial<SoulRingState>): SoulRingState {
         Math.max(0, Math.floor(sr.spiritJades[3] ?? 0)),
         Math.max(0, Math.floor(sr.spiritJades[4] ?? 0)),
       ] as [number, number, number, number, number])
-    : ([9, 3, 1, 0, 0] as [number, number, number, number, number]);
+    : ([0, 0, 0, 0, 0] as [number, number, number, number, number]);
 
   return {
     levels: {
-      ring_silver: Math.max(0, Math.min(SOUL_RING_MAX_LEVEL, sr?.levels?.ring_silver ?? 1)),
+      ring_silver: Math.max(0, Math.min(SOUL_RING_MAX_LEVEL, sr?.levels?.ring_silver ?? 0)),
       ring_gold: Math.max(0, Math.min(SOUL_RING_MAX_LEVEL, sr?.levels?.ring_gold ?? 0)),
       ring_amethyst: Math.max(0, Math.min(SOUL_RING_MAX_LEVEL, sr?.levels?.ring_amethyst ?? 0)),
       ring_crimson: Math.max(0, Math.min(SOUL_RING_MAX_LEVEL, sr?.levels?.ring_crimson ?? 0)),

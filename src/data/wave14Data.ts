@@ -601,7 +601,7 @@ export function normalizeGuildSanctuary(st?: Partial<GuildSanctuaryState>): Guil
   return {
     date: today,
     monumentLevels: {
-      citadel_hall: Math.max(0, Math.min(10, Math.floor(raw.citadel_hall ?? 1))),
+      citadel_hall: Math.max(0, Math.min(10, Math.floor(raw.citadel_hall ?? 0))),
       astral_forge: Math.max(0, Math.min(10, Math.floor(raw.astral_forge ?? 0))),
       star_spire: Math.max(0, Math.min(10, Math.floor(raw.star_spire ?? 0))),
       guild_vault: Math.max(0, Math.min(10, Math.floor(raw.guild_vault ?? 0))),
@@ -866,8 +866,8 @@ export function computeRoyal3DTitleBonuses(save: SaveData): {
   crit: number;
   activeDef: Royal3DTitleDef | null;
 } {
-  const unlocked = save.unlockedRoyal3DTitles ?? ['title_sky_sovereign'];
-  const equipped = save.equippedRoyal3DTitleId ?? 'title_sky_sovereign';
+  const unlocked = Array.isArray(save.unlockedRoyal3DTitles) ? save.unlockedRoyal3DTitles : [];
+  const equipped = save.equippedRoyal3DTitleId ?? null;
   let atk = 0;
   let hp = 0;
   let crit = 0;

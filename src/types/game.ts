@@ -287,6 +287,8 @@ export type SkillId =
   | 'sacred_protection'
   | 'revive';
 
+export type SkillBuildTag = 'aoe' | 'boss' | 'sustain' | 'hybrid';
+
 export interface SkillDefinition {
   id: SkillId;
   name: string;
@@ -295,6 +297,7 @@ export interface SkillDefinition {
   description: string;
   maxStacks: number;
   accentColor: string;
+  buildTag?: SkillBuildTag;
 }
 
 export type StageEventAfter = 'none' | 'valkyrie' | 'angel' | 'devil' | 'wheel';
@@ -413,7 +416,46 @@ export interface MailItem {
   rewardGems: number;
   bonusGearRarity?: Rarity;
   bonusSTier?: boolean;
+  minChapterCleared?: number;
+  minCh1Stage?: number;
   claimed: boolean;
+}
+
+export type EarlyFeatureId =
+  | 'mail'
+  | 'welcome_gift'
+  | 'daily_quests'
+  | 'talents'
+  | 'hero_star'
+  | 'iron_chest'
+  | 'mythic_chest'
+  | 'flash_deals'
+  | 'starter_pack'
+  | 'sweep'
+  | 'battle_pass'
+  | 'runes'
+  | 'forge'
+  | 'meta_events'
+  | 'late_modes';
+
+export interface EarlyForgeProgress {
+  rareShards: number;
+  epicShards: number;
+  sTierBlueprints: number;
+}
+
+export interface DefeatCauseInfo {
+  code:
+    | 'boss_slam'
+    | 'boss_lane'
+    | 'boss_projectile'
+    | 'boss_contact'
+    | 'ranged_barrage'
+    | 'melee_swarm'
+    | 'unknown';
+  label: string;
+  tip: string;
+  killerName?: string;
 }
 
 export interface FlashDealItem {
@@ -1052,6 +1094,12 @@ export interface SaveData {
   sanctuaryFloorTheme?: SanctuaryFloorId;
   unlockedRoyal3DTitles?: Royal3DTitleId[];
   equippedRoyal3DTitleId?: Royal3DTitleId | null;
+  // Early-game progression & persistent claim ledger (Schema v2)
+  progressionSchemaVersion?: number;
+  claimedMailIds?: string[];
+  deletedMailIds?: string[];
+  earlyMilestonesClaimed?: string[];
+  earlyForgeProgress?: EarlyForgeProgress;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
