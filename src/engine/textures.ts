@@ -117,6 +117,86 @@ export function createStoneBumpTexture(maxAnisotropy: number): THREE.CanvasTextu
   return tex;
 }
 
+/**
+ * Procedural PBR roughness map aligned 1:1 with createStoneTileTexture:
+ * - Honed obsidian/marble tiles: ~0.64–0.72 roughness
+ * - Grout/mortar seams: ~0.92 roughness (matte recesses)
+ * - Inlaid gold bevels & center zodiac diamonds: ~0.18 roughness (glossy specular glint)
+ */
+export function createStoneRoughnessTexture(maxAnisotropy: number): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  // Base honed marble (roughness ~0.68 -> RGB 174)
+  ctx.fillStyle = '#aeaeae';
+  ctx.fillRect(0, 0, size, size);
+
+  // Subtle deterministic mineral grain variation
+  for (let i = 0; i < 1600; i++) {
+    const x = (i * 73.13) % size;
+    const y = (i * 139.37) % size;
+    const v = 152 + (i % 38);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(x, y, 2.5, 2.5);
+  }
+
+  const step = size / 4;
+
+  // Glossy bevel frames on alternating polished tiles
+  for (let gx = 0; gx < 4; gx++) {
+    for (let gy = 0; gy < 4; gy++) {
+      if ((gx + gy) % 2 === 0) {
+        ctx.fillStyle = 'rgb(138,138,138)';
+        ctx.fillRect(gx * step + 5, gy * step + 5, step - 10, step - 10);
+      }
+      ctx.strokeStyle = 'rgb(76,76,76)';
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(gx * step + 3, gy * step + 3, step - 6, step - 6);
+    }
+  }
+
+  // Deep matte mortar lines (roughness ~0.92)
+  ctx.strokeStyle = 'rgb(236,236,236)';
+  ctx.lineWidth = 3;
+  for (let i = 0; i <= 4; i++) {
+    const p = i * step;
+    ctx.beginPath();
+    ctx.moveTo(p, 0);
+    ctx.lineTo(p, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, p);
+    ctx.lineTo(size, p);
+    ctx.stroke();
+  }
+
+  // Polished golden diamond medallions at intersections (roughness ~0.18 -> RGB 46)
+  ctx.fillStyle = 'rgb(46,46,46)';
+  for (let gx = 1; gx < 4; gx += 2) {
+    for (let gy = 1; gy < 4; gy += 2) {
+      const cx = gx * step;
+      const cy = gy * step;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 5);
+      ctx.lineTo(cx + 5, cy);
+      ctx.lineTo(cx, cy + 5);
+      ctx.lineTo(cx - 5, cy);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 4.5);
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
 export function createHeroFaceTexture(
   eyeColor = '#c026d3',
   cheekColor = '#9333ea'

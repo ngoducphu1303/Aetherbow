@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   screenShake: true,
   showDamageNumbers: true,
   starfallWeather: true,
+  bloomEnabled: true,
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
@@ -39,6 +40,7 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     screenShake: s?.screenShake ?? DEFAULT_SETTINGS.screenShake,
     showDamageNumbers: s?.showDamageNumbers ?? DEFAULT_SETTINGS.showDamageNumbers,
     starfallWeather: s?.starfallWeather ?? DEFAULT_SETTINGS.starfallWeather,
+    bloomEnabled: s?.bloomEnabled ?? DEFAULT_SETTINGS.bloomEnabled,
   };
 }
 

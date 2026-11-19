@@ -494,6 +494,18 @@ export interface CheckInProgress {
 
 export type GraphicsQuality = 'low' | 'medium' | 'high';
 
+export type GpuCapabilityTier = 'software' | 'integrated' | 'discrete';
+
+export interface GpuProfileSummary {
+  tier: GpuCapabilityTier;
+  tierLabel: string;
+  rendererName: string;
+  recommendedQuality: GraphicsQuality;
+  bloomSupported: boolean;
+  shadowMapSize: 0 | 1024 | 2048;
+  targetCombatFps: 12 | 30 | 60;
+}
+
 export interface GameSettings {
   masterVol: number; // 0..1
   bgmVol: number; // 0..1
@@ -502,6 +514,7 @@ export interface GameSettings {
   screenShake: boolean;
   showDamageNumbers: boolean;
   starfallWeather?: boolean;
+  bloomEnabled?: boolean;
 }
 
 export interface BattlePassProgress {

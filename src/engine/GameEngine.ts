@@ -2,7 +2,26 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { disposeObjectResources } from './resources';
+import {
+  classifyGpuCapability,
+  MythicZodiacGradeShader,
+  resolvePostFxConfig,
+} from './aaaVisualPipeline';
+import {
+  CombatFlashKind,
+  computeHitstopMicroJitter,
+  computeImpactLightPulse,
+  computeKnockbackImpulse,
+  computePostFxImpulse,
+  PostFxImpulseEvent,
+} from './aaaCombatJuice';
+import { computeSpatialPan } from '../audio/aaaAudioMix';
 import { createArtemisMotion } from './artemisMotion';
 import { createDragonMountMotion } from './dragonMountMotion';
 import { discardModelDownload, downloadModel, getModelAssetUrl, type ModelAsset } from './modelAssets';
@@ -73,6 +92,7 @@ import {
   EnemyKind,
   FloatingDamage,
   GamePhase,
+  GpuProfileSummary,
   GraphicsQuality,
   HeroId,
   HudSnapshot,
@@ -116,6 +136,7 @@ import {
 import {
   createContactShadowTexture,
   createStoneBumpTexture,
+  createStoneRoughnessTexture,
   createStoneTileTexture,
   createTargetReticleTexture,
 } from './textures';
@@ -234,6 +255,10 @@ interface EnemyEntity {
   eliteAuraRingMesh2?: THREE.Mesh;
   laserLine: THREE.Line;
   baseScale?: number;
+  hitSquashY?: number;
+  hitStretchXZ?: number;
+  knockVx?: number;
+  knockVz?: number;
   hpBarGroup?: THREE.Group;
   hpBarFill?: THREE.Mesh;
   hpBarGhost?: THREE.Mesh;
@@ -466,6 +491,13 @@ export class GameEngine {
   private callbacks: EngineCallbacks;
   private isSoftwareGl: boolean;
   private lowEndGpu = false;
+  private gpuProfile: GpuProfileSummary;
+  private bloomEnabled = true;
+  private bloomImpulse = 0;
+  private chromaticImpulse = 0;
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private gradePass: ShaderPass | null = null;
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -476,6 +508,20 @@ export class GameEngine {
   private hemiLight: THREE.HemisphereLight;
   private rimLight: THREE.DirectionalLight;
   private heroLight: THREE.PointLight;
+  private impactLightPool: Array<{
+    light: THREE.PointLight;
+    intensity: number;
+    decayRate: number;
+  }> = [];
+  private critStarPool: Array<{
+    active: boolean;
+    life: number;
+    maxLife: number;
+    baseScale: number;
+    group: THREE.Group;
+    mat: THREE.MeshBasicMaterial;
+  }> = [];
+  private arenaLightShafts: THREE.Mesh[] = [];
 
   private arenaGroup = new THREE.Group();
   private entitiesGroup = new THREE.Group();
@@ -871,28 +917,32 @@ export class GameEngine {
     this.heroVisualCfg = initialVisualCfg;
     this.weaponAccentHex = initialVisualCfg.weaponAccentHex;
 
-    // Software WebGL detection from GPU renderer string
-    this.isSoftwareGl = (() => {
+    // Auto GPU capability detection (3-tier: software / integrated / discrete)
+    const detectedProfile = (() => {
       const probeCanvas = document.createElement('canvas');
       const gl = probeCanvas.getContext('webgl2');
-      if (!gl) return true;
+      if (!gl) {
+        return classifyGpuCapability('', undefined, navigator.hardwareConcurrency || 4);
+      }
       const ext = gl.getExtension('WEBGL_debug_renderer_info');
       const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
-      const gpu = String(gl.getParameter(param));
-      const memory = (navigator as Navigator & {deviceMemory?: number}).deviceMemory;
-      this.lowEndGpu = /Intel.*(?:HD|UHD|Iris)|SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu) ||
-        (memory !== undefined && memory <= 4) || navigator.hardwareConcurrency <= 4;
+      const gpu = String(gl.getParameter(param) ?? '');
+      const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
       gl.getExtension('WEBGL_lose_context')?.loseContext();
-      return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+      return classifyGpuCapability(gpu, memory, navigator.hardwareConcurrency || 8);
     })();
+    this.gpuProfile = detectedProfile;
+    this.isSoftwareGl = detectedProfile.tier === 'software';
+    this.lowEndGpu = detectedProfile.tier !== 'discrete';
+    this.graphicsQuality = detectedProfile.recommendedQuality;
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl && !this.lowEndGpu,
-      powerPreference: 'low-power',
+      powerPreference: this.isSoftwareGl ? 'low-power' : 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.setPixelRatio(this.getTargetPixelRatio());
     this.renderer.shadowMap.enabled = !this.isSoftwareGl && !this.lowEndGpu;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -919,31 +969,40 @@ export class GameEngine {
     environment.dispose();
     this.scene.environment = this.envRenderTarget.texture;
 
-    // 3-point lighting rig + warm/cool contrast
-    this.hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x26352e, 0.85);
+    // 3-point high-contrast Mythic Zodiac lighting rig
+    this.hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x26352e, 0.88);
     this.scene.add(this.hemiLight);
 
-    this.keyLight = new THREE.DirectionalLight(0xffe4b8, 1.85);
+    const initShadowSize = detectedProfile.shadowMapSize || 1024;
+    this.keyLight = new THREE.DirectionalLight(0xffe4b8, 1.92);
     this.keyLight.position.set(12, 22, 10);
     this.keyLight.castShadow = !this.isSoftwareGl && !this.lowEndGpu;
-    this.keyLight.shadow.mapSize.set(1024, 1024);
+    this.keyLight.shadow.mapSize.set(initShadowSize, initShadowSize);
     this.keyLight.shadow.camera.near = 2;
     this.keyLight.shadow.camera.far = 55;
     this.keyLight.shadow.camera.left = -16;
     this.keyLight.shadow.camera.right = 16;
     this.keyLight.shadow.camera.top = 18;
     this.keyLight.shadow.camera.bottom = -18;
-    this.keyLight.shadow.bias = -0.0005;
-    this.keyLight.shadow.normalBias = 0.02;
+    this.keyLight.shadow.bias = -0.00045;
+    this.keyLight.shadow.normalBias = 0.022;
     this.scene.add(this.keyLight);
 
-    this.rimLight = new THREE.DirectionalLight(0xfde68a, 1.05);
+    this.rimLight = new THREE.DirectionalLight(0xfde68a, 1.15);
     this.rimLight.position.set(-6.5, 6.2, -3.5);
     this.scene.add(this.rimLight);
 
-    this.heroLight = new THREE.PointLight(0xfff3d1, 1.55, 11, 2);
+    this.heroLight = new THREE.PointLight(0xfff3d1, 1.65, 11, 2);
     this.heroLight.position.set(1.8, 2.55, 7.6);
     this.scene.add(this.heroLight);
+
+    // 2 reusable pooled dynamic combat flash lights (zero GC per frame)
+    for (let i = 0; i < 2; i++) {
+      const impactLight = new THREE.PointLight(0xfbbf24, 0, 10, 2);
+      impactLight.position.set(0, 1.4, 0);
+      this.scene.add(impactLight);
+      this.impactLightPool.push({ light: impactLight, intensity: 0, decayRate: 12 });
+    }
 
     this.scene.add(
       this.arenaGroup,
@@ -964,12 +1023,186 @@ export class GameEngine {
     }
     this.snapCameraToLobby();
 
+    if (!this.isSoftwareGl && !this.lowEndGpu) {
+      this.setupPostProcessing();
+    }
+
     if (!this.isSoftwareGl && !this.appearanceBlocked) {
       this.renderer.compile(this.scene, this.camera);
     }
 
     this.bindEvents();
     this.startLoop();
+  }
+
+  public getGpuProfile(): GpuProfileSummary {
+    return this.gpuProfile;
+  }
+
+  private setupPostProcessing(): void {
+    if (this.isSoftwareGl || this.lowEndGpu || this.composer) return;
+    const w = Math.max(1, this.container.clientWidth);
+    const h = Math.max(1, this.container.clientHeight);
+    const composer = new EffectComposer(this.renderer);
+    composer.setPixelRatio(this.getTargetPixelRatio());
+    composer.setSize(w, h);
+
+    const renderPass = new RenderPass(this.scene, this.camera);
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(Math.max(1, Math.floor(w * 0.5)), Math.max(1, Math.floor(h * 0.5))),
+      0.5,
+      0.42,
+      0.78
+    );
+    const gradePass = new ShaderPass(MythicZodiacGradeShader);
+    const outputPass = new OutputPass();
+
+    composer.addPass(renderPass);
+    composer.addPass(bloomPass);
+    composer.addPass(gradePass);
+    composer.addPass(outputPass);
+
+    this.composer = composer;
+    this.bloomPass = bloomPass;
+    this.gradePass = gradePass;
+    this.syncPostProcessingUniforms();
+  }
+
+  private disposePostProcessing(): void {
+    if (!this.composer) return;
+    this.composer.passes.forEach((p) => {
+      if ('dispose' in p && typeof (p as { dispose?: () => void }).dispose === 'function') {
+        (p as { dispose: () => void }).dispose();
+      }
+    });
+    this.composer.dispose();
+    this.composer = null;
+    this.bloomPass = null;
+    this.gradePass = null;
+  }
+
+  private isPostProcessingActive(): boolean {
+    if (!this.composer || this.isSoftwareGl || this.lowEndGpu) return false;
+    return this.graphicsQuality !== 'low' && this.bloomEnabled;
+  }
+
+  private syncPostProcessingUniforms(): void {
+    const cfg = resolvePostFxConfig({
+      quality: this.graphicsQuality,
+      bloomEnabled: this.bloomEnabled,
+      isSoftwareGl: this.isSoftwareGl,
+      lowEndGpu: this.lowEndGpu,
+      bloomImpulse: this.bloomImpulse,
+      chromaticImpulse: this.chromaticImpulse,
+      isBossStage: this.enemies.some((e) => e.isBoss),
+      isLobby: this.phase === GamePhase.TITLE,
+      screenShakeEnabled: this.screenShakeEnabled,
+    });
+    if (this.renderer) {
+      this.renderer.toneMappingExposure = cfg.toneMappingExposure;
+    }
+    if (this.bloomPass) {
+      this.bloomPass.enabled = cfg.enabled && cfg.bloomStrength > 0.01;
+      this.bloomPass.strength = cfg.bloomStrength;
+      this.bloomPass.radius = cfg.bloomRadius;
+      this.bloomPass.threshold = cfg.bloomThreshold;
+    }
+    if (this.gradePass) {
+      this.gradePass.enabled = cfg.enabled;
+      this.gradePass.uniforms.uVignette.value = cfg.vignetteStrength;
+      this.gradePass.uniforms.uChromatic.value = cfg.chromaticAmount;
+      this.gradePass.uniforms.uGoldWarmth.value = cfg.goldWarmth;
+    }
+  }
+
+  private renderSceneFrame(): void {
+    if (this.composer && this.isPostProcessingActive()) {
+      this.syncPostProcessingUniforms();
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  private triggerPostFxImpulse(event: PostFxImpulseEvent): void {
+    const spec = computePostFxImpulse(event);
+    this.bloomImpulse = Math.min(0.65, Math.max(this.bloomImpulse, spec.bloomBoost));
+    if (this.screenShakeEnabled) {
+      this.chromaticImpulse = Math.min(0.012, Math.max(this.chromaticImpulse, spec.chromaticBoost));
+      this.cameraFovOffset = Math.max(this.cameraFovOffset, spec.fovKick);
+    }
+  }
+
+  private spawnImpactLight(x: number, y: number, z: number, kind: CombatFlashKind): void {
+    if (this.isSoftwareGl || this.graphicsQuality === 'low' || !this.impactLightPool?.length) return;
+    const spec = computeImpactLightPulse(kind);
+    // Pick the dimmest slot to avoid popping an active brighter flash
+    let slot = this.impactLightPool[0];
+    for (let i = 1; i < this.impactLightPool.length; i++) {
+      if (this.impactLightPool[i].intensity < slot.intensity) {
+        slot = this.impactLightPool[i];
+      }
+    }
+    slot.light.position.set(x, y, z);
+    slot.light.color.setHex(spec.colorHex);
+    slot.light.distance = spec.distance;
+    slot.intensity = spec.peakIntensity;
+    slot.decayRate = spec.decayRate;
+    slot.light.intensity = spec.peakIntensity;
+  }
+
+  private updateImpactLights(dt: number): void {
+    if (!this.impactLightPool?.length) return;
+    for (let i = 0; i < this.impactLightPool.length; i++) {
+      const slot = this.impactLightPool[i];
+      if (slot.intensity > 0.02) {
+        slot.intensity *= Math.exp(-slot.decayRate * dt);
+        slot.light.intensity = slot.intensity > 0.02 ? slot.intensity : 0;
+      }
+    }
+    if (this.bloomImpulse > 0.002) {
+      this.bloomImpulse *= Math.exp(-7.5 * dt);
+      if (this.bloomImpulse < 0.002) this.bloomImpulse = 0;
+    }
+    if (this.chromaticImpulse > 0.0001) {
+      this.chromaticImpulse *= Math.exp(-11.0 * dt);
+      if (this.chromaticImpulse < 0.0001) this.chromaticImpulse = 0;
+    }
+  }
+
+  private spawnCritStar(x: number, y: number, z: number, colorHex: number, scale = 1.0): void {
+    if (!this.critStarPool?.length) return;
+    const item = this.critStarPool.find((c) => !c.active);
+    if (!item) return;
+    item.active = true;
+    item.life = 0.22;
+    item.maxLife = 0.22;
+    item.baseScale = scale;
+    item.mat.color.setHex(colorHex);
+    item.mat.opacity = 0.96;
+    item.group.position.set(x, y, z);
+    item.group.rotation.set(Math.random() * 0.6, Math.random() * Math.PI, Math.random() * 0.6);
+    item.group.scale.setScalar(0.35 * scale);
+    item.group.visible = true;
+  }
+
+  private updateCritStars(dt: number): void {
+    if (!this.critStarPool?.length) return;
+    for (let i = 0; i < this.critStarPool.length; i++) {
+      const item = this.critStarPool[i];
+      if (!item.active) continue;
+      item.life -= dt;
+      if (item.life <= 0) {
+        item.active = false;
+        item.group.visible = false;
+        continue;
+      }
+      const p = 1 - item.life / item.maxLife;
+      const pop = p < 0.28 ? 0.35 + (p / 0.28) * 1.1 : 1.45 - (p - 0.28) * 0.55;
+      item.group.scale.setScalar(Math.max(0.1, pop * item.baseScale));
+      item.group.rotation.y += dt * 4.2;
+      item.mat.opacity = Math.max(0, (1 - p) * 0.95);
+    }
   }
 
   private hasRune(id: RuneId): boolean {
@@ -1429,6 +1662,36 @@ export class GameEngine {
     this.aimLineMesh.renderOrder = 6;
     this.aimLineMesh.visible = false;
     this.scene.add(this.aimLineMesh);
+
+    // Pooled 3D Crit Star-Burst cross-flares (bloom-ready high-contrast impact sparks)
+    const flareBladeGeo = new THREE.OctahedronGeometry(0.18, 0);
+    for (let i = 0; i < 16; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xfde047,
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const grp = new THREE.Group();
+      const b1 = new THREE.Mesh(flareBladeGeo, mat);
+      b1.scale.set(0.32, 3.4, 0.32);
+      const b2 = new THREE.Mesh(flareBladeGeo, mat);
+      b2.scale.set(3.4, 0.32, 0.32);
+      const b3 = new THREE.Mesh(flareBladeGeo, mat);
+      b3.scale.set(0.32, 0.32, 3.4);
+      grp.add(b1, b2, b3);
+      grp.visible = false;
+      this.particlesGroup.add(grp);
+      this.critStarPool.push({
+        active: false,
+        life: 0,
+        maxLife: 0.22,
+        baseScale: 1,
+        group: grp,
+        mat,
+      });
+    }
   }
 
   private setAppearanceStatus(status: AppearanceStatus): void {
@@ -1932,6 +2195,7 @@ export class GameEngine {
 
   private buildArena(chapter: ChapterDefinition): void {
     this.arenaBrazierGems = [];
+    this.arenaLightShafts = [];
     while (this.arenaGroup.children.length > 0) {
       this.releaseObject(this.arenaGroup.children[0]);
     }
@@ -1956,16 +2220,18 @@ export class GameEngine {
       maxAniso
     );
     const bumpTex = createStoneBumpTexture(maxAniso);
+    const roughnessTex = createStoneRoughnessTexture(maxAniso);
 
-    // 1. Polished Marble Temple Arena Floor
+    // 1. High-Contrast Mythic PBR Marble Temple Arena Floor (Albedo + Roughness + Bump)
     const floorGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.6, 1.4, ARENA_HALF_D * 2 + 1.6);
     const floorMat = new THREE.MeshStandardMaterial({
       map: floorTex,
       bumpMap: bumpTex,
-      bumpScale: 0.036,
-      roughness: 0.42,
-      metalness: 0.24,
-      envMapIntensity: 1.25,
+      bumpScale: 0.042,
+      roughnessMap: roughnessTex,
+      roughness: 0.92,
+      metalness: 0.28,
+      envMapIntensity: 1.45,
     });
     this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
     this.floorMesh.position.set(0, -0.7, 0);
@@ -2268,6 +2534,34 @@ export class GameEngine {
     this.portal = createPortalModel(chapter.trimHex);
     this.portal.group.position.set(0, 0, -ARENA_HALF_D - 0.65);
     this.arenaGroup.add(this.portal.group);
+
+    // 8. Volumetric-Feel Zodiac Sanctuary Light Shafts (flanking Boss Gate & high-contrast skybeams)
+    if (!this.isSoftwareGl) {
+      const shaftGeo = new THREE.ConeGeometry(2.8, 17, 14, 1, true);
+      const shaftCoords: Array<[number, number, number, number]> = [
+        [-7.8, 7.6, -ARENA_HALF_D + 1.4, 0.22],
+        [7.8, 7.6, -ARENA_HALF_D + 1.4, -0.22],
+        [0, 8.2, -ARENA_HALF_D + 0.6, 0.0],
+      ];
+      shaftCoords.forEach(([sx, sy, sz, rz], idx) => {
+        const shaftMat = new THREE.MeshBasicMaterial({
+          color: idx === 2 ? chapter.keyLightHex : themeSpec.rimLightHex,
+          transparent: true,
+          opacity: idx === 2 ? 0.068 : 0.052,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+        shaft.position.set(sx, sy, sz);
+        shaft.rotation.z = rz;
+        shaft.rotation.x = 0.14;
+        shaft.userData.baseOpacity = idx === 2 ? 0.068 : 0.052;
+        this.arenaLightShafts.push(shaft);
+        this.arenaGroup.add(shaft);
+      });
+    }
+
     this.arenaGroup.visible = this.phase !== GamePhase.TITLE;
   }
 
@@ -4332,6 +4626,7 @@ export class GameEngine {
 
     if (isTitle) {
       this.clearCombatEntities();
+      soundEngine.setCombatTelemetry(0, 1, false);
       this.px = 0;
       this.pz = 4.5;
       this.pFacing = 0;
@@ -4637,6 +4932,14 @@ export class GameEngine {
       d.active = false;
       d.mesh.visible = false;
       d.ring.visible = false;
+    });
+    this.critStarPool?.forEach((c) => {
+      c.active = false;
+      c.group.visible = false;
+    });
+    this.impactLightPool?.forEach((slot) => {
+      slot.intensity = 0;
+      slot.light.intensity = 0;
     });
 
     this.lootOrbs.forEach((o) => this.releaseObject(o.mesh));
@@ -5675,6 +5978,11 @@ export class GameEngine {
   private resumeAfterContextRestore(): void {
     if (this.disposed || !this.contextLost) return;
     this.contextLost = false;
+    if (this.composer && this.container) {
+      const w = Math.max(1, this.container.clientWidth);
+      const h = Math.max(1, this.container.clientHeight);
+      this.composer.setSize(w, h);
+    }
     this.startLoop();
   }
 
@@ -5691,11 +5999,13 @@ export class GameEngine {
     screenShake: boolean;
     showDamageNumbers: boolean;
     starfallWeather?: boolean;
+    bloomEnabled?: boolean;
   }): void {
     const quality = this.isSoftwareGl || this.lowEndGpu ? 'low' : cfg.graphicsQuality;
     this.graphicsQuality = quality;
     this.screenShakeEnabled = cfg.screenShake;
     this.showDamageNumbersEnabled = cfg.showDamageNumbers;
+    this.bloomEnabled = cfg.bloomEnabled !== false;
     this.starfallEnabled = !this.lowEndGpu && !this.isSoftwareGl && cfg.starfallWeather !== false;
     if (this.starfallMesh) {
       this.starfallMesh.visible = this.starfallEnabled;
@@ -5707,8 +6017,25 @@ export class GameEngine {
       const shadowsOn = quality !== 'low';
       this.renderer.shadowMap.enabled = shadowsOn;
       this.keyLight.castShadow = shadowsOn;
+      const desiredShadowSize = quality === 'high' ? 2048 : 1024;
+      if (shadowsOn && this.keyLight.shadow.mapSize.width !== desiredShadowSize) {
+        this.keyLight.shadow.mapSize.set(desiredShadowSize, desiredShadowSize);
+        this.keyLight.shadow.map?.dispose();
+        this.keyLight.shadow.map = null;
+      }
     }
-    this.renderer.setPixelRatio(this.getTargetPixelRatio());
+    const targetDpr = this.getTargetPixelRatio();
+    this.renderer.setPixelRatio(targetDpr);
+    if (!this.isSoftwareGl && !this.lowEndGpu && quality !== 'low' && this.bloomEnabled && !this.composer) {
+      this.setupPostProcessing();
+    }
+    if (this.composer) {
+      const w = Math.max(1, this.container.clientWidth);
+      const h = Math.max(1, this.container.clientHeight);
+      this.composer.setPixelRatio(targetDpr);
+      this.composer.setSize(w, h);
+    }
+    this.syncPostProcessingUniforms();
   }
 
   private onResize = () => {
@@ -5717,8 +6044,16 @@ export class GameEngine {
     const h = Math.max(1, this.container.clientHeight);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    const targetDpr = this.getTargetPixelRatio();
     this.renderer.setSize(w, h);
-    this.renderer.setPixelRatio(this.getTargetPixelRatio());
+    this.renderer.setPixelRatio(targetDpr);
+    if (this.composer) {
+      this.composer.setPixelRatio(targetDpr);
+      this.composer.setSize(w, h);
+      if (this.bloomPass) {
+        this.bloomPass.resolution.set(Math.max(1, Math.floor(w * 0.5)), Math.max(1, Math.floor(h * 0.5)));
+      }
+    }
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -5875,6 +6210,9 @@ export class GameEngine {
     }
 
     soundEngine.playPerfectDodge();
+    this.spawnImpactLight(this.px, 1.3, this.pz, 'perfect_dodge');
+    this.spawnCritStar(this.px, 1.25, this.pz, 0x34d399, 1.65);
+    this.triggerPostFxImpulse('perfect_dodge');
     this.spawnShockwave(this.px, this.pz, 0xe0f2fe, 3.6, 0.34);
     this.spawnParticles(this.px, 0.9, this.pz, 0x38bdf8, 16);
     this.emitFloatingNumber(this.px, 2.25, this.pz, 0, true, false, 'ice', 'NÉ HOÀN HẢO!');
@@ -6034,6 +6372,9 @@ export class GameEngine {
     this.invulnTimer = Math.max(this.invulnTimer, 0.75);
     this.hitstopTimer = 0.045;
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.36);
+    this.spawnImpactLight(this.px, 1.8, this.pz, 'ultimate');
+    this.spawnCritStar(this.px, 1.5, this.pz, 0xfde047, 2.2);
+    this.triggerPostFxImpulse('ultimate');
     this.spawnUltColumn(this.px, this.pz, this.weaponAccentHex, 0.58);
     this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 6.2, 0.48);
     this.spawnShockwave(this.px, this.pz, 0xfde047, 3.8, 0.36);
@@ -6175,7 +6516,7 @@ export class GameEngine {
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
       // Keep the lobby interactive while models load. Hold combat simulation until the rider is visible.
       if (!this.appearanceBlocked || this.phase === GamePhase.TITLE) this.update(dt);
-      this.renderer.render(this.scene, this.camera);
+      this.renderSceneFrame();
       if (!this.appearanceBlocked && this.appearanceStatus === 'loading') {
         this.setAppearanceStatus('ready');
       }
@@ -6204,7 +6545,15 @@ export class GameEngine {
       } else {
         if (sync) gl.deleteSync(sync);
         this.pendingGpuSync = null;
-        const fps = this.isSoftwareGl ? 12 : this.phase === GamePhase.TITLE ? 20 : 30;
+        const fps = this.isSoftwareGl
+          ? 12
+          : this.lowEndGpu
+          ? this.phase === GamePhase.TITLE
+            ? 20
+            : 30
+          : this.phase === GamePhase.TITLE
+          ? 30
+          : 60;
         const delay = Math.max(0, 1000 / fps - (performance.now() - this.lastTime));
         this.frameId = window.setTimeout(cb, delay);
       }
@@ -6927,6 +7276,16 @@ export class GameEngine {
     }
     if (this.hitstopTimer > 0) {
       this.hitstopTimer -= dt;
+      // AAA Micro-Vibration Hit-Stop: hit-flashing targets vibrate kinetically during impact freeze
+      const jitter = computeHitstopMicroJitter(this.hitstopTimer, this.elapsed, this.screenShakeEnabled ? 1.0 : 0.35);
+      for (let ei = 0; ei < this.enemies.length; ei++) {
+        const e = this.enemies[ei];
+        if (e.hitFlashTimer > 0) {
+          e.model.root.position.set(e.x + jitter.x, 0, e.z + jitter.z);
+        }
+      }
+      this.updateImpactLights(dt);
+      this.updateCritStars(dt);
       this.updateCamera(dt);
       return;
     }
@@ -6939,6 +7298,11 @@ export class GameEngine {
     if (this.perfectDodgeBannerTimer > 0) {
       this.perfectDodgeBannerTimer = Math.max(0, this.perfectDodgeBannerTimer - dt);
     }
+    soundEngine.setCombatTelemetry(
+      this.comboCount,
+      this.hp / Math.max(1, this.maxHp),
+      this.perfectDodgeSlowTimer > 0
+    );
     if (this.isTrainingMode) {
       this.trainingClockSec += dt;
     }
@@ -6975,6 +7339,8 @@ export class GameEngine {
     this.updateUltColumns(simDt);
     this.updateDashGhosts(simDt);
     this.updateLightning(simDt);
+    this.updateCritStars(dt);
+    this.updateImpactLights(dt);
     this.updatePortalAndShrine(simDt);
     if (this.bossIntroTimer > 0) {
       this.bossIntroTimer = Math.max(0, this.bossIntroTimer - dt);
@@ -6986,6 +7352,12 @@ export class GameEngine {
       gem.position.y =
         baseShrineY +
         Math.sin(this.elapsed * 2.5 + bi * 1.57) * this.arenaThemeSpec.brazierBobAmp;
+    }
+    for (let si = 0; si < this.arenaLightShafts.length; si++) {
+      const shaft = this.arenaLightShafts[si];
+      const smat = shaft.material as THREE.MeshBasicMaterial;
+      const baseOp = (shaft.userData.baseOpacity as number) ?? 0.055;
+      smat.opacity = baseOp * (0.84 + Math.sin(this.elapsed * 0.9 + si * 2.1) * 0.16);
     }
     this.updateCamera(dt);
 
@@ -7738,7 +8110,10 @@ export class GameEngine {
       this.heroSquashY = Math.min(this.heroSquashY, 0.94);
     }
 
-    soundEngine.playBowShoot(0.95 + Math.random() * 0.12);
+    soundEngine.playBowShoot(
+      0.95 + Math.random() * 0.12,
+      computeSpatialPan(this.px, ARENA_HALF_W)
+    );
   }
 
   private updatePassivesAndPeriodicSkills(dt: number): void {
@@ -7887,8 +8262,10 @@ export class GameEngine {
         m.active = false;
         m.mesh.visible = false;
         m.ring.visible = false;
-        soundEngine.playMeteorImpact();
-        soundEngine.playImpactScorchThump();
+        const meteorPan = computeSpatialPan(m.x, ARENA_HALF_W);
+        soundEngine.playMeteorImpact(meteorPan);
+        soundEngine.playImpactScorchThump(meteorPan);
+        this.spawnImpactLight(m.x, 1.35, m.z, m.isFrost ? 'frost' : 'boss_slam');
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
         this.spawnShockwave(m.x, m.z, m.isFrost ? 0x67e8f9 : 0xf97316, m.radius * 1.15, 0.4);
         this.spawnImpactDecal(m.x, m.z, m.isFrost ? 0x22d3ee : 0xf97316, m.radius * 0.86, 1.75);
@@ -8333,7 +8710,25 @@ export class GameEngine {
         e.model.root.scale.setScalar(Math.max(0.05, p) * baseScale);
         continue;
       }
-      e.model.root.scale.setScalar(baseScale);
+      // AAA Elastic Hit-Squash & Directional Knockback Recoil Recovery
+      if (e.hitSquashY !== undefined && Math.abs(e.hitSquashY - 1) > 0.004) {
+        e.hitSquashY = THREE.MathUtils.damp(e.hitSquashY, 1, 15, dt);
+        e.hitStretchXZ = THREE.MathUtils.damp(e.hitStretchXZ ?? 1, 1, 15, dt);
+        e.model.root.scale.set(
+          baseScale * (e.hitStretchXZ ?? 1),
+          baseScale * e.hitSquashY,
+          baseScale * (e.hitStretchXZ ?? 1)
+        );
+      } else {
+        e.model.root.scale.setScalar(baseScale);
+      }
+      if ((e.knockVx || e.knockVz) && !e.isTrainingDummy && !e.isVaultPillar) {
+        e.x = THREE.MathUtils.clamp(e.x + (e.knockVx ?? 0) * dt, -ARENA_HALF_W + e.radius, ARENA_HALF_W - e.radius);
+        e.z = THREE.MathUtils.clamp(e.z + (e.knockVz ?? 0) * dt, -ARENA_HALF_D + e.radius, ARENA_HALF_D - e.radius);
+        const damp = Math.exp(-13.5 * dt);
+        e.knockVx = Math.abs(e.knockVx ?? 0) > 0.05 ? (e.knockVx ?? 0) * damp : 0;
+        e.knockVz = Math.abs(e.knockVz ?? 0) > 0.05 ? (e.knockVz ?? 0) * damp : 0;
+      }
 
       if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
       const statusTint = resolveEnemyStatusTint({
@@ -9003,8 +9398,11 @@ export class GameEngine {
         this.spawnImpactDecal(e.slamX, e.slamZ, 0xf97316, e.slamRadius * 0.95, 1.85);
         this.spawnParticles(e.slamX, 0.4, e.slamZ, 0xf97316, 22);
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.34);
-        soundEngine.playMeteorImpact();
-        soundEngine.playImpactScorchThump();
+        const slamPan = computeSpatialPan(e.slamX, ARENA_HALF_W);
+        soundEngine.playMeteorImpact(slamPan);
+        soundEngine.playImpactScorchThump(slamPan);
+        this.spawnImpactLight(e.slamX, 1.4, e.slamZ, 'boss_slam');
+        this.triggerPostFxImpulse('boss_slam');
         if (Math.hypot(this.px - e.slamX, this.pz - e.slamZ) <= e.slamRadius + 0.35) {
           this.damagePlayer(
             e.damage * 1.15,
@@ -9431,8 +9829,12 @@ export class GameEngine {
           this.bossBrokenBannerTimer = 2.6;
           this.hitstopTimer = Math.max(this.hitstopTimer, 0.085);
           this.shakeIntensity = Math.max(this.shakeIntensity, 0.55);
-          soundEngine.playBossPhaseRoar();
-          soundEngine.playImpactScorchThump();
+          const breakPan = computeSpatialPan(e.x, ARENA_HALF_W);
+          soundEngine.playBossBreakShatter(breakPan);
+          soundEngine.playImpactScorchThump(breakPan);
+          this.spawnImpactLight(e.x, 1.8, e.z, 'super_crit');
+          this.spawnCritStar(e.x, 1.5, e.z, 0xfde047, 2.4);
+          this.triggerPostFxImpulse('boss_break');
           this.spawnShockwave(e.x, e.z, 0xfde047, 6.8, 0.54);
           this.spawnImpactDecal(e.x, e.z, 0xfde047, 3.2, 2.0);
           this.spawnParticles(e.x, 1.3, e.z, 0xfde047, 36);
@@ -9496,8 +9898,10 @@ export class GameEngine {
       if (!reducedMotion) {
         this.hitstopTimer = Math.max(this.hitstopTimer, 0.045);
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.52);
+        this.triggerPostFxImpulse('boss_phase');
       }
       soundEngine.playBossPhaseTwo();
+      this.spawnImpactLight(e.x, 1.8, e.z, 'boss_slam');
       if (e.model.bossCoreMat) {
         e.model.bossCoreMat.emissive.setHex(0xf43f5e);
         e.model.bossCoreMat.emissiveIntensity = 2.85;
@@ -9586,7 +9990,8 @@ export class GameEngine {
       e.chillTimer = 2.6;
     }
 
-    soundEngine.playHit(isCrit, this.comboCount);
+    const hitPan = computeSpatialPan(e.x, ARENA_HALF_W);
+    soundEngine.playHit(isCrit, this.comboCount, hitPan);
     this.spawnParticles(
       e.x,
       1.05,
@@ -9598,11 +10003,35 @@ export class GameEngine {
     const isSuperCrit =
       isCrit && (dmgSource === 'ultimate' || finalDmg >= this.baseStats.attack * 3.1);
 
+    // AAA Directional Knockback & Elastic Hit-Squash Recoil
+    const recoil = computeKnockbackImpulse({
+      dirX: e.x - this.px,
+      dirZ: e.z - this.pz,
+      isCrit,
+      isSuperCrit,
+      isBoss: e.isBoss,
+      isElite: e.isElite,
+    });
+    e.hitSquashY = recoil.squashY;
+    e.hitStretchXZ = recoil.stretchXZ;
+    if (!e.isBoss && !e.isTrainingDummy && !e.isVaultPillar) {
+      e.knockVx = (e.knockVx ?? 0) * 0.3 + recoil.impulseX;
+      e.knockVz = (e.knockVz ?? 0) * 0.3 + recoil.impulseZ;
+    }
+
     if (isCrit && (blaze || frost || storm)) {
       const ringColor = blaze ? 0xf97316 : frost ? 0x67e8f9 : 0xa78bfa;
       this.spawnShockwave(e.x, e.z, ringColor, 1.85, 0.24);
+      this.spawnCritStar(e.x, 1.15, e.z, ringColor, isSuperCrit ? 1.55 : 1.15);
+      this.spawnImpactLight(e.x, 1.25, e.z, storm ? 'storm' : frost ? 'frost' : 'crit');
     } else if (isSuperCrit) {
       this.spawnShockwave(e.x, e.z, 0xfde047, 1.65, 0.2);
+      this.spawnCritStar(e.x, 1.2, e.z, 0xfde047, 1.6);
+      this.spawnImpactLight(e.x, 1.35, e.z, 'super_crit');
+      this.triggerPostFxImpulse('super_crit');
+    } else if (isCrit) {
+      this.spawnCritStar(e.x, 1.12, e.z, 0xfbbf24, 1.05);
+      this.spawnImpactLight(e.x, 1.2, e.z, 'crit');
     }
 
     if (isCrit) {
@@ -9684,14 +10113,18 @@ export class GameEngine {
       maxCombo: this.maxRunCombo,
     });
     this.markedEnemyIds.delete(e.id);
-    soundEngine.playEnemyDefeated(e.isBoss || e.isElite);
+    const killPan = computeSpatialPan(e.x, ARENA_HALF_W);
+    soundEngine.playEnemyDefeated(e.isBoss || e.isElite, killPan);
 
     const burstColor = e.isBoss ? 0xfbbf24 : e.isElite ? 0xc084fc : 0x38bdf8;
     this.spawnParticles(e.x, 1.0, e.z, burstColor, e.isBoss ? 44 : e.isElite ? 28 : 20);
     this.spawnShockwave(e.x, e.z, burstColor, e.isBoss ? 5.6 : e.isElite ? 3.2 : 2.1, e.isBoss ? 0.5 : 0.32);
 
     if (e.isBoss) {
-      soundEngine.playShockwave();
+      soundEngine.playShockwave(killPan);
+      this.spawnImpactLight(e.x, 2.0, e.z, 'ultimate');
+      this.spawnCritStar(e.x, 1.6, e.z, 0xfde047, 2.6);
+      this.triggerPostFxImpulse('boss_break');
       this.hitstopTimer = 0.09;
       this.shakeIntensity = 0.52;
       this.dangerLanePool.forEach((l) => {
@@ -9699,7 +10132,8 @@ export class GameEngine {
         l.mesh.visible = false;
       });
     } else if (e.isElite) {
-      soundEngine.playShockwave();
+      soundEngine.playShockwave(killPan);
+      this.spawnImpactLight(e.x, 1.4, e.z, 'super_crit');
       this.hitstopTimer = Math.max(this.hitstopTimer, 0.036);
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
     } else {
@@ -10412,6 +10846,7 @@ export class GameEngine {
         ? computeHitIndicatorAngleDeg(this.px, this.pz, sourceX, sourceZ)
         : null;
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.28);
+    this.triggerPostFxImpulse('player_hurt');
     soundEngine.playPlayerHurt();
 
     if (this.baseStats.heroId === 'alex') {
@@ -11571,6 +12006,7 @@ export class GameEngine {
       this.dragonMotion = undefined;
     }
     this.releaseObject(this.scene);
+    this.disposePostProcessing();
     this.contactShadowTex.dispose();
     this.keyLight.shadow.dispose();
     this.envRenderTarget.dispose();

@@ -1,4 +1,8 @@
 import { computeComboHitPitch } from './audioCurves';
+import {
+  computeAdaptiveCombatIntensity,
+  computeTimeScaleAudioFilter,
+} from './aaaAudioMix';
 import { computeBossBgmStepDuration } from '../engine/zodiacArena';
 
 export type BgmMode = 'silent' | 'lobby' | 'combat' | 'boss';
@@ -6,8 +10,11 @@ export type BgmMode = 'silent' | 'lobby' | 'combat' | 'boss';
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterCompressor: DynamicsCompressorNode | null = null;
+  private masterFilter: BiquadFilterNode | null = null;
   private sfxGain: GainNode | null = null;
   private bgmGain: GainNode | null = null;
+  private reverbInput: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
 
   public muted = false;
@@ -17,6 +24,9 @@ class SoundEngine {
 
   private bgmMode: BgmMode = 'silent';
   private bossIntensity: 1 | 2 | 3 = 1;
+  private combatCombo = 0;
+  private combatHpRatio = 1;
+  private combatSlowMo = false;
   private bgmTimer: number | null = null;
   private bgmStep = 0;
   private bgmNextNoteTime = 0;
@@ -33,9 +43,50 @@ class SoundEngine {
         this.sfxGain = this.ctx.createGain();
         this.bgmGain = this.ctx.createGain();
 
+        // AAA Mastering Bus: Dynamic Filter (Slow-Mo focus) -> Dynamics Compressor (zero clipping) -> Destination
+        this.masterFilter = this.ctx.createBiquadFilter();
+        this.masterFilter.type = 'lowpass';
+        this.masterFilter.frequency.value = 18000;
+        this.masterFilter.Q.value = 0.7;
+
+        this.masterCompressor = this.ctx.createDynamicsCompressor();
+        this.masterCompressor.threshold.value = -14;
+        this.masterCompressor.knee.value = 18;
+        this.masterCompressor.ratio.value = 4.5;
+        this.masterCompressor.attack.value = 0.005;
+        this.masterCompressor.release.value = 0.14;
+
+        // Procedural Celestial Temple Reverb Send (damped stereo feedback delay)
+        this.reverbInput = this.ctx.createGain();
+        this.reverbInput.gain.value = 0.22;
+        const delayA = this.ctx.createDelay(0.5);
+        delayA.delayTime.value = 0.115;
+        const delayB = this.ctx.createDelay(0.5);
+        delayB.delayTime.value = 0.187;
+        const dampFilter = this.ctx.createBiquadFilter();
+        dampFilter.type = 'lowpass';
+        dampFilter.frequency.value = 2400;
+        const fbGain = this.ctx.createGain();
+        fbGain.gain.value = 0.32;
+        const wetGain = this.ctx.createGain();
+        wetGain.gain.value = 0.28;
+
+        this.reverbInput.connect(delayA);
+        delayA.connect(dampFilter);
+        dampFilter.connect(delayB);
+        delayB.connect(fbGain);
+        fbGain.connect(delayA);
+        dampFilter.connect(wetGain);
+        wetGain.connect(this.masterGain);
+
         this.sfxGain.connect(this.masterGain);
         this.bgmGain.connect(this.masterGain);
-        this.masterGain.connect(this.ctx.destination);
+        this.bgmGain.connect(this.reverbInput);
+
+        this.masterGain.connect(this.masterFilter);
+        this.masterFilter.connect(this.masterCompressor);
+        this.masterCompressor.connect(this.ctx.destination);
+
         // Pre-bake a 0.25s white noise buffer once for crisp zero-GC transients
         const bufLen = Math.floor(this.ctx.sampleRate * 0.25);
         this.noiseBuffer = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
@@ -82,10 +133,26 @@ class SoundEngine {
     src.stop(startTime + duration + 0.01);
   }
 
-  private getSfxDest(): AudioNode | null {
+  private getSfxDest(pan = 0, sendReverb = false): AudioNode | null {
     const ctx = this.ensureContext();
     if (!ctx) return null;
-    return this.sfxGain ?? ctx.destination;
+    const baseDest = this.sfxGain ?? ctx.destination;
+    if (sendReverb && this.reverbInput && Math.abs(pan) < 0.02) {
+      const split = ctx.createGain();
+      split.connect(baseDest);
+      split.connect(this.reverbInput);
+      return split;
+    }
+    if (Math.abs(pan) >= 0.02 && typeof ctx.createStereoPanner === 'function') {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = Math.max(-0.75, Math.min(0.75, pan));
+      panner.connect(baseDest);
+      if (sendReverb && this.reverbInput) {
+        panner.connect(this.reverbInput);
+      }
+      return panner;
+    }
+    return baseDest;
   }
 
   private applyGains(): void {
@@ -123,6 +190,24 @@ class SoundEngine {
 
   public setBossIntensity(phase: 1 | 2 | 3): void {
     this.bossIntensity = phase;
+  }
+
+  /**
+   * Feeds live combat telemetry (combo tier, HP ratio, Perfect Dodge slow-mo)
+   * into the adaptive BGM layer mixer and dynamic master low-pass filter.
+   */
+  public setCombatTelemetry(comboCount: number, hpRatio: number, slowMoActive: boolean): void {
+    this.combatCombo = Math.max(0, Math.floor(comboCount));
+    this.combatHpRatio = Math.max(0, Math.min(1, hpRatio));
+    this.combatSlowMo = slowMoActive;
+    if (this.ctx && this.masterFilter) {
+      const targetHz = computeTimeScaleAudioFilter(this.combatSlowMo, this.combatHpRatio);
+      this.masterFilter.frequency.setTargetAtTime(
+        targetHz,
+        this.ctx.currentTime,
+        slowMoActive ? 0.045 : 0.14
+      );
+    }
   }
 
   public playBossEntranceFanfare(): void {
@@ -268,7 +353,8 @@ class SoundEngine {
     }
 
     if (this.bgmMode === 'combat') {
-      // Heroic action pulse with filtered lead + rhythmic fifth bass + kick thump
+      // Adaptive Heroic Action Pulse: layers evolve dynamically with Combo Tier (0..3) + Low-HP heartbeat
+      const adaptive = computeAdaptiveCombatIntensity(this.combatCombo, this.combatHpRatio);
       const melody = [
         293.66, 0, 349.23, 440.0, 523.25, 0, 440.0, 392.0,
         293.66, 0, 349.23, 440.0, 587.33, 523.25, 440.0, 392.0,
@@ -278,17 +364,31 @@ class SoundEngine {
         const osc = ctx.createOscillator();
         const filter = ctx.createBiquadFilter();
         const g = ctx.createGain();
-        osc.type = 'triangle';
+        osc.type = adaptive.tier >= 2 ? 'sawtooth' : 'triangle';
         osc.frequency.setValueAtTime(mFreq, time);
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(2200, time);
-        g.gain.setValueAtTime(0.11, time);
+        filter.frequency.setValueAtTime(adaptive.filterCutoffHz, time);
+        g.gain.setValueAtTime(adaptive.tier >= 2 ? 0.095 : 0.11, time);
         g.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.9);
         osc.connect(filter);
         filter.connect(g);
         g.connect(dest);
         osc.start(time);
         osc.stop(time + stepDur * 0.95);
+
+        // Adaptive Combo Tier 1+ radiant upper-octave harmonic counter-layer
+        if (adaptive.harmonicGain > 0 && (step % 2 === 0 || adaptive.tier >= 3)) {
+          const harm = ctx.createOscillator();
+          const hg = ctx.createGain();
+          harm.type = 'sine';
+          harm.frequency.setValueAtTime(mFreq * (adaptive.tier >= 3 ? 2 : 1.5), time);
+          hg.gain.setValueAtTime(adaptive.harmonicGain, time);
+          hg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.85);
+          harm.connect(hg);
+          hg.connect(dest);
+          harm.start(time);
+          harm.stop(time + stepDur * 0.9);
+        }
       }
       if (step % 2 === 0) {
         const root = step >= 8 ? 110 : 146.83;
@@ -315,6 +415,34 @@ class SoundEngine {
         kg.connect(dest);
         kick.start(time);
         kick.stop(time + 0.13);
+      }
+      // Adaptive Combo Tier 1+ crisp battle hi-hat / snare groove
+      if (adaptive.percGain > 0 && (step % 4 === 2 || (adaptive.tier >= 2 && step % 2 === 1))) {
+        this.playNoiseBurst(
+          ctx,
+          dest,
+          time,
+          step % 4 === 2 ? 0.065 : 0.032,
+          'highpass',
+          step % 4 === 2 ? 1900 : 4200,
+          1200,
+          adaptive.percGain,
+          1.4
+        );
+      }
+      // Subtle Low-HP adrenaline heartbeat sub-pulse
+      if (adaptive.lowHpPulse && (step === 0 || step === 1 || step === 8 || step === 9)) {
+        const hb = ctx.createOscillator();
+        const hbg = ctx.createGain();
+        hb.type = 'sine';
+        hb.frequency.setValueAtTime(step % 2 === 0 ? 78 : 64, time);
+        hb.frequency.exponentialRampToValueAtTime(38, time + 0.09);
+        hbg.gain.setValueAtTime(0.14, time);
+        hbg.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
+        hb.connect(hbg);
+        hbg.connect(dest);
+        hb.start(time);
+        hb.stop(time + 0.11);
       }
       return;
     }
@@ -457,8 +585,8 @@ class SoundEngine {
   }
 
   // === COMBAT SFX ===
-  public playBowShoot(pitchShift = 1): void {
-    const dest = this.getSfxDest();
+  public playBowShoot(pitchShift = 1, pan = 0): void {
+    const dest = this.getSfxDest(pan, false);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
@@ -479,8 +607,8 @@ class SoundEngine {
     this.playNoiseBurst(ctx, dest, now, 0.065, 'bandpass', 2400 * pitchShift, 980 * pitchShift, 0.055, 2.2);
   }
 
-  public playHit(isCrit: boolean, comboCount = 0): void {
-    const dest = this.getSfxDest();
+  public playHit(isCrit: boolean, comboCount = 0, pan = 0): void {
+    const dest = this.getSfxDest(pan, isCrit);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
@@ -505,6 +633,19 @@ class SoundEngine {
     this.playNoiseBurst(ctx, dest, now, 0.04, 'highpass', isCrit ? 2200 : 1500, 900, isCrit ? 0.055 : 0.03, 1.0);
 
     if (isCrit) {
+      // Sub-bass punch + crystalline golden harmonic ping
+      const sub = ctx.createOscillator();
+      const sGain = ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(130, now);
+      sub.frequency.exponentialRampToValueAtTime(48, now + 0.085);
+      sGain.gain.setValueAtTime(0.11, now);
+      sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+      sub.connect(sGain);
+      sGain.connect(dest);
+      sub.start(now);
+      sub.stop(now + 0.1);
+
       const chime = ctx.createOscillator();
       const cGain = ctx.createGain();
       chime.type = 'triangle';
@@ -564,8 +705,8 @@ class SoundEngine {
     osc.stop(now + 0.135);
   }
 
-  public playEnemyDefeated(isMajor = false): void {
-    const dest = this.getSfxDest();
+  public playEnemyDefeated(isMajor = false, pan = 0): void {
+    const dest = this.getSfxDest(pan, isMajor);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
@@ -691,8 +832,8 @@ class SoundEngine {
     osc.stop(now + 0.05);
   }
 
-  public playMeteorImpact(): void {
-    const dest = this.getSfxDest();
+  public playMeteorImpact(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
@@ -707,6 +848,7 @@ class SoundEngine {
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.27);
+    this.playNoiseBurst(ctx, dest, now, 0.18, 'lowpass', 640, 140, 0.12, 1.1);
   }
 
   public playSwordStrike(): void {
@@ -809,8 +951,8 @@ class SoundEngine {
     osc.stop(now + 0.52);
   }
 
-  public playShockwave(): void {
-    const dest = this.getSfxDest();
+  public playShockwave(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
@@ -1252,8 +1394,8 @@ class SoundEngine {
     osc.stop(now + 0.06);
   }
 
-  public playImpactScorchThump(): void {
-    const dest = this.getSfxDest();
+  public playImpactScorchThump(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
@@ -1268,6 +1410,45 @@ class SoundEngine {
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.3);
+  }
+
+  /**
+   * Multi-layered Boss Guard Break Shatter: tectonic sub-drop + crystalline gold chord + crackle burst.
+   */
+  public playBossBreakShatter(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const sub = ctx.createOscillator();
+    const sg = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(155, now);
+    sub.frequency.exponentialRampToValueAtTime(36, now + 0.36);
+    sg.gain.setValueAtTime(0.24, now);
+    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    sub.connect(sg);
+    sg.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.4);
+
+    this.playNoiseBurst(ctx, dest, now, 0.16, 'highpass', 3200, 960, 0.12, 1.5);
+
+    [587.33, 880.0, 1174.66, 1760.0].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.022;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.08, t + 0.24);
+      g.gain.setValueAtTime(0.095, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    });
   }
 }
 

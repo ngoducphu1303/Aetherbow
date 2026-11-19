@@ -1294,4 +1294,86 @@ test('Phase 5 · Strategy Codex Builders (9 Skill Synergies & 12 Zodiac Bosses)'
   assert.equal(bossEntries[11].cleared, false);
 });
 
+test('AAA Ch.1–3 Seeded Economy Simulation: P10/P50/P90 Rare/Epic/S-Tier unlock milestones stay strictly gated', () => {
+  const percentile = (sorted: number[], p: number): number => {
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * p)));
+    return sorted[idx];
+  };
+
+  // Simulate 120 seeded players progressing across Ch.1 (stage 4/12), Ch.2 (stage 12), and Ch.3
+  const rareRolls: number[] = [];
+  const epicRolls: number[] = [];
+  const sTierRolls: number[] = [];
+
+  const ch1MidPolicy = getEarlyProgressionPolicy({
+    highestChapterCleared: 0,
+    bestStagePerChapter: { 1: 4 },
+  });
+  const ch2Policy = getEarlyProgressionPolicy({
+    highestChapterCleared: 1,
+    bestStagePerChapter: { 1: 12, 2: 6 },
+  });
+  const ch3Policy = getEarlyProgressionPolicy({
+    highestChapterCleared: 2,
+    bestStagePerChapter: { 1: 12, 2: 12, 3: 4 },
+  });
+
+  for (let seed = 1; seed <= 120; seed++) {
+    const rng = createMulberry32(9000 + seed * 37);
+    let pity = { mythicRollsSinceEpic: 0, mythicRollsSinceSTier: 0, runeRollsSinceEpic: 0 };
+
+    // 1) First Rare inside Ch.1 mid-chapter (policy caps at RARE, no Epic/S leak)
+    let rareHit = -1;
+    for (let roll = 1; roll <= 15; roll++) {
+      const res = rollChestGearBatch(true, 1, pity, { policy: ch1MidPolicy, rng });
+      pity = res.nextPity;
+      const item = res.items[0];
+      assert.ok(RARITY_RANK[item.rarity] <= RARITY_RANK[Rarity.RARE]);
+      assert.equal(Boolean(GEAR_TEMPLATES[item.templateId]?.isSTier), false);
+      if (rareHit === -1 && item.rarity === Rarity.RARE) {
+        rareHit = roll;
+      }
+    }
+    rareRolls.push(rareHit === -1 ? 15 : rareHit);
+
+    // 2) First Epic once Ch.1 is cleared (pity carried from Ch.1 triggers immediately or within 10)
+    let epicHit = -1;
+    for (let roll = 1; roll <= 12; roll++) {
+      const res = rollChestGearBatch(true, 1, pity, { policy: ch2Policy, rng });
+      pity = res.nextPity;
+      const item = res.items[0];
+      assert.ok(RARITY_RANK[item.rarity] <= RARITY_RANK[Rarity.EPIC]);
+      assert.equal(Boolean(GEAR_TEMPLATES[item.templateId]?.isSTier), false);
+      if (epicHit === -1 && item.rarity === Rarity.EPIC) {
+        epicHit = roll;
+      }
+    }
+    epicRolls.push(epicHit);
+
+    // 3) First S-Tier in Ch.3 (pity guarantees S-tier within <= 30 rolls, carried cleanly)
+    let sHit = -1;
+    for (let roll = 1; roll <= 35; roll++) {
+      const res = rollChestGearBatch(true, 1, pity, { policy: ch3Policy, rng });
+      pity = res.nextPity;
+      if (sHit === -1 && GEAR_TEMPLATES[res.items[0].templateId]?.isSTier) {
+        sHit = roll;
+        break;
+      }
+    }
+    sTierRolls.push(sHit);
+  }
+
+  rareRolls.sort((a, b) => a - b);
+  epicRolls.sort((a, b) => a - b);
+  sTierRolls.sort((a, b) => a - b);
+
+  // Every simulated player hits Rare in Ch.1, Epic immediately/fast in Ch.2, and S-tier in Ch.3
+  assert.ok(percentile(rareRolls, 0.5) <= 4, `Rare P50 expected <= 4 rolls, got ${percentile(rareRolls, 0.5)}`);
+  assert.ok(percentile(epicRolls, 0.5) === 1, `Epic P50 after Ch.1 pity carryover expected 1, got ${percentile(epicRolls, 0.5)}`);
+  assert.ok(percentile(epicRolls, 0.9) <= 10, `Epic P90 expected <= 10 rolls, got ${percentile(epicRolls, 0.9)}`);
+  assert.ok(sTierRolls.every((r) => r >= 1 && r <= 30), 'All Ch.3 players must hit S-tier within pity window');
+  assert.ok(percentile(sTierRolls, 0.5) <= 15, `S-tier P50 expected <= 15 rolls in Ch.3, got ${percentile(sTierRolls, 0.5)}`);
+});
+
+
 

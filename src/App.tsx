@@ -9698,6 +9698,7 @@ export default function App() {
           settings={currentSettings}
           muted={save.muted}
           save={save}
+          gpuProfile={engineRef.current?.getGpuProfile()}
           onUpdateSettings={handleUpdateSettings}
           onToggleMute={handleToggleMute}
           onReplayTutorial={

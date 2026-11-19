@@ -27,12 +27,19 @@ import { evaluateEquippedGearSets } from '../data/gearData';
 import { HERO_MAP } from '../data/heroesData';
 import { decodeSaveTransferCode, encodeSaveTransferCode } from '../data/phase5Data';
 import { SKILL_SYNERGIES, SKILL_SYNERGY_MAP } from '../data/skillsData';
-import { GameSettings, GraphicsQuality, SaveData, SaveTransferPreview } from '../types/game';
+import {
+  GameSettings,
+  GpuProfileSummary,
+  GraphicsQuality,
+  SaveData,
+  SaveTransferPreview,
+} from '../types/game';
 
 interface SettingsModalProps {
   settings: GameSettings;
   muted: boolean;
   save?: SaveData;
+  gpuProfile?: GpuProfileSummary;
   onUpdateSettings: (patch: Partial<GameSettings>) => void;
   onToggleMute: () => void;
   onReplayTutorial?: () => void;
@@ -71,6 +78,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   muted,
   save,
+  gpuProfile,
   onUpdateSettings,
   onToggleMute,
   onReplayTutorial,
@@ -94,8 +102,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const qualityOptions: Array<{ id: GraphicsQuality; label: string; hint: string }> = [
     { id: 'low', label: 'Thấp', hint: 'Tối ưu FPS' },
-    { id: 'medium', label: 'Trung Bình', hint: 'Cân bằng' },
-    { id: 'high', label: 'Cao', hint: 'Đổ bóng & Hạt 3D' },
+    { id: 'medium', label: 'Trung Bình', hint: 'Cân bằng 3D' },
+    { id: 'high', label: 'Cao', hint: 'AAA Bloom & 2K' },
   ];
 
   const metrics = save ? normalizePlaytestMetrics(save.playtestMetrics) : null;
@@ -838,10 +846,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* 3D Graphics Quality */}
         <div className="space-y-2.5">
-          <div className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-            <Monitor className="w-4 h-4" />
-            <span>Chất Lượng Đồ Họa 3D</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+              <Monitor className="w-4 h-4 shrink-0" />
+              <span>Chất Lượng Đồ Họa 3D</span>
+            </div>
+            {gpuProfile && settings.graphicsQuality !== gpuProfile.recommendedQuality && (
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick(1.06);
+                  onUpdateSettings({
+                    graphicsQuality: gpuProfile.recommendedQuality,
+                    bloomEnabled: gpuProfile.bloomSupported,
+                  });
+                }}
+                className="text-[11px] font-bold text-sky-300 hover:text-sky-200 underline underline-offset-2 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Dùng mức đề xuất
+              </button>
+            )}
           </div>
+
+          {gpuProfile && (
+            <div className="rounded-xl bg-[#070b18] border border-slate-800 px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
+              <div className="min-w-0">
+                <div className="font-bold text-slate-200 truncate">{gpuProfile.tierLabel}</div>
+                <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                  Đề xuất:{' '}
+                  <span className="text-amber-300 font-bold">
+                    {gpuProfile.recommendedQuality === 'high'
+                      ? 'Cao (AAA)'
+                      : gpuProfile.recommendedQuality === 'medium'
+                      ? 'Trung Bình'
+                      : 'Thấp'}
+                  </span>
+                  {' · '}
+                  {gpuProfile.bloomSupported ? 'Hỗ trợ Bloom HDR' : 'Tự tắt Bloom để giữ FPS'}
+                </div>
+              </div>
+              <span className="font-mono-nums text-[10px] font-bold text-slate-400 uppercase shrink-0">
+                {gpuProfile.tier}
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-2">
             {qualityOptions.map((opt) => {
               const active = settings.graphicsQuality === opt.id;
@@ -874,7 +923,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Combat & 3D Toggles */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5">
           <button
             type="button"
             onClick={() => {
@@ -926,6 +975,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="text-xs font-black">Mưa Sao Băng 3D</div>
             <div className="text-[11px] mt-0.5 font-semibold">
               {settings.starfallWeather !== false ? 'Đang bật' : 'Đã tắt'}
+            </div>
+          </button>
+
+          <button
+            type="button"
+            disabled={gpuProfile ? !gpuProfile.bloomSupported : false}
+            onClick={() => {
+              soundEngine.playUiClick();
+              onUpdateSettings({ bloomEnabled: settings.bloomEnabled === false });
+            }}
+            className={`p-3 rounded-xl border text-left transition-colors ${
+              gpuProfile && !gpuProfile.bloomSupported
+                ? 'bg-[#080d1e] border-slate-800 text-slate-500 cursor-not-allowed'
+                : settings.bloomEnabled !== false && settings.graphicsQuality !== 'low'
+                ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100 cursor-pointer'
+                : 'bg-[#080d1e] border-slate-700 text-slate-400 cursor-pointer'
+            }`}
+          >
+            <div className="text-xs font-black">Hậu Kỳ Bloom 3D</div>
+            <div className="text-[11px] mt-0.5 font-semibold">
+              {gpuProfile && !gpuProfile.bloomSupported
+                ? 'GPU tự tắt'
+                : settings.graphicsQuality === 'low'
+                ? 'Tắt ở mức Thấp'
+                : settings.bloomEnabled !== false
+                ? 'Đang bật'
+                : 'Đã tắt'}
             </div>
           </button>
         </div>
