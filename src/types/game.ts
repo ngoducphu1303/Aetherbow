@@ -1599,6 +1599,7 @@ export interface HudSnapshot {
   portalOpen: boolean;
   isBossStage: boolean;
   lastPlayerHitAt: number;
+  lastHitAngleDeg?: number | null;
   runGold: number;
   runGems: number;
   kills: number;

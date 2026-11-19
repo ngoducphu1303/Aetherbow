@@ -1228,6 +1228,47 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.14);
   }
+
+  private lastTargetLockSfxAt = 0;
+
+  public playTargetLockTick(isPriorityTarget = false): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    if (now - this.lastTargetLockSfxAt < 0.24) return;
+    this.lastTargetLockSfxAt = now;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    const baseFreq = isPriorityTarget ? 1180 : 940;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.22, now + 0.04);
+    gain.gain.setValueAtTime(isPriorityTarget ? 0.042 : 0.024, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.06);
+  }
+
+  public playImpactScorchThump(): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(112, now);
+    osc.frequency.exponentialRampToValueAtTime(34, now + 0.26);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
 }
 
 export const soundEngine = new SoundEngine();

@@ -160,15 +160,52 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         />
       )}
 
-      {/* Subtle Crimson Edge Vignette on Player Hit */}
-      {damageFlashKey > 0 && (
+      {/* Perfect Dodge Kinetic Edge Sheen (Active Counter-Strike Buff) */}
+      {(hud.perfectDodgeBuffTimer ?? 0) > 0 && (
         <div
-          key={damageFlashKey}
-          className="fixed inset-0 pointer-events-none a2-damage-flash"
+          aria-hidden="true"
+          className="fixed inset-0 pointer-events-none transition-opacity duration-200"
           style={{
-            boxShadow: 'inset 0 0 72px 18px rgba(244, 63, 94, 0.7)',
+            boxShadow: 'inset 0 0 68px 14px rgba(16, 185, 129, 0.34)',
           }}
         />
+      )}
+
+      {/* Subtle Crimson Edge Vignette + Diegetic Directional Hit Arc on Player Hit */}
+      {damageFlashKey > 0 && (
+        <>
+          <div
+            key={damageFlashKey}
+            aria-hidden="true"
+            className="fixed inset-0 pointer-events-none a2-damage-flash"
+            style={{
+              boxShadow: 'inset 0 0 72px 18px rgba(244, 63, 94, 0.7)',
+            }}
+          />
+          {hud.lastHitAngleDeg !== undefined && hud.lastHitAngleDeg !== null && (
+            <div
+              key={`arc-${damageFlashKey}`}
+              aria-hidden="true"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 sm:w-64 sm:h-64 pointer-events-none a2-damage-flash"
+            >
+              <svg
+                viewBox="0 0 200 200"
+                className="w-full h-full"
+                style={{ transform: `rotate(${hud.lastHitAngleDeg}deg)` }}
+              >
+                <path
+                  d="M 64 24 A 84 84 0 0 1 136 24"
+                  fill="none"
+                  stroke="#fb7185"
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                  opacity="0.92"
+                />
+                <polygon points="100,10 92,22 108,22" fill="#fda4af" />
+              </svg>
+            </div>
+          )}
+        </>
       )}
 
       {/* Floating Damage Numbers (Clean AAA elemental typography & crit pop) */}
@@ -1331,14 +1368,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       ) : null}
 
-      {/* Stage / Room Clear Banner */}
+      {/* Stage / Room Clear Banner (Pinned tightly below top readout so north enemies stay 100% clear) */}
       {!hud.bossWarningTitle && !bossIntroTitle && hud.stageBannerText && (
-        <div className="mt-1.5 flex justify-center px-4">
+        <div className="fixed top-[74px] left-1/2 -translate-x-1/2 z-[12] pointer-events-none px-3">
           <div
-            className={`px-4 py-1 rounded-xl border font-display text-[11px] sm:text-xs font-black shadow-xl tracking-wide ${
+            className={`px-3.5 py-0.5 rounded-lg border-b font-display text-[11px] font-black tracking-[0.06em] whitespace-nowrap shadow-[0_6px_18px_rgba(0,0,0,0.65)] ${
               hud.portalOpen
-                ? 'bg-[#081d18]/92 border-emerald-400/70 text-emerald-200'
-                : 'bg-[#0a1026]/92 border-amber-300/55 text-amber-200'
+                ? 'bg-[#071814]/92 border-emerald-400/75 text-emerald-200'
+                : 'bg-[#080d1e]/88 border-amber-300/65 text-amber-200'
             }`}
           >
             {hud.stageBannerText}
@@ -1482,8 +1519,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   )}
                   <button
                     type="button"
+                    tabIndex={-1}
                     disabled={!ultReady}
-                    onClick={onUltimateClick}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onUltimateClick();
+                    }}
                     title={hud.ultName}
                     className={`pointer-events-auto relative overflow-hidden w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
                       ultReady
@@ -1527,8 +1568,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   <div className="relative flex flex-col items-center shrink-0">
                     <button
                       type="button"
+                      tabIndex={-1}
                       disabled={!activeSkillReady}
-                      onClick={onActiveSkillClick}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onActiveSkillClick();
+                      }}
                       title={hud.activeSkillName ?? 'Kỹ Năng Chủ Động (E)'}
                       className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[64px] sm:h-[64px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
                         activeSkillReady
@@ -1572,7 +1617,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <div className="relative flex flex-col items-center shrink-0">
                   <button
                     type="button"
-                    onClick={onDashClick}
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onDashClick();
+                    }}
                     className={`pointer-events-auto relative overflow-hidden w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
                       dashReady
                         ? 'a2-emerald-btn w13-skill-ready-glow shadow-[0_0_22px_rgba(52,211,153,0.52)] hover:scale-105'
@@ -1623,15 +1672,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         onSelectChampionshipTactic && (
           <div className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-[#040610]/88 p-4">
             <div className="cel-panel-ornate w-full max-w-2xl rounded-3xl p-5 sm:p-6 text-center a2-modal-enter">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/55 bg-amber-500/20 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-amber-200 mb-2">
-                <Trophy className="w-3.5 h-3.5" />
-                <span>Thắng Hiệp {hud.championshipRound ?? 1} · Chọn Chiến Thuật Cho Hiệp {(hud.championshipRound ?? 1) + 1}</span>
+              <div className="flex items-center justify-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-amber-300 mb-1.5">
+                <Trophy className="w-3.5 h-3.5 shrink-0" />
+                <span>Thắng Hiệp {hud.championshipRound ?? 1} · Chiến Thuật Hiệp {(hud.championshipRound ?? 1) + 1}</span>
               </div>
               <h3 className="font-display text-xl sm:text-2xl font-black text-white">
                 Chọn 1 Thẻ Chiến Thuật Quán Quân
               </h3>
               <p className="text-xs text-slate-300 mt-1 mb-5">
-                Hiệu ứng cộng dồn ngay lập tức và duy trì đến hết Giải Đấu 3 Hiệp 3D!
+                Hiệu ứng cộng dồn ngay lập tức và duy trì đến hết Giải Đấu 3 Hiệp 3D.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
@@ -1647,7 +1696,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-300/40 bg-slate-950/80 text-amber-300">
                           <Trophy className="w-5 h-5" />
                         </span>
-                        <span className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[10px] font-black uppercase text-amber-200">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">
                           {tactic.badge}
                         </span>
                       </div>

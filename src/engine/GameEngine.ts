@@ -132,6 +132,12 @@ import {
   resolveZodiacArenaStyle,
   ZodiacArenaThemeSpec,
 } from './zodiacArena';
+import {
+  computeAimSightlineTransform,
+  computeHitIndicatorAngleDeg,
+  computeImpactDecalState,
+  resolveEnemyStatusTint,
+} from './combatFeedback';
 
 // Pre-allocated math & color helpers for zero GC in tick
 const _v1 = new THREE.Vector3();
@@ -578,6 +584,16 @@ export class GameEngine {
     maxLife: number;
     mesh: THREE.Mesh;
   }> = [];
+  private impactDecalPool: Array<{
+    active: boolean;
+    life: number;
+    maxLife: number;
+    baseRadius: number;
+    mesh: THREE.Mesh;
+    ring: THREE.Mesh;
+  }> = [];
+  private aimLineMesh!: THREE.Mesh;
+  private lastHitAngleDeg: number | null = null;
 
   private phase: GamePhase = GamePhase.TITLE;
   private lobbyViewMode: 'battle' | 'gear' | 'heroes' | 'runes' | 'vault' = 'battle';
@@ -1228,6 +1244,52 @@ export class GameEngine {
       });
     }
 
+    // Ground Impact Scorch Decal pool (pooled, zero per-frame allocations)
+    const decalCoreGeo = new THREE.CircleGeometry(1, 20);
+    const decalRingGeo = new THREE.RingGeometry(0.76, 1.0, 24);
+    for (let i = 0; i < 10; i++) {
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0x09060e,
+        transparent: true,
+        opacity: 0.48,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
+      const mesh = new THREE.Mesh(decalCoreGeo, coreMat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.renderOrder = 3;
+      mesh.visible = false;
+
+      const rimMat = new THREE.MeshBasicMaterial({
+        color: 0xf97316,
+        transparent: true,
+        opacity: 0.52,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
+      const ring = new THREE.Mesh(decalRingGeo, rimMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.renderOrder = 4;
+      ring.visible = false;
+
+      this.particlesGroup.add(mesh, ring);
+      this.impactDecalPool.push({
+        active: false,
+        life: 0,
+        maxLife: 1.6,
+        baseRadius: 2.0,
+        mesh,
+        ring,
+      });
+    }
+
     // 3D Crimson-Gold Danger Lane pool (Boss linear / cross danger corridors with glowing side rails)
     const laneOuterGeo = new THREE.PlaneGeometry(1.38, 16);
     laneOuterGeo.translate(0, 0, 8);
@@ -1345,6 +1407,28 @@ export class GameEngine {
     this.reticleMesh.position.y = 0.04;
     this.reticleMesh.visible = false;
     this.scene.add(this.reticleMesh);
+
+    // 3D Diegetic Bow Aim-Lock Sightline (unit-length ground ribbon scaled per target)
+    const aimGeo = new THREE.PlaneGeometry(0.085, 1.0);
+    aimGeo.rotateX(-Math.PI / 2);
+    this.aimLineMesh = new THREE.Mesh(
+      aimGeo,
+      new THREE.MeshBasicMaterial({
+        color: 0xfde047,
+        transparent: true,
+        opacity: 0.34,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      })
+    );
+    this.aimLineMesh.position.y = 0.048;
+    this.aimLineMesh.renderOrder = 6;
+    this.aimLineMesh.visible = false;
+    this.scene.add(this.aimLineMesh);
   }
 
   private setAppearanceStatus(status: AppearanceStatus): void {
@@ -4258,6 +4342,7 @@ export class GameEngine {
       this.lockedTargetId = -1;
       this.heroShadow.position.set(0, 0.02, 4.5);
       this.reticleMesh.visible = false;
+      if (this.aimLineMesh) this.aimLineMesh.visible = false;
       this.companionModels.forEach((c) => (c.visible = false));
       // Warm gilded rim + ivory fill light tailored for Lobby Sanctuary hero showcase
       this.rimLight.color.setHex(0xfde68a);
@@ -4268,9 +4353,9 @@ export class GameEngine {
       this.heroLight.position.set(1.8, 2.55, 7.6);
       this.snapCameraToLobby();
     } else {
-      // Restore crisp combat arena lighting
-      this.rimLight.color.setHex(0x93c5fd);
-      this.rimLight.intensity = 0.65;
+      // Restore crisp Zodiac-matched combat arena lighting
+      this.rimLight.color.setHex(this.arenaThemeSpec?.rimLightHex ?? 0x93c5fd);
+      this.rimLight.intensity = 0.72;
       this.rimLight.position.set(-12, 10, -14);
       this.heroLight.color.setHex(0x38bdf8);
       this.heroLight.intensity = 1.2;
@@ -4546,6 +4631,13 @@ export class GameEngine {
     this.bossPhaseTwoBannerTimer = 0;
     this.bossPhaseThreeBannerTimer = 0;
     this.playerFrostSlowTimer = 0;
+    this.lastHitAngleDeg = null;
+    if (this.aimLineMesh) this.aimLineMesh.visible = false;
+    this.impactDecalPool?.forEach((d) => {
+      d.active = false;
+      d.mesh.visible = false;
+      d.ring.visible = false;
+    });
 
     this.lootOrbs.forEach((o) => this.releaseObject(o.mesh));
     this.lootOrbs = [];
@@ -6653,14 +6745,20 @@ export class GameEngine {
       }
       if (vb.timer <= 0) {
         this.spawnShockwave(vb.x, vb.z, 0xf97316, vb.radius * 1.15, 0.3);
+        this.spawnImpactDecal(vb.x, vb.z, 0xf97316, vb.radius * 0.92, 1.55);
         this.spawnParticles(vb.x, 0.7, vb.z, 0xf97316, 22);
         if (Math.hypot(this.px - vb.x, this.pz - vb.z) <= vb.radius + 0.35) {
-          this.damagePlayer(vb.damage, {
-            code: 'boss_slam',
-            label: 'Vụ Nổ Tinh Anh Hỏa Bộc',
-            killerName: 'Tinh Anh Hỏa Bộc',
-            tip: 'Tránh vòng nổ Hỏa Bộc trên sàn sau khi hạ Quái Tinh Anh.',
-          });
+          this.damagePlayer(
+            vb.damage,
+            {
+              code: 'boss_slam',
+              label: 'Vụ Nổ Tinh Anh Hỏa Bộc',
+              killerName: 'Tinh Anh Hỏa Bộc',
+              tip: 'Tránh vòng nổ Hỏa Bộc trên sàn sau khi hạ Quái Tinh Anh.',
+            },
+            vb.x,
+            vb.z
+          );
         }
         this.releaseObject(vb.ring);
         this.releaseObject(vb.fill);
@@ -6758,7 +6856,7 @@ export class GameEngine {
             this.spawnParticles(dragonBoss.x, 1.8, dragonBoss.z, 0xf97316, 28);
             if (dist < 10.2 && Math.abs(angDiff) < 0.48 && this.dashTimer <= 0) {
               const breathDmg = Math.round(dragonBoss.damage * (this.dragonPhase === 3 ? 1.45 : 1.15));
-              this.damagePlayer(breathDmg);
+              this.damagePlayer(breathDmg, undefined, dragonBoss.x, dragonBoss.z);
             }
             this.dragonBreathCooldown = this.dragonPhase === 3 ? 4.4 : this.dragonPhase === 2 ? 5.6 : 7.0;
           }
@@ -6873,6 +6971,7 @@ export class GameEngine {
     this.updateLootOrbs(simDt);
     this.updateParticles(simDt);
     this.updateShockwaves(simDt);
+    this.updateImpactDecals(simDt);
     this.updateUltColumns(simDt);
     this.updateDashGhosts(simDt);
     this.updateLightning(simDt);
@@ -7022,27 +7121,38 @@ export class GameEngine {
       if (hz.timer <= 0) {
         soundEngine.playArenaHazardTrigger(hz.kind);
         this.spawnShockwave(hz.x, hz.z, meta.colorHex, hz.radius * 1.15, 0.34);
+        this.spawnImpactDecal(hz.x, hz.z, meta.colorHex, hz.radius * 0.9, 1.65);
         this.spawnParticles(hz.x, 0.75, hz.z, meta.colorHex, 20);
         const dist = Math.hypot(this.px - hz.x, this.pz - hz.z);
         if (dist <= hz.radius + 0.32 && this.dashTimer > 0 && this.invulnTimer > 0) {
           this.tryTriggerPerfectDodge();
         } else if (dist <= hz.radius + 0.32 && this.invulnTimer <= 0) {
           if (hz.kind === 'solar_eruption') {
-            this.damagePlayer(hz.damage, {
-              code: 'boss_slam',
-              label: 'Bẫy Phun Trào Thái Dương',
-              killerName: 'Bẫy Sàn Thái Dương',
-              tip: 'Lướt né vòng cảnh báo cam trên sàn trước khi cột lửa bùng nổ.',
-            });
+            this.damagePlayer(
+              hz.damage,
+              {
+                code: 'boss_slam',
+                label: 'Bẫy Phun Trào Thái Dương',
+                killerName: 'Bẫy Sàn Thái Dương',
+                tip: 'Lướt né vòng cảnh báo cam trên sàn trước khi cột lửa bùng nổ.',
+              },
+              hz.x,
+              hz.z
+            );
           } else if (hz.kind === 'frost_zone') {
             this.playerFrostSlowTimer = Math.max(this.playerFrostSlowTimer, 1.8);
             this.emitFloatingNumber(this.px, 2.0, this.pz, 0, false, false, 'ice', 'BẪY HÀN BĂNG!');
-            this.damagePlayer(Math.max(8, Math.round(hz.damage * 0.72)), {
-              code: 'boss_slam',
-              label: 'Bẫy Vùng Hàn Băng',
-              killerName: 'Bẫy Sàn Hàn Băng',
-              tip: 'Di chuyển khỏi vùng băng xanh để tránh bị làm chậm và trúng sát thương.',
-            });
+            this.damagePlayer(
+              Math.max(8, Math.round(hz.damage * 0.72)),
+              {
+                code: 'boss_slam',
+                label: 'Bẫy Vùng Hàn Băng',
+                killerName: 'Bẫy Sàn Hàn Băng',
+                tip: 'Di chuyển khỏi vùng băng xanh để tránh bị làm chậm và trúng sát thương.',
+              },
+              hz.x,
+              hz.z
+            );
           } else {
             const dx = hz.x - this.px;
             const dz = hz.z - this.pz;
@@ -7058,12 +7168,17 @@ export class GameEngine {
               ARENA_HALF_D - 0.6
             );
             this.emitFloatingNumber(this.px, 2.0, this.pz, 0, false, false, 'storm', 'XUNG HƯ KHÔNG!');
-            this.damagePlayer(Math.max(8, Math.round(hz.damage * 0.85)), {
-              code: 'boss_slam',
-              label: 'Bẫy Xung Hư Không',
-              killerName: 'Bẫy Sàn Hư Không',
-              tip: 'Dùng Lướt đúng thời điểm để vô hiệu hóa lực kéo của Xung Hư Không.',
-            });
+            this.damagePlayer(
+              Math.max(8, Math.round(hz.damage * 0.85)),
+              {
+                code: 'boss_slam',
+                label: 'Bẫy Xung Hư Không',
+                killerName: 'Bẫy Sàn Hư Không',
+                tip: 'Dùng Lướt đúng thời điểm để vô hiệu hóa lực kéo của Xung Hư Không.',
+              },
+              hz.x,
+              hz.z
+            );
           }
         }
         this.releaseObject(hz.ring);
@@ -7397,6 +7512,9 @@ export class GameEngine {
       if (nearest.id !== this.lockedTargetId) {
         this.lockedTargetId = nearest.id;
         this.reticleSnapScale = 1.48;
+        if (nearest.isBoss || nearest.isElite) {
+          soundEngine.playTargetLockTick(true);
+        }
       }
       this.reticleSnapScale = THREE.MathUtils.damp(this.reticleSnapScale, 1, 12, dt);
       this.reticleMesh.visible = true;
@@ -7440,10 +7558,31 @@ export class GameEngine {
       this.hero.nockedArrow.position.z = 0.2 - drawProgress * 0.26;
       this.hero.drawArm.position.z = 0.08 - drawProgress * 0.16;
       this.hero.bowGroup.position.z = 0.46 - drawProgress * 0.04;
+      if (this.aimLineMesh && nearest) {
+        const sight = computeAimSightlineTransform(
+          this.px,
+          this.pz,
+          nearest.x,
+          nearest.z,
+          drawProgress
+        );
+        this.aimLineMesh.visible = sight.visible;
+        if (sight.visible) {
+          this.aimLineMesh.position.set(sight.midX, 0.048, sight.midZ);
+          this.aimLineMesh.rotation.y = sight.yaw;
+          this.aimLineMesh.scale.set(1 + drawProgress * 0.55, 1, sight.length);
+          const aMat = this.aimLineMesh.material as THREE.MeshBasicMaterial;
+          aMat.color.setHex(
+            nearest.isBoss ? 0xf43f5e : nearest.isElite ? 0xc084fc : this.weaponAccentHex
+          );
+          aMat.opacity = sight.opacity;
+        }
+      }
     } else {
       this.hero.nockedArrow.position.z = 0.1;
       this.hero.drawArm.position.z = 0.06;
       this.hero.bowGroup.position.z = 0.46;
+      if (this.aimLineMesh) this.aimLineMesh.visible = false;
     }
 
     if (this.artemisModel?.parent === this.hero.bodyGroup) {
@@ -7749,8 +7888,10 @@ export class GameEngine {
         m.mesh.visible = false;
         m.ring.visible = false;
         soundEngine.playMeteorImpact();
+        soundEngine.playImpactScorchThump();
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
         this.spawnShockwave(m.x, m.z, m.isFrost ? 0x67e8f9 : 0xf97316, m.radius * 1.15, 0.4);
+        this.spawnImpactDecal(m.x, m.z, m.isFrost ? 0x22d3ee : 0xf97316, m.radius * 0.86, 1.75);
         this.spawnParticles(m.x, 0.6, m.z, m.isFrost ? 0x67e8f9 : 0xf97316, 20);
 
         for (let i = this.enemies.length - 1; i >= 0; i--) {
@@ -8195,11 +8336,19 @@ export class GameEngine {
       e.model.root.scale.setScalar(baseScale);
 
       if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
-      const flash = e.hitFlashTimer > 0;
+      const statusTint = resolveEnemyStatusTint({
+        hitFlashTimer: e.hitFlashTimer,
+        stunTimer: e.stunTimer,
+        chillTimer: e.chillTimer,
+        burnTimer: e.burnTimer,
+        poisonDps: e.poisonDps,
+        isMarked: this.markedEnemyIds.has(e.id),
+        elapsed: this.elapsed,
+      });
       for (const hm of e.model.hitMeshes) {
         const mat = hm.material as THREE.MeshStandardMaterial;
-        mat.emissive.setHex(flash ? 0xfff3c4 : e.chillTimer > 0 ? 0x22d3ee : 0x000000);
-        mat.emissiveIntensity = flash ? 1.15 : e.chillTimer > 0 ? 0.35 : 0;
+        mat.emissive.setHex(statusTint.hex);
+        mat.emissiveIntensity = statusTint.intensity;
       }
 
       // Burn & Poison DoT
@@ -8667,7 +8816,9 @@ export class GameEngine {
                 code: 'melee_swarm',
                 label: 'Bị quái cận chiến áp sát',
                 tip: 'Di chuyển theo vòng tròn quanh mép sàn và ưu tiên Đạn Nảy hoặc Băng Tiễn để giữ khoảng cách.',
-              }
+              },
+          e.x,
+          e.z
         );
       }
 
@@ -8764,11 +8915,16 @@ export class GameEngine {
       e.z += e.aimZ * 2.4;
       this.spawnParticles(e.x, 0.6, e.z, 0xfacc15, 6);
       if (Math.hypot(this.px - e.x, this.pz - e.z) < e.radius + 0.9) {
-        this.damagePlayer(e.damage, {
-          code: 'melee_swarm',
-          label: 'Cú lao tới của quái cận chiến',
-          tip: 'Bước ngang khi vòng báo màu vàng xuất hiện dưới chân quái rồi bắn phản công.',
-        });
+        this.damagePlayer(
+          e.damage,
+          {
+            code: 'melee_swarm',
+            label: 'Cú lao tới của quái cận chiến',
+            tip: 'Bước ngang khi vòng báo màu vàng xuất hiện dưới chân quái rồi bắn phản công.',
+          },
+          e.x,
+          e.z
+        );
       }
     } else if (e.telegraphType === 'shot') {
       const baseYaw = Math.atan2(e.aimX, e.aimZ);
@@ -8844,16 +9000,23 @@ export class GameEngine {
     } else if (e.telegraphType === 'slam' || e.telegraphType === 'spiral') {
       if (e.telegraphType === 'slam') {
         this.spawnShockwave(e.slamX, e.slamZ, 0xf97316, e.slamRadius + 0.6, 0.42);
+        this.spawnImpactDecal(e.slamX, e.slamZ, 0xf97316, e.slamRadius * 0.95, 1.85);
         this.spawnParticles(e.slamX, 0.4, e.slamZ, 0xf97316, 22);
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.34);
         soundEngine.playMeteorImpact();
+        soundEngine.playImpactScorchThump();
         if (Math.hypot(this.px - e.slamX, this.pz - e.slamZ) <= e.slamRadius + 0.35) {
-          this.damagePlayer(e.damage * 1.15, {
-            code: 'boss_slam',
-            label: `Vòng Chấn Động của ${e.bossTitle ?? 'Boss'}`,
-            tip: 'Rời khỏi vòng cảnh báo vàng-đỏ trước khi vòng đầy, sau đó tận dụng 1.5s hồi chiêu để xả đạn.',
-            killerName: e.bossTitle,
-          });
+          this.damagePlayer(
+            e.damage * 1.15,
+            {
+              code: 'boss_slam',
+              label: `Vòng Chấn Động của ${e.bossTitle ?? 'Boss'}`,
+              tip: 'Rời khỏi vòng cảnh báo vàng-đỏ trước khi vòng đầy, sau đó tận dụng 1.5s hồi chiêu để xả đạn.',
+              killerName: e.bossTitle,
+            },
+            e.slamX,
+            e.slamZ
+          );
         }
       }
       const ringCount = e.isBoss
@@ -9150,7 +9313,7 @@ export class GameEngine {
                 label: 'Mưa đạn từ quái tầm xa',
                 tip: 'Tận dụng cột đá làm lá chắn và ưu tiên kỹ năng Đạn Nảy / Tên Chéo để dọn quái tầm xa sớm.',
               };
-        this.damagePlayer(p.damage, orbCause);
+        this.damagePlayer(p.damage, orbCause, p.x - p.vx * 0.15, p.z - p.vz * 0.15);
       }
     }
   }
@@ -9269,7 +9432,9 @@ export class GameEngine {
           this.hitstopTimer = Math.max(this.hitstopTimer, 0.085);
           this.shakeIntensity = Math.max(this.shakeIntensity, 0.55);
           soundEngine.playBossPhaseRoar();
+          soundEngine.playImpactScorchThump();
           this.spawnShockwave(e.x, e.z, 0xfde047, 6.8, 0.54);
+          this.spawnImpactDecal(e.x, e.z, 0xfde047, 3.2, 2.0);
           this.spawnParticles(e.x, 1.3, e.z, 0xfde047, 36);
           this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHÁ GIÁP! +45% ST', true);
         }
@@ -10217,7 +10382,12 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  private damagePlayer(rawAmount: number, cause?: DefeatCauseInfo): void {
+  private damagePlayer(
+    rawAmount: number,
+    cause?: DefeatCauseInfo,
+    sourceX?: number,
+    sourceZ?: number
+  ): void {
     if (this.phase !== GamePhase.PLAYING) return;
     if (this.invulnTimer > 0) {
       if (this.dashTimer > 0) {
@@ -10237,6 +10407,10 @@ export class GameEngine {
     this.invulnTimer = 0.55;
     this.hitFlashTimer = 0.22;
     this.lastPlayerHitAt = performance.now();
+    this.lastHitAngleDeg =
+      sourceX !== undefined && sourceZ !== undefined
+        ? computeHitIndicatorAngleDeg(this.px, this.pz, sourceX, sourceZ)
+        : null;
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.28);
     soundEngine.playPlayerHurt();
 
@@ -10681,6 +10855,56 @@ export class GameEngine {
     }
   }
 
+  private spawnImpactDecal(
+    x: number,
+    z: number,
+    accentHex: number,
+    radius = 2.0,
+    duration = 1.7
+  ): void {
+    if (!this.impactDecalPool || this.impactDecalPool.length === 0) return;
+    let slot = this.impactDecalPool.find((d) => !d.active);
+    if (!slot) {
+      // Recycle oldest active decal cleanly (ring buffer)
+      slot = this.impactDecalPool.reduce((oldest, cur) =>
+        cur.life < oldest.life ? cur : oldest
+      );
+    }
+    slot.active = true;
+    slot.maxLife = duration;
+    slot.life = duration;
+    slot.baseRadius = radius;
+    slot.mesh.position.set(x, 0.025, z);
+    slot.ring.position.set(x, 0.028, z);
+    (slot.ring.material as THREE.MeshBasicMaterial).color.setHex(accentHex);
+    const init = computeImpactDecalState(duration, duration, radius);
+    slot.mesh.scale.setScalar(init.scale);
+    slot.ring.scale.setScalar(init.scale);
+    (slot.mesh.material as THREE.MeshBasicMaterial).opacity = init.opacity * 0.78;
+    (slot.ring.material as THREE.MeshBasicMaterial).opacity = init.opacity;
+    slot.mesh.visible = true;
+    slot.ring.visible = true;
+  }
+
+  private updateImpactDecals(dt: number): void {
+    if (!this.impactDecalPool) return;
+    for (const d of this.impactDecalPool) {
+      if (!d.active) continue;
+      d.life -= dt;
+      if (d.life <= 0) {
+        d.active = false;
+        d.mesh.visible = false;
+        d.ring.visible = false;
+        continue;
+      }
+      const state = computeImpactDecalState(d.life, d.maxLife, d.baseRadius);
+      d.mesh.scale.setScalar(state.scale);
+      d.ring.scale.setScalar(state.scale);
+      (d.mesh.material as THREE.MeshBasicMaterial).opacity = state.opacity * 0.78;
+      (d.ring.material as THREE.MeshBasicMaterial).opacity = state.opacity;
+    }
+  }
+
   private spawnUltColumn(
     x: number,
     z: number,
@@ -11084,6 +11308,7 @@ export class GameEngine {
       portalOpen: this.portalOpen,
       isBossStage: isBossFloor || this.isPantheonMode || this.isChampionshipMode,
       lastPlayerHitAt: this.lastPlayerHitAt,
+      lastHitAngleDeg: this.lastHitAngleDeg,
       runGold: this.runGold,
       runGems: this.runGems,
       kills: this.kills,
