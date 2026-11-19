@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUp,
+  Compass,
   Crosshair,
   Crown,
   Feather,
@@ -24,6 +25,7 @@ import {
 import { SKILLS_CATALOG, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
+import { yawToRadarDegrees } from '../engine/combatFeel';
 import {
   ChampionshipTacticId,
   FloatingDamage,
@@ -300,7 +302,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Top-Center: Room / Tower / Boss Rush Counter + Room Progress Strip */}
           <div className="hv2-panel rounded-2xl px-3.5 sm:px-4 py-1.5 text-center shrink-0">
             <div className="font-display text-[11px] sm:text-xs font-black text-amber-200 font-mono-nums whitespace-nowrap flex items-center justify-center gap-1.5">
-              {hud.portalOpen && <ArrowUp className="w-3.5 h-3.5 text-emerald-300 shrink-0" />}
+              {hud.portalOpen ? (
+                <ArrowUp className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+              ) : hud.isBossStage ? (
+                <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              ) : (
+                <Compass className="w-3.5 h-3.5 text-amber-300/90 shrink-0" />
+              )}
               <span>
                 {hud.isTrainingMode
                   ? 'Sân Tập 3D · Đo DPS Thực Chiến'
@@ -1009,8 +1017,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         {/* Wave 12: Dramatic Boss Break-Shield Shatter Banner */}
         {(hud.bossBrokenBannerTimer ?? 0) > 0 && (
           <div className="w-full max-w-md mx-auto rounded-xl px-4 py-1.5 bg-gradient-to-r from-amber-500/95 via-yellow-400/95 to-orange-500/95 border border-yellow-100 text-slate-950 text-center shadow-[0_0_24px_rgba(251,191,36,0.65)]">
-            <div className="font-display text-xs sm:text-sm font-black tracking-wide">
-              ⚡ PHÁ GIÁP BOSS THÀNH CÔNG! · CHOÁNG 3S &amp; +45% SÁT THƯƠNG ⚡
+            <div className="font-display text-xs sm:text-sm font-black tracking-wide flex items-center justify-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-slate-950 fill-current shrink-0" />
+              <span>PHÁ GIÁP BOSS THÀNH CÔNG! · CHOÁNG 3S &amp; +45% SÁT THƯƠNG</span>
+              <Zap className="w-3.5 h-3.5 text-slate-950 fill-current shrink-0" />
             </div>
           </div>
         )}
@@ -1263,7 +1273,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 style={{
                   left: `${50 + hud.radarData.playerX * 42}%`,
                   top: `${50 + hud.radarData.playerZ * 42}%`,
-                  transform: `translate(-50%, -50%) rotate(${Math.round(((hud.radarData.playerYaw ?? 0) * 180) / Math.PI)}deg)`,
+                  transform: `translate(-50%, -50%) rotate(${yawToRadarDegrees(hud.radarData.playerYaw ?? Math.PI)}deg)`,
                 }}
                 className="absolute w-5 h-5 flex items-center justify-center"
               >
@@ -1439,6 +1449,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 style={{ width: `${shieldPct}%` }}
               />
             )}
+            <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-1/4 w-px bg-slate-950/55 z-[3]" />
+            <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-slate-950/65 z-[3]" />
+            <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-3/4 w-px bg-slate-950/55 z-[3]" />
           </div>
         </div>
 

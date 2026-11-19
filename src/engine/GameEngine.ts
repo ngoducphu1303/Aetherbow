@@ -120,6 +120,11 @@ import {
   createTargetReticleTexture,
 } from './textures';
 import { computeKoPose } from './koTransition';
+import {
+  computeCameraSightline,
+  computeTraumaShake,
+  projectFloatingScreenPos,
+} from './combatFeel';
 
 // Pre-allocated math & color helpers for zero GC in tick
 const _v1 = new THREE.Vector3();
@@ -499,6 +504,12 @@ export class GameEngine {
   }> = [];
   private combatAuraGroup: THREE.Group | null = null;
   private heroLightPulse = 0;
+  private stridePhase = 0;
+  private heroSquashY = 1;
+  private lockedTargetId = -1;
+  private reticleSnapScale = 1;
+  private smoothLookX = 0;
+  private smoothLookZ = 0;
   private petModel: THREE.Group | null = null;
   private builtPetId: PetId | null = null;
   private builtPetEvolved = false;
@@ -4128,6 +4139,10 @@ export class GameEngine {
       this.pz = 4.5;
       this.pFacing = 0;
       this.hero.root.position.set(0, 0, 4.5);
+      this.hero.bodyGroup.scale.set(1, 1, 1);
+      this.heroSquashY = 1;
+      this.stridePhase = 0;
+      this.lockedTargetId = -1;
       this.heroShadow.position.set(0, 0.02, 4.5);
       this.reticleMesh.visible = false;
       this.companionModels.forEach((c) => (c.visible = false));
@@ -4147,14 +4162,16 @@ export class GameEngine {
       this.heroLight.color.setHex(0x38bdf8);
       this.heroLight.intensity = 1.2;
       if (phase === GamePhase.PLAYING) {
+        this.heroSquashY = 1;
+        this.stridePhase = 0;
+        this.lockedTargetId = -1;
+        this.reticleSnapScale = 1;
         const snapX = THREE.MathUtils.clamp(this.px * 0.55, -5.5, 5.5);
         const snapZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2, 6.5, 22.0);
+        this.smoothLookX = THREE.MathUtils.clamp(this.px * 0.45, -4, 4);
+        this.smoothLookZ = THREE.MathUtils.clamp(this.pz * 0.72 - 1.55, -7, 7);
         this.camera.position.set(snapX, 16.5, snapZ);
-        this.camera.lookAt(
-          THREE.MathUtils.clamp(this.px * 0.45, -4, 4),
-          0.5,
-          THREE.MathUtils.clamp(this.pz * 0.72 - 1.4, -7, 7)
-        );
+        this.camera.lookAt(this.smoothLookX, 0.5, this.smoothLookZ);
       }
     }
   }
@@ -6982,6 +6999,7 @@ export class GameEngine {
         this.dashDirZ = Math.cos(this.pFacing);
       }
       soundEngine.playDash();
+      this.heroSquashY = 1.18;
       this.cameraFovOffset = Math.max(this.cameraFovOffset, 3.2);
       this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 1.65, 0.22);
       this.spawnParticles(this.px, 0.7, this.pz, this.weaponAccentHex, 12);
@@ -7045,6 +7063,7 @@ export class GameEngine {
       }
     }
 
+    const travelDist = Math.hypot(this.px - beforeMoveX, this.pz - beforeMoveZ);
     const speedMag = Math.hypot(this.pvx, this.pvz);
     const isMoving = inputLen > 0.12 || this.dashTimer > 0;
     const isThor = this.baseStats.heroId === 'thor';
@@ -7059,16 +7078,18 @@ export class GameEngine {
         const moveYaw = Math.atan2(this.pvx, this.pvz);
         this.pFacing = this.lerpAngle(this.pFacing, moveYaw, 1 - Math.exp(-16 * dt));
       }
-      const stride = Math.sin(this.elapsed * 16) * 0.52;
+      this.stridePhase += Math.max(travelDist * 2.55, dt * 1.4);
+      const strideAmp = Math.min(0.56, 0.2 + (travelDist / Math.max(0.001, dt)) * 0.055);
+      const stride = Math.sin(this.stridePhase) * strideAmp;
       this.hero.leftLeg.rotation.x = stride;
       this.hero.rightLeg.rotation.x = -stride;
-      this.hero.bodyGroup.position.y = mountOffset + Math.abs(Math.sin(this.elapsed * 16)) * 0.09;
+      this.hero.bodyGroup.position.y = mountOffset + Math.abs(Math.sin(this.stridePhase)) * 0.085;
       this.hero.bodyGroup.rotation.x = this.dashTimer > 0 ? 0.32 : 0.1;
-      this.hero.capeTail.rotation.x = 0.34 + Math.sin(this.elapsed * 14) * 0.14;
+      this.hero.capeTail.rotation.x = 0.34 + Math.sin(this.stridePhase * 0.9) * 0.14;
       if (this.hero.mountLegs && !onDragon) {
         this.hero.mountLegs.forEach((leg, lIdx) => {
           const phaseOffset = lIdx === 0 || lIdx === 3 ? 0 : Math.PI;
-          leg.rotation.x = Math.sin(this.elapsed * 17 + phaseOffset) * 0.58;
+          leg.rotation.x = Math.sin(this.stridePhase * 1.15 + phaseOffset) * 0.58;
         });
       }
       if (!isThor) {
@@ -7097,8 +7118,17 @@ export class GameEngine {
       }
     }
 
+    // Subtle volume-preserving squash-and-stretch on dash takeoff and shot release
+    this.heroSquashY = THREE.MathUtils.damp(this.heroSquashY, 1, 14, dt);
+    if (!onDragon && Math.abs(this.heroSquashY - 1) > 0.002) {
+      const xzScale = 1 / Math.sqrt(Math.max(0.7, this.heroSquashY));
+      this.hero.bodyGroup.scale.set(xzScale, this.heroSquashY, xzScale);
+    } else {
+      this.hero.bodyGroup.scale.set(1, 1, 1);
+    }
+
     if (onDragon) {
-      const travelSpeed = Math.hypot(this.px - beforeMoveX, this.pz - beforeMoveZ) / dt;
+      const travelSpeed = travelDist / dt;
       this.hero.bodyGroup.position.y = this.updateDragonRide(dt, travelSpeed);
       this.hero.bodyGroup.rotation.x = travelSpeed > 0.3 ? 0.07 : 0;
     }
@@ -7148,12 +7178,21 @@ export class GameEngine {
     }
 
     if (nearest && nearest.spawnTimer <= 0) {
+      if (nearest.id !== this.lockedTargetId) {
+        this.lockedTargetId = nearest.id;
+        this.reticleSnapScale = 1.48;
+      }
+      this.reticleSnapScale = THREE.MathUtils.damp(this.reticleSnapScale, 1, 12, dt);
       this.reticleMesh.visible = true;
       this.reticleMesh.position.set(nearest.x, 0.04, nearest.z);
-      this.reticleMesh.rotation.z += dt * 2.2;
-      const rScale = nearest.isBoss ? 1.75 : 1.05;
+      this.reticleMesh.rotation.z += dt * (nearest.isBoss ? 2.8 : 2.1);
+      const pulse = 1 + Math.sin(this.elapsed * 6.5) * 0.055;
+      const rScale = (nearest.isBoss ? 1.75 : nearest.isElite ? 1.28 : 1.05) * this.reticleSnapScale * pulse;
       this.reticleMesh.scale.setScalar(rScale);
+      const rMat = this.reticleMesh.material as THREE.MeshBasicMaterial;
+      rMat.color.setHex(nearest.isBoss ? 0xf43f5e : nearest.isElite ? 0xc084fc : 0xfde047);
     } else {
+      this.lockedTargetId = -1;
       this.reticleMesh.visible = false;
     }
 
@@ -7341,6 +7380,7 @@ export class GameEngine {
     if (dmgSource === 'basic' && Math.abs(lateralOffset) < 0.05) {
       this.spawnParticles(proj.x, proj.y, proj.z, color, 3);
       this.heroLightPulse = Math.max(this.heroLightPulse, 0.18);
+      this.heroSquashY = Math.min(this.heroSquashY, 0.94);
     }
 
     soundEngine.playBowShoot(0.95 + Math.random() * 0.12);
@@ -7929,13 +7969,14 @@ export class GameEngine {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
 
+      const baseScale = e.baseScale ?? 1;
       if (e.spawnTimer > 0) {
         e.spawnTimer -= dt;
         const p = 1 - Math.max(0, e.spawnTimer / 0.48);
-        e.model.root.scale.setScalar(Math.max(0.05, p));
+        e.model.root.scale.setScalar(Math.max(0.05, p) * baseScale);
         continue;
       }
-      e.model.root.scale.setScalar(1);
+      e.model.root.scale.setScalar(baseScale);
 
       if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
       const flash = e.hitFlashTimer > 0;
@@ -10469,8 +10510,20 @@ export class GameEngine {
   }
 
   private updateCamera(dt: number): void {
-    const targetCamX = THREE.MathUtils.clamp(this.px * 0.55, -5.5, 5.5);
-    const targetCamZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2, 6.5, 22.0);
+    const focusEnemy =
+      this.enemies.find((e) => e.isBoss) ??
+      this.findNearestEnemy(this.px, this.pz);
+    const sightline = computeCameraSightline(
+      this.px,
+      this.pz,
+      focusEnemy?.x ?? 0,
+      focusEnemy?.z ?? 0,
+      Boolean(focusEnemy),
+      Boolean(focusEnemy?.isBoss)
+    );
+
+    const targetCamX = THREE.MathUtils.clamp(this.px * 0.55 + (sightline.lookX - this.px * 0.45) * 0.28, -5.8, 5.8);
+    const targetCamZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2 + sightline.camZBias, 6.2, 22.0);
     const targetCamY = 16.5;
 
     this.camera.position.x = THREE.MathUtils.damp(
@@ -10492,12 +10545,15 @@ export class GameEngine {
       dt
     );
 
+    let shakeRollZ = 0;
     if (this.shakeIntensity > 0.005) {
       if (this.screenShakeEnabled) {
-        this.camera.position.x += (Math.random() - 0.5) * this.shakeIntensity;
-        this.camera.position.y += (Math.random() - 0.5) * this.shakeIntensity;
+        const shake = computeTraumaShake(Math.min(1, this.shakeIntensity * 1.45), this.elapsed);
+        this.camera.position.x += shake.offsetX;
+        this.camera.position.y += shake.offsetY;
+        shakeRollZ = shake.rollZ;
       }
-      this.shakeIntensity *= Math.exp(-14 * dt);
+      this.shakeIntensity *= Math.exp(-12.5 * dt);
     } else {
       this.shakeIntensity = 0;
     }
@@ -10512,12 +10568,13 @@ export class GameEngine {
       this.camera.updateProjectionMatrix();
     }
 
-    _v1.set(
-      THREE.MathUtils.clamp(this.px * 0.45, -4, 4),
-      0.5,
-      THREE.MathUtils.clamp(this.pz * 0.72 - 1.4, -7, 7)
-    );
+    this.smoothLookX = THREE.MathUtils.damp(this.smoothLookX, sightline.lookX, 6.5, dt);
+    this.smoothLookZ = THREE.MathUtils.damp(this.smoothLookZ, sightline.lookZ, 6.5, dt);
+    _v1.set(this.smoothLookX, 0.5, this.smoothLookZ);
     this.camera.lookAt(_v1);
+    if (shakeRollZ !== 0) {
+      this.camera.rotation.z += shakeRollZ;
+    }
   }
 
   private findNearestEnemy(
@@ -10562,13 +10619,13 @@ export class GameEngine {
     _v2.project(this.camera);
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
-    const sx = ((_v2.x + 1) / 2) * w;
-    const sy = ((-_v2.y + 1) / 2) * h;
+    const projected = projectFloatingScreenPos(_v2.x, _v2.y, _v2.z, w, h, this.nextDmgId);
+    if (!projected.visible) return;
 
     this.callbacks.onFloatingDamage({
       id: this.nextDmgId++,
-      x: sx,
-      y: sy,
+      x: projected.x,
+      y: projected.y,
       amount,
       isCrit,
       isSuperCrit,
@@ -10696,38 +10753,38 @@ export class GameEngine {
       chapterName: this.isTrainingMode
         ? 'Sân Tập 3D'
         : this.isCrystalVaultMode
-        ? '💎 Hầm Mỏ Kho Báu'
+        ? 'Hầm Mỏ Kho Báu'
         : this.isChampionshipMode
-        ? '🏆 Giải Đấu Quán Quân'
+        ? 'Giải Đấu Quán Quân'
         : this.isPantheonMode
-        ? '👑 Điện Thần 3D'
+        ? 'Điện Thần 3D'
         : this.isAbyssalMode
-        ? '🟣 Hố Sâu Đột Biến'
+        ? 'Hố Sâu Đột Biến'
         : this.isGuildWarMode
-        ? '🏰 Chiến Trường Bang'
+        ? 'Chiến Trường Bang'
         : this.isBloodMoonMode
-        ? '🌑 Đêm Trăng Máu'
+        ? 'Đêm Trăng Máu'
         : this.isCrystalDefenseMode
-        ? '💎 Thủ Thành Pha Lê'
+        ? 'Thủ Thành Pha Lê'
         : this.isWorldBossMode
-        ? '🐉 Boss Thế Giới'
+        ? 'Boss Thế Giới'
         : this.isCoopRaidMode
-        ? '🤝 Co-op AI 3D'
+        ? 'Co-op AI 3D'
         : this.isElementalTowerMode && elemDef
-        ? `💠 ${elemDef.name}`
+        ? elemDef.name
         : this.isArenaMode
-        ? '⚔️ Arena 1v1'
+        ? 'Arena 1v1'
         : this.isGuildBossMode
-        ? '🛡️ Boss Bang'
+        ? 'Boss Bang'
         : this.isDailyRiftMode
-        ? `🌌 Bí Cảnh`
+        ? 'Bí Cảnh'
         : this.isBossRushMode
-        ? `⚔️ Săn Boss`
+        ? 'Săn Boss'
         : this.isTowerMode
-        ? `🗼 Tháp Vô Tận`
+        ? 'Tháp Vô Tận'
         : this.nightmareTier > 0
-        ? `${this.currentChapter.zodiacIcon} ${this.currentChapter.zodiacName} · ${this.nightmareConfig.label}`
-        : `${this.currentChapter.zodiacIcon} ${this.currentChapter.zodiacName}`,
+        ? `${this.currentChapter.zodiacName} · ${this.nightmareConfig.label}`
+        : this.currentChapter.zodiacName,
       heroName: this.baseStats.heroName,
       enemiesRemaining: this.enemies.length,
       portalOpen: this.portalOpen,

@@ -1072,9 +1072,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     soundEngine.playAchievement();
                     onReplayEntranceVfx();
                   }}
-                  className="a2-purple-btn px-3 py-2 rounded-xl text-xs font-black cursor-pointer"
+                  className="a2-purple-btn px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
-                  ✨ Hiệu Ứng
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span>Hiệu Ứng</span>
                 </button>
               )}
             </div>
