@@ -5482,70 +5482,71 @@ export class GameEngine {
     this.elapsed += dt;
 
     if (this.phase === GamePhase.TITLE) {
-      const sway = Math.sin(this.elapsed * 0.45) * 0.32;
+      const sway = Math.sin(this.elapsed * 0.45) * 0.24;
       const hasMount = Boolean(this.hero.mountGroup);
-      const mountExtraZ = hasMount ? 1.55 : 0;
-      const mountExtraY = hasMount ? 0.34 : 0;
-      const mountLookY = hasMount ? 0.24 : 0;
-      const aspectExtraZ = Math.max(0, (1.45 - this.camera.aspect) * 2.5);
+      const mountExtraZ = hasMount ? 1.85 : 0;
+      const mountExtraY = hasMount ? 0.56 : 0;
+      const mountLookY = hasMount ? 0.46 : 0;
+      const aspectExtraZ = Math.max(0, (1.42 - this.camera.aspect) * 2.35);
 
-      let targetCamX = sway * 0.35;
-      let targetCamY = 2.42 + mountExtraY;
-      let targetCamZ = 13.8 + mountExtraZ + aspectExtraZ;
+      // Minimalist Hero-First Battle Lobby: full-body hero centered prominently in open viewport
+      let targetCamX = sway * 0.3;
+      let targetCamY = 2.02 + mountExtraY;
+      let targetCamZ = 10.65 + mountExtraZ + aspectExtraZ;
       let lookX = 0;
-      let lookY = -0.18 + mountLookY;
+      let lookY = 0.96 + mountLookY;
 
       if (this.lobbyPhotoMode) {
         if (this.lobbyPhotoAngle === 'closeup') {
-          targetCamX = sway * 0.12;
-          targetCamY = 2.05 + mountExtraY;
-          targetCamZ = 10.1 + mountExtraZ + aspectExtraZ * 0.55;
+          targetCamX = sway * 0.1;
+          targetCamY = 1.98 + mountExtraY;
+          targetCamZ = 8.45 + mountExtraZ * 0.72 + aspectExtraZ * 0.5;
           lookX = 0;
-          lookY = 0.72 + mountLookY;
+          lookY = 1.42 + mountLookY;
         } else if (this.lobbyPhotoAngle === 'hero_wide') {
-          targetCamX = -0.95 + sway * 0.25;
-          targetCamY = 2.85 + mountExtraY;
-          targetCamZ = 15.2 + mountExtraZ + aspectExtraZ;
+          targetCamX = -0.82 + sway * 0.22;
+          targetCamY = 2.48 + mountExtraY;
+          targetCamZ = 12.6 + mountExtraZ + aspectExtraZ;
           lookX = 0;
-          lookY = 0.45 + mountLookY;
+          lookY = 1.05 + mountLookY;
         } else {
-          targetCamX = sway * 0.18;
-          targetCamY = 2.25 + mountExtraY;
-          targetCamZ = 12.1 + mountExtraZ + aspectExtraZ * 0.8;
+          targetCamX = sway * 0.16;
+          targetCamY = 2.04 + mountExtraY;
+          targetCamZ = 10.2 + mountExtraZ + aspectExtraZ * 0.75;
           lookX = 0;
-          lookY = 0.42 + mountLookY;
+          lookY = 1.08 + mountLookY;
         }
       } else if (this.lobbyCameraPreset === 'closeup') {
-        targetCamX = sway * 0.2;
-        targetCamY = 2.18 + mountExtraY;
-        targetCamZ = 11.6 + mountExtraZ + aspectExtraZ * 0.7;
+        targetCamX = sway * 0.16;
+        targetCamY = 1.98 + mountExtraY;
+        targetCamZ = 8.65 + mountExtraZ * 0.75 + aspectExtraZ * 0.6;
         lookX = 0;
-        lookY = -0.14 + mountLookY;
+        lookY = 1.38 + mountLookY;
       } else if (this.lobbyCameraPreset === 'wardrobe') {
-        targetCamX = 0.55 + sway * 0.14;
-        targetCamY = 2.28 + mountExtraY;
-        targetCamZ = 12.8 + mountExtraZ + aspectExtraZ;
-        lookX = 0.55;
-        lookY = -0.24 + mountLookY;
+        targetCamX = 0.48 + sway * 0.12;
+        targetCamY = 2.06 + mountExtraY;
+        targetCamZ = 10.9 + mountExtraZ + aspectExtraZ;
+        lookX = 0.48;
+        lookY = 0.92 + mountLookY;
       } else if (this.lobbyViewMode === 'gear') {
-        targetCamX = sway * 0.25;
-        targetCamY = 2.32 + mountExtraY;
-        targetCamZ = 13.2 + mountExtraZ + aspectExtraZ;
+        targetCamX = sway * 0.2;
+        targetCamY = 2.12 + mountExtraY;
+        targetCamZ = 11.15 + mountExtraZ + aspectExtraZ;
         lookX = 0;
-        lookY = -0.38 + mountLookY;
+        lookY = 0.46 + mountLookY;
       } else if (this.lobbyViewMode === 'heroes') {
-        targetCamX = 1.18 + sway * 0.16;
-        targetCamY = 2.3 + mountExtraY;
-        targetCamZ = 13.1 + mountExtraZ + aspectExtraZ;
-        lookX = 1.25;
-        lookY = -0.34 + mountLookY;
+        targetCamX = 1.05 + sway * 0.14;
+        targetCamY = 2.12 + mountExtraY;
+        targetCamZ = 11.05 + mountExtraZ + aspectExtraZ;
+        lookX = 1.08;
+        lookY = 0.52 + mountLookY;
       }
 
       // Wave 14: Smooth 360° Lobby Pitch & Zoom Damping
       this.lobbyOrbitPitch = THREE.MathUtils.damp(this.lobbyOrbitPitch, this.lobbyTargetPitch, 6.5, dt);
       this.lobbyOrbitZoom = THREE.MathUtils.damp(this.lobbyOrbitZoom, this.lobbyTargetZoom, 6.5, dt);
-      targetCamY += this.lobbyOrbitPitch * 2.4;
-      targetCamZ = Math.max(8.2, targetCamZ + this.lobbyOrbitZoom);
+      targetCamY += this.lobbyOrbitPitch * 2.1;
+      targetCamZ = Math.max(7.4, targetCamZ + this.lobbyOrbitZoom);
 
       this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 4.5, dt);
       this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 4.5, dt);
@@ -5555,7 +5556,7 @@ export class GameEngine {
       if (this.lobbyAutoSpinIdleTimer > 0) {
         this.lobbyAutoSpinIdleTimer -= dt;
       } else if (!this.lobbyDragActive) {
-        this.lobbyTargetYaw += dt * 0.28;
+        this.lobbyTargetYaw += dt * 0.24;
       }
       this.lobbyYaw = THREE.MathUtils.damp(this.lobbyYaw, this.lobbyTargetYaw, 8.5, dt);
 
@@ -5563,7 +5564,7 @@ export class GameEngine {
       this.lobbyHeadSyncTimer -= dt;
       if (this.lobbyHeadSyncTimer <= 0 && this.callbacks.onLobbyHeadPos) {
         this.lobbyHeadSyncTimer = 0.05;
-        const headWorldY = (hasMount ? 3.25 : 2.55) + (this.lobbyHeroPose === 'astral_float' ? 0.35 : 0);
+        const headWorldY = (hasMount ? 3.28 : 2.52) + (this.lobbyHeroPose === 'astral_float' ? 0.35 : 0);
         _v2.set(0, headWorldY, 4.5).project(this.camera);
         const cw = this.container.clientWidth || window.innerWidth;
         const ch = this.container.clientHeight || window.innerHeight;
@@ -5572,7 +5573,7 @@ export class GameEngine {
         this.callbacks.onLobbyHeadPos({
           x: sx,
           y: sy,
-          visible: _v2.z < 1 && sx > 40 && sx < cw - 40 && sy > 48 && sy < ch - 120,
+          visible: _v2.z < 1 && sx > 40 && sx < cw - 40 && sy > 52 && sy < ch - 135,
         });
       }
 

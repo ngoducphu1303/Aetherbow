@@ -400,35 +400,43 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto a2-scroll pointer-events-auto">
       {/* 1. UPPER PAPER-DOLL STAGE OVER LIVE 3D HERO */}
-      <div className="relative px-3 sm:px-6 pt-1.5 pb-2.5 shrink-0">
-        <div className="max-w-3xl mx-auto grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-6">
-          <div className="flex flex-col gap-1.5 sm:gap-2 items-center z-10">
+      <div className="relative px-3 sm:px-6 pt-2 pb-2 shrink-0">
+        <div className="max-w-4xl mx-auto grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-8">
+          <div className="flex flex-col gap-2 items-center z-10">
             {LEFT_SLOTS.map(renderEquippedSlot)}
           </div>
 
-          {/* Center Window (360° Drag-to-Rotate) + Celestial Astrolabe Pedestal */}
+          {/* Center Window (360° Drag-to-Rotate) + Compact Stat Strip */}
           <div
             onPointerDown={handleStagePointerDown}
             onPointerMove={handleStagePointerMove}
             onPointerUp={handleStagePointerUp}
             onPointerCancel={handleStagePointerUp}
-            className="flex flex-col items-center justify-end gap-1.5 min-h-[215px] sm:min-h-[235px] cursor-grab active:cursor-grabbing touch-none select-none"
+            className="flex flex-col items-center justify-end gap-1.5 min-h-[260px] sm:min-h-[305px] cursor-grab active:cursor-grabbing touch-none select-none"
           >
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-amber-200/90 tracking-wide bg-[#080d22]/90 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
-                Kéo xoay Anh Hùng 360°
+            <div
+              onPointerDown={(e) => e.stopPropagation()}
+              className="flex items-center gap-1.5 bg-[#080d20]/88 border border-amber-400/25 rounded-2xl px-3 py-1.5"
+            >
+              <span className="flex items-center gap-1 text-[11px] font-mono-nums font-black text-amber-200">
+                <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                {stats.attack}
+              </span>
+              <span aria-hidden="true" className="text-amber-400/35">·</span>
+              <span className="flex items-center gap-1 text-[11px] font-mono-nums font-black text-emerald-200">
+                <Heart className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                {stats.maxHp}
               </span>
               {onResetHeroRotation && (
                 <button
                   type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     soundEngine.playUiClick();
                     onResetHeroRotation();
                   }}
-                  title="Đặt lại góc nhìn"
+                  title="Đặt lại góc nhìn 360°"
                   aria-label="Đặt lại góc nhìn"
-                  className="cel-panel w-6 h-6 rounded-lg flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer"
+                  className="ml-1 w-6 h-6 rounded-lg bg-[#0d1530] border border-amber-400/25 flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
                 </button>
@@ -436,45 +444,20 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
               {onOpenWardrobe && (
                 <button
                   type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     soundEngine.playUiClick();
                     onOpenWardrobe();
                   }}
-                  className="cel-panel px-2.5 h-6 rounded-lg flex items-center gap-1 text-[10px] font-black text-sky-200 hover:border-sky-300 cursor-pointer whitespace-nowrap"
+                  className="px-2 h-6 rounded-lg bg-[#0d1530] border border-sky-400/35 flex items-center gap-1 text-[10px] font-black text-sky-200 hover:border-sky-300 cursor-pointer whitespace-nowrap"
                 >
                   <Sparkles className="w-3 h-3 text-amber-300" />
-                  <span>Phòng Thử Đồ 3D</span>
+                  <span>Thử Đồ 3D</span>
                 </button>
               )}
             </div>
-
-            <div
-              onPointerDown={(e) => e.stopPropagation()}
-              className="a2-pedestal w-full max-w-[300px] rounded-2xl p-1.5 flex items-center justify-around gap-2"
-            >
-              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1 flex items-center justify-between gap-1.5">
-                <span className="flex items-center gap-1 text-[10px] sm:text-xs font-bold text-amber-200">
-                  <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>Tấn Công</span>
-                </span>
-                <span className="text-xs sm:text-sm font-black text-white font-mono-nums">
-                  {stats.attack}
-                </span>
-              </div>
-              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1 flex items-center justify-between gap-1.5">
-                <span className="flex items-center gap-1 text-[10px] sm:text-xs font-bold text-emerald-200">
-                  <Heart className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                  <span>Sinh Lực</span>
-                </span>
-                <span className="text-xs sm:text-sm font-black text-white font-mono-nums">
-                  {stats.maxHp}
-                </span>
-              </div>
-            </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 sm:gap-2 items-center z-10">
+          <div className="flex flex-col gap-2 items-center z-10">
             {RIGHT_SLOTS.map(renderEquippedSlot)}
           </div>
         </div>
@@ -1188,57 +1171,50 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto a2-scroll pointer-events-auto">
       {/* Upper Showcase (Live 3D Hero + Pet + Skin + Aura) */}
-      <div className="px-3 sm:px-6 pt-1.5 pb-3 shrink-0">
-        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          {/* Left: Transparent 3D Hero Window (360° Drag-to-Rotate) + Celestial Nameplate */}
+      <div className="px-3 sm:px-6 pt-2 pb-2.5 shrink-0">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          {/* Left: Wide Open 3D Hero Window (360° Drag-to-Rotate) + Compact Nameplate */}
           <div
             onPointerDown={handleHeroDragDown}
             onPointerMove={handleHeroDragMove}
             onPointerUp={handleHeroDragUp}
             onPointerCancel={handleHeroDragUp}
-            className="md:col-span-6 flex flex-col items-center justify-end gap-1.5 min-h-[215px] sm:min-h-[235px] cursor-grab active:cursor-grabbing touch-none select-none"
+            className="md:col-span-7 flex flex-col items-center justify-end gap-1.5 min-h-[260px] sm:min-h-[305px] cursor-grab active:cursor-grabbing touch-none select-none"
           >
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-amber-200/90 tracking-wide bg-[#080d22]/90 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
-                Kéo xoay 360° ngắm Anh Hùng &amp; Tinh Linh
-              </span>
+            <div
+              onPointerDown={(e) => e.stopPropagation()}
+              className="cel-panel-ornate flex items-center justify-center gap-2.5 rounded-2xl px-3.5 py-1.5"
+            >
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-display text-sm font-black text-white">{hero.name}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                    {hero.rarity}
+                  </span>
+                </div>
+                <div className="text-[10px] font-semibold text-slate-300">
+                  {hero.title} · {unlocked ? `★${star}/5` : 'Chưa Chiêu Mộ'}
+                </div>
+              </div>
               {onResetHeroRotation && (
                 <button
                   type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     soundEngine.playUiClick();
                     onResetHeroRotation();
                   }}
-                  title="Đặt lại góc nhìn"
+                  title="Đặt lại góc nhìn 360°"
                   aria-label="Đặt lại góc nhìn"
-                  className="cel-panel w-6 h-6 rounded-lg flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer"
+                  className="cel-panel w-7 h-7 rounded-lg flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer shrink-0"
                 >
-                  <RotateCcw className="w-3 h-3" />
+                  <RotateCcw className="w-3.5 h-3.5" />
                 </button>
               )}
-            </div>
-
-            <div
-              onPointerDown={(e) => e.stopPropagation()}
-              className="cel-panel-ornate w-full max-w-[290px] text-center rounded-2xl px-3.5 py-1.5"
-            >
-              <div className="flex items-center justify-center gap-2">
-                <span className="font-display text-sm sm:text-base font-black text-white">
-                  {hero.name}
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                  {hero.rarity}
-                </span>
-              </div>
-              <div className="text-[10px] font-semibold text-slate-300 truncate">
-                {hero.title} · {unlocked ? `★ ${star}/5` : 'Chưa Chiêu Mộ'}
-              </div>
             </div>
           </div>
 
           {/* Right: Compact Hero Dossier Art-Card */}
-          <div className="md:col-span-6 cel-panel-ornate rounded-2xl overflow-hidden">
+          <div className="md:col-span-5 cel-panel-ornate rounded-2xl overflow-hidden">
             <div className="px-3 py-1.5 bg-[#121c42] border-b border-amber-400/30 flex items-center justify-between gap-2">
               <h3 className="font-display text-xs sm:text-sm font-black text-amber-200 truncate">
                 Nội Tại · {hero.skillName}
@@ -3193,12 +3169,12 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   return (
     <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-3 pointer-events-auto">
       <div className="max-w-5xl mx-auto flex flex-col gap-3 pb-4">
-        <div className="cel-panel rounded-2xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 border border-amber-400/25">
+        <div className="cel-panel rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-amber-400/20">
           <div>
             <h2 className="font-display text-sm sm:text-base font-black text-amber-200">
-              Đài Khắc Ngọc Hoàng Đạo ({save.equippedRunes.length}/4 Ô Đã Khảm)
+              Đài Khắc Ngọc Hoàng Đạo ({save.equippedRunes.length}/4 Ô)
             </h2>
-            <p className="text-[11px] text-slate-300">
+            <p className="text-[11px] text-slate-400">
               Khảm tối đa 4 Ngọc Khắc để mở khóa kỹ năng khởi đầu &amp; cộng hưởng chỉ số.
             </p>
           </div>
@@ -3672,14 +3648,14 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   return (
     <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-3 pointer-events-auto">
       <div className="max-w-5xl mx-auto flex flex-col gap-3.5 pb-8">
-        {/* Commercial Storefront Header + Live Treasury Currency Strip */}
-        <div className="cel-panel rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5 border border-amber-400/25">
+        {/* Clean Storefront Header */}
+        <div className="cel-panel rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5 border border-amber-400/20">
           <div>
             <h2 className="font-display text-base sm:text-lg font-black text-amber-200">
-              Thương Hội &amp; Kho Báu Hoàng Đạo
+              Kho Báu &amp; Thương Hội
             </h2>
-            <p className="text-[11px] text-slate-300">
-              Chuỗi Quà Liên Hoàn 5 Bước, Ngân Hàng Hoàn Trả Ngọc, Hồ Ước Nguyện SSR &amp; Thẻ Đặc Quyền.
+            <p className="text-[11px] text-slate-400">
+              Triệu hồi Rương, Chuỗi Quà, Hồ Ước SSR &amp; Thẻ Đặc Quyền.
             </p>
           </div>
 
