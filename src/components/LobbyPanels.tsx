@@ -301,7 +301,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
       return (
         <div
           key={slot}
-          className="w-[70px] h-[70px] sm:w-[82px] sm:h-[82px] rounded-2xl bg-[#0a0f24]/90 border border-amber-400/25 flex flex-col items-center justify-center text-[10px] font-semibold text-slate-400"
+          className="w-[64px] h-[64px] sm:w-[72px] sm:h-[72px] rounded-2xl bg-[#0a0f24]/90 border border-amber-400/25 flex flex-col items-center justify-center text-[10px] font-semibold text-slate-400"
         >
           <span>{SLOT_LABELS[slot]}</span>
         </div>
@@ -323,7 +323,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
         key={slot}
         type="button"
         onClick={() => setSelectedUid(item.uid)}
-        className={`a2-item-card w-[70px] h-[70px] sm:w-[82px] sm:h-[82px] cursor-pointer ${
+        className={`a2-item-card w-[64px] h-[64px] sm:w-[72px] sm:h-[72px] cursor-pointer ${
           RARITY_FRAME_CLASS[item.rarity]
         } ${isHolo ? 'a2-holo-foil' : ''} ${
           isSelected ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[#070b18]' : ''
@@ -335,7 +335,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
             slot={slot}
             weaponArchetype={tpl?.weaponArchetype}
             accentHex={tpl?.visualAccentHex}
-            className="w-9 h-9 sm:w-10 sm:h-10 drop-shadow"
+            className="w-8 h-8 sm:w-9 sm:h-9 drop-shadow"
           />
           <span className="text-[10px] font-black text-white leading-none mt-0.5 font-mono-nums">
             Lv.{item.level}{awkLv > 0 ? ` ★${awkLv}` : ''}
@@ -347,7 +347,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
           )}
         </div>
         {fuseReady && (
-          <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-emerald-500 border border-white text-[10px] font-black text-white flex items-center justify-center shadow">
+          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 border border-white text-[9px] font-black text-white flex items-center justify-center shadow">
             ▲
           </span>
         )}
@@ -361,9 +361,9 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto a2-scroll pointer-events-auto">
       {/* 1. UPPER PAPER-DOLL STAGE OVER LIVE 3D HERO */}
-      <div className="relative px-3 sm:px-6 pt-2 pb-4 shrink-0">
+      <div className="relative px-3 sm:px-6 pt-1.5 pb-2.5 shrink-0">
         <div className="max-w-3xl mx-auto grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-6">
-          <div className="flex flex-col gap-2 sm:gap-3 items-center z-10">
+          <div className="flex flex-col gap-1.5 sm:gap-2 items-center z-10">
             {LEFT_SLOTS.map(renderEquippedSlot)}
           </div>
 
@@ -373,7 +373,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
             onPointerMove={handleStagePointerMove}
             onPointerUp={handleStagePointerUp}
             onPointerCancel={handleStagePointerUp}
-            className="flex flex-col items-center justify-end gap-1.5 min-h-[250px] sm:min-h-[285px] cursor-grab active:cursor-grabbing touch-none select-none"
+            className="flex flex-col items-center justify-end gap-1.5 min-h-[215px] sm:min-h-[235px] cursor-grab active:cursor-grabbing touch-none select-none"
           >
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-bold text-amber-200/90 tracking-wide bg-[#080d22]/90 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
@@ -414,7 +414,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
               onPointerDown={(e) => e.stopPropagation()}
               className="a2-pedestal w-full max-w-[300px] rounded-2xl p-1.5 flex items-center justify-around gap-2"
             >
-              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-1.5">
+              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1 flex items-center justify-between gap-1.5">
                 <span className="flex items-center gap-1 text-[10px] sm:text-xs font-bold text-amber-200">
                   <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                   <span>Tấn Công</span>
@@ -423,7 +423,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                   {stats.attack}
                 </span>
               </div>
-              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-1.5">
+              <div className="a2-stat-pill flex-1 rounded-xl px-2.5 py-1 flex items-center justify-between gap-1.5">
                 <span className="flex items-center gap-1 text-[10px] sm:text-xs font-bold text-emerald-200">
                   <Heart className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                   <span>Sinh Lực</span>
@@ -435,16 +435,16 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 sm:gap-3 items-center z-10">
+          <div className="flex flex-col gap-1.5 sm:gap-2 items-center z-10">
             {RIGHT_SLOTS.map(renderEquippedSlot)}
           </div>
         </div>
       </div>
 
-      {/* 2. LOWER CELESTIAL GEAR VAULT */}
-      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-4 flex flex-col gap-3">
-        <div className="max-w-4xl w-full mx-auto flex flex-col gap-3.5">
-          {/* High-Craft Vault Telemetry Strip */}
+      {/* 2. LOWER CELESTIAL GEAR VAULT (2-COLUMN SIDE-BY-SIDE DESKTOP CONSOLE) */}
+      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-3 flex flex-col gap-2.5">
+        <div className="max-w-5xl w-full mx-auto flex flex-col gap-2.5">
+          {/* Unified Vault Header: Telemetry + Action Toolbar */}
           {(() => {
             const awakenedCount = save.inventory.filter((g) => (g.awakeningLevel ?? 0) > 0).length;
             const equippedGemsCount = Object.values(save.equipped).reduce((sum, uid) => {
@@ -452,210 +452,169 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
               return sum + (g?.socketedGems?.length ?? 0);
             }, 0);
             return (
-              <div className="cel-panel rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5 border border-amber-400/25">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span className="font-display text-xs sm:text-sm font-black text-amber-100">
-                    Kho Đồ Cao Cấp Hoàng Đạo
+              <div className="cel-panel rounded-2xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 border border-amber-400/25">
+                <div className="flex flex-wrap items-center gap-2.5 text-[11px] font-mono-nums font-bold">
+                  <span className="flex items-center gap-1.5 font-display text-xs font-black text-amber-100">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>Kho Đồ Hoàng Đạo</span>
                   </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono-nums font-bold">
-                  <span className="text-slate-200">
-                    Tổng Trang Bị: <strong className="text-white">{save.inventory.length}</strong>
+                  <span className="text-slate-300">
+                    Đồ: <strong className="text-white">{save.inventory.length}</strong>
                   </span>
                   <span className="text-amber-300">
                     Thức Tỉnh: <strong>{awakenedCount}</strong>
                   </span>
                   <span className="text-purple-300">
-                    Bảo Thạch Khảm: <strong>{equippedGemsCount}</strong>
+                    Bảo Thạch: <strong>{equippedGemsCount}</strong>
                   </span>
-                  <span className="text-emerald-300">
-                    Lực Chiến: <strong>{stats.powerRating.toLocaleString('vi-VN')} LC</strong>
+                  <span className="text-sky-200 flex items-center gap-1">
+                    <StarDustIcon className="w-3 h-3 shrink-0" />
+                    <strong>{save.starDust ?? 0}</strong>
                   </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={onAutoEquipBest}
+                    className="a2-emerald-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                  >
+                    <Zap className="w-3 h-3 shrink-0" />
+                    <span>Tự Mặc Mạnh Nhất</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={fusableSetCount === 0}
+                    onClick={onBulkFuseGear}
+                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer ${
+                      fusableSetCount > 0
+                        ? 'a2-yellow-btn'
+                        : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <Layers className="w-3 h-3 shrink-0" />
+                    <span className="font-mono-nums">
+                      {fusableSetCount > 0 ? `Ghép Nhanh (${fusableSetCount})` : 'Ghép Nhanh'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick();
+                      onOpenForge();
+                    }}
+                    className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black text-amber-200 flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap border border-amber-400/40"
+                  >
+                    <Hammer className="w-3 h-3 text-amber-300 shrink-0" />
+                    <span>Lò Rèn &amp; Tách Đồ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onGoShop}
+                    className="a2-purple-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black cursor-pointer shrink-0 whitespace-nowrap"
+                  >
+                    Kho Báu
+                  </button>
                 </div>
               </div>
             );
           })()}
 
-          {selectedItem && (
-            <div className="cel-panel-ornate rounded-2xl p-3.5 sm:p-4">
-              {(() => {
-                const tpl = GEAR_TEMPLATES[selectedItem.templateId];
-                if (!tpl) return null;
-                const rMeta = RARITY_META[selectedItem.rarity];
-                const gStats = getGearStats(selectedItem);
-                const itemScore = getGearPowerScore(selectedItem, socketPool);
-                const upgradeCost = getUpgradeCost(selectedItem);
-                const isEquipped = save.equipped[tpl.slot] === selectedItem.uid;
-                const atMaxLevel = selectedItem.level >= rMeta.maxLevel;
-                const fuseReady = canFuseItem(selectedItem);
-                const awkLv = selectedItem.awakeningLevel ?? 0;
-                const substats = getEffectiveSubstats(selectedItem);
-                const maxSockets = getMaxGemSocketsForRarity(selectedItem.rarity);
-                const selectedSockets = (selectedItem.socketedGems ?? [])
-                  .map((gid) => socketPool.find((g) => g.uid === gid))
-                  .filter((g): g is NonNullable<typeof g> => Boolean(g));
-                const isHolo =
-                  selectedItem.rarity === Rarity.LEGENDARY ||
-                  selectedItem.rarity === Rarity.MYTHIC ||
-                  Boolean(tpl.isSTier) ||
-                  awkLv > 0;
+          {/* Split-Column Console: Left = Selected Item Inspector (5 cols), Right = Slot Filters + Relic Grid + Build Presets (7 cols) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start pb-3">
+            {/* LEFT COLUMN: SELECTED ITEM INSPECTOR */}
+            <div className="lg:col-span-5">
+              {selectedItem && (
+                <div className="cel-panel-ornate rounded-2xl p-3">
+                  {(() => {
+                    const tpl = GEAR_TEMPLATES[selectedItem.templateId];
+                    if (!tpl) return null;
+                    const rMeta = RARITY_META[selectedItem.rarity];
+                    const gStats = getGearStats(selectedItem);
+                    const itemScore = getGearPowerScore(selectedItem, socketPool);
+                    const upgradeCost = getUpgradeCost(selectedItem);
+                    const isEquipped = save.equipped[tpl.slot] === selectedItem.uid;
+                    const atMaxLevel = selectedItem.level >= rMeta.maxLevel;
+                    const fuseReady = canFuseItem(selectedItem);
+                    const awkLv = selectedItem.awakeningLevel ?? 0;
+                    const substats = getEffectiveSubstats(selectedItem);
+                    const maxSockets = getMaxGemSocketsForRarity(selectedItem.rarity);
+                    const selectedSockets = (selectedItem.socketedGems ?? [])
+                      .map((gid) => socketPool.find((g) => g.uid === gid))
+                      .filter((g): g is NonNullable<typeof g> => Boolean(g));
+                    const isHolo =
+                      selectedItem.rarity === Rarity.LEGENDARY ||
+                      selectedItem.rarity === Rarity.MYTHIC ||
+                      Boolean(tpl.isSTier) ||
+                      awkLv > 0;
 
-                const equippedUid = save.equipped[tpl.slot];
-                const equippedItem = !isEquipped
-                  ? save.inventory.find((g) => g.uid === equippedUid)
-                  : undefined;
-                const sumWithGems = (item: GearInstance) => {
-                  const base = getGearStats(item);
-                  let atk = base.atk;
-                  let hp = base.hp;
-                  let crit = base.critChance;
-                  let aspd = base.attackSpeed;
-                  let move = base.moveSpeed;
-                  let dr = base.damageReduction;
-                  for (const gid of item.socketedGems ?? []) {
-                    const g = socketPool.find((x) => x.uid === gid);
-                    if (!g) continue;
-                    const b = getSocketGemBonuses(g);
-                    atk += b.atk;
-                    hp += b.hp;
-                    crit += b.critChance;
-                    aspd += b.attackSpeed;
-                    dr += b.damageReduction;
-                  }
-                  for (const sub of getEffectiveSubstats(item)) {
-                    if (sub.kind === 'crit_pct') crit += sub.value;
-                    else if (sub.kind === 'aspd_pct') aspd += sub.value;
-                    else if (sub.kind === 'move_pct') move += sub.value;
-                    else if (sub.kind === 'dr_pct') dr += sub.value;
-                  }
-                  return { atk, hp, crit, aspd, move, dr };
-                };
-                const selTotal = sumWithGems(selectedItem);
-                const eqTotal = equippedItem ? sumWithGems(equippedItem) : null;
-                const eqScore = equippedItem ? getGearPowerScore(equippedItem, socketPool) : 0;
+                    const equippedUid = save.equipped[tpl.slot];
+                    const equippedItem = !isEquipped
+                      ? save.inventory.find((g) => g.uid === equippedUid)
+                      : undefined;
+                    const eqScore = equippedItem ? getGearPowerScore(equippedItem, socketPool) : 0;
 
-                const comparisonRows = eqTotal
-                  ? [
-                      {
-                        label: 'Tấn Công (ATK)',
-                        cur: eqTotal.atk,
-                        next: selTotal.atk,
-                        diff: selTotal.atk - eqTotal.atk,
-                        fmt: (v: number) => `${Math.round(v)}`,
-                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${Math.round(d)}`,
-                      },
-                      {
-                        label: 'Sinh Lực (HP)',
-                        cur: eqTotal.hp,
-                        next: selTotal.hp,
-                        diff: selTotal.hp - eqTotal.hp,
-                        fmt: (v: number) => `${Math.round(v)}`,
-                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${Math.round(d)}`,
-                      },
-                      {
-                        label: 'Chí Mạng',
-                        cur: eqTotal.crit * 100,
-                        next: selTotal.crit * 100,
-                        diff: (selTotal.crit - eqTotal.crit) * 100,
-                        fmt: (v: number) => `${v.toFixed(1)}%`,
-                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
-                      },
-                      {
-                        label: 'Tốc Bắn',
-                        cur: eqTotal.aspd * 100,
-                        next: selTotal.aspd * 100,
-                        diff: (selTotal.aspd - eqTotal.aspd) * 100,
-                        fmt: (v: number) => `${v.toFixed(1)}%`,
-                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
-                      },
-                      {
-                        label: 'Tốc Chạy',
-                        cur: eqTotal.move * 100,
-                        next: selTotal.move * 100,
-                        diff: (selTotal.move - eqTotal.move) * 100,
-                        fmt: (v: number) => `${v.toFixed(1)}%`,
-                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
-                      },
-                      {
-                        label: 'Giáp Giảm ST',
-                        cur: eqTotal.dr * 100,
-                        next: selTotal.dr * 100,
-                        diff: (selTotal.dr - eqTotal.dr) * 100,
-                        fmt: (v: number) => `${v.toFixed(1)}%`,
-                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`,
-                      },
-                      {
-                        label: 'Điểm LC Trang Bị',
-                        cur: eqScore,
-                        next: itemScore,
-                        diff: itemScore - eqScore,
-                        fmt: (v: number) => `${Math.round(v)}`,
-                        fmtDiff: (d: number) => `${d > 0 ? '+' : ''}${Math.round(d)}`,
-                      },
-                    ]
-                  : [];
+                    return (
+                      <div className="flex flex-col gap-2.5">
+                        <div className="flex items-start gap-2.5">
+                          <div
+                            className={`a2-item-card w-13 h-13 shrink-0 ${
+                              RARITY_FRAME_CLASS[selectedItem.rarity]
+                            } ${isHolo ? 'a2-holo-foil' : ''}`}
+                          >
+                            <div className="a2-item-inner flex items-center justify-center">
+                              <GearSlotSvg
+                                slot={tpl.slot}
+                                weaponArchetype={tpl.weaponArchetype}
+                                accentHex={tpl.visualAccentHex}
+                                className="w-8 h-8"
+                              />
+                            </div>
+                          </div>
 
-                return (
-                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0 flex-1">
-                      <div
-                        className={`a2-item-card w-16 h-16 shrink-0 ${
-                          RARITY_FRAME_CLASS[selectedItem.rarity]
-                        } ${isHolo ? 'a2-holo-foil' : ''}`}
-                      >
-                        <div className="a2-item-inner flex items-center justify-center">
-                          <GearSlotSvg
-                            slot={tpl.slot}
-                            weaponArchetype={tpl.weaponArchetype}
-                            accentHex={tpl.visualAccentHex}
-                            className="w-9 h-9"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] mb-0.5">
-                          <span className={`font-black ${rMeta.textClass}`}>
-                            {rMeta.label} · {SLOT_LABELS[tpl.slot]}
-                          </span>
-                          <span aria-hidden="true" className="text-slate-600">·</span>
-                          <span className="text-sky-300 font-bold">{tpl.setName}</span>
-                          <span aria-hidden="true" className="text-slate-600">·</span>
-                          <span className="font-mono-nums text-amber-200 font-bold">
-                            Cấp {selectedItem.level}/{rMeta.maxLevel}
-                          </span>
-                          {awkLv > 0 && (
-                            <span className="font-black text-amber-300">
-                              {'★'.repeat(awkLv)}
-                            </span>
-                          )}
-                          <span aria-hidden="true" className="text-slate-600">·</span>
-                          <span className="font-mono-nums text-emerald-300 font-bold">
-                            Điểm {itemScore}
-                          </span>
-                        </div>
-                        <h3 className="font-display text-base sm:text-lg font-bold text-white truncate">
-                          {tpl.name}
-                        </h3>
-                        <p className="text-xs text-slate-300 line-clamp-2 mt-0.5">
-                          {tpl.description}
-                        </p>
-                        <div className="flex flex-wrap gap-3 text-xs font-mono-nums text-amber-200 mt-1.5 font-semibold">
-                          {gStats.atk > 0 && <span>+{gStats.atk} ATK</span>}
-                          {gStats.hp > 0 && <span>+{gStats.hp} HP</span>}
-                          {gStats.critChance > 0 && (
-                            <span>+{Math.round(gStats.critChance * 100)}% Crit</span>
-                          )}
-                          {gStats.attackSpeed > 0 && (
-                            <span>+{Math.round(gStats.attackSpeed * 100)}% Tốc bắn</span>
-                          )}
-                          {gStats.moveSpeed > 0 && (
-                            <span>+{Math.round(gStats.moveSpeed * 100)}% Tốc chạy</span>
-                          )}
-                          {gStats.damageReduction > 0 && (
-                            <span>+{Math.round(gStats.damageReduction * 100)}% Giáp</span>
-                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                              <span className={`font-black ${rMeta.textClass}`}>
+                                {rMeta.label} · {SLOT_LABELS[tpl.slot]}
+                              </span>
+                              <span aria-hidden="true" className="text-slate-600">·</span>
+                              <span className="text-sky-300 font-bold">{tpl.setName}</span>
+                              <span aria-hidden="true" className="text-slate-600">·</span>
+                              <span className="font-mono-nums text-amber-200 font-bold">
+                                Lv.{selectedItem.level}/{rMeta.maxLevel}
+                              </span>
+                              {awkLv > 0 && (
+                                <span className="font-black text-amber-300">
+                                  {'★'.repeat(awkLv)}
+                                </span>
+                              )}
+                              <span className="ml-auto font-mono-nums text-emerald-300 font-bold">
+                                {itemScore} LC
+                              </span>
+                            </div>
+                            <h3 className="font-display text-sm sm:text-base font-black text-white truncate">
+                              {tpl.name}
+                            </h3>
+                            <div className="flex flex-wrap gap-2.5 text-[11px] font-mono-nums text-amber-200 mt-0.5 font-bold">
+                              {gStats.atk > 0 && <span>+{gStats.atk} ATK</span>}
+                              {gStats.hp > 0 && <span>+{gStats.hp} HP</span>}
+                              {gStats.critChance > 0 && (
+                                <span>+{Math.round(gStats.critChance * 100)}% Crit</span>
+                              )}
+                              {gStats.attackSpeed > 0 && (
+                                <span>+{Math.round(gStats.attackSpeed * 100)}% Tốc bắn</span>
+                              )}
+                              {gStats.moveSpeed > 0 && (
+                                <span>+{Math.round(gStats.moveSpeed * 100)}% Tốc chạy</span>
+                              )}
+                              {gStats.damageReduction > 0 && (
+                                <span>+{Math.round(gStats.damageReduction * 100)}% Giáp</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         {!atMaxLevel && (() => {
@@ -686,34 +645,16 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                                   : undefined,
                             });
                           }
-                          if (nextStats.critChance > gStats.critChance) {
-                            diffRows.push({
-                              label: 'Chí Mạng',
-                              current: `${Math.round(gStats.critChance * 100)}%`,
-                              next: `${Math.round(nextStats.critChance * 100)}%`,
-                              delta: `+${Math.round((nextStats.critChance - gStats.critChance) * 100)}%`,
-                            });
-                          }
-                          if (nextStats.damageReduction > gStats.damageReduction) {
-                            diffRows.push({
-                              label: 'Giảm Sát Thương',
-                              current: `${Math.round(gStats.damageReduction * 100)}%`,
-                              next: `${Math.round(nextStats.damageReduction * 100)}%`,
-                              delta: `+${Math.round((nextStats.damageReduction - gStats.damageReduction) * 100)}%`,
-                            });
-                          }
                           return diffRows.length > 0 ? (
-                            <div className="mt-2">
-                              <UpgradeStatDiff
-                                title={`Dự kiến cường hóa Lv.${selectedItem.level} → Lv.${selectedItem.level + 1}`}
-                                rows={diffRows}
-                              />
-                            </div>
+                            <UpgradeStatDiff
+                              title={`Cường hóa Lv.${selectedItem.level} → Lv.${selectedItem.level + 1}`}
+                              rows={diffRows}
+                            />
                           ) : null;
                         })()}
 
-                        {substats.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
+                        {(substats.length > 0 || maxSockets > 0) && (
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {substats.map((sub) => (
                               <span
                                 key={sub.id}
@@ -722,419 +663,256 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                                 {SUBSTAT_DEFS[sub.kind].format(sub.value)}
                               </span>
                             ))}
-                          </div>
-                        )}
-
-                        {maxSockets > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                            <span className="text-[10px] font-bold text-purple-200 flex items-center gap-1">
-                              <Gem className="w-3 h-3 text-purple-300" />
-                              Bảo Thạch ({selectedSockets.length}/{maxSockets}):
-                            </span>
-                            {selectedSockets.map((gem) => {
-                              const meta = SOCKET_GEM_META[gem.color];
-                              return (
-                                <span
-                                  key={gem.uid}
-                                  className={`px-2 py-0.5 rounded-lg border text-[10px] font-mono-nums font-bold ${meta.bgClass} ${meta.borderClass} ${meta.textClass}`}
-                                >
-                                  {getSocketGemTierRoman(gem.tier)} · {getSocketGemLabel(gem)}
-                                </span>
-                              );
-                            })}
-                            {selectedSockets.length < maxSockets && (
-                              <span className="text-[10px] text-slate-400 italic">
-                                Còn {maxSockets - selectedSockets.length} lỗ trống
+                            {maxSockets > 0 && (
+                              <span className="text-[10px] font-bold text-purple-200 flex items-center gap-1">
+                                <Gem className="w-3 h-3 text-purple-300" />
+                                Ngọc ({selectedSockets.length}/{maxSockets})
                               </span>
                             )}
                           </div>
                         )}
 
-                        {/* Side-by-Side Visual Gear Comparison + Detailed 7-Stat Table */}
                         {!isEquipped && equippedItem && (() => {
                           const eqTpl = GEAR_TEMPLATES[equippedItem.templateId];
-                          const eqMeta = RARITY_META[equippedItem.rarity];
                           const lcDiff = itemScore - eqScore;
                           return (
-                            <div className="mt-2.5 bg-[#060916]/95 border border-amber-400/30 rounded-xl p-2.5 space-y-2">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <div className="flex items-center gap-2 rounded-lg bg-[#090f24] border border-slate-700/80 p-2 min-w-0">
-                                  {eqTpl && (
-                                    <div className={`a2-item-card w-10 h-10 shrink-0 ${RARITY_FRAME_CLASS[equippedItem.rarity]}`}>
-                                      <div className="a2-item-inner flex items-center justify-center">
-                                        <GearSlotSvg
-                                          slot={eqTpl.slot}
-                                          weaponArchetype={eqTpl.weaponArchetype}
-                                          accentHex={eqTpl.visualAccentHex}
-                                          className="w-6 h-6"
-                                        />
-                                      </div>
-                                    </div>
-                                  )}
-                                  <div className="min-w-0">
-                                    <div className="text-[9px] font-black uppercase text-slate-400">
-                                      Đang Mặc · Lv.{equippedItem.level}
-                                    </div>
-                                    <div className={`text-[11px] font-black truncate ${eqMeta.textClass}`}>
-                                      {eqTpl?.name ?? equippedItem.templateId}
-                                    </div>
-                                    <div className="text-[10px] font-mono-nums text-slate-300">
-                                      {eqScore} LC
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 rounded-lg bg-[#0c162b] border border-amber-400/45 p-2 min-w-0">
-                                  <div className={`a2-item-card w-10 h-10 shrink-0 ${RARITY_FRAME_CLASS[selectedItem.rarity]}`}>
-                                    <div className="a2-item-inner flex items-center justify-center">
-                                      <GearSlotSvg
-                                        slot={tpl.slot}
-                                        weaponArchetype={tpl.weaponArchetype}
-                                        accentHex={tpl.visualAccentHex}
-                                        className="w-6 h-6"
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-1">
-                                      <span className="text-[9px] font-black uppercase text-amber-300">
-                                        Đang Chọn · Lv.{selectedItem.level}
-                                      </span>
-                                      <span
-                                        className={`text-[9px] font-mono-nums font-black ${
-                                          lcDiff > 0
-                                            ? 'text-emerald-300'
-                                            : lcDiff < 0
-                                            ? 'text-rose-400'
-                                            : 'text-slate-400'
-                                        }`}
-                                      >
-                                        {lcDiff > 0 ? `+${lcDiff}` : lcDiff} LC
-                                      </span>
-                                    </div>
-                                    <div className={`text-[11px] font-black truncate ${rMeta.textClass}`}>
-                                      {tpl.name}
-                                    </div>
-                                    <div className="text-[10px] font-mono-nums text-amber-200">
-                                      {itemScore} LC
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between text-[10px] font-black text-amber-200">
-                                <span>Chi Tiết Chênh Lệch Chỉ Số</span>
-                                <span className="text-slate-400 font-semibold">Đã gồm Bảo Thạch</span>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                              {comparisonRows.map((row) => {
-                                const improved = row.diff > 0.05;
-                                const worse = row.diff < -0.05;
-                                return (
-                                  <div
-                                    key={row.label}
-                                    className="flex items-center justify-between gap-2 text-[10px] font-mono-nums border-b border-slate-800/70 py-0.5"
-                                  >
-                                    <span className="text-slate-300 font-sans font-semibold truncate">
-                                      {row.label}
-                                    </span>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <span className="text-slate-400">{row.fmt(row.cur)}</span>
-                                      <span className="text-slate-600">→</span>
-                                      <span className="text-white font-bold">{row.fmt(row.next)}</span>
-                                      <span
-                                        className={`font-black min-w-[44px] text-right ${
-                                          improved
-                                            ? 'text-emerald-300'
-                                            : worse
-                                            ? 'text-rose-400'
-                                            : 'text-slate-500'
-                                        }`}
-                                      >
-                                        {improved
-                                          ? `▲ ${row.fmtDiff(row.diff)}`
-                                          : worse
-                                          ? `▼ ${row.fmtDiff(row.diff)}`
-                                          : '='}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              </div>
+                            <div className="bg-[#060916]/95 border border-amber-400/25 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px] font-mono-nums">
+                              <span className="text-slate-300 truncate">
+                                So với đang mặc ({eqTpl?.name ?? equippedItem.templateId} · {eqScore} LC):
+                              </span>
+                              <span
+                                className={`font-black shrink-0 ${
+                                  lcDiff > 0
+                                    ? 'text-emerald-300'
+                                    : lcDiff < 0
+                                    ? 'text-rose-400'
+                                    : 'text-slate-400'
+                                }`}
+                              >
+                                {lcDiff > 0 ? `▲ +${lcDiff} LC` : lcDiff < 0 ? `▼ ${lcDiff} LC` : '= 0 LC'}
+                              </span>
                             </div>
                           );
                         })()}
-                      </div>
-                    </div>
 
-                    <div className="flex flex-wrap md:flex-col gap-2 shrink-0">
-                      <button
-                        type="button"
-                        disabled={isEquipped}
-                        onClick={() => onEquip(selectedItem.uid)}
-                        className={`px-4 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                          isEquipped
-                            ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 cursor-default'
-                            : 'a2-emerald-btn'
-                        }`}
-                      >
-                        {isEquipped && <Check className="w-3.5 h-3.5" />}
-                        <span>{isEquipped ? 'Đang Trang Bị' : 'Trang Bị'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={atMaxLevel || save.gold < upgradeCost}
-                        onClick={() => onUpgrade(selectedItem.uid)}
-                        className={`px-4 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                          !atMaxLevel && save.gold >= upgradeCost
-                            ? 'a2-yellow-btn'
-                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                        }`}
-                      >
-                        <ArrowUpCircle className="w-3.5 h-3.5" />
-                        <span className="font-mono-nums">
-                          {atMaxLevel ? 'Đã Tối Đa' : `Cường Hóa · ${upgradeCost}`}
-                        </span>
-                      </button>
-
-                      {selectedItem.rarity !== Rarity.COMMON && (
-                        <>
+                        <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-amber-400/15">
                           <button
                             type="button"
-                            onClick={() => {
-                              soundEngine.playUiClick();
-                              if (onOpenForgeSubTab) {
-                                onOpenForgeSubTab('sockets', selectedItem.uid);
-                              } else {
-                                onOpenForge();
-                              }
-                            }}
-                            className="a2-slate-btn px-4 py-2 rounded-xl text-xs font-black text-purple-200 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer border border-purple-400/40"
+                            disabled={isEquipped}
+                            onClick={() => onEquip(selectedItem.uid)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                              isEquipped
+                                ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 cursor-default'
+                                : 'a2-emerald-btn'
+                            }`}
                           >
-                            <Gem className="w-3.5 h-3.5 text-purple-300" />
-                            <span>
-                              Khảm Bảo Thạch ({selectedSockets.length}/{maxSockets})
+                            {isEquipped && <Check className="w-3.5 h-3.5" />}
+                            <span>{isEquipped ? 'Đang Mặc' : 'Trang Bị'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={atMaxLevel || save.gold < upgradeCost}
+                            onClick={() => onUpgrade(selectedItem.uid)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                              !atMaxLevel && save.gold >= upgradeCost
+                                ? 'a2-yellow-btn'
+                                : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                            }`}
+                          >
+                            <ArrowUpCircle className="w-3.5 h-3.5" />
+                            <span className="font-mono-nums">
+                              {atMaxLevel ? 'Cấp Tối Đa' : `Cường Hóa · ${upgradeCost}`}
                             </span>
                           </button>
 
+                          {selectedItem.rarity !== Rarity.COMMON && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playUiClick();
+                                  if (onOpenForgeSubTab) {
+                                    onOpenForgeSubTab('sockets', selectedItem.uid);
+                                  } else {
+                                    onOpenForge();
+                                  }
+                                }}
+                                className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black text-purple-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer border border-purple-400/40"
+                              >
+                                <Gem className="w-3 h-3 text-purple-300" />
+                                <span>
+                                  Khảm Ngọc ({selectedSockets.length}/{maxSockets})
+                                </span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playUiClick();
+                                  if (onOpenForgeSubTab) {
+                                    onOpenForgeSubTab('reforge', selectedItem.uid);
+                                  } else {
+                                    onOpenForge();
+                                  }
+                                }}
+                                className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer border border-sky-400/35"
+                              >
+                                <RefreshCw className="w-3 h-3 text-sky-300" />
+                                <span>Tẩy Luyện &amp; Thức Tỉnh</span>
+                              </button>
+                            </>
+                          )}
+
+                          {selectedItem.rarity !== Rarity.MYTHIC && (
+                            <button
+                              type="button"
+                              disabled={!fuseReady}
+                              onClick={() => onFuse(selectedItem.uid)}
+                              className={`col-span-2 px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                                fuseReady
+                                  ? 'a2-purple-btn'
+                                  : 'bg-slate-900/90 border border-slate-700 text-slate-500 cursor-not-allowed'
+                              }`}
+                            >
+                              <Layers className="w-3.5 h-3.5" />
+                              <span>{fuseReady ? 'Ghép 3→1 Bậc Cao Hơn' : 'Cần 3 món cùng loại & bậc để ghép'}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT COLUMN: SLOT FILTERS + IMMEDIATE VISIBLE RELIC GRID + QUICK PRESETS */}
+            <div className="lg:col-span-7 flex flex-col gap-2.5">
+              {/* Slot Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
+                {(['ALL', ...Object.values(GearSlot)] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setSlotFilter(tab)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                      slotFilter === tab
+                        ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 font-black shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {tab === 'ALL' ? `Tất Cả (${save.inventory.length})` : SLOT_LABELS[tab]}
+                  </button>
+                ))}
+              </div>
+
+              {/* Immediate Visible Relic Grid */}
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                {filteredInventory.map((item) => {
+                  const tpl = GEAR_TEMPLATES[item.templateId];
+                  if (!tpl) return null;
+                  const isEquipped = save.equipped[tpl.slot] === item.uid;
+                  const isSelected = selectedItem?.uid === item.uid;
+                  const fuseReady = canFuseItem(item);
+                  const awkLv = item.awakeningLevel ?? 0;
+                  const isHolo =
+                    item.rarity === Rarity.LEGENDARY ||
+                    item.rarity === Rarity.MYTHIC ||
+                    Boolean(tpl.isSTier) ||
+                    awkLv > 0;
+
+                  return (
+                    <button
+                      key={item.uid}
+                      type="button"
+                      onClick={() => setSelectedUid(item.uid)}
+                      className={`a2-item-card aspect-square cursor-pointer ${
+                        RARITY_FRAME_CLASS[item.rarity]
+                      } ${isHolo ? 'a2-holo-foil' : ''} ${
+                        isSelected ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[#080c1c]' : ''
+                      }`}
+                      title={tpl.name}
+                    >
+                      <div className="a2-item-inner flex flex-col items-center justify-center p-1">
+                        <GearSlotSvg
+                          slot={tpl.slot}
+                          weaponArchetype={tpl.weaponArchetype}
+                          accentHex={tpl.visualAccentHex}
+                          className="w-7 h-7 sm:w-8 sm:h-8"
+                        />
+                        <span className="text-[10px] font-black text-white font-mono-nums leading-none mt-0.5">
+                          Lv.{item.level}{awkLv > 0 ? ` ★${awkLv}` : ''}
+                        </span>
+                        <span className="text-[8px] text-white/90 font-bold truncate max-w-full px-1">
+                          {tpl.name}
+                        </span>
+                      </div>
+                      {isEquipped && (
+                        <span className="absolute top-1 left-1 px-1 py-0.5 rounded bg-emerald-600 border border-emerald-200/70 text-[8px] font-black text-white shadow leading-none">
+                          Mặc
+                        </span>
+                      )}
+                      {fuseReady && (
+                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 border border-white text-[9px] font-black text-slate-950 flex items-center justify-center shadow">
+                          ▲
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Compact 3-Slot Quick Build Presets */}
+              <div className="cel-panel rounded-xl p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-1 text-[11px] font-black text-amber-200 shrink-0">
+                  <Bookmark className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Bộ Nhanh:</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 flex-1">
+                  {buildPresets.map((preset, idx) => {
+                    const presetHero = HERO_MAP[preset.heroId]?.name ?? 'Anh Hùng';
+                    return (
+                      <div
+                        key={preset.id}
+                        className="rounded-lg bg-[#070b1a] border border-amber-400/20 px-2 py-1 flex items-center justify-between gap-1.5"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-black text-white truncate">
+                            {preset.name}
+                          </div>
+                          <div className="text-[8px] text-slate-400 font-semibold truncate">
+                            {presetHero} · {preset.equippedRunes.length} Ngọc
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={() => {
-                              soundEngine.playUiClick();
-                              if (onOpenForgeSubTab) {
-                                onOpenForgeSubTab('reforge', selectedItem.uid);
-                              } else {
-                                onOpenForge();
-                              }
+                              soundEngine.playUiClick(1.05);
+                              onSaveBuildPreset(idx);
                             }}
-                            className="a2-slate-btn px-4 py-2 rounded-xl text-xs font-black text-sky-200 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer border border-sky-400/35"
+                            className="a2-slate-btn px-1.5 py-0.5 rounded text-[9px] font-black text-sky-200 cursor-pointer"
                           >
-                            <RefreshCw className="w-3.5 h-3.5 text-sky-300" />
-                            <span>Tẩy Luyện &amp; Thức Tỉnh</span>
+                            Lưu
                           </button>
-                        </>
-                      )}
-
-                      {selectedItem.rarity !== Rarity.MYTHIC && (
-                        <button
-                          type="button"
-                          disabled={!fuseReady}
-                          onClick={() => onFuse(selectedItem.uid)}
-                          className={`px-4 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                            fuseReady
-                              ? 'a2-purple-btn'
-                              : 'bg-slate-900/90 border border-slate-700 text-slate-500 cursor-not-allowed'
-                          }`}
-                        >
-                          <Layers className="w-3.5 h-3.5" />
-                          <span>{fuseReady ? 'Ghép 3→1 Bậc' : 'Cần 3 món cùng bậc'}</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
-          {/* 3-Slot Quick Build Presets */}
-          <div className="cel-panel rounded-2xl p-2.5 sm:p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-xs font-black text-amber-200 shrink-0">
-              <Bookmark className="w-3.5 h-3.5 text-amber-300" />
-              <span>Bộ Trang Bị Nhanh:</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
-              {buildPresets.map((preset, idx) => {
-                const presetHero = HERO_MAP[preset.heroId]?.name ?? 'Anh Hùng';
-                return (
-                  <div
-                    key={preset.id}
-                    className="rounded-xl bg-[#070b1a] border border-amber-400/25 px-2.5 py-1.5 flex items-center justify-between gap-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-black text-white truncate">
-                        {preset.name}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playLevelUp();
+                              onApplyBuildPreset(idx);
+                            }}
+                            className="a2-emerald-btn px-1.5 py-0.5 rounded text-[9px] font-black cursor-pointer"
+                          >
+                            Mặc
+                          </button>
+                        </div>
                       </div>
-                      <div className="text-[9px] text-slate-400 font-semibold truncate">
-                        {presetHero} · {preset.equippedRunes.length} Ngọc
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          soundEngine.playUiClick(1.05);
-                          onSaveBuildPreset(idx);
-                        }}
-                        className="a2-slate-btn px-2 py-1 rounded-lg text-[10px] font-black text-sky-200 cursor-pointer"
-                      >
-                        Lưu
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          soundEngine.playLevelUp();
-                          onApplyBuildPreset(idx);
-                        }}
-                        className="a2-emerald-btn px-2 py-1 rounded-lg text-[10px] font-black cursor-pointer"
-                      >
-                        Mặc
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Toolbar & Slot Filters */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {(['ALL', ...Object.values(GearSlot)] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setSlotFilter(tab)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                    slotFilter === tab
-                      ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 font-black shadow'
-                      : 'cel-panel text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {tab === 'ALL' ? `Tất Cả (${save.inventory.length})` : SLOT_LABELS[tab]}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="cel-panel px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-sky-200">
-                <StarDustIcon className="w-3.5 h-3.5 shrink-0" />
-                <span>{save.starDust ?? 0}</span>
+                    );
+                  })}
+                </div>
               </div>
-
-              <button
-                type="button"
-                onClick={onAutoEquipBest}
-                className="a2-emerald-btn px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
-              >
-                <Zap className="w-3.5 h-3.5 shrink-0" />
-                <span>Tự Mặc Mạnh Nhất</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={fusableSetCount === 0}
-                onClick={onBulkFuseGear}
-                className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer ${
-                  fusableSetCount > 0
-                    ? 'a2-yellow-btn'
-                    : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5 shrink-0" />
-                <span className="font-mono-nums">
-                  {fusableSetCount > 0 ? `Ghép Nhanh (${fusableSetCount})` : 'Ghép Nhanh'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  soundEngine.playUiClick();
-                  onOpenForge();
-                }}
-                className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-black text-amber-200 flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap border border-amber-400/40"
-              >
-                <Hammer className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                <span>Lò Rèn &amp; Tách Đồ</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onGoShop}
-                className="a2-purple-btn px-3 py-2 rounded-xl text-xs font-black cursor-pointer shrink-0 whitespace-nowrap"
-              >
-                Kho Báu
-              </button>
             </div>
-          </div>
-
-          {/* Relic Grid */}
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2.5 pb-4">
-            {filteredInventory.map((item) => {
-              const tpl = GEAR_TEMPLATES[item.templateId];
-              if (!tpl) return null;
-              const isEquipped = save.equipped[tpl.slot] === item.uid;
-              const isSelected = selectedItem?.uid === item.uid;
-              const fuseReady = canFuseItem(item);
-              const awkLv = item.awakeningLevel ?? 0;
-              const isHolo =
-                item.rarity === Rarity.LEGENDARY ||
-                item.rarity === Rarity.MYTHIC ||
-                Boolean(tpl.isSTier) ||
-                awkLv > 0;
-
-              return (
-                <button
-                  key={item.uid}
-                  type="button"
-                  onClick={() => setSelectedUid(item.uid)}
-                  className={`a2-item-card aspect-square cursor-pointer ${
-                    RARITY_FRAME_CLASS[item.rarity]
-                  } ${isHolo ? 'a2-holo-foil' : ''} ${
-                    isSelected ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[#080c1c]' : ''
-                  }`}
-                  title={tpl.name}
-                >
-                  <div className="a2-item-inner flex flex-col items-center justify-center p-1">
-                    <GearSlotSvg
-                      slot={tpl.slot}
-                      weaponArchetype={tpl.weaponArchetype}
-                      accentHex={tpl.visualAccentHex}
-                      className="w-8 h-8 sm:w-9 sm:h-9"
-                    />
-                    <span className="text-[10px] font-black text-white font-mono-nums leading-none mt-1">
-                      Lv.{item.level}{awkLv > 0 ? ` ★${awkLv}` : ''}
-                    </span>
-                    <span className="text-[9px] text-white/90 font-bold truncate max-w-full px-1">
-                      {tpl.name}
-                    </span>
-                  </div>
-                  {isEquipped && (
-                    <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-emerald-600 border border-emerald-200/70 text-[8px] font-black text-white shadow">
-                      Mặc
-                    </span>
-                  )}
-                  {fuseReady && (
-                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 border border-white text-[9px] font-black text-slate-950 flex items-center justify-center shadow">
-                      ▲
-                    </span>
-                  )}
-                </button>
-              );
-            })}
           </div>
         </div>
       </div>
@@ -1289,7 +1067,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
             onPointerMove={handleHeroDragMove}
             onPointerUp={handleHeroDragUp}
             onPointerCancel={handleHeroDragUp}
-            className="md:col-span-6 flex flex-col items-center justify-end gap-1.5 min-h-[255px] sm:min-h-[295px] cursor-grab active:cursor-grabbing touch-none select-none"
+            className="md:col-span-6 flex flex-col items-center justify-end gap-1.5 min-h-[215px] sm:min-h-[235px] cursor-grab active:cursor-grabbing touch-none select-none"
           >
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-bold text-amber-200/90 tracking-wide bg-[#080d22]/90 border border-amber-400/25 px-2.5 py-0.5 rounded-lg">
@@ -1314,17 +1092,17 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
 
             <div
               onPointerDown={(e) => e.stopPropagation()}
-              className="cel-panel-ornate w-full max-w-[290px] text-center rounded-2xl px-3.5 py-2"
+              className="cel-panel-ornate w-full max-w-[290px] text-center rounded-2xl px-3.5 py-1.5"
             >
               <div className="flex items-center justify-center gap-2">
-                <span className="font-display text-base sm:text-lg font-black text-white">
+                <span className="font-display text-sm sm:text-base font-black text-white">
                   {hero.name}
                 </span>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
                   {hero.rarity}
                 </span>
               </div>
-              <div className="text-[11px] font-semibold text-slate-300 truncate">
+              <div className="text-[10px] font-semibold text-slate-300 truncate">
                 {hero.title} · {unlocked ? `★ ${star}/5` : 'Chưa Chiêu Mộ'}
               </div>
             </div>
@@ -1332,7 +1110,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
 
           {/* Right: Compact Hero Dossier Art-Card */}
           <div className="md:col-span-6 cel-panel-ornate rounded-2xl overflow-hidden">
-            <div className="px-3.5 py-2 bg-[#121c42] border-b border-amber-400/30 flex items-center justify-between gap-2">
+            <div className="px-3 py-1.5 bg-[#121c42] border-b border-amber-400/30 flex items-center justify-between gap-2">
               <h3 className="font-display text-xs sm:text-sm font-black text-amber-200 truncate">
                 Nội Tại · {hero.skillName}
               </h3>
@@ -1341,16 +1119,16 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </span>
             </div>
 
-            <div className="p-3 flex flex-col gap-2">
-              <div className="text-[11px] font-bold text-emerald-300">
-                Vai trò: {hero.role}
+            <div className="p-2.5 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-emerald-300">
+                <span>Vai trò: {hero.role}</span>
               </div>
-              <p className="text-xs text-slate-200 leading-snug">
+              <p className="text-[11px] text-slate-200 leading-snug line-clamp-2">
                 {hero.passiveDesc}
               </p>
 
               {/* Ultimate Callout + 3D Showcase Button */}
-              <div className="rounded-xl bg-[#141036] border border-purple-400/45 px-3 py-2">
+              <div className="rounded-xl bg-[#141036] border border-purple-400/45 px-2.5 py-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-[11px] font-black text-purple-300">
                     <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
@@ -1360,26 +1138,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onPreviewUltimate(hero.id)}
-                      className="a2-purple-btn px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                      className="a2-purple-btn px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
                     >
                       <Play className="w-3 h-3" />
                       <span>Xem Trước 3D (Q)</span>
                     </button>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-200 mt-1 leading-snug">
+                <p className="text-[10px] text-slate-200 mt-0.5 leading-snug line-clamp-2">
                   {hero.ultDesc}
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-amber-400/15">
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-400/15">
                 {unlocked ? (
                   <>
                     <button
                       type="button"
                       disabled={selected}
                       onClick={() => onSelectHero(hero.id)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                         selected
                           ? 'bg-emerald-950/80 border border-emerald-400/55 text-emerald-300 cursor-default'
                           : 'a2-emerald-btn'
@@ -1394,7 +1172,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         type="button"
                         disabled={save.gold < starCost.gold || save.gems < starCost.gems}
                         onClick={() => onUpgradeHeroStar(hero.id)}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                           save.gold >= starCost.gold && save.gems >= starCost.gems
                             ? 'a2-yellow-btn'
                             : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -1417,7 +1195,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       type="button"
                       disabled={save.gold < hero.unlockGold}
                       onClick={() => onUnlockHero(hero.id, 'gold')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                         save.gold >= hero.unlockGold
                           ? 'a2-yellow-btn'
                           : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -1430,7 +1208,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       type="button"
                       disabled={save.gems < hero.unlockGems}
                       onClick={() => onUnlockHero(hero.id, 'gems')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                         save.gems >= hero.unlockGems
                           ? 'a2-purple-btn'
                           : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -1447,24 +1225,24 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
       </div>
 
       {/* Lower Vault: Sub-Tab Navigation + Content */}
-      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-3">
-        <div className="max-w-4xl mx-auto">
-          {/* Sub-Tabs — Zero Horizontal Scrollbar, Cleanly Wrapped Grid */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1 flex-1">
+      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-2.5">
+        <div className="max-w-5xl mx-auto">
+          {/* Sub-Tabs — Single-Line Compact Ribbon, Zero Horizontal Scrollbar */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
+            <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
                 onClick={() => {
                   soundEngine.playUiClick();
                   setHeroSubTab('roster');
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'roster'
                     ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <Crown className="w-3.5 h-3.5 shrink-0" />
+                <Crown className="w-3 h-3 shrink-0" />
                 <span>Chiêu Mộ ({save.unlockedHeroes.length}/{HEROES.length})</span>
               </button>
 
@@ -1474,13 +1252,13 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('pets');
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'pets'
                     ? 'bg-gradient-to-b from-emerald-400 to-teal-600 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <Sparkles className="w-3 h-3 shrink-0" />
                 <span>Tinh Linh ({ownedPets.length}/{PETS_CATALOG.length})</span>
               </button>
 
@@ -1490,13 +1268,13 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('cosmetics');
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'cosmetics'
                     ? 'bg-gradient-to-b from-purple-400 to-fuchsia-600 text-white shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <Palette className="w-3.5 h-3.5 shrink-0" />
+                <Palette className="w-3 h-3 shrink-0" />
                 <span>Trang Phục</span>
               </button>
 
@@ -1506,13 +1284,13 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('wings');
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'wings'
                     ? 'bg-gradient-to-b from-sky-400 to-indigo-600 text-white shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
+                <WingFeatherIcon className="w-3 h-3 shrink-0" />
                 <span>Cánh 3D ({unlockedWings.length}/{ZODIAC_WINGS.length})</span>
               </button>
 
@@ -1522,13 +1300,13 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('mounts');
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'mounts'
                     ? 'bg-gradient-to-b from-rose-400 to-amber-500 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <MountShardIcon className="w-3.5 h-3.5 shrink-0" />
+                <MountShardIcon className="w-3 h-3 shrink-0" />
                 <span>Thú Cưỡi ({unlockedMounts.length}/{ZODIAC_MOUNTS.length})</span>
               </button>
 
@@ -1538,13 +1316,13 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('artifacts');
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'artifacts'
                     ? 'bg-gradient-to-b from-amber-300 via-yellow-400 to-orange-500 text-slate-950 shadow'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <ArtifactRelicIcon className="w-3.5 h-3.5 shrink-0" />
+                <ArtifactRelicIcon className="w-3 h-3 shrink-0" />
                 <span>Thánh Khí ({unlockedArtifacts.length}/{MYTHIC_ARTIFACTS.length})</span>
               </button>
 
@@ -1554,15 +1332,44 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   soundEngine.playUiClick();
                   setHeroSubTab('halos');
                 }}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                   heroSubTab === 'halos'
                     ? 'bg-gradient-to-b from-yellow-300 via-amber-400 to-rose-500 text-slate-950 shadow'
                     : 'text-amber-200 hover:text-white'
                 }`}
               >
-                <Crown className="w-3.5 h-3.5 shrink-0" />
+                <Crown className="w-3 h-3 shrink-0" />
                 <span>Hào Quang 3D ({unlockedHalos.length}/{DIVINE_HALO_CATALOG.length})</span>
               </button>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {heroSubTab === 'pets' && (
+                <div className="px-2 py-1 rounded-lg bg-[#09122a] border border-emerald-400/35 flex items-center gap-1 text-[10px] font-mono-nums font-black text-emerald-300">
+                  <PetEssenceIcon className="w-3 h-3 shrink-0" />
+                  <span>{petEssence}</span>
+                </div>
+              )}
+
+              {heroSubTab === 'wings' && (
+                <div className="px-2 py-1 rounded-lg bg-[#09122a] border border-sky-400/35 flex items-center gap-1 text-[10px] font-mono-nums font-black text-sky-300">
+                  <WingFeatherIcon className="w-3 h-3 shrink-0" />
+                  <span>{wingFeathers}</span>
+                </div>
+              )}
+
+              {heroSubTab === 'mounts' && (
+                <div className="flex items-center gap-1">
+                  <div className="px-2 py-1 rounded-lg bg-[#09122a] border border-amber-400/35 flex items-center gap-1 text-[10px] font-mono-nums font-black text-amber-300">
+                    <MountShardIcon className="w-3 h-3 shrink-0" />
+                    <span>{mountShards}</span>
+                  </div>
+                  <div className="px-2 py-1 rounded-lg bg-[#09122a] border border-rose-400/35 flex items-center gap-1 text-[10px] font-mono-nums font-black text-rose-300">
+                    <AwakenCrystalIcon className="w-3 h-3 shrink-0" />
+                    <span>{awakeningCrystals}</span>
+                  </div>
+                </div>
+              )}
 
               {onOpenWardrobe && (
                 <button
@@ -1571,48 +1378,18 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     soundEngine.playUiClick();
                     onOpenWardrobe();
                   }}
-                  className="ml-auto a2-slate-btn px-2.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1 text-sky-200 whitespace-nowrap cursor-pointer"
+                  className="a2-slate-btn px-2 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 text-sky-200 whitespace-nowrap cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
                   <span>Thử Đồ 360°</span>
                 </button>
               )}
             </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-
-              {heroSubTab === 'pets' && (
-                <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-emerald-300">
-                  <PetEssenceIcon className="w-3.5 h-3.5 shrink-0" />
-                  <span>Tinh Chất: {petEssence}</span>
-                </div>
-              )}
-
-              {heroSubTab === 'wings' && (
-                <div className="cel-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-sky-300">
-                  <WingFeatherIcon className="w-3.5 h-3.5 shrink-0" />
-                  <span>Lông Vũ Tinh Tú: {wingFeathers}</span>
-                </div>
-              )}
-
-              {heroSubTab === 'mounts' && (
-                <div className="flex items-center gap-1.5">
-                  <div className="cel-panel px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-amber-300">
-                    <MountShardIcon className="w-3.5 h-3.5 shrink-0" />
-                    <span>{mountShards} Mảnh</span>
-                  </div>
-                  <div className="cel-panel px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono-nums font-black text-rose-300">
-                    <AwakenCrystalIcon className="w-3.5 h-3.5 shrink-0" />
-                    <span>{awakeningCrystals} Tinh Thể</span>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* SUB-TAB 1: HERO ROSTER */}
+          {/* SUB-TAB 1: HERO ROSTER (ALL 8 HEROES VISIBLE ABOVE THE FOLD) */}
           {heroSubTab === 'roster' && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pb-2">
               {HEROES.map((h) => {
                 const isUnlocked = save.unlockedHeroes.includes(h.id);
                 const isSelected = save.selectedHeroId === h.id;
@@ -1638,34 +1415,39 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         : ''
                     }`}
                   >
-                    <div className="a2-item-inner p-3 flex flex-col items-center text-center gap-2">
-                      <div className={!isUnlocked ? 'opacity-60 grayscale-[35%]' : ''}>
+                    <div className="a2-item-inner p-2.5 flex items-center gap-2.5">
+                      <div className={`shrink-0 ${!isUnlocked ? 'opacity-60 grayscale-[35%]' : ''}`}>
                         <HeroCrestSvg
                           heroId={h.id}
                           accentHex={h.accentHex}
                           cloakHex={h.cloakHex}
                           hairHex={h.hairHex}
-                          className="w-16 h-16 drop-shadow"
+                          className="w-12 h-12 drop-shadow"
                         />
                       </div>
-                      <div className="w-full">
-                        <div className="font-display text-xs font-black text-white truncate">
-                          {h.name}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-display text-xs font-black text-white truncate">
+                            {h.name}
+                          </span>
+                          {isSelected && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/50 text-[8px] font-black text-emerald-300 shrink-0">
+                              Ra Trận
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[10px] text-amber-100/90 font-mono-nums font-bold mt-0.5">
+                        <div className="text-[10px] text-amber-100/90 font-mono-nums font-bold mt-0.5 truncate">
                           {isUnlocked
                             ? `★ ${hStar}/5 · ${h.rarity}`
-                            : `${h.unlockGold} Vàng · ${h.unlockGems} Ngọc`}
+                            : `${h.unlockGold}V · ${h.unlockGems} Ngọc`}
                         </div>
-                      </div>
-                      <div className="text-[10px] font-black tracking-wide">
-                        {isSelected ? (
-                          <span className="text-emerald-300">Đang Ra Trận</span>
-                        ) : !isUnlocked ? (
-                          <span className="text-slate-400">Chưa Chiêu Mộ</span>
-                        ) : (
-                          <span className="text-sky-200">{h.role}</span>
-                        )}
+                        <div className="text-[9px] font-bold truncate mt-0.5">
+                          {!isUnlocked ? (
+                            <span className="text-slate-400">Chưa Chiêu Mộ</span>
+                          ) : (
+                            <span className="text-sky-200">{h.role}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </button>
@@ -3149,23 +2931,23 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
     .sort((a, b) => RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity));
 
   return (
-    <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-4 pointer-events-auto">
-      <div className="max-w-4xl mx-auto flex flex-col gap-4 pb-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-3 pointer-events-auto">
+      <div className="max-w-5xl mx-auto flex flex-col gap-3 pb-4">
+        <div className="cel-panel rounded-2xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 border border-amber-400/25">
           <div>
-            <h2 className="font-display text-base sm:text-lg font-black text-amber-200">
-              Đài Khắc Ngọc Hoàng Đạo ({save.equippedRunes.length}/4)
+            <h2 className="font-display text-sm sm:text-base font-black text-amber-200">
+              Đài Khắc Ngọc Hoàng Đạo ({save.equippedRunes.length}/4 Ô Đã Khảm)
             </h2>
-            <p className="text-xs text-slate-300">
+            <p className="text-[11px] text-slate-300">
               Khảm tối đa 4 Ngọc Khắc để mở khóa kỹ năng khởi đầu &amp; cộng hưởng chỉ số.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               disabled={fusableRuneSets === 0}
               onClick={onBulkFuseRunes}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 fusableRuneSets > 0
                   ? 'a2-emerald-btn'
                   : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
@@ -3182,16 +2964,17 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
             <button
               type="button"
               onClick={onGoShop}
-              className="a2-yellow-btn px-4 py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+              className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
             >
               Khắc Thêm Ngọc
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
-          <div className="lg:col-span-6 flex justify-center">
-            <div className="rune-altar w-full max-w-[400px] h-[290px] sm:h-[320px]">
+        {/* 2-Column Side-by-Side Console: Left = Astrolabe Altar + Selected Rune Inspector, Right = Category Filters + Immediate Visible Rune Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+          <div className="lg:col-span-5 flex flex-col gap-2.5">
+            <div className="rune-altar w-full max-w-[360px] mx-auto h-[225px] sm:h-[240px]">
               <div className="rune-altar-ring" />
               <div className="rune-altar-core" />
 
@@ -3201,9 +2984,9 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                   accentHex={activeHero.accentHex}
                   cloakHex={activeHero.cloakHex}
                   hairHex={activeHero.hairHex}
-                  className="w-20 h-20 sm:w-24 sm:h-24 drop-shadow-[0_0_20px_rgba(232,121,249,0.45)]"
+                  className="w-16 h-16 sm:w-20 sm:h-20 drop-shadow-[0_0_20px_rgba(232,121,249,0.45)]"
                 />
-                <span className="mt-1 px-2.5 py-0.5 rounded-full bg-[#090d1e]/95 border border-amber-300/60 text-[10px] font-black text-amber-200">
+                <span className="mt-0.5 px-2 py-0.5 rounded-full bg-[#090d1e]/95 border border-amber-300/60 text-[10px] font-black text-amber-200">
                   {activeHero.name}
                 </span>
               </div>
@@ -3220,7 +3003,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                     type="button"
                     style={{ left: coord.left, top: coord.top }}
                     onClick={() => inst && setSelectedRuneUid(inst.uid)}
-                    className={`rune-socket w-16 h-16 sm:w-[70px] sm:h-[70px] rounded-2xl cursor-pointer flex flex-col items-center justify-center p-1 ${
+                    className={`rune-socket w-14 h-14 sm:w-16 sm:h-16 rounded-2xl cursor-pointer flex flex-col items-center justify-center p-1 ${
                       inst && def
                         ? `a2-item-card ${RARITY_FRAME_CLASS[inst.rarity]} ${
                             isSel ? 'ring-2 ring-amber-300' : ''
@@ -3232,10 +3015,10 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                     {inst && def ? (
                       <div className="a2-item-inner flex flex-col items-center justify-center p-1">
                         <span
-                          className="w-5 h-5 rounded-full border-2 border-white shadow"
+                          className="w-4 h-4 rounded-full border-2 border-white shadow"
                           style={{ backgroundColor: def.color }}
                         />
-                        <span className="text-[9px] font-black text-white truncate max-w-full mt-1">
+                        <span className="text-[8px] font-black text-white truncate max-w-full mt-0.5">
                           {def.archetype}
                         </span>
                       </div>
@@ -3246,11 +3029,9 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                 );
               })}
             </div>
-          </div>
 
-          <div className="lg:col-span-6">
             {selectedRune ? (
-              <div className="cel-panel-ornate rounded-2xl p-4">
+              <div className="cel-panel-ornate rounded-2xl p-3">
                 {(() => {
                   const def = RUNES_CATALOG[selectedRune.runeId];
                   if (!def) return null;
@@ -3259,11 +3040,11 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                   const fuseReady = canFuseRune(selectedRune);
 
                   return (
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 text-xs">
                           <span
-                            className="w-3.5 h-3.5 rounded-full border border-white"
+                            className="w-3 h-3 rounded-full border border-white"
                             style={{ backgroundColor: def.color }}
                           />
                           <span className={`font-black ${rMeta.textClass}`}>
@@ -3275,26 +3056,26 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                           </span>
                         </div>
                         {isEq && (
-                          <span className="text-[11px] font-black text-emerald-300">
+                          <span className="text-[10px] font-black text-emerald-300">
                             Đang Khảm
                           </span>
                         )}
                       </div>
 
-                      <h3 className="font-display text-lg font-black text-white">
+                      <h3 className="font-display text-base font-black text-white">
                         {def.name}
                       </h3>
-                      <p className="text-xs text-slate-200 leading-relaxed">
+                      <p className="text-[11px] text-slate-200 leading-snug">
                         {def.description}
                       </p>
 
-                      <div className="flex flex-wrap gap-3 text-xs font-mono-nums text-amber-200 font-bold">
+                      <div className="flex flex-wrap gap-2.5 text-[11px] font-mono-nums text-amber-200 font-bold">
                         <span>+{Math.round(def.atkBonusPct * 100)}% ATK</span>
                         <span>+{Math.round(def.hpBonusPct * 100)}% HP</span>
                         <span>+{Math.round(def.critBonus * 100)}% Crit</span>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 pt-2 border-t border-amber-400/20">
+                      <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-amber-400/20">
                         <button
                           type="button"
                           onClick={() =>
@@ -3303,7 +3084,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                               : onEquipRune(selectedRune.uid)
                           }
                           disabled={!isEq && save.equippedRunes.length >= 4}
-                          className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                          className={`flex-1 px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
                             isEq
                               ? 'a2-slate-btn'
                               : save.equippedRunes.length < 4
@@ -3314,7 +3095,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                           {isEq
                             ? 'Tháo Ngọc'
                             : save.equippedRunes.length >= 4
-                            ? 'Đã Đầy 4 Ô Ngọc'
+                            ? 'Đã Đầy 4 Ô'
                             : 'Khảm Lên Đài'}
                         </button>
 
@@ -3323,7 +3104,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                             type="button"
                             disabled={!fuseReady}
                             onClick={() => onFuseRune(selectedRune.uid)}
-                            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                            className={`flex-1 px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
                               fuseReady
                                 ? 'a2-yellow-btn'
                                 : 'bg-slate-900 text-slate-500 cursor-not-allowed'
@@ -3341,78 +3122,80 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                 })()}
               </div>
             ) : (
-              <div className="cel-panel rounded-2xl p-6 text-center text-xs text-slate-300">
+              <div className="cel-panel rounded-2xl p-4 text-center text-xs text-slate-300">
                 Chưa có Ngọc Khắc nào. Hãy sang Kho Báu để triệu hồi Ngọc!
               </div>
             )}
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              ['ALL', 'Tất cả'],
-              ['ability', 'Kỹ năng'],
-              ['enhancement', 'Cường hóa'],
-              ['blessing', 'Phước lành'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setCatFilter(key)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer ${
-                catFilter === key
-                  ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 font-black'
-                  : 'cel-panel text-slate-300 hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          <div className="lg:col-span-7 flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
+              {(
+                [
+                  ['ALL', `Tất cả (${save.runeInventory.length})`],
+                  ['ability', 'Kỹ năng'],
+                  ['enhancement', 'Cường hóa'],
+                  ['blessing', 'Phước lành'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCatFilter(key)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer ${
+                    catFilter === key
+                      ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 font-black'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2.5">
-          {filteredRunes.map((r) => {
-            const def = RUNES_CATALOG[r.runeId];
-            if (!def) return null;
-            const isEq = save.equippedRunes.includes(r.uid);
-            const isSel = selectedRune?.uid === r.uid;
-            const fuseReady = canFuseRune(r);
-            return (
-              <button
-                key={r.uid}
-                type="button"
-                onClick={() => setSelectedRuneUid(r.uid)}
-                className={`a2-item-card aspect-square cursor-pointer ${
-                  RARITY_FRAME_CLASS[r.rarity]
-                } ${isSel ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[#080c1c]' : ''}`}
-              >
-                <div className="a2-item-inner p-2 flex flex-col items-center justify-center text-center gap-1">
-                  <span
-                    className="w-7 h-7 rounded-full border-2 border-white shadow"
-                    style={{ backgroundColor: def.color }}
-                  />
-                  <span className="text-[10px] font-black text-white line-clamp-2 leading-tight">
-                    {def.name.split('(')[0].trim()}
-                  </span>
-                  <span className="text-[9px] text-white/80 font-bold">
-                    {def.archetype}
-                  </span>
-                </div>
-                {isEq && (
-                  <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-emerald-600 border border-emerald-200/70 text-[8px] font-black text-white">
-                    Đeo
-                  </span>
-                )}
-                {fuseReady && (
-                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 border border-white text-[9px] font-black text-slate-950 flex items-center justify-center">
-                    ▲
-                  </span>
-                )}
-              </button>
-            );
-          })}
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+              {filteredRunes.map((r) => {
+                const def = RUNES_CATALOG[r.runeId];
+                if (!def) return null;
+                const isEq = save.equippedRunes.includes(r.uid);
+                const isSel = selectedRune?.uid === r.uid;
+                const fuseReady = canFuseRune(r);
+                return (
+                  <button
+                    key={r.uid}
+                    type="button"
+                    onClick={() => setSelectedRuneUid(r.uid)}
+                    className={`a2-item-card aspect-square cursor-pointer ${
+                      RARITY_FRAME_CLASS[r.rarity]
+                    } ${isSel ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[#080c1c]' : ''}`}
+                  >
+                    <div className="a2-item-inner p-2 flex flex-col items-center justify-center text-center gap-1">
+                      <span
+                        className="w-6 h-6 rounded-full border-2 border-white shadow"
+                        style={{ backgroundColor: def.color }}
+                      />
+                      <span className="text-[10px] font-black text-white line-clamp-2 leading-tight">
+                        {def.name.split('(')[0].trim()}
+                      </span>
+                      <span className="text-[9px] text-white/80 font-bold">
+                        {def.archetype}
+                      </span>
+                    </div>
+                    {isEq && (
+                      <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-emerald-600 border border-emerald-200/70 text-[8px] font-black text-white">
+                        Đeo
+                      </span>
+                    )}
+                    {fuseReady && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 border border-white text-[9px] font-black text-slate-950 flex items-center justify-center">
+                        ▲
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -3593,54 +3376,78 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const oddsData = oddsModalVariant ? CHEST_DROP_RATES[oddsModalVariant] : null;
 
   return (
-    <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-4 pointer-events-auto">
-      <div className="max-w-4xl mx-auto flex flex-col gap-5 pb-8">
-        {/* Commercial Storefront Header + Segmented Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-3 pointer-events-auto">
+      <div className="max-w-5xl mx-auto flex flex-col gap-3.5 pb-8">
+        {/* Commercial Storefront Header + Live Treasury Currency Strip */}
+        <div className="cel-panel rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5 border border-amber-400/25">
           <div>
-            <h2 className="font-display text-lg sm:text-xl font-black text-amber-200">
+            <h2 className="font-display text-base sm:text-lg font-black text-amber-200">
               Thương Hội &amp; Kho Báu Hoàng Đạo
             </h2>
-            <p className="text-xs text-slate-300 mt-0.5">
+            <p className="text-[11px] text-slate-300">
               Chuỗi Quà Liên Hoàn 5 Bước, Ngân Hàng Hoàn Trả Ngọc, Hồ Ước Nguyện SSR &amp; Thẻ Đặc Quyền.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
-            {(
-              [
-                ['chain_bank', 'Chuỗi Quà & Ngân Hàng', chainBankBadge],
-                ['wish_topup', 'Hồ Ước & Nạp X2', wishMilestonesReady],
-                ['privilege', 'Thẻ Tháng & Tích Nạp', claimableWave7Count],
-                ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
-                ['mystic_exchange', 'Chợ Mảnh Dư', 0],
-                ['arena_shop', 'Shop Xu Arena', 0],
-                ['deals', 'Flash Sale', 0],
-                ['gacha', 'Triệu Hồi', 0],
-              ] as const
-            ).map(([k, label, badge]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  soundEngine.playUiClick();
-                  setStoreSection(k);
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                  storeSection === k
-                    ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                <span>{label}</span>
-                {badge > 0 && (
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-mono-nums text-[9px] font-black">
-                    +{badge}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono-nums font-bold">
+            <span className="px-2 py-1 rounded-lg bg-[#070b1a] border border-amber-400/30 text-amber-200 flex items-center gap-1">
+              <GoldCoinIcon className="w-3.5 h-3.5" />
+              <span>{save.gold}</span>
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-[#070b1a] border border-purple-400/35 text-purple-200 flex items-center gap-1">
+              <SoulGemIcon className="w-3.5 h-3.5" />
+              <span>{save.gems}</span>
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-[#070b1a] border border-amber-300/40 text-amber-200 flex items-center gap-1">
+              <Crown className="w-3.5 h-3.5 text-amber-300" />
+              <span>{save.divineCrystals ?? 0} Thần Tinh</span>
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-[#070b1a] border border-sky-400/30 text-sky-200 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+              <span>{wishTickets} Vé Ước</span>
+            </span>
+            <span className="px-2 py-1 rounded-lg bg-[#070b1a] border border-emerald-400/30 text-emerald-200 flex items-center gap-1">
+              <ArtifactRelicIcon className="w-3.5 h-3.5" />
+              <span>{save.artifactShards ?? 0} Mảnh</span>
+            </span>
           </div>
+        </div>
+
+        {/* 8-Column Commercial Navigation Ribbon (Zero Horizontal Scrollbar) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
+          {(
+            [
+              ['chain_bank', 'Chuỗi Quà & Két', chainBankBadge],
+              ['wish_topup', 'Hồ Ước & Nạp X2', wishMilestonesReady],
+              ['privilege', 'Thẻ Tháng & VIP', claimableWave7Count],
+              ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
+              ['mystic_exchange', 'Chợ Mảnh Dư', 0],
+              ['arena_shop', 'Shop Xu Arena', 0],
+              ['deals', 'Flash Sale', 0],
+              ['gacha', 'Triệu Hồi Rương', 0],
+            ] as const
+          ).map(([k, label, badge]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                setStoreSection(k);
+              }}
+              className={`px-2 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 transition-colors ${
+                storeSection === k
+                  ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <span className="truncate">{label}</span>
+              {badge > 0 && (
+                <span className="px-1 py-0.5 rounded bg-emerald-500 text-slate-950 font-mono-nums text-[8px] font-black shrink-0 leading-none">
+                  +{badge}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
         {/* SECTION WAVE 10: STEP-UP COMMERCIAL CHAIN RELAY + ASTRAL GEM REBATE VAULT */}

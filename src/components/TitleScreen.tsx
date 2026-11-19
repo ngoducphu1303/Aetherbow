@@ -673,15 +673,51 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         {/* Right: Clean Currency Counters & Utility Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <div className="flex items-center gap-1.5 bg-[#070b1a]/95 border border-amber-400/35 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono-nums font-black text-amber-200">
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onOpenShopSection('gacha');
+            }}
+            title="Vàng · Nhấn để mở Triệu Hồi & Kho Báu"
+            className="flex items-center gap-1.5 bg-[#070b1a]/95 border border-amber-400/35 hover:border-amber-300 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono-nums font-black text-amber-200 cursor-pointer transition-colors"
+          >
             <GoldCoinIcon className="w-3.5 h-3.5 shrink-0" />
             <span>{save.gold}</span>
-          </div>
+            <span className="hidden sm:inline-flex items-center justify-center w-3.5 h-3.5 rounded bg-amber-400/20 text-amber-300 text-[10px] leading-none">
+              +
+            </span>
+          </button>
 
-          <div className="flex items-center gap-1.5 bg-[#070b1a]/95 border border-purple-400/40 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono-nums font-black text-purple-200">
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onOpenShopSection('chain_bank');
+            }}
+            title="Ngọc Hồn · Nhấn để mở Chuỗi Quà & Ngân Hàng Tinh Ngân"
+            className="flex items-center gap-1.5 bg-[#070b1a]/95 border border-purple-400/40 hover:border-purple-300 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono-nums font-black text-purple-200 cursor-pointer transition-colors"
+          >
             <SoulGemIcon className="w-3.5 h-3.5 shrink-0" />
             <span>{save.gems}</span>
-          </div>
+            <span className="hidden sm:inline-flex items-center justify-center w-3.5 h-3.5 rounded bg-purple-400/25 text-purple-200 text-[10px] leading-none">
+              +
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              if (onOpenHeroSubTab) onOpenHeroSubTab('halos');
+              else onTabChange('heroes');
+            }}
+            title="Thần Tinh · Đúc & Nâng Hào Quang Thần Vực 3D"
+            className="hidden sm:flex items-center gap-1.5 bg-[#070b1a]/95 border border-amber-300/45 hover:border-amber-200 px-2.5 py-1.5 rounded-xl text-xs font-mono-nums font-black text-amber-200 cursor-pointer transition-colors"
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span>{save.divineCrystals ?? 0}</span>
+          </button>
 
           <button
             type="button"
@@ -878,22 +914,22 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </div>
               </div>
 
-              {/* Center Celestial Crest & Unboxed Metrics */}
-              <div className="text-center mx-auto pt-1 px-2">
-                <div className="font-display text-sm sm:text-lg font-black tracking-[0.18em] text-amber-200 drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
-                  HOÀNG ĐẠO TINH GIỚI
-                </div>
-                {activeDynTitle && (
-                  <div className="mt-1 flex justify-center">
+              {/* Center Celestial Crest & Compact Combat Telemetry Pill */}
+              <div className="text-center mx-auto px-3 py-1.5 rounded-2xl bg-[#060a18]/92 border border-amber-400/30 shadow-lg">
+                <div className="flex items-center justify-center gap-2">
+                  <span className="font-display text-xs sm:text-sm font-black tracking-[0.16em] text-amber-200">
+                    HOÀNG ĐẠO TINH GIỚI
+                  </span>
+                  {activeDynTitle && (
                     <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[10px] font-black tracking-wide shadow ${activeDynTitle.borderClass}`}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-black tracking-wide shadow ${activeDynTitle.borderClass}`}
                     >
-                      <Crown className="w-3 h-3 text-amber-300 shrink-0" />
+                      <Crown className="w-2.5 h-2.5 text-amber-300 shrink-0" />
                       <span className={activeDynTitle.gradientClass}>{activeDynTitle.title}</span>
                     </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-center gap-2.5 sm:gap-3 text-[11px] sm:text-xs font-mono-nums text-slate-200/95 mt-1 drop-shadow">
+                  )}
+                </div>
+                <div className="flex items-center justify-center gap-2.5 sm:gap-3 text-[10px] sm:text-[11px] font-mono-nums text-slate-200/95 mt-0.5">
                   <span className="flex items-center gap-1">
                     <Sword className="w-3 h-3 text-amber-300" />
                     ATK {stats.attack}
@@ -1354,21 +1390,31 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-[#090d1f] via-[#090d1f]/20 to-transparent" />
                     <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between gap-1.5">
-                      <span className="px-1.5 py-0.5 rounded bg-[#070b18]/90 border border-amber-400/40 text-[8px] font-black tracking-wider text-amber-300 truncate max-w-[125px] whitespace-nowrap">
+                      <span className="px-1.5 py-0.5 rounded bg-[#070b18]/92 border border-amber-400/45 text-[8px] font-black tracking-wider text-amber-300 truncate max-w-[125px] whitespace-nowrap">
                         {activeEvent.badge}
                       </span>
-                      <div className="flex items-center gap-1">
-                        {EVENT_BANNERS.map((ev, idx) => (
-                          <button
-                            key={ev.id}
-                            type="button"
-                            aria-label={`Sự kiện ${idx + 1}`}
-                            onClick={() => setEventIdx(idx)}
-                            className={`h-1.5 rounded-full cursor-pointer transition-all ${
-                              idx === eventIdx ? 'w-4 bg-amber-300' : 'w-1.5 bg-slate-500'
-                            }`}
-                          />
-                        ))}
+                      <div className="flex items-center gap-1 bg-[#070b18]/92 border border-amber-400/35 rounded px-1 py-0.5 shrink-0">
+                        <button
+                          type="button"
+                          aria-label="Sự kiện trước"
+                          onClick={() =>
+                            setEventIdx((v) => (v - 1 + EVENT_BANNERS.length) % EVENT_BANNERS.length)
+                          }
+                          className="text-slate-300 hover:text-amber-300 cursor-pointer"
+                        >
+                          <ChevronLeft className="w-2.5 h-2.5" />
+                        </button>
+                        <span className="text-[8px] font-mono-nums font-black text-amber-200">
+                          {eventIdx + 1}/{EVENT_BANNERS.length}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Sự kiện tiếp theo"
+                          onClick={() => setEventIdx((v) => (v + 1) % EVENT_BANNERS.length)}
+                          className="text-slate-300 hover:text-amber-300 cursor-pointer"
+                        >
+                          <ChevronRight className="w-2.5 h-2.5" />
+                        </button>
                       </div>
                     </div>
                   </div>

@@ -3623,10 +3623,10 @@ export class GameEngine {
       const aspectExtraZ = Math.max(0, (1.45 - this.camera.aspect) * 2.5);
 
       let targetCamX = sway * 0.35;
-      let targetCamY = 2.38 + mountExtraY;
-      let targetCamZ = 13.6 + mountExtraZ + aspectExtraZ;
+      let targetCamY = 2.42 + mountExtraY;
+      let targetCamZ = 13.8 + mountExtraZ + aspectExtraZ;
       let lookX = 0;
-      let lookY = -0.32 + mountLookY;
+      let lookY = -0.18 + mountLookY;
 
       if (this.lobbyCameraPreset === 'closeup') {
         targetCamX = sway * 0.2;
