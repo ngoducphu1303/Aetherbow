@@ -482,6 +482,15 @@ export class GameEngine {
     phase: number;
     scale: number;
   }> = [];
+  private arenaDustMesh: THREE.InstancedMesh | null = null;
+  private arenaDustSeeds: Array<{
+    x: number;
+    y: number;
+    z: number;
+    speed: number;
+    phase: number;
+    scale: number;
+  }> = [];
   private combatAuraGroup: THREE.Group | null = null;
   private petModel: THREE.Group | null = null;
   private builtPetId: PetId | null = null;
@@ -1030,10 +1039,16 @@ export class GameEngine {
       });
     }
 
-    // Particle pool
-    const partGeo = new THREE.OctahedronGeometry(0.14, 0);
+    // Particle pool (crisp additive starlight sparks)
+    const partGeo = new THREE.OctahedronGeometry(0.095, 0);
     for (let i = 0; i < 140; i++) {
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.92,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
       const mesh = new THREE.Mesh(partGeo, mat);
       mesh.visible = false;
       this.particlesGroup.add(mesh);
@@ -1464,20 +1479,36 @@ export class GameEngine {
     }
     this.combatAuraGroup = new THREE.Group();
     const combatRingOuter = new THREE.Mesh(
-      new THREE.RingGeometry(0.76, 0.86, 32),
+      new THREE.RingGeometry(0.74, 0.81, 36),
       new THREE.MeshBasicMaterial({
-        color: this.heroVisualCfg.auraPrimaryHex ?? 0x38bdf8,
+        color: this.heroVisualCfg.auraPrimaryHex ?? 0xfbbf24,
         transparent: true,
-        opacity: 0.42,
+        opacity: 0.52,
         side: THREE.DoubleSide,
         depthWrite: false,
+        blending: THREE.AdditiveBlending,
         polygonOffset: true,
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -1,
       })
     );
     combatRingOuter.rotation.x = -Math.PI / 2;
-    this.combatAuraGroup.add(combatRingOuter);
+    const combatRingInner = new THREE.Mesh(
+      new THREE.RingGeometry(0.55, 0.59, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.36,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+    );
+    combatRingInner.rotation.x = -Math.PI / 2;
+    this.combatAuraGroup.add(combatRingOuter, combatRingInner);
     this.combatAuraGroup.position.set(this.px, 0.04, this.pz);
     this.combatAuraGroup.visible = this.phase !== GamePhase.TITLE;
     this.entitiesGroup.add(this.combatAuraGroup);
@@ -1963,6 +1994,34 @@ export class GameEngine {
     monolithTips.computeBoundingSphere();
     this.arenaGroup.add(monoliths, monolithTips);
 
+    // 7. Drifting Ambient Celestial Temple Dust Motes (single InstancedMesh)
+    const arenaDustCount = this.isSoftwareGl || this.lowEndGpu ? 14 : 28;
+    const arenaDustMat = new THREE.MeshBasicMaterial({
+      color: chapter.trimHex,
+      transparent: true,
+      opacity: 0.65,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.arenaDustMesh = new THREE.InstancedMesh(
+      new THREE.OctahedronGeometry(0.055, 0),
+      arenaDustMat,
+      arenaDustCount
+    );
+    this.arenaDustMesh.frustumCulled = false;
+    this.arenaDustSeeds = [];
+    for (let i = 0; i < arenaDustCount; i++) {
+      this.arenaDustSeeds.push({
+        x: ((i * 7.31) % (ARENA_HALF_W * 2)) - ARENA_HALF_W,
+        y: (i * 0.47) % 4.8,
+        z: ((i * 5.83) % (ARENA_HALF_D * 2)) - ARENA_HALF_D,
+        speed: 0.28 + (i % 4) * 0.09,
+        phase: i * 1.13,
+        scale: 0.65 + (i % 3) * 0.28,
+      });
+    }
+    this.arenaGroup.add(this.arenaDustMesh);
+
     this.portal = createPortalModel(chapter.trimHex);
     this.portal.group.position.set(0, 0, -ARENA_HALF_D - 0.65);
     this.arenaGroup.add(this.portal.group);
@@ -2001,7 +2060,7 @@ export class GameEngine {
       soundEngine.playNightmareActivate();
       const mutLabel = this.nightmareConfig.mutators.map((m) => m.name).join(' + ');
       this.stageBannerText = `${this.nightmareConfig.label.toUpperCase()} · ${mutLabel}`;
-      this.stageBannerTimer = 2.6;
+      this.stageBannerTimer = 1.55;
     }
     this.phase = GamePhase.PLAYING;
     this.syncHudImmediate();
@@ -4847,14 +4906,37 @@ export class GameEngine {
     bossTitle?: string
   ): void {
     const model = createEnemyModel(kind, this.currentChapter.trimHex, isElite);
-    model.root.position.set(x, 0, z);
-    this.entitiesGroup.add(model.root);
-    this.callbacks.onProgressEvent?.({ seenEnemyKind: kind });
-
     const isBoss =
       kind === EnemyKind.WARDEN_BOSS ||
       kind === EnemyKind.TITAN_BOSS ||
       kind === EnemyKind.ZODIAC_BOSS;
+
+    // Crisp ARPG silhouette readability from the isometric combat camera
+    const visualScale = isBoss ? 1.08 : isElite ? 1.24 : 1.34;
+    model.root.scale.setScalar(visualScale);
+    if (!isBoss) {
+      const threatRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.45, 0.56, 20),
+        new THREE.MeshBasicMaterial({
+          color: isElite ? 0xc084fc : 0xf43f5e,
+          transparent: true,
+          opacity: isElite ? 0.58 : 0.42,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        })
+      );
+      threatRing.rotation.x = -Math.PI / 2;
+      threatRing.position.y = 0.035;
+      model.root.add(threatRing);
+    }
+
+    model.root.position.set(x, 0, z);
+    this.entitiesGroup.add(model.root);
+    this.callbacks.onProgressEvent?.({ seenEnemyKind: kind });
 
     const baseRadius =
       kind === EnemyKind.ZODIAC_BOSS
@@ -6017,6 +6099,21 @@ export class GameEngine {
       this.combatAuraGroup.visible = this.phase === GamePhase.PLAYING;
       this.combatAuraGroup.position.set(this.px, 0.04, this.pz);
       this.combatAuraGroup.rotation.y += dt * 1.35;
+    }
+    if (this.arenaDustMesh && this.arenaDustSeeds.length > 0 && this.arenaGroup.visible) {
+      for (let i = 0; i < this.arenaDustSeeds.length; i++) {
+        const s = this.arenaDustSeeds[i];
+        const yCycle = ((s.y + this.elapsed * s.speed) % 4.8) + 0.25;
+        const dx = s.x + Math.sin(this.elapsed * 0.7 + s.phase) * 0.4;
+        const dz = s.z + Math.cos(this.elapsed * 0.55 + s.phase) * 0.35;
+        const pulse = s.scale * (0.7 + Math.sin(this.elapsed * 2.5 + s.phase) * 0.3);
+        _dummy.position.set(dx, yCycle, dz);
+        _dummy.rotation.set(this.elapsed * 0.9 + s.phase, this.elapsed * 1.2, 0);
+        _dummy.scale.setScalar(pulse);
+        _dummy.updateMatrix();
+        this.arenaDustMesh.setMatrixAt(i, _dummy.matrix);
+      }
+      this.arenaDustMesh.instanceMatrix.needsUpdate = true;
     }
 
     this.hero.bowGroup.visible = true;

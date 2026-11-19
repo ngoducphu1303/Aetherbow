@@ -1311,12 +1311,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {/* Stage / Room Clear Banner */}
       {!hud.bossWarningTitle && !bossIntroTitle && hud.stageBannerText && (
-        <div className="mt-4 flex justify-center px-4">
+        <div className="mt-1.5 flex justify-center px-4">
           <div
-            className={`px-5 py-2 rounded-2xl border font-display text-xs sm:text-sm font-black shadow-2xl tracking-wide ${
+            className={`px-4 py-1 rounded-xl border font-display text-[11px] sm:text-xs font-black shadow-xl tracking-wide ${
               hud.portalOpen
-                ? 'bg-[#081d18]/95 border-emerald-400/70 text-emerald-200'
-                : 'bg-[#0a1026]/95 border-amber-300/60 text-amber-200'
+                ? 'bg-[#081d18]/92 border-emerald-400/70 text-emerald-200'
+                : 'bg-[#0a1026]/92 border-amber-300/55 text-amber-200'
             }`}
           >
             {hud.stageBannerText}

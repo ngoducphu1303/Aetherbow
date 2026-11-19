@@ -1800,27 +1800,52 @@ export function createPillarModel(stoneHex: number, trimHex: number): THREE.Grou
 
 export function createUrnModel(trimHex: number): THREE.Group {
   const g = new THREE.Group();
-  const clayMat = new THREE.MeshStandardMaterial({ color: 0x9a5b3c, roughness: 0.68, metalness: 0.12 });
-  const rimMat = new THREE.MeshStandardMaterial({ color: trimHex, roughness: 0.28, metalness: 0.82 });
+  const porcelainMat = new THREE.MeshStandardMaterial({
+    color: 0x182548,
+    roughness: 0.24,
+    metalness: 0.46,
+    envMapIntensity: 1.4,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfcd34d,
+    roughness: 0.18,
+    metalness: 0.94,
+    envMapIntensity: 1.55,
+  });
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: trimHex,
+    emissive: trimHex,
+    emissiveIntensity: 1.55,
+    roughness: 0.12,
+    metalness: 0.3,
+  });
 
   const pts = [
     new THREE.Vector2(0, 0),
     new THREE.Vector2(0.24, 0),
-    new THREE.Vector2(0.4, 0.36),
+    new THREE.Vector2(0.41, 0.36),
     new THREE.Vector2(0.36, 0.68),
-    new THREE.Vector2(0.22, 0.84),
-    new THREE.Vector2(0.28, 0.94),
-    new THREE.Vector2(0.22, 0.96),
+    new THREE.Vector2(0.21, 0.84),
+    new THREE.Vector2(0.27, 0.95),
+    new THREE.Vector2(0.2, 0.97),
   ];
-  const body = new THREE.Mesh(new THREE.LatheGeometry(pts, 14), clayMat);
+  const body = new THREE.Mesh(new THREE.LatheGeometry(pts, 14), porcelainMat);
   body.castShadow = true;
   body.receiveShadow = true;
 
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.39, 0.035, 8, 18), rimMat);
-  band.rotation.x = Math.PI / 2;
-  band.position.y = 0.52;
+  const waistBand = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.036, 8, 18), goldMat);
+  waistBand.rotation.x = Math.PI / 2;
+  waistBand.position.y = 0.5;
 
-  g.add(body, band);
+  const neckCollar = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.028, 8, 16), goldMat);
+  neckCollar.rotation.x = Math.PI / 2;
+  neckCollar.position.y = 0.92;
+
+  const finialGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.13, 0), crystalMat);
+  finialGem.scale.set(0.85, 1.35, 0.85);
+  finialGem.position.y = 1.12;
+
+  g.add(body, waistBand, neckCollar, finialGem);
   return g;
 }
 
