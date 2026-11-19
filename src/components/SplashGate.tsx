@@ -6,7 +6,6 @@ import { SaveData } from '../types/game';
 
 interface SplashGateProps {
   save: SaveData;
-  entryStatus: 'idle' | 'waiting' | 'error';
   onEnterGame: () => void;
   onToggleMute: () => void;
 }
@@ -15,7 +14,6 @@ const SPLASH_ART_SRC = splashArtSrc;
 
 export const SplashGate: React.FC<SplashGateProps> = ({
   save,
-  entryStatus,
   onEnterGame,
   onToggleMute,
 }) => {
@@ -23,14 +21,14 @@ export const SplashGate: React.FC<SplashGateProps> = ({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.repeat && entryStatus !== 'waiting' && (e.code === 'Enter' || e.code === 'Space')) {
+      if (e.code === 'Enter' || e.code === 'Space') {
         e.preventDefault();
         onEnterGame();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [entryStatus, onEnterGame]);
+  }, [onEnterGame]);
 
   return (
     <div className="fixed inset-0 z-30 pointer-events-auto flex flex-col justify-between overflow-hidden bg-[#050813]">
@@ -146,18 +144,14 @@ export const SplashGate: React.FC<SplashGateProps> = ({
           <span>8 Anh Hùng Chibi · 12 Chương Hoàng Đạo · Điện Thần 3D</span>
         </div>
 
-        {entryStatus === 'error' && <p role="alert" className="text-sm text-amber-100">Không tải được mô hình 3D.</p>}
         <button
           type="button"
           data-start="true"
-          disabled={entryStatus === 'waiting'}
           onClick={onEnterGame}
           className="a2-yellow-btn w-full py-4 px-8 rounded-2xl font-display font-black text-base sm:text-lg tracking-[0.12em] flex items-center justify-center gap-3 cursor-pointer whitespace-nowrap"
         >
           <Play className="w-5 h-5 fill-current shrink-0" />
-          <span aria-live="polite">
-            {entryStatus === 'waiting' ? 'ĐANG TẢI MÔ HÌNH 3D…' : entryStatus === 'error' ? 'THỬ LẠI' : 'CHẠM ĐỂ VÀO GAME'}
-          </span>
+          <span>CHẠM ĐỂ VÀO GAME</span>
         </button>
 
         <div className="text-[11px] text-slate-300/85 text-center tracking-wide">

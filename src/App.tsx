@@ -537,7 +537,6 @@ export default function App() {
   const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
   const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
-  const [entryRequested, setEntryRequested] = useState(false);
   const [appearanceStatus, setAppearanceStatus] = useState<AppearanceStatus>('loading');
   const [phase, setPhase] = useState<GamePhase>(GamePhase.TITLE);
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
@@ -4969,13 +4968,6 @@ export default function App() {
     document.body.dataset.state = stateLabel;
   }, [phase]);
 
-  useEffect(() => {
-    if (!entryRequested || appearanceStatus !== 'ready') return;
-    setEntryRequested(false);
-    setEnteredGame(true);
-    if (!save.onboardingCompleted) setOnboardingOpen(true);
-  }, [entryRequested, appearanceStatus, save.onboardingCompleted]);
-
   // Support ?autostart=1 to skip TitleScreen/SplashGate and start gameplay directly
   const autostartDoneRef = useRef<boolean>(false);
   useEffect(() => {
@@ -8991,30 +8983,39 @@ export default function App() {
       {phase === GamePhase.TITLE && !enteredGame && (
         <SplashGate
           save={save}
-          entryStatus={appearanceStatus === 'error' ? 'error' : entryRequested ? 'waiting' : 'idle'}
           onEnterGame={() => {
             soundEngine.unlock();
             soundEngine.playVictory();
-            if (appearanceStatus === 'error') engineRef.current?.retryAppearance();
-            setEntryRequested(true);
+            setEnteredGame(true);
+            if (!save.onboardingCompleted) setOnboardingOpen(true);
           }}
           onToggleMute={handleToggleMute}
         />
       )}
 
       {enteredGame && appearanceStatus !== 'ready' && (
-        <div className="fixed inset-0 z-[70] grid place-items-center bg-[#050813] text-amber-100">
-          {appearanceStatus === 'error' ? (
-            <div className="flex flex-col items-center gap-4">
-              <p role="alert">Không tải được mô hình 3D.</p>
-              <button type="button" className="a2-yellow-btn rounded-xl px-5 py-2"
-                onClick={() => engineRef.current?.retryAppearance()}>
-                Thử lại
-              </button>
-            </div>
-          ) : (
-            <p role="status">Đang tải mô hình 3D…</p>
-          )}
+        <div className={`fixed z-[35] pointer-events-none flex justify-center inset-x-0 ${
+          phase === GamePhase.TITLE ? 'bottom-20' : 'top-24'
+        }`}>
+          <div className="flex items-center gap-2.5 rounded-full border border-amber-300/30 bg-slate-950/95 px-4 py-2 text-xs font-semibold text-amber-100 shadow-lg">
+            {appearanceStatus === 'error' ? (
+              <>
+                <span role="alert">Không tải được ngoại hình 3D</span>
+                <button
+                  type="button"
+                  className="pointer-events-auto rounded-full bg-amber-200 px-3 py-1 text-xs font-bold text-slate-950"
+                  onClick={() => engineRef.current?.retryAppearance()}
+                >
+                  Thử lại
+                </button>
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true" className="size-3 animate-spin rounded-full border border-amber-200/30 border-t-amber-200 motion-reduce:animate-none" />
+                <span role="status">Đang tải ngoại hình 3D…</span>
+              </>
+            )}
+          </div>
         </div>
       )}
 

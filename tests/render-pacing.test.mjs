@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GameEngine } from '../src/engine/GameEngine.ts';
+import { GamePhase } from '../src/types/game.ts';
 
 test('context phục hồi phải khởi động lại đúng một vòng render', () => {
   const engine = Object.create(GameEngine.prototype);
@@ -70,40 +71,50 @@ test('GPU phần cứng cũng phải hoàn tất frame trước khi xếp frame 
   } finally {globalThis.requestAnimationFrame = oldRaf; globalThis.document = oldDocument;}
 });
 
-test('chỉ hiện canvas sau frame đầu tiên có đủ mô hình đã trang bị', () => {
-  const oldWindow = globalThis.window;
+test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và thú cưỡi đã sẵn sàng', () => {
   const oldRaf = globalThis.requestAnimationFrame;
   const oldDocument = globalThis.document;
   const events = [];
   let next;
-  globalThis.window = {setTimeout(callback) {next = callback; return 1;}};
   globalThis.requestAnimationFrame = callback => {next = callback; return 1;};
   globalThis.document = {hidden: false};
 
-  const canvas = {style: {visibility: 'hidden'}};
+  const body = {};
+  const mount = {};
+  const hero = {root: {visible: true}, bodyGroup: body, mountGroup: mount};
   const engine = Object.create(GameEngine.prototype);
   Object.assign(engine, {
     disposed: false,
-    appearanceBlocked: true,
+    phase: GamePhase.TITLE,
+    hero,
+    heroShadow: {visible: true},
+    baseStats: {heroId: 'artemis'},
+    heroVisualCfg: {mountId: 'azure_dragon'},
     appearanceStatus: 'loading',
     callbacks: {onAppearanceStatusChange(status) {events.push(status);}},
-    renderer: {domElement: canvas, render() {events.push('render');}},
+    renderer: {render() {events.push(hero.root.visible ? 'rider' : 'arena');}},
     update() {events.push('update');},
     afterDraw() {},
   });
 
   try {
+    engine.refreshAppearanceGate();
     engine.startLoop();
     next();
-    assert.deepEqual(events, []);
-    assert.equal(canvas.style.visibility, 'hidden');
+    assert.deepEqual(events, ['update', 'arena']);
 
-    engine.appearanceBlocked = false;
+    engine.artemisModel = {parent: body};
+    engine.artemisLoadedAsset = 'golden-dress-girl.glb';
+    engine.refreshAppearanceGate();
+    engine.phase = GamePhase.PLAYING;
     next();
-    assert.deepEqual(events, ['update', 'render', 'ready']);
-    assert.equal(canvas.style.visibility, 'visible');
+    assert.deepEqual(events, ['update', 'arena', 'arena']);
+
+    engine.dragonMount = {parent: mount};
+    engine.refreshAppearanceGate();
+    next();
+    assert.deepEqual(events, ['update', 'arena', 'arena', 'update', 'rider', 'ready']);
   } finally {
-    globalThis.window = oldWindow;
     globalThis.requestAnimationFrame = oldRaf;
     globalThis.document = oldDocument;
   }

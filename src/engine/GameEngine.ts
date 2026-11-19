@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObjectResources } from './resources';
 import { createArtemisMotion } from './artemisMotion';
@@ -803,7 +804,6 @@ export class GameEngine {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.domElement.style.display = 'block';
-    this.renderer.domElement.style.visibility = 'hidden';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
     container.appendChild(this.renderer.domElement);
@@ -1191,7 +1191,6 @@ export class GameEngine {
   private setAppearanceStatus(status: AppearanceStatus): void {
     if (this.appearanceStatus === status) return;
     this.appearanceStatus = status;
-    this.renderer.domElement.style.visibility = status === 'ready' ? 'visible' : 'hidden';
     this.callbacks.onAppearanceStatusChange?.(status);
   }
 
@@ -1206,6 +1205,8 @@ export class GameEngine {
       (!this.dragonMount || this.dragonMount.parent !== this.hero.mountGroup);
 
     this.appearanceBlocked = artemisPending || dragonPending;
+    this.hero.root.visible = !this.appearanceBlocked;
+    this.heroShadow.visible = !this.appearanceBlocked;
     if (this.appearanceBlocked) {
       const failed = (artemisPending && this.artemisModelFailed) ||
         (dragonPending && this.dragonMountFailed);
@@ -1224,10 +1225,11 @@ export class GameEngine {
   }
 
   private async loadAppearanceAsset(path: string) {
-    const url = new URL(`${import.meta.env.BASE_URL}assets/${path}`, document.baseURI);
+    const url = new URL(`${import.meta.env.BASE_URL}assets/${path}?v=2`, document.baseURI);
     const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${path}`);
-    return new GLTFLoader().parseAsync(await response.arrayBuffer(), new URL('.', url).href);
+    return new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
+      .parseAsync(await response.arrayBuffer(), new URL('.', url).href);
   }
 
   private useArtemisModel(): void {
@@ -3846,7 +3848,7 @@ export class GameEngine {
   }
 
   public capturePhotoDataUrl(): string | null {
-    if (this.disposed || this.contextLost) return null;
+    if (this.disposed || this.contextLost || this.appearanceStatus !== 'ready') return null;
     try {
       this.renderer.render(this.scene, this.camera);
       return this.renderer.domElement.toDataURL('image/png');
@@ -5417,22 +5419,15 @@ export class GameEngine {
         this.frameId = window.setTimeout(tick, 250);
         return;
       }
-      if (this.appearanceBlocked) {
-        this.lastTime = now;
-        this.frameId = window.setTimeout(tick, 50);
-        return;
-      }
       const rawDt = (now - this.lastTime) / 1000;
       this.lastTime = now;
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
-      this.update(dt);
-      // A loadout can change inside update via a phase or equipment callback.
-      if (this.appearanceBlocked) {
-        this.frameId = window.setTimeout(tick, 50);
-        return;
-      }
+      // Keep the lobby interactive while models load. Hold combat simulation until the rider is visible.
+      if (!this.appearanceBlocked || this.phase === GamePhase.TITLE) this.update(dt);
       this.renderer.render(this.scene, this.camera);
-      if (this.appearanceStatus === 'loading') this.setAppearanceStatus('ready');
+      if (!this.appearanceBlocked && this.appearanceStatus === 'loading') {
+        this.setAppearanceStatus('ready');
+      }
       // Chỉ giữ tối đa một frame đang xử lý, kể cả GPU phần cứng chậm.
       this.afterDraw(() => { this.frameId = requestAnimationFrame(tick); });
     };
