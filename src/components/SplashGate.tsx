@@ -147,44 +147,53 @@ export const SplashGate: React.FC<SplashGateProps> = ({
       </div>
 
       {/* Bottom Enter CTA Dock */}
-      <div className="relative z-10 max-w-md w-full mx-auto flex flex-col items-center gap-3.5 px-5 pb-7 sm:pb-9">
+      <div className="relative z-10 max-w-lg w-full mx-auto flex flex-col items-center gap-3.5 px-5 pb-7 sm:pb-9">
         <div className="flex items-center gap-2 text-xs text-slate-200 font-medium tracking-wide text-center">
           <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
           <span>8 Anh Hùng Chibi · 12 Chương Hoàng Đạo · Điện Thần 3D</span>
         </div>
 
-        <div className="w-full rounded-2xl border border-amber-200/30 bg-[#090d1b]/90 p-3 shadow-xl">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold text-amber-100">
-            <span role={failed ? 'alert' : 'status'}>
-              {failed ? 'Không tải được mô hình 3D' : ready ? 'Mô hình 3D đã sẵn sàng' : progress.status === 'ready'
-                ? 'Đang chuẩn bị ngoại hình đã trang bị…' : 'Đang tải mô hình 3D…'}
-            </span>
-            <span className="tabular-nums">{progress.percent}%</span>
-          </div>
-          <div
-            role="progressbar"
-            aria-label="Tiến độ tải mô hình 3D"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress.percent}
-            className="h-2 overflow-hidden rounded-full bg-amber-200/15"
-          >
+        {!ready || failed ? (
+          <div className="w-full max-w-md rounded-2xl border border-amber-200/30 bg-[#090d1b]/90 p-3 shadow-xl">
+            <div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold text-amber-100">
+              <span role={failed ? 'alert' : 'status'}>
+                {failed
+                  ? 'Không tải được mô hình 3D'
+                  : progress.status === 'ready'
+                  ? 'Đang chuẩn bị ngoại hình đã trang bị…'
+                  : 'Đang tải mô hình 3D…'}
+              </span>
+              <span className="tabular-nums">{progress.percent}%</span>
+            </div>
             <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-200 transition-[width] duration-150 motion-reduce:transition-none"
-              style={{ width: `${progress.percent}%` }}
-            />
+              role="progressbar"
+              aria-label="Tiến độ tải mô hình 3D"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress.percent}
+              className="h-2 overflow-hidden rounded-full bg-amber-200/15"
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-200 transition-[width] duration-150 motion-reduce:transition-none"
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
+            <div className="mt-2 text-right text-[10px] tabular-nums text-slate-300">
+              {progress.completed}/{progress.total} mô hình
+            </div>
           </div>
-          <div className="mt-2 text-right text-[10px] tabular-nums text-slate-300">
-            {progress.completed}/{progress.total} mô hình
+        ) : (
+          <div role="status" className="text-[11px] font-semibold text-amber-200/90 tracking-wide">
+            Mô hình 3D đã sẵn sàng · Nhấn Enter hoặc chạm nút bên dưới
           </div>
-        </div>
+        )}
 
         <button
           type="button"
           data-start={ready ? 'true' : undefined}
           disabled={!ready && !failed}
           onClick={failed ? onRetryModels : onEnterGame}
-          className="a2-yellow-btn w-full py-4 px-8 rounded-2xl font-display font-black text-base sm:text-lg tracking-[0.12em] flex items-center justify-center gap-3 cursor-pointer whitespace-nowrap disabled:cursor-wait disabled:opacity-55"
+          className="a2-yellow-btn w-full max-w-md py-4 px-8 rounded-2xl font-display font-black text-base sm:text-lg tracking-[0.12em] flex items-center justify-center gap-3 cursor-pointer whitespace-nowrap disabled:cursor-wait disabled:opacity-55"
         >
           {failed ? <RotateCcw className="w-5 h-5 shrink-0" /> : ready
             ? <Play className="w-5 h-5 fill-current shrink-0" />
@@ -192,8 +201,8 @@ export const SplashGate: React.FC<SplashGateProps> = ({
           <span>{failed ? 'THỬ LẠI' : ready ? 'CHẠM ĐỂ VÀO GAME' : 'ĐANG TẢI'}</span>
         </button>
 
-        <div className="text-[11px] text-slate-300/85 text-center tracking-wide">
-          Di chuyển né đòn · Dừng lại tự động bắn · Lướt né (Space) · Chiêu Cuối (Q)
+        <div className="text-[11px] text-slate-300/85 text-center tracking-wide sm:whitespace-nowrap">
+          Di chuyển né đòn · Dừng lại tự bắn · Lướt (Space) · Chiêu (E) · Tuyệt Kỹ (Q)
         </div>
       </div>
     </div>

@@ -135,41 +135,54 @@ class SoundEngine {
     stepDur: number
   ): void {
     if (this.bgmMode === 'lobby') {
-      // Mystical Celestial C-minor Dorian harp arpeggio + gentle pad
+      // Mystical Celestial C-minor Dorian harp arpeggio + warm harmonic fifth pad
       const arp = [261.63, 311.13, 392.0, 466.16, 523.25, 466.16, 392.0, 349.23];
       const freq = arp[step % arp.length];
       if (step % 2 === 0) {
         const osc = ctx.createOscillator();
+        const shimmer = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
         const g = ctx.createGain();
         osc.type = 'triangle';
+        shimmer.type = 'sine';
         osc.frequency.setValueAtTime(freq, time);
+        shimmer.frequency.setValueAtTime(freq * 2, time);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1850, time);
+        filter.frequency.exponentialRampToValueAtTime(680, time + stepDur * 1.6);
         g.gain.setValueAtTime(0.001, time);
-        g.gain.linearRampToValueAtTime(0.14, time + 0.03);
-        g.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 1.7);
-        osc.connect(g);
+        g.gain.linearRampToValueAtTime(0.11, time + 0.025);
+        g.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 1.75);
+        osc.connect(filter);
+        shimmer.connect(filter);
+        filter.connect(g);
         g.connect(dest);
         osc.start(time);
-        osc.stop(time + stepDur * 1.75);
+        shimmer.start(time);
+        osc.stop(time + stepDur * 1.8);
+        shimmer.stop(time + stepDur * 1.8);
       }
       if (step % 8 === 0) {
-        const bassFreq = step === 0 ? 130.81 : 116.54;
-        const pad = ctx.createOscillator();
-        const pg = ctx.createGain();
-        pad.type = 'sine';
-        pad.frequency.setValueAtTime(bassFreq, time);
-        pg.gain.setValueAtTime(0.001, time);
-        pg.gain.linearRampToValueAtTime(0.18, time + 0.25);
-        pg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 7.6);
-        pad.connect(pg);
-        pg.connect(dest);
-        pad.start(time);
-        pad.stop(time + stepDur * 7.8);
+        const chordRoots = step === 0 ? [130.81, 196.0] : [116.54, 174.61];
+        for (const bassFreq of chordRoots) {
+          const pad = ctx.createOscillator();
+          const pg = ctx.createGain();
+          pad.type = 'sine';
+          pad.frequency.setValueAtTime(bassFreq, time);
+          pg.gain.setValueAtTime(0.001, time);
+          pg.gain.linearRampToValueAtTime(0.11, time + 0.28);
+          pg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 7.6);
+          pad.connect(pg);
+          pg.connect(dest);
+          pad.start(time);
+          pad.stop(time + stepDur * 7.8);
+        }
       }
       return;
     }
 
     if (this.bgmMode === 'combat') {
-      // Heroic action pulse
+      // Heroic action pulse with filtered lead + rhythmic fifth bass + kick thump
       const melody = [
         293.66, 0, 349.23, 440.0, 523.25, 0, 440.0, 392.0,
         293.66, 0, 349.23, 440.0, 587.33, 523.25, 440.0, 392.0,
@@ -177,63 +190,88 @@ class SoundEngine {
       const mFreq = melody[step];
       if (mFreq > 0) {
         const osc = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
         const g = ctx.createGain();
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(mFreq, time);
-        g.gain.setValueAtTime(0.12, time);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2200, time);
+        g.gain.setValueAtTime(0.11, time);
         g.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.9);
-        osc.connect(g);
+        osc.connect(filter);
+        filter.connect(g);
         g.connect(dest);
         osc.start(time);
         osc.stop(time + stepDur * 0.95);
       }
       if (step % 2 === 0) {
+        const root = step >= 8 ? 110 : 146.83;
         const bass = ctx.createOscillator();
         const bg = ctx.createGain();
         bass.type = 'sine';
-        bass.frequency.setValueAtTime(step >= 8 ? 110 : 146.83, time);
-        bg.gain.setValueAtTime(0.16, time);
+        bass.frequency.setValueAtTime(root, time);
+        bg.gain.setValueAtTime(0.15, time);
         bg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.8);
         bass.connect(bg);
         bg.connect(dest);
         bass.start(time);
         bass.stop(time + stepDur * 0.85);
       }
+      if (step % 4 === 0) {
+        const kick = ctx.createOscillator();
+        const kg = ctx.createGain();
+        kick.type = 'sine';
+        kick.frequency.setValueAtTime(125, time);
+        kick.frequency.exponentialRampToValueAtTime(48, time + 0.11);
+        kg.gain.setValueAtTime(0.17, time);
+        kg.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+        kick.connect(kg);
+        kg.connect(dest);
+        kick.start(time);
+        kick.stop(time + 0.13);
+      }
       return;
     }
 
-    // Boss Encounter: Intense minor ostinato
+    // Boss Encounter: Intense orchestral minor ostinato + brassy power fifths + war drum
     const bossSeq = [
       220, 220, 261.63, 220, 293.66, 220, 329.63, 293.66,
       196, 196, 246.94, 196, 261.63, 246.94, 220, 196,
     ];
     const osc = ctx.createOscillator();
+    const fifth = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = 'sawtooth';
+    fifth.type = 'triangle';
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(920, time);
+    filter.frequency.setValueAtTime(980, time);
+    filter.frequency.exponentialRampToValueAtTime(520, time + stepDur * 0.8);
     osc.frequency.setValueAtTime(bossSeq[step], time);
-    g.gain.setValueAtTime(0.09, time);
+    fifth.frequency.setValueAtTime(bossSeq[step] * 1.498, time);
+    g.gain.setValueAtTime(0.075, time);
     g.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.82);
     osc.connect(filter);
+    fifth.connect(filter);
     filter.connect(g);
     g.connect(dest);
     osc.start(time);
+    fifth.start(time);
     osc.stop(time + stepDur * 0.85);
+    fifth.stop(time + stepDur * 0.85);
 
     if (step % 4 === 0) {
       const sub = ctx.createOscillator();
       const sg = ctx.createGain();
       sub.type = 'sine';
       sub.frequency.setValueAtTime(110, time);
-      sub.frequency.exponentialRampToValueAtTime(55, time + 0.14);
+      sub.frequency.exponentialRampToValueAtTime(52, time + 0.15);
       sg.gain.setValueAtTime(0.24, time);
-      sg.gain.exponentialRampToValueAtTime(0.001, time + 0.16);
+      sg.gain.exponentialRampToValueAtTime(0.001, time + 0.17);
       sub.connect(sg);
       sg.connect(dest);
       sub.start(time);
-      sub.stop(time + 0.18);
+      sub.stop(time + 0.19);
     }
   }
 

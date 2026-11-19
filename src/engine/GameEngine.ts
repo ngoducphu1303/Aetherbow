@@ -750,6 +750,7 @@ export class GameEngine {
   private hitstopTimer = 0;
   private hitstopCooldown = 0;
   private shakeIntensity = 0;
+  private cameraFovOffset = 0;
   private comboCount = 0;
   private comboTimer = 0;
   private readonly comboWindow = 3.2;
@@ -879,6 +880,12 @@ export class GameEngine {
     this.initPools();
     this.buildHero();
     this.buildArena(this.currentChapter);
+    // Start in clean Lobby Sanctuary showcase with combat arena hidden and camera framed directly on hero
+    this.arenaGroup.visible = false;
+    if (this.lobbySanctuary) {
+      this.lobbySanctuary.group.visible = true;
+    }
+    this.snapCameraToLobby();
 
     if (!this.isSoftwareGl && !this.appearanceBlocked) {
       this.renderer.compile(this.scene, this.camera);
@@ -4037,6 +4044,7 @@ export class GameEngine {
       this.heroLight.color.setHex(0xfff3d1);
       this.heroLight.intensity = 1.55;
       this.heroLight.position.set(1.8, 2.55, 7.6);
+      this.snapCameraToLobby();
     } else {
       // Restore crisp combat arena lighting
       this.rimLight.color.setHex(0x93c5fd);
@@ -4044,7 +4052,47 @@ export class GameEngine {
       this.rimLight.position.set(-12, 10, -14);
       this.heroLight.color.setHex(0x38bdf8);
       this.heroLight.intensity = 1.2;
+      if (phase === GamePhase.PLAYING) {
+        const snapX = THREE.MathUtils.clamp(this.px * 0.55, -5.5, 5.5);
+        const snapZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2, 6.5, 22.0);
+        this.camera.position.set(snapX, 16.5, snapZ);
+        this.camera.lookAt(
+          THREE.MathUtils.clamp(this.px * 0.45, -4, 4),
+          0.5,
+          THREE.MathUtils.clamp(this.pz * 0.72 - 1.4, -7, 7)
+        );
+      }
     }
+  }
+
+  private snapCameraToLobby(): void {
+    const hasMount = Boolean(this.hero?.mountGroup);
+    const mountExtraZ = hasMount ? 1.85 : 0;
+    const mountExtraY = hasMount ? 0.56 : 0;
+    const mountLookY = hasMount ? 0.46 : 0;
+    const aspectExtraZ = Math.max(0, (1.42 - this.camera.aspect) * 2.35);
+    const isSplit =
+      this.lobbyViewMode === 'gear' ||
+      this.lobbyViewMode === 'heroes' ||
+      this.lobbyViewMode === 'runes';
+    const targetCamZ = (isSplit ? 11.1 : 10.65) + mountExtraZ + aspectExtraZ;
+    const halfHeightAtHero = Math.tan((46 * Math.PI) / 360) * (targetCamZ - 4.5);
+    const splitOffsetX =
+      isSplit && this.camera.aspect >= 1.08
+        ? Math.min(3.15, 0.56 * halfHeightAtHero * this.camera.aspect)
+        : 0;
+
+    this.cameraFovOffset = 0;
+    if (Math.abs(this.camera.fov - 46) > 0.01) {
+      this.camera.fov = 46;
+      this.camera.updateProjectionMatrix();
+    }
+    this.camera.position.set(
+      splitOffsetX,
+      (isSplit ? 1.98 : 2.02) + mountExtraY,
+      targetCamZ
+    );
+    this.camera.lookAt(splitOffsetX, (isSplit ? 0.95 : 0.96) + mountLookY, 4.5);
   }
 
   public selectChapterPreview(chapterId: number): void {
@@ -5753,14 +5801,15 @@ export class GameEngine {
         this.lobbyViewMode === 'heroes' ||
         this.lobbyViewMode === 'runes'
       ) {
-        // AAA Left-Right Split framing: shift camera right so full-body 3D Hero stands cleanly centered in the LEFT half
+        // AAA Left-Right Split framing: project 3D Hero dead center inside the left 42% showcase column
+        targetCamZ = 11.1 + mountExtraZ + aspectExtraZ;
+        const halfHeightAtHero = Math.tan((46 * Math.PI) / 360) * (targetCamZ - 4.5);
         const splitOffsetX =
           this.camera.aspect >= 1.08
-            ? Math.min(2.1, Math.max(1.15, (this.camera.aspect - 0.9) * 1.85))
+            ? Math.min(3.15, 0.56 * halfHeightAtHero * this.camera.aspect)
             : 0;
-        targetCamX = splitOffsetX + sway * 0.14;
+        targetCamX = splitOffsetX + sway * 0.12;
         targetCamY = 1.98 + mountExtraY;
-        targetCamZ = 11.1 + mountExtraZ + aspectExtraZ;
         lookX = splitOffsetX;
         lookY = 0.95 + mountLookY;
       }
@@ -6750,7 +6799,9 @@ export class GameEngine {
         this.dashDirZ = Math.cos(this.pFacing);
       }
       soundEngine.playDash();
-      this.spawnParticles(this.px, 0.7, this.pz, this.weaponAccentHex, 10);
+      this.cameraFovOffset = Math.max(this.cameraFovOffset, 3.2);
+      this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 1.65, 0.22);
+      this.spawnParticles(this.px, 0.7, this.pz, this.weaponAccentHex, 12);
     }
 
     const moveMult =
@@ -10182,6 +10233,16 @@ export class GameEngine {
       this.shakeIntensity *= Math.exp(-14 * dt);
     } else {
       this.shakeIntensity = 0;
+    }
+
+    if (this.cameraFovOffset > 0.01) {
+      this.cameraFovOffset = THREE.MathUtils.damp(this.cameraFovOffset, 0, 8.5, dt);
+      if (this.cameraFovOffset < 0.02) this.cameraFovOffset = 0;
+    }
+    const desiredFov = 46 + this.cameraFovOffset;
+    if (Math.abs(this.camera.fov - desiredFov) > 0.015) {
+      this.camera.fov = desiredFov;
+      this.camera.updateProjectionMatrix();
     }
 
     _v1.set(

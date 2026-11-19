@@ -169,7 +169,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         />
       )}
 
-      {/* Floating Damage Numbers (GPU animated arc & crit pop) */}
+      {/* Floating Damage Numbers (Clean AAA elemental typography & crit pop) */}
       {damages.map((d) => {
         const colorClass = d.isHeal
           ? 'text-emerald-300'
@@ -195,16 +195,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           ? 'a2-crit-float'
           : 'a2-dmg-float';
 
-        const elementBadge =
-          d.element === 'fire'
-            ? { text: 'HỎA', cls: 'bg-orange-500/85 border-amber-200/80 text-white' }
-            : d.element === 'ice'
-            ? { text: 'BĂNG', cls: 'bg-cyan-500/85 border-sky-100/80 text-slate-950' }
-            : d.element === 'storm'
-            ? { text: 'LÔI', cls: 'bg-purple-500/85 border-fuchsia-200/80 text-white' }
-            : d.element === 'poison'
-            ? { text: 'ĐỘC', cls: 'bg-lime-500/85 border-emerald-100/80 text-slate-950' }
-            : null;
+        const shadowStyle = d.isSuperCrit
+          ? '0 2px 6px rgba(0,0,0,0.98), 0 0 18px rgba(251,191,36,0.95)'
+          : d.isCrit
+          ? '0 2px 5px rgba(0,0,0,0.95), 0 0 10px rgba(245,158,11,0.65)'
+          : '0 2px 4px rgba(0,0,0,0.96)';
 
         return (
           <div
@@ -212,36 +207,32 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             style={{
               left: `${d.x}px`,
               top: `${d.y}px`,
+              textShadow: shadowStyle,
             }}
-            className={`absolute font-mono-nums font-black ${animClass} ${
+            className={`absolute font-mono-nums font-black leading-none select-none ${animClass} ${
               d.isSuperCrit
-                ? 'text-xl sm:text-2xl drop-shadow-[0_0_16px_rgba(251,191,36,0.98)]'
+                ? 'text-xl sm:text-2xl tracking-tight'
                 : d.isCrit
-                ? 'text-lg sm:text-xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.75)]'
-                : 'text-xs sm:text-sm drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]'
+                ? 'text-base sm:text-xl'
+                : 'text-xs sm:text-sm'
             } ${colorClass}`}
           >
             {d.isSuperCrit && !d.label && (
-              <span className="mr-1 px-1.5 py-0.5 rounded bg-gradient-to-r from-rose-600 to-amber-500 border border-amber-200 text-[9px] text-white align-middle shadow">
+              <span className="block text-[9px] font-display tracking-[0.18em] text-amber-300/95 uppercase mb-0.5 text-center">
                 BẠO ĐỈNH
               </span>
             )}
-            {elementBadge && !d.label && !d.isHeal && (
-              <span
-                className={`mr-1 px-1 py-0.5 rounded border text-[8px] font-black align-middle ${elementBadge.cls}`}
-              >
-                {elementBadge.text}
-              </span>
-            )}
-            {d.label
-              ? `${d.label} ${d.amount > 0 ? d.amount : ''}`
-              : d.isHeal
-              ? `+${d.amount}`
-              : d.isSuperCrit
-              ? `${d.amount}!!`
-              : d.isCrit
-              ? `${d.amount}!`
-              : d.amount}
+            <span>
+              {d.label
+                ? `${d.label} ${d.amount > 0 ? d.amount : ''}`
+                : d.isHeal
+                ? `+${d.amount}`
+                : d.isSuperCrit
+                ? `${d.amount}!!`
+                : d.isCrit
+                ? `${d.amount}!`
+                : d.amount}
+            </span>
           </div>
         );
       })}

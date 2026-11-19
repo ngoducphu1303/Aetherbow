@@ -8999,7 +8999,6 @@ export default function App() {
             soundEngine.unlock();
             soundEngine.playVictory();
             setEnteredGame(true);
-            if (!save.onboardingCompleted) setOnboardingOpen(true);
           }}
           onToggleMute={handleToggleMute}
         />
