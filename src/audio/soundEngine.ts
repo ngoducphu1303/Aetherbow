@@ -1450,6 +1450,126 @@ class SoundEngine {
       osc.stop(t + 0.3);
     });
   }
+
+  /**
+   * Crisp ceramic/crystal Zodiac Urn shatter with spatial pan and golden chime glint.
+   */
+  public playUrnShatter(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    this.playNoiseBurst(ctx, dest, now, 0.11, 'bandpass', 2400, 900, 0.14, 1.8);
+
+    [987.77, 1318.51, 1567.98].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.018;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.84, t + 0.11);
+      g.gain.setValueAtTime(0.065, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.14);
+    });
+  }
+
+  /**
+   * Epic Boss Kill Execution Slow-Mo boom: time-dilation pitch drop + radiant mythic triad.
+   */
+  public playBossFinisherBoom(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const sub = ctx.createOscillator();
+    const sg = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(190, now);
+    sub.frequency.exponentialRampToValueAtTime(32, now + 0.72);
+    sg.gain.setValueAtTime(0.28, now);
+    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.78);
+    sub.connect(sg);
+    sg.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.8);
+
+    this.playNoiseBurst(ctx, dest, now, 0.24, 'lowpass', 1800, 260, 0.15, 0.9);
+
+    [293.66, 440.0, 587.33, 880.0, 1174.66].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx < 2 ? 'triangle' : 'sine';
+      const t = now + 0.04 + idx * 0.045;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.085, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.58);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.62);
+    });
+  }
+
+  /**
+   * Cinematic Gacha meteor descent & celestial light pillar impact chord scaled by rarity.
+   */
+  public playGachaMeteorReveal(
+    tier: 'common' | 'rare' | 'epic' | 'legendary' | 'mythic' = 'rare'
+  ): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // 1) Meteor streak whoosh
+    this.playNoiseBurst(ctx, dest, now, 0.28, 'bandpass', 600, 2400, 0.1, 1.4);
+
+    // 2) Celestial pillar impact at +0.26s
+    const impactAt = now + 0.26;
+    const isHigh = tier === 'epic' || tier === 'legendary' || tier === 'mythic';
+    const sub = ctx.createOscillator();
+    const sg = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(isHigh ? 165 : 130, impactAt);
+    sub.frequency.exponentialRampToValueAtTime(40, impactAt + 0.34);
+    sg.gain.setValueAtTime(isHigh ? 0.22 : 0.14, impactAt);
+    sg.gain.exponentialRampToValueAtTime(0.001, impactAt + 0.36);
+    sub.connect(sg);
+    sg.connect(dest);
+    sub.start(impactAt);
+    sub.stop(impactAt + 0.38);
+
+    const chord =
+      tier === 'mythic'
+        ? [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98]
+        : tier === 'legendary'
+        ? [440, 554.37, 659.25, 880, 1108.73]
+        : tier === 'epic'
+        ? [392, 493.88, 587.33, 783.99]
+        : [392, 523.25, 659.25];
+
+    chord.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      const t = impactAt + idx * 0.032;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(isHigh ? 0.095 : 0.068, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + (isHigh ? 0.52 : 0.3));
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.56);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();

@@ -1736,6 +1736,12 @@ export interface HudSnapshot {
   trainingTotalDamage?: number;
   trainingCritRatePct?: number;
   trainingHits?: number;
+  // AAA Wave 2: Cinematic Letterbox, Boss Execution Slow-Mo & Synergy Awakening
+  cinematicBarRatio?: number;
+  bossFinisherTimer?: number;
+  bossFinisherName?: string | null;
+  synergyAwakenedName?: string | null;
+  synergyAwakenedTimer?: number;
 }
 
 export interface EncounterOffer {

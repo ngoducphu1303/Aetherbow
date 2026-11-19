@@ -70,9 +70,12 @@ export interface HeroModelRefs {
   cloak: THREE.Mesh;
   capeTail: THREE.Mesh;
   bowGroup: THREE.Group;
+  bowStringTop?: THREE.Mesh;
+  bowStringBottom?: THREE.Mesh;
   drawArm: THREE.Group;
   magicOrb: THREE.Mesh;
   nockedArrow: THREE.Group;
+  nockedArrowTipMat?: THREE.MeshStandardMaterial;
   leftLeg: THREE.Group;
   rightLeg: THREE.Group;
   hoodGem: THREE.Mesh;
@@ -593,6 +596,9 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
 
   const nockedArrow = new THREE.Group();
   nockedArrow.position.set(0, 0, 0.1);
+  let bowStringTop: THREE.Mesh | undefined;
+  let bowStringBottom: THREE.Mesh | undefined;
+  let nockedArrowTipMat: THREE.MeshStandardMaterial | undefined;
 
   if (cfg.weaponArchetype === 'staff') {
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.032, 1.45, 10), goldMat);
@@ -643,22 +649,35 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     bowGrip.position.set(0, 0, 0.19);
     const bowCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), magicEnergyMat);
     bowCrystal.position.set(0, 0, 0.25);
-    const bowString = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.009, 0.009, 1.14, 6),
-      magicEnergyMat
-    );
-    bowString.position.set(0, 0, -0.21);
-    bowGroup.add(bowLimbs, bowGrip, bowCrystal, bowString);
 
+    // Dynamic 2-segment V-bowstring anchored to upper & lower bow tips (pulled back during draw)
+    const halfStringGeo = new THREE.CylinderGeometry(0.0095, 0.0095, 0.57, 6);
+    bowStringTop = new THREE.Mesh(halfStringGeo, magicEnergyMat);
+    bowStringTop.position.set(0, 0.285, -0.21);
+    bowStringBottom = new THREE.Mesh(halfStringGeo, magicEnergyMat);
+    bowStringBottom.position.set(0, -0.285, -0.21);
+    bowGroup.add(bowLimbs, bowGrip, bowCrystal, bowStringTop, bowStringBottom);
+
+    nockedArrowTipMat = new THREE.MeshStandardMaterial({
+      color: cfg.weaponAccentHex,
+      emissive: cfg.weaponAccentHex,
+      emissiveIntensity: 1.0,
+      roughness: 0.2,
+      metalness: 0.45,
+    });
     const arrowShaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.016, 0.016, 0.68, 6),
+      new THREE.CylinderGeometry(0.016, 0.016, 0.72, 6),
       goldMat
     );
     arrowShaft.rotation.x = Math.PI / 2;
-    const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.062, 0.16, 4), magicEnergyMat);
+    const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.068, 0.18, 4), nockedArrowTipMat);
     arrowHead.rotation.x = Math.PI / 2;
-    arrowHead.position.z = 0.38;
-    nockedArrow.add(arrowShaft, arrowHead);
+    arrowHead.position.z = 0.4;
+    const fletchA = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, 0.14), nockedArrowTipMat);
+    fletchA.position.z = -0.3;
+    const fletchB = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.09, 0.14), nockedArrowTipMat);
+    fletchB.position.z = -0.3;
+    nockedArrow.add(arrowShaft, arrowHead, fletchA, fletchB);
     bowGroup.add(nockedArrow);
   }
 
@@ -805,9 +824,12 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     cloak,
     capeTail,
     bowGroup,
+    bowStringTop,
+    bowStringBottom,
     drawArm,
     magicOrb,
     nockedArrow,
+    nockedArrowTipMat,
     leftLeg,
     rightLeg,
     hoodGem,
@@ -3578,6 +3600,92 @@ export function createSkySeraphBossModel(): EnemyModelRefs {
   bodyGroup.add(torso, chestCore, head, crown, windRing);
   return { root, bodyGroup, headOrCore: head, weaponOrRing: windRing, hitMeshes };
 }
+
+/**
+ * AAA Wave 2: Composite 6-part Destructible Zodiac Urn grounded at y = 0.
+ * Built with LatheGeometry amphora body, obsidian plinth, gilded collar, twin handles,
+ * and an emissive zodiac core crystal signaling its tactical combat drop.
+ */
+export function createDestructibleZodiacUrnModel(variant: 'heal' | 'ult' | 'gold'): {
+  group: THREE.Group;
+  sealMesh: THREE.Mesh;
+} {
+  const group = new THREE.Group();
+  const accentHex =
+    variant === 'heal' ? 0x34d399 : variant === 'ult' ? 0xc084fc : 0xfbbf24;
+
+  const plinthMat = new THREE.MeshStandardMaterial({
+    color: 0x161f38,
+    roughness: 0.72,
+    metalness: 0.28,
+  });
+  const ceramicMat = new THREE.MeshStandardMaterial({
+    color: variant === 'heal' ? 0x133834 : variant === 'ult' ? 0x261742 : 0x2a2115,
+    roughness: 0.36,
+    metalness: 0.25,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xf5c542,
+    roughness: 0.22,
+    metalness: 0.9,
+  });
+  const sealMat = new THREE.MeshStandardMaterial({
+    color: accentHex,
+    emissive: accentHex,
+    emissiveIntensity: 1.35,
+    roughness: 0.16,
+    metalness: 0.35,
+  });
+
+  // 1. Grounded octagonal stone plinth (sits flush at y = 0)
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.54, 0.16, 8), plinthMat);
+  plinth.position.y = 0.08;
+  plinth.receiveShadow = true;
+  plinth.castShadow = true;
+
+  // 2. Sculpted LatheGeometry Zodiac Amphora body
+  const lathePts = [
+    new THREE.Vector2(0.0, 0.16),
+    new THREE.Vector2(0.28, 0.16),
+    new THREE.Vector2(0.44, 0.42),
+    new THREE.Vector2(0.46, 0.74),
+    new THREE.Vector2(0.32, 0.98),
+    new THREE.Vector2(0.2, 1.08),
+    new THREE.Vector2(0.29, 1.2),
+    new THREE.Vector2(0.24, 1.22),
+  ];
+  const urnBody = new THREE.Mesh(new THREE.LatheGeometry(lathePts, 14), ceramicMat);
+  urnBody.castShadow = true;
+  urnBody.receiveShadow = true;
+
+  // 3. Gilded belly band & rim collar
+  const bellyBand = new THREE.Mesh(new THREE.TorusGeometry(0.455, 0.032, 8, 18), goldMat);
+  bellyBand.rotation.x = Math.PI / 2;
+  bellyBand.position.y = 0.68;
+
+  const neckCollar = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.028, 8, 16), goldMat);
+  neckCollar.rotation.x = Math.PI / 2;
+  neckCollar.position.y = 1.2;
+
+  // 4. Twin curved bronze-gold handles
+  for (const side of [-1, 1] as const) {
+    const handle = new THREE.Mesh(
+      new THREE.TorusGeometry(0.14, 0.024, 6, 12, Math.PI),
+      goldMat
+    );
+    handle.position.set(side * 0.4, 0.86, 0);
+    handle.rotation.z = side * -Math.PI * 0.5;
+    group.add(handle);
+  }
+
+  // 5. Floating luminous Zodiac Crystal Seal above urn mouth
+  const sealMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.17, 0), sealMat);
+  sealMesh.position.y = 1.48;
+
+  group.add(plinth, urnBody, bellyBand, neckCollar, sealMesh);
+  return { group, sealMesh };
+}
+
 
 
 

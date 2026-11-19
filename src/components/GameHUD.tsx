@@ -25,6 +25,7 @@ import {
 import { SKILLS_CATALOG, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
+import { computeComboStyleRank } from '../engine/aaaCombatDirector';
 import { yawToRadarDegrees } from '../engine/combatFeel';
 import {
   ChampionshipTacticId,
@@ -96,17 +97,29 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const bossHpPct = hud.bossName
     ? Math.max(0, Math.min(100, (hud.bossHp / Math.max(1, hud.bossMaxHp)) * 100))
     : 100;
-  const [bossGhostPct, setBossGhostPct] = useState<number>(100);
+  const bossTotalLayers = Math.max(1, hud.bossLayers ?? 1);
+  const bossCurLayer = Math.max(1, Math.min(bossTotalLayers, hud.bossCurrentLayer ?? 1));
+  const bossLayerFrac = hud.bossName
+    ? Math.max(0, Math.min(100, ((bossHpPct / 100) * bossTotalLayers - (bossCurLayer - 1)) * 100))
+    : 100;
+  const bossPrevLayerRef = useRef<number>(bossCurLayer);
+  const [bossLayerGhostPct, setBossLayerGhostPct] = useState<number>(100);
   useEffect(() => {
     if (!hud.bossName) {
-      setBossGhostPct(100);
+      setBossLayerGhostPct(100);
+      bossPrevLayerRef.current = 1;
       return;
     }
+    if (bossCurLayer !== bossPrevLayerRef.current) {
+      // Layer broke -> flash ghost from full layer down to current fraction smoothly
+      bossPrevLayerRef.current = bossCurLayer;
+      setBossLayerGhostPct(100);
+    }
     const t = window.setTimeout(() => {
-      setBossGhostPct(bossHpPct);
-    }, 320);
+      setBossLayerGhostPct(bossLayerFrac);
+    }, 340);
     return () => window.clearTimeout(t);
-  }, [bossHpPct, hud.bossName]);
+  }, [bossLayerFrac, bossCurLayer, hud.bossName]);
 
   const lastHitRef = useRef<number>(0);
   const [damageFlashKey, setDamageFlashKey] = useState<number>(0);
@@ -147,8 +160,46 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     ? Math.max(0, Math.min(100, ((hud.arenaOpponentHp ?? 0) / Math.max(1, hud.arenaOpponentMaxHp ?? 1)) * 100))
     : 100;
 
+  const cinematicBarRatio = Math.max(0, Math.min(1, hud.cinematicBarRatio ?? 0));
+
   return (
     <div className="fixed inset-0 z-10 pointer-events-none overflow-hidden">
+      {/* AAA Wave 2: Cinematic Letterbox Framing Bars (Boss Intro & Execution Slow-Mo) */}
+      {cinematicBarRatio > 0.01 && (
+        <>
+          <div
+            aria-hidden="true"
+            className="fixed top-0 left-0 right-0 h-10 sm:h-12 bg-[#02040a] origin-top pointer-events-none z-[18] border-b border-amber-400/20"
+            style={{
+              transform: `scaleY(${cinematicBarRatio})`,
+              opacity: Math.min(0.96, cinematicBarRatio * 1.15),
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="fixed bottom-0 left-0 right-0 h-10 sm:h-12 bg-[#02040a] origin-bottom pointer-events-none z-[18] border-t border-amber-400/20"
+            style={{
+              transform: `scaleY(${cinematicBarRatio})`,
+              opacity: Math.min(0.96, cinematicBarRatio * 1.15),
+            }}
+          />
+        </>
+      )}
+
+      {/* AAA Wave 2: Boss Execution Slow-Mo Finisher Callout */}
+      {(hud.bossFinisherTimer ?? 0) > 0 && hud.bossFinisherName && (
+        <div className="fixed inset-x-0 top-[24%] z-[20] flex justify-center px-4 pointer-events-none">
+          <div className="aaa-finisher-banner px-7 py-3 rounded-2xl border-y-2 border-amber-300 bg-[#14050b]/92 shadow-[0_0_48px_rgba(251,191,36,0.55)] text-center">
+            <div className="text-[10px] font-black uppercase tracking-[0.34em] text-amber-300">
+              KẾT LIỄU HOÀNG ĐẠO
+            </div>
+            <div className="font-display text-2xl sm:text-3xl font-black text-white tracking-wider mt-0.5">
+              {hud.bossFinisherName}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Persistent Low-HP Pulsing Crimson Vignette (<=30% HP) */}
       {hpPct <= 30 && hud.hp > 0 && (
         <div
@@ -958,8 +1009,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </div>
               <div className={`hv2-boss-track relative ${underBg}`}>
                 <div
-                  className="h-full bg-amber-200/55 absolute top-0 left-0 transition-all duration-300"
-                  style={{ width: `${Math.max(layerFrac, bossGhostPct > bossHpPct ? 100 : layerFrac)}%` }}
+                  className="h-full bg-amber-100/75 absolute top-0 left-0 transition-all duration-300"
+                  style={{ width: `${Math.max(layerFrac, bossLayerGhostPct)}%` }}
                 />
                 <div
                   className={`h-full relative z-[1] transition-all duration-100 bg-gradient-to-r ${barGrad}`}
@@ -989,7 +1040,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </div>
               </div>
 
-              {/* Wave 12: Boss Break-Shield Sub-bar */}
+              {/* AAA Wave 2: Segmented Boss Stagger / Guard-Break Sub-bar */}
               {(hud.bossMaxShield ?? 0) > 0 && (() => {
                 const breakPct = Math.max(
                   0,
@@ -1002,25 +1053,45 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 const isStunned = stunRemaining > 0.05;
                 return (
                   <div className="mt-1.5">
-                    <div className="flex items-center justify-between text-[9px] font-black mb-0.5">
-                      <span className={isStunned ? 'text-yellow-300' : 'text-amber-200/90'}>
-                        {isStunned
-                          ? `⚡ PHÁ GIÁP! BOSS CHOÁNG (${stunRemaining.toFixed(1)}s) · +45% SÁT THƯƠNG`
-                          : '🛡 Giáp Phá Boss (Chí Mạng & Tuyệt Kỹ bào ×2)'}
+                    <div className="flex items-center justify-between text-[10px] font-black mb-0.5">
+                      <span
+                        className={`flex items-center gap-1 ${
+                          isStunned ? 'text-yellow-300' : 'text-amber-200/90'
+                        }`}
+                      >
+                        {isStunned ? (
+                          <Zap className="w-3 h-3 text-yellow-300 shrink-0" />
+                        ) : (
+                          <Shield className="w-3 h-3 text-amber-300 shrink-0" />
+                        )}
+                        <span>
+                          {isStunned
+                            ? `PHÁ GIÁP · BOSS CHOÁNG (${stunRemaining.toFixed(1)}s) · +45% SÁT THƯƠNG`
+                            : 'Giáp Phá Boss · Chí Mạng & Tuyệt Kỹ bào ×2'}
+                        </span>
                       </span>
                       <span className="font-mono-nums text-amber-300">
                         {isStunned ? 'VỠ GIÁP' : `${Math.round(breakPct)}%`}
                       </span>
                     </div>
-                    <div className="h-1.5 w-full rounded-full bg-slate-950/95 border border-amber-400/35 overflow-hidden">
+                    <div className="relative h-2 w-full rounded-full bg-slate-950/95 border border-amber-400/40 overflow-hidden">
                       <div
                         className={`h-full transition-all duration-100 ${
                           isStunned
                             ? 'bg-gradient-to-r from-yellow-300 via-amber-400 to-rose-400'
-                            : 'bg-gradient-to-r from-amber-500 to-yellow-300'
+                            : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-200'
                         }`}
                         style={{ width: `${isStunned ? 100 : breakPct}%` }}
                       />
+                      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+                        {[25, 50, 75].map((tick) => (
+                          <span
+                            key={tick}
+                            className="absolute top-0 bottom-0 w-px bg-slate-950/75"
+                            style={{ left: `${tick}%` }}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1208,43 +1279,88 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
-        {/* Top-Right Tactical Arena Mini-Radar + Live Combo Chain */}
+        {/* AAA Wave 2: Synergy Awakening Strip */}
+        {(hud.synergyAwakenedTimer ?? 0) > 0 && hud.synergyAwakenedName && (
+          <div className="mx-auto rounded-xl px-4 py-1 bg-[#140b24]/95 border border-amber-300/80 text-[11px] font-black text-amber-200 flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_24px_rgba(251,191,36,0.38)]">
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span>THỨC TỈNH CỘNG HƯỞNG · {hud.synergyAwakenedName}</span>
+          </div>
+        )}
+
+        {/* Top-Right Tactical Arena Mini-Radar + AAA Style Rank Emblem (C -> SSS) */}
         <div className="max-w-5xl w-full mx-auto flex items-start justify-end gap-2.5 pointer-events-none">
           {hud.comboCount >= 2 && (() => {
             const comboMeta = getComboTierMeta(hud.comboCount);
+            const styleRank = computeComboStyleRank(hud.comboCount);
             const bonusPct = Math.round((hud.comboDmgBonusPct ?? comboMeta.dmgBonusPct) * 100);
+            const ringCirc = 2 * Math.PI * 19;
+            const ringOffset = ringCirc * (1 - Math.max(0, Math.min(1, hud.comboTimerRatio)));
             return (
               <div
-                key={hud.comboCount}
-                className={`a2-combo-pop hv2-panel rounded-2xl px-3.5 py-2 min-w-[162px] border ${
-                  hud.comboCount >= 50
-                    ? 'border-yellow-300 shadow-[0_0_20px_rgba(251,191,36,0.45)]'
-                    : hud.comboCount >= 25
-                    ? 'border-fuchsia-400/80 shadow-[0_0_16px_rgba(217,70,239,0.35)]'
-                    : hud.comboCount >= 10
-                    ? 'border-amber-400/75'
-                    : 'border-sky-400/50'
-                }`}
+                className={`hv2-panel rounded-2xl px-3 py-2 min-w-[178px] border ${styleRank.borderClass} flex items-center gap-2.5 shadow-xl`}
               >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-mono-nums text-lg sm:text-xl font-black text-amber-300 leading-none">
-                    ×{hud.comboCount}
-                  </span>
-                  <span className={`text-[10px] font-black tracking-wider ${comboMeta.textClass}`}>
-                    {comboMeta.tierLabel}
+                <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
+                  <svg
+                    viewBox="0 0 44 44"
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full -rotate-90"
+                  >
+                    <circle
+                      cx="22"
+                      cy="22"
+                      r="19"
+                      fill="rgba(5,8,20,0.88)"
+                      stroke="rgba(255,255,255,0.12)"
+                      strokeWidth="2.8"
+                    />
+                    <circle
+                      cx="22"
+                      cy="22"
+                      r="19"
+                      fill="none"
+                      stroke={styleRank.ringColor}
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeDasharray={ringCirc}
+                      strokeDashoffset={ringOffset}
+                    />
+                  </svg>
+                  <span
+                    key={styleRank.grade}
+                    className={`aaa-rank-pop relative z-[1] font-display font-black leading-none ${
+                      styleRank.grade === 'SSS'
+                        ? 'text-xs tracking-tighter'
+                        : styleRank.grade === 'SS'
+                        ? 'text-sm tracking-tight'
+                        : 'text-lg'
+                    } ${styleRank.textClass}`}
+                  >
+                    {styleRank.grade}
                   </span>
                 </div>
-                {bonusPct > 0 && (
-                  <div className="mt-0.5 flex items-center justify-between text-[9px] font-mono-nums font-black text-emerald-300">
-                    <span>Cộng Hưởng Liên Kích</span>
-                    <span>+{bonusPct}% Sát Thương</span>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span
+                      key={hud.comboCount}
+                      className="a2-combo-pop font-mono-nums text-lg font-black text-white leading-none"
+                    >
+                      ×{hud.comboCount}
+                    </span>
+                    <span className={`text-[10px] font-black tracking-wider ${styleRank.textClass}`}>
+                      {styleRank.title}
+                    </span>
                   </div>
-                )}
-                <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-950 overflow-hidden">
-                  <div
-                    className={`h-full bg-gradient-to-r ${comboMeta.barGradient} transition-all duration-75`}
-                    style={{ width: `${Math.round(hud.comboTimerRatio * 100)}%` }}
-                  />
+                  <div className="mt-1 flex items-center justify-between text-[10px] font-mono-nums font-bold">
+                    <span className="text-slate-400">
+                      {styleRank.nextThreshold
+                        ? `Bậc kế: ${styleRank.nextThreshold}`
+                        : 'Cực Hạn'}
+                    </span>
+                    {bonusPct > 0 && (
+                      <span className="text-emerald-300 font-black">+{bonusPct}% ST</span>
+                    )}
+                  </div>
                 </div>
               </div>
             );

@@ -42,23 +42,13 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
   onRollAgain,
   canRollAgain,
 }) => {
-  const [stage, setStage] = useState<'shaking' | 'revealed'>('shaking');
+  const [stage, setStage] = useState<'meteor' | 'pillar' | 'revealed'>('meteor');
   const [flippedIndices, setFlippedIndices] = useState<Set<number>>(new Set());
   const [chestImgFailed, setChestImgFailed] = useState(false);
   const [cardBackFailed, setCardBackFailed] = useState(false);
 
   const isBatch = reveal.count === 10;
   const itemsCount = reveal.gears?.length ?? reveal.runes?.length ?? 0;
-
-  useEffect(() => {
-    setStage('shaking');
-    setFlippedIndices(new Set());
-    const delay = isBatch ? 520 : 760;
-    const t = window.setTimeout(() => {
-      setStage('revealed');
-    }, delay);
-    return () => window.clearTimeout(t);
-  }, [reveal, isBatch]);
 
   const singleGear = reveal.gears?.[0];
   const singleRune = reveal.runes?.[0];
@@ -73,6 +63,33 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
       RARITY_ORDER.indexOf(r) > RARITY_ORDER.indexOf(best) ? r : best
     );
   })();
+
+  useEffect(() => {
+    setStage('meteor');
+    setFlippedIndices(new Set());
+    const tierKey =
+      highestRarity === Rarity.MYTHIC
+        ? 'mythic'
+        : highestRarity === Rarity.LEGENDARY
+        ? 'legendary'
+        : highestRarity === Rarity.EPIC
+        ? 'epic'
+        : highestRarity === Rarity.RARE
+        ? 'rare'
+        : 'common';
+    soundEngine.playGachaMeteorReveal(tierKey);
+
+    const tPillar = window.setTimeout(() => {
+      setStage('pillar');
+    }, 360);
+    const tReveal = window.setTimeout(() => {
+      setStage('revealed');
+    }, isBatch ? 760 : 880);
+    return () => {
+      window.clearTimeout(tPillar);
+      window.clearTimeout(tReveal);
+    };
+  }, [reveal, isBatch, highestRarity]);
 
   const bestGear = reveal.gears?.reduce<GearInstance | null>((best, g) => {
     if (!best) return g;
@@ -106,14 +123,21 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
   };
 
   const flipAllCards = () => {
-    soundEngine.playCardFlip(
+    const isHighAny =
       highestRarity === Rarity.EPIC ||
-        highestRarity === Rarity.LEGENDARY ||
-        highestRarity === Rarity.MYTHIC
-    );
-    const all = new Set<number>();
-    for (let i = 0; i < itemsCount; i++) all.add(i);
-    setFlippedIndices(all);
+      highestRarity === Rarity.LEGENDARY ||
+      highestRarity === Rarity.MYTHIC;
+    soundEngine.playCardFlip(isHighAny);
+    for (let i = 0; i < itemsCount; i++) {
+      window.setTimeout(() => {
+        setFlippedIndices((prev) => {
+          if (prev.has(i)) return prev;
+          const next = new Set(prev);
+          next.add(i);
+          return next;
+        });
+      }, i * 48);
+    }
   };
 
   const allFlipped = flippedIndices.size >= itemsCount;
@@ -121,7 +145,7 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
   return (
     <div
       onClick={() => {
-        if (stage === 'shaking') setStage('revealed');
+        if (stage !== 'revealed') setStage('revealed');
       }}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/92"
     >
@@ -148,28 +172,68 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
             />
           )}
 
-        {stage === 'shaking' ? (
-          <div className="relative z-10 py-10 flex flex-col items-center gap-4">
-            <div className="a2-chest-shake">
+        {stage !== 'revealed' ? (
+          <div className="relative z-10 py-10 flex flex-col items-center gap-4 min-h-[260px] justify-center">
+            {/* Beat 1: Rarity-colored Meteor Descent */}
+            {stage === 'meteor' && (
+              <div
+                aria-hidden="true"
+                className="aaa-gacha-meteor pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-32 rounded-full"
+                style={{
+                  background: `linear-gradient(to top, #ffffff, ${rMeta.color}, transparent)`,
+                  boxShadow: `0 0 28px ${rMeta.color}`,
+                }}
+              />
+            )}
+
+            {/* Beat 2: Vertical Celestial Light Pillar & Shockwave Ring */}
+            {stage === 'pillar' && (
+              <>
+                <div
+                  aria-hidden="true"
+                  className="aaa-gacha-pillar pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 w-36"
+                  style={{
+                    background: `linear-gradient(90deg, transparent, ${rMeta.color}66, #ffffffcc, ${rMeta.color}66, transparent)`,
+                  }}
+                />
+                <div
+                  aria-hidden="true"
+                  className="aaa-gacha-ring pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-36 h-36 rounded-full border-4"
+                  style={{ borderColor: rMeta.color }}
+                />
+              </>
+            )}
+
+            <div className="a2-chest-shake relative z-[2]">
               {useChestArt ? (
                 <img
                   src={royalChestArt}
                   alt="Rương Kho Báu Hoàng Đạo"
                   referrerPolicy="no-referrer"
                   onError={() => setChestImgFailed(true)}
-                  className="w-36 h-36 rounded-2xl object-cover border border-amber-300/60 shadow-[0_0_32px_rgba(251,191,36,0.4)]"
+                  className="w-36 h-36 rounded-2xl object-cover border border-amber-300/60"
+                  style={{
+                    boxShadow:
+                      stage === 'pillar'
+                        ? `0 0 56px ${rMeta.color}`
+                        : `0 0 28px ${rMeta.color}70`,
+                  }}
                 />
               ) : (
                 <ChestSvg variant={reveal.chestVariant} className="w-28 h-28" />
               )}
             </div>
-            <div className="font-display text-lg font-black text-amber-200">
-              {isBatch ? 'Đang Triệu Hồi x10 Hoàng Đạo...' : 'Đang Khai Mở Kho Báu...'}
+            <div className="font-display text-lg font-black text-amber-200 relative z-[2]">
+              {stage === 'pillar'
+                ? `Thiên Quang Giáng Thế · ${rMeta.label}!`
+                : isBatch
+                ? 'Thiên Thạch Triệu Hồi ×10...'
+                : 'Đang Khai Mở Rương Hoàng Đạo...'}
             </div>
             <button
               type="button"
               onClick={() => setStage('revealed')}
-              className="text-xs font-bold text-slate-300 underline underline-offset-4 cursor-pointer"
+              className="relative z-[2] text-xs font-bold text-slate-300 underline underline-offset-4 cursor-pointer"
             >
               Chạm để mở ngay
             </button>
@@ -276,7 +340,14 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                       </div>
 
                       <div
-                        className={`a2-flip-face a2-flip-face-back rounded-2xl ${RARITY_FRAME_CLASS[g.rarity]} a2-item-card p-1`}
+                        className={`a2-flip-face a2-flip-face-back rounded-2xl ${RARITY_FRAME_CLASS[g.rarity]} a2-item-card p-1 ${
+                          g.rarity === Rarity.EPIC ||
+                          g.rarity === Rarity.LEGENDARY ||
+                          g.rarity === Rarity.MYTHIC ||
+                          tpl.isSTier
+                            ? 'aaa-card-foil-shimmer'
+                            : ''
+                        }`}
                       >
                         <div className="a2-item-inner p-2 flex flex-col items-center justify-between gap-1.5 w-full h-full">
                           <div className="flex items-center justify-between w-full text-[9px] font-black">
@@ -452,7 +523,14 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                     </div>
 
                     <div
-                      className={`a2-flip-face a2-flip-face-back a2-item-card rounded-2xl ${RARITY_FRAME_CLASS[singleGear.rarity]}`}
+                      className={`a2-flip-face a2-flip-face-back a2-item-card rounded-2xl ${RARITY_FRAME_CLASS[singleGear.rarity]} ${
+                        singleGear.rarity === Rarity.EPIC ||
+                        singleGear.rarity === Rarity.LEGENDARY ||
+                        singleGear.rarity === Rarity.MYTHIC ||
+                        gearTpl.isSTier
+                          ? 'aaa-card-foil-shimmer'
+                          : ''
+                      }`}
                     >
                       <div className="a2-item-inner flex flex-col items-center justify-center gap-1.5 p-2">
                         <GearSlotSvg

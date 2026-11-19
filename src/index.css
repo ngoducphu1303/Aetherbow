@@ -927,6 +927,134 @@
   will-change: transform;
 }
 
+/* AAA Wave 2: Cinematic Gacha Meteor, Light Pillar, Foil Shimmer & Combat Rank/Finisher Motion */
+@keyframes aaaGachaMeteorFall {
+  0% {
+    opacity: 0;
+    transform: translate(150px, -170px) rotate(-42deg) scaleY(0.5);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(85px, -95px) rotate(-42deg) scaleY(1.25);
+  }
+  85% {
+    opacity: 1;
+    transform: translate(0px, 8px) rotate(-42deg) scaleY(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-18px, 26px) rotate(-42deg) scaleY(0.4);
+  }
+}
+
+@keyframes aaaGachaPillarBurst {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.15) scaleY(0.2);
+  }
+  28% {
+    opacity: 1;
+    transform: scaleX(1.35) scaleY(1.05);
+  }
+  100% {
+    opacity: 0.22;
+    transform: scaleX(0.9) scaleY(1);
+  }
+}
+
+@keyframes aaaGachaRingBurst {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.25);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.35);
+  }
+}
+
+@keyframes aaaFoilSweep {
+  0% {
+    transform: translateX(-160%) skewX(-22deg);
+  }
+  100% {
+    transform: translateX(240%) skewX(-22deg);
+  }
+}
+
+@keyframes aaaFinisherSlash {
+  0% {
+    opacity: 0;
+    transform: scale(1.26) translateY(8px);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  82% {
+    opacity: 1;
+    transform: scale(1.02) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+}
+
+@keyframes aaaRankPop {
+  0% {
+    transform: scale(1.36);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.aaa-gacha-meteor {
+  animation: aaaGachaMeteorFall 440ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.aaa-gacha-pillar {
+  animation: aaaGachaPillarBurst 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.aaa-gacha-ring {
+  animation: aaaGachaRingBurst 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.aaa-card-foil-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.aaa-card-foil-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 55%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.34),
+    rgba(253, 224, 71, 0.28),
+    transparent
+  );
+  animation: aaaFoilSweep 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  pointer-events: none;
+}
+
+.aaa-finisher-banner {
+  animation: aaaFinisherSlash 920ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.aaa-rank-pop {
+  animation: aaaRankPop 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .a2-title-shimmer-gold,
   .a2-title-shimmer-crimson,
@@ -940,7 +1068,13 @@
   .w13-skill-ready-glow::after,
   .w14-marquee-track,
   .w14-boss-warning-cutin,
-  .w14-title-float {
+  .w14-title-float,
+  .aaa-gacha-meteor,
+  .aaa-gacha-pillar,
+  .aaa-gacha-ring,
+  .aaa-card-foil-shimmer::after,
+  .aaa-finisher-banner,
+  .aaa-rank-pop {
     animation: none;
   }
   .a2-flip-card {
