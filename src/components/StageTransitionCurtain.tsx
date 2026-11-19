@@ -21,6 +21,8 @@ interface StageTransitionCurtainProps {
   isAbyssalMode?: boolean;
   isGuildWarMode?: boolean;
   isPantheonMode?: boolean;
+  isChampionshipMode?: boolean;
+  isCrystalVaultMode?: boolean;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -42,6 +44,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   isAbyssalMode = false,
   isGuildWarMode = false,
   isPantheonMode = false,
+  isChampionshipMode = false,
+  isCrystalVaultMode = false,
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
@@ -53,7 +57,11 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
     <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-[#040611]/95 a2-curtain">
       <div className="text-center px-6 py-8 max-w-md w-full">
         <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
-          {isArenaMode ? (
+          {isCrystalVaultMode ? (
+            <Gem className="w-12 h-12 text-yellow-300" />
+          ) : isChampionshipMode ? (
+            <Trophy className="w-12 h-12 text-amber-300" />
+          ) : isArenaMode ? (
             <Swords className="w-12 h-12 text-rose-400" />
           ) : isPantheonMode ? (
             <Crown className="w-12 h-12 text-amber-300" />
@@ -90,7 +98,11 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
           )}
         </div>
         <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
-          {isArenaMode
+          {isCrystalVaultMode
+            ? 'Hầm Mỏ Kho Báu Hoàng Kim 3D · 60 Giây'
+            : isChampionshipMode
+            ? 'Giải Đấu Quán Quân 3D · 3 Hiệp Chọn Chiến Thuật'
+            : isArenaMode
             ? 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
             : isPantheonMode
             ? 'Viễn Chinh Điện Thần 3D · 3 Tầng Thần Chủ'
@@ -119,7 +131,11 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
             : `Chương ${ch.id} · ${ch.zodiacName}`}
         </div>
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
-          {isArenaMode
+          {isCrystalVaultMode
+            ? 'Khai Phá Hầm Mỏ Pha Lê 3D'
+            : isChampionshipMode
+            ? 'Đấu Trường Cúp Vinh Quang 3 Hiệp'
+            : isArenaMode
             ? `VS · ${arenaOpponentName || 'Kình Địch'}`
             : isPantheonMode
             ? 'Viễn Chinh Điện Thần Hoàng Đạo'
@@ -149,7 +165,11 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         </h2>
         <div className="cel-divider-gold max-w-[180px] mx-auto my-2.5" />
         <div className="text-xs text-slate-300 font-semibold">
-          {isArenaMode
+          {isCrystalVaultMode
+            ? 'Phá hủy liên tiếp các Trụ Pha Lê Vàng & Hộ Vệ Kho Báu trong 60 giây để thu hoạch Ngọc Hồn, Đá Đúc Hoàng Kim & Mảnh Thần Binh!'
+            : isChampionshipMode
+            ? 'Đánh bại liên tiếp 3 Anh Hùng Quán Quân 3D · Chọn 1 trong 3 Thẻ Chiến Thuật giữa mỗi hiệp để rinh Cúp Vinh Quang & Lõi Thần Sủng!'
+            : isArenaMode
             ? 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
             : isPantheonMode
             ? 'Đánh bại liên tiếp 3 Thần Chủ Điện Thần dưới sức mạnh Chúc Phúc để săn Thần Tinh nâng Hào Quang 3D!'

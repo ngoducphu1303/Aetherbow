@@ -740,15 +740,80 @@
   transform: rotateY(180deg);
 }
 
+/* Wave 11: Golden Upgrade Shimmer Celebration (Compositor Transform + Opacity Only) */
+@keyframes a2GoldFlashBurst {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  78% {
+    opacity: 0.92;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes a2GoldRingExpand {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.45) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7) rotate(55deg);
+  }
+}
+
+.a2-gold-upgrade-banner {
+  animation: a2GoldFlashBurst 1.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.a2-gold-upgrade-ring {
+  animation: a2GoldRingExpand 950ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Wave 11: Hall of Honor Marquee Ticker */
+@keyframes a2HonorMarquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.a2-honor-marquee {
+  display: flex;
+  width: max-content;
+  animation: a2HonorMarquee 36s linear infinite;
+}
+
+.a2-honor-marquee:hover {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .a2-title-shimmer-gold,
   .a2-title-shimmer-crimson,
   .a2-title-shimmer-arcane,
-  .a2-title-shimmer-cyan {
+  .a2-title-shimmer-cyan,
+  .a2-honor-marquee {
     animation: none;
   }
   .a2-flip-card {
     transition: transform 120ms linear;
   }
+  .a2-gold-upgrade-banner,
+  .a2-gold-upgrade-ring {
+    animation-duration: 240ms;
+  }
 }
+
 

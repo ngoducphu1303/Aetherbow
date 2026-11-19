@@ -309,6 +309,33 @@ export function countClaimableAchievements(save: SaveData): number {
 
 export const EVENT_BANNERS = [
   {
+    id: 'event_celestial_festival',
+    badge: 'LỄ HỘI TINH GIỚI · GIẢM -80%',
+    title: 'Lễ Hội Đèn Lồng Tinh Giới & Hộp Quà Bí Ẩn',
+    subtitle: 'Hoàn thành 7 nhiệm vụ nhận Đèn Lồng Tinh Tú, mở Hộp Bí Ẩn giảm tới 80% săn Trang Bị [S] & Lõi Thần Sủng!',
+    ctaLabel: 'Vào Lễ Hội',
+    target: 'festival' as const,
+    accent: 'amber' as const,
+  },
+  {
+    id: 'event_championship_3round',
+    badge: 'GIẢI ĐẤU 3 HIỆP 3D · MỚI',
+    title: 'Giải Đấu Quán Quân 3 Hiệp & Cúp Vinh Quang',
+    subtitle: 'Liên chiến 3 Anh Hùng kình địch kèm chọn Chiến Thuật giữa hiệp để đoạt Cúp Vinh Quang & Lõi Thần Sủng!',
+    ctaLabel: 'Đấu 3 Hiệp 3D',
+    target: 'championship_3round' as const,
+    accent: 'purple' as const,
+  },
+  {
+    id: 'event_spirit_evolution',
+    badge: 'THẦN SỦNG 3D · ĐỘT PHÁ',
+    title: 'Tiến Hóa Thần Sủng 3D & Gói Đặc Quyền Cuối Tuần',
+    subtitle: 'Đột phá Tinh Linh lên Thần Sủng 3D tỏa vòng hào quang nguyên tố, tăng +85% ATK và mở khóa Gói Cuối Tuần!',
+    ctaLabel: 'Tiến Hóa Ngay',
+    target: 'spirit_evolution' as const,
+    accent: 'amber' as const,
+  },
+  {
     id: 'event_chain_bank',
     badge: 'CHUỖI QUÀ 5 BƯỚC · NGÂN HÀNG NGỌC',
     title: 'Chuỗi Quà Liên Hoàn & Ngân Hàng Hoàn Trả Ngọc Hồn',

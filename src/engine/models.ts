@@ -3,6 +3,7 @@ import { WING_MAP } from '../data/wave7Data';
 import { MOUNT_MAP, WEAPON_AURA_MAP } from '../data/wave8Data';
 import { ARTIFACT_MAP } from '../data/wave9Data';
 import { DIVINE_HALO_MAP } from '../data/wave10Data';
+import { MYTHIC_WEAPON_TIERS, WAR_BANNER_MAP } from '../data/wave12Data';
 import {
   ArtifactId,
   CrownStyle,
@@ -11,6 +12,7 @@ import {
   MountId,
   PetId,
   StageEventAfter,
+  WarBannerId,
   WeaponArchetype,
   WeaponAuraId,
   WingId,
@@ -44,6 +46,9 @@ export interface HeroVisualConfig {
   artifactLevel?: number;
   haloId?: HaloId | null;
   haloLevel?: number;
+  mythicWeaponTier?: number;
+  warBannerId?: WarBannerId | null;
+  warBannerLevel?: number;
 }
 
 export interface HeroModelRefs {
@@ -66,6 +71,9 @@ export interface HeroModelRefs {
   weaponAuraGroup?: THREE.Group;
   artifactGroup?: THREE.Group;
   haloGroup?: THREE.Group;
+  warBannerGroup?: THREE.Group;
+  warBannerCloth?: THREE.Mesh;
+  mythicCrownGroup?: THREE.Group;
   hitMeshes: THREE.Mesh[];
 }
 
@@ -620,6 +628,27 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     bodyGroup.add(haloGroup);
   }
 
+  // 10b. Wave 12: Mythic Weapon Transcendence 3D Crown FX (Tier 1..5)
+  let mythicCrownGroup: THREE.Group | undefined;
+  const mythicTier = Math.max(0, Math.min(5, Math.floor(cfg.mythicWeaponTier ?? 0)));
+  if (mythicTier >= 1) {
+    mythicCrownGroup = createMythicWeaponCrownFx(mythicTier);
+    mythicCrownGroup.position.set(0, 0.08, 0.16);
+    bowGroup.add(mythicCrownGroup);
+  }
+
+  // 10c. Wave 12: 3D Royal War Banner planted behind Hero's left shoulder
+  let warBannerGroup: THREE.Group | undefined;
+  let warBannerCloth: THREE.Mesh | undefined;
+  if (cfg.warBannerId && WAR_BANNER_MAP[cfg.warBannerId]) {
+    const builtBanner = createWarBannerModel(cfg.warBannerId, cfg.warBannerLevel ?? 1);
+    warBannerGroup = builtBanner.group;
+    warBannerCloth = builtBanner.clothMesh;
+    warBannerGroup.position.set(-0.46, 0.42, -0.34);
+    warBannerGroup.rotation.z = 0.12;
+    bodyGroup.add(warBannerGroup);
+  }
+
   // 11. Composite 3D Zodiac Mount under Hero
   let mountGroup: THREE.Group | undefined;
   let mountLegs: THREE.Group[] | undefined;
@@ -651,6 +680,9 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     weaponAuraGroup,
     artifactGroup,
     haloGroup,
+    warBannerGroup,
+    warBannerCloth,
+    mythicCrownGroup,
     hitMeshes,
   };
 }
@@ -1163,7 +1195,7 @@ export function createCompanionModel(kind: 'sprite' | 'wukong'): THREE.Group {
   return g;
 }
 
-export function createPetModel(petId: PetId): THREE.Group {
+export function createPetModel(petId: PetId, evolved = false): THREE.Group {
   const g = new THREE.Group();
   const goldMat = new THREE.MeshStandardMaterial({
     color: 0xfbbf24,
@@ -1342,6 +1374,53 @@ export function createPetModel(petId: PetId): THREE.Group {
       g.add(wing);
     }
     g.add(core, halo, crown);
+  }
+
+  if (evolved) {
+    const auraColor =
+      petId === 'solar_phoenix'
+        ? 0xf59e0b
+        : petId === 'frost_owl'
+        ? 0x38bdf8
+        : petId === 'storm_dragonet'
+        ? 0xc084fc
+        : petId === 'eclipse_fox'
+        ? 0xf43f5e
+        : petId === 'jade_turtle'
+        ? 0x10b981
+        : 0xfde047;
+    const evolvedGlowMat = new THREE.MeshStandardMaterial({
+      color: auraColor,
+      emissive: auraColor,
+      emissiveIntensity: 1.6,
+      roughness: 0.14,
+      metalness: 0.35,
+    });
+    const ascendedHalo = new THREE.Mesh(
+      new THREE.TorusGeometry(0.42, 0.026, 8, 28),
+      goldMat
+    );
+    ascendedHalo.position.set(0, 0.14, -0.22);
+    const innerEnergyRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.32, 0.018, 6, 22),
+      evolvedGlowMat
+    );
+    innerEnergyRing.position.set(0, 0.14, -0.2);
+    g.add(ascendedHalo, innerEnergyRing);
+
+    const shardGeo = new THREE.OctahedronGeometry(0.068, 0);
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const shard = new THREE.Mesh(shardGeo, i % 2 === 0 ? evolvedGlowMat : goldMat);
+      shard.scale.set(0.75, 1.55, 0.75);
+      shard.position.set(Math.cos(ang) * 0.45, 0.14 + Math.sin(ang) * 0.45, -0.2);
+      g.add(shard);
+    }
+
+    const crownSpike = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.22, 6), goldMat);
+    crownSpike.position.set(0, 0.48, 0.04);
+    g.add(crownSpike);
+    g.scale.setScalar(1.18);
   }
 
   return g;
@@ -1899,6 +1978,271 @@ function createDivineHaloModel(haloId: HaloId, level: number): THREE.Group {
   g.scale.setScalar(scaleFactor);
   return g;
 }
+
+export function createRoyalPedestalDecor(
+  marbleHex: number,
+  goldHex: number,
+  crystalHex: number
+): THREE.Group {
+  const g = new THREE.Group();
+
+  const marbleMat = new THREE.MeshStandardMaterial({
+    color: marbleHex,
+    roughness: 0.34,
+    metalness: 0.42,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: goldHex,
+    emissive: goldHex,
+    emissiveIntensity: 0.35,
+    roughness: 0.2,
+    metalness: 0.9,
+  });
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: crystalHex,
+    emissive: crystalHex,
+    emissiveIntensity: 1.35,
+    roughness: 0.12,
+    metalness: 0.28,
+  });
+
+  // Lower royal stepped plinth
+  const lowerStep = new THREE.Mesh(new THREE.CylinderGeometry(1.48, 1.68, 0.12, 24), marbleMat);
+  lowerStep.position.y = -0.14;
+  lowerStep.receiveShadow = true;
+
+  // Upper royal marble deck
+  const upperDeck = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 1.34, 0.12, 32), marbleMat);
+  upperDeck.position.y = -0.05;
+  upperDeck.receiveShadow = true;
+
+  // Chamfered gilded collars
+  const lowerGoldTrim = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.032, 8, 40), goldMat);
+  lowerGoldTrim.rotation.x = Math.PI / 2;
+  lowerGoldTrim.position.y = -0.08;
+
+  const upperGoldTrim = new THREE.Mesh(new THREE.TorusGeometry(1.19, 0.036, 8, 40), goldMat);
+  upperGoldTrim.rotation.x = Math.PI / 2;
+  upperGoldTrim.position.y = 0.01;
+
+  // 4 Royal Crystal Pillars with gold finials around the pedestal perimeter
+  const pillarGeo = new THREE.CylinderGeometry(0.06, 0.085, 0.56, 6);
+  const capGeo = new THREE.OctahedronGeometry(0.095, 0);
+  const collarGeo = new THREE.TorusGeometry(0.08, 0.018, 6, 12);
+  for (let i = 0; i < 4; i++) {
+    const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const px = Math.cos(ang) * 1.48;
+    const pz = Math.sin(ang) * 1.48;
+    const pillar = new THREE.Mesh(pillarGeo, marbleMat);
+    pillar.position.set(px, 0.16, pz);
+    pillar.castShadow = true;
+    const collar = new THREE.Mesh(collarGeo, goldMat);
+    collar.rotation.x = Math.PI / 2;
+    collar.position.set(px, 0.42, pz);
+    const crystalCap = new THREE.Mesh(capGeo, crystalMat);
+    crystalCap.scale.set(0.8, 1.55, 0.8);
+    crystalCap.position.set(px, 0.56, pz);
+    g.add(pillar, collar, crystalCap);
+  }
+
+  g.add(lowerStep, upperDeck, lowerGoldTrim, upperGoldTrim);
+  return g;
+}
+
+// ============================================================================
+// WAVE 12 COMPOSITE 3D MODELS: WAR BANNER, MYTHIC WEAPON FX & VAULT PILLAR
+// ============================================================================
+
+export function createMythicWeaponCrownFx(tier: number): THREE.Group {
+  const g = new THREE.Group();
+  const def = MYTHIC_WEAPON_TIERS[Math.min(5, Math.max(1, tier))] ?? MYTHIC_WEAPON_TIERS[1];
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: def.glowHex,
+    emissive: def.glowHex,
+    emissiveIntensity: 1.2 + tier * 0.25,
+    roughness: 0.14,
+    metalness: 0.72,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfde047,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 0.45,
+    roughness: 0.18,
+    metalness: 0.92,
+  });
+
+  // Outer celestial rune ring around weapon core
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.24 + tier * 0.025, 0.018, 8, 28),
+    glowMat
+  );
+  g.add(ring);
+
+  // Orbiting mythic crystal shards scaling with tier (2..6)
+  const shardCount = Math.min(6, tier + 1);
+  const shardGeo = new THREE.OctahedronGeometry(0.042 + tier * 0.004, 0);
+  for (let i = 0; i < shardCount; i++) {
+    const ang = (i / shardCount) * Math.PI * 2;
+    const rad = 0.3 + tier * 0.02;
+    const shard = new THREE.Mesh(shardGeo, i % 2 === 0 ? glowMat : goldMat);
+    shard.scale.set(0.75, 1.8, 0.75);
+    shard.position.set(Math.cos(ang) * rad, Math.sin(ang) * rad, 0);
+    shard.rotation.z = ang + Math.PI / 2;
+    g.add(shard);
+  }
+
+  return g;
+}
+
+export function createWarBannerModel(
+  bannerId: WarBannerId,
+  level = 1
+): { group: THREE.Group; clothMesh: THREE.Mesh } {
+  const def = WAR_BANNER_MAP[bannerId] ?? WAR_BANNER_MAP.banner_solar;
+  const scaleBoost = 1 + Math.min(4, Math.max(0, level - 1)) * 0.05;
+  const group = new THREE.Group();
+
+  const poleMat = new THREE.MeshStandardMaterial({
+    color: def.trimHex,
+    roughness: 0.22,
+    metalness: 0.92,
+  });
+  const clothMat = new THREE.MeshStandardMaterial({
+    color: def.clothHex,
+    emissive: def.clothHex,
+    emissiveIntensity: 0.28,
+    roughness: 0.62,
+    metalness: 0.14,
+    side: THREE.DoubleSide,
+  });
+  const emblemMat = new THREE.MeshStandardMaterial({
+    color: def.emblemHex,
+    emissive: def.emblemHex,
+    emissiveIntensity: 1.25,
+    roughness: 0.16,
+    metalness: 0.78,
+  });
+
+  // 1. Gilded lance pole (grounded bottom pivot)
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.032, 2.05, 10), poleMat);
+  pole.position.y = 1.02;
+  pole.castShadow = true;
+
+  // 2. Spearhead finial + collar ring
+  const finial = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.26, 6), emblemMat);
+  finial.position.y = 2.16;
+  const finialRing = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.016, 8, 16), poleMat);
+  finialRing.rotation.x = Math.PI / 2;
+  finialRing.position.y = 2.02;
+
+  // 3. Ornate crossbar + endcaps
+  const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.76, 8), poleMat);
+  crossbar.rotation.z = Math.PI / 2;
+  crossbar.position.set(0, 1.88, -0.02);
+  for (const side of [-1, 1] as const) {
+    const cap = new THREE.Mesh(new THREE.OctahedronGeometry(0.055, 0), emblemMat);
+    cap.position.set(side * 0.4, 1.88, -0.02);
+    group.add(cap);
+  }
+
+  // 4. Sculpted Heraldic Swallowtail Banner Cloth
+  const bannerShape = new THREE.Shape();
+  bannerShape.moveTo(-0.32, 0);
+  bannerShape.lineTo(0.32, 0);
+  bannerShape.lineTo(0.28, -0.96);
+  bannerShape.lineTo(0, -0.78);
+  bannerShape.lineTo(-0.28, -0.96);
+  bannerShape.closePath();
+
+  const clothGeo = new THREE.ExtrudeGeometry(bannerShape, {
+    depth: 0.022,
+    bevelEnabled: true,
+    bevelThickness: 0.008,
+    bevelSize: 0.008,
+    bevelSegments: 2,
+  });
+  const clothMesh = new THREE.Mesh(clothGeo, clothMat);
+  clothMesh.position.set(0, 1.86, -0.035);
+  clothMesh.castShadow = true;
+
+  // 5. Glowing Zodiac Crest Medallion on banner center
+  const emblemRing = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.022, 8, 20), poleMat);
+  emblemRing.position.set(0, -0.38, 0.022);
+  const emblemGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), emblemMat);
+  emblemGem.scale.set(0.85, 1.2, 0.45);
+  emblemGem.position.set(0, -0.38, 0.028);
+  clothMesh.add(emblemRing, emblemGem);
+
+  group.add(pole, finial, finialRing, crossbar, clothMesh);
+  group.scale.setScalar(scaleBoost);
+  return { group, clothMesh };
+}
+
+export function createVaultCrystalPillarModel(isGolden: boolean): EnemyModelRefs {
+  const root = new THREE.Group();
+  const bodyGroup = new THREE.Group();
+  root.add(bodyGroup);
+  const hitMeshes: THREE.Mesh[] = [];
+
+  const plinthMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.62,
+    metalness: 0.25,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    roughness: 0.2,
+    metalness: 0.92,
+  });
+  const crystalHex = isGolden ? 0xfbbf24 : 0x38bdf8;
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: crystalHex,
+    emissive: crystalHex,
+    emissiveIntensity: isGolden ? 1.55 : 1.25,
+    roughness: 0.14,
+    metalness: 0.35,
+  });
+
+  // 1. Hexagonal stone plinth (bottom pivot at y = 0)
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.68, 0.34, 6), plinthMat);
+  plinth.position.y = 0.17;
+  plinth.castShadow = true;
+  plinth.receiveShadow = true;
+
+  // 2. Gilded collar ring
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.045, 8, 24), goldMat);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 0.34;
+
+  // 3. Central towering crystal spire
+  const mainSpire = new THREE.Mesh(new THREE.ConeGeometry(0.38, 1.95, 6), crystalMat);
+  mainSpire.position.y = 1.28;
+  mainSpire.castShadow = true;
+  hitMeshes.push(mainSpire);
+
+  // 4. 3 angled satellite crystal shards
+  const sideGeo = new THREE.ConeGeometry(0.18, 0.95, 5);
+  for (let i = 0; i < 3; i++) {
+    const ang = (i / 3) * Math.PI * 2 + 0.4;
+    const shard = new THREE.Mesh(sideGeo, crystalMat);
+    shard.position.set(Math.cos(ang) * 0.34, 0.72, Math.sin(ang) * 0.34);
+    shard.rotation.z = -Math.cos(ang) * 0.36;
+    shard.rotation.x = Math.sin(ang) * 0.36;
+    shard.castShadow = true;
+    hitMeshes.push(shard);
+    bodyGroup.add(shard);
+  }
+
+  // 5. Floating orbiting crown ring above crystal
+  const orbitRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.025, 8, 24), goldMat);
+  orbitRing.position.y = 1.68;
+  orbitRing.rotation.x = Math.PI / 2.4;
+
+  bodyGroup.add(plinth, collar, mainSpire, orbitRing);
+  return { root, bodyGroup, headOrCore: mainSpire, weaponOrRing: orbitRing, hitMeshes };
+}
+
+
 
 
 

@@ -1,9 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpCircle,
   Bookmark,
   Check,
+  Clock,
   Crown,
+  Eye,
   Flame,
   Gem,
   Hammer,
@@ -34,6 +36,8 @@ import petSanctuaryArt from '../assets/images/pet_sanctuary_art_1794977269592.jp
 import privilegeVaultArt from '../assets/images/privilege_royal_vault_1795005956277.jpg';
 import royalChestArt from '../assets/images/royal_zodiac_chest_1794971375438.jpg';
 import royalPrivilegeArt from '../assets/images/royal_privilege_showcase_1795010357812.jpg';
+import spiritBeastEvolutionArt from '../assets/images/spirit_beast_evolution_sanctum_1795051177976.jpg';
+import weekendGoldenTreasuryArt from '../assets/images/weekend_golden_treasury_1795051178810.jpg';
 import wishPoolArt from '../assets/images/wish_pool_sanctum_1795007596305.jpg';
 import zodiacMountsArt from '../assets/images/zodiac_mounts_sanctum_1795007595676.jpg';
 import zodiacWingsArt from '../assets/images/zodiac_wings_sanctum_1795005955367.jpg';
@@ -151,9 +155,27 @@ import {
   normalizeStepUpChain,
 } from '../data/wave10Data';
 import {
+  SPIRIT_BEAST_EVOLUTION_COST,
+  SPIRIT_BEAST_MIN_LEVEL,
+  WEEKEND_PRIVILEGE_PACKS,
+  canClaimWeekendPassDaily,
+  formatCountdownHMS,
+  getEvolvedPetMultiplier,
+  getFlashSaleSecondsRemaining,
+  getSpiritBeastFormName,
+  normalizeWeekendPrivilege,
+} from '../data/wave11Data';
+import {
+  SUPREME_MONTHLY_CONFIG,
+  canClaimSupremeMonthlyDaily,
+  isSupremeMonthlyActive,
+  normalizeSupremeMonthly,
+} from '../data/wave12Data';
+import {
   ArtifactId,
   AuraStyleId,
   AvatarFrameId,
+  BundlePreviewPayload,
   ComputedPlayerStats,
   FirstTopUpTier,
   FlashDealItem,
@@ -931,6 +953,7 @@ interface HeroesPanelProps {
   onUnlockPet: (petId: PetId, currency: 'gold' | 'gems') => void;
   onEquipPet: (petId: PetId | null) => void;
   onUpgradePet: (petId: PetId) => void;
+  onEvolvePet?: (petId: PetId) => void;
   onUnlockSkin: (skinId: HeroSkinId, currency: 'gold' | 'gems') => void;
   onEquipSkin: (heroId: HeroId, skinId: HeroSkinId) => void;
   onUnlockAura: (auraId: AuraStyleId, currency: 'gold' | 'gems') => void;
@@ -969,6 +992,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onUnlockPet,
   onEquipPet,
   onUpgradePet,
+  onEvolvePet,
   onUnlockSkin,
   onEquipSkin,
   onUnlockAura,
@@ -999,6 +1023,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
     'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos'
   >(initialSubTab);
   const [petBannerErr, setPetBannerErr] = useState(false);
+  const [spiritBannerErr, setSpiritBannerErr] = useState(false);
   const [wingsBannerErr, setWingsBannerErr] = useState(false);
   const [mountsBannerErr, setMountsBannerErr] = useState(false);
   const [artifactsBannerErr, setArtifactsBannerErr] = useState(false);
@@ -1456,12 +1481,20 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
             </div>
           )}
 
-          {/* SUB-TAB 2: 3D ZODIAC PET SANCTUARY */}
+          {/* SUB-TAB 2: 3D ZODIAC PET SANCTUARY & SPIRIT BEAST EVOLUTION */}
           {heroSubTab === 'pets' && (
             <div className="space-y-3.5 pb-6">
               <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 sm:grid-cols-12 items-center">
-                <div className="sm:col-span-5 h-28 sm:h-32 bg-[#0b1229] relative overflow-hidden">
-                  {!petBannerErr ? (
+                <div className="sm:col-span-5 h-32 sm:h-36 bg-[#0b1229] relative overflow-hidden">
+                  {!spiritBannerErr ? (
+                    <img
+                      src={spiritBeastEvolutionArt}
+                      alt="Thánh Đường Tiến Hóa Thần Sủng 3D"
+                      referrerPolicy="no-referrer"
+                      onError={() => setSpiritBannerErr(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : !petBannerErr ? (
                     <img
                       src={petSanctuaryArt}
                       alt="Thánh Đường Tinh Linh 3D"
@@ -1476,15 +1509,25 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
                 </div>
-                <div className="sm:col-span-7 p-3.5 flex flex-col justify-center gap-1">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300">
-                    ĐỒNG HÀNH CHIẾN ĐẤU 3D
+                <div className="sm:col-span-7 p-3.5 flex flex-col justify-center gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-300">
+                      TIẾN HÓA THẦN SỦNG 3D
+                    </span>
+                    <div className="flex items-center gap-2 text-[11px] font-mono-nums font-bold">
+                      <span className="px-2 py-0.5 rounded-lg bg-[#070b1a] border border-amber-400/40 text-amber-200">
+                        {save.spiritCores ?? 0} Lõi Thần Sủng
+                      </span>
+                      <span className="px-2 py-0.5 rounded-lg bg-[#070b1a] border border-emerald-400/35 text-emerald-200">
+                        {petEssence} Tinh Chất
+                      </span>
+                    </div>
                   </div>
                   <h4 className="font-display text-sm sm:text-base font-black text-white">
-                    Thánh Đường Tinh Linh Hoàng Đạo
+                    Thánh Đường Tinh Linh &amp; Thần Sủng Hoàng Đạo
                   </h4>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Tinh Linh bay hộ vệ bên cạnh Anh Hùng cả ở Sảnh và Trong Trận, tự động phóng đạn nguyên tố và cộng thẳng ATK / HP / Chí Mạng!
+                    Nâng Tinh Linh lên Cấp {SPIRIT_BEAST_MIN_LEVEL}+ để Tiến Hóa thành Thần Sủng 3D có Vòng Hào Quang Kim Cương, tăng +55% ATK/HP, +45% Chí Mạng và tốc bắn đạn trong trận!
                   </p>
                 </div>
               </div>
@@ -1494,40 +1537,67 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   const inst = ownedPets.find((p) => p.petId === pet.id);
                   const lv = inst?.level ?? 1;
                   const isEquipped = save.equippedPetId === pet.id;
-                  const pStats = getPetStats(pet.id, lv);
+                  const isEvolved = (save.evolvedPets ?? []).includes(pet.id);
+                  const baseStats = getPetStats(pet.id, lv);
+                  const evoMult = getEvolvedPetMultiplier(isEvolved);
+                  const pStats = {
+                    atk: Math.round(baseStats.atk * evoMult.atkMult),
+                    hp: Math.round(baseStats.hp * evoMult.hpMult),
+                    crit: baseStats.crit + evoMult.critBonus,
+                  };
                   const upCost = getPetUpgradeCost(lv);
                   const canUpgrade = inst && petEssence >= upCost.essence && save.gold >= upCost.gold;
+                  const spiritCores = save.spiritCores ?? 0;
+                  const canEvolve =
+                    !!inst &&
+                    !isEvolved &&
+                    lv >= SPIRIT_BEAST_MIN_LEVEL &&
+                    spiritCores >= SPIRIT_BEAST_EVOLUTION_COST.spiritCores &&
+                    petEssence >= SPIRIT_BEAST_EVOLUTION_COST.petEssence &&
+                    save.gold >= SPIRIT_BEAST_EVOLUTION_COST.gold;
                   const primaryCss = `#${pet.primaryHex.toString(16).padStart(6, '0')}`;
                   const secondaryCss = `#${pet.secondaryHex.toString(16).padStart(6, '0')}`;
+                  const displayName = getSpiritBeastFormName(pet.id, isEvolved, pet.name);
 
                   return (
                     <div
                       key={pet.id}
                       className={`rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${
-                        isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                        isEquipped || isEvolved ? 'cel-panel-ornate' : 'cel-panel'
                       }`}
                     >
                       <div>
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div
-                              className="w-11 h-11 rounded-2xl border-2 border-white/70 shrink-0 flex items-center justify-center shadow-lg"
+                              className={`w-11 h-11 rounded-2xl border-2 shrink-0 flex items-center justify-center shadow-lg ${
+                                isEvolved ? 'border-amber-300' : 'border-white/70'
+                              }`}
                               style={{
                                 background: `radial-gradient(circle at 30% 30%, ${secondaryCss}, ${primaryCss})`,
                               }}
                             >
-                              <Sparkles className="w-5 h-5 text-slate-950" />
+                              {isEvolved ? (
+                                <Crown className="w-5 h-5 text-slate-950" />
+                              ) : (
+                                <Sparkles className="w-5 h-5 text-slate-950" />
+                              )}
                             </div>
                             <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-300 uppercase">
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black text-amber-300 uppercase">
                                 <span>{pet.rarity}</span>
                                 <span aria-hidden="true" className="text-slate-600">·</span>
                                 <span className="text-emerald-300">
                                   {inst ? `Cấp ${lv}` : 'Chưa Triệu Hồi'}
                                 </span>
+                                {isEvolved && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-amber-200 text-[9px]">
+                                    THẦN SỦNG 3D
+                                  </span>
+                                )}
                               </div>
                               <h5 className="font-display text-sm font-black text-white truncate">
-                                {pet.name}
+                                {displayName}
                               </h5>
                             </div>
                           </div>
@@ -1547,7 +1617,39 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                           <span>+{pStats.atk} ATK</span>
                           <span>+{pStats.hp} HP</span>
                           <span>+{Math.round(pStats.crit * 100)}% Crit</span>
+                          {isEvolved && (
+                            <span className="text-sky-300">+25% Tốc Bắn 3D</span>
+                          )}
                         </div>
+
+                        {inst && !isEvolved && (
+                          <div className="mt-2.5 rounded-xl bg-[#070b1a] border border-amber-400/25 px-2.5 py-2 flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-[10px] text-slate-300">
+                              <div className="font-black text-amber-200">
+                                Tiến Hóa → {getSpiritBeastFormName(pet.id, true, pet.name)}
+                              </div>
+                              <div className="font-mono-nums text-slate-400">
+                                Cần Cấp {SPIRIT_BEAST_MIN_LEVEL}+ · {SPIRIT_BEAST_EVOLUTION_COST.spiritCores} Lõi Sủng · {SPIRIT_BEAST_EVOLUTION_COST.petEssence} Tinh Chất · {SPIRIT_BEAST_EVOLUTION_COST.gold} Vàng
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={!canEvolve}
+                              onClick={() => {
+                                soundEngine.playVictory();
+                                onEvolvePet?.(pet.id);
+                              }}
+                              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+                                canEvolve
+                                  ? 'a2-purple-btn'
+                                  : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                              }`}
+                            >
+                              <Crown className="w-3.5 h-3.5" />
+                              <span>Tiến Hóa Thần Sủng</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-400/15">
@@ -3240,6 +3342,11 @@ interface ShopPanelProps {
   onResetChainCycle?: () => void;
   onBreakGemVault?: () => void;
   onClaimGemVaultMilestone?: (target: number) => void;
+  onBuyWeekendPack?: (packId: string) => void;
+  onClaimWeekendPassDaily?: () => void;
+  onActivateSupremeMonthly?: () => void;
+  onClaimSupremeMonthlyDaily?: () => void;
+  onOpenBundlePreview?: (payload: BundlePreviewPayload, onConfirm?: () => void) => void;
   onOpenVipModal: () => void;
   onOpenArenaModal: () => void;
 }
@@ -3269,12 +3376,18 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   onResetChainCycle,
   onBreakGemVault,
   onClaimGemVaultMilestone,
+  onBuyWeekendPack,
+  onClaimWeekendPassDaily,
+  onActivateSupremeMonthly,
+  onClaimSupremeMonthlyDaily,
+  onOpenBundlePreview,
   onOpenVipModal,
   onOpenArenaModal,
 }) => {
   const [storeSection, setStoreSection] = useState<ShopSectionTab>(initialSection);
   const [chestImgFailed, setChestImgFailed] = useState(false);
   const [vaultBannerFailed, setVaultBannerFailed] = useState(false);
+  const [weekendBannerFailed, setWeekendBannerFailed] = useState(false);
   const [growthImgFailed, setGrowthImgFailed] = useState(false);
   const [privilegeImgFailed, setPrivilegeImgFailed] = useState(false);
   const [wishBannerFailed, setWishBannerFailed] = useState(false);
@@ -3284,6 +3397,16 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const [oddsModalVariant, setOddsModalVariant] = useState<
     'iron' | 'mythic' | 'rune_bag' | 'rune_rare' | null
   >(null);
+  const [flashCountdownSec, setFlashCountdownSec] = useState<number>(() =>
+    getFlashSaleSecondsRemaining()
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setFlashCountdownSec(getFlashSaleSecondsRemaining());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const pity = normalizePity(save.pity);
   const rollsUntilEpic = Math.max(1, 10 - pity.mythicRollsSinceEpic);
@@ -3301,7 +3424,10 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const packClaims = save.commercialPackClaims ?? {};
   const mp = normalizeMonthlyPrivilege(save.monthlyPrivilege);
   const tu = normalizeTopUpEvolution(save.topUpEvolution);
-  const claimableWave7Count = countClaimableWave7Rewards(save);
+  const supremePass = normalizeSupremeMonthly(save.supremeMonthly);
+  const supremeActive = isSupremeMonthlyActive(supremePass);
+  const supremeCanClaim = canClaimSupremeMonthlyDaily(save);
+  const claimableWave7Count = countClaimableWave7Rewards(save) + (supremeCanClaim ? 1 : 0);
   const wishPool = normalizeWishPool(save.wishPool);
   const firstTopUp = normalizeFirstTopUp(save.firstTopUp);
   const wishTickets = save.wishTickets ?? 0;
@@ -3315,6 +3441,10 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   const gemVault = normalizeGemRebateVault(save.gemRebateVault);
   const chainBankBadge =
     (hasFreeChainStepReady(save) ? 1 : 0) + countClaimableVaultRewards(save);
+  const weekendPriv = normalizeWeekendPrivilege(save.weekendPass);
+  const weekendPassActive = weekendPriv.passActive && weekendPriv.daysRemaining > 0;
+  const weekendPassDailyReady = canClaimWeekendPassDaily(save);
+  const dealsBadge = weekendPassDailyReady ? 1 : 0;
 
   const chests: Array<{
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare';
@@ -3423,7 +3553,7 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
               ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
               ['mystic_exchange', 'Chợ Mảnh Dư', 0],
               ['arena_shop', 'Shop Xu Arena', 0],
-              ['deals', 'Flash Sale', 0],
+              ['deals', 'Flash & Cuối Tuần', dealsBadge],
               ['gacha', 'Triệu Hồi Rương', 0],
             ] as const
           ).map(([k, label, badge]) => (
@@ -3901,30 +4031,101 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        disabled={!canAfford}
-                        onClick={() => {
-                          soundEngine.playVictory();
-                          onBuyHotBundle?.(bundle.id);
-                        }}
-                        className={`w-full py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                          bought
-                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
-                            : canAfford
-                            ? 'a2-purple-btn'
-                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {bought ? (
-                          <span>Đã Sở Hữu Gói Hot</span>
-                        ) : (
-                          <>
-                            <SoulGemIcon className="w-3.5 h-3.5" />
-                            <span className="font-mono-nums">Mua Ngay · {bundle.costGems} Ngọc</span>
-                          </>
+                      <div className="flex items-center gap-2">
+                        {onOpenBundlePreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              const items: BundlePreviewPayload['items'] = [];
+                              if (bundle.rewardWishTickets > 0) {
+                                items.push({
+                                  label: 'Vé Ước Nguyện SSR',
+                                  quantity: `+${bundle.rewardWishTickets}`,
+                                  rarity: 'mythic',
+                                });
+                              }
+                              if (bundle.rewardMountShards > 0) {
+                                items.push({
+                                  label: 'Mảnh Thú Cưỡi Hoàng Đạo',
+                                  quantity: `+${bundle.rewardMountShards}`,
+                                  rarity: 'legendary',
+                                });
+                              }
+                              if (bundle.rewardCrystals > 0) {
+                                items.push({
+                                  label: 'Tinh Thể Thức Tỉnh',
+                                  quantity: `+${bundle.rewardCrystals}`,
+                                  rarity: 'epic',
+                                });
+                              }
+                              if (bundle.rewardFeathers > 0) {
+                                items.push({
+                                  label: 'Lông Vũ Cánh 3D',
+                                  quantity: `+${bundle.rewardFeathers}`,
+                                  rarity: 'epic',
+                                });
+                              }
+                              items.push({
+                                label: 'Vàng Hoàng Gia',
+                                quantity: `+${bundle.rewardGold}`,
+                                rarity: 'rare',
+                              });
+                              onOpenBundlePreview(
+                                {
+                                  id: bundle.id,
+                                  title: bundle.title,
+                                  subtitle: bundle.subtitle,
+                                  badge: bundle.badge,
+                                  valueTag: 'SIÊU LỜI',
+                                  priceLabel: `${bundle.costGems} Ngọc`,
+                                  originalPriceLabel: bundle.originalGemsLabel,
+                                  canAfford,
+                                  disabledReason: bought
+                                    ? 'Bạn đã sở hữu gói này'
+                                    : save.gems < bundle.costGems
+                                    ? 'Không đủ Ngọc Hồn'
+                                    : undefined,
+                                  items,
+                                  confirmLabel: bought
+                                    ? 'Đã Sở Hữu'
+                                    : `Mua Ngay · ${bundle.costGems} Ngọc`,
+                                  onConfirm: () => onBuyHotBundle?.(bundle.id),
+                                },
+                                canAfford ? () => onBuyHotBundle?.(bundle.id) : undefined
+                              );
+                            }}
+                            className="a2-slate-btn px-2.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-1 whitespace-nowrap cursor-pointer shrink-0"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-300" />
+                            <span>Chi Tiết</span>
+                          </button>
                         )}
-                      </button>
+                        <button
+                          type="button"
+                          disabled={!canAfford}
+                          onClick={() => {
+                            soundEngine.playVictory();
+                            onBuyHotBundle?.(bundle.id);
+                          }}
+                          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                            bought
+                              ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                              : canAfford
+                              ? 'a2-purple-btn'
+                              : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {bought ? (
+                            <span>Đã Sở Hữu Gói Hot</span>
+                          ) : (
+                            <>
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                              <span className="font-mono-nums">Mua Ngay · {bundle.costGems} Ngọc</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -4194,24 +4395,117 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
               </div>
             </div>
 
-            {/* Royal Privilege Tier Comparison Matrix */}
+            {/* Royal Privilege Tier Comparison Matrix (3 Flagship Passes) */}
             <div className="cel-panel rounded-2xl p-3.5 sm:p-4">
               <div className="text-xs font-display font-black text-amber-200 mb-2.5">
-                So Sánh Quyền Lợi Đặc Quyền Cao Cấp
+                So Sánh 3 Thẻ Đặc Quyền Siêu Thị Hoàng Đạo
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]">
                 <div className="rounded-xl bg-[#070b1a] border border-sky-400/35 p-3">
-                  <div className="font-black text-sky-300">Thẻ Bạc Tinh Tú</div>
-                  <div className="text-slate-300 mt-1">+25 Ngọc/ngày · +1 lượt Thủ Pha Lê · +15% Vàng nhận</div>
-                </div>
-                <div className="rounded-xl bg-[#110c24] border border-amber-300/65 p-3">
-                  <div className="font-black text-amber-300">Thẻ Hoàng Gia (Best Value)</div>
-                  <div className="text-slate-200 mt-1">+55 Ngọc/ngày · +15% ATK toàn đội · +1 lượt Boss &amp; Thủ Pha Lê</div>
+                  <div className="font-black text-sky-300">Thẻ Tháng Bạc / Hoàng Gia</div>
+                  <div className="text-slate-300 mt-1">+25~55 Ngọc/ngày · +15% ATK · +1 lượt Thủ Pha Lê</div>
                 </div>
                 <div className="rounded-xl bg-[#190a1b] border border-purple-400/55 p-3">
-                  <div className="font-black text-purple-300">Đặc Quyền VIP</div>
-                  <div className="text-slate-200 mt-1">+2 Quét Nhanh · +25% XP Battle Pass · Khung VIP Độc Quyền</div>
+                  <div className="font-black text-purple-300">Thẻ Đặc Quyền Cuối Tuần</div>
+                  <div className="text-slate-200 mt-1">+45 Ngọc/ngày · +4 Lõi Thần Sủng · +20 Đèn Lồng</div>
                 </div>
+                <div className="rounded-xl bg-gradient-to-br from-[#2b1708] to-[#1f0d2b] border border-yellow-300/80 p-3">
+                  <div className="font-black text-yellow-200">Thẻ Tháng Chí Tôn 30d (x12)</div>
+                  <div className="text-amber-100 mt-1">+{SUPREME_MONTHLY_CONFIG.dailyGems} Ngọc + {SUPREME_MONTHLY_CONFIG.dailyReforgeStones} Đá Đúc/ngày · +10% ATK &amp; +30% Vàng</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Flagship Card: Supreme Monthly Pass (30 Days) */}
+            <div className="cel-panel-ornate rounded-2xl p-4 sm:p-5 border-2 border-yellow-300/75 bg-gradient-to-r from-[#241309]/95 via-[#18102b]/95 to-[#0b132b]/95 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-gradient-to-r from-amber-400 to-rose-400 text-slate-950 text-[10px] font-black">
+                    {SUPREME_MONTHLY_CONFIG.badge}
+                  </span>
+                  <span className="font-mono-nums text-[11px] font-black text-emerald-300">
+                    {supremeActive
+                      ? `Đang Hiệu Lực · Còn ${supremePass.daysRemaining} Ngày`
+                      : 'Hoàn Lại Ngay 150 Ngọc Khi Kích Hoạt!'}
+                  </span>
+                </div>
+                <h4 className="font-display text-base sm:text-lg font-black text-yellow-200">
+                  {SUPREME_MONTHLY_CONFIG.title}
+                </h4>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-200 font-semibold">
+                  <span>✓ Nhận ngay: +{SUPREME_MONTHLY_CONFIG.instantGems} Ngọc · +{SUPREME_MONTHLY_CONFIG.instantMythicShards} Mảnh Thần Binh · +{SUPREME_MONTHLY_CONFIG.instantReforgeStones} Đá Đúc</span>
+                  <span>✓ Mỗi ngày (30d): +{SUPREME_MONTHLY_CONFIG.dailyGems} Ngọc · +{SUPREME_MONTHLY_CONFIG.dailyReforgeStones} Đá Đúc · +{SUPREME_MONTHLY_CONFIG.dailyWarCrests} Huy Hiệu</span>
+                  <span>✓ Nội tại: +10% Công Kích · +30% Vàng · +1 lượt Hầm Mỏ Pha Lê 3D</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap md:flex-col gap-2 shrink-0 min-w-[205px]">
+                {supremeActive && (
+                  <button
+                    type="button"
+                    disabled={!supremeCanClaim}
+                    onClick={() => {
+                      soundEngine.playVictory();
+                      onClaimSupremeMonthlyDaily?.();
+                    }}
+                    className={`w-full py-2.5 px-4 rounded-xl text-xs font-black whitespace-nowrap ${
+                      supremeCanClaim
+                        ? 'a2-emerald-btn cursor-pointer'
+                        : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-default'
+                    }`}
+                  >
+                    {supremeCanClaim ? 'Nhận Quà Chí Tôn Hôm Nay' : 'Đã Nhận Quà Hôm Nay'}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={save.gems < SUPREME_MONTHLY_CONFIG.costGems}
+                  onClick={() => {
+                    if (onOpenBundlePreview) {
+                      onOpenBundlePreview(
+                        {
+                          id: 'supreme_monthly_30d',
+                          title: SUPREME_MONTHLY_CONFIG.title,
+                          badge: SUPREME_MONTHLY_CONFIG.badge,
+                          subtitle: 'Kích hoạt 30 ngày Đặc Quyền Chí Tôn + hoàn lại ngay 150 Ngọc Hồn & Buff +10% ATK.',
+                          priceLabel: `${SUPREME_MONTHLY_CONFIG.costGems} Ngọc`,
+                          originalPriceLabel: `${SUPREME_MONTHLY_CONFIG.originalGems} Ngọc`,
+                          valueTag: 'GIÁ TRỊ X12',
+                          canAfford: save.gems >= SUPREME_MONTHLY_CONFIG.costGems,
+                          confirmLabel: supremeActive
+                            ? `Gia Hạn +30d · ${SUPREME_MONTHLY_CONFIG.costGems} Ngọc`
+                            : `Kích Hoạt Ngay · ${SUPREME_MONTHLY_CONFIG.costGems} Ngọc`,
+                          onConfirm: () => {
+                            soundEngine.playVictory();
+                            onActivateSupremeMonthly?.();
+                          },
+                          items: [
+                            { label: 'Ngọc Hồn Nhận Ngay', quantity: `+${SUPREME_MONTHLY_CONFIG.instantGems}`, rarity: 'mythic' },
+                            { label: 'Mảnh Thần Binh 3D', quantity: `+${SUPREME_MONTHLY_CONFIG.instantMythicShards}`, rarity: 'legendary' },
+                            { label: 'Đá Đúc Hoàng Kim', quantity: `+${SUPREME_MONTHLY_CONFIG.instantReforgeStones}`, rarity: 'epic' },
+                            { label: 'Quà Hằng Ngày (30 Ngày)', quantity: `+${SUPREME_MONTHLY_CONFIG.dailyGems}💎 / +${SUPREME_MONTHLY_CONFIG.dailyReforgeStones}🔥 / +${SUPREME_MONTHLY_CONFIG.dailyWarCrests}⚑`, rarity: 'legendary' },
+                          ],
+                        },
+                        () => {
+                          soundEngine.playVictory();
+                          onActivateSupremeMonthly?.();
+                        }
+                      );
+                    } else {
+                      soundEngine.playVictory();
+                      onActivateSupremeMonthly?.();
+                    }
+                  }}
+                  className="a2-yellow-btn w-full py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                >
+                  <SoulGemIcon className="w-3.5 h-3.5" />
+                  <span>
+                    {supremeActive
+                      ? `Gia Hạn +30d · ${SUPREME_MONTHLY_CONFIG.costGems} Ngọc`
+                      : `Kích Hoạt · ${SUPREME_MONTHLY_CONFIG.costGems} Ngọc`}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -4873,9 +5167,267 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
           );
         })()}
 
-        {/* SECTION 3: DAILY FLASH SALE STOREFRONT */}
+        {/* SECTION 3: DAILY FLASH SALE + WEEKEND GOLDEN PRIVILEGE TREASURY */}
         {storeSection === 'deals' && (
-          <section className="space-y-3">
+          <section className="space-y-4">
+            {/* Weekend Golden Privilege Treasury Showcase */}
+            <div className="cel-panel-ornate rounded-2xl overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-12 items-stretch border-b border-amber-400/20">
+                <div className="md:col-span-5 relative min-h-[145px] bg-[#0b1229]">
+                  {!weekendBannerFailed ? (
+                    <img
+                      src={weekendGoldenTreasuryArt}
+                      alt="Kho Báu Đặc Quyền Cuối Tuần"
+                      referrerPolicy="no-referrer"
+                      onError={() => setWeekendBannerFailed(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-amber-500/25 via-[#131d44] to-purple-500/25 flex items-center justify-center">
+                      <Crown className="w-10 h-10 text-amber-300" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-transparent via-transparent to-[#090d1f]" />
+                  <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-[#070b1a]/90 border border-amber-300/60 text-[10px] font-black text-amber-200 flex items-center gap-1.5 font-mono-nums">
+                    <Clock className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Làm mới: {formatCountdownHMS(flashCountdownSec)}</span>
+                  </div>
+                </div>
+
+                <div className="md:col-span-7 p-4 flex flex-col justify-between gap-2.5">
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-300 flex items-center gap-1.5">
+                        <Crown className="w-3.5 h-3.5" />
+                        <span>ĐẶC QUYỀN CUỐI TUẦN HOÀNG KIM</span>
+                      </span>
+                      <span className="text-[11px] font-mono-nums font-bold text-emerald-300">
+                        {weekendPassActive
+                          ? `Thẻ Đang Chạy · Còn ${weekendPriv.daysRemaining} ngày`
+                          : 'Chưa Kích Hoạt Thẻ 3 Ngày'}
+                      </span>
+                    </div>
+                    <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                      Kho Báu Đặc Quyền &amp; Lõi Tiến Hóa Thần Sủng
+                    </h3>
+                    <p className="text-xs text-slate-300 leading-relaxed mt-0.5">
+                      Săn Lõi Thần Sủng 3D, Đèn Tinh Giới Lễ Hội và kích hoạt Thẻ Cuối Tuần 3 Ngày nhận +45 Ngọc, +4 Lõi Sủng &amp; +300 Vàng mỗi ngày!
+                    </p>
+                  </div>
+
+                  {weekendPassActive && (
+                    <div className="rounded-xl bg-[#070b1a] border border-emerald-400/35 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs text-slate-200 font-bold">
+                        Quà Hằng Ngày Thẻ Cuối Tuần: <span className="text-purple-300 font-mono-nums">+45 Ngọc</span> · <span className="text-amber-300 font-mono-nums">+4 Lõi Sủng</span> · <span className="text-emerald-300 font-mono-nums">+300 Vàng</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!weekendPassDailyReady}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onClaimWeekendPassDaily?.();
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap cursor-pointer ${
+                          weekendPassDailyReady
+                            ? 'a2-emerald-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {weekendPassDailyReady ? 'Nhận Quà Hôm Nay' : 'Đã Nhận Hôm Nay'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {WEEKEND_PRIVILEGE_PACKS.map((pack) => {
+                  const claimed = weekendPriv.purchasedPackIds.includes(pack.id);
+                  const canBuy = !claimed && save.gems >= pack.costGems;
+                  return (
+                    <div
+                      key={pack.id}
+                      className={`rounded-2xl p-3.5 flex flex-col justify-between gap-3 border ${
+                        pack.isBestSeller
+                          ? 'bg-gradient-to-b from-amber-500/15 via-[#101938] to-[#0a1026] border-amber-300/70'
+                          : 'bg-[#090f24] border-amber-400/25'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                              pack.isBestSeller
+                                ? 'bg-amber-400 text-slate-950'
+                                : 'bg-purple-500/25 border border-purple-400/50 text-purple-200'
+                            }`}
+                          >
+                            {pack.badge}
+                          </span>
+                          <span className="text-[10px] font-mono-nums font-black text-emerald-300">
+                            {pack.discountLabel} · <span className="text-slate-500 line-through">{pack.originalGems}</span>
+                          </span>
+                        </div>
+                        <h4 className="font-display text-sm font-black text-white">
+                          {pack.name}
+                        </h4>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+                          {pack.subtitle}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mt-2 text-[10px] font-mono-nums font-bold">
+                          {pack.rewardSpiritCores > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/40 text-amber-200">
+                              +{pack.rewardSpiritCores} Lõi Sủng
+                            </span>
+                          )}
+                          {pack.rewardLanterns > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-rose-500/15 border border-rose-400/40 text-rose-200">
+                              +{pack.rewardLanterns} Đèn Lồng
+                            </span>
+                          )}
+                          {pack.rewardWishTickets > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-200">
+                              +{pack.rewardWishTickets} Vé Ước
+                            </span>
+                          )}
+                          {pack.rewardGems > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-sky-500/15 border border-sky-400/35 text-sky-200">
+                              +{pack.rewardGems} Ngọc
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/35 text-emerald-200">
+                            +{pack.rewardGold} Vàng
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {onOpenBundlePreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              const items: BundlePreviewPayload['items'] = [];
+                              if (pack.activatesWeekendPass) {
+                                items.push({
+                                  label: 'Thẻ Cuối Tuần Hoàng Kim (3 Ngày)',
+                                  quantity: '+45 Ngọc/ngày',
+                                  rarity: 'mythic',
+                                });
+                              }
+                              if (pack.rewardSGear) {
+                                items.push({
+                                  label: 'Trang Bị Hoàng Đạo [S] Sử Thi+',
+                                  quantity: 'x1',
+                                  rarity: 'mythic',
+                                });
+                              }
+                              if (pack.rewardSpiritCores > 0) {
+                                items.push({
+                                  label: 'Lõi Tiến Hóa Thần Sủng 3D',
+                                  quantity: `+${pack.rewardSpiritCores}`,
+                                  rarity: 'legendary',
+                                });
+                              }
+                              if (pack.rewardDivineCrystals > 0) {
+                                items.push({
+                                  label: 'Thần Tinh Hào Quang 3D',
+                                  quantity: `+${pack.rewardDivineCrystals}`,
+                                  rarity: 'epic',
+                                });
+                              }
+                              if (pack.rewardLanterns > 0) {
+                                items.push({
+                                  label: 'Đèn Tinh Giới Lễ Hội',
+                                  quantity: `+${pack.rewardLanterns}`,
+                                  rarity: 'epic',
+                                });
+                              }
+                              if (pack.rewardWishTickets > 0) {
+                                items.push({
+                                  label: 'Vé Ước Nguyện Rate-Up',
+                                  quantity: `+${pack.rewardWishTickets}`,
+                                  rarity: 'epic',
+                                });
+                              }
+                              if (pack.rewardGems > 0) {
+                                items.push({
+                                  label: 'Ngọc Hồn Hoàn Trả Ngay',
+                                  quantity: `+${pack.rewardGems}`,
+                                  rarity: 'rare',
+                                });
+                              }
+                              items.push({
+                                label: 'Vàng Hoàng Gia',
+                                quantity: `+${pack.rewardGold}`,
+                                rarity: 'common',
+                              });
+                              onOpenBundlePreview(
+                                {
+                                  id: pack.id,
+                                  title: pack.name,
+                                  subtitle: pack.subtitle,
+                                  badge: pack.badge,
+                                  valueTag: pack.discountLabel,
+                                  priceLabel: `${pack.costGems} Ngọc`,
+                                  originalPriceLabel: `${pack.originalGems} Ngọc`,
+                                  canAfford: canBuy,
+                                  disabledReason: claimed
+                                    ? 'Bạn đã sở hữu gói này trong tuần'
+                                    : save.gems < pack.costGems
+                                    ? 'Không đủ Ngọc Hồn'
+                                    : undefined,
+                                  items,
+                                  confirmLabel: claimed
+                                    ? 'Đã Sở Hữu Tuần Này'
+                                    : `Sở Hữu Ngay · ${pack.costGems} Ngọc`,
+                                  onConfirm: () => onBuyWeekendPack?.(pack.id),
+                                },
+                                canBuy ? () => onBuyWeekendPack?.(pack.id) : undefined
+                              );
+                            }}
+                            className="a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center gap-1 whitespace-nowrap cursor-pointer shrink-0"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-300" />
+                            <span>Chi Tiết</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={!canBuy}
+                          onClick={() => {
+                            soundEngine.playVictory();
+                            onBuyWeekendPack?.(pack.id);
+                          }}
+                          className={`flex-1 py-2 px-2.5 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer font-mono-nums ${
+                            claimed
+                              ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                              : canBuy
+                              ? pack.isBestSeller
+                                ? 'a2-yellow-btn'
+                                : 'a2-purple-btn'
+                              : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {claimed ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Đã Nhận</span>
+                            </>
+                          ) : (
+                            <>
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                              <span>Mua · {pack.costGems}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 sm:grid-cols-12 items-center">
               <div className="sm:col-span-5 h-32 sm:h-36 bg-[#0b1229] relative overflow-hidden">
                 {!vaultBannerFailed ? (
@@ -4895,14 +5447,20 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
               </div>
 
               <div className="sm:col-span-7 p-4 flex flex-col justify-center gap-1.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[10px] font-black uppercase tracking-widest text-amber-300 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Flash Sale Hôm Nay · {today}</span>
                   </span>
-                  <span className="font-mono-nums text-[11px] font-bold text-emerald-300">
-                    {flashState.purchasedIds.length}/{dailyDeals.length} đã nhận
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-lg bg-rose-500/20 border border-rose-400/50 text-rose-200 font-mono-nums text-[10px] font-black flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      <span>{formatCountdownHMS(flashCountdownSec)}</span>
+                    </span>
+                    <span className="font-mono-nums text-[11px] font-bold text-emerald-300">
+                      {flashState.purchasedIds.length}/{dailyDeals.length} đã nhận
+                    </span>
+                  </div>
                 </div>
                 <h3 className="font-display text-base sm:text-lg font-black text-white">
                   Chợ Tinh Giới &amp; Quà Tiếp Tế Miễn Phí

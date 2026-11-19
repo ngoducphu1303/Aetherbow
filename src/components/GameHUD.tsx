@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Crown, Flame, Gem, Heart, Moon, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import { SKILLS_CATALOG } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
+import { getComboTierMeta } from '../data/wave12Data';
 import {
+  ChampionshipTacticId,
   FloatingDamage,
   HudSnapshot,
   JoystickState,
@@ -19,6 +21,7 @@ interface GameHUDProps {
   onPause: () => void;
   onDashClick: () => void;
   onUltimateClick: () => void;
+  onSelectChampionshipTactic?: (tacticId: ChampionshipTacticId) => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -30,6 +33,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onPause,
   onDashClick,
   onUltimateClick,
+  onSelectChampionshipTactic,
 }) => {
   const hpPct = Math.max(0, Math.min(100, (hud.hp / Math.max(1, hud.maxHp)) * 100));
   const shieldPct = Math.max(
@@ -243,7 +247,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="font-display text-[11px] sm:text-xs font-black text-amber-200 font-mono-nums whitespace-nowrap flex items-center justify-center gap-1.5">
               {hud.portalOpen && <ArrowUp className="w-3.5 h-3.5 text-emerald-300 shrink-0" />}
               <span>
-                {hud.isArenaMode
+                {hud.isCrystalVaultMode
+                  ? `Hầm Mỏ Pha Lê 3D · ${hud.vaultTimeLeft ?? 60}s`
+                  : hud.isChampionshipMode
+                  ? `Giải Đấu Quán Quân · Hiệp ${hud.championshipRound ?? 1}/${hud.championshipTotalRounds ?? 3}`
+                  : hud.isArenaMode
                   ? `Đấu Trường 1v1 · ${hud.arenaTimeLeft ?? 45}s`
                   : hud.isPantheonMode
                   ? `Điện Thần 3D · Tầng ${hud.pantheonStage ?? 1}/${hud.pantheonTotalStages ?? 3}`
@@ -281,7 +289,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </span>
             </div>
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
-              {hud.isArenaMode
+              {hud.isCrystalVaultMode
+                ? `Trụ Phá: ${hud.vaultPillarsBroken ?? 0} · Đợt ${hud.vaultWave ?? 1} · +${hud.vaultGemsLooted ?? 0} Ngọc`
+                : hud.isChampionshipMode
+                ? `${hud.championshipRivalName ?? 'Quán Quân'} · Điểm: ${(hud.championshipScore ?? 0).toLocaleString('vi-VN')}`
+                : hud.isArenaMode
                 ? `Đối thủ: ${hud.arenaOpponentName ?? 'Kình Địch'}`
                 : hud.isPantheonMode
                 ? `${hud.pantheonBlessingTitle ?? 'Chúc Phúc'} · Điểm: ${(hud.pantheonScore ?? 0).toLocaleString('vi-VN')}`
@@ -465,6 +477,67 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
+        {/* Wave 12: Crystal Vault 3D Raid Live Loot Strip */}
+        {hud.isCrystalVaultMode && (
+          <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#161029]/95 border border-amber-300/80 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+              <span className="flex items-center gap-1.5 text-amber-200 truncate">
+                <Gem className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+                <span>
+                  Hầm Mỏ Pha Lê · Đợt {hud.vaultWave ?? 1} · Phá {hud.vaultPillarsBroken ?? 0} Trụ
+                </span>
+              </span>
+              <span className="font-mono-nums text-yellow-300 shrink-0">
+                {hud.vaultTimeLeft ?? 60}s
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-950 border border-amber-400/35 overflow-hidden mb-1.5">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 via-yellow-300 to-cyan-300 transition-all duration-300"
+                style={{
+                  width: `${Math.max(0, Math.min(100, ((hud.vaultTimeLeft ?? 0) / 60) * 100))}%`,
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-mono-nums font-black text-slate-200">
+              <span className="text-purple-300">+{hud.vaultGemsLooted ?? 0} Ngọc Hồn</span>
+              <span className="text-orange-300">+{hud.vaultReforgeLooted ?? 0} Đá Đúc</span>
+              <span className="text-amber-300">+{hud.vaultShardsLooted ?? 0} Mảnh Thần Binh</span>
+            </div>
+          </div>
+        )}
+
+        {/* Wave 11: Championship 3-Round Progress Strip */}
+        {hud.isChampionshipMode && (
+          <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#1c1028]/95 border border-amber-300/80 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+              <span className="flex items-center gap-1.5 text-amber-200 truncate">
+                <Trophy className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">
+                  Giải Đấu Quán Quân 3D · Hiệp {hud.championshipRound ?? 1}/{hud.championshipTotalRounds ?? 3}
+                </span>
+              </span>
+              <span className="font-mono-nums text-emerald-300 shrink-0">
+                {(hud.championshipScore ?? 0).toLocaleString('vi-VN')} Điểm
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-950 border border-amber-400/35 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 via-yellow-400 to-rose-400 transition-all duration-300"
+                style={{
+                  width: `${Math.max(
+                    15,
+                    Math.min(
+                      100,
+                      ((hud.championshipRound ?? 1) / Math.max(1, hud.championshipTotalRounds ?? 3)) * 100
+                    )
+                  )}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Celestial Pantheon Boss Expedition Progress Strip */}
         {hud.isPantheonMode && (
           <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#1a1105]/95 border border-amber-300/80 shadow-2xl">
@@ -565,9 +638,55 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   style={{ width: `${layerFrac}%` }}
                 />
               </div>
+
+              {/* Wave 12: Boss Break-Shield Sub-bar */}
+              {(hud.bossMaxShield ?? 0) > 0 && (() => {
+                const breakPct = Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    ((hud.bossShield ?? 0) / Math.max(1, hud.bossMaxShield ?? 1)) * 100
+                  )
+                );
+                const stunRemaining = hud.bossStunTimer ?? 0;
+                const isStunned = stunRemaining > 0.05;
+                return (
+                  <div className="mt-1.5">
+                    <div className="flex items-center justify-between text-[9px] font-black mb-0.5">
+                      <span className={isStunned ? 'text-yellow-300' : 'text-amber-200/90'}>
+                        {isStunned
+                          ? `⚡ PHÁ GIÁP! BOSS CHOÁNG (${stunRemaining.toFixed(1)}s) · +45% SÁT THƯƠNG`
+                          : '🛡 Giáp Phá Boss (Chí Mạng & Tuyệt Kỹ bào ×2)'}
+                      </span>
+                      <span className="font-mono-nums text-amber-300">
+                        {isStunned ? 'VỠ GIÁP' : `${Math.round(breakPct)}%`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-950/95 border border-amber-400/35 overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-100 ${
+                          isStunned
+                            ? 'bg-gradient-to-r from-yellow-300 via-amber-400 to-rose-400'
+                            : 'bg-gradient-to-r from-amber-500 to-yellow-300'
+                        }`}
+                        style={{ width: `${isStunned ? 100 : breakPct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
+
+        {/* Wave 12: Dramatic Boss Break-Shield Shatter Banner */}
+        {(hud.bossBrokenBannerTimer ?? 0) > 0 && (
+          <div className="w-full max-w-md mx-auto rounded-xl px-4 py-1.5 bg-gradient-to-r from-amber-500/95 via-yellow-400/95 to-orange-500/95 border border-yellow-100 text-slate-950 text-center shadow-[0_0_24px_rgba(251,191,36,0.65)]">
+            <div className="font-display text-xs sm:text-sm font-black tracking-wide">
+              ⚡ PHÁ GIÁP BOSS THÀNH CÔNG! · CHOÁNG 3S &amp; +45% SÁT THƯƠNG ⚡
+            </div>
+          </div>
+        )}
 
         {/* Crystal Defense Spirit Crystal HP Bar */}
         {hud.isCrystalDefenseMode && (() => {
@@ -677,35 +796,45 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
         {/* Top-Right Tactical Arena Mini-Radar + Live Combo Chain */}
         <div className="max-w-5xl w-full mx-auto flex items-start justify-end gap-2.5 pointer-events-none">
-          {hud.comboCount >= 2 && (
-            <div
-              key={hud.comboCount}
-              className="a2-combo-pop hv2-panel rounded-2xl px-3.5 py-2 border-amber-300/60 min-w-[146px]"
-            >
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="font-mono-nums text-lg sm:text-xl font-black text-amber-300 leading-none">
-                  ×{hud.comboCount}
-                </span>
-                <span
-                  className={`text-[10px] font-black tracking-wider ${
-                    hud.comboCount >= 50
-                      ? 'text-rose-300'
-                      : hud.comboCount >= 30
-                      ? 'text-amber-200'
-                      : 'text-sky-300'
-                  }`}
-                >
-                  {hud.comboTierLabel || 'LIÊN KÍCH'}
-                </span>
+          {hud.comboCount >= 2 && (() => {
+            const comboMeta = getComboTierMeta(hud.comboCount);
+            const bonusPct = Math.round((hud.comboDmgBonusPct ?? comboMeta.dmgBonusPct) * 100);
+            return (
+              <div
+                key={hud.comboCount}
+                className={`a2-combo-pop hv2-panel rounded-2xl px-3.5 py-2 min-w-[162px] border ${
+                  hud.comboCount >= 50
+                    ? 'border-yellow-300 shadow-[0_0_20px_rgba(251,191,36,0.45)]'
+                    : hud.comboCount >= 25
+                    ? 'border-fuchsia-400/80 shadow-[0_0_16px_rgba(217,70,239,0.35)]'
+                    : hud.comboCount >= 10
+                    ? 'border-amber-400/75'
+                    : 'border-sky-400/50'
+                }`}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-mono-nums text-lg sm:text-xl font-black text-amber-300 leading-none">
+                    ×{hud.comboCount}
+                  </span>
+                  <span className={`text-[10px] font-black tracking-wider ${comboMeta.textClass}`}>
+                    {comboMeta.tierLabel}
+                  </span>
+                </div>
+                {bonusPct > 0 && (
+                  <div className="mt-0.5 flex items-center justify-between text-[9px] font-mono-nums font-black text-emerald-300">
+                    <span>Cộng Hưởng Liên Kích</span>
+                    <span>+{bonusPct}% Sát Thương</span>
+                  </div>
+                )}
+                <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-950 overflow-hidden">
+                  <div
+                    className={`h-full bg-gradient-to-r ${comboMeta.barGradient} transition-all duration-75`}
+                    style={{ width: `${Math.round(hud.comboTimerRatio * 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-950 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 transition-all duration-75"
-                  style={{ width: `${Math.round(hud.comboTimerRatio * 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {hud.radarData && (
             <div
@@ -952,6 +1081,59 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Wave 11: Inter-Round Championship 3-Card Tactical Buff Selection Overlay */}
+      {hud.isChampionshipMode &&
+        hud.championshipTacticsOffer &&
+        hud.championshipTacticsOffer.length > 0 &&
+        onSelectChampionshipTactic && (
+          <div className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-[#040610]/88 p-4">
+            <div className="cel-panel-ornate w-full max-w-2xl rounded-3xl p-5 sm:p-6 text-center a2-modal-enter">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/55 bg-amber-500/20 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-amber-200 mb-2">
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Thắng Hiệp {hud.championshipRound ?? 1} · Chọn Chiến Thuật Cho Hiệp {(hud.championshipRound ?? 1) + 1}</span>
+              </div>
+              <h3 className="font-display text-xl sm:text-2xl font-black text-white">
+                Chọn 1 Thẻ Chiến Thuật Quán Quân
+              </h3>
+              <p className="text-xs text-slate-300 mt-1 mb-5">
+                Hiệu ứng cộng dồn ngay lập tức và duy trì đến hết Giải Đấu 3 Hiệp 3D!
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                {hud.championshipTacticsOffer.map((tactic) => (
+                  <button
+                    key={tactic.id}
+                    type="button"
+                    onClick={() => onSelectChampionshipTactic(tactic.id)}
+                    className="group flex flex-col justify-between rounded-2xl border border-amber-400/45 bg-gradient-to-b from-[#171d3a] to-[#0a0f22] p-4 transition hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_0_24px_rgba(251,191,36,0.35)] cursor-pointer"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-300/40 bg-slate-950/80 text-amber-300">
+                          <Trophy className="w-5 h-5" />
+                        </span>
+                        <span className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[10px] font-black uppercase text-amber-200">
+                          {tactic.badge}
+                        </span>
+                      </div>
+                      <h4 className="mt-3 font-display text-sm font-black text-white group-hover:text-amber-200">
+                        {tactic.name}
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-300 leading-relaxed">
+                        {tactic.desc}
+                      </p>
+                    </div>
+                    <div className="mt-4 w-full rounded-xl bg-gradient-to-r from-amber-400 to-yellow-400 py-2 text-center text-xs font-black uppercase text-slate-950">
+                      Kích Hoạt
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };
+

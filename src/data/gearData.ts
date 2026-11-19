@@ -83,6 +83,26 @@ import {
   normalizePantheonExpedition,
   normalizeStepUpChain,
 } from './wave10Data';
+import {
+  DEFAULT_HONOR_FEED,
+  computeCodexSummary,
+  getEvolvedPetMultiplier,
+  normalizeChampionshipState,
+  normalizeFestivalState,
+  normalizeWeekendPrivilege,
+} from './wave11Data';
+import {
+  SUPREME_MONTHLY_CONFIG,
+  computeAltarBonuses,
+  getMythicWeaponBonuses,
+  getWarBannerStats,
+  isSupremeMonthlyActive,
+  normalizeBlessingAltar,
+  normalizeCrystalVault,
+  normalizeMythicWeapon,
+  normalizeSupremeMonthly,
+  normalizeTreasureWheel,
+} from './wave12Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -646,17 +666,22 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     if (rDef.id === 'arrow_rain') attackSpeedMult += 0.15;
   }
 
-  // Apply Equipped Pet, Hero Skin, and Zodiac Aura bonuses
+  // Apply Equipped Pet (with Wave 11 Spirit Beast Evolution multiplier), Hero Skin, and Zodiac Aura bonuses
   let petAtk = 0;
+  let equippedPetEvolved = false;
   const equippedPetId = save.equippedPetId ?? null;
   if (equippedPetId) {
     const petInst = (save.pets ?? []).find((p) => p.petId === equippedPetId);
     if (petInst) {
       const pStats = getPetStats(petInst.petId, petInst.level);
-      attack += pStats.atk;
-      maxHp += pStats.hp;
-      critChance += pStats.crit;
-      petAtk = pStats.atk;
+      equippedPetEvolved = (save.evolvedPets ?? []).includes(petInst.petId);
+      const evoMult = getEvolvedPetMultiplier(equippedPetEvolved);
+      const finalPetAtk = Math.round(pStats.atk * evoMult.atkMult);
+      const finalPetHp = Math.round(pStats.hp * evoMult.hpMult);
+      attack += finalPetAtk;
+      maxHp += finalPetHp;
+      critChance += pStats.crit + evoMult.critBonus;
+      petAtk = finalPetAtk;
     }
   }
 
@@ -769,17 +794,38 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const haloStats = getDivineHaloStats(equippedHaloId, haloLevel);
   critDamage += haloStats.critDmg;
 
-  // Apply Monthly Privilege Card passive buffs
+  // Apply Monthly Privilege Card & Wave 12 Supreme Monthly passive buffs
   const monthlyPriv = normalizeMonthlyPrivilege(save.monthlyPrivilege);
   const hasSilverCard = isMonthlyCardActive(monthlyPriv.silver);
   const hasRoyalCard = isMonthlyCardActive(monthlyPriv.royal);
-  const cardGoldBonus = (hasSilverCard ? 0.2 : 0) + (hasRoyalCard ? 0.35 : 0);
-  const cardAtkPct = hasRoyalCard ? 0.08 : 0;
+  const hasSupremeCard = isSupremeMonthlyActive(save.supremeMonthly);
+  const cardGoldBonus =
+    (hasSilverCard ? 0.2 : 0) +
+    (hasRoyalCard ? 0.35 : 0) +
+    (hasSupremeCard ? SUPREME_MONTHLY_CONFIG.passiveGoldPct : 0);
+  const cardAtkPct =
+    (hasRoyalCard ? 0.08 : 0) + (hasSupremeCard ? SUPREME_MONTHLY_CONFIG.passiveAtkPct : 0);
 
-  // Apply Zodiac Guild Tech + 12 Constellations + Talents
+  // Wave 12: Mythic Weapon Transcendence + Golden Reforge + Blessing Altar + 3D War Banner
+  const mythicBonuses = getMythicWeaponBonuses(save.mythicWeapon);
+  const altarBonuses = computeAltarBonuses(save.blessingAltar);
+  const equippedWarBannerId =
+    save.equippedWarBannerId && save.unlockedWarBanners?.includes(save.equippedWarBannerId)
+      ? save.equippedWarBannerId
+      : null;
+  const warBannerLevel = equippedWarBannerId
+    ? Math.max(1, save.warBannerLevels?.[equippedWarBannerId] ?? 1)
+    : 0;
+  const warBannerStats = getWarBannerStats(equippedWarBannerId, warBannerLevel);
+
+  critDamage += mythicBonuses.critDmgBonus;
+  bossDamageBonus += mythicBonuses.bossDmgBonus + altarBonuses.bossDmgBonus + warBannerStats.bossDmg;
+
+  // Apply Zodiac Guild Tech + 12 Constellations + Talents + Wave 11 Codex + Wave 12 Systems
   const guildTech = computeGuildTechBonuses(save.guild);
   const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
+  const codexSummary = computeCodexSummary(save);
   attack = Math.round(
     (attack + tal.atk + constellation.atkFlat) *
       (1 +
@@ -789,24 +835,48 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
         cardAtkPct +
         wAuraStats.atkPct +
         bondBonuses.atkPct +
-        haloStats.atkPct)
+        haloStats.atkPct +
+        codexSummary.totalAtkPct +
+        mythicBonuses.atkPct +
+        altarBonuses.atkPct +
+        warBannerStats.atkPct)
   );
   maxHp = Math.round(
     (maxHp + tal.hp + constellation.hpFlat) *
-      (1 + runeHpPct + subHpPct + guildTech.hpPct + bondBonuses.hpPct + haloStats.hpPct)
+      (1 +
+        runeHpPct +
+        subHpPct +
+        guildTech.hpPct +
+        bondBonuses.hpPct +
+        haloStats.hpPct +
+        codexSummary.totalHpPct +
+        altarBonuses.hpPct +
+        warBannerStats.hpPct)
   );
   critChance = Math.min(
-    0.92,
-    critChance + tal.critChance + guildTech.critBonus + constellation.critBonus
+    0.94,
+    critChance +
+      tal.critChance +
+      guildTech.critBonus +
+      constellation.critBonus +
+      codexSummary.totalCrit +
+      mythicBonuses.critBonus +
+      altarBonuses.critBonus
   );
-  attackSpeedMult += tal.aspdMult + constellation.aspdBonus + wingAspd;
+  attackSpeedMult += tal.aspdMult + constellation.aspdBonus + wingAspd + mythicBonuses.aspdBonus;
   moveSpeedMult += tal.moveSpeedMult;
   damageReduction = Math.min(
     0.72,
     damageReduction + tal.damageReduction + constellation.drBonus + haloStats.dr
   );
   const moveSpeed = 7.6 * moveSpeedMult;
-  const goldGainMult = tal.goldGainMult + guildTech.goldPct + constellation.goldBonus + cardGoldBonus;
+  const goldGainMult =
+    tal.goldGainMult +
+    guildTech.goldPct +
+    constellation.goldBonus +
+    cardGoldBonus +
+    codexSummary.totalGoldPct +
+    altarBonuses.goldPct;
 
   const powerRating = Math.round(
     attack * attackSpeedMult * (1 + critChance * 0.85) * 3.1 +
@@ -820,7 +890,12 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       (equippedWeaponAuraId !== 'none' ? weaponAuraLevel * 26 : 0) +
       (equippedArtifactId ? artifactLevel * 38 : 0) +
       (equippedHaloId ? haloLevel * 45 : 0) +
-      bondBonuses.activeCount * 85
+      (equippedPetEvolved ? 140 : 0) +
+      codexSummary.currentRank.rank * 65 +
+      bondBonuses.activeCount * 85 +
+      mythicBonuses.tier * 135 +
+      altarBonuses.totalLevel * 24 +
+      (equippedWarBannerId ? warBannerLevel * 68 : 0)
   );
 
   return {
@@ -845,6 +920,15 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     equippedRunes,
     equippedPetId,
     petAtk,
+    equippedPetEvolved,
+    codexRankLevel: codexSummary.currentRank.rank,
+    codexAtkPct: codexSummary.totalAtkPct,
+    codexHpPct: codexSummary.totalHpPct,
+    mythicWeaponTier: mythicBonuses.tier,
+    equippedWarBannerId,
+    warBannerLevel,
+    altarTotalLevel: altarBonuses.totalLevel,
+    lifeStealPct: mythicBonuses.lifeStealPct,
     constellationStars: constellation.totalStars,
     constellationFireBonus: constellation.fireDmgBonus,
     constellationIceBonus: constellation.iceDmgBonus,
@@ -1050,6 +1134,27 @@ export function createInitialSaveData(): SaveData {
     stepUpChain: normalizeStepUpChain(),
     gemRebateVault: normalizeGemRebateVault(),
     pantheonExpedition: normalizePantheonExpedition(),
+    lobbySkyTheme: 'golden_galaxy',
+    unlockedSkyThemes: ['golden_galaxy', 'dawn_sanctum'],
+    spiritCores: 10,
+    evolvedPets: [],
+    festivalState: normalizeFestivalState(),
+    codexClaimedRanks: [],
+    championship: normalizeChampionshipState(),
+    weekendPass: normalizeWeekendPrivilege(),
+    honorFeed: [...DEFAULT_HONOR_FEED],
+    reforgeStones: 18,
+    mythicShards: 12,
+    warCrests: 14,
+    mythicWeapon: normalizeMythicWeapon(),
+    treasureWheel: normalizeTreasureWheel(),
+    supremeMonthly: normalizeSupremeMonthly(),
+    blessingAltar: normalizeBlessingAltar(),
+    unlockedWarBanners: [],
+    warBannerLevels: {},
+    equippedWarBannerId: null,
+    crystalVault: normalizeCrystalVault(),
+    lobbyHeroPose: 'heroic',
   };
 }
 

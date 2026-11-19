@@ -232,6 +232,15 @@ export interface ComputedPlayerStats {
   activeBondCount?: number;
   equippedHaloId?: HaloId | null;
   haloLevel?: number;
+  equippedPetEvolved?: boolean;
+  codexRankLevel?: number;
+  codexAtkPct?: number;
+  codexHpPct?: number;
+  mythicWeaponTier?: number;
+  equippedWarBannerId?: WarBannerId | null;
+  warBannerLevel?: number;
+  altarTotalLevel?: number;
+  lifeStealPct?: number;
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -879,7 +888,9 @@ export interface RunHistoryEntry {
     | 'blood_moon'
     | 'abyssal_gauntlet'
     | 'guild_war'
-    | 'pantheon_expedition';
+    | 'pantheon_expedition'
+    | 'championship_3round'
+    | 'crystal_vault';
   label: string;
   stageReached: number;
   kills: number;
@@ -988,6 +999,27 @@ export interface SaveData {
   stepUpChain?: StepUpChainState;
   gemRebateVault?: AstralGemVaultState;
   pantheonExpedition?: PantheonExpeditionState;
+  lobbySkyTheme?: LobbySkyThemeId;
+  unlockedSkyThemes?: LobbySkyThemeId[];
+  spiritCores?: number;
+  evolvedPets?: PetId[];
+  festivalState?: FestivalState;
+  codexClaimedRanks?: number[];
+  championship?: ChampionshipState;
+  weekendPass?: WeekendPrivilegeState;
+  honorFeed?: HonorMarqueeEntry[];
+  reforgeStones?: number;
+  mythicShards?: number;
+  warCrests?: number;
+  mythicWeapon?: MythicWeaponState;
+  treasureWheel?: TreasureWheelState;
+  supremeMonthly?: SupremeMonthlyPassState;
+  blessingAltar?: BlessingAltarState;
+  unlockedWarBanners?: WarBannerId[];
+  warBannerLevels?: Partial<Record<WarBannerId, number>>;
+  equippedWarBannerId?: WarBannerId | null;
+  crystalVault?: CrystalVaultState;
+  lobbyHeroPose?: LobbyHeroPoseId;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
@@ -1316,6 +1348,10 @@ export interface HudSnapshot {
   bossPhase: 1 | 2;
   bossLayers?: number;
   bossCurrentLayer?: number;
+  bossShield?: number;
+  bossMaxShield?: number;
+  bossStunTimer?: number;
+  bossBrokenBannerTimer?: number;
   isTowerMode: boolean;
   towerFloor: number;
   isBossRushMode?: boolean;
@@ -1363,11 +1399,25 @@ export interface HudSnapshot {
   pantheonTotalStages?: number;
   pantheonScore?: number;
   pantheonBlessingTitle?: string;
+  isChampionshipMode?: boolean;
+  championshipRound?: number;
+  championshipTotalRounds?: number;
+  championshipScore?: number;
+  championshipRivalName?: string;
+  championshipTacticsOffer?: ChampionshipTacticDef[] | null;
+  isCrystalVaultMode?: boolean;
+  vaultTimeLeft?: number;
+  vaultPillarsBroken?: number;
+  vaultWave?: number;
+  vaultGemsLooted?: number;
+  vaultReforgeLooted?: number;
+  vaultShardsLooted?: number;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;
   comboTimerRatio: number;
   comboTierLabel: string;
+  comboDmgBonusPct?: number;
   radarData?: HudRadarSnapshot;
 }
 
@@ -1476,3 +1526,364 @@ export interface PantheonExpeditionState {
   totalClears: number;
   claimedMilestones: number[];
 }
+
+// ============================================================================
+// WAVE 11 TYPES: DYNAMIC 3D LOBBY SKY, SPIRIT BEAST EVOLUTION, CELESTIAL
+// FESTIVAL, CODEX COLLECTION BUFFS, 3-ROUND CHAMPIONSHIP & WEEKEND TREASURY
+// ============================================================================
+
+export type LobbySkyThemeId =
+  | 'golden_galaxy'
+  | 'dawn_sanctum'
+  | 'lunar_eclipse'
+  | 'crimson_moon';
+
+export interface LobbySkyThemeDef {
+  id: LobbySkyThemeId;
+  name: string;
+  badge: string;
+  desc: string;
+  skyHex: number;
+  fogHex: number;
+  keyLightHex: number;
+  hemiSkyHex: number;
+  hemiGroundHex: number;
+  pedestalMarbleHex: number;
+  pedestalGoldHex: number;
+  crystalHex: number;
+  starfallHex: number;
+  swatchGradient: string;
+  unlockGems: number; // 0 = Free default
+  unlockCodexScore?: number;
+}
+
+export type MysteryBoxTierId = 'nebula' | 'eclipse' | 'supreme';
+
+export interface FestivalQuestDef {
+  id: string;
+  title: string;
+  desc: string;
+  metric: 'runs' | 'kills' | 'chests' | 'championship_wins' | 'evolved_pets' | 'codex_score' | 'hero_count';
+  target: number;
+  rewardLanterns: number;
+  rewardGold: number;
+  rewardGems: number;
+}
+
+export interface FestivalMilestoneDef {
+  lanternsTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardSpiritCores: number;
+  rewardDivineCrystals: number;
+  rewardWishTickets: number;
+}
+
+export interface MysteryBoxDropOdds {
+  label: string;
+  chancePct: number;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
+}
+
+export interface MysteryBoxDef {
+  id: MysteryBoxTierId;
+  name: string;
+  badge: string;
+  discountLabel: string;
+  originalGems: number;
+  costGems: number;
+  maxWeeklyPurchases: number;
+  lanternsBonus: number;
+  guaranteedSummary: string;
+  drops: MysteryBoxDropOdds[];
+}
+
+export interface FestivalState {
+  weekKey: string;
+  lanterns: number;
+  claimedQuestIds: string[];
+  claimedMilestones: number[];
+  mysteryBoxPurchases: Partial<Record<MysteryBoxTierId, number>>;
+  totalBoxesOpened: number;
+}
+
+export interface CodexRankDef {
+  rank: number;
+  title: string;
+  pointsRequired: number;
+  atkPctBonus: number;
+  hpPctBonus: number;
+  critBonus: number;
+  goldPctBonus: number;
+  rewardGems: number;
+  rewardSpiritCores: number;
+}
+
+export interface CodexSummary {
+  totalPoints: number;
+  heroPoints: number;
+  petPoints: number;
+  cosmeticPoints: number;
+  artifactHaloPoints: number;
+  currentRank: CodexRankDef;
+  nextRank: CodexRankDef | null;
+  totalAtkPct: number;
+  totalHpPct: number;
+  totalCrit: number;
+  totalGoldPct: number;
+}
+
+export type ChampionshipTacticId =
+  | 'tactic_fury'
+  | 'tactic_vampiric'
+  | 'tactic_executioner'
+  | 'tactic_aegis'
+  | 'tactic_rapidfire'
+  | 'tactic_spirit_surge';
+
+export interface ChampionshipTacticDef {
+  id: ChampionshipTacticId;
+  name: string;
+  badge: string;
+  desc: string;
+  atkBonusPct?: number;
+  critBonus?: number;
+  aspdBonus?: number;
+  drBonus?: number;
+  healPct?: number;
+  shieldPct?: number;
+  ultFill?: number;
+  accentClass: string;
+}
+
+export interface ChampionshipMilestoneDef {
+  trophiesTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardSpiritCores: number;
+  rewardLanterns: number;
+  rewardWishTickets: number;
+}
+
+export interface ChampionshipState {
+  date: string;
+  dailyRunsRemaining: number;
+  gloryTrophies: number;
+  bestRoundCleared: number; // 0..3
+  championshipTitlesWon: number;
+  claimedCupMilestones: number[];
+}
+
+export interface WeekendPrivilegePackDef {
+  id: string;
+  name: string;
+  badge: string;
+  discountLabel: string;
+  originalGems: number;
+  costGems: number;
+  isBestSeller?: boolean;
+  subtitle: string;
+  rewardGold: number;
+  rewardGems: number;
+  rewardSpiritCores: number;
+  rewardDivineCrystals: number;
+  rewardLanterns: number;
+  rewardWishTickets: number;
+  rewardSGear?: boolean;
+  activatesWeekendPass?: boolean;
+  topUpPoints: number;
+}
+
+export interface WeekendPrivilegeState {
+  passActive: boolean;
+  daysRemaining: number;
+  lastClaimDate: string;
+  purchasedPackIds: string[];
+  weekKey: string;
+}
+
+export interface BundlePreviewItem {
+  label: string;
+  quantity: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
+  note?: string;
+}
+
+export interface BundlePreviewPayload {
+  id: string;
+  title: string;
+  badge: string;
+  subtitle: string;
+  priceLabel: string;
+  originalPriceLabel?: string;
+  valueTag?: string;
+  canAfford: boolean;
+  disabledReason?: string;
+  items: BundlePreviewItem[];
+  dropOdds?: MysteryBoxDropOdds[];
+  confirmLabel: string;
+  onConfirm: () => void;
+}
+
+export interface HonorMarqueeEntry {
+  id: string;
+  playerName: string;
+  badge: string;
+  message: string;
+  accent: 'gold' | 'emerald' | 'purple' | 'rose';
+  isUser?: boolean;
+}
+
+// ============================================================================
+// WAVE 12 TYPES: MYTHIC WEAPON TRANSCENDENCE & GOLDEN REFORGE, ZODIAC
+// TREASURE WHEEL & SUPREME MONTHLY CARD, CRYSTAL VAULT 3D RAID, BLESSING ALTAR
+// & 3D WAR BANNERS, PHOTO MODE POSES, LIVE CP BREAKDOWN & CLAIM ALL
+// ============================================================================
+
+export type MythicGoldenStatKind =
+  | 'atk_pct'
+  | 'crit_pct'
+  | 'crit_dmg'
+  | 'boss_dmg'
+  | 'aspd_pct'
+  | 'lifesteal_pct';
+
+export type GoldenStatTier = 'rare' | 'epic' | 'legendary' | 'mythic';
+
+export interface MythicGoldenStatSlot {
+  slotIndex: number; // 0..2
+  kind: MythicGoldenStatKind;
+  value: number; // e.g. 0.12 = +12%
+  tier: GoldenStatTier;
+  locked: boolean;
+}
+
+export interface MythicWeaponState {
+  tier: number; // 0..5
+  goldenStats: MythicGoldenStatSlot[];
+  totalReforges: number;
+}
+
+export interface TreasureWheelSlotDef {
+  index: number; // 0..11
+  id: string;
+  label: string;
+  shortLabel: string;
+  rarity: 'rare' | 'epic' | 'legendary' | 'mythic';
+  weight: number;
+  rewardKind:
+    | 'gold'
+    | 'gems'
+    | 'reforgeStones'
+    | 'mythicShards'
+    | 'warCrests'
+    | 'spiritCores'
+    | 'wishTickets'
+    | 'jackpot_mythic';
+  amount: number;
+}
+
+export interface TreasureWheelState {
+  pityCount: number; // 0..9 -> 10 guarantees mythic jackpot
+  totalSpins: number;
+  lastRewardLabel: string;
+  claimedMilestoneSpins: number[];
+}
+
+export interface SupremeMonthlyPassState {
+  active: boolean;
+  daysRemaining: number; // 0..30
+  lastClaimDate: string;
+  totalActivatedCount: number;
+}
+
+export type AltarBlessingId = 'altar_fury' | 'altar_aegis' | 'altar_fortune' | 'altar_breaker';
+
+export interface AltarBlessingDef {
+  id: AltarBlessingId;
+  name: string;
+  subtitle: string;
+  maxLevel: number;
+  atkPctPerLv: number;
+  hpPctPerLv: number;
+  critPerLv: number;
+  bossDmgPerLv: number;
+  goldPctPerLv: number;
+  accentHex: number;
+}
+
+export interface BlessingAltarState {
+  levels: Record<AltarBlessingId, number>;
+  totalSacrifices: number;
+}
+
+export type WarBannerId = 'banner_solar' | 'banner_lunar' | 'banner_storm' | 'banner_phoenix';
+
+export interface WarBannerDef {
+  id: WarBannerId;
+  name: string;
+  badge: string;
+  desc: string;
+  clothHex: number;
+  trimHex: number;
+  emblemHex: number;
+  baseAtkPct: number;
+  baseHpPct: number;
+  baseBossDmg: number;
+  atkPctPerLv: number;
+  hpPctPerLv: number;
+  unlockGems: number;
+  unlockWarCrests: number;
+}
+
+export interface CrystalVaultMilestone {
+  pillarsTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardReforgeStones: number;
+  rewardMythicShards: number;
+  rewardWarCrests: number;
+}
+
+export interface CrystalVaultState {
+  date: string;
+  dailyRunsRemaining: number;
+  bestPillarsBroken: number;
+  totalPillarsBroken: number;
+  totalVaultGems: number;
+  claimedMilestones: number[];
+}
+
+export type LobbyHeroPoseId = 'heroic' | 'aim_ready' | 'astral_float' | 'victory_salute';
+
+export interface CombatPowerCategoryItem {
+  id: 'gear_mythic' | 'hero_talents' | 'pets' | 'cosmetics_halo' | 'altar_banner' | 'codex_bonds';
+  label: string;
+  score: number;
+  sharePct: number;
+  statusLabel: string;
+  targetAction: 'gear' | 'mythic_forge' | 'heroes' | 'pets' | 'wardrobe' | 'altar_banner' | 'codex';
+  actionLabel: string;
+  accentClass: string;
+}
+
+export interface CombatPowerAnalysis {
+  totalPower: number;
+  rankLabel: string;
+  categories: CombatPowerCategoryItem[];
+  weakestCategory: CombatPowerCategoryItem;
+}
+
+export interface ClaimAllSourceItem {
+  id: string;
+  label: string;
+  detail: string;
+  count: number;
+}
+
+export interface ClaimAllPreview {
+  totalClaimableCount: number;
+  sources: ClaimAllSourceItem[];
+}
+
+

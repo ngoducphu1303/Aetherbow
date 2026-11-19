@@ -4,7 +4,11 @@ import { AchievementToast } from './components/AchievementToast';
 import { ArenaModal } from './components/ArenaModal';
 import { AuctionHouseModal } from './components/AuctionHouseModal';
 import { BattlePassModal } from './components/BattlePassModal';
+import { BundlePreviewModal } from './components/BundlePreviewModal';
+import { CelestialFestivalModal } from './components/CelestialFestivalModal';
 import { ChestGachaModal, GachaRevealState } from './components/ChestGachaModal';
+import { ClaimAllSummaryModal } from './components/ClaimAllSummaryModal';
+import { CombatPowerBreakdownModal } from './components/CombatPowerBreakdownModal';
 import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
 import { ConstellationModal } from './components/ConstellationModal';
 import { DailyRewardsModal } from './components/DailyRewardsModal';
@@ -29,8 +33,13 @@ import { SplashGate } from './components/SplashGate';
 import { StageTransitionCurtain } from './components/StageTransitionCurtain';
 import { TalentsModal } from './components/TalentsModal';
 import { LobbyGameMode, LobbyTab, TitleScreen } from './components/TitleScreen';
+import {
+  UpgradeCelebrationOverlay,
+  UpgradeCelebrationState,
+} from './components/UpgradeCelebrationOverlay';
 import { VipPrivilegeModal } from './components/VipPrivilegeModal';
 import { WardrobeModal } from './components/WardrobeModal';
+import { Wave12SanctumModal, Wave12SanctumTab } from './components/Wave12SanctumModal';
 import { ZodiacGuildModal } from './components/ZodiacGuildModal';
 import { CHAPTERS } from './data/chaptersData';
 import {
@@ -217,15 +226,62 @@ import {
   normalizePantheonExpedition,
   normalizeStepUpChain,
 } from './data/wave10Data';
+import {
+  CELESTIAL_FESTIVAL_QUESTS,
+  CHAMPIONSHIP_CUP_MILESTONES,
+  CHAMPIONSHIP_TOTAL_ROUNDS,
+  CODEX_COLLECTION_RANKS,
+  FESTIVAL_MILESTONES,
+  FESTIVAL_MYSTERY_BOXES,
+  LOBBY_SKY_THEME_MAP,
+  SPIRIT_BEAST_EVOLUTION_COST,
+  SPIRIT_BEAST_MIN_LEVEL,
+  WEEKEND_PRIVILEGE_PACKS,
+  canClaimWeekendPassDaily,
+  computeCodexSummary,
+  getFestivalQuestProgress,
+  getSpiritBeastFormName,
+  normalizeChampionshipState,
+  normalizeFestivalState,
+  normalizeWeekendPrivilege,
+} from './data/wave11Data';
+import {
+  ALTAR_BLESSING_DEFS,
+  CRYSTAL_VAULT_MILESTONES,
+  MYTHIC_WEAPON_MAX_TIER,
+  MYTHIC_WEAPON_TIERS,
+  SUPREME_MONTHLY_CONFIG,
+  TREASURE_WHEEL_MILESTONES,
+  TREASURE_WHEEL_SPIN_COST_1,
+  TREASURE_WHEEL_SPIN_COST_5,
+  WAR_BANNER_MAP,
+  WAR_BANNER_MAX_LEVEL,
+  canClaimSupremeMonthlyDaily,
+  getAltarUpgradeCost,
+  getReforgeCost as getMythicReforgeCost,
+  getWarBannerUpgradeCost,
+  isSupremeMonthlyActive,
+  normalizeBlessingAltar,
+  normalizeCrystalVault,
+  normalizeMythicWeapon,
+  normalizeSupremeMonthly,
+  normalizeTreasureWheel,
+  rollGoldenStats,
+  spinTreasureWheelOnce,
+} from './data/wave12Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
+  AltarBlessingId,
   ArenaOpponent,
   ArtifactId,
   AuctionLotItem,
   AuraStyleId,
   AvatarFrameId,
+  BundlePreviewPayload,
+  ChampionshipTacticId,
+  CombatPowerCategoryItem,
   ConstellationId,
   CoopRaidDifficulty,
   DamageBreakdown,
@@ -244,11 +300,15 @@ import {
   HaloId,
   HeroId,
   HeroSkinId,
+  HonorMarqueeEntry,
   HudSnapshot,
   JoystickState,
   LobbyCameraPreset,
+  LobbyHeroPoseId,
+  LobbySkyThemeId,
   MonthlyCardTier,
   MountId,
+  MysteryBoxTierId,
   MythicBadgeId,
   NightMarketOffer,
   PantheonBlessingId,
@@ -262,6 +322,8 @@ import {
   SocketGemColor,
   SocketGemInstance,
   TalentId,
+  TreasureWheelSlotDef,
+  WarBannerId,
   WardrobePreviewOverrides,
   WeaponAuraId,
   WheelOutcome,
@@ -269,6 +331,23 @@ import {
 } from './types/game';
 
 const STORAGE_KEY = 'artemis_3d_save_v1';
+
+function appendHonorEntry(
+  prevFeed: HonorMarqueeEntry[] | undefined,
+  badge: string,
+  message: string,
+  accent: HonorMarqueeEntry['accent']
+): HonorMarqueeEntry[] {
+  const entry: HonorMarqueeEntry = {
+    id: `hon_u_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+    playerName: 'Bạn',
+    badge,
+    message,
+    accent,
+    isUser: true,
+  };
+  return [entry, ...(prevFeed ?? [])].slice(0, 12);
+}
 
 function addGemsSpent(prev: SaveData, spent: number) {
   const nm = normalizeNightMarket(prev.nightMarket);
@@ -355,6 +434,7 @@ export default function App() {
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const transitionTimerRef = useRef<number | null>(null);
+  const celebrationTimerRef = useRef<number | null>(null);
   const unlockedToastIdsRef = useRef<Set<string> | null>(null);
   const prevPowerRef = useRef<number | null>(null);
   const activeArenaOpponentRef = useRef<ArenaOpponent | null>(null);
@@ -376,6 +456,21 @@ export default function App() {
   const [cameraPreset, setCameraPreset] = useState<LobbyCameraPreset>('overview');
   const [wardrobeOpen, setWardrobeOpen] = useState<boolean>(false);
   const [dispatchOpen, setDispatchOpen] = useState<boolean>(false);
+  const [festivalModalOpen, setFestivalModalOpen] = useState<boolean>(false);
+  const [lastBoxReward, setLastBoxReward] = useState<{
+    boxName: string;
+    tierLabel: string;
+    isJackpot: boolean;
+    summary: string;
+  } | null>(null);
+  const [bundlePreview, setBundlePreview] = useState<{
+    payload: BundlePreviewPayload;
+    onConfirm?: () => void;
+  } | null>(null);
+  const [upgradeCelebration, setUpgradeCelebration] = useState<UpgradeCelebrationState | null>(
+    null
+  );
+  const [honorTickerVisible, setHonorTickerVisible] = useState<boolean>(true);
   const [wardrobePreview, setWardrobePreview] = useState<WardrobePreviewOverrides>({});
   const [wishLastOutcomes, setWishLastOutcomes] = useState<
     Array<{ label: string; rarity: 'R' | 'SR' | 'SSR'; isTargetHit: boolean }>
@@ -397,9 +492,16 @@ export default function App() {
     isAbyssalMode?: boolean;
     isGuildWarMode?: boolean;
     isPantheonMode?: boolean;
+    isChampionshipMode?: boolean;
+    isCrystalVaultMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
+  const [wave12SanctumTab, setWave12SanctumTab] = useState<Wave12SanctumTab | null>(null);
+  const [cpBreakdownOpen, setCpBreakdownOpen] = useState<boolean>(false);
+  const [claimAllModalOpen, setClaimAllModalOpen] = useState<boolean>(false);
+  const [photoMode, setPhotoMode] = useState<boolean>(false);
+  const [photoAngle, setPhotoAngle] = useState<'full' | 'closeup' | 'hero_wide'>('full');
   const [rewardsModalTab, setRewardsModalTab] = useState<
     'checkin' | 'quests' | 'welcome' | 'journey' | null
   >(null);
@@ -430,6 +532,16 @@ export default function App() {
     useState<AchievementDefinition | null>(null);
   const [powerToast, setPowerToast] = useState<PowerToastData | null>(null);
   const [gachaReveal, setGachaReveal] = useState<GachaRevealState | null>(null);
+
+  const triggerUpgradeCelebration = useCallback((title: string, detail: string) => {
+    setUpgradeCelebration({ id: Date.now() + Math.random(), title, detail });
+    if (celebrationTimerRef.current) {
+      window.clearTimeout(celebrationTimerRef.current);
+    }
+    celebrationTimerRef.current = window.setTimeout(() => {
+      setUpgradeCelebration(null);
+    }, 1850);
+  }, []);
 
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [damages, setDamages] = useState<FloatingDamage[]>([]);
@@ -494,6 +606,17 @@ export default function App() {
     pantheonStage?: number;
     pantheonScore?: number;
     divineCrystals?: number;
+    isChampionshipMode?: boolean;
+    championshipRound?: number;
+    championshipScore?: number;
+    gloryTrophies?: number;
+    spiritCores?: number;
+    festivalLanterns?: number;
+    isCrystalVaultMode?: boolean;
+    vaultPillarsBroken?: number;
+    vaultReforgeLooted?: number;
+    vaultShardsLooted?: number;
+    warCrests?: number;
     maxCombo?: number;
     damageBreakdown?: DamageBreakdown;
   } | null>(null);
@@ -576,6 +699,15 @@ export default function App() {
     const haloLevel = effectiveHaloId
       ? Math.max(1, save.haloLevels?.[effectiveHaloId] ?? 1)
       : 1;
+    const mythicWeaponTier = normalizeMythicWeapon(save.mythicWeapon).tier;
+    const effectiveWarBannerId: WarBannerId | null =
+      save.equippedWarBannerId &&
+      (save.unlockedWarBanners ?? []).includes(save.equippedWarBannerId)
+        ? save.equippedWarBannerId
+        : null;
+    const warBannerLevel = effectiveWarBannerId
+      ? Math.max(1, save.warBannerLevels?.[effectiveWarBannerId] ?? 1)
+      : 1;
 
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
@@ -599,6 +731,9 @@ export default function App() {
       artifactLevel,
       haloId: effectiveHaloId,
       haloLevel,
+      mythicWeaponTier,
+      warBannerId: effectiveWarBannerId,
+      warBannerLevel,
     };
   }, [
     save,
@@ -610,12 +745,27 @@ export default function App() {
     wardrobePreview,
   ]);
 
+  // Sync Lobby Hero Pose & Photo Mode into 3D Engine
+  useEffect(() => {
+    engineRef.current?.setLobbyHeroPose(save.lobbyHeroPose ?? 'heroic');
+  }, [save.lobbyHeroPose, phase]);
+
+  useEffect(() => {
+    engineRef.current?.setLobbyPhotoMode(photoMode && phase === GamePhase.TITLE, photoAngle);
+  }, [photoMode, photoAngle, phase]);
+
   // Reset transient lobby overlays whenever leaving TITLE phase
   useEffect(() => {
     if (phase !== GamePhase.TITLE) {
       setWardrobeOpen(false);
       setWardrobePreview({});
       setDispatchOpen(false);
+      setFestivalModalOpen(false);
+      setBundlePreview(null);
+      setWave12SanctumTab(null);
+      setCpBreakdownOpen(false);
+      setClaimAllModalOpen(false);
+      setPhotoMode(false);
     }
   }, [phase]);
 
@@ -890,6 +1040,13 @@ export default function App() {
           const isAbyssal = Boolean(summary.isAbyssalMode);
           const isGuildWar = Boolean(summary.isGuildWarMode);
           const isPantheon = Boolean(summary.isPantheonMode);
+          const isChampionship = Boolean(summary.isChampionshipMode);
+          const isCrystalVault = Boolean(summary.isCrystalVaultMode);
+          const vaultPillarsBroken = summary.vaultPillarsBroken ?? 0;
+          const vaultGemsLooted = summary.vaultGemsLooted ?? 0;
+          const vaultReforgeLooted = summary.vaultReforgeLooted ?? 0;
+          const vaultShardsLooted = summary.vaultShardsLooted ?? 0;
+          const warCrestsGain = summary.warCrests ?? (isCrystalVault ? 4 + Math.floor(vaultPillarsBroken / 2) : 0);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
           const elTowerFloor = summary.elementalTowerFloor ?? 1;
@@ -909,6 +1066,12 @@ export default function App() {
           const guildWarNodes = summary.guildWarNodes ?? summary.stageReached ?? 0;
           const pantheonStage = summary.pantheonStage ?? summary.stageReached ?? 1;
           const pantheonScore = summary.pantheonScore ?? 0;
+          const championshipRound = summary.championshipRound ?? summary.stageReached ?? 1;
+          const championshipScore = summary.championshipScore ?? 0;
+          const gloryTrophiesGain = summary.gloryTrophies ?? 0;
+          const spiritCoresGain = summary.spiritCores ?? 0;
+          const festivalLanternsGain =
+            (summary.festivalLanterns ?? 0) + (isChampionship ? 0 : victory ? 8 : 3);
           const divineCrystalsGain = summary.divineCrystals ?? 0;
           const artifactShardsGain = summary.artifactShards ?? 0;
           const mysticTokensGain = summary.mysticTokens ?? 0;
@@ -923,6 +1086,8 @@ export default function App() {
             ? victory
               ? 160
               : 55
+            : isChampionship
+            ? Math.min(560, 120 + championshipRound * 95 + (victory ? 120 : 0))
             : isPantheon
             ? Math.min(520, 110 + pantheonStage * 85)
             : isAbyssal
@@ -956,6 +1121,8 @@ export default function App() {
             ? victory
               ? 18
               : 4
+            : isChampionship
+            ? Math.min(36, 8 + championshipRound * 7 + (victory ? 7 : 0))
             : isPantheon
             ? Math.min(34, 8 + pantheonStage * 7)
             : isAbyssal
@@ -981,8 +1148,8 @@ export default function App() {
             : victory
             ? 22 * summary.chapterId
             : 2;
-          const totalGold = summary.gold + bonusGold;
-          const totalGems = summary.gems + bonusGems;
+          const totalGold = summary.gold + (isCrystalVault ? 120 + vaultPillarsBroken * 35 : bonusGold);
+          const totalGems = summary.gems + (isCrystalVault ? vaultGemsLooted : bonusGems);
           const starDustGain = summary.starDust ?? 0;
           const petEssenceGain = summary.petEssence ?? 0;
           const guildCoinGain = isGuildBoss
@@ -995,6 +1162,8 @@ export default function App() {
             ? victory
               ? 95
               : 40
+            : isChampionship
+            ? 115 + championshipRound * 42 + (victory ? 55 : 0)
             : isPantheon
             ? 110 + pantheonStage * 38 + summary.kills * 2
             : isAbyssal
@@ -1039,6 +1208,14 @@ export default function App() {
             artifactShards: artifactShardsGain,
             mysticTokens: mysticTokensGain,
             divineCrystals: divineCrystalsGain,
+            gloryTrophies: isChampionship ? gloryTrophiesGain : undefined,
+            spiritCores: spiritCoresGain > 0 ? spiritCoresGain : undefined,
+            festivalLanterns: festivalLanternsGain,
+            isCrystalVaultMode: isCrystalVault || undefined,
+            vaultPillarsBroken: isCrystalVault ? vaultPillarsBroken : undefined,
+            vaultReforgeLooted: isCrystalVault ? vaultReforgeLooted : undefined,
+            vaultShardsLooted: isCrystalVault ? vaultShardsLooted : undefined,
+            warCrests: warCrestsGain > 0 ? warCrestsGain : undefined,
             guildCoins: isGuildWar ? guildWarCoinsGain : undefined,
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
@@ -1052,6 +1229,11 @@ export default function App() {
             const actualXp = hasVip ? Math.round(rawSeasonXp * 1.25) : rawSeasonXp;
             const nextBp = { ...bp, xp: bp.xp + actualXp };
             const nextCareer = { ...career, totalRuns: career.totalRuns + 1 };
+            const prevFest = normalizeFestivalState(prev.festivalState);
+            const nextFest = {
+              ...prevFest,
+              lanterns: prevFest.lanterns + festivalLanternsGain,
+            };
             const nextGemVault = depositToGemRebateVault(
               prev.gemRebateVault,
               Math.max(4, Math.round(totalGems * 0.6) + (victory ? 8 : 3))
@@ -1063,7 +1245,11 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isPantheon
+              mode: isCrystalVault
+                ? 'crystal_vault'
+                : isChampionship
+                ? 'championship_3round'
+                : isPantheon
                 ? 'pantheon_expedition'
                 : isAbyssal
                 ? 'abyssal_gauntlet'
@@ -1090,7 +1276,11 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isPantheon
+              label: isCrystalVault
+                ? `Hầm Mỏ Pha Lê 3D · ${vaultPillarsBroken} Trụ`
+                : isChampionship
+                ? `Giải Quán Quân 3H · Hiệp ${championshipRound}/${CHAMPIONSHIP_TOTAL_ROUNDS}`
+                : isPantheon
                 ? `Viễn Chinh Điện Thần · Ải ${pantheonStage}/${PANTHEON_TOTAL_STAGES}`
                 : isAbyssal
                 ? `Hố Sâu Đột Biến · Đợt ${abyssalWave}/${ABYSSAL_GAUNTLET_TOTAL_WAVES}`
@@ -1119,6 +1309,10 @@ export default function App() {
                 : `Chương ${summary.chapterId} · ${chName}`,
               stageReached: isArena || isGuildBoss || isWorldBoss
                 ? 1
+                : isCrystalVault
+                ? vaultPillarsBroken
+                : isChampionship
+                ? championshipRound
                 : isPantheon
                 ? pantheonStage
                 : isAbyssal
@@ -1146,6 +1340,69 @@ export default function App() {
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
 
+            if (isCrystalVault) {
+              const cv = normalizeCrystalVault(prev.crystalVault, isSupremeMonthlyActive(prev.supremeMonthly));
+              const nextHonor =
+                vaultPillarsBroken >= 8
+                  ? appendHonorEntry(
+                      prev.honorFeed,
+                      'HẦM MỎ PHA LÊ 3D',
+                      `vừa phá vỡ ${vaultPillarsBroken} Trụ Pha Lê (+${totalGems} Ngọc · +${vaultShardsLooted} Mảnh Thần Binh)!`,
+                      'gold'
+                    )
+                  : prev.honorFeed;
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                reforgeStones: (prev.reforgeStones ?? 0) + vaultReforgeLooted,
+                mythicShards: (prev.mythicShards ?? 0) + vaultShardsLooted,
+                warCrests: (prev.warCrests ?? 0) + warCrestsGain,
+                festivalState: nextFest,
+                crystalVault: {
+                  ...cv,
+                  bestPillarsBroken: Math.max(cv.bestPillarsBroken, vaultPillarsBroken),
+                  totalPillarsBroken: cv.totalPillarsBroken + vaultPillarsBroken,
+                  totalVaultGems: cv.totalVaultGems + totalGems,
+                },
+                honorFeed: nextHonor,
+                battlePass: nextBp,
+                career: nextCareer,
+                gemRebateVault: nextGemVault,
+                runHistory: nextHistory,
+              };
+            }
+
+            if (isChampionship) {
+              const ch = normalizeChampionshipState(prev.championship, hasVip);
+              const nextHonor = victory
+                ? appendHonorEntry(
+                    prev.honorFeed,
+                    'QUÁN QUÂN 3 HIỆP',
+                    `vừa đăng quang Giải Đấu Quán Quân 3 Hiệp 3D (+${gloryTrophiesGain} Cúp Vinh Quang)!`,
+                    'emerald'
+                  )
+                : prev.honorFeed;
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                spiritCores: (prev.spiritCores ?? 0) + spiritCoresGain,
+                festivalState: nextFest,
+                championship: {
+                  ...ch,
+                  gloryTrophies: ch.gloryTrophies + gloryTrophiesGain,
+                  bestRoundCleared: Math.max(ch.bestRoundCleared, championshipRound),
+                  championshipTitlesWon: ch.championshipTitlesWon + (victory ? 1 : 0),
+                },
+                honorFeed: nextHonor,
+                battlePass: nextBp,
+                career: nextCareer,
+                gemRebateVault: nextGemVault,
+                runHistory: nextHistory,
+              };
+            }
+
             if (isPantheon) {
               const pe = normalizePantheonExpedition(prev.pantheonExpedition);
               const mx = normalizeMysticExchange(prev.mysticExchange);
@@ -1156,6 +1413,7 @@ export default function App() {
                 gems: prev.gems + totalGems,
                 divineCrystals: (prev.divineCrystals ?? 0) + divineCrystalsGain,
                 artifactShards: nextShards,
+                festivalState: nextFest,
                 mysticExchange: {
                   ...mx,
                   artifactShards: nextShards,
@@ -1510,6 +1768,9 @@ export default function App() {
       if (transitionTimerRef.current) {
         window.clearTimeout(transitionTimerRef.current);
       }
+      if (celebrationTimerRef.current) {
+        window.clearTimeout(celebrationTimerRef.current);
+      }
       engine.dispose();
       engineRef.current = null;
     };
@@ -1521,6 +1782,11 @@ export default function App() {
   useEffect(() => {
     engineRef.current?.updateLoadoutAppearance(playerStats, heroVisualCfg);
   }, [playerStats, heroVisualCfg]);
+
+  // Sync dynamic 3D Lobby Sky & Royal Celestial Pedestal theme
+  useEffect(() => {
+    engineRef.current?.setLobbySkyTheme(save.lobbySkyTheme ?? 'golden_galaxy');
+  }, [save.lobbySkyTheme]);
 
   // Sync 3D camera lobby framing with active lobby tab
   useEffect(() => {
@@ -2127,6 +2393,735 @@ export default function App() {
     engineRef.current?.startPantheonExpedition(playerStats, blessing);
   }, [save.pantheonExpedition, playerStats]);
 
+  const handleStartChampionship = useCallback(() => {
+    const hasVip = isVipActive(save.vip);
+    const ch = normalizeChampionshipState(save.championship, hasVip);
+    if (ch.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeChampionshipState(prev.championship, isVipActive(prev.vip));
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        championship: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setFestivalModalOpen(false);
+    setBundlePreview(null);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 13,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isChampionshipMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startChampionshipGauntlet(playerStats);
+  }, [save.championship, save.vip, playerStats]);
+
+  const handleSelectChampionshipTactic = useCallback((tacticId: ChampionshipTacticId) => {
+    soundEngine.playLevelUp();
+    engineRef.current?.applyChampionshipTactic(tacticId);
+  }, []);
+
+  // =========================================================================
+  // WAVE 12 HANDLERS: Crystal Vault 3D, Mythic Weapon, Treasure Wheel,
+  // Supreme Monthly, Blessing Altar & 3D War Banners, Photo Mode, Claim All
+  // =========================================================================
+
+  const handleStartCrystalVault = useCallback(() => {
+    const hasSupreme = isSupremeMonthlyActive(save.supremeMonthly);
+    const cv = normalizeCrystalVault(save.crystalVault, hasSupreme);
+    if (cv.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeCrystalVault(prev.crystalVault, isSupremeMonthlyActive(prev.supremeMonthly));
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        crystalVault: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setPhotoMode(false);
+    setWave12SanctumTab(null);
+    setCpBreakdownOpen(false);
+    setClaimAllModalOpen(false);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setFestivalModalOpen(false);
+    setBundlePreview(null);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 14,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isCrystalVaultMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startCrystalVault(playerStats);
+  }, [save.crystalVault, save.supremeMonthly, playerStats]);
+
+  const handleClaimCrystalVaultMilestone = useCallback(
+    (pillarsTarget: number) => {
+      const ms = CRYSTAL_VAULT_MILESTONES.find((m) => m.pillarsTarget === pillarsTarget);
+      if (!ms) return;
+      setSave((prev) => {
+        const cv = normalizeCrystalVault(prev.crystalVault, isSupremeMonthlyActive(prev.supremeMonthly));
+        if (cv.totalPillarsBroken < ms.pillarsTarget || cv.claimedMilestones.includes(ms.pillarsTarget)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          reforgeStones: (prev.reforgeStones ?? 0) + ms.rewardReforgeStones,
+          mythicShards: (prev.mythicShards ?? 0) + ms.rewardMythicShards,
+          warCrests: (prev.warCrests ?? 0) + ms.rewardWarCrests,
+          crystalVault: {
+            ...cv,
+            claimedMilestones: [...cv.claimedMilestones, ms.pillarsTarget],
+          },
+        };
+      });
+      triggerUpgradeCelebration(
+        ms.title,
+        `+${ms.rewardGems} Ngọc · +${ms.rewardReforgeStones} Đá Đúc · +${ms.rewardMythicShards} Mảnh Thần Binh`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUpgradeMythicWeapon = useCallback(() => {
+    let upgradedTier = 0;
+    let upgradedTitle = '';
+    setSave((prev) => {
+      const m = normalizeMythicWeapon(prev.mythicWeapon);
+      if (m.tier >= MYTHIC_WEAPON_MAX_TIER) return prev;
+      const nextDef = MYTHIC_WEAPON_TIERS[m.tier + 1];
+      if (!nextDef) return prev;
+      if ((prev.mythicShards ?? 0) < nextDef.shardCost || prev.gold < nextDef.goldCost) return prev;
+      upgradedTier = nextDef.tier;
+      upgradedTitle = nextDef.title;
+      return {
+        ...prev,
+        gold: prev.gold - nextDef.goldCost,
+        mythicShards: (prev.mythicShards ?? 0) - nextDef.shardCost,
+        mythicWeapon: { ...m, tier: nextDef.tier },
+        honorFeed: appendHonorEntry(
+          prev.honorFeed,
+          'THẦN BINH THỨC TỈNH',
+          `vừa đột phá ${nextDef.title} (Vương Miện 3D)!`,
+          'gold'
+        ),
+      };
+    });
+    if (upgradedTier > 0) {
+      soundEngine.playVictory();
+      triggerUpgradeCelebration(`Thần Binh Bậc ${upgradedTier}`, upgradedTitle);
+    }
+  }, [triggerUpgradeCelebration]);
+
+  const handleToggleGoldenStatLock = useCallback((slotIndex: number) => {
+    soundEngine.playUiClick();
+    setSave((prev) => {
+      const m = normalizeMythicWeapon(prev.mythicWeapon);
+      const lockedCount = m.goldenStats.filter((s) => s.locked).length;
+      const nextStats = m.goldenStats.map((s) => {
+        if (s.slotIndex !== slotIndex) return s;
+        if (!s.locked && lockedCount >= 2) return s;
+        return { ...s, locked: !s.locked };
+      });
+      return {
+        ...prev,
+        mythicWeapon: { ...m, goldenStats: nextStats },
+      };
+    });
+  }, []);
+
+  const handleReforgeGoldenStats = useCallback(() => {
+    let hitGold = false;
+    setSave((prev) => {
+      const m = normalizeMythicWeapon(prev.mythicWeapon);
+      const lockedCount = m.goldenStats.filter((s) => s.locked).length;
+      if (lockedCount >= 3) return prev;
+      const cost = getMythicReforgeCost(lockedCount);
+      if ((prev.reforgeStones ?? 0) < cost.reforgeStones || prev.gold < cost.gold) return prev;
+      const { nextSlots, hasMythicOrGold } = rollGoldenStats(m.goldenStats, m.tier);
+      hitGold = hasMythicOrGold;
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        reforgeStones: (prev.reforgeStones ?? 0) - cost.reforgeStones,
+        mythicWeapon: {
+          ...m,
+          goldenStats: nextSlots,
+          totalReforges: m.totalReforges + 1,
+        },
+      };
+    });
+    if (hitGold) {
+      soundEngine.playVictory();
+      triggerUpgradeCelebration('Đúc Chỉ Số Hoàng Kim!', 'Xuất hiện dòng Hoàng Kim / Chí Tôn siêu hiếm!');
+    } else {
+      soundEngine.playLevelUp();
+    }
+  }, [triggerUpgradeCelebration]);
+
+  const handleSpinTreasureWheel = useCallback(
+    (count: 1 | 5): TreasureWheelSlotDef[] | null => {
+      const cost = count === 5 ? TREASURE_WHEEL_SPIN_COST_5 : TREASURE_WHEEL_SPIN_COST_1;
+      if (save.gems < cost) return null;
+      let curTw = normalizeTreasureWheel(save.treasureWheel);
+      const wonSlots: TreasureWheelSlotDef[] = [];
+      let addGold = 0;
+      let addGems = 0;
+      let addReforge = 0;
+      let addShards = 0;
+      let addCrests = 0;
+      let addCores = 0;
+      let addTickets = 0;
+      let hitJackpot = false;
+
+      for (let i = 0; i < count; i++) {
+        const res = spinTreasureWheelOnce(curTw);
+        curTw = res.nextState;
+        wonSlots.push(res.slot);
+        if (res.slot.rewardKind === 'jackpot_mythic') {
+          addGems += res.slot.amount;
+          addShards += 12;
+          hitJackpot = true;
+        } else if (res.slot.rewardKind === 'gold') addGold += res.slot.amount;
+        else if (res.slot.rewardKind === 'gems') addGems += res.slot.amount;
+        else if (res.slot.rewardKind === 'reforgeStones') addReforge += res.slot.amount;
+        else if (res.slot.rewardKind === 'mythicShards') addShards += res.slot.amount;
+        else if (res.slot.rewardKind === 'warCrests') addCrests += res.slot.amount;
+        else if (res.slot.rewardKind === 'spiritCores') addCores += res.slot.amount;
+        else if (res.slot.rewardKind === 'wishTickets') addTickets += res.slot.amount;
+      }
+
+      setSave((prev) => {
+        if (prev.gems < cost) return prev;
+        return {
+          ...prev,
+          gold: prev.gold + addGold,
+          gems: prev.gems - cost + addGems,
+          reforgeStones: (prev.reforgeStones ?? 0) + addReforge,
+          mythicShards: (prev.mythicShards ?? 0) + addShards,
+          warCrests: (prev.warCrests ?? 0) + addCrests,
+          spiritCores: (prev.spiritCores ?? 0) + addCores,
+          wishTickets: (prev.wishTickets ?? 0) + addTickets,
+          treasureWheel: curTw,
+          honorFeed: hitJackpot
+            ? appendHonorEntry(
+                prev.honorFeed,
+                'ĐẠI JACKPOT HOÀNG ĐẠO',
+                'vừa nổ Jackpot Vòng Quay Kho Báu (+180 Ngọc & +12 Mảnh Thần Binh)!',
+                'gold'
+              )
+            : prev.honorFeed,
+        };
+      });
+      if (hitJackpot) {
+        soundEngine.playVictory();
+        triggerUpgradeCelebration('NỔ ĐẠI JACKPOT!', '+180 Ngọc Hồn & +12 Mảnh Thần Binh!');
+      } else {
+        soundEngine.playLevelUp();
+      }
+      return wonSlots;
+    },
+    [save.gems, save.treasureWheel, triggerUpgradeCelebration]
+  );
+
+  const handleClaimWheelMilestone = useCallback(
+    (spins: number) => {
+      const ms = TREASURE_WHEEL_MILESTONES.find((m) => m.spins === spins);
+      if (!ms) return;
+      setSave((prev) => {
+        const tw = normalizeTreasureWheel(prev.treasureWheel);
+        if (tw.totalSpins < ms.spins || tw.claimedMilestoneSpins.includes(ms.spins)) return prev;
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          reforgeStones: (prev.reforgeStones ?? 0) + ms.rewardReforgeStones,
+          mythicShards: (prev.mythicShards ?? 0) + ms.rewardMythicShards,
+          treasureWheel: {
+            ...tw,
+            claimedMilestoneSpins: [...tw.claimedMilestoneSpins, ms.spins],
+          },
+        };
+      });
+      soundEngine.playVictory();
+      triggerUpgradeCelebration(
+        ms.title,
+        `+${ms.rewardGems} Ngọc · +${ms.rewardReforgeStones} Đá Đúc · +${ms.rewardMythicShards} Mảnh Thần Binh`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleActivateSupremeMonthly = useCallback(() => {
+    setSave((prev) => {
+      if (prev.gems < SUPREME_MONTHLY_CONFIG.costGems) return prev;
+      const cur = normalizeSupremeMonthly(prev.supremeMonthly);
+      const tu = normalizeTopUpEvolution(prev.topUpEvolution);
+      const cv = normalizeCrystalVault(prev.crystalVault, true);
+      return {
+        ...prev,
+        gems: prev.gems - SUPREME_MONTHLY_CONFIG.costGems + SUPREME_MONTHLY_CONFIG.instantGems,
+        mythicShards: (prev.mythicShards ?? 0) + SUPREME_MONTHLY_CONFIG.instantMythicShards,
+        reforgeStones: (prev.reforgeStones ?? 0) + SUPREME_MONTHLY_CONFIG.instantReforgeStones,
+        supremeMonthly: {
+          active: true,
+          daysRemaining: Math.min(90, cur.daysRemaining + 30),
+          lastClaimDate: cur.lastClaimDate,
+          totalActivatedCount: cur.totalActivatedCount + 1,
+        },
+        crystalVault: {
+          ...cv,
+          dailyRunsRemaining: Math.min(4, cv.dailyRunsRemaining + 1),
+        },
+        topUpEvolution: {
+          ...tu,
+          points: tu.points + SUPREME_MONTHLY_CONFIG.topUpPoints,
+        },
+        honorFeed: appendHonorEntry(
+          prev.honorFeed,
+          'THẺ THÁNG CHÍ TÔN',
+          'vừa kích hoạt Đặc Quyền Chí Tôn 30 Ngày (+150 Ngọc & +10% ATK)!',
+          'purple'
+        ),
+      };
+    });
+    soundEngine.playVictory();
+    triggerUpgradeCelebration(
+      'Thẻ Tháng Chí Tôn 30 Ngày!',
+      `Nhận ngay +${SUPREME_MONTHLY_CONFIG.instantGems} Ngọc · +${SUPREME_MONTHLY_CONFIG.instantMythicShards} Mảnh Thần Binh!`
+    );
+  }, [triggerUpgradeCelebration]);
+
+  const handleClaimSupremeMonthlyDaily = useCallback(() => {
+    const today = getTodayKey();
+    setSave((prev) => {
+      if (!canClaimSupremeMonthlyDaily(prev)) return prev;
+      const cur = normalizeSupremeMonthly(prev.supremeMonthly);
+      return {
+        ...prev,
+        gems: prev.gems + SUPREME_MONTHLY_CONFIG.dailyGems,
+        reforgeStones: (prev.reforgeStones ?? 0) + SUPREME_MONTHLY_CONFIG.dailyReforgeStones,
+        warCrests: (prev.warCrests ?? 0) + SUPREME_MONTHLY_CONFIG.dailyWarCrests,
+        supremeMonthly: {
+          ...cur,
+          daysRemaining: Math.max(0, cur.daysRemaining - 1),
+          active: cur.daysRemaining - 1 > 0,
+          lastClaimDate: today,
+        },
+      };
+    });
+    soundEngine.playVictory();
+    triggerUpgradeCelebration(
+      'Quà Ngày Thẻ Chí Tôn',
+      `+${SUPREME_MONTHLY_CONFIG.dailyGems} Ngọc · +${SUPREME_MONTHLY_CONFIG.dailyReforgeStones} Đá Đúc · +${SUPREME_MONTHLY_CONFIG.dailyWarCrests} Huy Hiệu`
+    );
+  }, [triggerUpgradeCelebration]);
+
+  const handleUpgradeAltar = useCallback((altarId: AltarBlessingId) => {
+    const def = ALTAR_BLESSING_DEFS.find((d) => d.id === altarId);
+    if (!def) return;
+    setSave((prev) => {
+      const a = normalizeBlessingAltar(prev.blessingAltar);
+      const lv = a.levels[altarId] ?? 0;
+      if (lv >= def.maxLevel) return prev;
+      const cost = getAltarUpgradeCost(lv);
+      if (prev.gold < cost.gold || (prev.warCrests ?? 0) < cost.warCrests) return prev;
+      return {
+        ...prev,
+        gold: prev.gold - cost.gold,
+        warCrests: (prev.warCrests ?? 0) - cost.warCrests,
+        blessingAltar: {
+          levels: { ...a.levels, [altarId]: lv + 1 },
+          totalSacrifices: a.totalSacrifices + 1,
+        },
+      };
+    });
+    soundEngine.playLevelUp();
+  }, []);
+
+  const handleUnlockOrEquipWarBanner = useCallback(
+    (bannerId: WarBannerId) => {
+      const def = WAR_BANNER_MAP[bannerId];
+      if (!def) return;
+      let justUnlocked = false;
+      setSave((prev) => {
+        const unlocked = prev.unlockedWarBanners ?? [];
+        if (unlocked.includes(bannerId)) {
+          return {
+            ...prev,
+            equippedWarBannerId: prev.equippedWarBannerId === bannerId ? null : bannerId,
+          };
+        }
+        if (prev.gems < def.unlockGems || (prev.warCrests ?? 0) < def.unlockWarCrests) return prev;
+        justUnlocked = true;
+        return {
+          ...prev,
+          gems: prev.gems - def.unlockGems,
+          warCrests: (prev.warCrests ?? 0) - def.unlockWarCrests,
+          unlockedWarBanners: [...unlocked, bannerId],
+          warBannerLevels: { ...(prev.warBannerLevels ?? {}), [bannerId]: 1 },
+          equippedWarBannerId: bannerId,
+          honorFeed: appendHonorEntry(
+            prev.honorFeed,
+            'CỜ HIỆU CHIẾN TRẬN 3D',
+            `vừa mở khóa & giương cao ${def.name}!`,
+            'gold'
+          ),
+        };
+      });
+      if (justUnlocked) {
+        soundEngine.playVictory();
+        triggerUpgradeCelebration('Mở Khóa Cờ Hiệu 3D!', def.name);
+      } else {
+        soundEngine.playUiClick();
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUpgradeWarBanner = useCallback(
+    (bannerId: WarBannerId) => {
+      const def = WAR_BANNER_MAP[bannerId];
+      if (!def) return;
+      setSave((prev) => {
+        const unlocked = prev.unlockedWarBanners ?? [];
+        if (!unlocked.includes(bannerId)) return prev;
+        const lv = Math.max(1, prev.warBannerLevels?.[bannerId] ?? 1);
+        if (lv >= WAR_BANNER_MAX_LEVEL) return prev;
+        const cost = getWarBannerUpgradeCost(lv);
+        if (prev.gold < cost.gold || (prev.warCrests ?? 0) < cost.warCrests) return prev;
+        return {
+          ...prev,
+          gold: prev.gold - cost.gold,
+          warCrests: (prev.warCrests ?? 0) - cost.warCrests,
+          warBannerLevels: { ...(prev.warBannerLevels ?? {}), [bannerId]: lv + 1 },
+        };
+      });
+      soundEngine.playLevelUp();
+      triggerUpgradeCelebration('Nâng Cấp Cờ Hiệu 3D', def.name);
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleExecuteClaimAllLobbyRewards = useCallback(() => {
+    const today = getTodayKey();
+    let claimedBundles = 0;
+    let totalGemsGained = 0;
+    let totalGoldGained = 0;
+
+    setSave((prev) => {
+      let next = { ...prev };
+
+      // 1. Supreme Monthly Daily
+      if (canClaimSupremeMonthlyDaily(next)) {
+        const sm = normalizeSupremeMonthly(next.supremeMonthly);
+        next.gems += SUPREME_MONTHLY_CONFIG.dailyGems;
+        next.reforgeStones = (next.reforgeStones ?? 0) + SUPREME_MONTHLY_CONFIG.dailyReforgeStones;
+        next.warCrests = (next.warCrests ?? 0) + SUPREME_MONTHLY_CONFIG.dailyWarCrests;
+        next.supremeMonthly = {
+          ...sm,
+          daysRemaining: Math.max(0, sm.daysRemaining - 1),
+          active: sm.daysRemaining - 1 > 0,
+          lastClaimDate: today,
+        };
+        totalGemsGained += SUPREME_MONTHLY_CONFIG.dailyGems;
+        claimedBundles += 1;
+      }
+
+      // 2. Silver & Royal Monthly Cards Daily
+      const mp = normalizeMonthlyPrivilege(next.monthlyPrivilege);
+      let mpChanged = false;
+      const nextMp = { silver: { ...mp.silver }, royal: { ...mp.royal } };
+      if (isMonthlyCardActive(mp.silver, today) && mp.silver.lastClaimDate !== today) {
+        const def = MONTHLY_CARD_MAP.silver_astral;
+        next.gems += def.dailyGems;
+        next.gold += def.dailyGold;
+        nextMp.silver.lastClaimDate = today;
+        totalGemsGained += def.dailyGems;
+        totalGoldGained += def.dailyGold;
+        claimedBundles += 1;
+        mpChanged = true;
+      }
+      if (isMonthlyCardActive(mp.royal, today) && mp.royal.lastClaimDate !== today) {
+        const def = MONTHLY_CARD_MAP.royal_zodiac;
+        next.gems += def.dailyGems;
+        next.gold += def.dailyGold;
+        nextMp.royal.lastClaimDate = today;
+        totalGemsGained += def.dailyGems;
+        totalGoldGained += def.dailyGold;
+        claimedBundles += 1;
+        mpChanged = true;
+      }
+      if (mpChanged) next.monthlyPrivilege = nextMp;
+
+      // 3. Weekend Pass Daily
+      if (canClaimWeekendPassDaily(next)) {
+        const wp = normalizeWeekendPrivilege(next.weekendPass);
+        const fest = normalizeFestivalState(next.festivalState);
+        next.gems += 45;
+        next.spiritCores = (next.spiritCores ?? 0) + 4;
+        next.festivalState = { ...fest, lanterns: fest.lanterns + 20 };
+        next.weekendPass = {
+          ...wp,
+          daysRemaining: Math.max(0, wp.daysRemaining - 1),
+          passActive: wp.daysRemaining - 1 > 0,
+          lastClaimDate: today,
+        };
+        totalGemsGained += 45;
+        claimedBundles += 1;
+      }
+
+      // 4. Mail Inbox
+      const inbox = normalizeMailInbox(next.mailInbox);
+      let mailChanged = false;
+      const nextInbox = inbox.map((m) => {
+        if (m.claimed) return m;
+        next.gold += m.rewardGold ?? 0;
+        next.gems += m.rewardGems ?? 0;
+        totalGemsGained += m.rewardGems ?? 0;
+        totalGoldGained += m.rewardGold ?? 0;
+        claimedBundles += 1;
+        mailChanged = true;
+        return { ...m, claimed: true };
+      });
+      if (mailChanged) next.mailInbox = nextInbox;
+
+      // 5. Codex Ranks
+      const codex = computeCodexSummary(next);
+      const claimedCodex = [...(next.codexClaimedRanks ?? [])];
+      for (const r of CODEX_COLLECTION_RANKS) {
+        if (codex.totalPoints >= r.pointsRequired && !claimedCodex.includes(r.rank)) {
+          claimedCodex.push(r.rank);
+          next.gems += r.rewardGems;
+          next.spiritCores = (next.spiritCores ?? 0) + r.rewardSpiritCores;
+          totalGemsGained += r.rewardGems;
+          claimedBundles += 1;
+        }
+      }
+      next.codexClaimedRanks = claimedCodex;
+
+      // 6. Festival Quests & Milestones
+      const fest = normalizeFestivalState(next.festivalState);
+      let festChanged = false;
+      const nextFest = {
+        ...fest,
+        claimedQuestIds: [...fest.claimedQuestIds],
+        claimedMilestones: [...fest.claimedMilestones],
+      };
+      for (const q of CELESTIAL_FESTIVAL_QUESTS) {
+        if (!nextFest.claimedQuestIds.includes(q.id) && getFestivalQuestProgress(next, q.metric) >= q.target) {
+          nextFest.claimedQuestIds.push(q.id);
+          nextFest.lanterns += q.rewardLanterns;
+          next.gems += q.rewardGems;
+          totalGemsGained += q.rewardGems;
+          claimedBundles += 1;
+          festChanged = true;
+        }
+      }
+      for (const ms of FESTIVAL_MILESTONES) {
+        if (nextFest.lanterns >= ms.lanternsTarget && !nextFest.claimedMilestones.includes(ms.lanternsTarget)) {
+          nextFest.claimedMilestones.push(ms.lanternsTarget);
+          next.gems += ms.rewardGems;
+          next.spiritCores = (next.spiritCores ?? 0) + ms.rewardSpiritCores;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+          festChanged = true;
+        }
+      }
+      if (festChanged) next.festivalState = nextFest;
+
+      // 7. Championship Cup Milestones
+      const champ = normalizeChampionshipState(next.championship, isVipActive(next.vip));
+      const nextChampMilestones = [...champ.claimedCupMilestones];
+      for (const ms of CHAMPIONSHIP_CUP_MILESTONES) {
+        if (champ.gloryTrophies >= ms.trophiesTarget && !nextChampMilestones.includes(ms.trophiesTarget)) {
+          nextChampMilestones.push(ms.trophiesTarget);
+          next.gems += ms.rewardGems;
+          next.spiritCores = (next.spiritCores ?? 0) + ms.rewardSpiritCores;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+        }
+      }
+      next.championship = { ...champ, claimedCupMilestones: nextChampMilestones };
+
+      // 8. Crystal Vault Milestones
+      const cv = normalizeCrystalVault(next.crystalVault, isSupremeMonthlyActive(next.supremeMonthly));
+      const nextCvMilestones = [...cv.claimedMilestones];
+      for (const ms of CRYSTAL_VAULT_MILESTONES) {
+        if (cv.totalPillarsBroken >= ms.pillarsTarget && !nextCvMilestones.includes(ms.pillarsTarget)) {
+          nextCvMilestones.push(ms.pillarsTarget);
+          next.gems += ms.rewardGems;
+          next.reforgeStones = (next.reforgeStones ?? 0) + ms.rewardReforgeStones;
+          next.mythicShards = (next.mythicShards ?? 0) + ms.rewardMythicShards;
+          next.warCrests = (next.warCrests ?? 0) + ms.rewardWarCrests;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+        }
+      }
+      next.crystalVault = { ...cv, claimedMilestones: nextCvMilestones };
+
+      // 9. Free Step-Up Step 1
+      const chain = normalizeStepUpChain(next.stepUpChain);
+      if (!chain.claimedSteps.includes(1)) {
+        const s1 = STEP_UP_CHAIN_STEPS.find((s) => s.step === 1);
+        if (s1 && s1.costGems === 0) {
+          next.gold += s1.rewardGold;
+          next.gems += s1.rewardGems;
+          next.divineCrystals = (next.divineCrystals ?? 0) + s1.rewardDivineCrystals;
+          next.wishTickets = (next.wishTickets ?? 0) + s1.rewardWishTickets;
+          next.stepUpChain = { ...chain, claimedSteps: [...chain.claimedSteps, 1] };
+          totalGemsGained += s1.rewardGems;
+          totalGoldGained += s1.rewardGold;
+          claimedBundles += 1;
+        }
+      }
+
+      // 10. Gem Rebate Vault + Milestones
+      const gv = normalizeGemRebateVault(next.gemRebateVault);
+      let gvChanged = false;
+      const nextGv = { ...gv, claimedMilestoneTargets: [...gv.claimedMilestoneTargets] };
+      if (nextGv.storedGems >= GEM_VAULT_CLAIM_THRESHOLD) {
+        next.gems += nextGv.storedGems;
+        totalGemsGained += nextGv.storedGems;
+        nextGv.vaultBrokenCount += 1;
+        nextGv.storedGems = 0;
+        claimedBundles += 1;
+        gvChanged = true;
+      }
+      for (const ms of GEM_VAULT_MILESTONES) {
+        if (
+          nextGv.totalDepositedEver >= ms.storedTarget &&
+          !nextGv.claimedMilestoneTargets.includes(ms.storedTarget)
+        ) {
+          nextGv.claimedMilestoneTargets.push(ms.storedTarget);
+          next.gems += ms.dividendGems;
+          next.divineCrystals = (next.divineCrystals ?? 0) + ms.bonusDivineCrystals;
+          next.wishTickets = (next.wishTickets ?? 0) + ms.bonusWishTickets;
+          totalGemsGained += ms.dividendGems;
+          claimedBundles += 1;
+          gvChanged = true;
+        }
+      }
+      if (gvChanged) next.gemRebateVault = nextGv;
+
+      // 11. Treasure Wheel Milestones
+      const tw = normalizeTreasureWheel(next.treasureWheel);
+      const nextTwMs = [...tw.claimedMilestoneSpins];
+      for (const ms of TREASURE_WHEEL_MILESTONES) {
+        if (tw.totalSpins >= ms.spins && !nextTwMs.includes(ms.spins)) {
+          nextTwMs.push(ms.spins);
+          next.gems += ms.rewardGems;
+          next.reforgeStones = (next.reforgeStones ?? 0) + ms.rewardReforgeStones;
+          next.mythicShards = (next.mythicShards ?? 0) + ms.rewardMythicShards;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+        }
+      }
+      next.treasureWheel = { ...tw, claimedMilestoneSpins: nextTwMs };
+
+      return next;
+    });
+
+    if (claimedBundles > 0) {
+      soundEngine.playVictory();
+      triggerUpgradeCelebration(
+        `Đã Nhận Nhanh ${claimedBundles} Mốc Quà!`,
+        `+${totalGemsGained} Ngọc Hồn${totalGoldGained > 0 ? ` · +${totalGoldGained.toLocaleString('vi-VN')} Vàng` : ''}`
+      );
+    }
+  }, [triggerUpgradeCelebration]);
+
+  const handleCaptureLobbyPhoto = useCallback(() => {
+    const dataUrl = engineRef.current?.capturePhotoDataUrl();
+    if (!dataUrl) return;
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `artemis-3d-${save.selectedHeroId}-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerUpgradeCelebration('Đã Lưu Ảnh 3D Thành Công!', 'Ảnh chân dung PNG độ nét cao đã tải xuống.');
+  }, [save.selectedHeroId, triggerUpgradeCelebration]);
+
+  const handleJumpFromCpCategory = useCallback((action: CombatPowerCategoryItem['targetAction']) => {
+    soundEngine.playUiClick();
+    if (action === 'mythic_forge') {
+      setWave12SanctumTab('mythic');
+    } else if (action === 'gear') {
+      setActiveLobbyTab('gear');
+    } else if (action === 'heroes') {
+      setHeroSubTabInitial('roster');
+      setActiveLobbyTab('heroes');
+    } else if (action === 'pets') {
+      setHeroSubTabInitial('pets');
+      setActiveLobbyTab('heroes');
+    } else if (action === 'wardrobe') {
+      setWardrobeOpen(true);
+    } else if (action === 'altar_banner') {
+      setWave12SanctumTab('altar');
+    } else if (action === 'codex') {
+      setProfileModalTab('codex');
+    }
+  }, []);
+
   // Sync game state to document.body.dataset.state for deterministic harness inspection
   useEffect(() => {
     const stateLabel =
@@ -2248,6 +3243,8 @@ export default function App() {
         !honorBoardOpen &&
         !wardrobeOpen &&
         !dispatchOpen &&
+        !festivalModalOpen &&
+        !bundlePreview &&
         !profileModalTab &&
         !mailModalOpen &&
         !sweepResult &&
@@ -2256,7 +3253,9 @@ export default function App() {
         !gachaReveal
       ) {
         e.preventDefault();
-        if (gameMode === 'pantheon_expedition') {
+        if (gameMode === 'championship_3round') {
+          handleStartChampionship();
+        } else if (gameMode === 'pantheon_expedition') {
           handleStartPantheon();
         } else if (gameMode === 'abyssal_gauntlet') {
           handleStartAbyssalGauntlet();
@@ -2303,6 +3302,8 @@ export default function App() {
     honorBoardOpen,
     wardrobeOpen,
     dispatchOpen,
+    festivalModalOpen,
+    bundlePreview,
     profileModalTab,
     mailModalOpen,
     sweepResult,
@@ -2325,6 +3326,7 @@ export default function App() {
     handleStartAbyssalGauntlet,
     handleStartGuildWar,
     handleStartPantheon,
+    handleStartChampionship,
   ]);
 
   // Hero Handlers
@@ -2398,6 +3400,11 @@ export default function App() {
       const nextInv = [...prev.inventory];
       nextInv[idx] = { ...item, level: item.level + 1 };
       soundEngine.playLevelUp();
+      const tpl = GEAR_TEMPLATES[item.templateId];
+      triggerUpgradeCelebration(
+        `${tpl?.name ?? 'Trang Bị'} +${item.level + 1}`,
+        'Cường hóa ánh kim thành công · Tăng mạnh chỉ số chiến đấu!'
+      );
       const dq = normalizeDailyQuests(prev.dailyQuests);
       return {
         ...prev,
@@ -5213,6 +6220,10 @@ export default function App() {
       if (mx.artifactShards < cost.shards || prev.gold < cost.gold) return prev;
       const nextShards = mx.artifactShards - cost.shards;
       soundEngine.playLevelUp();
+      triggerUpgradeCelebration(
+        `${ARTIFACT_MAP[artifactId]?.name ?? 'Thánh Khí'} Lv.${curLv + 1}`,
+        'Thăng cấp Thánh Khí 3D thành công!'
+      );
       return {
         ...prev,
         gold: prev.gold - cost.gold,
@@ -5221,7 +6232,7 @@ export default function App() {
         artifactLevels: { ...(prev.artifactLevels ?? {}), [artifactId]: curLv + 1 },
       };
     });
-  }, []);
+  }, [triggerUpgradeCelebration]);
 
   const handleMysticExchange = useCallback((offerId: string) => {
     const offer = MYSTIC_EXCHANGE_OFFERS.find((o) => o.id === offerId);
@@ -5464,6 +6475,10 @@ export default function App() {
       const crystals = prev.divineCrystals ?? 0;
       if (crystals < cost.divineCrystals || prev.gold < cost.gold) return prev;
       soundEngine.playLevelUp();
+      triggerUpgradeCelebration(
+        `${DIVINE_HALO_MAP[haloId]?.name ?? 'Hào Quang 3D'} Lv.${curLv + 1}`,
+        'Đột phá Hào Quang Hoàng Đạo thành công!'
+      );
       return {
         ...prev,
         gold: prev.gold - cost.gold,
@@ -5471,7 +6486,7 @@ export default function App() {
         haloLevels: { ...(prev.haloLevels ?? {}), [haloId]: curLv + 1 },
       };
     });
-  }, []);
+  }, [triggerUpgradeCelebration]);
 
   const handleClaimChainStep = useCallback((stepNumber: number) => {
     const step = STEP_UP_CHAIN_STEPS.find((s) => s.step === stepNumber);
@@ -5585,6 +6600,416 @@ export default function App() {
     });
   }, []);
 
+  // ============================================================================
+  // WAVE 11 HANDLERS: SKY THEMES, SPIRIT BEASTS, CODEX, FESTIVAL, CHAMPIONSHIP, WEEKEND
+  // ============================================================================
+
+  const handleSelectSkyTheme = useCallback((themeId: LobbySkyThemeId) => {
+    setSave((prev) => {
+      const unlocked = prev.unlockedSkyThemes ?? ['golden_galaxy', 'dawn_sanctum'];
+      if (!unlocked.includes(themeId)) return prev;
+      return { ...prev, lobbySkyTheme: themeId };
+    });
+  }, []);
+
+  const handleUnlockSkyTheme = useCallback(
+    (themeId: LobbySkyThemeId, mode: 'codex' | 'gems') => {
+      const theme = LOBBY_SKY_THEME_MAP[themeId];
+      if (!theme) return;
+      setSave((prev) => {
+        const unlocked = prev.unlockedSkyThemes ?? ['golden_galaxy', 'dawn_sanctum'];
+        if (unlocked.includes(themeId)) return { ...prev, lobbySkyTheme: themeId };
+        if (mode === 'codex') {
+          const req = theme.unlockCodexScore ?? 0;
+          if (req <= 0 || computeCodexSummary(prev).totalPoints < req) return prev;
+          soundEngine.playVictory();
+          triggerUpgradeCelebration(theme.name, 'Mở khóa miễn phí qua điểm Sổ Tay Sưu Tầm!');
+          return {
+            ...prev,
+            unlockedSkyThemes: [...unlocked, themeId],
+            lobbySkyTheme: themeId,
+          };
+        }
+        if (theme.unlockGems > 0 && prev.gems < theme.unlockGems) return prev;
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(theme.name, 'Đã áp dụng Bầu Trời Động & Bệ Hoàng Gia 3D!');
+        return {
+          ...prev,
+          gems: prev.gems - theme.unlockGems,
+          nightMarket: addGemsSpent(prev, theme.unlockGems),
+          unlockedSkyThemes: [...unlocked, themeId],
+          lobbySkyTheme: themeId,
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleEvolvePet = useCallback(
+    (petId: PetId) => {
+      const petDef = PET_MAP[petId];
+      if (!petDef) return;
+      setSave((prev) => {
+        const pets = normalizePets(prev.pets);
+        const inst = pets.find((p) => p.petId === petId);
+        if (!inst || inst.level < SPIRIT_BEAST_MIN_LEVEL) return prev;
+        const evolved = prev.evolvedPets ?? [];
+        if (evolved.includes(petId)) return prev;
+        const cores = prev.spiritCores ?? 0;
+        const essence = prev.petEssence ?? 0;
+        if (
+          cores < SPIRIT_BEAST_EVOLUTION_COST.spiritCores ||
+          essence < SPIRIT_BEAST_EVOLUTION_COST.petEssence ||
+          prev.gold < SPIRIT_BEAST_EVOLUTION_COST.gold
+        ) {
+          return prev;
+        }
+        const formName = getSpiritBeastFormName(petId, true, petDef.name);
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(
+          formName,
+          'Tiến Hóa Thần Sủng 3D thành công · +85% ATK, +75% HP & Vòng Hào Quang Kim Cương!'
+        );
+        return {
+          ...prev,
+          gold: prev.gold - SPIRIT_BEAST_EVOLUTION_COST.gold,
+          petEssence: essence - SPIRIT_BEAST_EVOLUTION_COST.petEssence,
+          spiritCores: cores - SPIRIT_BEAST_EVOLUTION_COST.spiritCores,
+          evolvedPets: [...evolved, petId],
+          honorFeed: appendHonorEntry(
+            prev.honorFeed,
+            'THẦN SỦNG 3D',
+            `vừa tiến hóa thành công ${formName}!`,
+            'gold'
+          ),
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimCodexRank = useCallback(
+    (rank: number) => {
+      const rankDef = CODEX_COLLECTION_RANKS.find((r) => r.rank === rank);
+      if (!rankDef) return;
+      setSave((prev) => {
+        const summary = computeCodexSummary(prev);
+        const claimed = prev.codexClaimedRanks ?? [];
+        if (summary.totalPoints < rankDef.pointsRequired || claimed.includes(rank)) return prev;
+        soundEngine.playAchievement();
+        triggerUpgradeCelebration(
+          `Sổ Tay Bậc ${rankDef.rank} · ${rankDef.title}`,
+          `+${rankDef.rewardGems} Ngọc · +${rankDef.rewardSpiritCores} Lõi Thần Sủng · Buff Toàn Đội vĩnh viễn!`
+        );
+        return {
+          ...prev,
+          gems: prev.gems + rankDef.rewardGems,
+          spiritCores: (prev.spiritCores ?? 0) + rankDef.rewardSpiritCores,
+          codexClaimedRanks: [...claimed, rank],
+          honorFeed: appendHonorEntry(
+            prev.honorFeed,
+            'SỔ TAY BUFF',
+            `đạt Bậc ${rankDef.rank} ${rankDef.title} (+${Math.round(rankDef.atkPctBonus * 100)}% ATK toàn đội)!`,
+            'rose'
+          ),
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimFestivalQuest = useCallback((questId: string) => {
+    const q = CELESTIAL_FESTIVAL_QUESTS.find((x) => x.id === questId);
+    if (!q) return;
+    setSave((prev) => {
+      const fest = normalizeFestivalState(prev.festivalState);
+      if (fest.claimedQuestIds.includes(q.id)) return prev;
+      if (getFestivalQuestProgress(prev, q.metric) < q.target) return prev;
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: prev.gold + q.rewardGold,
+        gems: prev.gems + q.rewardGems,
+        festivalState: {
+          ...fest,
+          lanterns: fest.lanterns + q.rewardLanterns,
+          claimedQuestIds: [...fest.claimedQuestIds, q.id],
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimFestivalMilestone = useCallback(
+    (lanternsTarget: number) => {
+      const ms = FESTIVAL_MILESTONES.find((m) => m.lanternsTarget === lanternsTarget);
+      if (!ms) return;
+      setSave((prev) => {
+        const fest = normalizeFestivalState(prev.festivalState);
+        if (fest.lanterns < ms.lanternsTarget || fest.claimedMilestones.includes(ms.lanternsTarget)) {
+          return prev;
+        }
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(
+          ms.title,
+          `+${ms.rewardGems} Ngọc · +${ms.rewardSpiritCores} Lõi Sủng · +${ms.rewardWishTickets} Vé Ước!`
+        );
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          spiritCores: (prev.spiritCores ?? 0) + ms.rewardSpiritCores,
+          divineCrystals: (prev.divineCrystals ?? 0) + ms.rewardDivineCrystals,
+          wishTickets: (prev.wishTickets ?? 0) + ms.rewardWishTickets,
+          festivalState: {
+            ...fest,
+            claimedMilestones: [...fest.claimedMilestones, ms.lanternsTarget],
+          },
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleOpenMysteryBox = useCallback(
+    (tierId: MysteryBoxTierId) => {
+      const box = FESTIVAL_MYSTERY_BOXES.find((b) => b.id === tierId);
+      if (!box) return;
+      setSave((prev) => {
+        const fest = normalizeFestivalState(prev.festivalState);
+        const boughtCount = fest.mysteryBoxPurchases[tierId] ?? 0;
+        if (boughtCount >= box.maxWeeklyPurchases || prev.gems < box.costGems) return prev;
+
+        // Weighted roll across box.drops
+        const roll = Math.random() * 100;
+        let acc = 0;
+        let pickedIdx = 0;
+        for (let i = 0; i < box.drops.length; i++) {
+          acc += box.drops[i].chancePct;
+          if (roll <= acc) {
+            pickedIdx = i;
+            break;
+          }
+        }
+        const picked = box.drops[pickedIdx] ?? box.drops[0];
+        const isJackpot = picked.rarity === 'mythic';
+
+        let bonusGold = 0;
+        let bonusGems = 0;
+        let bonusCores = tierId === 'nebula' ? 3 : tierId === 'eclipse' ? 6 : 12;
+        let bonusEssence = 0;
+        let bonusDivine = 0;
+        let bonusWish = 0;
+        let bonusShards = 0;
+        let grantSGear = tierId === 'supreme';
+
+        if (tierId === 'nebula') {
+          if (pickedIdx === 0) {
+            bonusGold += 550;
+            bonusEssence += 25;
+          } else if (pickedIdx === 1) {
+            bonusCores += 6;
+            bonusDivine += 8;
+          } else if (pickedIdx === 2) {
+            bonusWish += 2;
+            bonusShards += 12;
+          } else {
+            bonusGems += 120;
+            grantSGear = true;
+          }
+        } else if (tierId === 'eclipse') {
+          if (pickedIdx === 0) {
+            bonusGold += 1200;
+            bonusDivine += 14;
+            bonusWish += 2;
+          } else if (pickedIdx === 1) {
+            bonusCores += 12;
+            bonusShards += 18;
+          } else if (pickedIdx === 2) {
+            bonusGems += 60;
+            grantSGear = true;
+          } else {
+            bonusGems += 220;
+            bonusWish += 4;
+            grantSGear = true;
+          }
+        } else {
+          if (pickedIdx === 0) {
+            bonusDivine += 24;
+            bonusWish += 4;
+          } else if (pickedIdx === 1) {
+            bonusCores += 18;
+            bonusShards += 25;
+          } else {
+            bonusGems += 350;
+            bonusWish += 6;
+          }
+        }
+
+        const nextInv = grantSGear
+          ? [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)]
+          : prev.inventory;
+        const mx = normalizeMysticExchange(prev.mysticExchange);
+        const nextShards = mx.artifactShards + bonusShards;
+
+        soundEngine.playVictory();
+        setLastBoxReward({
+          boxName: box.name,
+          tierLabel: isJackpot ? 'ĐẠI JACKPOT' : 'Mốc Thưởng Bí Ẩn',
+          isJackpot,
+          summary: `${picked.label} (+${box.lanternsBonus} Đèn Lồng)`,
+        });
+        if (isJackpot) {
+          triggerUpgradeCelebration(`NỔ HŨ · ${box.name}`, picked.label);
+        }
+
+        return {
+          ...prev,
+          gold: prev.gold + bonusGold,
+          gems: prev.gems - box.costGems + bonusGems,
+          spiritCores: (prev.spiritCores ?? 0) + bonusCores,
+          petEssence: (prev.petEssence ?? 0) + bonusEssence,
+          divineCrystals: (prev.divineCrystals ?? 0) + bonusDivine,
+          wishTickets: (prev.wishTickets ?? 0) + bonusWish,
+          artifactShards: nextShards,
+          mysticExchange: { ...mx, artifactShards: nextShards },
+          inventory: nextInv,
+          nightMarket: addGemsSpent(prev, box.costGems),
+          topUpEvolution: addTopUpPoints(prev, Math.round(box.costGems * 1.2)),
+          festivalState: {
+            ...fest,
+            lanterns: fest.lanterns + box.lanternsBonus,
+            totalBoxesOpened: fest.totalBoxesOpened + 1,
+            mysteryBoxPurchases: {
+              ...fest.mysteryBoxPurchases,
+              [tierId]: boughtCount + 1,
+            },
+          },
+          honorFeed: isJackpot
+            ? appendHonorEntry(
+                prev.honorFeed,
+                'LỄ HỘI JACKPOT',
+                `mở ${box.name} nổ hũ ${picked.label}!`,
+                'purple'
+              )
+            : prev.honorFeed,
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimChampionshipMilestone = useCallback(
+    (trophiesTarget: number) => {
+      const ms = CHAMPIONSHIP_CUP_MILESTONES.find((m) => m.trophiesTarget === trophiesTarget);
+      if (!ms) return;
+      setSave((prev) => {
+        const ch = normalizeChampionshipState(prev.championship, isVipActive(prev.vip));
+        if (
+          ch.gloryTrophies < ms.trophiesTarget ||
+          ch.claimedCupMilestones.includes(ms.trophiesTarget)
+        ) {
+          return prev;
+        }
+        const fest = normalizeFestivalState(prev.festivalState);
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(
+          ms.title,
+          `+${ms.rewardGems} Ngọc · +${ms.rewardSpiritCores} Lõi Thần Sủng · +${ms.rewardLanterns} Đèn Lồng!`
+        );
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          spiritCores: (prev.spiritCores ?? 0) + ms.rewardSpiritCores,
+          wishTickets: (prev.wishTickets ?? 0) + ms.rewardWishTickets,
+          festivalState: { ...fest, lanterns: fest.lanterns + ms.rewardLanterns },
+          championship: {
+            ...ch,
+            claimedCupMilestones: [...ch.claimedCupMilestones, ms.trophiesTarget],
+          },
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleBuyWeekendPack = useCallback(
+    (packId: string) => {
+      const pack = WEEKEND_PRIVILEGE_PACKS.find((p) => p.id === packId);
+      if (!pack) return;
+      setSave((prev) => {
+        const wp = normalizeWeekendPrivilege(prev.weekendPass);
+        if (wp.purchasedPackIds.includes(pack.id) || prev.gems < pack.costGems) return prev;
+        const fest = normalizeFestivalState(prev.festivalState);
+        const nextInv = pack.rewardSGear
+          ? [...prev.inventory, rollChestGear(true, Rarity.EPIC, true)]
+          : prev.inventory;
+
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(
+          pack.name,
+          `Sở hữu Kho Báu Cuối Tuần · +${pack.rewardSpiritCores} Lõi Sủng & +${pack.rewardLanterns} Đèn Lồng!`
+        );
+        return {
+          ...prev,
+          gold: prev.gold + pack.rewardGold,
+          gems: prev.gems - pack.costGems + pack.rewardGems,
+          spiritCores: (prev.spiritCores ?? 0) + pack.rewardSpiritCores,
+          divineCrystals: (prev.divineCrystals ?? 0) + pack.rewardDivineCrystals,
+          wishTickets: (prev.wishTickets ?? 0) + pack.rewardWishTickets,
+          inventory: nextInv,
+          nightMarket: addGemsSpent(prev, pack.costGems),
+          topUpEvolution: addTopUpPoints(prev, pack.topUpPoints),
+          festivalState: {
+            ...fest,
+            lanterns: fest.lanterns + pack.rewardLanterns,
+          },
+          weekendPass: {
+            ...wp,
+            passActive: pack.activatesWeekendPass ? true : wp.passActive,
+            daysRemaining: pack.activatesWeekendPass
+              ? Math.max(wp.daysRemaining, 3)
+              : wp.daysRemaining,
+            purchasedPackIds: [...wp.purchasedPackIds, pack.id],
+          },
+          honorFeed: appendHonorEntry(
+            prev.honorFeed,
+            'KHO BÁU CUỐI TUẦN',
+            `vừa sở hữu ${pack.name}!`,
+            'gold'
+          ),
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimWeekendPassDaily = useCallback(() => {
+    setSave((prev) => {
+      if (!canClaimWeekendPassDaily(prev)) return prev;
+      const wp = normalizeWeekendPrivilege(prev.weekendPass);
+      const nextDays = Math.max(0, wp.daysRemaining - 1);
+      soundEngine.playAchievement();
+      return {
+        ...prev,
+        gold: prev.gold + 300,
+        gems: prev.gems + 45,
+        spiritCores: (prev.spiritCores ?? 0) + 4,
+        weekendPass: {
+          ...wp,
+          daysRemaining: nextDays,
+          passActive: nextDays > 0,
+          lastClaimDate: getTodayKey(),
+        },
+      };
+    });
+  }, []);
+
+  const handleOpenBundlePreview = useCallback(
+    (payload: BundlePreviewPayload, onConfirm?: () => void) => {
+      setBundlePreview({ payload, onConfirm });
+    },
+    []
+  );
+
   const activeChapter =
     CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
 
@@ -5694,6 +7119,13 @@ export default function App() {
           onStartPantheon={handleStartPantheon}
           onSelectPantheonBlessing={handleSelectPantheonBlessing}
           onClaimPantheonMilestone={handleClaimPantheonMilestone}
+          onStartChampionship={handleStartChampionship}
+          onClaimChampionshipMilestone={handleClaimChampionshipMilestone}
+          onOpenFestivalModal={() => setFestivalModalOpen(true)}
+          onSelectSkyTheme={handleSelectSkyTheme}
+          onUnlockSkyTheme={handleUnlockSkyTheme}
+          honorTickerVisible={honorTickerVisible}
+          onToggleHonorTicker={() => setHonorTickerVisible((v) => !v)}
           onQuickSweepChapter={handleQuickSweepChapter}
           onToggleMute={handleToggleMute}
           onOpenRewardsModal={(tab) => setRewardsModalTab(tab)}
@@ -5723,6 +7155,7 @@ export default function App() {
           onUnlockPet={handleUnlockPet}
           onEquipPet={handleEquipPet}
           onUpgradePet={handleUpgradePet}
+          onEvolvePet={handleEvolvePet}
           onUnlockSkin={handleUnlockSkin}
           onEquipSkin={handleEquipSkin}
           onUnlockAura={handleUnlockAura}
@@ -5771,6 +7204,9 @@ export default function App() {
           onResetChainCycle={handleResetChainCycle}
           onBreakGemVault={handleBreakGemVault}
           onClaimGemVaultMilestone={handleClaimGemVaultMilestone}
+          onBuyWeekendPack={handleBuyWeekendPack}
+          onClaimWeekendPassDaily={handleClaimWeekendPassDaily}
+          onOpenBundlePreview={handleOpenBundlePreview}
           onPowerAdvisorAction={handlePowerAdvisorAction}
           onEquipRune={handleEquipRune}
           onUnequipRune={handleUnequipRune}
@@ -5778,6 +7214,22 @@ export default function App() {
           onBulkFuseRunes={handleBulkFuseRunes}
           onRotateHero={(deltaRad) => engineRef.current?.rotateLobbyHero(deltaRad)}
           onResetHeroRotation={() => engineRef.current?.resetLobbyHeroRotation()}
+          photoMode={photoMode}
+          photoAngle={photoAngle}
+          lobbyHeroPose={save.lobbyHeroPose ?? 'heroic'}
+          onTogglePhotoMode={(active) => setPhotoMode(active)}
+          onChangePhotoAngle={(angle) => setPhotoAngle(angle)}
+          onSelectHeroPose={(pose: LobbyHeroPoseId) =>
+            setSave((prev) => ({ ...prev, lobbyHeroPose: pose }))
+          }
+          onCapturePhoto={handleCaptureLobbyPhoto}
+          onOpenWave12Sanctum={(tab) => setWave12SanctumTab(tab)}
+          onOpenCpBreakdown={() => setCpBreakdownOpen(true)}
+          onOpenClaimAllModal={() => setClaimAllModalOpen(true)}
+          onStartCrystalVault={handleStartCrystalVault}
+          onClaimCrystalVaultMilestone={handleClaimCrystalVaultMilestone}
+          onActivateSupremeMonthly={handleActivateSupremeMonthly}
+          onClaimSupremeMonthlyDaily={handleClaimSupremeMonthlyDaily}
         />
       )}
 
@@ -5791,6 +7243,7 @@ export default function App() {
           onPause={handlePause}
           onDashClick={() => engineRef.current?.triggerDash()}
           onUltimateClick={() => engineRef.current?.triggerHeroUltimate()}
+          onSelectChampionshipTactic={handleSelectChampionshipTactic}
         />
       )}
 
@@ -5842,6 +7295,8 @@ export default function App() {
             (runSummary?.isWorldBossMode ?? hud.isWorldBossMode) ||
             (runSummary?.isGuildWarMode ?? hud.isGuildWarMode)
               ? 1
+              : (runSummary?.isChampionshipMode ?? hud.isChampionshipMode)
+              ? CHAMPIONSHIP_TOTAL_ROUNDS
               : (runSummary?.isPantheonMode ?? hud.isPantheonMode)
               ? PANTHEON_TOTAL_STAGES
               : (runSummary?.isAbyssalMode ?? hud.isAbyssalMode)
@@ -5901,6 +7356,17 @@ export default function App() {
           pantheonStage={runSummary?.pantheonStage ?? hud.pantheonStage ?? 1}
           pantheonScore={runSummary?.pantheonScore ?? hud.pantheonScore ?? 0}
           divineCrystalsEarned={runSummary?.divineCrystals ?? 0}
+          isChampionshipMode={runSummary?.isChampionshipMode ?? hud.isChampionshipMode}
+          championshipRound={runSummary?.championshipRound ?? hud.championshipRound ?? 1}
+          championshipScore={runSummary?.championshipScore ?? 0}
+          gloryTrophiesEarned={runSummary?.gloryTrophies ?? 0}
+          spiritCoresEarned={runSummary?.spiritCores ?? 0}
+          festivalLanternsEarned={runSummary?.festivalLanterns ?? 0}
+          isCrystalVaultMode={runSummary?.isCrystalVaultMode ?? hud.isCrystalVaultMode}
+          vaultPillarsBroken={runSummary?.vaultPillarsBroken ?? hud.vaultPillarsBroken ?? 0}
+          vaultReforgeLooted={runSummary?.vaultReforgeLooted ?? hud.vaultReforgeLooted ?? 0}
+          vaultShardsLooted={runSummary?.vaultShardsLooted ?? hud.vaultShardsLooted ?? 0}
+          warCrestsEarned={runSummary?.warCrests ?? 0}
           wingFeathersEarned={runSummary?.wingFeathers ?? 0}
           mountShardsEarned={runSummary?.mountShards ?? 0}
           awakeningCrystalsEarned={runSummary?.awakeningCrystals ?? 0}
@@ -5917,7 +7383,31 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isPantheonMode ?? hud.isPantheonMode)
+            (runSummary?.isCrystalVaultMode ?? hud.isCrystalVaultMode)
+              ? () => {
+                  if (
+                    normalizeCrystalVault(
+                      save.crystalVault,
+                      isSupremeMonthlyActive(save.supremeMonthly)
+                    ).dailyRunsRemaining > 0
+                  ) {
+                    handleStartCrystalVault();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isChampionshipMode ?? hud.isChampionshipMode)
+              ? () => {
+                  if (
+                    normalizeChampionshipState(save.championship, isVipActive(save.vip))
+                      .dailyRunsRemaining > 0
+                  ) {
+                    handleStartChampionship();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isPantheonMode ?? hud.isPantheonMode)
               ? () => {
                   if (normalizePantheonExpedition(save.pantheonExpedition).dailyRunsRemaining > 0) {
                     handleStartPantheon();
@@ -6006,6 +7496,21 @@ export default function App() {
           onOpenSettings={
             phase === GamePhase.PAUSED ? () => setSettingsOpen(true) : undefined
           }
+          onQuickAction={(target) => {
+            handleReturnTitle();
+            if (target === 'gear') {
+              setActiveLobbyTab('gear');
+            } else if (target === 'pets') {
+              setHeroSubTabInitial('pets');
+              setActiveLobbyTab('heroes');
+            } else if (target === 'halos') {
+              setHeroSubTabInitial('halos');
+              setActiveLobbyTab('heroes');
+            } else if (target === 'festival') {
+              setActiveLobbyTab('battle');
+              setFestivalModalOpen(true);
+            }
+          }}
         />
       )}
 
@@ -6135,6 +7640,7 @@ export default function App() {
           onClaimSeasonMedal={handleClaimSeasonMedal}
           onSelectTitle={handleSelectTitle}
           onSelectDynamicTitle={handleSelectDynamicTitle}
+          onClaimCodexRank={handleClaimCodexRank}
         />
       )}
 
@@ -6285,6 +7791,62 @@ export default function App() {
         />
       )}
 
+      {phase === GamePhase.TITLE && enteredGame && (
+        <CelestialFestivalModal
+          open={festivalModalOpen}
+          save={save}
+          lastBoxReward={lastBoxReward}
+          onClose={() => setFestivalModalOpen(false)}
+          onClaimQuest={handleClaimFestivalQuest}
+          onClaimMilestone={handleClaimFestivalMilestone}
+          onOpenMysteryBox={handleOpenMysteryBox}
+          onPreviewMysteryBox={handleOpenBundlePreview}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && wave12SanctumTab && (
+        <Wave12SanctumModal
+          save={save}
+          initialTab={wave12SanctumTab}
+          onClose={() => setWave12SanctumTab(null)}
+          onUpgradeMythicWeapon={handleUpgradeMythicWeapon}
+          onToggleGoldenStatLock={handleToggleGoldenStatLock}
+          onReforgeGoldenStats={handleReforgeGoldenStats}
+          onSpinTreasureWheel={handleSpinTreasureWheel}
+          onClaimWheelMilestone={handleClaimWheelMilestone}
+          onUpgradeAltar={handleUpgradeAltar}
+          onUnlockOrEquipWarBanner={handleUnlockOrEquipWarBanner}
+          onUpgradeWarBanner={handleUpgradeWarBanner}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && cpBreakdownOpen && (
+        <CombatPowerBreakdownModal
+          save={save}
+          totalPower={playerStats.powerRating}
+          onClose={() => setCpBreakdownOpen(false)}
+          onJumpCategory={handleJumpFromCpCategory}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && claimAllModalOpen && (
+        <ClaimAllSummaryModal
+          save={save}
+          onClose={() => setClaimAllModalOpen(false)}
+          onClaimAll={handleExecuteClaimAllLobbyRewards}
+        />
+      )}
+
+      {bundlePreview && (
+        <BundlePreviewModal
+          payload={bundlePreview.payload}
+          gems={save.gems}
+          onClose={() => setBundlePreview(null)}
+          onConfirm={bundlePreview.onConfirm}
+        />
+      )}
+
+      <UpgradeCelebrationOverlay celebration={upgradeCelebration} />
       <CombatPowerToast toast={powerToast} />
       <AchievementToast achievement={activeAchievementToast} />
 
@@ -6306,6 +7868,8 @@ export default function App() {
           isAbyssalMode={transitionState.isAbyssalMode}
           isGuildWarMode={transitionState.isGuildWarMode}
           isPantheonMode={transitionState.isPantheonMode}
+          isChampionshipMode={transitionState.isChampionshipMode}
+          isCrystalVaultMode={transitionState.isCrystalVaultMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

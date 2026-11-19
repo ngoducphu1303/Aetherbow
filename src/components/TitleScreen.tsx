@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  BookOpen,
   Camera,
   ChevronDown,
   ChevronLeft,
@@ -7,6 +8,9 @@ import {
   ChevronUp,
   Compass,
   Crown,
+  Download,
+  EyeOff,
+  Flag,
   Flame,
   Gavel,
   Gem,
@@ -18,6 +22,7 @@ import {
   Lock,
   Mail,
   Map,
+  Megaphone,
   Moon,
   ScrollText,
   Send,
@@ -26,6 +31,7 @@ import {
   ShoppingBag,
   Skull,
   Sparkles,
+  Sun,
   Sword,
   Swords,
   Ticket,
@@ -39,8 +45,11 @@ import {
 import abyssalGauntletArt from '../assets/images/abyssal_gauntlet_arena_1795010358870.jpg';
 import bloodMoonArt from '../assets/images/blood_moon_nightmare_1795007597791.jpg';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
+import celestialFestivalArt from '../assets/images/celestial_festival_lanterns_1795051178335.jpg';
+import championshipTrophyArt from '../assets/images/championship_trophy_arena_1795051178175.jpg';
 import coopRaidArt from '../assets/images/coop_raid_portal_1795004418576.jpg';
 import crystalDefenseArt from '../assets/images/crystal_defense_sanctum_1795005958099.jpg';
+import crystalVaultArt from '../assets/images/crystal_vault_raid_1795054761636.jpg';
 import dailyRiftArt from '../assets/images/daily_rift_portal_art_1794977270758.jpg';
 import elementalTrialsArt from '../assets/images/elemental_trials_spires_1795004418882.jpg';
 import eventZodiacBanner from '../assets/images/event_zodiac_banner_1794973981859.jpg';
@@ -147,9 +156,31 @@ import {
   normalizeStepUpChain,
 } from '../data/wave10Data';
 import {
+  CHAMPIONSHIP_CUP_MILESTONES,
+  CHAMPIONSHIP_TOTAL_ROUNDS,
+  DEFAULT_HONOR_FEED,
+  LOBBY_SKY_THEMES,
+  MAX_DAILY_CHAMPIONSHIP_RUNS,
+  computeCodexSummary,
+  countClaimableChampionshipMilestones,
+  countClaimableCodexRanks,
+  countClaimableFestivalRewards,
+  normalizeChampionshipState,
+} from '../data/wave11Data';
+import {
+  CRYSTAL_VAULT_MILESTONES,
+  LOBBY_HERO_POSES,
+  MAX_DAILY_CRYSTAL_VAULT_RUNS,
+  countClaimableCrystalVaultMilestones,
+  isSupremeMonthlyActive,
+  normalizeCrystalVault,
+  previewLobbyClaimAll,
+} from '../data/wave12Data';
+import {
   ArtifactId,
   AuraStyleId,
   AvatarFrameId,
+  BundlePreviewPayload,
   ComputedPlayerStats,
   CoopRaidDifficulty,
   ElementalTowerId,
@@ -158,6 +189,8 @@ import {
   HeroId,
   HeroSkinId,
   LobbyCameraPreset,
+  LobbyHeroPoseId,
+  LobbySkyThemeId,
   MonthlyCardTier,
   MountId,
   PantheonBlessingId,
@@ -185,6 +218,7 @@ import {
   LobbyShopPanel,
   ShopSectionTab,
 } from './LobbyPanels';
+import { Wave12SanctumTab } from './Wave12SanctumModal';
 
 export type LobbyTab = 'battle' | 'gear' | 'heroes' | 'runes' | 'shop';
 export type LobbyGameMode =
@@ -199,7 +233,9 @@ export type LobbyGameMode =
   | 'blood_moon'
   | 'abyssal_gauntlet'
   | 'guild_war'
-  | 'pantheon_expedition';
+  | 'pantheon_expedition'
+  | 'championship_3round'
+  | 'crystal_vault';
 
 interface TitleScreenProps {
   save: SaveData;
@@ -242,6 +278,13 @@ interface TitleScreenProps {
   onStartPantheon?: () => void;
   onSelectPantheonBlessing?: (blessingId: PantheonBlessingId) => void;
   onClaimPantheonMilestone?: (score: number) => void;
+  onStartChampionship?: () => void;
+  onClaimChampionshipMilestone?: (trophiesRequired: number) => void;
+  onOpenFestivalModal?: () => void;
+  onSelectSkyTheme?: (themeId: LobbySkyThemeId) => void;
+  onUnlockSkyTheme?: (themeId: LobbySkyThemeId, mode: 'codex' | 'gems') => void;
+  honorTickerVisible?: boolean;
+  onToggleHonorTicker?: () => void;
   onQuickSweepChapter: (chapterId: number) => void;
   onToggleMute: () => void;
   onOpenRewardsModal: (tab: 'checkin' | 'quests' | 'welcome' | 'journey') => void;
@@ -272,6 +315,7 @@ interface TitleScreenProps {
   onUnlockPet: (petId: PetId, currency: 'gold' | 'gems') => void;
   onEquipPet: (petId: PetId | null) => void;
   onUpgradePet: (petId: PetId) => void;
+  onEvolvePet?: (petId: PetId) => void;
   onUnlockSkin: (skinId: HeroSkinId, currency: 'gold' | 'gems') => void;
   onEquipSkin: (heroId: HeroId, skinId: HeroSkinId) => void;
   onUnlockAura: (auraId: AuraStyleId, currency: 'gold' | 'gems') => void;
@@ -323,6 +367,9 @@ interface TitleScreenProps {
   onResetChainCycle?: () => void;
   onBreakGemVault?: () => void;
   onClaimGemVaultMilestone?: (target: number) => void;
+  onBuyWeekendPack?: (packId: string) => void;
+  onClaimWeekendPassDaily?: () => void;
+  onOpenBundlePreview?: (payload: BundlePreviewPayload, onConfirm?: () => void) => void;
   onPowerAdvisorAction?: (kind: PowerRecommendation['actionKind']) => void;
   onEquipRune: (uid: string) => void;
   onUnequipRune: (uid: string) => void;
@@ -330,6 +377,20 @@ interface TitleScreenProps {
   onBulkFuseRunes: () => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
+  photoMode?: boolean;
+  photoAngle?: 'full' | 'closeup' | 'hero_wide';
+  lobbyHeroPose?: LobbyHeroPoseId;
+  onTogglePhotoMode?: (active: boolean) => void;
+  onChangePhotoAngle?: (angle: 'full' | 'closeup' | 'hero_wide') => void;
+  onSelectHeroPose?: (pose: LobbyHeroPoseId) => void;
+  onCapturePhoto?: () => void;
+  onOpenWave12Sanctum?: (tab: Wave12SanctumTab) => void;
+  onOpenCpBreakdown?: () => void;
+  onOpenClaimAllModal?: () => void;
+  onStartCrystalVault?: () => void;
+  onClaimCrystalVaultMilestone?: (pillarsTarget: number) => void;
+  onActivateSupremeMonthly?: () => void;
+  onClaimSupremeMonthlyDaily?: () => void;
 }
 
 const NAV_TABS: Array<{
@@ -403,6 +464,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onStartPantheon,
   onSelectPantheonBlessing,
   onClaimPantheonMilestone,
+  onStartChampionship,
+  onClaimChampionshipMilestone,
+  onOpenFestivalModal,
+  onSelectSkyTheme,
+  onUnlockSkyTheme,
+  honorTickerVisible = true,
+  onToggleHonorTicker,
   onQuickSweepChapter,
   onToggleMute,
   onOpenRewardsModal,
@@ -430,6 +498,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUnlockPet,
   onEquipPet,
   onUpgradePet,
+  onEvolvePet,
   onUnlockSkin,
   onEquipSkin,
   onUnlockAura,
@@ -478,6 +547,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onResetChainCycle,
   onBreakGemVault,
   onClaimGemVaultMilestone,
+  onBuyWeekendPack,
+  onClaimWeekendPassDaily,
+  onOpenBundlePreview,
   onPowerAdvisorAction,
   onEquipRune,
   onUnequipRune,
@@ -485,9 +557,24 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onBulkFuseRunes,
   onRotateHero,
   onResetHeroRotation,
+  photoMode = false,
+  photoAngle = 'full',
+  lobbyHeroPose = 'heroic',
+  onTogglePhotoMode,
+  onChangePhotoAngle,
+  onSelectHeroPose,
+  onCapturePhoto,
+  onOpenWave12Sanctum,
+  onOpenCpBreakdown,
+  onOpenClaimAllModal,
+  onStartCrystalVault,
+  onClaimCrystalVaultMilestone,
+  onActivateSupremeMonthly,
+  onClaimSupremeMonthlyDaily,
 }) => {
   const [chapterPickerOpen, setChapterPickerOpen] = useState(false);
   const [featureDockOpen, setFeatureDockOpen] = useState(false);
+  const [skyPickerOpen, setSkyPickerOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [eventIdx, setEventIdx] = useState(0);
   const [eventImgFailed, setEventImgFailed] = useState(false);
@@ -501,6 +588,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [abyssalImgFailed, setAbyssalImgFailed] = useState(false);
   const [guildWarImgFailed, setGuildWarImgFailed] = useState(false);
   const [pantheonImgFailed, setPantheonImgFailed] = useState(false);
+  const [championshipImgFailed, setChampionshipImgFailed] = useState(false);
+  const [crystalVaultImgFailed, setCrystalVaultImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -590,6 +679,22 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const vaultClaimCount = countClaimableVaultRewards(save);
   const pantheonClaimCount = countClaimablePantheonMilestones(save);
   const wave10Badges = (freeChainStepReady ? 1 : 0) + vaultClaimCount + pantheonClaimCount;
+  const codexSummary = computeCodexSummary(save);
+  const codexClaimCount = countClaimableCodexRanks(save);
+  const festivalClaimCount = countClaimableFestivalRewards(save);
+  const championshipState = normalizeChampionshipState(save.championship);
+  const championshipClaimCount = countClaimableChampionshipMilestones(save);
+  const wave11Badges = codexClaimCount + festivalClaimCount + championshipClaimCount;
+  const supremeActive = isSupremeMonthlyActive(save.supremeMonthly);
+  const crystalVaultState = normalizeCrystalVault(save.crystalVault, supremeActive);
+  const crystalVaultClaimCount = countClaimableCrystalVaultMilestones(save);
+  const claimAllPreview = previewLobbyClaimAll(save);
+  const activeSkyThemeId: LobbySkyThemeId = save.lobbySkyTheme ?? 'golden_galaxy';
+  const unlockedSkyThemes: LobbySkyThemeId[] = save.unlockedSkyThemes ?? [
+    'golden_galaxy',
+    'dawn_sanctum',
+  ];
+  const honorMarqueeItems = [...(save.honorFeed ?? []), ...DEFAULT_HONOR_FEED].slice(0, 10);
 
   const dockTotalBadges =
     claimableCount +
@@ -604,13 +709,137 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     wave7RewardBadges +
     wave8Badges +
     wave9Badges +
-    wave10Badges;
+    wave10Badges +
+    wave11Badges +
+    crystalVaultClaimCount;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
     const nextId = Math.max(1, Math.min(CHAPTERS.length, selectedChapterId + delta));
     onSelectChapter(nextId);
   };
+
+  // Wave 12: Clean 3D Lobby Photo Studio Mode (Hides all lobby HUD for hero showcase & PNG capture)
+  if (photoMode) {
+    return (
+      <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-2">
+          <div className="pointer-events-auto cel-panel-ornate rounded-2xl px-3.5 py-2 flex items-center gap-2.5">
+            <Camera className="w-4 h-4 text-amber-300 shrink-0" />
+            <div>
+              <div className="font-display text-xs font-black text-amber-200">
+                Studio Chụp Ảnh 3D · {activeHero.name}
+              </div>
+              <div className="text-[10px] text-slate-300">
+                Kéo xoay hoặc chọn Tư Thế &amp; Góc Máy để lưu ảnh PNG độ nét cao
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onTogglePhotoMode?.(false);
+            }}
+            className="pointer-events-auto a2-slate-btn px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer border border-amber-400/50"
+          >
+            <X className="w-4 h-4 text-amber-300" />
+            <span>Thoát Chụp Ảnh</span>
+          </button>
+        </div>
+
+        <div className="pointer-events-auto max-w-3xl w-full mx-auto cel-panel-ornate rounded-2xl p-3 sm:p-4 space-y-3 shadow-2xl">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {LOBBY_HERO_POSES.map((pose) => {
+                const active = lobbyHeroPose === pose.id;
+                return (
+                  <button
+                    key={pose.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick();
+                      onSelectHeroPose?.(pose.id);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer transition-colors ${
+                      active
+                        ? 'a2-yellow-btn'
+                        : 'bg-[#090f24] border border-slate-700 text-slate-200 hover:border-amber-300'
+                    }`}
+                  >
+                    {pose.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {([
+                ['full', 'Toàn Thân'],
+                ['closeup', 'Cận Cảnh'],
+                ['hero_wide', 'Góc Rộng'],
+              ] as const).map(([angleId, label]) => (
+                <button
+                  key={angleId}
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    onChangePhotoAngle?.(angleId);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                    photoAngle === angleId
+                      ? 'bg-sky-400 text-slate-950'
+                      : 'bg-[#090f24] border border-slate-700 text-slate-300 hover:border-sky-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-400/20">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onRotateHero?.(-0.45)}
+                className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+              >
+                ↺ Xoay Trái
+              </button>
+              <button
+                type="button"
+                onClick={() => onRotateHero?.(0.45)}
+                className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+              >
+                ↻ Xoay Phải
+              </button>
+              <button
+                type="button"
+                onClick={() => onResetHeroRotation?.()}
+                className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+              >
+                Chính Diện
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playVictory();
+                onCapturePhoto?.();
+              }}
+              className="a2-yellow-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 whitespace-nowrap cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Chụp &amp; Lưu Ảnh PNG</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between">
@@ -670,6 +899,38 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </span>
           )}
         </button>
+
+        {/* Wave 12: Quick Clickable CP Breakdown & 1-Tap Claim All */}
+        <div className="hidden lg:flex items-center gap-1.5">
+          {onOpenCpBreakdown && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onOpenCpBreakdown();
+              }}
+              title="Phân Tích Lực Chiến 6 Hạng Mục & Gợi Ý Mạnh Hóa 1 Chạm"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#130d29] border border-amber-400/50 hover:border-amber-300 text-[11px] font-black text-amber-200 whitespace-nowrap cursor-pointer transition-colors"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Phân Tích LC</span>
+            </button>
+          )}
+          {onOpenClaimAllModal && claimAllPreview.totalClaimableCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onOpenClaimAllModal();
+              }}
+              title="Nhận toàn bộ quà đang chờ tại Sảnh trong 1 chạm"
+              className="a2-yellow-btn px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+            >
+              <Gift className="w-3.5 h-3.5 shrink-0" />
+              <span>Nhận Quà (+{claimAllPreview.totalClaimableCount})</span>
+            </button>
+          )}
+        </div>
 
         {/* Right: Clean Currency Counters & Utility Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2">
@@ -758,6 +1019,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <span>Vinh Danh</span>
           </button>
 
+          {onTogglePhotoMode && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onTogglePhotoMode(true);
+              }}
+              aria-label="Chế độ chụp ảnh 3D"
+              className="cel-panel w-9 h-9 rounded-xl flex items-center justify-center text-sky-200 hover:border-amber-300 transition-colors cursor-pointer shrink-0"
+              title="Chế Độ Chụp Ảnh 3D & Đổi Tư Thế Anh Hùng"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
@@ -816,6 +1092,52 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </button>
         </div>
       </header>
+
+      {/* HALL OF HONOR MARQUEE STRIP (Collapsible, Non-Intrusive) */}
+      {activeTab === 'battle' && honorTickerVisible && (
+        <div className="pointer-events-auto z-20 bg-[#070b1a]/95 border-b border-amber-400/25 px-3 sm:px-6 py-1 flex items-center gap-2 shrink-0 overflow-hidden">
+          <span className="px-1.5 py-0.5 rounded bg-amber-400/15 border border-amber-300/45 text-[9px] font-black text-amber-300 flex items-center gap-1 shrink-0 whitespace-nowrap">
+            <Megaphone className="w-3 h-3" />
+            <span>VINH DANH</span>
+          </span>
+          <div className="flex-1 overflow-hidden">
+            <div className="a2-honor-marquee flex items-center gap-6 whitespace-nowrap text-[11px]">
+              {honorMarqueeItems.concat(honorMarqueeItems).map((item, idx) => (
+                <span key={`${item.id}-${idx}`} className="inline-flex items-center gap-1.5">
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                      item.accent === 'emerald'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : item.accent === 'purple'
+                        ? 'bg-purple-500/20 text-purple-300'
+                        : item.accent === 'rose'
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : 'bg-amber-400/20 text-amber-300'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                  <span className="text-amber-200 font-black">{item.playerName}</span>
+                  <span className="text-slate-200 font-semibold">{item.message}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+          {onToggleHonorTicker && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onToggleHonorTicker();
+              }}
+              title="Ẩn thanh thông báo vinh danh"
+              className="text-slate-400 hover:text-amber-300 p-0.5 cursor-pointer shrink-0"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* MAIN CONTENT AREA */}
       <main key={activeTab} className="flex-1 min-h-0 flex flex-col a2-tab-enter">
@@ -911,7 +1233,150 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </span>
                     </button>
                   )}
+
+                  {onSelectSkyTheme && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setSkyPickerOpen((v) => !v);
+                        }}
+                        title="Đổi Bầu Trời Động & Bệ Đứng Hoàng Gia 3D"
+                        className="cel-panel flex items-center gap-1 px-2.5 py-1.5 rounded-xl border-amber-400/45 hover:border-amber-300 text-[11px] font-black text-amber-200 cursor-pointer whitespace-nowrap"
+                      >
+                        <Sun className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span className="hidden sm:inline">Bầu Trời 3D</span>
+                      </button>
+
+                      {skyPickerOpen && (
+                        <div className="absolute left-0 top-10 w-72 cel-panel-ornate rounded-2xl p-3 shadow-2xl z-30 space-y-2">
+                          <div className="flex items-center justify-between border-b border-amber-400/20 pb-1.5">
+                            <span className="font-display text-xs font-black text-amber-200">
+                              Bầu Trời Động &amp; Bệ Hoàng Gia 3D
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setSkyPickerOpen(false)}
+                              className="text-slate-400 hover:text-white cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="space-y-1.5">
+                            {LOBBY_SKY_THEMES.map((theme) => {
+                              const isUnlocked = unlockedSkyThemes.includes(theme.id);
+                              const isEquipped = activeSkyThemeId === theme.id;
+                              const codexReq = theme.unlockCodexScore ?? 0;
+                              const canCodexUnlock =
+                                !isUnlocked &&
+                                codexReq > 0 &&
+                                codexSummary.totalPoints >= codexReq;
+                              const canGemUnlock =
+                                !isUnlocked &&
+                                theme.unlockGems > 0 &&
+                                save.gems >= theme.unlockGems;
+
+                              return (
+                                <div
+                                  key={theme.id}
+                                  className={`rounded-xl p-2 border flex items-center justify-between gap-2 ${
+                                    isEquipped
+                                      ? 'bg-amber-400/15 border-amber-300/75'
+                                      : 'bg-[#070b1a] border-amber-400/20'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className={`w-6 h-6 rounded-lg border border-white/50 shrink-0 bg-gradient-to-br ${theme.swatchGradient}`}
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="text-[11px] font-black text-white truncate">
+                                        {theme.name}
+                                      </div>
+                                      <div className="text-[9px] text-slate-400 truncate">
+                                        {theme.badge}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {isUnlocked ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        soundEngine.playUiClick(1.06);
+                                        onSelectSkyTheme(theme.id);
+                                      }}
+                                      className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer ${
+                                        isEquipped
+                                          ? 'bg-emerald-500/25 border border-emerald-400/60 text-emerald-300'
+                                          : 'a2-yellow-btn'
+                                      }`}
+                                    >
+                                      {isEquipped ? 'Đang Dùng' : 'Áp Dụng'}
+                                    </button>
+                                  ) : canCodexUnlock ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        soundEngine.playVictory();
+                                        onUnlockSkyTheme?.(theme.id, 'codex');
+                                      }}
+                                      className="a2-emerald-btn px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer"
+                                    >
+                                      Mở 0đ (Sổ Tay)
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={!canGemUnlock}
+                                      onClick={() => {
+                                        soundEngine.playVictory();
+                                        onUnlockSkyTheme?.(theme.id, 'gems');
+                                      }}
+                                      className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums ${
+                                        canGemUnlock
+                                          ? 'a2-purple-btn'
+                                          : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                                      }`}
+                                      title={
+                                        codexReq > 0
+                                          ? `Hoặc đạt ${codexReq} điểm Sổ Tay`
+                                          : undefined
+                                      }
+                                    >
+                                      {theme.unlockGems} Ngọc
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                {onOpenFestivalModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.06);
+                      setFeatureDockOpen(false);
+                      onOpenFestivalModal();
+                    }}
+                    className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl border-amber-300/65 hover:border-amber-200 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap"
+                  >
+                    <Gift className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span className="hidden sm:inline">Lễ Hội Tinh Giới</span>
+                    {festivalClaimCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                        +{festivalClaimCount}
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Center Celestial Crest & Compact Combat Telemetry Pill */}
@@ -946,28 +1411,45 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
               {/* Right-Edge Expandable Feature Dock + Featured Event Banner */}
               <div className="pointer-events-auto flex flex-col items-end gap-2 z-20 shrink-0 relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    setFeatureDockOpen((v) => !v);
-                  }}
-                  aria-expanded={featureDockOpen}
-                  className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl border-amber-300/60 hover:border-amber-200 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap shadow-lg"
-                >
-                  <LayoutGrid className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span className="hidden sm:inline">Kho Tính Năng</span>
-                  {dockTotalBadges > 0 && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
-                      +{dockTotalBadges}
-                    </span>
+                <div className="flex items-center gap-1.5">
+                  {onOpenWave12Sanctum && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick();
+                        onOpenWave12Sanctum('mythic');
+                      }}
+                      className="a2-purple-btn flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300/75 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap shadow-lg"
+                      title="Thần Binh Thức Tỉnh 3D · Vòng Quay Kho Báu · Tế Đàn & Cờ Hiệu 3D"
+                    >
+                      <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span className="hidden sm:inline">Thần Binh &amp; Cờ 3D</span>
+                    </button>
                   )}
-                  {featureDockOpen ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-amber-300" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-amber-300" />
-                  )}
-                </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick();
+                      setFeatureDockOpen((v) => !v);
+                    }}
+                    aria-expanded={featureDockOpen}
+                    className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl border-amber-300/60 hover:border-amber-200 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap shadow-lg"
+                  >
+                    <LayoutGrid className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span className="hidden sm:inline">Kho Tính Năng</span>
+                    {dockTotalBadges > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                        +{dockTotalBadges}
+                      </span>
+                    )}
+                    {featureDockOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-amber-300" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-amber-300" />
+                    )}
+                  </button>
+                </div>
 
                 {featureDockOpen && (
                   <div className="absolute top-11 right-0 w-72 sm:w-80 cel-panel-ornate rounded-2xl p-3 shadow-2xl z-30 a2-dock-enter">
@@ -1368,6 +1850,141 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                           </span>
                         )}
                       </button>
+
+                      {onOpenFestivalModal && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFeatureDockOpen(false);
+                            onOpenFestivalModal();
+                          }}
+                          className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span className="truncate">Lễ Hội Tinh Giới</span>
+                          </span>
+                          {festivalClaimCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                              +{festivalClaimCount}
+                            </span>
+                          )}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setFeatureDockOpen(false);
+                          onOpenProfileModal('codex');
+                        }}
+                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
+                          <BookOpen className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                          <span className="truncate">Sổ Tay Buff</span>
+                        </span>
+                        {codexClaimCount > 0 ? (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
+                            +{codexClaimCount}
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-mono-nums font-black text-amber-300">
+                            H.{codexSummary.currentRank.rank}
+                          </span>
+                        )}
+                      </button>
+
+                      {onOpenWave12Sanctum && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave12Sanctum('mythic');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                              <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                              <span className="truncate">Thần Binh 3D</span>
+                            </span>
+                            <span className="text-[9px] font-mono-nums font-black text-yellow-300">
+                              B.{save.mythicWeapon?.tier ?? 0}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave12Sanctum('wheel');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-rose-200 truncate">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                              <span className="truncate">Quay Kho Báu</span>
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave12Sanctum('altar');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-orange-200 truncate">
+                              <Flag className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                              <span className="truncate">Tế Đàn &amp; Cờ 3D</span>
+                            </span>
+                          </button>
+                        </>
+                      )}
+
+                      {onOpenCpBreakdown && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFeatureDockOpen(false);
+                            onOpenCpBreakdown();
+                          }}
+                          className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
+                            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span className="truncate">Phân Tích LC</span>
+                          </span>
+                        </button>
+                      )}
+
+                      {onOpenClaimAllModal && claimAllPreview.totalClaimableCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFeatureDockOpen(false);
+                            onOpenClaimAllModal();
+                          }}
+                          className="a2-yellow-btn px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 cursor-pointer col-span-2"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-black truncate">
+                            <Gift className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">Nhận Nhanh Toàn Bộ Quà Sảnh</span>
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 font-mono-nums text-[9px] font-black">
+                            +{claimAllPreview.totalClaimableCount}
+                          </span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1377,7 +1994,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   <div className="relative h-20 w-full bg-[#0b1229]">
                     {!eventImgFailed ? (
                       <img
-                        src={eventZodiacBanner}
+                        src={
+                          activeEvent.target === 'festival'
+                            ? celestialFestivalArt
+                            : activeEvent.target === 'championship_3round'
+                            ? championshipTrophyArt
+                            : eventZodiacBanner
+                        }
                         alt={activeEvent.title}
                         referrerPolicy="no-referrer"
                         onError={() => setEventImgFailed(true)}
@@ -1429,7 +2052,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       type="button"
                       onClick={() => {
                         soundEngine.playUiClick(1.05);
-                        if (activeEvent.target === 'chain_bank') {
+                        if (activeEvent.target === 'festival') {
+                          onOpenFestivalModal?.();
+                        } else if (activeEvent.target === 'championship_3round') {
+                          onGameModeChange('championship_3round');
+                        } else if (activeEvent.target === 'spirit_evolution') {
+                          if (onOpenHeroSubTab) onOpenHeroSubTab('pets');
+                          else onTabChange('heroes');
+                        } else if (activeEvent.target === 'chain_bank') {
                           onOpenShopSection('chain_bank');
                         } else if (activeEvent.target === 'divine_halo') {
                           if (onOpenHeroSubTab) onOpenHeroSubTab('halos');
@@ -1803,6 +2433,36 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   >
                     <Crown className="w-3 h-3 shrink-0" />
                     <span>Điện Thần 3D</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('championship_3round');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'championship_3round'
+                        ? 'bg-gradient-to-b from-amber-200 via-amber-400 to-rose-500 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Trophy className="w-3 h-3 shrink-0" />
+                    <span>Quán Quân 3H</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('crystal_vault');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'crystal_vault'
+                        ? 'bg-gradient-to-b from-yellow-200 via-amber-400 to-cyan-400 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Gem className="w-3 h-3 shrink-0" />
+                    <span>Hầm Mỏ 3D</span>
                   </button>
                 </div>
 
@@ -2808,6 +3468,229 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </button>
                     </div>
                   </>
+                ) : gameMode === 'championship_3round' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-amber-300/70 bg-[#090d1f] shrink-0">
+                        {!championshipImgFailed ? (
+                          <img
+                            src={championshipTrophyArt}
+                            alt="Giải Đấu Quán Quân 3 Hiệp 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setChampionshipImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Trophy className="w-6 h-6 text-amber-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-amber-200 truncate">
+                            Giải Đấu Quán Quân {CHAMPIONSHIP_TOTAL_ROUNDS} Hiệp 3D
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            {championshipState.dailyRunsRemaining}/{MAX_DAILY_CHAMPIONSHIP_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Đối đầu 3 Quán Quân 3D liên hoàn, chọn Thẻ Chiến Thuật giữa hiệp để săn Cúp Vinh Quang &amp; Lõi Thần Sủng!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-amber-400/20 py-1.5 px-1">
+                      <span className="text-amber-300 font-bold">
+                        Cúp Vinh Quang: {championshipState.gloryTrophies.toLocaleString('vi-VN')} · Đăng quang {championshipState.championshipTitlesWon} lần
+                      </span>
+                      <span className="text-sky-300 font-bold">
+                        Lõi Thần Sủng: {save.spiritCores ?? 0}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {CHAMPIONSHIP_CUP_MILESTONES.map((ms) => {
+                        const met = championshipState.gloryTrophies >= ms.trophiesTarget;
+                        const claimed = championshipState.claimedCupMilestones.includes(
+                          ms.trophiesTarget
+                        );
+                        return (
+                          <button
+                            key={ms.trophiesTarget}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimChampionshipMilestone?.(ms.trophiesTarget);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ ${ms.trophiesTarget} Cúp`
+                              : met
+                              ? `Nhận ${ms.trophiesTarget} (+${ms.rewardSpiritCores} Lõi)`
+                              : `${ms.trophiesTarget} Cúp (+${ms.rewardSpiritCores} Lõi)`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          if (onOpenHeroSubTab) onOpenHeroSubTab('pets');
+                          else onTabChange('heroes');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                        <span>Thần Sủng 3D</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-start="true"
+                        disabled={championshipState.dailyRunsRemaining <= 0}
+                        onClick={onStartChampionship}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          championshipState.dailyRunsRemaining > 0
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {championshipState.dailyRunsRemaining > 0
+                            ? 'VÀO GIẢI ĐẤU 3 HIỆP 3D'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {championshipState.dailyRunsRemaining > 0 && (
+                          <ChevronRight className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                  </>
+                ) : gameMode === 'crystal_vault' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-yellow-300/75 bg-[#090d1f] shrink-0">
+                        {!crystalVaultImgFailed ? (
+                          <img
+                            src={crystalVaultArt}
+                            alt="Hầm Mỏ Pha Lê Kho Báu 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setCrystalVaultImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Gem className="w-6 h-6 text-amber-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-yellow-200 truncate">
+                            Hầm Mỏ Pha Lê Kho Báu 3D (60 Giây)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            {crystalVaultState.dailyRunsRemaining}/
+                            {MAX_DAILY_CRYSTAL_VAULT_RUNS + (supremeActive ? 1 : 0)} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Phá hủy Trụ Pha Lê Vàng &amp; Hạ Hộ Vệ Kho Báu săn Ngọc Hồn, Đá Đúc Hoàng Kim, Mảnh Thần Binh &amp; Huy Hiệu!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-amber-400/20 py-1.5 px-1">
+                      <span className="text-amber-300 font-bold">
+                        Kỷ lục: {crystalVaultState.bestPillarsBroken} Trụ/trận · Tổng phá:{' '}
+                        {crystalVaultState.totalPillarsBroken} Trụ
+                      </span>
+                      <span className="text-orange-300 font-bold">
+                        🔥 {save.reforgeStones ?? 0} Đá Đúc · ⚔ {save.mythicShards ?? 0} Mảnh
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {CRYSTAL_VAULT_MILESTONES.map((ms) => {
+                        const met = crystalVaultState.totalPillarsBroken >= ms.pillarsTarget;
+                        const claimed = crystalVaultState.claimedMilestones.includes(
+                          ms.pillarsTarget
+                        );
+                        return (
+                          <button
+                            key={ms.pillarsTarget}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimCrystalVaultMilestone?.(ms.pillarsTarget);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ ${ms.pillarsTarget} Trụ`
+                              : met
+                              ? `Nhận ${ms.pillarsTarget} (+${ms.rewardGems}💎)`
+                              : `${ms.pillarsTarget} Trụ (+${ms.rewardMythicShards}⚔)`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onOpenWave12Sanctum?.('mythic');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Sword className="w-4 h-4 text-amber-300 shrink-0" />
+                        <span>Đúc Thần Binh</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-start="true"
+                        disabled={crystalVaultState.dailyRunsRemaining <= 0}
+                        onClick={onStartCrystalVault}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          crystalVaultState.dailyRunsRemaining > 0
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {crystalVaultState.dailyRunsRemaining > 0
+                            ? 'KHAI PHÁ HẦM MỎ PHA LÊ 3D'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {crystalVaultState.dailyRunsRemaining > 0 && (
+                          <ChevronRight className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
@@ -2938,6 +3821,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onUnlockPet={onUnlockPet}
             onEquipPet={onEquipPet}
             onUpgradePet={onUpgradePet}
+            onEvolvePet={onEvolvePet}
             onUnlockSkin={onUnlockSkin}
             onEquipSkin={onEquipSkin}
             onUnlockAura={onUnlockAura}
@@ -3004,6 +3888,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onResetChainCycle={onResetChainCycle}
             onBreakGemVault={onBreakGemVault}
             onClaimGemVaultMilestone={onClaimGemVaultMilestone}
+            onBuyWeekendPack={onBuyWeekendPack}
+            onClaimWeekendPassDaily={onClaimWeekendPassDaily}
+            onActivateSupremeMonthly={onActivateSupremeMonthly}
+            onClaimSupremeMonthlyDaily={onClaimSupremeMonthlyDaily}
+            onOpenBundlePreview={onOpenBundlePreview}
             onOpenVipModal={onOpenVipModal}
             onOpenArenaModal={onOpenArenaModal}
           />

@@ -1,6 +1,7 @@
 import React from 'react';
-import { BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Trophy, Users } from 'lucide-react';
+import { ArrowUpRight, BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Sparkles, Trophy, Users } from 'lucide-react';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
+import { evaluateMatchMvpReport } from '../data/wave11Data';
 import { CoopRaidDifficulty, DamageBreakdown, ElementalTowerId, GamePhase } from '../types/game';
 import {
   ArtifactRelicIcon,
@@ -53,6 +54,17 @@ interface PauseResultModalProps {
   pantheonStage?: number;
   pantheonScore?: number;
   divineCrystalsEarned?: number;
+  isChampionshipMode?: boolean;
+  championshipRound?: number;
+  championshipScore?: number;
+  gloryTrophiesEarned?: number;
+  spiritCoresEarned?: number;
+  festivalLanternsEarned?: number;
+  isCrystalVaultMode?: boolean;
+  vaultPillarsBroken?: number;
+  vaultReforgeLooted?: number;
+  vaultShardsLooted?: number;
+  warCrestsEarned?: number;
   wingFeathersEarned?: number;
   mountShardsEarned?: number;
   awakeningCrystalsEarned?: number;
@@ -71,6 +83,7 @@ interface PauseResultModalProps {
   onRetry: () => void;
   onReturnTitle: () => void;
   onOpenSettings?: () => void;
+  onQuickAction?: (target: 'gear' | 'pets' | 'halos' | 'festival') => void;
 }
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
@@ -112,6 +125,17 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   pantheonStage = 0,
   pantheonScore = 0,
   divineCrystalsEarned = 0,
+  isChampionshipMode = false,
+  championshipRound = 0,
+  championshipScore = 0,
+  gloryTrophiesEarned = 0,
+  spiritCoresEarned = 0,
+  festivalLanternsEarned = 0,
+  isCrystalVaultMode = false,
+  vaultPillarsBroken = 0,
+  vaultReforgeLooted = 0,
+  vaultShardsLooted = 0,
+  warCrestsEarned = 0,
   wingFeathersEarned = 0,
   mountShardsEarned = 0,
   awakeningCrystalsEarned = 0,
@@ -130,6 +154,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   onRetry,
   onReturnTitle,
   onOpenSettings,
+  onQuickAction,
 }) => {
   const isPause = phase === GamePhase.PAUSED;
   const isVictory = phase === GamePhase.VICTORY;
@@ -142,6 +167,15 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
       ? Math.round(totalDamage / damageBreakdown.elapsedSeconds)
       : 0;
 
+  const mvpReport = !isPause
+    ? evaluateMatchMvpReport({
+        isVictory,
+        kills,
+        maxCombo,
+        damageBreakdown,
+      })
+    : null;
+
   const breakdownRows = damageBreakdown
     ? [
         {
@@ -150,6 +184,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
           value: damageBreakdown.basic,
           barClass: 'from-sky-500 to-cyan-300',
           textClass: 'text-sky-300',
+          strokeHex: '#38bdf8',
         },
         {
           id: 'ultimate',
@@ -157,13 +192,15 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
           value: damageBreakdown.ultimate,
           barClass: 'from-purple-500 to-fuchsia-300',
           textClass: 'text-purple-300',
+          strokeHex: '#c084fc',
         },
         {
           id: 'pet',
-          label: 'Tinh Linh 3D Đồng Hành',
+          label: 'Tinh Linh / Thần Sủng 3D',
           value: damageBreakdown.pet,
           barClass: 'from-emerald-500 to-lime-300',
           textClass: 'text-emerald-300',
+          strokeHex: '#34d399',
         },
         {
           id: 'elemental',
@@ -171,6 +208,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
           value: damageBreakdown.elemental,
           barClass: 'from-amber-500 to-orange-300',
           textClass: 'text-amber-300',
+          strokeHex: '#fbbf24',
         },
       ]
     : [];
@@ -191,7 +229,11 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         </div>
 
         <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
-          {isArenaMode
+          {isCrystalVaultMode
+            ? `Hầm Mỏ Pha Lê Kho Báu 3D · Phá ${vaultPillarsBroken} Trụ`
+            : isChampionshipMode
+            ? `Giải Đấu Quán Quân 3D · Hiệp ${championshipRound}/3`
+            : isArenaMode
             ? `Đấu Trường Arena 1v1 · ${arenaOpponentName || 'Kình Địch'}`
             : isPantheonMode
             ? `Viễn Chinh Điện Thần 3D · Tầng ${pantheonStage}/3`
@@ -222,6 +264,12 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <h2 className="font-display text-2xl font-black text-white mb-1.5">
           {isPause
             ? 'Tạm Dừng Trận Đấu'
+            : isCrystalVaultMode
+            ? 'Hoàn Tất Khai Phá Hầm Mỏ Pha Lê!'
+            : isChampionshipMode
+            ? isVictory
+              ? 'Đăng Quang Giải Đấu Quán Quân!'
+              : 'Dừng Bước Tại Giải Đấu Quán Quân'
             : isArenaMode
             ? isVictory
               ? 'Chiến Thắng Đấu Trường!'
@@ -268,9 +316,15 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? 'Kết Thúc Leo Tháp'
             : 'Thất Bại Trong Thánh Điện'}
         </h2>
-        <p className="text-xs text-slate-300 mb-4">
+        <p className="text-xs text-slate-300 mb-3">
           {isPause
             ? 'Nghỉ ngơi đôi chút hoặc tùy chỉnh âm thanh & đồ họa 3D.'
+            : isCrystalVaultMode
+            ? `Bạn đã phá vỡ ${vaultPillarsBroken} Trụ Pha Lê Kho Báu! Ngọc Hồn, Đá Đúc Hoàng Kim, Mảnh Thần Binh & Huy Hiệu Chiến Trận đã chuyển vào Kho.`
+            : isChampionshipMode
+            ? isVictory
+              ? `Bạn toàn thắng cả 3 Hiệp Quán Quân với ${championshipScore.toLocaleString('vi-VN')} điểm! Cúp Vinh Quang, Lõi Thần Sủng & Đèn Lồng đã chuyển vào Kho.`
+              : `Bạn đã vượt qua ${championshipRound}/3 Hiệp với ${championshipScore.toLocaleString('vi-VN')} điểm. Cúp & Lõi Thần Sủng tích lũy đã được bảo toàn!`
             : isArenaMode
             ? isVictory
               ? `Bạn đã đánh bại ${arenaOpponentName || 'đối thủ'} và nhận ${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm Xếp Hạng Arena!`
@@ -312,11 +366,48 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             : 'Số Vàng và Ngọc Hồn thu thập được đã được lưu vào Kho Báu.'}
         </p>
 
+        {/* Wave 11: Match MVP Grade & Title Plaque */}
+        {mvpReport && (
+          <div className="mb-3.5 flex items-center justify-between gap-3 rounded-2xl border border-amber-400/45 bg-gradient-to-r from-[#1c1336] via-[#121936] to-[#1d1424] px-4 py-2.5 text-left">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 font-display text-lg font-black ${
+                  mvpReport.grade === 'SSS' || mvpReport.grade === 'SS'
+                    ? 'border-amber-300 bg-amber-400/20 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.45)]'
+                    : mvpReport.grade === 'S'
+                    ? 'border-fuchsia-400 bg-fuchsia-500/20 text-fuchsia-200'
+                    : 'border-sky-400 bg-sky-500/20 text-sky-200'
+                }`}
+              >
+                {mvpReport.grade}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">
+                  Xếp Hạng Chiến Đấu · MVP
+                </div>
+                <div className="font-display text-sm font-black text-white truncate">
+                  {mvpReport.mvpBadgeTitle}
+                </div>
+              </div>
+            </div>
+            <div className="text-right font-mono-nums shrink-0">
+              <div className="text-[10px] font-bold text-slate-400">DPS Trung Bình</div>
+              <div className="text-sm font-black text-sky-300">
+                {dps.toLocaleString('vi-VN')}/s
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Run Summary Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4 text-left bg-[#060916]/95 border border-amber-400/30 rounded-2xl p-3.5">
           <div>
             <div className="text-[10px] text-slate-400 font-bold">
-              {isArenaMode
+              {isCrystalVaultMode
+                ? 'Trụ Pha Lê Phá'
+                : isChampionshipMode
+                ? 'Hiệp Quán Quân'
+                : isArenaMode
                 ? 'Điểm Xếp Hạng'
                 : isPantheonMode
                 ? 'Tầng Điện Thần'
@@ -353,7 +444,11 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   : 'text-white'
               }`}
             >
-              {isArenaMode
+              {isCrystalVaultMode
+                ? `${vaultPillarsBroken} Trụ`
+                : isChampionshipMode
+                ? `Hiệp ${championshipRound}/3 (${championshipScore.toLocaleString('vi-VN')}đ)`
+                : isArenaMode
                 ? `${arenaRatingDelta >= 0 ? `+${arenaRatingDelta}` : arenaRatingDelta} Điểm`
                 : isPantheonMode
                 ? `Tầng ${pantheonStage}/3 (${pantheonScore.toLocaleString('vi-VN')}đ)`
@@ -411,8 +506,80 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             artifactShardsEarned > 0 ||
             mysticTokensEarned > 0 ||
             guildCoinsEarned > 0 ||
-            divineCrystalsEarned > 0) && (
+            divineCrystalsEarned > 0 ||
+            gloryTrophiesEarned > 0 ||
+            spiritCoresEarned > 0 ||
+            festivalLanternsEarned > 0 ||
+            vaultReforgeLooted > 0 ||
+            vaultShardsLooted > 0 ||
+            warCrestsEarned > 0) && (
             <>
+              {vaultReforgeLooted > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-orange-200 font-bold">
+                    <span>🔥</span>
+                    <span>Đá Đúc Hoàng Kim</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-orange-300">
+                    +{vaultReforgeLooted}
+                  </span>
+                </div>
+              )}
+              {vaultShardsLooted > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-amber-200 font-bold">
+                    <span>⚔</span>
+                    <span>Mảnh Thần Binh</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-yellow-300">
+                    +{vaultShardsLooted}
+                  </span>
+                </div>
+              )}
+              {warCrestsEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-rose-200 font-bold">
+                    <span>⚑</span>
+                    <span>Huy Hiệu Chiến Trận</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-rose-300">
+                    +{warCrestsEarned}
+                  </span>
+                </div>
+              )}
+              {gloryTrophiesEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-amber-200 font-bold">
+                    <Trophy className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>Cúp Vinh Quang</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-amber-300">
+                    +{gloryTrophiesEarned}
+                  </span>
+                </div>
+              )}
+              {spiritCoresEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-fuchsia-200 font-bold">
+                    <Sparkles className="w-3.5 h-3.5 text-fuchsia-300 shrink-0" />
+                    <span>Lõi Thần Sủng</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-fuchsia-300">
+                    +{spiritCoresEarned}
+                  </span>
+                </div>
+              )}
+              {festivalLanternsEarned > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-rose-200 font-bold">
+                    <span>🏮</span>
+                    <span>Đèn Lồng Lễ Hội</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-amber-300">
+                    +{festivalLanternsEarned}
+                  </span>
+                </div>
+              )}
               {divineCrystalsEarned > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-amber-200 font-bold">
@@ -512,59 +679,117 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
           )}
         </div>
 
-        {/* Post-Match Damage Breakdown Chart */}
-        {!isPause && damageBreakdown && totalDamage > 0 && (
-          <div className="mb-4 text-left bg-[#060916]/95 border border-sky-400/25 rounded-2xl p-3.5">
-            <div className="flex items-center justify-between gap-2 mb-2.5">
-              <span className="flex items-center gap-1.5 text-xs font-black text-amber-200 uppercase tracking-wider">
-                <BarChart3 className="w-3.5 h-3.5 text-sky-300" />
-                <span>Phân Tích Sát Thương</span>
-              </span>
-              <span className="font-mono-nums text-[11px] font-bold text-slate-300">
-                Tổng {totalDamage.toLocaleString('vi-VN')}
-              </span>
-            </div>
+        {/* Post-Match Damage Breakdown Chart (SVG Donut + Horizontal Bars) */}
+        {!isPause && damageBreakdown && totalDamage > 0 && (() => {
+          const radius = 34;
+          const circumference = 2 * Math.PI * radius;
+          let accOffset = 0;
+          const donutSegments = breakdownRows.map((row) => {
+            const frac = row.value / Math.max(1, totalDamage);
+            const segLen = frac * circumference;
+            const offset = accOffset;
+            accOffset += segLen;
+            return { ...row, segLen, offset };
+          });
 
-            <div className="space-y-2">
-              {breakdownRows.map((row) => {
-                const pct = totalDamage > 0 ? Math.round((row.value / totalDamage) * 100) : 0;
-                return (
-                  <div key={row.id}>
-                    <div className="flex items-center justify-between text-[11px] font-bold mb-0.5">
-                      <span className="text-slate-200 truncate">{row.label}</span>
-                      <span className={`font-mono-nums ${row.textClass}`}>
-                        {row.value.toLocaleString('vi-VN')} ({pct}%)
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full bg-gradient-to-r ${row.barClass}`}
-                        style={{ width: `${Math.max(row.value > 0 ? 3 : 0, pct)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-800 text-center">
-              <div>
-                <div className="text-[10px] text-slate-400 font-bold">DPS Trung Bình</div>
-                <div className="font-mono-nums text-xs font-black text-sky-300">{dps}/s</div>
+          return (
+            <div className="mb-4 text-left bg-[#060916]/95 border border-sky-400/25 rounded-2xl p-3.5">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="flex items-center gap-1.5 text-xs font-black text-amber-200 uppercase tracking-wider">
+                  <BarChart3 className="w-3.5 h-3.5 text-sky-300" />
+                  <span>Biểu Đồ Sát Thương DPS</span>
+                </span>
+                <span className="font-mono-nums text-[11px] font-bold text-slate-300">
+                  Tổng {totalDamage.toLocaleString('vi-VN')}
+                </span>
               </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-bold">Chí Mạng Đỉnh</div>
-                <div className="font-mono-nums text-xs font-black text-amber-300">
-                  {damageBreakdown.peakCrit.toLocaleString('vi-VN')}
+
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                {/* SVG Donut Chart */}
+                <div className="relative h-24 w-24 shrink-0">
+                  <svg viewBox="0 0 88 88" className="h-full w-full -rotate-90">
+                    <circle
+                      cx="44"
+                      cy="44"
+                      r={radius}
+                      fill="none"
+                      stroke="#1e293b"
+                      strokeWidth="10"
+                    />
+                    {donutSegments.map(
+                      (seg) =>
+                        seg.segLen > 0.5 && (
+                          <circle
+                            key={seg.id}
+                            cx="44"
+                            cy="44"
+                            r={radius}
+                            fill="none"
+                            stroke={seg.strokeHex}
+                            strokeWidth="10"
+                            strokeDasharray={`${seg.segLen} ${circumference}`}
+                            strokeDashoffset={-seg.offset}
+                          />
+                        )
+                    )}
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span className="text-[9px] font-bold uppercase text-slate-400">DPS</span>
+                    <span className="font-mono-nums text-xs font-black text-amber-200">
+                      {dps >= 1000 ? `${(dps / 1000).toFixed(1)}k` : dps}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Horizontal DPS Bars */}
+                <div className="flex-1 w-full space-y-2">
+                  {breakdownRows.map((row) => {
+                    const pct = totalDamage > 0 ? Math.round((row.value / totalDamage) * 100) : 0;
+                    return (
+                      <div key={row.id}>
+                        <div className="flex items-center justify-between text-[11px] font-bold mb-0.5">
+                          <span className="flex items-center gap-1.5 text-slate-200 truncate">
+                            <span
+                              className="h-2 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: row.strokeHex }}
+                            />
+                            <span className="truncate">{row.label}</span>
+                          </span>
+                          <span className={`font-mono-nums shrink-0 ${row.textClass}`}>
+                            {row.value.toLocaleString('vi-VN')} ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full bg-gradient-to-r ${row.barClass}`}
+                            style={{ width: `${Math.max(row.value > 0 ? 3 : 0, pct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-bold">Max Liên Kích</div>
-                <div className="font-mono-nums text-xs font-black text-rose-300">×{maxCombo}</div>
+
+              <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-800 text-center">
+                <div>
+                  <div className="text-[10px] text-slate-400 font-bold">DPS Trung Bình</div>
+                  <div className="font-mono-nums text-xs font-black text-sky-300">{dps}/s</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 font-bold">Chí Mạng Đỉnh</div>
+                  <div className="font-mono-nums text-xs font-black text-amber-300">
+                    {damageBreakdown.peakCrit.toLocaleString('vi-VN')}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 font-bold">Max Liên Kích</div>
+                  <div className="font-mono-nums text-xs font-black text-rose-300">×{maxCombo}</div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Co-op Raid Team Damage & MVP Crown */}
         {!isPause && isCoopRaidMode && damageBreakdown?.coopAllies && damageBreakdown.coopAllies.length > 0 && (() => {
@@ -676,6 +901,31 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             <RotateCcw className="w-4 h-4" />
             <span>{isPause ? 'Đánh Lại Từ Đầu' : 'Chơi Lại'}</span>
           </button>
+
+          {!isPause && onQuickAction && (
+            <button
+              type="button"
+              onClick={() =>
+                onQuickAction(
+                  isVictory
+                    ? festivalLanternsEarned > 0
+                      ? 'festival'
+                      : 'pets'
+                    : 'gear'
+                )
+              }
+              className="a2-purple-btn w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-black text-xs sm:text-sm whitespace-nowrap cursor-pointer"
+            >
+              <ArrowUpRight className="w-4 h-4 text-amber-300" />
+              <span>
+                {isVictory
+                  ? festivalLanternsEarned > 0
+                    ? 'Đổi Đèn Lồng Tại Lễ Hội Tinh Giới'
+                    : 'Tiến Hóa Thần Sủng & Nâng Lực Chiến'
+                  : 'Tăng Lực Chiến Ngay (Cường Hóa Trang Bị)'}
+              </span>
+            </button>
+          )}
 
           <button
             type="button"

@@ -22,6 +22,11 @@ import {
   getSeasonMedalCurrentValue,
 } from '../data/wave4Data';
 import { DYNAMIC_TITLES, DYNAMIC_TITLE_MAP } from '../data/wave9Data';
+import {
+  CODEX_COLLECTION_RANKS,
+  computeCodexSummary,
+  countClaimableCodexRanks,
+} from '../data/wave11Data';
 import { ComputedPlayerStats, DynamicTitleId, SaveData } from '../types/game';
 import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon, StarDustIcon } from './GameIcons';
 
@@ -34,6 +39,7 @@ interface ProfileCodexModalProps {
   onClaimSeasonMedal: (medalId: string) => void;
   onSelectTitle: (title: string) => void;
   onSelectDynamicTitle?: (id: DynamicTitleId) => void;
+  onClaimCodexRank?: (rank: number) => void;
 }
 
 export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
@@ -45,11 +51,16 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
   onClaimSeasonMedal,
   onSelectTitle,
   onSelectDynamicTitle,
+  onClaimCodexRank,
 }) => {
   const [tab, setTab] = useState<'profile' | 'achievements' | 'history' | 'codex'>(initialTab);
-  const [codexSubTab, setCodexSubTab] = useState<'heroes' | 'enemies' | 'skills'>('heroes');
+  const [codexSubTab, setCodexSubTab] = useState<'collection' | 'heroes' | 'enemies' | 'skills'>('collection');
   const [arenaImgFailed, setArenaImgFailed] = useState(false);
   const [medalImgFailed, setMedalImgFailed] = useState(false);
+
+  const codexSummary = computeCodexSummary(save);
+  const claimableCodexCount = countClaimableCodexRanks(save);
+  const claimedCodexSet = new Set(save.codexClaimedRanks ?? []);
 
   const career = normalizeCareer(save.career);
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
@@ -183,7 +194,7 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
               }`}
             >
               <BookOpen className="w-3.5 h-3.5 shrink-0" />
-              <span>Thư Viện</span>
+              <span>Thư Viện{claimableCodexCount > 0 ? ` (${claimableCodexCount})` : ''}</span>
             </button>
           </div>
         </div>
@@ -694,6 +705,10 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 {[
+                  {
+                    id: 'collection' as const,
+                    label: `Sổ Tay Buff Toàn Đội (Cấp ${codexSummary.currentRank.rank})${claimableCodexCount > 0 ? ` · +${claimableCodexCount}` : ''}`,
+                  },
                   { id: 'heroes' as const, label: `Anh Hùng (${HEROES.length})` },
                   { id: 'enemies' as const, label: `Quái & Boss (${ENEMY_CODEX_LIST.length})` },
                   { id: 'skills' as const, label: `Kỹ Năng (${ALL_SKILLS_LIST.length})` },
@@ -715,6 +730,156 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                   </button>
                 ))}
               </div>
+
+              {codexSubTab === 'collection' && (
+                <div className="space-y-4">
+                  {/* Active Global Team Buff Header */}
+                  <div className="cel-panel-ornate rounded-2xl p-4 sm:p-5 bg-gradient-to-r from-[#171232] via-[#101833] to-[#1a1228]">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">
+                          SỔ TAY SƯU TẦM HOÀNG ĐẠO · BUFF VĨNH VIỄN TOÀN ĐỘI
+                        </div>
+                        <h3 className="font-display text-lg sm:text-xl font-black text-white mt-0.5">
+                          Cấp {codexSummary.currentRank.rank} · {codexSummary.currentRank.title}
+                        </h3>
+                        <p className="text-xs text-slate-300 mt-0.5">
+                          Mở khóa Anh Hùng, Tiến Hóa Thần Sủng, Cánh, Thú Cưỡi, Bầu Trời &amp; Hào Quang để cộng vĩnh viễn sức mạnh!
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-amber-400/45 bg-[#070b1a] px-4 py-2.5 text-right font-mono-nums">
+                        <div className="text-[10px] font-bold text-slate-400">Điểm Sưu Tầm</div>
+                        <div className="text-xl font-black text-amber-300">
+                          {codexSummary.totalPoints.toLocaleString('vi-VN')}
+                          {codexSummary.nextRank ? (
+                            <span className="text-xs text-slate-400">
+                              {' '}/ {codexSummary.nextRank.pointsRequired}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4 text-center font-mono-nums">
+                      <div className="rounded-xl border border-amber-400/25 bg-[#060916] p-2.5">
+                        <div className="text-[10px] text-slate-400 font-bold">Buff Công Toàn Đội</div>
+                        <div className="text-base font-black text-amber-300">
+                          +{Math.round(codexSummary.totalAtkPct * 100)}% ATK
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-emerald-400/25 bg-[#060916] p-2.5">
+                        <div className="text-[10px] text-slate-400 font-bold">Buff Máu Toàn Đội</div>
+                        <div className="text-base font-black text-emerald-300">
+                          +{Math.round(codexSummary.totalHpPct * 100)}% HP
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-rose-400/25 bg-[#060916] p-2.5">
+                        <div className="text-[10px] text-slate-400 font-bold">Tỷ Lệ Chí Mạng</div>
+                        <div className="text-base font-black text-rose-300">
+                          +{(codexSummary.totalCrit * 100).toFixed(1)}% CRIT
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-sky-400/25 bg-[#060916] p-2.5">
+                        <div className="text-[10px] text-slate-400 font-bold">Thu Nhập Vàng</div>
+                        <div className="text-base font-black text-sky-300">
+                          +{Math.round(codexSummary.totalGoldPct * 100)}% VÀNG
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-[11px] font-mono-nums text-slate-300">
+                      <div className="rounded-lg bg-slate-950/60 px-2.5 py-1.5 flex items-center justify-between">
+                        <span>Anh Hùng</span>
+                        <span className="font-black text-amber-200">{codexSummary.heroPoints}đ</span>
+                      </div>
+                      <div className="rounded-lg bg-slate-950/60 px-2.5 py-1.5 flex items-center justify-between">
+                        <span>Tinh Linh &amp; Sủng</span>
+                        <span className="font-black text-emerald-200">{codexSummary.petPoints}đ</span>
+                      </div>
+                      <div className="rounded-lg bg-slate-950/60 px-2.5 py-1.5 flex items-center justify-between">
+                        <span>Ngoại Trang &amp; Trời</span>
+                        <span className="font-black text-sky-200">{codexSummary.cosmeticPoints}đ</span>
+                      </div>
+                      <div className="rounded-lg bg-slate-950/60 px-2.5 py-1.5 flex items-center justify-between">
+                        <span>Thánh Khí &amp; Hào Quang</span>
+                        <span className="font-black text-fuchsia-200">{codexSummary.artifactHaloPoints}đ</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 8 Codex Mastery Ranks */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {CODEX_COLLECTION_RANKS.map((rk) => {
+                      const reached = codexSummary.totalPoints >= rk.pointsRequired;
+                      const claimed = claimedCodexSet.has(rk.rank);
+                      return (
+                        <div
+                          key={rk.rank}
+                          className={`rounded-2xl border p-3.5 flex flex-col justify-between gap-2.5 ${
+                            claimed
+                              ? 'border-emerald-500/35 bg-emerald-950/20'
+                              : reached
+                              ? 'cel-panel-ornate'
+                              : 'cel-panel opacity-85'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">
+                                Cấp {rk.rank} · Yêu cầu {rk.pointsRequired} Điểm
+                              </div>
+                              <h4 className="font-display text-sm font-black text-white">
+                                {rk.title}
+                              </h4>
+                            </div>
+                            <span
+                              className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                                reached
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                                  : 'bg-slate-800 text-slate-400'
+                              }`}
+                            >
+                              {reached ? 'Đã Kích Hoạt' : 'Chưa Đạt'}
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] font-mono-nums font-bold text-slate-200">
+                            +{Math.round(rk.atkPctBonus * 100)}% ATK · +{Math.round(rk.hpPctBonus * 100)}% HP
+                            {rk.critBonus > 0 ? ` · +${(rk.critBonus * 100).toFixed(1)}% Crit` : ''}
+                            {rk.goldPctBonus > 0 ? ` · +${Math.round(rk.goldPctBonus * 100)}% Vàng` : ''}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                            <div className="text-[11px] font-mono-nums font-bold text-sky-300">
+                              Quà Mốc: +{rk.rewardGems}💎 · +{rk.rewardSpiritCores} Lõi Sủng
+                            </div>
+                            {claimed ? (
+                              <span className="text-[11px] font-black text-emerald-400 flex items-center gap-1 whitespace-nowrap">
+                                <Check className="w-3.5 h-3.5" /> Đã Nhận
+                              </span>
+                            ) : reached && onClaimCodexRank ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playAchievement();
+                                  onClaimCodexRank(rk.rank);
+                                }}
+                                className="a2-yellow-btn px-3 py-1.5 rounded-xl text-[11px] font-black cursor-pointer whitespace-nowrap"
+                              >
+                                Nhận Quà
+                              </button>
+                            ) : (
+                              <span className="font-mono-nums text-[10px] font-bold text-slate-500">
+                                Thiếu {Math.max(0, rk.pointsRequired - codexSummary.totalPoints)}đ
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {codexSubTab === 'heroes' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
