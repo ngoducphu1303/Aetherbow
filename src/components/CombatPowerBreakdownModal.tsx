@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowUpRight, Crown, Shield, TrendingUp, X, Zap } from 'lucide-react';
+import { ArrowUpRight, Crown, Shield, Sparkles, TrendingUp, X, Zap } from 'lucide-react';
+import { evaluateEquippedGearSets } from '../data/gearData';
 import { analyzeCombatPower } from '../data/wave12Data';
 import { CombatPowerCategoryItem, SaveData } from '../types/game';
 
@@ -18,6 +19,8 @@ export const CombatPowerBreakdownModal: React.FC<CombatPowerBreakdownModalProps>
 }) => {
   const analysis = analyzeCombatPower(save, totalPower);
   const weak = analysis.weakestCategory;
+  const gearSets = evaluateEquippedGearSets(save);
+  const activeSetBonusPower = gearSets.activeTierCount * 110;
 
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-4 bg-[#040611]/92 overflow-y-auto">
@@ -138,6 +141,41 @@ export const CombatPowerBreakdownModal: React.FC<CombatPowerBreakdownModalProps>
               );
             })}
           </div>
+
+          {gearSets.sets.length > 0 && (
+            <div className="rounded-2xl border border-amber-400/30 bg-[#090f24] p-3.5 space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-xs font-black">
+                <span className="flex items-center gap-1.5 text-amber-200">
+                  <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>Cộng Hưởng Bộ Trang Bị Đang Mặc</span>
+                </span>
+                {activeSetBonusPower > 0 && (
+                  <span className="font-mono-nums text-emerald-300">
+                    +{activeSetBonusPower.toLocaleString('vi-VN')} CP
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1 text-[11px] text-slate-300">
+                {gearSets.sets.map((s) => (
+                  <div key={s.setId} className="flex flex-wrap items-center justify-between gap-1.5">
+                    <span className="font-bold text-white">
+                      {s.displayName}{' '}
+                      <span className="font-mono-nums text-sky-300">
+                        ({s.equippedCount}/{s.maxPieces} món)
+                      </span>
+                    </span>
+                    <span className="text-amber-200 font-mono-nums">
+                      {s.unlockedTiers.length > 0
+                        ? s.unlockedTiers.map((t) => t.label).join(' · ')
+                        : s.nextTier
+                        ? `Mốc ${s.nextTier.piecesRequired}: ${s.nextTier.label}`
+                        : 'Cần thêm món cùng bộ'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

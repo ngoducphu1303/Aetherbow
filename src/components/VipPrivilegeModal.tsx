@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Check, Crown, Gift, Sparkles, X, Zap } from 'lucide-react';
+import { Check, Crown, Gift, Lock, Sparkles, X, Zap } from 'lucide-react';
 import vipCardArt from '../assets/images/vip_celestial_card_art_1794977270863.jpg';
+import { isEarlyFeatureUnlocked } from '../data/earlyProgressionData';
 import { getTodayKey } from '../data/questsData';
 import {
   STARTER_PACK_COST_GEMS,
@@ -47,6 +48,7 @@ export const VipPrivilegeModal: React.FC<VipPrivilegeModalProps> = ({
 
   const canAffordVip = save.gems >= VIP_MONTHLY_COST_GEMS;
   const canAffordStarter = save.gems >= STARTER_PACK_COST_GEMS;
+  const starterUnlock = isEarlyFeatureUnlocked(save, 'starter_pack');
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/90 overflow-y-auto">
@@ -241,10 +243,10 @@ export const VipPrivilegeModal: React.FC<VipPrivilegeModalProps> = ({
 
             <button
               type="button"
-              disabled={vip.starterPackClaimed || !canAffordStarter}
+              disabled={vip.starterPackClaimed || !starterUnlock.unlocked || !canAffordStarter}
               onClick={onClaimStarterPack}
               className={`w-full py-2.5 px-4 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer ${
-                vip.starterPackClaimed
+                vip.starterPackClaimed || !starterUnlock.unlocked
                   ? 'bg-slate-800/80 border border-slate-700 text-slate-400 cursor-not-allowed'
                   : 'a2-purple-btn disabled:opacity-50 disabled:cursor-not-allowed'
               }`}
@@ -253,6 +255,11 @@ export const VipPrivilegeModal: React.FC<VipPrivilegeModalProps> = ({
                 <>
                   <Check className="w-4 h-4 text-emerald-300" />
                   <span>Đã Sở Hữu Gói Khởi Nghiệp</span>
+                </>
+              ) : !starterUnlock.unlocked ? (
+                <>
+                  <Lock className="w-4 h-4 text-amber-300" />
+                  <span>{starterUnlock.requiredLabel}</span>
                 </>
               ) : (
                 <>

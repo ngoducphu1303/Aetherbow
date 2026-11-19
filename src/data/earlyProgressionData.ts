@@ -2,14 +2,28 @@ import {
   ComputedPlayerStats,
   EarlyFeatureId,
   EarlyForgeProgress,
+  EndlessTowerFloorScaling,
   GearInstance,
+  GearSlot,
+  HeroId,
+  HeroMasteryBonuses,
+  HeroMasteryProgress,
+  KpiEvaluationRow,
+  LoadoutPreset,
+  LoadoutPresetSlotId,
   MailItem,
+  PlaytestKpiContext,
+  PlaytestMetrics,
   Rarity,
   RuneId,
   SaveData,
+  SideModeScaling,
+  SkillSynergyId,
 } from '../types/game';
 
 export const PROGRESSION_SCHEMA_VERSION = 2;
+export const PUNISH_WINDOW_DAMAGE_BONUS = 0.18;
+export const PUNISH_WINDOW_PHASE3_BONUS = 0.24;
 
 export const RARITY_RANK: Record<Rarity, number> = {
   [Rarity.COMMON]: 0,
@@ -257,6 +271,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
     deletedMailIds: Array.from(existingDeleted),
     earlyMilestonesClaimed: Array.isArray(raw.earlyMilestonesClaimed) ? [...raw.earlyMilestonesClaimed] : [],
     earlyForgeProgress: normalizeEarlyForgeProgress(raw.earlyForgeProgress),
+    playtestMetrics: normalizePlaytestMetrics(raw.playtestMetrics),
   };
 
   migratedBase.mailInbox = getVisibleMailInbox(migratedBase);
@@ -734,3 +749,839 @@ export const EARLY_REWARD_AUDIT_MATRIX: RewardChannelAuditRow[] = [
     canDropSTier: 'Chỉ từ Chương 3',
   },
 ];
+
+// ============================================================================
+// CHAPTER 1–3 CONQUEST ROADMAP (4 CLEAR UNLOCK MILESTONES)
+// ============================================================================
+
+export interface EarlyRoadmapStage {
+  id: 'ch1_stage2' | 'ch1_ares' | 'ch1_clear' | 'ch2_clear';
+  stepNumber: string;
+  title: string;
+  requirement: string;
+  unlocksSummary: string;
+  guaranteedReward: string;
+  rarityCeilingLabel: string;
+  actionTarget?: 'battle' | 'shop' | 'forge' | 'runes';
+}
+
+export const EARLY_ROADMAP_STAGES: EarlyRoadmapStage[] = [
+  {
+    id: 'ch1_stage2',
+    stepNumber: '01',
+    title: 'Vượt Ải 2 Chương 1',
+    requirement: 'Đạt Ải 2 · Thánh Điện Nhật Luân',
+    unlocksSummary: 'Mở Rương Sắt & Bảng Thiên Phú',
+    guaranteedReward: '+45 Vàng · +2 Mảnh Hiếm',
+    rarityCeilingLabel: 'Trần Thường (Common)',
+    actionTarget: 'battle',
+  },
+  {
+    id: 'ch1_ares',
+    stepNumber: '02',
+    title: 'Hạ Phụ Boss Ares (Ải 4 Ch.1)',
+    requirement: 'Đánh bại Tướng Quân Hỏa Ngục Ares',
+    unlocksSummary: 'Mở Rương Thần Thoại · Lò Rèn · Sổ Chiến Lệnh · Flash Sale',
+    guaranteedReward: 'Đủ 10/10 Mảnh rèn Vũ Khí Hiếm (Rare) đầu tiên + Thư Ải 4',
+    rarityCeilingLabel: 'Mở khóa Hiếm (Rare)',
+    actionTarget: 'forge',
+  },
+  {
+    id: 'ch1_clear',
+    stepNumber: '03',
+    title: 'Chinh Phục Chương 1 (Sư Vương Ải 12)',
+    requirement: 'Hoàn thành Chương 1 · Thánh Điện Nhật Luân',
+    unlocksSummary: 'Mở Quét Nhanh · Ngọc Khắc · Chương 2 Hỏa Sơn',
+    guaranteedReward: 'Ngọc Khắc Mưa Tên (Rare) · Danh Hiệu 3D · Đủ 15 Mảnh Sử Thi + Thư Epic',
+    rarityCeilingLabel: 'Mở khóa Sử Thi (Epic) · Ngọc Khắc tối đa Sử Thi',
+    actionTarget: 'runes',
+  },
+  {
+    id: 'ch2_clear',
+    stepNumber: '04',
+    title: 'Vượt Chương 2 · Bước Vào Chương 3',
+    requirement: 'Hoàn thành Chương 2 · Hỏa Sơn Sừng Đỏ',
+    unlocksSummary: 'Mở Mẫu [S] · Huyền Thoại · Gói Khởi Nghiệp [S] · Sự kiện Sảnh',
+    guaranteedReward: 'Cánh Thần Quang 3D · +10 Bản Vẽ [S] · Kích hoạt Pity [S] đã tích lũy',
+    rarityCeilingLabel: 'Mở khóa Mẫu [S] & Huyền Thoại (Legendary)',
+    actionTarget: 'shop',
+  },
+];
+
+export interface EarlyRoadmapStageStatus extends EarlyRoadmapStage {
+  completed: boolean;
+  isCurrentTarget: boolean;
+}
+
+export function getEarlyRoadmapStatus(
+  save: Pick<SaveData, 'highestChapterCleared' | 'bestStagePerChapter'>
+): EarlyRoadmapStageStatus[] {
+  const ch = Math.max(0, Math.floor(save.highestChapterCleared ?? 0));
+  const st1 = getBestCh1Stage(save);
+  const doneFlags: Record<EarlyRoadmapStage['id'], boolean> = {
+    ch1_stage2: ch >= 1 || st1 >= 2,
+    ch1_ares: ch >= 1 || st1 >= 4,
+    ch1_clear: ch >= 1,
+    ch2_clear: ch >= 2,
+  };
+  let foundCurrent = false;
+  return EARLY_ROADMAP_STAGES.map((stage) => {
+    const completed = doneFlags[stage.id];
+    const isCurrentTarget = !completed && !foundCurrent;
+    if (isCurrentTarget) foundCurrent = true;
+    return { ...stage, completed, isCurrentTarget };
+  });
+}
+
+// ============================================================================
+// LOCAL PLAYTEST TELEMETRY LEDGER (ZERO HUD CLUTTER · HIDDEN IN SETTINGS)
+// ============================================================================
+
+export function createEmptyPlaytestMetrics(now = Date.now()): PlaytestMetrics {
+  return {
+    createdAt: now,
+    totalRuns: 0,
+    totalPlaySeconds: 0,
+    startedRunAfterFirstDefeat: false,
+    stageEntriesByChapter: {},
+    stageDefeatsByChapter: {},
+    bossAttempts: {},
+    milestones: {},
+    synergyPickCounts: {},
+  };
+}
+
+export function normalizePlaytestMetrics(raw?: Partial<PlaytestMetrics>): PlaytestMetrics {
+  if (!raw || typeof raw !== 'object') {
+    return createEmptyPlaytestMetrics();
+  }
+  return {
+    createdAt: typeof raw.createdAt === 'number' && raw.createdAt > 0 ? raw.createdAt : Date.now(),
+    totalRuns: Math.max(0, Math.floor(raw.totalRuns ?? 0)),
+    totalPlaySeconds: Math.max(0, Math.round(raw.totalPlaySeconds ?? 0)),
+    firstDefeatRunIndex:
+      typeof raw.firstDefeatRunIndex === 'number' ? raw.firstDefeatRunIndex : undefined,
+    startedRunAfterFirstDefeat: Boolean(raw.startedRunAfterFirstDefeat),
+    stageEntriesByChapter:
+      raw.stageEntriesByChapter && typeof raw.stageEntriesByChapter === 'object'
+        ? { ...raw.stageEntriesByChapter }
+        : {},
+    stageDefeatsByChapter:
+      raw.stageDefeatsByChapter && typeof raw.stageDefeatsByChapter === 'object'
+        ? { ...raw.stageDefeatsByChapter }
+        : {},
+    bossAttempts:
+      raw.bossAttempts && typeof raw.bossAttempts === 'object' ? { ...raw.bossAttempts } : {},
+    milestones:
+      raw.milestones && typeof raw.milestones === 'object' ? { ...raw.milestones } : {},
+    synergyPickCounts:
+      raw.synergyPickCounts && typeof raw.synergyPickCounts === 'object'
+        ? { ...raw.synergyPickCounts }
+        : {},
+  };
+}
+
+export function recordPlaytestRunStart(raw?: Partial<PlaytestMetrics>): PlaytestMetrics {
+  const m = normalizePlaytestMetrics(raw);
+  const nextTotalRuns = m.totalRuns + 1;
+  const startedRunAfterFirstDefeat =
+    m.startedRunAfterFirstDefeat ||
+    (typeof m.firstDefeatRunIndex === 'number' && nextTotalRuns > m.firstDefeatRunIndex);
+  return {
+    ...m,
+    totalRuns: nextTotalRuns,
+    startedRunAfterFirstDefeat,
+  };
+}
+
+export function getBossTelemetryKey(chapterId: number, stage: number): string | null {
+  if (chapterId === 1 && stage === 4) return 'ch1_ares';
+  if (chapterId === 1 && stage === 8) return 'ch1_boreas';
+  if (chapterId === 1 && stage === 12) return 'ch1_leo_king';
+  if (chapterId === 2 && stage === 12) return 'ch2_aries_boss';
+  if (chapterId === 3 && stage === 12) return 'ch3_taurus_boss';
+  if (chapterId === 4 && stage === 12) return 'ch4_gemini_boss';
+  if (chapterId === 5 && stage === 12) return 'ch5_cancer_boss';
+  if (chapterId === 6 && stage === 12) return 'ch6_virgo_boss';
+  if (chapterId === 7 && stage === 12) return 'ch7_libra_boss';
+  if (chapterId === 8 && stage === 12) return 'ch8_scorpio_boss';
+  if (chapterId === 9 && stage === 12) return 'ch9_sagittarius_boss';
+  if (chapterId === 10 && stage === 12) return 'ch10_capricorn_boss';
+  if (chapterId === 11 && stage === 12) return 'ch11_aquarius_boss';
+  if (chapterId === 12 && stage === 12) return 'ch12_pisces_boss';
+  return null;
+}
+
+export function recordPlaytestRunEnd(
+  raw: Partial<PlaytestMetrics> | undefined,
+  params: {
+    chapterId: number;
+    stageReached: number;
+    victory: boolean;
+    elapsedSeconds: number;
+    activeSynergies?: SkillSynergyId[];
+  }
+): PlaytestMetrics {
+  const m = normalizePlaytestMetrics(raw);
+  const chKey = String(params.chapterId);
+  const nextEntries: Record<string, Record<number, number>> = {
+    ...m.stageEntriesByChapter,
+    [chKey]: { ...(m.stageEntriesByChapter[chKey] ?? {}) },
+  };
+  const nextDefeats: Record<string, Record<number, number>> = {
+    ...m.stageDefeatsByChapter,
+    [chKey]: { ...(m.stageDefeatsByChapter[chKey] ?? {}) },
+  };
+  const clampedStage = Math.max(1, Math.min(12, Math.floor(params.stageReached)));
+
+  for (let s = 1; s <= clampedStage; s++) {
+    nextEntries[chKey][s] = (nextEntries[chKey][s] ?? 0) + 1;
+  }
+  if (!params.victory) {
+    nextDefeats[chKey][clampedStage] = (nextDefeats[chKey][clampedStage] ?? 0) + 1;
+  }
+
+  const nextBossAttempts = { ...m.bossAttempts };
+  for (const bossStage of [4, 8, 12]) {
+    if (clampedStage < bossStage) continue;
+    const bKey = getBossTelemetryKey(params.chapterId, bossStage);
+    if (!bKey) continue;
+    const prev = nextBossAttempts[bKey] ?? { attempts: 0, cleared: false };
+    const nextCount = prev.attempts + 1;
+    const beatThisBoss = params.victory || clampedStage > bossStage;
+    nextBossAttempts[bKey] = {
+      attempts: nextCount,
+      cleared: prev.cleared || beatThisBoss,
+      attemptsToFirstClear:
+        prev.attemptsToFirstClear ?? (beatThisBoss ? nextCount : undefined),
+    };
+  }
+
+  const nextTotalPlay = m.totalPlaySeconds + Math.max(0, Math.round(params.elapsedSeconds));
+  const nextMilestones = { ...m.milestones };
+  if (params.chapterId === 1 && params.victory && !nextMilestones.firstCh1Clear) {
+    nextMilestones.firstCh1Clear = {
+      runIndex: Math.max(1, m.totalRuns),
+      elapsedSec: nextTotalPlay,
+    };
+  }
+
+  const nextSynergies = { ...m.synergyPickCounts };
+  for (const synId of params.activeSynergies ?? []) {
+    nextSynergies[synId] = (nextSynergies[synId] ?? 0) + 1;
+  }
+
+  return {
+    ...m,
+    totalPlaySeconds: nextTotalPlay,
+    firstDefeatRunIndex:
+      !params.victory && m.firstDefeatRunIndex === undefined
+        ? Math.max(1, m.totalRuns)
+        : m.firstDefeatRunIndex,
+    stageEntriesByChapter: nextEntries,
+    stageDefeatsByChapter: nextDefeats,
+    bossAttempts: nextBossAttempts,
+    milestones: nextMilestones,
+    synergyPickCounts: nextSynergies,
+  };
+}
+
+export function recordPlaytestMilestone(
+  raw: Partial<PlaytestMetrics> | undefined,
+  milestone: 'firstUpgrade' | 'firstRare' | 'firstEpic' | 'firstSTier'
+): PlaytestMetrics {
+  const m = normalizePlaytestMetrics(raw);
+  if (m.milestones[milestone]) return m;
+  return {
+    ...m,
+    milestones: {
+      ...m.milestones,
+      [milestone]: {
+        runIndex: m.totalRuns,
+        elapsedSec: m.totalPlaySeconds,
+      },
+    },
+  };
+}
+
+export function resetPlaytestMetrics(now = Date.now()): PlaytestMetrics {
+  return createEmptyPlaytestMetrics(now);
+}
+
+// ============================================================================
+// PHASE 3 · SIDE-MODE PROGRESSION SCALING (BOSS RUSH & DAILY RIFT)
+// ============================================================================
+
+export function getSideModeScaling(highestChapterCleared: number): SideModeScaling {
+  const tier = Math.max(1, Math.min(12, Math.floor(highestChapterCleared ?? 0) + 1));
+  const table: Record<number, Omit<SideModeScaling, 'chapterTier' | 'label'>> = {
+    1: { enemyHpScale: 1.0, enemyDmgScale: 1.0, goldRewardMult: 1.0, starDustBonus: 20 },
+    2: { enemyHpScale: 1.85, enemyDmgScale: 1.28, goldRewardMult: 1.35, starDustBonus: 36 },
+    3: { enemyHpScale: 2.8, enemyDmgScale: 1.56, goldRewardMult: 1.7, starDustBonus: 54 },
+    4: { enemyHpScale: 3.9, enemyDmgScale: 1.88, goldRewardMult: 2.1, starDustBonus: 74 },
+    5: { enemyHpScale: 5.1, enemyDmgScale: 2.22, goldRewardMult: 2.55, starDustBonus: 96 },
+    6: { enemyHpScale: 6.5, enemyDmgScale: 2.6, goldRewardMult: 3.05, starDustBonus: 120 },
+  };
+  if (table[tier]) {
+    return {
+      chapterTier: tier,
+      ...table[tier],
+      label: `Bậc Ch.${tier}`,
+    };
+  }
+  const extra = tier - 6;
+  return {
+    chapterTier: tier,
+    enemyHpScale: Number((6.5 + extra * 1.65).toFixed(2)),
+    enemyDmgScale: Number((2.6 + extra * 0.42).toFixed(2)),
+    goldRewardMult: Number((3.05 + extra * 0.55).toFixed(2)),
+    starDustBonus: 120 + extra * 28,
+    label: `Bậc Ch.${tier}`,
+  };
+}
+
+// ============================================================================
+// PHASE 3 · PLAYTEST KPI AUTO-GRADING (SETTINGS DIAGNOSTIC PANEL)
+// ============================================================================
+
+export function evaluatePlaytestKpis(
+  raw?: Partial<PlaytestMetrics>,
+  context?: PlaytestKpiContext
+): KpiEvaluationRow[] {
+  const m = normalizePlaytestMetrics(raw);
+  const rows: KpiEvaluationRow[] = [];
+
+  // 1. Run-2 retention after first defeat
+  if (m.firstDefeatRunIndex === undefined) {
+    rows.push({
+      id: 'run2_retention',
+      label: 'Quay lại Lượt 2 sau lần thua đầu',
+      actualText: m.totalRuns > 0 ? 'Chưa thua trận nào' : '0 lượt',
+      targetText: 'Vào trận tiếp theo ngay',
+      status: 'insufficient',
+      note: 'Ghi nhận khi phát sinh lần thua đầu tiên',
+    });
+  } else {
+    rows.push({
+      id: 'run2_retention',
+      label: 'Quay lại Lượt 2 sau lần thua đầu',
+      actualText: m.startedRunAfterFirstDefeat ? 'Có (100%)' : 'Chưa quay lại (0%)',
+      targetText: '≥ 1 lượt sau lần thua đầu',
+      status: m.startedRunAfterFirstDefeat ? 'pass' : 'warn',
+      note: `Thua đầu ở Lượt #${m.firstDefeatRunIndex}`,
+    });
+  }
+
+  // 2. Ares (Ch.1-4) attempts to first clear
+  const ares = m.bossAttempts.ch1_ares;
+  if (!ares || ares.attempts === 0) {
+    rows.push({
+      id: 'ares_attempts',
+      label: 'Số lượt thử hạ Phụ Boss Ares (Ch.1-4)',
+      actualText: 'Chưa chạm trán',
+      targetText: '1–3 lượt',
+      status: 'insufficient',
+      note: 'Chưa vào Ải 4 Chương 1',
+    });
+  } else if (ares.attemptsToFirstClear !== undefined) {
+    const ok = ares.attemptsToFirstClear >= 1 && ares.attemptsToFirstClear <= 3;
+    rows.push({
+      id: 'ares_attempts',
+      label: 'Số lượt thử hạ Phụ Boss Ares (Ch.1-4)',
+      actualText: `${ares.attemptsToFirstClear} lượt`,
+      targetText: '1–3 lượt',
+      status: ok ? 'pass' : 'warn',
+      note: ok ? 'Nhịp thử thách đầu game chuẩn' : 'Cần rà soát độ khó Ải 4',
+    });
+  } else {
+    rows.push({
+      id: 'ares_attempts',
+      label: 'Số lượt thử hạ Phụ Boss Ares (Ch.1-4)',
+      actualText: `${ares.attempts} lượt (chưa qua)`,
+      targetText: '1–3 lượt',
+      status: ares.attempts > 3 ? 'warn' : 'insufficient',
+      note: ares.attempts > 3 ? 'Vượt 3 lượt thử chưa hạ Ares' : 'Đang tiến hành',
+    });
+  }
+
+  // 3. Leo King (Ch.1-12) attempts to first clear
+  const leo = m.bossAttempts.ch1_leo_king;
+  if (!leo || leo.attempts === 0) {
+    rows.push({
+      id: 'leo_attempts',
+      label: 'Số lượt thử hạ Sư Vương (Ch.1-12)',
+      actualText: 'Chưa chạm trán',
+      targetText: '1–5 lượt',
+      status: 'insufficient',
+      note: 'Chưa vào Ải 12 Chương 1',
+    });
+  } else if (leo.attemptsToFirstClear !== undefined) {
+    const ok = leo.attemptsToFirstClear >= 1 && leo.attemptsToFirstClear <= 5;
+    rows.push({
+      id: 'leo_attempts',
+      label: 'Số lượt thử hạ Sư Vương (Ch.1-12)',
+      actualText: `${leo.attemptsToFirstClear} lượt`,
+      targetText: '1–5 lượt',
+      status: ok ? 'pass' : 'warn',
+      note: ok ? 'Ngưỡng hạ Boss Ch.1 đạt mục tiêu' : 'Hạ Sư Vương mất quá 5 lượt',
+    });
+  } else {
+    rows.push({
+      id: 'leo_attempts',
+      label: 'Số lượt thử hạ Sư Vương (Ch.1-12)',
+      actualText: `${leo.attempts} lượt (chưa qua)`,
+      targetText: '1–5 lượt',
+      status: leo.attempts > 5 ? 'warn' : 'insufficient',
+      note: leo.attempts > 5 ? 'Độ khó Sư Vương cao hơn mục tiêu' : 'Đang tiến hành',
+    });
+  }
+
+  // 4. First Rare gear pacing
+  const firstRare = m.milestones.firstRare;
+  if (!firstRare) {
+    rows.push({
+      id: 'first_rare',
+      label: 'Nhịp đạt Trang Bị Hiếm (Rare) đầu tiên',
+      actualText: 'Chưa đạt',
+      targetText: 'Lượt 1–3',
+      status: m.totalRuns >= 4 ? 'warn' : 'insufficient',
+      note: m.totalRuns >= 4 ? 'Đã quá 3 lượt vẫn chưa có đồ Hiếm' : 'Mở khóa sau Ải 4 Ch.1',
+    });
+  } else {
+    const ok = firstRare.runIndex >= 1 && firstRare.runIndex <= 3;
+    rows.push({
+      id: 'first_rare',
+      label: 'Nhịp đạt Trang Bị Hiếm (Rare) đầu tiên',
+      actualText: `Lượt #${firstRare.runIndex} (${firstRare.elapsedSec}s)`,
+      targetText: 'Lượt 1–3',
+      status: ok ? 'pass' : 'warn',
+      note: ok ? 'Đúng nhịp mở khóa Hiếm' : 'Lệch nhịp mở khóa Hiếm đầu tiên',
+    });
+  }
+
+  // 5. First Epic gear pacing
+  const firstEpic = m.milestones.firstEpic;
+  if (!firstEpic) {
+    rows.push({
+      id: 'first_epic',
+      label: 'Nhịp đạt Trang Bị Sử Thi (Epic) đầu tiên',
+      actualText: 'Chưa đạt',
+      targetText: 'Lượt 2–6',
+      status: m.totalRuns >= 7 ? 'warn' : 'insufficient',
+      note: m.totalRuns >= 7 ? 'Đã quá 6 lượt chưa chạm mốc Sử Thi' : 'Mở khóa sau khi vượt Ch.1',
+    });
+  } else {
+    const ok = firstEpic.runIndex >= 2 && firstEpic.runIndex <= 6;
+    rows.push({
+      id: 'first_epic',
+      label: 'Nhịp đạt Trang Bị Sử Thi (Epic) đầu tiên',
+      actualText: `Lượt #${firstEpic.runIndex} (${firstEpic.elapsedSec}s)`,
+      targetText: 'Lượt 2–6',
+      status: ok ? 'pass' : 'warn',
+      note: ok ? 'Đúng nhịp chuyển tiếp Ch.1 → Ch.2' : 'Cần cân đối nguồn Mảnh Sử Thi',
+    });
+  }
+
+  // 6. Skill Synergy adoption rate
+  const totalSynergyPicks = Object.values(m.synergyPickCounts).reduce((sum, n) => sum + (n ?? 0), 0);
+  if (m.totalRuns < 2) {
+    rows.push({
+      id: 'synergy_adoption',
+      label: 'Tỷ lệ kích hoạt Cộng Hưởng kỹ năng',
+      actualText: `${totalSynergyPicks} lần / ${m.totalRuns} lượt`,
+      targetText: '≥ 0.5 lần / lượt',
+      status: 'insufficient',
+      note: 'Cần tối thiểu 2 lượt chơi để đánh giá',
+    });
+  } else {
+    const avg = totalSynergyPicks / m.totalRuns;
+    const ok = avg >= 0.5;
+    rows.push({
+      id: 'synergy_adoption',
+      label: 'Tỷ lệ kích hoạt Cộng Hưởng kỹ năng',
+      actualText: `${avg.toFixed(2)} lần / lượt (${totalSynergyPicks})`,
+      targetText: '≥ 0.50 lần / lượt',
+      status: ok ? 'pass' : 'warn',
+      note: ok ? 'Người chơi ghép Cộng Hưởng đều đặn' : 'Gợi ý ghép cặp chưa đủ nổi bật',
+    });
+  }
+
+  // 7. Endgame Progression Reach (Ch.4–12 boss progression)
+  const lateBossKeys = [
+    'ch4_gemini_boss',
+    'ch5_cancer_boss',
+    'ch6_virgo_boss',
+    'ch7_libra_boss',
+    'ch8_scorpio_boss',
+    'ch9_sagittarius_boss',
+    'ch10_capricorn_boss',
+    'ch11_aquarius_boss',
+    'ch12_pisces_boss',
+  ];
+  const clearedLateBosses = lateBossKeys.filter((k) => m.bossAttempts[k]?.cleared).length;
+  const highestCleared = Math.max(0, context?.highestChapterCleared ?? 0);
+  if (m.totalRuns < 4 && highestCleared < 3) {
+    rows.push({
+      id: 'endgame_reach',
+      label: 'Chinh phục trung & hậu cuộc (Ch.4–12)',
+      actualText: `Đã vượt Ch.${highestCleared} · ${clearedLateBosses}/9 Boss`,
+      targetText: 'Vượt Ch.4+ hoặc hạ ≥ 1 Boss Ch.4–12',
+      status: 'insufficient',
+      note: 'Ghi nhận sau giai đoạn đầu (từ 4 lượt hoặc vượt Ch.3)',
+    });
+  } else {
+    const ok = highestCleared >= 4 || clearedLateBosses >= 1;
+    rows.push({
+      id: 'endgame_reach',
+      label: 'Chinh phục trung & hậu cuộc (Ch.4–12)',
+      actualText: `Ch.${highestCleared}/12 · ${clearedLateBosses}/9 Boss`,
+      targetText: 'Vượt Ch.4+ hoặc hạ ≥ 1 Boss Ch.4–12',
+      status: ok ? 'pass' : 'warn',
+      note: ok
+        ? 'Tiến trình trung/hậu cuộc vượt ngưỡng trơn tru'
+        : 'Độ dốc Ch.3 → Ch.4 có thể đang cản tiến trình',
+    });
+  }
+
+  // 8. Build Depth (Gear Sets, Hero Mastery, Synergy Diversity)
+  const distinctSynergies = Object.values(m.synergyPickCounts).filter((n) => (n ?? 0) > 0).length;
+  const activeSetCount = Math.max(0, context?.activeSetCount ?? 0);
+  const maxMasteryLevel = Math.max(1, context?.maxMasteryLevel ?? 1);
+  if (m.totalRuns < 3) {
+    rows.push({
+      id: 'build_depth',
+      label: 'Chiều sâu Build (Bộ Đồ · Tinh Thông · Cộng Hưởng)',
+      actualText: `${activeSetCount} Bộ · Tinh Thông Lv.${maxMasteryLevel} · ${distinctSynergies} Cộng Hưởng`,
+      targetText: '≥ 1 Bộ Đồ hoặc Tinh Thông Lv.3+ hoặc ≥ 2 Cộng Hưởng',
+      status: 'insufficient',
+      note: 'Cần tối thiểu 3 lượt để đo chiều sâu phối đồ',
+    });
+  } else {
+    const ok = activeSetCount >= 1 || maxMasteryLevel >= 3 || distinctSynergies >= 2;
+    rows.push({
+      id: 'build_depth',
+      label: 'Chiều sâu Build (Bộ Đồ · Tinh Thông · Cộng Hưởng)',
+      actualText: `${activeSetCount} Bộ · Lv.${maxMasteryLevel} · ${distinctSynergies} Cộng Hưởng`,
+      targetText: '≥ 1 Bộ · Lv.3+ hoặc ≥ 2 Cộng Hưởng',
+      status: ok ? 'pass' : 'warn',
+      note: ok
+        ? 'Hệ thống phối trang bị & Tinh Thông phát huy hiệu quả'
+        : 'Người chơi chưa kích hoạt sâu Bộ Đồ / Tinh Thông',
+    });
+  }
+
+  return rows;
+}
+
+// ============================================================================
+// PHASE 4 · HERO MASTERY (LV.1–10 PER HERO, LV.1 = +0% STATS)
+// ============================================================================
+
+export const HERO_MASTERY_MAX_LEVEL = 10;
+
+export function getHeroMasteryExpRequired(level: number): number {
+  const lv = Math.max(1, Math.min(HERO_MASTERY_MAX_LEVEL, Math.floor(level)));
+  if (lv >= HERO_MASTERY_MAX_LEVEL) return 0;
+  return 100 + (lv - 1) * 85;
+}
+
+export function normalizeHeroMastery(
+  raw?: Partial<Record<HeroId, HeroMasteryProgress>>
+): Partial<Record<HeroId, HeroMasteryProgress>> {
+  if (!raw || typeof raw !== 'object') return {};
+  const result: Partial<Record<HeroId, HeroMasteryProgress>> = {};
+  for (const [k, entry] of Object.entries(raw)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const level = Math.max(1, Math.min(HERO_MASTERY_MAX_LEVEL, Math.floor(entry.level || 1)));
+    const nextReq = getHeroMasteryExpRequired(level);
+    const exp =
+      level >= HERO_MASTERY_MAX_LEVEL
+        ? 0
+        : Math.max(0, Math.min(Math.max(0, nextReq - 1), Math.floor(entry.exp || 0)));
+    result[k as HeroId] = {
+      level,
+      exp,
+      totalRuns: Math.max(0, Math.floor(entry.totalRuns || 0)),
+    };
+  }
+  return result;
+}
+
+export function computeHeroMasteryBonuses(
+  raw: Partial<Record<HeroId, HeroMasteryProgress>> | undefined,
+  heroId: HeroId
+): HeroMasteryBonuses {
+  const normalized = normalizeHeroMastery(raw);
+  const progress = normalized[heroId] ?? { level: 1, exp: 0, totalRuns: 0 };
+  const level = progress.level;
+  const levelsAboveOne = Math.max(0, level - 1);
+  const isMax = level >= HERO_MASTERY_MAX_LEVEL;
+  const nextExp = getHeroMasteryExpRequired(level);
+
+  const atkPct = Number((levelsAboveOne * 0.02).toFixed(4));
+  const hpPct = Number((levelsAboveOne * 0.025).toFixed(4));
+  const critChance = level >= 5 ? 0.04 : 0;
+  const bossDamageBonus = level >= 10 ? 0.08 : 0;
+  const cpBonus = levelsAboveOne * 45;
+
+  const parts: string[] = [];
+  if (levelsAboveOne > 0) {
+    parts.push(`+${Math.round(atkPct * 100)}% ATK`);
+    parts.push(`+${(hpPct * 100).toFixed(1).replace(/\.0$/, '')}% HP`);
+  }
+  if (critChance > 0) parts.push(`+${Math.round(critChance * 100)}% Chí Mạng`);
+  if (bossDamageBonus > 0) parts.push(`+${Math.round(bossDamageBonus * 100)}% Sát Thương Boss`);
+
+  return {
+    level,
+    exp: progress.exp,
+    nextExp,
+    isMax,
+    atkPct,
+    hpPct,
+    critChance,
+    bossDamageBonus,
+    cpBonus,
+    summaryLabel: parts.length > 0 ? parts.join(' · ') : 'Chưa kích hoạt (đạt Lv.2 để mở thưởng)',
+  };
+}
+
+export function computeRunMasteryExpGain(params: {
+  chapterId: number;
+  stageReached: number;
+  victory: boolean;
+  isTowerMode?: boolean;
+  towerFloor?: number;
+  isBossRushMode?: boolean;
+  isDailyRiftMode?: boolean;
+}): number {
+  if (params.isTowerMode) {
+    const floor = Math.max(1, Math.floor(params.towerFloor ?? params.stageReached));
+    return Math.round(28 + floor * 6 + (params.victory ? 25 : 0));
+  }
+  if (params.isBossRushMode) {
+    return Math.round(35 + Math.max(1, params.stageReached) * 14 + (params.victory ? 45 : 0));
+  }
+  if (params.isDailyRiftMode) {
+    return Math.round(32 + Math.max(1, params.stageReached) * 10 + (params.victory ? 30 : 0));
+  }
+  const ch = Math.max(1, Math.min(12, Math.floor(params.chapterId || 1)));
+  const stage = Math.max(1, Math.min(12, Math.floor(params.stageReached || 1)));
+  return Math.round(18 + ch * 8 + stage * 4 + (params.victory ? 36 : 0));
+}
+
+export function grantHeroMasteryExp(
+  raw: Partial<Record<HeroId, HeroMasteryProgress>> | undefined,
+  heroId: HeroId,
+  expGain: number
+): {
+  nextMap: Partial<Record<HeroId, HeroMasteryProgress>>;
+  prevLevel: number;
+  nextLevel: number;
+  leveledUp: boolean;
+  expGained: number;
+} {
+  const nextMap = normalizeHeroMastery(raw);
+  const current = nextMap[heroId] ?? { level: 1, exp: 0, totalRuns: 0 };
+  const gain = Math.max(0, Math.floor(expGain));
+  let level = current.level;
+  let exp = current.exp + gain;
+
+  while (level < HERO_MASTERY_MAX_LEVEL) {
+    const req = getHeroMasteryExpRequired(level);
+    if (exp < req) break;
+    exp -= req;
+    level += 1;
+  }
+  if (level >= HERO_MASTERY_MAX_LEVEL) {
+    level = HERO_MASTERY_MAX_LEVEL;
+    exp = 0;
+  }
+
+  nextMap[heroId] = {
+    level,
+    exp,
+    totalRuns: current.totalRuns + 1,
+  };
+
+  return {
+    nextMap,
+    prevLevel: current.level,
+    nextLevel: level,
+    leveledUp: level > current.level,
+    expGained: gain,
+  };
+}
+
+// ============================================================================
+// PHASE 4 · 3 SAVED LOADOUT PRESETS (CAMPAIGN / BOSS / TOWER)
+// ============================================================================
+
+export const DEFAULT_LOADOUT_PRESET_SLOTS: ReadonlyArray<{
+  slotId: LoadoutPresetSlotId;
+  defaultName: string;
+}> = [
+  { slotId: 'preset_1', defaultName: 'Bộ 1 · Chiến Dịch' },
+  { slotId: 'preset_2', defaultName: 'Bộ 2 · Săn Boss' },
+  { slotId: 'preset_3', defaultName: 'Bộ 3 · Leo Tháp' },
+];
+
+export function normalizeLoadoutPresets(raw?: LoadoutPreset[]): LoadoutPreset[] {
+  if (!Array.isArray(raw)) return [];
+  const validSlots = new Set<LoadoutPresetSlotId>(['preset_1', 'preset_2', 'preset_3']);
+  const seen = new Set<LoadoutPresetSlotId>();
+  const out: LoadoutPreset[] = [];
+  for (const p of raw) {
+    if (!p || !validSlots.has(p.slotId) || seen.has(p.slotId)) continue;
+    seen.add(p.slotId);
+    out.push({
+      slotId: p.slotId,
+      name:
+        typeof p.name === 'string' && p.name.trim().length > 0
+          ? p.name.trim().slice(0, 28)
+          : DEFAULT_LOADOUT_PRESET_SLOTS.find((s) => s.slotId === p.slotId)?.defaultName ?? 'Bộ Trang Bị',
+      heroId: p.heroId,
+      equipped: { ...(p.equipped ?? {}) },
+      equippedRunes: Array.isArray(p.equippedRunes) ? p.equippedRunes.slice(0, 4) : [],
+      equippedPetId: p.equippedPetId ?? null,
+      equippedWingId: p.equippedWingId ?? null,
+      savedAt: typeof p.savedAt === 'number' ? p.savedAt : Date.now(),
+    });
+  }
+  return out;
+}
+
+export function captureLoadoutPreset(
+  save: SaveData,
+  slotId: LoadoutPresetSlotId,
+  customName?: string
+): LoadoutPreset[] {
+  const existing = normalizeLoadoutPresets(save.loadoutPresets);
+  const slotMeta = DEFAULT_LOADOUT_PRESET_SLOTS.find((s) => s.slotId === slotId);
+  const prev = existing.find((p) => p.slotId === slotId);
+  const nextPreset: LoadoutPreset = {
+    slotId,
+    name: customName?.trim() || prev?.name || slotMeta?.defaultName || 'Bộ Trang Bị',
+    heroId: save.selectedHeroId,
+    equipped: { ...(save.equipped ?? {}) },
+    equippedRunes: [...(save.equippedRunes ?? [])].slice(0, 4),
+    equippedPetId: save.equippedPetId ?? null,
+    equippedWingId: save.equippedWingId ?? null,
+    savedAt: Date.now(),
+  };
+  const filtered = existing.filter((p) => p.slotId !== slotId);
+  return [...filtered, nextPreset].sort((a, b) => a.slotId.localeCompare(b.slotId));
+}
+
+export function applyLoadoutPreset(
+  save: SaveData,
+  slotId: LoadoutPresetSlotId
+): {
+  nextSave: SaveData;
+  appliedGearCount: number;
+  skippedGearCount: number;
+  preset: LoadoutPreset | null;
+} {
+  const presets = normalizeLoadoutPresets(save.loadoutPresets);
+  const preset = presets.find((p) => p.slotId === slotId) ?? null;
+  if (!preset) {
+    return { nextSave: save, appliedGearCount: 0, skippedGearCount: 0, preset: null };
+  }
+
+  const inventoryUidSet = new Set(save.inventory.map((g) => g.uid));
+  const nextEquipped: Partial<Record<GearSlot, string>> = { ...(save.equipped ?? {}) };
+  let appliedGearCount = 0;
+  let skippedGearCount = 0;
+
+  for (const [slotKey, uid] of Object.entries(preset.equipped)) {
+    if (!uid) continue;
+    if (inventoryUidSet.has(uid)) {
+      nextEquipped[slotKey as GearSlot] = uid;
+      appliedGearCount += 1;
+    } else {
+      skippedGearCount += 1;
+    }
+  }
+
+  const runeUidSet = new Set((save.runeInventory ?? []).map((r) => r.uid));
+  const nextRunes = preset.equippedRunes.filter((uid) => runeUidSet.has(uid)).slice(0, 4);
+
+  const unlockedHeroes = new Set(save.unlockedHeroes ?? ['lyra']);
+  const nextHeroId = unlockedHeroes.has(preset.heroId) ? preset.heroId : save.selectedHeroId;
+
+  const ownedPetIds = new Set((save.pets ?? []).map((p) => p.petId));
+  const nextPetId =
+    preset.equippedPetId && ownedPetIds.has(preset.equippedPetId)
+      ? preset.equippedPetId
+      : save.equippedPetId ?? null;
+
+  const ownedWingIds = new Set(save.unlockedWings ?? []);
+  const nextWingId =
+    preset.equippedWingId && ownedWingIds.has(preset.equippedWingId)
+      ? preset.equippedWingId
+      : save.equippedWingId ?? null;
+
+  return {
+    nextSave: {
+      ...save,
+      selectedHeroId: nextHeroId,
+      equipped: nextEquipped,
+      equippedRunes: nextRunes.length > 0 || preset.equippedRunes.length === 0 ? nextRunes : save.equippedRunes,
+      equippedPetId: nextPetId,
+      equippedWingId: nextWingId,
+      activeLoadoutPresetId: slotId,
+    },
+    appliedGearCount,
+    skippedGearCount,
+    preset,
+  };
+}
+
+// ============================================================================
+// PHASE 4 · STANDARDIZED ENDLESS TOWER SCALING (FLOORS 1–50+)
+// ============================================================================
+
+export function getEndlessTowerScaling(
+  floor: number,
+  highestChapterCleared = 0
+): EndlessTowerFloorScaling {
+  const f = Math.max(1, Math.floor(floor || 1));
+  const chTier = Math.max(0, Math.min(12, Math.floor(highestChapterCleared || 0)));
+  // Gentle anchor so early players can climb Floors 1–9 cleanly while Ch.7–12 veterans face real endgame pressure
+  const chapterAnchorHp = 1 + Math.min(chTier, 6) * 0.08 + Math.max(0, chTier - 6) * 0.14;
+  const chapterAnchorDmg = 1 + Math.min(chTier, 6) * 0.05 + Math.max(0, chTier - 6) * 0.08;
+
+  const floorHpGrowth = 1 + (f - 1) * 0.24 + Math.pow(Math.max(0, f - 10), 1.25) * 0.09;
+  const floorDmgGrowth = 1 + (f - 1) * 0.11 + Math.pow(Math.max(0, f - 12), 1.15) * 0.04;
+
+  const enemyHpScale = Number((floorHpGrowth * chapterAnchorHp).toFixed(2));
+  const enemyDmgScale = Number((floorDmgGrowth * chapterAnchorDmg).toFixed(2));
+  const goldReward = Math.round((42 + f * 18 + Math.floor(f / 5) * 35) * (1 + chTier * 0.08));
+  const starDustReward = Math.round(6 + f * 2.5 + (f % 5 === 0 ? 12 : 0));
+  const gemReward = f % 5 === 0 ? 10 + Math.floor(f / 5) * 4 : Math.max(2, Math.floor(f / 4) + 1);
+
+  const enableHazards = f >= 10;
+  const enableDualAffixElites = f >= 12;
+  const enableBossPhaseThree = f >= 20;
+
+  let tierTitle = 'Khởi Hành';
+  if (f >= 20) tierTitle = 'Tối Thượng';
+  else if (f >= 12) tierTitle = 'Song Ấn';
+  else if (f >= 10) tierTitle = 'Nguy Hiểm';
+
+  return {
+    floor: f,
+    enemyHpScale,
+    enemyDmgScale,
+    goldReward,
+    starDustReward,
+    gemReward,
+    enableHazards,
+    enableDualAffixElites,
+    enableBossPhaseThree,
+    label: `Tầng ${f} · ${tierTitle}`,
+  };
+}
+
+
+

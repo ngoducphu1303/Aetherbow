@@ -1,4 +1,11 @@
-import { SkillDefinition, SkillId, SkillRarity, WheelOutcome } from '../types/game';
+import {
+  SkillDefinition,
+  SkillId,
+  SkillRarity,
+  SkillSynergyDef,
+  SkillSynergyId,
+  WheelOutcome,
+} from '../types/game';
 
 export const SKILL_RARITY_META: Record<
   SkillRarity,
@@ -404,26 +411,159 @@ function pickWeightedFromPool(
   return pool[0];
 }
 
-// Chapter 1 Valkyrie milestones (Stages 2, 6, 10) guarantee clear build identity choices:
+// ============================================================================
+// SKILL SYNERGIES (6 CURATED AOE & BOSS BUILD PAIRS)
+// ============================================================================
+
+export const SKILL_SYNERGIES: SkillSynergyDef[] = [
+  {
+    id: 'storm_chain',
+    name: 'Lôi Ảnh Liên Hoàn',
+    buildTag: 'aoe',
+    groupA: ['ricochet'],
+    groupB: ['lightning_arrow', 'super_bolt'],
+    shortEffect: 'Sét lan thêm +1 mục tiêu và +20% sát thương chuỗi sét',
+    accentColor: '#a78bfa',
+  },
+  {
+    id: 'piercing_volley',
+    name: 'Bão Tên Xuyên Phá',
+    buildTag: 'aoe',
+    groupA: ['diag_arrow'],
+    groupB: ['pierce', 'bouncy_wall'],
+    shortEffect: '+15% tốc bay đạn và +15% sát thương khi xuyên hoặc nảy tường',
+    accentColor: '#22d3ee',
+  },
+  {
+    id: 'inferno_meteor',
+    name: 'Hỏa Ngục Thiên Thạch',
+    buildTag: 'aoe',
+    groupA: ['fire_arrow', 'super_blaze'],
+    groupB: ['meteor_shower', 'super_meteor'],
+    shortEffect: '+25% bán kính nổ Thiên Thạch và +22% sát thương thiêu đốt',
+    accentColor: '#f97316',
+  },
+  {
+    id: 'boss_barrage',
+    name: 'Xạ Thủ Thần Tiễn',
+    buildTag: 'boss',
+    groupA: ['front_arrow'],
+    groupB: ['multishot'],
+    shortEffect: '+14% sát thương trực tiếp lên Boss và quái Tinh Anh',
+    accentColor: '#fbbf24',
+  },
+  {
+    id: 'frost_shatter',
+    name: 'Hàn Băng Phá Giáp',
+    buildTag: 'boss',
+    groupA: ['ice_arrow', 'super_freeze'],
+    groupB: ['crit_mastery'],
+    shortEffect: '+25% sát thương Chí Mạng lên mục tiêu đang bị làm chậm/đóng băng',
+    accentColor: '#67e8f9',
+  },
+  {
+    id: 'homing_blades',
+    name: 'Kiếm Vũ Truy Hồn',
+    buildTag: 'boss',
+    groupA: ['flying_swords', 'twin_strike'],
+    groupB: ['tracking_eye'],
+    shortEffect: 'Giảm 20% chu kỳ phóng Phi Kiếm và +20% sát thương Phi Kiếm',
+    accentColor: '#60a5fa',
+  },
+  {
+    id: 'aegis_sanctuary',
+    name: 'Thánh Giáp Trường Sinh',
+    buildTag: 'sustain',
+    groupA: ['sacred_protection'],
+    groupB: ['fountain_of_life', 'bloodthirst'],
+    shortEffect: '+25% giá trị Khiên Thánh và hồi +6% Max HP khi hạ Tinh Anh hoặc Boss',
+    accentColor: '#34d399',
+  },
+  {
+    id: 'solar_orbit',
+    name: 'Quỹ Đạo Nhật Luân',
+    buildTag: 'aoe',
+    groupA: ['orbit_orbs', 'super_circle'],
+    groupB: ['atk_boost', 'aspd_boost'],
+    shortEffect: '+28% tốc độ xoay và +25% sát thương Cầu Nguyên Tố quanh người',
+    accentColor: '#fb923c',
+  },
+  {
+    id: 'venom_eclipse',
+    name: 'Độc Ảnh Tinh Linh',
+    buildTag: 'boss',
+    groupA: ['venom_arrow'],
+    groupB: ['laser_sprite', 'bomb_sprite'],
+    shortEffect: '+30% sát thương Độc theo thời gian và +20% tốc độ bắn của Tinh Linh',
+    accentColor: '#4ade80',
+  },
+];
+
+export const SKILL_SYNERGY_MAP: Record<SkillSynergyId, SkillSynergyDef> = Object.fromEntries(
+  SKILL_SYNERGIES.map((syn) => [syn.id, syn])
+) as Record<SkillSynergyId, SkillSynergyDef>;
+
+function hasAnySkill(
+  stacks: Partial<Record<SkillId, number>>,
+  ids: SkillId[]
+): boolean {
+  return ids.some((id) => (stacks[id] ?? 0) > 0);
+}
+
+export function evaluateActiveSynergies(
+  currentStacks: Partial<Record<SkillId, number>>
+): SkillSynergyId[] {
+  const active: SkillSynergyId[] = [];
+  for (const syn of SKILL_SYNERGIES) {
+    if (hasAnySkill(currentStacks, syn.groupA) && hasAnySkill(currentStacks, syn.groupB)) {
+      active.push(syn.id);
+    }
+  }
+  return active;
+}
+
+/**
+ * Returns synergies that would become newly activated if the player picks `skillId`.
+ */
+export function getSynergyHintsForSkill(
+  skillId: SkillId,
+  currentStacks: Partial<Record<SkillId, number>>
+): SkillSynergyDef[] {
+  const hints: SkillSynergyDef[] = [];
+  for (const syn of SKILL_SYNERGIES) {
+    const hasA = hasAnySkill(currentStacks, syn.groupA);
+    const hasB = hasAnySkill(currentStacks, syn.groupB);
+    if (hasA && hasB) continue; // already active
+    if (syn.groupA.includes(skillId) && hasB) {
+      hints.push(syn);
+    } else if (syn.groupB.includes(skillId) && hasA) {
+      hints.push(syn);
+    }
+  }
+  return hints;
+}
+
+// Chapter 1–6 Valkyrie milestones (Stages 2, 6, 10) guarantee clear build identity choices:
 // Card 1: AoE / Mob-Clear pillar, Card 2: Single-Target Boss pillar, Card 3: Sustain / Flex pillar.
-const CH1_VALKYRIE_PILLARS: Record<
+// When the player already holds half of a Synergy pair, bias the corresponding lane toward completing it.
+const EARLY_VALKYRIE_PILLARS: Record<
   number,
   { aoe: SkillId[]; boss: SkillId[]; third: SkillId[] }
 > = {
   2: {
-    aoe: ['ricochet', 'diag_arrow', 'lightning_arrow', 'pierce'],
-    boss: ['front_arrow', 'ice_arrow', 'crit_mastery', 'venom_arrow'],
+    aoe: ['ricochet', 'diag_arrow', 'lightning_arrow', 'pierce', 'fire_arrow', 'orbit_orbs'],
+    boss: ['front_arrow', 'ice_arrow', 'crit_mastery', 'flying_swords', 'venom_arrow', 'bomb_sprite'],
     third: ['fountain_of_life', 'bloodthirst', 'atk_boost', 'aspd_boost'],
   },
   6: {
-    aoe: ['super_bolt', 'diag_arrow', 'super_blaze', 'meteor_shower', 'bomb_sprite'],
-    boss: ['tracking_eye', 'multishot', 'super_freeze', 'twin_strike', 'atk_boost'],
-    third: ['sacred_protection', 'fountain_of_life', 'power_trio', 'aspd_boost'],
+    aoe: ['super_bolt', 'diag_arrow', 'super_blaze', 'meteor_shower', 'pierce', 'ricochet', 'super_circle'],
+    boss: ['tracking_eye', 'multishot', 'super_freeze', 'twin_strike', 'crit_mastery', 'front_arrow', 'laser_sprite', 'venom_arrow'],
+    third: ['sacred_protection', 'fountain_of_life', 'bloodthirst', 'power_trio', 'aspd_boost', 'atk_boost'],
   },
   10: {
-    aoe: ['super_meteor', 'super_bolt', 'super_circle', 'diag_arrow'],
-    boss: ['multishot', 'warriors_soul', 'tracking_eye', 'super_freeze'],
-    third: ['sacred_protection', 'revive', 'power_trio', 'atk_boost'],
+    aoe: ['super_meteor', 'super_bolt', 'super_circle', 'diag_arrow', 'pierce'],
+    boss: ['multishot', 'warriors_soul', 'tracking_eye', 'super_freeze', 'twin_strike', 'laser_sprite'],
+    third: ['sacred_protection', 'revive', 'fountain_of_life', 'power_trio', 'atk_boost'],
   },
 };
 
@@ -444,21 +584,30 @@ export function rollSkillChoices(
   const picked: SkillDefinition[] = [];
   const pickedIds = new Set<SkillId>();
 
-  // Chapter 1 Valkyrie Stages 2/6/10: guarantee 1 AoE + 1 Boss + 1 Sustain/Flex meaningful choice
+  // Chapter 1–12 Valkyrie Stages 2/6/10: guarantee 1 AoE + 1 Boss + 1 Sustain/Flex meaningful choice,
+  // prioritizing Synergy-completing skills when the player already holds half a pair.
   if (
     context?.isValkyrie &&
-    context.chapterId === 1 &&
-    context.stage &&
-    CH1_VALKYRIE_PILLARS[context.stage] &&
+    context.chapterId &&
+    context.chapterId >= 1 &&
+    context.chapterId <= 12 &&
     count >= 3
   ) {
-    const pillars = CH1_VALKYRIE_PILLARS[context.stage];
+    const pillars =
+      (context.stage ? EARLY_VALKYRIE_PILLARS[context.stage] : undefined) ??
+      EARLY_VALKYRIE_PILLARS[6];
     const lanes = [pillars.aoe, pillars.boss, pillars.third];
     for (const laneIds of lanes) {
       const lanePool = laneIds
         .map((id) => SKILLS_CATALOG[id])
         .filter((s) => s && !pickedIds.has(s.id) && isEligible(s, false));
-      const chosen = pickWeightedFromPool(lanePool, rng);
+      const synergyCompleters = lanePool.filter(
+        (s) => getSynergyHintsForSkill(s.id, currentStacks).length > 0
+      );
+      const chosen =
+        synergyCompleters.length > 0 && rng() < 0.72
+          ? pickWeightedFromPool(synergyCompleters, rng)
+          : pickWeightedFromPool(lanePool, rng);
       if (chosen) {
         picked.push(chosen);
         pickedIds.add(chosen.id);

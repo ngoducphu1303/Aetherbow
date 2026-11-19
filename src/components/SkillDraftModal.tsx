@@ -12,9 +12,17 @@ import {
 } from 'lucide-react';
 import tarotCardArt from '../assets/images/arcane_tarot_frame_1794971375666.jpg';
 import { soundEngine } from '../audio/soundEngine';
-import { SKILL_RARITY_META, WHEEL_OUTCOMES } from '../data/skillsData';
+import {
+  SKILL_RARITY_META,
+  SKILL_SYNERGIES,
+  SKILL_SYNERGY_MAP,
+  WHEEL_OUTCOMES,
+  evaluateActiveSynergies,
+  getSynergyHintsForSkill,
+} from '../data/skillsData';
 import {
   EncounterOffer,
+  SkillBuildTag,
   SkillCategory,
   SkillDefinition,
   SkillId,
@@ -37,14 +45,21 @@ interface SkillDraftModalProps {
 
 const TAROT_CARD_ART = tarotCardArt;
 
-const CATEGORY_META: Record<SkillCategory, { label: string; pillClass: string }> = {
-  weapon: { label: 'Vũ Khí', pillClass: 'bg-sky-500/20 border-sky-300/50 text-sky-200' },
-  elemental: { label: 'Nguyên Tố', pillClass: 'bg-orange-500/20 border-orange-300/50 text-orange-200' },
-  circle: { label: 'Vòng Bảo Hộ', pillClass: 'bg-cyan-500/20 border-cyan-300/50 text-cyan-200' },
-  strike: { label: 'Kiếm Khí', pillClass: 'bg-purple-500/20 border-purple-300/50 text-purple-200' },
-  meteor: { label: 'Thiên Thạch', pillClass: 'bg-rose-500/20 border-rose-300/50 text-rose-200' },
-  sprite: { label: 'Tinh Linh', pillClass: 'bg-emerald-500/20 border-emerald-300/50 text-emerald-200' },
-  stat: { label: 'Thuộc Tính', pillClass: 'bg-amber-500/20 border-amber-300/50 text-amber-200' },
+const CATEGORY_META: Record<SkillCategory, { label: string; textClass: string }> = {
+  weapon: { label: 'Vũ Khí', textClass: 'text-sky-300' },
+  elemental: { label: 'Nguyên Tố', textClass: 'text-orange-300' },
+  circle: { label: 'Vòng Bảo Hộ', textClass: 'text-cyan-300' },
+  strike: { label: 'Kiếm Khí', textClass: 'text-purple-300' },
+  meteor: { label: 'Thiên Thạch', textClass: 'text-rose-300' },
+  sprite: { label: 'Tinh Linh', textClass: 'text-emerald-300' },
+  stat: { label: 'Thuộc Tính', textClass: 'text-amber-300' },
+};
+
+const BUILD_TAG_META: Record<SkillBuildTag, { label: string; textClass: string }> = {
+  aoe: { label: 'Hướng: Dọn Nhóm (AoE)', textClass: 'text-cyan-300' },
+  boss: { label: 'Hướng: Đánh Boss', textClass: 'text-amber-300' },
+  sustain: { label: 'Hướng: Sinh Tồn', textClass: 'text-emerald-300' },
+  hybrid: { label: 'Hướng: Linh Hoạt', textClass: 'text-slate-300' },
 };
 
 function getSkillComboTag(
@@ -171,6 +186,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   };
 
   const isSkillMode = mode === 'skill' || mode === 'valkyrie';
+  const activeSynergyIds = evaluateActiveSynergies(currentStacks);
 
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/88">
@@ -209,6 +225,16 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
               : 'Quay vòng định mệnh để nhận phần thưởng hậu hĩnh.'}
           </p>
           <div className="cel-divider-gold max-w-xs mx-auto mt-3" />
+          {isSkillMode && activeSynergyIds.length > 0 && (
+            <div className="mt-2.5 text-[11px] font-bold text-amber-200">
+              Cộng Hưởng đang bật:{' '}
+              <span className="text-emerald-300">
+                {activeSynergyIds
+                  .map((id) => SKILL_SYNERGY_MAP[id]?.name ?? id)
+                  .join(' · ')}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* AAA TAROT SKILL DRAFT CARDS */}
@@ -220,6 +246,16 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                 const rMeta = SKILL_RARITY_META[skill.rarity];
                 const catMeta = CATEGORY_META[skill.category];
                 const comboTag = getSkillComboTag(skill, currentStacks);
+                const completingSynergy = getSynergyHintsForSkill(skill.id, currentStacks)[0] ?? null;
+                const relatedSynergy =
+                  completingSynergy ??
+                  SKILL_SYNERGIES.find(
+                    (syn) => syn.groupA.includes(skill.id) || syn.groupB.includes(skill.id)
+                  ) ??
+                  null;
+                const isRelatedAlreadyActive = relatedSynergy
+                  ? activeSynergyIds.includes(relatedSynergy.id)
+                  : false;
                 return (
                   <button
                     key={skill.id}
@@ -254,16 +290,23 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                         </span>
                       </div>
 
-                      <div className="w-full flex flex-wrap items-center justify-center gap-1.5 mb-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-md border text-[10px] font-black whitespace-nowrap ${catMeta.pillClass}`}
-                        >
-                          {catMeta.label}
-                        </span>
+                      <div className="w-full flex flex-wrap items-center justify-center gap-1.5 text-[11px] font-semibold mb-3">
+                        <span className={catMeta.textClass}>{catMeta.label}</span>
+                        {skill.buildTag && (
+                          <>
+                            <span aria-hidden="true" className="text-slate-600">·</span>
+                            <span className={BUILD_TAG_META[skill.buildTag].textClass}>
+                              {BUILD_TAG_META[skill.buildTag].label}
+                            </span>
+                          </>
+                        )}
                         {stack > 0 && (
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-400/55 text-[10px] font-mono-nums font-black text-emerald-200 whitespace-nowrap">
-                            Đã có Lv.{stack}
-                          </span>
+                          <>
+                            <span aria-hidden="true" className="text-slate-600">·</span>
+                            <span className="font-mono-nums text-emerald-300">
+                              Đã có Lv.{stack}
+                            </span>
+                          </>
                         )}
                       </div>
 
@@ -285,17 +328,32 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                         {skill.description}
                       </p>
 
-                      {comboTag && (
+                      {relatedSynergy ? (
                         <div
-                          className={`mt-2.5 px-2.5 py-1 rounded-lg border text-[10px] font-black tracking-wide whitespace-nowrap ${
-                            comboTag.isEvolution
-                              ? 'bg-amber-400/20 border-amber-300 text-amber-200 shadow-[0_0_12px_rgba(251,191,36,0.28)]'
-                              : 'bg-purple-500/20 border-purple-300/60 text-purple-200'
+                          className={`mt-2.5 pt-2 w-full border-t text-left ${
+                            completingSynergy
+                              ? 'border-amber-300/60 text-amber-200'
+                              : isRelatedAlreadyActive
+                              ? 'border-emerald-400/40 text-emerald-300'
+                              : 'border-slate-700/80 text-slate-300'
                           }`}
                         >
+                          <div className="text-[10px] font-black uppercase tracking-wider">
+                            {completingSynergy
+                              ? `Kích Hoạt Cộng Hưởng · ${relatedSynergy.name}`
+                              : isRelatedAlreadyActive
+                              ? `Đã Bật · ${relatedSynergy.name}`
+                              : `Ghép Cặp · ${relatedSynergy.name}`}
+                          </div>
+                          <div className="text-[11px] text-slate-200/90 mt-0.5 leading-snug">
+                            {relatedSynergy.shortEffect}
+                          </div>
+                        </div>
+                      ) : comboTag ? (
+                        <div className="mt-2.5 pt-2 w-full border-t border-slate-700/70 text-[11px] font-bold text-amber-200">
                           {comboTag.label}
                         </div>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Card Footer */}

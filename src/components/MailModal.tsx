@@ -1,8 +1,11 @@
 import React from 'react';
-import { Check, CheckCheck, Mail, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, Lock, Mail, Trash2, X } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
+import {
+  getVisibleMailInbox,
+  isMailEligibleByProgression,
+} from '../data/earlyProgressionData';
 import { RARITY_META } from '../data/gearData';
-import { normalizeMailInbox } from '../data/liveOpsData';
 import { SaveData } from '../types/game';
 import { GoldCoinIcon, SoulGemIcon } from './GameIcons';
 
@@ -21,8 +24,10 @@ export const MailModal: React.FC<MailModalProps> = ({
   onClaimAllMail,
   onDeleteClaimedMail,
 }) => {
-  const mails = normalizeMailInbox(save.mailInbox);
-  const unreadCount = mails.filter((m) => !m.claimed).length;
+  const mails = getVisibleMailInbox(save);
+  const claimableCount = mails.filter(
+    (m) => !m.claimed && isMailEligibleByProgression(save, m)
+  ).length;
   const claimedCount = mails.filter((m) => m.claimed).length;
 
   return (
@@ -39,9 +44,9 @@ export const MailModal: React.FC<MailModalProps> = ({
                 Hộp Thư Tinh Giới
               </h2>
               <p className="text-[11px] font-semibold text-slate-300">
-                {unreadCount > 0
-                  ? `${unreadCount} thư quà tặng đang chờ nhận`
-                  : 'Tất cả quà tặng trong hộp thư đã được nhận'}
+                {claimableCount > 0
+                  ? `${claimableCount} thư quà tặng đủ điều kiện nhận`
+                  : 'Mỗi thư chỉ nhận 1 lần duy nhất · Quà mốc chiến dịch tự mở khi đạt ải'}
               </p>
             </div>
           </div>
@@ -66,68 +71,83 @@ export const MailModal: React.FC<MailModalProps> = ({
               Hộp thư hiện đang trống.
             </div>
           ) : (
-            mails.map((mail) => (
-              <div
-                key={mail.id}
-                className={`rounded-2xl p-4 border flex flex-col gap-3 ${
-                  mail.claimed
-                    ? 'bg-[#070b18]/75 border-slate-800'
-                    : 'cel-panel-ornate'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-amber-300">
-                      <span>{mail.sender}</span>
-                      <span aria-hidden="true" className="text-slate-600">·</span>
-                      <span className="text-slate-400">{mail.date}</span>
+            mails.map((mail) => {
+              const eligible = isMailEligibleByProgression(save, mail);
+              const lockLabel =
+                (mail.minChapterCleared ?? 0) >= 1
+                  ? `Mở sau Chương ${mail.minChapterCleared}`
+                  : (mail.minCh1Stage ?? 0) > 0
+                  ? `Mở sau Ải ${mail.minCh1Stage} Ch.1`
+                  : '';
+
+              return (
+                <div
+                  key={mail.id}
+                  className={`rounded-2xl p-4 border flex flex-col gap-3 ${
+                    mail.claimed || !eligible
+                      ? 'bg-[#070b18]/75 border-slate-800'
+                      : 'cel-panel-ornate'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-amber-300">
+                        <span>{mail.sender}</span>
+                        <span aria-hidden="true" className="text-slate-600">·</span>
+                        <span className="text-slate-400">{mail.date}</span>
+                      </div>
+                      <h3 className="font-display text-sm sm:text-base font-black text-white mt-0.5">
+                        {mail.title}
+                      </h3>
                     </div>
-                    <h3 className="font-display text-sm sm:text-base font-black text-white mt-0.5">
-                      {mail.title}
-                    </h3>
+
+                    {mail.claimed ? (
+                      <span className="text-[11px] font-black text-emerald-400 flex items-center gap-1 shrink-0 whitespace-nowrap">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Đã Nhận</span>
+                      </span>
+                    ) : !eligible ? (
+                      <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1 shrink-0 whitespace-nowrap">
+                        <Lock className="w-3.5 h-3.5 text-amber-400/70" />
+                        <span>{lockLabel}</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playAchievement();
+                          onClaimMail(mail.id);
+                        }}
+                        className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        Nhận Quà
+                      </button>
+                    )}
                   </div>
 
-                  {mail.claimed ? (
-                    <span className="text-[11px] font-black text-emerald-400 flex items-center gap-1 shrink-0">
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Đã Nhận</span>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        soundEngine.playAchievement();
-                        onClaimMail(mail.id);
-                      }}
-                      className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap shrink-0"
-                    >
-                      Nhận Quà
-                    </button>
-                  )}
-                </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">{mail.body}</p>
 
-                <p className="text-xs text-slate-300 leading-relaxed">{mail.body}</p>
-
-                <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-amber-400/15 text-xs font-mono-nums font-bold">
-                  {mail.rewardGold > 0 && (
-                    <span className="flex items-center gap-1 text-amber-300">
-                      <GoldCoinIcon className="w-3.5 h-3.5" />+{mail.rewardGold} Vàng
-                    </span>
-                  )}
-                  {mail.rewardGems > 0 && (
-                    <span className="flex items-center gap-1 text-purple-300">
-                      <SoulGemIcon className="w-3.5 h-3.5" />+{mail.rewardGems} Ngọc Hồn
-                    </span>
-                  )}
-                  {mail.bonusGearRarity && (
-                    <span className={`font-black ${RARITY_META[mail.bonusGearRarity].textClass}`}>
-                      +1 Trang Bị {mail.bonusSTier ? '[S] ' : ''}
-                      {RARITY_META[mail.bonusGearRarity].label}
-                    </span>
-                  )}
+                  <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-amber-400/15 text-xs font-mono-nums font-bold">
+                    {mail.rewardGold > 0 && (
+                      <span className="flex items-center gap-1 text-amber-300">
+                        <GoldCoinIcon className="w-3.5 h-3.5" />+{mail.rewardGold} Vàng
+                      </span>
+                    )}
+                    {mail.rewardGems > 0 && (
+                      <span className="flex items-center gap-1 text-purple-300">
+                        <SoulGemIcon className="w-3.5 h-3.5" />+{mail.rewardGems} Ngọc Hồn
+                      </span>
+                    )}
+                    {mail.bonusGearRarity && (
+                      <span className={`font-black ${RARITY_META[mail.bonusGearRarity].textClass}`}>
+                        +1 Trang Bị {mail.bonusSTier ? '[S] ' : ''}
+                        {RARITY_META[mail.bonusGearRarity].label}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -152,19 +172,19 @@ export const MailModal: React.FC<MailModalProps> = ({
 
           <button
             type="button"
-            disabled={unreadCount === 0}
+            disabled={claimableCount === 0}
             onClick={() => {
               soundEngine.playAchievement();
               onClaimAllMail();
             }}
             className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              unreadCount > 0
+              claimableCount > 0
                 ? 'a2-emerald-btn'
                 : 'bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed'
             }`}
           >
             <CheckCheck className="w-4 h-4" />
-            <span>Nhận Tất Cả ({unreadCount})</span>
+            <span>Nhận Tất Cả ({claimableCount})</span>
           </button>
         </div>
       </div>

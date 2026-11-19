@@ -14,6 +14,7 @@ import { ConstellationModal } from './components/ConstellationModal';
 import { DailyRewardsModal } from './components/DailyRewardsModal';
 import { DestinyWheelModal } from './components/DestinyWheelModal';
 import { DispatchModal } from './components/DispatchModal';
+import { EarlyRoadmapModal } from './components/EarlyRoadmapModal';
 import { GameHUD } from './components/GameHUD';
 import { HonorLeaderboardModal } from './components/HonorLeaderboardModal';
 import { ShopSectionTab } from './components/LobbyPanels';
@@ -54,6 +55,7 @@ import {
   computePlayerStats,
   craftEarlyTargetGear,
   createInitialSaveData,
+  evaluateEquippedGearSets,
   getGearPowerScore,
   getUpgradeCost,
   rollChestGearBatch,
@@ -62,12 +64,22 @@ import {
 import {
   RARITY_RANK,
   applyEarlyRunMilestones,
+  applyLoadoutPreset,
+  captureLoadoutPreset,
   claimMailsUnified,
+  computeRunMasteryExpGain,
   deleteClaimedMailsUnified,
   getEarlyProgressionPolicy,
+  getEndlessTowerScaling,
+  getSideModeScaling,
+  grantHeroMasteryExp,
   isEarlyFeatureUnlocked,
   migrateSaveData,
   normalizeEarlyForgeProgress,
+  recordPlaytestMilestone,
+  recordPlaytestRunEnd,
+  recordPlaytestRunStart,
+  resetPlaytestMetrics,
 } from './data/earlyProgressionData';
 import { HERO_MAP, getHeroStarUpgradeCost } from './data/heroesData';
 import {
@@ -518,9 +530,12 @@ export default function App() {
 
   const [save, setSave] = useState<SaveData>(() => loadSaveData());
   const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
+  const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
   const [phase, setPhase] = useState<GamePhase>(GamePhase.TITLE);
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
+  const selectedChapterIdRef = useRef<number>(1);
+  selectedChapterIdRef.current = selectedChapterId;
   const [gameMode, setGameMode] = useState<LobbyGameMode>('chapter');
   const [activeLobbyTab, setActiveLobbyTab] = useState<LobbyTab>('battle');
   const [heroSubTabInitial, setHeroSubTabInitial] = useState<
@@ -615,7 +630,9 @@ export default function App() {
   const [mailModalOpen, setMailModalOpen] = useState<boolean>(false);
   const [sweepResult, setSweepResult] = useState<SweepResultState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [earlyRoadmapOpen, setEarlyRoadmapOpen] = useState<boolean>(false);
   const [onboardingOpen, setOnboardingOpen] = useState<boolean>(false);
+  const campaignRunStartAtRef = useRef<number>(0);
   const [activeAchievementToast, setActiveAchievementToast] =
     useState<AchievementDefinition | null>(null);
   const [powerToast, setPowerToast] = useState<PowerToastData | null>(null);
@@ -719,6 +736,8 @@ export default function App() {
     defeatCause?: DefeatCauseInfo;
     milestoneNotes?: string[];
     prevBestStage?: number;
+    masteryExpGained?: number;
+    masteryLeveledUpTo?: number;
   } | null>(null);
 
   const playerStats = useMemo(() => computePlayerStats(save), [save]);
@@ -1022,6 +1041,7 @@ export default function App() {
   // Persist save to localStorage + sync audio volumes + keep VIP ref fresh
   useEffect(() => {
     vipActiveRef.current = isVipActive(save.vip);
+    highestChapterClearedRef.current = save.highestChapterCleared ?? 0;
     soundEngine.setMuted(save.muted);
     soundEngine.setVolumes(
       currentSettings.masterVol,
@@ -1116,7 +1136,9 @@ export default function App() {
           setJoystick(joy);
         },
         onRequestSkillDraft: (currentSkills) => {
-          const rolled = rollSkillChoices(currentSkills, 3);
+          const rolled = rollSkillChoices(currentSkills, 3, undefined, {
+            chapterId: selectedChapterIdRef.current,
+          });
           if (rolled.length === 0) {
             engine.setPhase(GamePhase.PLAYING);
             return;
@@ -1230,6 +1252,14 @@ export default function App() {
           const arenaRatingDelta = isArena ? (victory ? (opp?.rewardPoints ?? 24) : -12) : 0;
           const arenaCoinsGain = isArena ? (victory ? (opp?.rewardArenaCoins ?? 35) : 12) : 0;
 
+          const sideModeScale =
+            isDailyRift || isBossRush
+              ? getSideModeScaling(highestChapterClearedRef.current)
+              : null;
+          const towerScale = isTower
+            ? getEndlessTowerScaling(towerFloor, highestChapterClearedRef.current)
+            : null;
+          const sideRewardMult = sideModeScale?.goldRewardMult ?? 1;
           const bonusGold = isArena
             ? victory
               ? 160
@@ -1255,13 +1285,11 @@ export default function App() {
             : isGuildBoss
             ? Math.min(480, 90 + Math.floor(guildBossDamage / 250))
             : isDailyRift
-            ? victory
-              ? 160
-              : 30
+            ? Math.round((victory ? 160 : 30) * sideRewardMult)
             : isBossRush
-            ? bossRound * 70 + (victory ? 180 : 0)
+            ? Math.round((bossRound * 70 + (victory ? 180 : 0)) * sideRewardMult)
             : isTower
-            ? towerFloor * 15
+            ? towerScale?.goldReward ?? towerFloor * 15
             : victory
             ? 140 * summary.chapterId
             : 20;
@@ -1292,7 +1320,7 @@ export default function App() {
             : isBossRush
             ? bossRound * 6 + (victory ? 22 : 0)
             : isTower
-            ? Math.floor(towerFloor / 3) * 4 + 2
+            ? towerScale?.gemReward ?? Math.floor(towerFloor / 3) * 4 + 2
             : victory
             ? 22 * summary.chapterId
             : 2;
@@ -1310,7 +1338,22 @@ export default function App() {
               : isCrystalVault
               ? vaultGemsLooted
               : bonusGems);
-          const starDustGain = summary.starDust ?? 0;
+          const starDustGain =
+            (isDailyRift || isBossRush) && sideModeScale
+              ? Math.round((summary.starDust ?? 0) * sideModeScale.goldRewardMult) +
+                (victory ? Math.round(sideModeScale.starDustBonus * 0.25) : 0)
+              : isTower && towerScale
+              ? (summary.starDust ?? 0) + towerScale.starDustReward
+              : summary.starDust ?? 0;
+          const runMasteryExp = computeRunMasteryExpGain({
+            chapterId: summary.chapterId,
+            stageReached: summary.stageReached,
+            victory,
+            isTowerMode: isTower,
+            towerFloor,
+            isBossRushMode: isBossRush,
+            isDailyRiftMode: isDailyRift,
+          });
           const petEssenceGain = summary.petEssence ?? 0;
           const guildCoinGain = isGuildBoss
             ? Math.min(180, 25 + Math.floor(guildBossDamage / 600))
@@ -1391,6 +1434,7 @@ export default function App() {
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
             defeatCause: summary.defeatCause,
+            masteryExpGained: runMasteryExp,
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
 
@@ -1414,6 +1458,30 @@ export default function App() {
               CHAPTERS.find((c) => c.id === summary.chapterId)?.name ?? `Chương ${summary.chapterId}`;
             const elDef = ELEMENTAL_TOWER_MAP[elTowerId];
             const coopDef = COOP_DIFFICULTY_MAP[coopDiff];
+
+            const masteryResult = grantHeroMasteryExp(
+              prev.heroMastery,
+              prev.selectedHeroId,
+              runMasteryExp
+            );
+            if (masteryResult.leveledUp) {
+              setRunSummary((cur) =>
+                cur
+                  ? {
+                      ...cur,
+                      masteryLeveledUpTo: masteryResult.nextLevel,
+                    }
+                  : cur
+              );
+            }
+            const equippedSetEval = evaluateEquippedGearSets(prev);
+            const activeSetNames = equippedSetEval.sets
+              .filter((s) => s.unlockedTiers.length > 0)
+              .map((s) => s.displayName);
+            const runDurationSec =
+              campaignRunStartAtRef.current > 0
+                ? Math.max(1, Math.round((performance.now() - campaignRunStartAtRef.current) / 1000))
+                : undefined;
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1521,8 +1589,17 @@ export default function App() {
               victory,
               heroId: prev.selectedHeroId,
               timestamp: Date.now(),
+              activeSynergies: summary.activeSynergies,
+              activeSetNames: activeSetNames.length > 0 ? activeSetNames : undefined,
+              durationSec: runDurationSec,
+              defeatCauseLabel: !victory ? summary.defeatCause?.label : undefined,
+              masteryExpGained: runMasteryExp,
             };
-            const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+            const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 20);
+            const withMastery = (next: SaveData): SaveData => ({
+              ...next,
+              heroMastery: masteryResult.nextMap,
+            });
 
             if (isSkyCitadel) {
               const sc = normalizeSkyCitadel(prev.skyCitadel);
@@ -1945,27 +2022,29 @@ export default function App() {
             }
 
             if (isBossRush) {
-              return {
+              return withMastery({
                 ...prev,
                 gold: prev.gold + totalGold,
                 gems: prev.gems + totalGems,
+                starDust: (prev.starDust ?? 0) + starDustGain,
                 bestBossRushRound: Math.max(prev.bestBossRushRound ?? 0, bossRound),
                 battlePass: nextBp,
                 career: nextCareer,
                 runHistory: nextHistory,
-              };
+              });
             }
 
             if (isTower) {
-              return {
+              return withMastery({
                 ...prev,
                 gold: prev.gold + totalGold,
                 gems: prev.gems + totalGems,
+                starDust: (prev.starDust ?? 0) + starDustGain,
                 bestTowerFloor: Math.max(prev.bestTowerFloor ?? 0, towerFloor),
                 battlePass: nextBp,
                 career: nextCareer,
                 runHistory: nextHistory,
-              };
+              });
             }
 
             const prevBest = prev.bestStagePerChapter[summary.chapterId] ?? 0;
@@ -1985,22 +2064,47 @@ export default function App() {
               career: nextCareer,
               runHistory: nextHistory,
             };
-            const { nextSave: withMilestones, grants } = applyEarlyRunMilestones(
+            const { nextSave: withMilestones, summary: msSummary } = applyEarlyRunMilestones(
               baseNext,
               summary.chapterId,
               summary.stageReached,
               victory
             );
+            const elapsedSeconds =
+              campaignRunStartAtRef.current > 0
+                ? Math.max(1, (performance.now() - campaignRunStartAtRef.current) / 1000)
+                : 0;
+            campaignRunStartAtRef.current = 0;
+            const withTelemetry: SaveData = withMastery({
+              ...withMilestones,
+              playtestMetrics: recordPlaytestRunEnd(withMilestones.playtestMetrics, {
+                chapterId: summary.chapterId,
+                stageReached: summary.stageReached,
+                victory,
+                elapsedSeconds,
+                activeSynergies: summary.activeSynergies,
+              }),
+            });
+            const notes: string[] = [...msSummary.titles];
+            if (msSummary.rareShardsGained > 0) {
+              notes.push(`+${msSummary.rareShardsGained} Mảnh Rèn Hiếm`);
+            }
+            if (msSummary.epicShardsGained > 0) {
+              notes.push(`+${msSummary.epicShardsGained} Mảnh Rèn Sử Thi`);
+            }
+            if (msSummary.sTierBlueprintsGained > 0) {
+              notes.push(`+${msSummary.sTierBlueprintsGained} Bản Vẽ Mẫu [S]`);
+            }
             setRunSummary((cur) =>
               cur
                 ? {
                     ...cur,
                     prevBestStage: prevBest,
-                    milestoneNotes: grants.length > 0 ? grants : undefined,
+                    milestoneNotes: notes.length > 0 ? notes : undefined,
                   }
                 : cur
             );
-            return withMilestones;
+            return withTelemetry;
           });
         },
         onProgressEvent: ({ killsDelta, stageCleared, bossKilled, maxCombo, seenEnemyKind }) => {
@@ -2133,6 +2237,11 @@ export default function App() {
     transitionTimerRef.current = window.setTimeout(() => {
       setTransitionState(null);
     }, 560);
+    campaignRunStartAtRef.current = performance.now();
+    setSave((prev) => ({
+      ...prev,
+      playtestMetrics: recordPlaytestRunStart(prev.playtestMetrics),
+    }));
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startChapter(selectedChapterId, playerStats);
   }, [selectedChapterId, save.highestChapterCleared, playerStats]);
@@ -2155,8 +2264,8 @@ export default function App() {
       setTransitionState(null);
     }, 560);
     setPhase(GamePhase.PLAYING);
-    engineRef.current?.startEndlessTower(playerStats);
-  }, [playerStats]);
+    engineRef.current?.startEndlessTower(playerStats, save.highestChapterCleared);
+  }, [playerStats, save.highestChapterCleared]);
 
   const handleStartBossRush = useCallback(() => {
     soundEngine.unlock();
@@ -2180,8 +2289,8 @@ export default function App() {
       setTransitionState(null);
     }, 560);
     setPhase(GamePhase.PLAYING);
-    engineRef.current?.startBossRush(playerStats);
-  }, [playerStats]);
+    engineRef.current?.startBossRush(playerStats, save.highestChapterCleared);
+  }, [playerStats, save.highestChapterCleared]);
 
   const handleStartDailyRift = useCallback(() => {
     const riftState = normalizeDailyRift(save.dailyRift);
@@ -2224,8 +2333,8 @@ export default function App() {
       setTransitionState(null);
     }, 560);
     setPhase(GamePhase.PLAYING);
-    engineRef.current?.startDailyRift(playerStats, todayPair);
-  }, [save.dailyRift, playerStats]);
+    engineRef.current?.startDailyRift(playerStats, todayPair, save.highestChapterCleared);
+  }, [save.dailyRift, save.highestChapterCleared, playerStats]);
 
   const handleStartGuildBoss = useCallback(() => {
     const guild = normalizeGuild(save.guild);
@@ -3229,13 +3338,13 @@ export default function App() {
       }
 
       // 4. Mail Inbox (Unified persistent ledger + progression eligibility)
-      const mailRes = claimMailsUnified(next, (rarity, sTier) =>
-        rollProgressionGatedGear(next, true, rarity, sTier)
+      const mailRes = claimMailsUnified(next, 'all', ({ isPremium, minRarity, forceSTier }) =>
+        rollProgressionGatedGear(next, isPremium, minRarity, forceSTier)
       );
       if (mailRes.claimedCount > 0) {
         next = mailRes.nextSave;
-        totalGoldGained += mailRes.goldGain;
-        totalGemsGained += mailRes.gemsGain;
+        totalGoldGained += mailRes.goldGained;
+        totalGemsGained += mailRes.gemsGained;
         claimedBundles += mailRes.claimedCount;
       }
 
@@ -5006,6 +5115,7 @@ export default function App() {
         gold: prev.gold - cost,
         inventory: nextInv,
         dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
+        playtestMetrics: recordPlaytestMilestone(prev.playtestMetrics, 'firstUpgrade'),
       };
     });
   };
@@ -5055,12 +5165,23 @@ export default function App() {
         others.some((o) => prev.equipped[slot] === o.uid);
 
       soundEngine.playVictory();
+      let nextMetrics = prev.playtestMetrics;
+      if (RARITY_RANK[upgradedItem.rarity] >= RARITY_RANK[Rarity.RARE]) {
+        nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstRare');
+      }
+      if (RARITY_RANK[upgradedItem.rarity] >= RARITY_RANK[Rarity.EPIC]) {
+        nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstEpic');
+      }
+      if (GEAR_TEMPLATES[upgradedItem.templateId]?.isSTier) {
+        nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstSTier');
+      }
       return {
         ...prev,
         inventory: nextInventory,
         equipped: wasAnyEquipped
           ? { ...prev.equipped, [slot]: upgradedItem.uid }
           : prev.equipped,
+        playtestMetrics: nextMetrics,
       };
     });
   };
@@ -5221,7 +5342,17 @@ export default function App() {
           'Chế Tạo Trang Bị Mục Tiêu',
           `${tpl?.name ?? 'Trang Bị'} (${RARITY_META[res.item.rarity].label})`
         );
-        return res.nextSave;
+        let nextMetrics = res.nextSave.playtestMetrics;
+        if (RARITY_RANK[res.item.rarity] >= RARITY_RANK[Rarity.RARE]) {
+          nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstRare');
+        }
+        if (RARITY_RANK[res.item.rarity] >= RARITY_RANK[Rarity.EPIC]) {
+          nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstEpic');
+        }
+        if (tpl?.isSTier) {
+          nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstSTier');
+        }
+        return { ...res.nextSave, playtestMetrics: nextMetrics };
       });
     },
     [triggerUpgradeCelebration]
@@ -5246,6 +5377,7 @@ export default function App() {
         gold: prev.gold - cost,
         inventory: nextInv,
         dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
+        playtestMetrics: recordPlaytestMilestone(prev.playtestMetrics, 'firstUpgrade'),
       };
     });
   }, []);
@@ -5286,6 +5418,18 @@ export default function App() {
           const bp = normalizeBattlePass(prev.battlePass);
           const rawXp = count === 10 ? 120 : 15;
           const xpGain = isVipActive(prev.vip) ? Math.round(rawXp * 1.25) : rawXp;
+          let nextMetrics = prev.playtestMetrics;
+          for (const rolledItem of items) {
+            if (RARITY_RANK[rolledItem.rarity] >= RARITY_RANK[Rarity.RARE]) {
+              nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstRare');
+            }
+            if (RARITY_RANK[rolledItem.rarity] >= RARITY_RANK[Rarity.EPIC]) {
+              nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstEpic');
+            }
+            if (GEAR_TEMPLATES[rolledItem.templateId]?.isSTier) {
+              nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstSTier');
+            }
+          }
           return {
             ...prev,
             gold: isGemChest ? prev.gold : prev.gold - totalCost,
@@ -5296,12 +5440,14 @@ export default function App() {
             dailyQuests: { ...dq, chests: dq.chests + count },
             career: { ...career, totalChestsOpened: career.totalChestsOpened + count },
             battlePass: { ...bp, xp: bp.xp + xpGain },
+            playtestMetrics: nextMetrics,
           };
         });
         setGachaReveal({ chestVariant: variant, count, gears: items });
       } else {
         const isPremium = variant === 'rune_rare';
-        const { items, nextPity } = rollRuneChestBatch(isPremium, count, save.pity);
+        const policy = getEarlyProgressionPolicy(save);
+        const { items, nextPity } = rollRuneChestBatch(isPremium, count, save.pity, { policy });
         setSave((prev) => {
           const dq = normalizeDailyQuests(prev.dailyQuests);
           const career = normalizeCareer(prev.career);
@@ -5615,9 +5761,14 @@ export default function App() {
       } else if (deal.rewardKind === 'gear_s') {
         nextInv = [...prev.inventory, rollProgressionGatedGear(prev, true, Rarity.EPIC, true)];
       } else if (deal.rewardKind === 'rune_epic') {
-        const { items } = rollRuneChestBatch(true, 1, prev.pity);
+        const policy = getEarlyProgressionPolicy(prev);
+        const { items } = rollRuneChestBatch(true, 1, prev.pity, { policy });
+        const clampedRarity =
+          RARITY_RANK[Rarity.EPIC] > RARITY_RANK[policy.maxRuneRarity]
+            ? policy.maxRuneRarity
+            : Rarity.EPIC;
         const epicRune = items[0]
-          ? { ...items[0], rarity: Rarity.EPIC }
+          ? { ...items[0], rarity: clampedRarity }
           : undefined;
         if (epicRune) nextRunes = [...prev.runeInventory, epicRune];
       }
@@ -5640,10 +5791,8 @@ export default function App() {
 
   const handleClaimMail = useCallback((mailId: string) => {
     setSave((prev) => {
-      const res = claimMailsUnified(
-        prev,
-        (rarity, sTier) => rollProgressionGatedGear(prev, true, rarity, sTier),
-        mailId
+      const res = claimMailsUnified(prev, [mailId], ({ isPremium, minRarity, forceSTier }) =>
+        rollProgressionGatedGear(prev, isPremium, minRarity, forceSTier)
       );
       if (res.claimedCount === 0) return prev;
       soundEngine.playVictory();
@@ -5653,8 +5802,8 @@ export default function App() {
 
   const handleClaimAllMail = useCallback(() => {
     setSave((prev) => {
-      const res = claimMailsUnified(prev, (rarity, sTier) =>
-        rollProgressionGatedGear(prev, true, rarity, sTier)
+      const res = claimMailsUnified(prev, 'all', ({ isPremium, minRarity, forceSTier }) =>
+        rollProgressionGatedGear(prev, isPremium, minRarity, forceSTier)
       );
       if (res.claimedCount === 0) return prev;
       soundEngine.playVictory();
@@ -6009,6 +6158,20 @@ export default function App() {
         inventory: nextInventory,
       };
     });
+  }, []);
+
+  const handleSaveLoadoutPreset = useCallback((slotId: 'preset_1' | 'preset_2' | 'preset_3') => {
+    soundEngine.playLoadoutSwitch();
+    setSave((prev) => ({
+      ...prev,
+      loadoutPresets: captureLoadoutPreset(prev, slotId),
+      activeLoadoutPresetId: slotId,
+    }));
+  }, []);
+
+  const handleApplyLoadoutPreset = useCallback((slotId: 'preset_1' | 'preset_2' | 'preset_3') => {
+    soundEngine.playLoadoutSwitch();
+    setSave((prev) => applyLoadoutPreset(prev, slotId).nextSave);
   }, []);
 
   const handleSaveBuildPreset = useCallback((idx: number) => {
@@ -8782,6 +8945,7 @@ export default function App() {
           onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
           onOpenMailModal={() => setMailModalOpen(true)}
           onOpenSettingsModal={() => setSettingsOpen(true)}
+          onOpenEarlyRoadmap={() => setEarlyRoadmapOpen(true)}
           onSelectHero={handleSelectHero}
           onUnlockHero={handleUnlockHero}
           onUpgradeHeroStar={handleUpgradeHeroStar}
@@ -8818,6 +8982,8 @@ export default function App() {
           onBulkFuseGear={handleBulkFuseGear}
           onSaveBuildPreset={handleSaveBuildPreset}
           onApplyBuildPreset={handleApplyBuildPreset}
+          onSaveLoadoutPreset={handleSaveLoadoutPreset}
+          onApplyLoadoutPreset={handleApplyLoadoutPreset}
           onOpenChestWithGacha={handleOpenChestWithGacha}
           onCraftEarlyTargetGear={handleCraftEarlyTargetGear}
           onBuyFlashDeal={handleBuyFlashDeal}
@@ -8912,7 +9078,10 @@ export default function App() {
             if (rerollUsed) return;
             setRerollUsed(true);
             const minR = phase === GamePhase.VALKYRIE_DRAFT ? 'epic' : undefined;
-            const rolled = rollSkillChoices(draftStacks, 3, minR);
+            const rolled = rollSkillChoices(draftStacks, 3, minR, {
+              chapterId: selectedChapterIdRef.current,
+              isValkyrie: phase === GamePhase.VALKYRIE_DRAFT,
+            });
             if (rolled.length > 0) setDraftChoices(rolled);
           }}
           onAngelChoice={(choice) => {
@@ -9043,6 +9212,8 @@ export default function App() {
           defeatCause={runSummary?.defeatCause}
           milestoneNotes={runSummary?.milestoneNotes}
           prevBestStage={runSummary?.prevBestStage}
+          masteryExpGained={runSummary?.masteryExpGained}
+          masteryLeveledUpTo={runSummary?.masteryLeveledUpTo}
           onQuickUpgradeWeapon={handleQuickUpgradeWeapon}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
@@ -9331,6 +9502,7 @@ export default function App() {
         <SettingsModal
           settings={currentSettings}
           muted={save.muted}
+          save={save}
           onUpdateSettings={handleUpdateSettings}
           onToggleMute={handleToggleMute}
           onReplayTutorial={
@@ -9338,7 +9510,19 @@ export default function App() {
               ? () => setOnboardingOpen(true)
               : undefined
           }
+          onResetPlaytestMetrics={() =>
+            setSave((prev) => ({ ...prev, playtestMetrics: resetPlaytestMetrics() }))
+          }
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && earlyRoadmapOpen && (
+        <EarlyRoadmapModal
+          save={save}
+          onClose={() => setEarlyRoadmapOpen(false)}
+          onJumpToTab={(tab) => setActiveLobbyTab(tab)}
+          onCraftEarlyTargetGear={handleCraftEarlyTargetGear}
         />
       )}
 

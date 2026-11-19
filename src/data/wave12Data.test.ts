@@ -108,6 +108,7 @@ test('Crystal Vault normalization grants bonus attempt for Supreme Monthly and t
 
 test('Combat Power Breakdown identifies weakest category and Claim All aggregates multiple lobby reward sources', () => {
   const save = createInitialSaveData();
+  save.highestChapterCleared = 2;
   save.supremeMonthly = {
     active: true,
     daysRemaining: 20,

@@ -1,4 +1,9 @@
 import { PityState, Rarity, RuneDefinition, RuneId, RuneInstance } from '../types/game';
+import {
+  EarlyProgressionPolicy,
+  RARITY_RANK,
+  clampRarityToPolicy,
+} from './earlyProgressionData';
 import { normalizePity } from './liveOpsData';
 
 export const RUNES_CATALOG: Record<RuneId, RuneDefinition> = {
@@ -138,9 +143,19 @@ export const RUNES_CATALOG: Record<RuneId, RuneDefinition> = {
 
 export const ALL_RUNES_LIST = Object.values(RUNES_CATALOG);
 
-export function rollRuneChest(isPremium: boolean, forceMinRarity?: Rarity): RuneInstance {
-  const def = ALL_RUNES_LIST[Math.floor(Math.random() * ALL_RUNES_LIST.length)];
-  const r = Math.random();
+export interface RollRuneOptions {
+  maxRarity?: Rarity;
+  rng?: () => number;
+}
+
+export function rollRuneChest(
+  isPremium: boolean,
+  forceMinRarity?: Rarity,
+  options?: RollRuneOptions
+): RuneInstance {
+  const rng = options?.rng ?? Math.random;
+  const def = ALL_RUNES_LIST[Math.floor(rng() * ALL_RUNES_LIST.length)];
+  const r = rng();
   let rarity = Rarity.COMMON;
   if (isPremium) {
     if (r < 0.14) rarity = Rarity.LEGENDARY;
@@ -151,14 +166,17 @@ export function rollRuneChest(isPremium: boolean, forceMinRarity?: Rarity): Rune
     else if (r < 0.4) rarity = Rarity.RARE;
     else rarity = Rarity.COMMON;
   }
+  const order = [Rarity.COMMON, Rarity.RARE, Rarity.EPIC, Rarity.LEGENDARY, Rarity.MYTHIC];
   if (forceMinRarity) {
-    const order = [Rarity.COMMON, Rarity.RARE, Rarity.EPIC, Rarity.LEGENDARY, Rarity.MYTHIC];
     if (order.indexOf(rarity) < order.indexOf(forceMinRarity)) {
       rarity = forceMinRarity;
     }
   }
+  if (options?.maxRarity) {
+    rarity = clampRarityToPolicy(rarity, options.maxRarity);
+  }
   return {
-    uid: `rune_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    uid: `rune_${Date.now()}_${Math.floor(rng() * 1e9).toString(36)}`,
     runeId: def.id,
     rarity,
   };
@@ -167,25 +185,40 @@ export function rollRuneChest(isPremium: boolean, forceMinRarity?: Rarity): Rune
 export function rollRuneChestBatch(
   isPremium: boolean,
   count: number,
-  currentPity?: Partial<PityState>
+  currentPity?: Partial<PityState>,
+  options?: { policy?: EarlyProgressionPolicy; rng?: () => number }
 ): { items: RuneInstance[]; nextPity: PityState } {
   const pity = normalizePity(currentPity);
   const items: RuneInstance[] = [];
   let hasRarePlus = false;
+  const maxRarity = options?.policy?.maxRuneRarity;
+  const canRollEpic = !maxRarity || RARITY_RANK[maxRarity] >= RARITY_RANK[Rarity.EPIC];
+  const canRollRare = !maxRarity || RARITY_RANK[maxRarity] >= RARITY_RANK[Rarity.RARE];
 
   for (let i = 0; i < count; i++) {
     if (isPremium) {
-      const needEpic = pity.runeRollsSinceEpic >= 9;
-      const item = rollRuneChest(true, needEpic ? Rarity.EPIC : undefined);
-      if (item.rarity === Rarity.EPIC || item.rarity === Rarity.LEGENDARY || item.rarity === Rarity.MYTHIC) {
-        pity.runeRollsSinceEpic = 0;
+      const needEpic = canRollEpic && pity.runeRollsSinceEpic >= 9;
+      const item = rollRuneChest(true, needEpic ? Rarity.EPIC : undefined, {
+        maxRarity,
+        rng: options?.rng,
+      });
+      if (canRollEpic) {
+        if (item.rarity === Rarity.EPIC || item.rarity === Rarity.LEGENDARY || item.rarity === Rarity.MYTHIC) {
+          pity.runeRollsSinceEpic = 0;
+        } else {
+          pity.runeRollsSinceEpic++;
+        }
       } else {
-        pity.runeRollsSinceEpic++;
+        // Preserve Epic Rune pity until Chapter 1 clear unlocks Epic Runes
+        pity.runeRollsSinceEpic = Math.min(9, pity.runeRollsSinceEpic + 1);
       }
       items.push(item);
     } else {
-      const forceRare = count >= 10 && i === count - 1 && !hasRarePlus;
-      const item = rollRuneChest(false, forceRare ? Rarity.RARE : undefined);
+      const forceRare = canRollRare && count >= 10 && i === count - 1 && !hasRarePlus;
+      const item = rollRuneChest(false, forceRare ? Rarity.RARE : undefined, {
+        maxRarity,
+        rng: options?.rng,
+      });
       if (item.rarity !== Rarity.COMMON) hasRarePlus = true;
       items.push(item);
     }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowUp, Crown, Feather, Flame, Gem, Heart, Moon, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
-import { SKILLS_CATALOG } from '../data/skillsData';
+import { SKILLS_CATALOG, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
 import {
@@ -668,7 +668,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             'bg-sky-600/75',
           ];
           const barGrad =
-            hud.bossPhase === 2 && curLayer === 1
+            hud.bossPhase === 3
+              ? 'from-amber-400 via-rose-500 to-red-700'
+              : hud.bossPhase === 2 && curLayer === 1
               ? 'from-red-600 via-orange-500 to-amber-300'
               : layerPalette[(curLayer - 1) % layerPalette.length];
           const underBg =
@@ -677,7 +679,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           return (
             <div
               className={`w-full max-w-md mx-auto rounded-2xl px-4 py-2 shadow-2xl border ${
-                hud.bossPhase === 2
+                hud.bossPhase === 3
+                  ? 'bg-[#2a0611]/95 border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.5)]'
+                  : hud.bossPhase === 2
                   ? 'bg-[#240713]/95 border-amber-400 shadow-[0_0_24px_rgba(244,63,94,0.45)]'
                   : 'bg-[#170914]/95 border-rose-500/70'
               }`}
@@ -694,8 +698,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     </span>
                   )}
                   {hud.bossPhase === 2 && (
-                    <span className="px-1.5 py-0.5 rounded bg-rose-600/90 border border-amber-300/80 text-[9px] font-black text-amber-100 whitespace-nowrap">
-                      PHA II
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300 whitespace-nowrap">
+                      <Flame className="w-3 h-3 text-rose-400 shrink-0" />
+                      <span>Pha II · Cuồng Nộ</span>
+                    </span>
+                  )}
+                  {hud.bossPhase === 3 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-200 whitespace-nowrap">
+                      <Crown className="w-3 h-3 text-amber-300 shrink-0" />
+                      <span>Pha III · Tối Thượng</span>
                     </span>
                   )}
                 </div>
@@ -754,6 +765,28 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   </div>
                 );
               })()}
+
+              {/* Phase 2–4: Boss Punish Window (+18% / +24% Counter-Strike) */}
+              {hud.bossPunishActive && (hud.bossStunTimer ?? 0) <= 0.05 && (
+                <div className="mt-1.5">
+                  <div className="flex items-center justify-between text-[9px] font-black mb-0.5">
+                    <span className="text-emerald-300">
+                      SƠ HỞ PHẢN ĐÒN · +{hud.bossPunishBonusPct ?? 18}% SÁT THƯƠNG
+                    </span>
+                    <span className="font-mono-nums text-emerald-200">
+                      {Math.round((hud.bossPunishRatio ?? 0) * 100)}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-950/95 border border-emerald-400/45 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all duration-75"
+                      style={{
+                        width: `${Math.max(4, Math.min(100, Math.round((hud.bossPunishRatio ?? 0) * 100)))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -764,6 +797,46 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="font-display text-xs sm:text-sm font-black tracking-wide">
               ⚡ PHÁ GIÁP BOSS THÀNH CÔNG! · CHOÁNG 3S &amp; +45% SÁT THƯƠNG ⚡
             </div>
+          </div>
+        )}
+
+        {/* Phase 4: Boss Phase III Transition Banner */}
+        {(hud.bossPhaseThreeBannerTimer ?? 0) > 0 && (hud.bossBrokenBannerTimer ?? 0) <= 0 && (
+          <div className="w-full max-w-md mx-auto rounded-xl px-4 py-1.5 bg-[#2c0512]/95 border border-amber-300 text-center shadow-[0_0_28px_rgba(251,191,36,0.55)]">
+            <div className="font-display text-xs sm:text-sm font-black tracking-wide text-amber-200 flex items-center justify-center gap-1.5">
+              <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>PHA III TỐI THƯỢNG · CỬA SỔ PHẢN ĐÒN +24% SÁT THƯƠNG</span>
+            </div>
+          </div>
+        )}
+
+        {/* Phase 3: Boss Phase II Transition Banner */}
+        {(hud.bossPhaseTwoBannerTimer ?? 0) > 0 &&
+          (hud.bossPhaseThreeBannerTimer ?? 0) <= 0 &&
+          (hud.bossBrokenBannerTimer ?? 0) <= 0 && (
+          <div className="w-full max-w-md mx-auto rounded-xl px-4 py-1.5 bg-[#2a0715]/95 border border-amber-300/85 text-center shadow-[0_0_24px_rgba(244,63,94,0.6)]">
+            <div className="font-display text-xs sm:text-sm font-black tracking-wide text-amber-200 flex items-center justify-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span>PHA II CUỒNG NỘ · BOSS TĂNG TỐC ĐÒN ĐÁNH</span>
+            </div>
+          </div>
+        )}
+
+        {/* Phase 3–4: Active Elite Affix & Arena Floor Hazard Readout */}
+        {((hud.activeEliteAffixLabel && !hud.bossName) || hud.activeArenaHazardLabel) && (
+          <div className="w-full max-w-md mx-auto flex flex-wrap justify-center gap-2">
+            {hud.activeEliteAffixLabel && !hud.bossName && (
+              <div className="hv2-panel rounded-xl px-3 py-1 text-[11px] font-bold text-amber-200 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">{hud.activeEliteAffixLabel}</span>
+              </div>
+            )}
+            {hud.activeArenaHazardLabel && (
+              <div className="hv2-panel rounded-xl px-3 py-1 text-[11px] font-bold text-rose-200 flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                <span className="truncate">{hud.activeArenaHazardLabel}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -1065,6 +1138,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </button>
               </div>
               <p className="text-slate-300 mt-1 leading-snug">{inspectedSkill.description}</p>
+            </div>
+          )}
+
+          {(hud.activeSynergies?.length ?? 0) > 0 && (
+            <div className="hv2-panel px-2.5 py-1 rounded-lg text-[10px] font-bold text-amber-200 max-w-full truncate">
+              Cộng Hưởng:{' '}
+              <span className="text-emerald-300">
+                {hud.activeSynergies!
+                  .map((id) => SKILL_SYNERGY_MAP[id]?.name ?? id)
+                  .join(' · ')}
+              </span>
             </div>
           )}
 

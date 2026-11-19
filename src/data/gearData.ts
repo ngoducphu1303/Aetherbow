@@ -1,6 +1,9 @@
 import {
+  ActiveGearSetBonus,
   ComputedPlayerStats,
   GearInstance,
+  GearSetDefinition,
+  GearSetId,
   GearSlot,
   GearTemplate,
   PityState,
@@ -132,6 +135,7 @@ import {
   PROGRESSION_SCHEMA_VERSION,
   RARITY_RANK,
   clampRarityToPolicy,
+  computeHeroMasteryBonuses,
   getBestCh1Stage,
   getEarlyProgressionPolicy,
   normalizeEarlyForgeProgress,
@@ -552,6 +556,186 @@ export const GEAR_TEMPLATES: Record<string, GearTemplate> = {
 
 export const ALL_TEMPLATE_LIST = Object.values(GEAR_TEMPLATES);
 
+// ============================================================================
+// GEAR SET BONUSES (5 MID-TO-ENDGAME SETS · STARTER SET EXCLUDED TO PROTECT CH.1)
+// ============================================================================
+
+export const GEAR_SET_DEFINITIONS: Record<GearSetId, GearSetDefinition> = {
+  'Destruction Set': {
+    id: 'Destruction Set',
+    displayName: 'Bộ Hủy Diệt',
+    accentColor: '#f97316',
+    maxPieces: 2,
+    tiers: [
+      {
+        piecesRequired: 2,
+        label: '+10% ATK · +12% Sát thương Chí Mạng',
+        atkPct: 0.1,
+        critDamage: 0.12,
+      },
+    ],
+  },
+  'Echo Set': {
+    id: 'Echo Set',
+    displayName: 'Bộ Tiếng Vang',
+    accentColor: '#c084fc',
+    maxPieces: 3,
+    tiers: [
+      {
+        piecesRequired: 2,
+        label: '+10% Tốc Bắn · +6% Tốc Chạy',
+        attackSpeed: 0.1,
+        moveSpeed: 0.06,
+      },
+      {
+        piecesRequired: 3,
+        label: '+12% ATK · +8% Giảm Thương',
+        atkPct: 0.12,
+        damageReduction: 0.08,
+      },
+    ],
+  },
+  'Dragon Knight Set': {
+    id: 'Dragon Knight Set',
+    displayName: 'Bộ Kỵ Sĩ Rồng [S]',
+    accentColor: '#f59e0b',
+    maxPieces: 3,
+    tiers: [
+      {
+        piecesRequired: 2,
+        label: '+14% ATK · +12% Max HP',
+        atkPct: 0.14,
+        hpPct: 0.12,
+      },
+      {
+        piecesRequired: 3,
+        label: '+15% Sát thương Chí Mạng · +8% Giảm Thương',
+        critDamage: 0.15,
+        damageReduction: 0.08,
+      },
+    ],
+  },
+  'Oracle Set': {
+    id: 'Oracle Set',
+    displayName: 'Bộ Tiên Tri Oracle [S]',
+    accentColor: '#38bdf8',
+    maxPieces: 3,
+    tiers: [
+      {
+        piecesRequired: 2,
+        label: '+12% Tốc Bắn · +8% Tỷ lệ Chí Mạng',
+        attackSpeed: 0.12,
+        critChance: 0.08,
+      },
+      {
+        piecesRequired: 3,
+        label: '+16% ATK · +10% Tốc Bắn',
+        atkPct: 0.16,
+        attackSpeed: 0.1,
+      },
+    ],
+  },
+  'Griffin Set': {
+    id: 'Griffin Set',
+    displayName: 'Bộ Điểu Sư Griffin [S]',
+    accentColor: '#34d399',
+    maxPieces: 2,
+    tiers: [
+      {
+        piecesRequired: 2,
+        label: '+14% Tốc Chạy · +12% Tốc Bắn · +10% ATK',
+        moveSpeed: 0.14,
+        attackSpeed: 0.12,
+        atkPct: 0.1,
+      },
+    ],
+  },
+};
+
+export interface EvaluatedGearSetsResult {
+  sets: ActiveGearSetBonus[];
+  activeTierCount: number;
+  atkPct: number;
+  hpPct: number;
+  critChance: number;
+  critDamage: number;
+  attackSpeed: number;
+  moveSpeed: number;
+  damageReduction: number;
+  bossDamageBonus: number;
+}
+
+export function evaluateEquippedGearSets(
+  save: Pick<SaveData, 'equipped' | 'inventory'>
+): EvaluatedGearSetsResult {
+  const counts: Partial<Record<GearSetId, number>> = {};
+  for (const slot of Object.values(GearSlot)) {
+    const uid = save.equipped[slot];
+    if (!uid) continue;
+    const item = save.inventory.find((g) => g.uid === uid);
+    if (!item) continue;
+    const tpl = GEAR_TEMPLATES[item.templateId];
+    if (!tpl) continue;
+    const setId = tpl.setName as GearSetId;
+    if (GEAR_SET_DEFINITIONS[setId]) {
+      counts[setId] = (counts[setId] ?? 0) + 1;
+    }
+  }
+
+  const sets: ActiveGearSetBonus[] = [];
+  let activeTierCount = 0;
+  let atkPct = 0;
+  let hpPct = 0;
+  let critChance = 0;
+  let critDamage = 0;
+  let attackSpeed = 0;
+  let moveSpeed = 0;
+  let damageReduction = 0;
+  let bossDamageBonus = 0;
+
+  for (const [setIdKey, equippedCount] of Object.entries(counts) as Array<[GearSetId, number]>) {
+    if (!equippedCount || equippedCount <= 0) continue;
+    const def = GEAR_SET_DEFINITIONS[setIdKey];
+    const unlockedTiers = def.tiers.filter((t) => equippedCount >= t.piecesRequired);
+    const nextTier = def.tiers.find((t) => equippedCount < t.piecesRequired);
+    for (const tier of unlockedTiers) {
+      activeTierCount++;
+      atkPct += tier.atkPct ?? 0;
+      hpPct += tier.hpPct ?? 0;
+      critChance += tier.critChance ?? 0;
+      critDamage += tier.critDamage ?? 0;
+      attackSpeed += tier.attackSpeed ?? 0;
+      moveSpeed += tier.moveSpeed ?? 0;
+      damageReduction += tier.damageReduction ?? 0;
+      bossDamageBonus += tier.bossDamageBonus ?? 0;
+    }
+    sets.push({
+      setId: def.id,
+      displayName: def.displayName,
+      accentColor: def.accentColor,
+      equippedCount,
+      maxPieces: def.maxPieces,
+      unlockedTiers,
+      nextTier,
+    });
+  }
+
+  sets.sort((a, b) => b.unlockedTiers.length - a.unlockedTiers.length || b.equippedCount - a.equippedCount);
+
+  return {
+    sets,
+    activeTierCount,
+    atkPct,
+    hpPct,
+    critChance,
+    critDamage,
+    attackSpeed,
+    moveSpeed,
+    damageReduction,
+    bossDamageBonus,
+  };
+}
+
 export function getGearStats(item: GearInstance) {
   const tpl = GEAR_TEMPLATES[item.templateId];
   if (!tpl) {
@@ -623,10 +807,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   let attack = Math.round(hero.bonusAtk * starScale);
   let maxHp = Math.round(hero.bonusHp * starScale) + 80;
   let critChance = 0.08 + heroStar * 0.015;
-  let critDamage = hero.id === 'wukong' ? 2.1 : 1.85;
+  let critDamage = hero.id === 'wukong' ? 2.01 : 1.85;
   let attackSpeedMult = 1.0 + heroStar * 0.03;
   let moveSpeedMult = 1.0;
-  let damageReduction = hero.id === 'wukong' ? 0.1 : 0;
+  let damageReduction = hero.id === 'wukong' ? 0.08 : 0;
   let arrowSpeed = 24;
   let innatePierce = false;
   let innateHoming = false;
@@ -889,16 +1073,22 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     zodiacRelicBonuses.bossDmg +
     guildSanctuaryBonuses.bossDmg;
 
-  // Apply Zodiac Guild Tech + 12 Constellations + Talents + Wave 11 Codex + Wave 12-14 Systems
+  // Apply Zodiac Guild Tech + 12 Constellations + Talents + Wave 11 Codex + Wave 12-14 Systems + Gear Set Bonuses + Hero Mastery
+  const gearSets = evaluateEquippedGearSets(save);
+  const heroMastery = computeHeroMasteryBonuses(save.heroMastery, hero.id);
   const guildTech = computeGuildTechBonuses(save.guild);
   const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
   const codexSummary = computeCodexSummary(save);
+  critDamage += gearSets.critDamage;
+  bossDamageBonus += gearSets.bossDamageBonus + heroMastery.bossDamageBonus;
   attack = Math.round(
     (attack + tal.atk + constellation.atkFlat) *
       (1 +
         runeAtkPct +
         subAtkPct +
+        gearSets.atkPct +
+        heroMastery.atkPct +
         guildTech.atkPct +
         cardAtkPct +
         wAuraStats.atkPct +
@@ -919,6 +1109,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       (1 +
         runeHpPct +
         subHpPct +
+        gearSets.hpPct +
+        heroMastery.hpPct +
         guildTech.hpPct +
         bondBonuses.hpPct +
         haloStats.hpPct +
@@ -934,6 +1126,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   critChance = Math.min(
     0.94,
     critChance +
+      gearSets.critChance +
+      heroMastery.critChance +
       tal.critChance +
       guildTech.critBonus +
       constellation.critBonus +
@@ -946,11 +1140,17 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       zodiacRelicBonuses.crit +
       royal3DTitleBonuses.crit
   );
-  attackSpeedMult += tal.aspdMult + constellation.aspdBonus + wingAspd + mythicBonuses.aspdBonus + celWingStats.aspd;
-  moveSpeedMult += tal.moveSpeedMult + steedStats.moveSpeed;
+  attackSpeedMult +=
+    gearSets.attackSpeed +
+    tal.aspdMult +
+    constellation.aspdBonus +
+    wingAspd +
+    mythicBonuses.aspdBonus +
+    celWingStats.aspd;
+  moveSpeedMult += gearSets.moveSpeed + tal.moveSpeedMult + steedStats.moveSpeed;
   damageReduction = Math.min(
     0.72,
-    damageReduction + tal.damageReduction + constellation.drBonus + haloStats.dr
+    damageReduction + gearSets.damageReduction + tal.damageReduction + constellation.drBonus + haloStats.dr
   );
   const moveSpeed = 7.6 * moveSpeedMult;
   const goldGainMult =
@@ -969,6 +1169,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       damageReduction * 420 +
       tal.stageHealPct * 600 +
       bossDamageBonus * 450 +
+      gearSets.activeTierCount * 110 +
+      heroMastery.cpBonus +
       constellation.totalStars * 18 +
       (equippedWingId ? wingLevel * 24 : 0) +
       (equippedMountId ? mountLevel * 32 : 0) +
@@ -1009,6 +1211,9 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     goldGainMult,
     bossDamageBonus,
     powerRating,
+    activeGearSets: gearSets.sets,
+    heroMasteryLevel: heroMastery.level,
+    heroMasteryBonusLabel: heroMastery.summaryLabel,
     equippedRunes,
     equippedPetId,
     petAtk,

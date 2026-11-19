@@ -65,6 +65,13 @@ import pantheonBossArt from '../assets/images/pantheon_expedition_boss_179501817
 import worldBossArt from '../assets/images/world_boss_abyss_1795005956955.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
+import {
+  countUnclaimedEligibleMail,
+  getEarlyProgressionPolicy,
+  getNextTargetGoal,
+  isEarlyFeatureUnlocked,
+  normalizeLoadoutPresets,
+} from '../data/earlyProgressionData';
 import { HERO_MAP } from '../data/heroesData';
 import {
   EVENT_BANNERS,
@@ -342,6 +349,7 @@ interface TitleScreenProps {
   onOpenProfileModal: (tab?: 'profile' | 'achievements' | 'history' | 'codex') => void;
   onOpenMailModal: () => void;
   onOpenSettingsModal: () => void;
+  onOpenEarlyRoadmap?: () => void;
   onSelectHero: (heroId: HeroId) => void;
   onUnlockHero: (heroId: HeroId, currency: 'gold' | 'gems') => void;
   onUpgradeHeroStar: (heroId: HeroId) => void;
@@ -378,6 +386,8 @@ interface TitleScreenProps {
   onBulkFuseGear: () => void;
   onSaveBuildPreset: (idx: number) => void;
   onApplyBuildPreset: (idx: number) => void;
+  onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onOpenChestWithGacha: (
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare',
     count?: 1 | 10
@@ -438,6 +448,7 @@ interface TitleScreenProps {
   onResetLobbyOrbit?: () => void;
   onAdjustLobbyZoom?: (delta: number) => void;
   onReplayEntranceVfx?: () => void;
+  onCraftEarlyTargetGear?: (tier: 'rare' | 'epic' | 's_tier') => void;
   lobbyHeadPos?: { x: number; y: number; visible: boolean };
 }
 
@@ -539,6 +550,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenProfileModal,
   onOpenMailModal,
   onOpenSettingsModal,
+  onOpenEarlyRoadmap,
   onSelectHero,
   onUnlockHero,
   onUpgradeHeroStar,
@@ -575,6 +587,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onBulkFuseGear,
   onSaveBuildPreset,
   onApplyBuildPreset,
+  onSaveLoadoutPreset,
+  onApplyLoadoutPreset,
   onOpenChestWithGacha,
   onBuyFlashDeal,
   onUnlockGrowthFundPremium,
@@ -632,6 +646,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onResetLobbyOrbit,
   onAdjustLobbyZoom,
   onReplayEntranceVfx,
+  onCraftEarlyTargetGear,
   lobbyHeadPos,
 }) => {
   const [chapterPickerOpen, setChapterPickerOpen] = useState(false);
@@ -676,7 +691,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const bpInfo = getBattlePassLevelInfo(bp.xp);
   const bpClaimable = countClaimableBattlePass(save);
   const achClaimable = countClaimableAchievements(save);
-  const unreadMailCount = countUnreadMail(save);
+  const unreadMailCount = countUnclaimedEligibleMail(save);
+  const earlyPolicy = getEarlyProgressionPolicy(save);
+  const targetGoal = getNextTargetGoal(save);
+  const metaEventsUnlock = isEarlyFeatureUnlocked(save, 'meta_events');
+  const battlePassUnlock = isEarlyFeatureUnlocked(save, 'battle_pass');
+  const forgeUnlock = isEarlyFeatureUnlocked(save, 'forge');
+  const sweepUnlock = isEarlyFeatureUnlocked(save, 'sweep');
+  const starterPackUnlock = isEarlyFeatureUnlocked(save, 'starter_pack');
   const vip = normalizeVip(save.vip);
   const hasVip = isVipActive(vip);
   const vipDailyReady = canClaimVipDaily(vip);
@@ -1811,7 +1833,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               {/* Right-Edge Expandable Feature Dock + Featured Event Banner */}
               <div className="pointer-events-auto flex flex-col items-end gap-2 z-20 shrink-0 relative">
                 <div className="flex items-center gap-1.5">
-                  {onOpenWave14Ascension && (
+                  {onOpenWave14Ascension && metaEventsUnlock.unlocked && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1830,7 +1852,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       )}
                     </button>
                   )}
-                  {onOpenWave13Treasury && (
+                  {onOpenWave13Treasury && metaEventsUnlock.unlocked && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1849,7 +1871,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       )}
                     </button>
                   )}
-                  {onOpenWave12Sanctum && (
+                  {onOpenWave12Sanctum && metaEventsUnlock.unlocked && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1926,18 +1948,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                       <button
                         type="button"
+                        disabled={!metaEventsUnlock.unlocked}
                         onClick={() => {
                           soundEngine.playUiClick();
                           setFeatureDockOpen(false);
                           onOpenNightMarketModal();
                         }}
-                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        className={`cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 ${
+                          metaEventsUnlock.unlocked
+                            ? 'hover:border-amber-300 cursor-pointer'
+                            : 'opacity-55 cursor-not-allowed'
+                        }`}
                       >
                         <span className="flex items-center gap-1.5 text-[11px] font-black text-purple-200 truncate">
-                          <ShoppingBag className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                          <span className="truncate">Chợ Đêm</span>
+                          {metaEventsUnlock.unlocked ? (
+                            <ShoppingBag className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          ) : (
+                            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {metaEventsUnlock.unlocked ? 'Chợ Đêm' : 'Chợ Đêm · Ch.3'}
+                          </span>
                         </span>
-                        {spendMilestoneReady > 0 && (
+                        {metaEventsUnlock.unlocked && spendMilestoneReady > 0 && (
                           <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
                             +{spendMilestoneReady}
                           </span>
@@ -1946,18 +1979,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                       <button
                         type="button"
+                        disabled={!metaEventsUnlock.unlocked}
                         onClick={() => {
                           soundEngine.playUiClick();
                           setFeatureDockOpen(false);
                           onOpenGuildModal();
                         }}
-                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        className={`cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 ${
+                          metaEventsUnlock.unlocked
+                            ? 'hover:border-amber-300 cursor-pointer'
+                            : 'opacity-55 cursor-not-allowed'
+                        }`}
                       >
                         <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-100 truncate">
-                          <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                          <span className="truncate">Bang Hội</span>
+                          {metaEventsUnlock.unlocked ? (
+                            <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          ) : (
+                            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {metaEventsUnlock.unlocked ? 'Bang Hội' : 'Bang Hội · Ch.3'}
+                          </span>
                         </span>
-                        {guild.bossRunsRemaining > 0 && (
+                        {metaEventsUnlock.unlocked && guild.bossRunsRemaining > 0 && (
                           <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono-nums text-[9px] font-black">
                             {guild.bossRunsRemaining}
                           </span>
@@ -1966,18 +2010,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                       <button
                         type="button"
+                        disabled={!metaEventsUnlock.unlocked}
                         onClick={() => {
                           soundEngine.playUiClick();
                           setFeatureDockOpen(false);
                           onOpenDestinyWheelModal();
                         }}
-                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        className={`cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 ${
+                          metaEventsUnlock.unlocked
+                            ? 'hover:border-amber-300 cursor-pointer'
+                            : 'opacity-55 cursor-not-allowed'
+                        }`}
                       >
                         <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
-                          <Ticket className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                          <span className="truncate">Vòng Quay</span>
+                          {metaEventsUnlock.unlocked ? (
+                            <Ticket className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          ) : (
+                            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {metaEventsUnlock.unlocked ? 'Vòng Quay' : 'Vòng Quay · Ch.3'}
+                          </span>
                         </span>
-                        {destinyReadyCount > 0 && (
+                        {metaEventsUnlock.unlocked && destinyReadyCount > 0 && (
                           <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
                             {destinyReadyCount}
                           </span>
@@ -1986,33 +2041,55 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                       <button
                         type="button"
+                        disabled={!forgeUnlock.unlocked}
                         onClick={() => {
                           soundEngine.playUiClick();
                           setFeatureDockOpen(false);
                           onOpenForgeSubTab('sockets');
                         }}
-                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        className={`cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 ${
+                          forgeUnlock.unlocked
+                            ? 'hover:border-amber-300 cursor-pointer'
+                            : 'opacity-55 cursor-not-allowed'
+                        }`}
                       >
                         <span className="flex items-center gap-1.5 text-[11px] font-black text-purple-200 truncate">
-                          <Gem className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-                          <span className="truncate">Lò Rèn &amp; Khảm</span>
+                          {forgeUnlock.unlocked ? (
+                            <Gem className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                          ) : (
+                            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {forgeUnlock.unlocked ? 'Lò Rèn & Khảm' : 'Lò Rèn · Ải 4 Ch.1'}
+                          </span>
                         </span>
                       </button>
 
                       <button
                         type="button"
+                        disabled={!battlePassUnlock.unlocked}
                         onClick={() => {
                           soundEngine.playUiClick();
                           setFeatureDockOpen(false);
                           onOpenBattlePassModal();
                         }}
-                        className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        className={`cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 ${
+                          battlePassUnlock.unlocked
+                            ? 'hover:border-amber-300 cursor-pointer'
+                            : 'opacity-55 cursor-not-allowed'
+                        }`}
                       >
                         <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
-                          <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                          <span className="truncate">BP Lv.{bpInfo.level}</span>
+                          {battlePassUnlock.unlocked ? (
+                            <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          ) : (
+                            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {battlePassUnlock.unlocked ? `BP Lv.${bpInfo.level}` : 'BP · Ải 4 Ch.1'}
+                          </span>
                         </span>
-                        {bpClaimable > 0 && (
+                        {battlePassUnlock.unlocked && bpClaimable > 0 && (
                           <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
                             +{bpClaimable}
                           </span>
@@ -2032,7 +2109,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                           <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                           <span className="truncate">{hasVip ? 'VIP Đặc Quyền' : 'VIP & Quà Đầu'}</span>
                         </span>
-                        {(vipDailyReady || !vip.starterPackClaimed) && (
+                        {(vipDailyReady || (starterPackUnlock.unlocked && !vip.starterPackClaimed)) && (
                           <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
                             {vipDailyReady ? 'Nhận' : 'Mới'}
                           </span>
@@ -3137,6 +3214,93 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </span>
                     </div>
 
+                    {/* Early Progression Ch.1-3 Target Gear & Rarity Ceiling Strip */}
+                    {save.highestChapterCleared < 3 && (
+                      <div className="mt-1.5 pt-1.5 border-t border-amber-400/15 flex flex-col gap-1 text-left">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          <span className="font-semibold text-amber-200 truncate">
+                            {targetGoal.title}
+                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-mono-nums text-slate-300">
+                              {targetGoal.current}/{targetGoal.target} · {earlyPolicy.stageLabel}
+                            </span>
+                            {onOpenEarlyRoadmap && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playUiClick(1.04);
+                                  onOpenEarlyRoadmap();
+                                }}
+                                className="text-[11px] font-bold text-amber-300 hover:text-amber-100 underline underline-offset-2 whitespace-nowrap cursor-pointer"
+                              >
+                                Lộ Trình Ch.1–3
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-400"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(4, Math.round((targetGoal.current / Math.max(1, targetGoal.target)) * 100))
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          {targetGoal.canCraftNow && onCraftEarlyTargetGear ? (
+                            <button
+                              type="button"
+                              onClick={() => onCraftEarlyTargetGear(targetGoal.tier)}
+                              className="a2-emerald-btn px-2.5 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                            >
+                              <Hammer className="w-3 h-3 shrink-0" />
+                              <span>Rèn Ngay</span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap">
+                              {targetGoal.unlocked ? 'Đang tích mảnh' : targetGoal.unlockRequirement}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Phase 4: Compact 1-Click Loadout Quick-Switch (only visible once at least 1 preset is saved) */}
+                    {(() => {
+                      const savedLoadouts = normalizeLoadoutPresets(save.loadoutPresets);
+                      if (savedLoadouts.length === 0 || !onApplyLoadoutPreset) return null;
+                      return (
+                        <div className="mt-1.5 pt-1.5 border-t border-amber-400/15 flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-slate-300 shrink-0 whitespace-nowrap">
+                            Bộ Loadout:
+                          </span>
+                          <div className="flex items-center gap-1.5 overflow-x-auto">
+                            {savedLoadouts.map((preset) => {
+                              const isActive = save.activeLoadoutPresetId === preset.slotId;
+                              return (
+                                <button
+                                  key={preset.slotId}
+                                  type="button"
+                                  onClick={() => onApplyLoadoutPreset(preset.slotId)}
+                                  className={`px-2 py-0.5 rounded-lg text-[10px] font-black border whitespace-nowrap shrink-0 cursor-pointer ${
+                                    isActive
+                                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                                      : 'bg-[#070b1a] border-amber-400/25 text-slate-200 hover:border-amber-300'
+                                  }`}
+                                >
+                                  {preset.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div className="mt-2 flex flex-wrap sm:flex-nowrap items-center gap-2">
                       <button
                         type="button"
@@ -3147,7 +3311,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         <span>12 Chương</span>
                       </button>
 
-                      {isChapterCleared && (
+                      {isChapterCleared && sweepUnlock.unlocked && (
                         <button
                           type="button"
                           disabled={dailySweeps.remaining <= 0}
@@ -4638,6 +4802,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onOpenForgeSubTab={onOpenForgeSubTab}
             onSaveBuildPreset={onSaveBuildPreset}
             onApplyBuildPreset={onApplyBuildPreset}
+            onSaveLoadoutPreset={onSaveLoadoutPreset}
+            onApplyLoadoutPreset={onApplyLoadoutPreset}
             onOpenWardrobe={onOpenWardrobe}
             onRotateHero={onRotateHero}
             onResetHeroRotation={onResetHeroRotation}

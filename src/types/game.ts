@@ -90,6 +90,8 @@ export interface HeroDefinition {
   eyeColor: string;
   cheekColor: string;
   crownStyle: CrownStyle;
+  roleTag?: SkillBuildTag;
+  unlockChapterReq?: number;
 }
 
 export type RuneId =
@@ -134,6 +136,119 @@ export enum EnemyKind {
   WARDEN_BOSS = 'WARDEN_BOSS',
   TITAN_BOSS = 'TITAN_BOSS',
   ZODIAC_BOSS = 'ZODIAC_BOSS',
+}
+
+export type EliteAffix = 'aegis' | 'haste' | 'volatile' | 'frost';
+
+export type GearSetId =
+  | 'Destruction Set'
+  | 'Echo Set'
+  | 'Dragon Knight Set'
+  | 'Oracle Set'
+  | 'Griffin Set';
+
+export interface GearSetBonusTier {
+  piecesRequired: 2 | 3;
+  label: string;
+  atkPct?: number;
+  hpPct?: number;
+  critChance?: number;
+  critDamage?: number;
+  attackSpeed?: number;
+  moveSpeed?: number;
+  damageReduction?: number;
+  bossDamageBonus?: number;
+}
+
+export interface GearSetDefinition {
+  id: GearSetId;
+  displayName: string;
+  accentColor: string;
+  maxPieces: number;
+  tiers: GearSetBonusTier[];
+}
+
+export interface ActiveGearSetBonus {
+  setId: GearSetId;
+  displayName: string;
+  accentColor: string;
+  equippedCount: number;
+  maxPieces: number;
+  unlockedTiers: GearSetBonusTier[];
+  nextTier?: GearSetBonusTier;
+}
+
+export interface SideModeScaling {
+  chapterTier: number;
+  enemyHpScale: number;
+  enemyDmgScale: number;
+  goldRewardMult: number;
+  starDustBonus: number;
+  label: string;
+}
+
+export type KpiGradeStatus = 'pass' | 'warn' | 'insufficient';
+
+export interface KpiEvaluationRow {
+  id: string;
+  label: string;
+  actualText: string;
+  targetText: string;
+  status: KpiGradeStatus;
+  note: string;
+}
+
+export interface PlaytestKpiContext {
+  highestChapterCleared?: number;
+  activeSetCount?: number;
+  maxMasteryLevel?: number;
+}
+
+export type ArenaHazardType = 'solar_eruption' | 'frost_zone' | 'void_pulse';
+
+export type LoadoutPresetSlotId = 'preset_1' | 'preset_2' | 'preset_3';
+
+export interface LoadoutPreset {
+  slotId: LoadoutPresetSlotId;
+  name: string;
+  heroId: HeroId;
+  equipped: Partial<Record<GearSlot, string>>;
+  equippedRunes: string[];
+  equippedPetId?: PetId | null;
+  equippedWingId?: WingId | null;
+  savedAt: number;
+}
+
+export interface HeroMasteryProgress {
+  level: number; // 1..10
+  exp: number;
+  totalRuns: number;
+}
+
+export interface HeroMasteryBonuses {
+  level: number;
+  exp: number;
+  nextExp: number;
+  isMax: boolean;
+  atkPct: number;
+  hpPct: number;
+  critChance: number;
+  bossDamageBonus: number;
+  cpBonus: number;
+  summaryLabel: string;
+}
+
+export interface EndlessTowerFloorScaling {
+  floor: number;
+  enemyHpScale: number;
+  enemyDmgScale: number;
+  goldReward: number;
+  starDustReward: number;
+  gemReward: number;
+  enableHazards: boolean;
+  enableDualAffixElites: boolean;
+  enableBossPhaseThree: boolean;
+  label: string;
 }
 
 export interface GearTemplate {
@@ -241,6 +356,9 @@ export interface ComputedPlayerStats {
   warBannerLevel?: number;
   altarTotalLevel?: number;
   lifeStealPct?: number;
+  activeGearSets?: ActiveGearSetBonus[];
+  heroMasteryLevel?: number;
+  heroMasteryBonusLabel?: string;
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -288,6 +406,27 @@ export type SkillId =
   | 'revive';
 
 export type SkillBuildTag = 'aoe' | 'boss' | 'sustain' | 'hybrid';
+
+export type SkillSynergyId =
+  | 'storm_chain'
+  | 'piercing_volley'
+  | 'inferno_meteor'
+  | 'boss_barrage'
+  | 'frost_shatter'
+  | 'homing_blades'
+  | 'aegis_sanctuary'
+  | 'solar_orbit'
+  | 'venom_eclipse';
+
+export interface SkillSynergyDef {
+  id: SkillSynergyId;
+  name: string;
+  buildTag: 'aoe' | 'boss' | 'sustain';
+  groupA: SkillId[];
+  groupB: SkillId[];
+  shortEffect: string;
+  accentColor: string;
+}
 
 export interface SkillDefinition {
   id: SkillId;
@@ -456,6 +595,36 @@ export interface DefeatCauseInfo {
   label: string;
   tip: string;
   killerName?: string;
+}
+
+export interface PlaytestMilestoneRecord {
+  runIndex: number;
+  elapsedSec: number;
+}
+
+export interface PlaytestBossAttemptRecord {
+  attempts: number;
+  cleared: boolean;
+  attemptsToFirstClear?: number;
+}
+
+export interface PlaytestMetrics {
+  createdAt: number;
+  totalRuns: number;
+  totalPlaySeconds: number;
+  firstDefeatRunIndex?: number;
+  startedRunAfterFirstDefeat: boolean;
+  stageEntriesByChapter: Record<string, Record<number, number>>;
+  stageDefeatsByChapter: Record<string, Record<number, number>>;
+  bossAttempts: Record<string, PlaytestBossAttemptRecord>;
+  milestones: {
+    firstUpgrade?: PlaytestMilestoneRecord;
+    firstRare?: PlaytestMilestoneRecord;
+    firstEpic?: PlaytestMilestoneRecord;
+    firstSTier?: PlaytestMilestoneRecord;
+    firstCh1Clear?: PlaytestMilestoneRecord;
+  };
+  synergyPickCounts: Partial<Record<SkillSynergyId, number>>;
 }
 
 export interface FlashDealItem {
@@ -944,6 +1113,11 @@ export interface RunHistoryEntry {
   victory: boolean;
   heroId: HeroId;
   timestamp: number;
+  activeSynergies?: SkillSynergyId[];
+  activeSetNames?: string[];
+  durationSec?: number;
+  defeatCauseLabel?: string;
+  masteryExpGained?: number;
 }
 
 export interface SaveData {
@@ -957,7 +1131,7 @@ export interface SaveData {
   selectedHeroId: HeroId;
   unlockedHeroes: HeroId[];
   heroStars: Record<HeroId, number>;
-  equipped: Record<GearSlot, string>;
+  equipped: Partial<Record<GearSlot, string>>;
   inventory: GearInstance[];
   equippedRunes: string[]; // rune instance uids (up to 4)
   runeInventory: RuneInstance[];
@@ -988,6 +1162,9 @@ export interface SaveData {
   vip?: VipState;
   dailyRift?: DailyRiftState;
   buildPresets?: BuildPreset[];
+  loadoutPresets?: LoadoutPreset[];
+  activeLoadoutPresetId?: LoadoutPresetSlotId | null;
+  heroMastery?: Partial<Record<HeroId, HeroMasteryProgress>>;
   guild?: GuildState;
   destinyWheel?: DestinyWheelState;
   seasonMedalsClaimed?: string[];
@@ -1100,6 +1277,7 @@ export interface SaveData {
   deletedMailIds?: string[];
   earlyMilestonesClaimed?: string[];
   earlyForgeProgress?: EarlyForgeProgress;
+  playtestMetrics?: PlaytestMetrics;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
@@ -1426,13 +1604,21 @@ export interface HudSnapshot {
   bossName: string | null;
   bossHp: number;
   bossMaxHp: number;
-  bossPhase: 1 | 2;
+  bossPhase: 1 | 2 | 3;
   bossLayers?: number;
   bossCurrentLayer?: number;
   bossShield?: number;
   bossMaxShield?: number;
   bossStunTimer?: number;
   bossBrokenBannerTimer?: number;
+  bossPunishActive?: boolean;
+  bossPunishRatio?: number;
+  bossPunishBonusPct?: number;
+  bossPhaseTwoBannerTimer?: number;
+  bossPhaseThreeBannerTimer?: number;
+  activeEliteAffixLabel?: string;
+  activeArenaHazardLabel?: string;
+  activeSynergies?: SkillSynergyId[];
   isTowerMode: boolean;
   towerFloor: number;
   isBossRushMode?: boolean;

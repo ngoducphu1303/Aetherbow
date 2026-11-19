@@ -3,7 +3,14 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObjectResources } from './resources';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
+import {
+  getEndlessTowerScaling,
+  getSideModeScaling,
+  PUNISH_WINDOW_DAMAGE_BONUS,
+  PUNISH_WINDOW_PHASE3_BONUS,
+} from '../data/earlyProgressionData';
 import { HERO_MAP } from '../data/heroesData';
+import { evaluateActiveSynergies, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import { PET_MAP } from '../data/wave3Data';
 import {
   CONSTELLATIONS,
@@ -40,10 +47,12 @@ import {
   ComputedPlayerStats,
   CoopAllySummary,
   CoopRaidDifficulty,
+  ArenaHazardType,
   DailyRiftMutatorPair,
   DamageBreakdown,
   DefeatCauseInfo,
   ElementalTowerId,
+  EliteAffix,
   EnemyKind,
   FloatingDamage,
   GamePhase,
@@ -60,6 +69,7 @@ import {
   RuneId,
   SanctuaryFloorId,
   SkillId,
+  SkillSynergyId,
   StageEventAfter,
   WheelOutcome,
 } from '../types/game';
@@ -150,12 +160,15 @@ interface EnemyEntity {
   slamZ: number;
   slamRadius: number;
   laneAngles: number[];
-  bossPhase: 1 | 2;
+  bossPhase: 1 | 2 | 3;
   phaseTransitioned: boolean;
+  phaseThreeTransitioned?: boolean;
   patternCounter?: number;
   breakShield?: number;
   maxBreakShield?: number;
   stunTimer?: number;
+  punishWindowTimer?: number;
+  punishWindowMax?: number;
   isVaultPillar?: boolean;
   isGoldenPillar?: boolean;
   burnTimer: number;
@@ -167,9 +180,31 @@ interface EnemyEntity {
   model: EnemyModelRefs;
   shadow: THREE.Mesh;
   telegraphGroup: THREE.Group;
+  telegraphOuterRing?: THREE.Mesh;
   telegraphFill: THREE.Mesh;
+  punishRingMesh?: THREE.Mesh;
+  eliteAffix?: EliteAffix;
+  eliteAffixes?: EliteAffix[];
+  eliteShieldHp?: number;
+  eliteFrostPulseTimer?: number;
+  eliteAuraRingMesh?: THREE.Mesh;
+  eliteAuraRingMesh2?: THREE.Mesh;
   laserLine: THREE.Line;
 }
+
+const ELITE_AFFIX_META: Record<EliteAffix, { label: string; colorHex: number }> = {
+  aegis: { label: 'Hộ Thuẫn', colorHex: 0x38bdf8 },
+  haste: { label: 'Cuồng Tốc', colorHex: 0xfacc15 },
+  volatile: { label: 'Hỏa Bộc', colorHex: 0xf97316 },
+  frost: { label: 'Hàn Khí', colorHex: 0x67e8f9 },
+};
+const ELITE_AFFIX_LIST: EliteAffix[] = ['aegis', 'haste', 'volatile', 'frost'];
+
+const ARENA_HAZARD_META: Record<ArenaHazardType, { label: string; colorHex: number }> = {
+  solar_eruption: { label: 'Bẫy Phun Trào Thái Dương', colorHex: 0xf97316 },
+  frost_zone: { label: 'Bẫy Vùng Hàn Băng', colorHex: 0x38bdf8 },
+  void_pulse: { label: 'Bẫy Xung Hư Không', colorHex: 0xa855f7 },
+};
 
 interface Projectile {
   active: boolean;
@@ -361,6 +396,7 @@ export interface EngineCallbacks {
       maxCombo?: number;
       damageBreakdown?: DamageBreakdown;
       defeatCause?: DefeatCauseInfo;
+      activeSynergies?: SkillSynergyId[];
     }
   ) => void;
   onProgressEvent?: (ev: {
@@ -450,10 +486,37 @@ export class GameEngine {
   private currentChapter: ChapterDefinition = CHAPTERS[0];
   private isTowerMode = false;
   private towerFloor = 0;
+  private towerHighestCleared = 0;
   private towerWaveDefs: Array<Array<{ kind: EnemyKind; count: number; isElite?: boolean }>> = [];
   private isBossRushMode = false;
   private bossRushRound = 0;
   private readonly bossRushTotalRounds = 5;
+  private sideModeHighestCleared = 0;
+  private bossPhaseTwoBannerTimer = 0;
+  private bossPhaseThreeBannerTimer = 0;
+  private playerFrostSlowTimer = 0;
+  private arenaHazardSpawnTimer = 5.4;
+  private arenaHazards: Array<{
+    kind: ArenaHazardType;
+    x: number;
+    z: number;
+    radius: number;
+    timer: number;
+    maxTimer: number;
+    damage: number;
+    ring: THREE.Mesh;
+    fill: THREE.Mesh;
+  }> = [];
+  private volatileBlasts: Array<{
+    x: number;
+    z: number;
+    radius: number;
+    timer: number;
+    maxTimer: number;
+    damage: number;
+    ring: THREE.Mesh;
+    fill: THREE.Mesh;
+  }> = [];
   private isDailyRiftMode = false;
   private dailyRiftPair: DailyRiftMutatorPair | null = null;
   private dailyRiftStageIdx = 0;
@@ -1512,9 +1575,10 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  public startEndlessTower(stats: ComputedPlayerStats): void {
+  public startEndlessTower(stats: ComputedPlayerStats, highestChapterCleared = 0): void {
     this.isTowerMode = true;
     this.towerFloor = 1;
+    this.towerHighestCleared = highestChapterCleared;
     this.isBossRushMode = false;
     this.bossRushRound = 0;
     this.isDailyRiftMode = false;
@@ -1538,11 +1602,12 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  public startBossRush(stats: ComputedPlayerStats): void {
+  public startBossRush(stats: ComputedPlayerStats, highestChapterCleared = 0): void {
     this.isTowerMode = false;
     this.towerFloor = 0;
     this.isBossRushMode = true;
     this.bossRushRound = 1;
+    this.sideModeHighestCleared = highestChapterCleared;
     this.isDailyRiftMode = false;
     this.dailyRiftPair = null;
     this.isGuildBossMode = false;
@@ -1565,11 +1630,16 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  public startDailyRift(stats: ComputedPlayerStats, riftPair: DailyRiftMutatorPair): void {
+  public startDailyRift(
+    stats: ComputedPlayerStats,
+    riftPair: DailyRiftMutatorPair,
+    highestChapterCleared = 0
+  ): void {
     this.isTowerMode = false;
     this.towerFloor = 0;
     this.isBossRushMode = false;
     this.bossRushRound = 0;
+    this.sideModeHighestCleared = highestChapterCleared;
     this.isDailyRiftMode = true;
     this.dailyRiftPair = riftPair;
     this.dailyRiftStageIdx = 0;
@@ -3299,8 +3369,11 @@ export class GameEngine {
   }
 
   public applySkillChoice(skillId: SkillId): void {
+    const prevSynergies = new Set(evaluateActiveSynergies(this.activeSkills));
     const current = this.activeSkills[skillId] ?? 0;
     this.activeSkills[skillId] = current + 1;
+    const nextSynergies = evaluateActiveSynergies(this.activeSkills);
+    const newlyUnlocked = nextSynergies.filter((id) => !prevSynergies.has(id));
 
     if (skillId === 'fountain_of_life') {
       const addHp = Math.round(this.baseStats.maxHp * 0.25);
@@ -3312,12 +3385,37 @@ export class GameEngine {
       this.hp = Math.min(this.maxHp, this.hp + addHp);
       this.furyBonusMult += 0.15;
     } else if (skillId === 'sacred_protection') {
-      this.shield += Math.round(this.maxHp * 0.45);
+      const aegisMult = nextSynergies.includes('aegis_sanctuary') ? 1.25 : 1.0;
+      this.shield += Math.round(this.maxHp * 0.45 * aegisMult);
     } else if (skillId === 'revive') {
       this.revivesLeft += 1;
       this.hasFullRevive = true;
     } else if (skillId === 'bomb_sprite' || skillId === 'laser_sprite') {
       this.rebuildCompanions();
+    }
+
+    if (newlyUnlocked.includes('aegis_sanctuary') && (this.activeSkills.sacred_protection ?? 0) > 0) {
+      this.shield += Math.round(this.maxHp * 0.12);
+    }
+
+    if (newlyUnlocked.length > 0) {
+      const syn = SKILL_SYNERGY_MAP[newlyUnlocked[0]];
+      if (syn) {
+        soundEngine.playSynergyUnlock();
+        this.spawnParticles(this.px, 1.3, this.pz, 0xfbbf24, 24);
+        this.spawnShockwave(this.px, this.pz, 0xfbbf24, 3.4, 0.4);
+        this.emitFloatingNumber(
+          this.px,
+          2.25,
+          this.pz,
+          0,
+          true,
+          false,
+          undefined,
+          `CỘNG HƯỞNG · ${syn.name.toUpperCase()}!`,
+          true
+        );
+      }
     }
 
     this.updateOrbitOrbVisibility();
@@ -3414,9 +3512,27 @@ export class GameEngine {
       this.releaseObject(e.model.root);
       this.releaseObject(e.shadow);
       this.releaseObject(e.telegraphGroup);
+      if (e.punishRingMesh) this.releaseObject(e.punishRingMesh);
+      if (e.eliteAuraRingMesh) this.releaseObject(e.eliteAuraRingMesh);
+      if (e.eliteAuraRingMesh2) this.releaseObject(e.eliteAuraRingMesh2);
       this.releaseObject(e.laserLine);
     });
     this.enemies = [];
+
+    this.volatileBlasts?.forEach((vb) => {
+      this.releaseObject(vb.ring);
+      this.releaseObject(vb.fill);
+    });
+    this.volatileBlasts = [];
+    this.arenaHazards?.forEach((hz) => {
+      this.releaseObject(hz.ring);
+      this.releaseObject(hz.fill);
+    });
+    this.arenaHazards = [];
+    this.arenaHazardSpawnTimer = 5.4;
+    this.bossPhaseTwoBannerTimer = 0;
+    this.bossPhaseThreeBannerTimer = 0;
+    this.playerFrostSlowTimer = 0;
 
     this.lootOrbs.forEach((o) => this.releaseObject(o.mesh));
     this.lootOrbs = [];
@@ -3617,8 +3733,9 @@ export class GameEngine {
     }
 
     this.bossRushRound = round;
-    const hpMult = 0.95 + round * 0.42;
-    const dmgMult = 0.95 + round * 0.22;
+    const sideScale = getSideModeScaling(this.sideModeHighestCleared);
+    const hpMult = (0.9 + round * 0.36) * sideScale.enemyHpScale;
+    const dmgMult = (0.9 + round * 0.18) * sideScale.enemyDmgScale;
 
     const roundConfigs: Array<{
       title: string;
@@ -3731,11 +3848,13 @@ export class GameEngine {
     const groups = this.dailyRiftWaveDefs[waveIdx];
     if (!groups) return;
     this.waveIndex = waveIdx;
+    const sideScale = getSideModeScaling(this.sideModeHighestCleared);
     const enemyHpScale = this.dailyRiftPair?.enemyHpMult ?? 1.2;
     const bossScale = this.dailyRiftPair?.bossScaleMult ?? 1.2;
-    const stageScale = 1 + this.dailyRiftStageIdx * 0.25;
-    const hpMult = 1.15 * stageScale * enemyHpScale * (this.dailyRiftStageIdx >= 2 ? bossScale : 1);
-    const dmgMult = 1.05 + this.dailyRiftStageIdx * 0.2;
+    const stageScale = 1 + this.dailyRiftStageIdx * 0.22;
+    const hpMult =
+      0.95 * stageScale * enemyHpScale * sideScale.enemyHpScale * (this.dailyRiftStageIdx >= 2 ? bossScale : 1);
+    const dmgMult = (0.95 + this.dailyRiftStageIdx * 0.16) * sideScale.enemyDmgScale;
     this.spawnEnemyGroups(
       groups,
       hpMult,
@@ -3761,7 +3880,7 @@ export class GameEngine {
 
     let stageShield = 0;
     if (this.baseStats.heroId === 'atreus') {
-      stageShield += Math.round(this.maxHp * 0.5);
+      stageShield += Math.round(this.maxHp * 0.32);
     }
     if (this.hasRune('rootguard')) {
       stageShield += Math.round(this.maxHp * 0.2);
@@ -3853,8 +3972,9 @@ export class GameEngine {
     if (!groups) return;
     this.waveIndex = waveIdx;
 
-    const hpMult = 0.9 + this.towerFloor * 0.22;
-    const dmgMult = 0.92 + this.towerFloor * 0.11;
+    const towerScale = getEndlessTowerScaling(this.towerFloor, this.towerHighestCleared);
+    const hpMult = towerScale.enemyHpScale;
+    const dmgMult = towerScale.enemyDmgScale;
     const bossTitle = `Thủ Lĩnh Tầng ${this.towerFloor} · ${this.currentChapter.bossName}`;
     this.spawnEnemyGroups(groups, hpMult, dmgMult, bossTitle);
   }
@@ -3976,6 +4096,22 @@ export class GameEngine {
     this.entitiesGroup.add(shadow);
 
     const telegraphGroup = new THREE.Group();
+    const backingRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.8, 1.07, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0x090d18,
+        transparent: true,
+        opacity: 0.56,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+    );
+    backingRing.rotation.x = -Math.PI / 2;
+    backingRing.renderOrder = 7;
+
     const outerRing = new THREE.Mesh(
       new THREE.RingGeometry(0.84, 1.02, 28),
       new THREE.MeshBasicMaterial({
@@ -4009,10 +4145,32 @@ export class GameEngine {
     telegraphFill.scale.setScalar(0.15);
     telegraphFill.renderOrder = 8;
 
-    telegraphGroup.add(outerRing, telegraphFill);
+    telegraphGroup.add(backingRing, outerRing, telegraphFill);
     telegraphGroup.position.set(x, 0.06, z);
     telegraphGroup.visible = false;
     this.entitiesGroup.add(telegraphGroup);
+
+    let punishRingMesh: THREE.Mesh | undefined;
+    if (isBoss) {
+      punishRingMesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.92, 1.16, 28),
+        new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          transparent: true,
+          opacity: 0.78,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -3,
+          polygonOffsetUnits: -3,
+        })
+      );
+      punishRingMesh.rotation.x = -Math.PI / 2;
+      punishRingMesh.position.set(x, 0.055, z);
+      punishRingMesh.renderOrder = 8;
+      punishRingMesh.visible = false;
+      this.entitiesGroup.add(punishRingMesh);
+    }
 
     const laserGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0.9, 0),
@@ -4100,6 +4258,83 @@ export class GameEngine {
     const speedScale = this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.enemySpeedMult : 1.0;
     const eliteMult = isElite && !isBoss ? 1.75 : 1.0;
     const finalHp = Math.round(baseHp * hpMult * eliteMult);
+
+    // Phase 3–4: Elite Affixes (Single from Ch.2+, Dual-Affix from Ch.7+ & Tower Floor 12+)
+    let eliteAffix: EliteAffix | undefined;
+    let eliteAffixes: EliteAffix[] | undefined;
+    let eliteShieldHp: number | undefined;
+    let eliteAuraRingMesh: THREE.Mesh | undefined;
+    let eliteAuraRingMesh2: THREE.Mesh | undefined;
+    const allowEliteAffix =
+      isElite &&
+      !isBoss &&
+      (this.currentChapter.id >= 2 ||
+        this.isDailyRiftMode ||
+        this.isBossRushMode ||
+        (this.isTowerMode && this.towerFloor >= 2));
+    const allowDualAffix =
+      allowEliteAffix &&
+      ((!this.isTowerMode && this.currentChapter.id >= 7) ||
+        (this.isTowerMode && this.towerFloor >= 12));
+    if (allowEliteAffix) {
+      const idx1 = this.nextEntityId % ELITE_AFFIX_LIST.length;
+      eliteAffix = ELITE_AFFIX_LIST[idx1];
+      eliteAffixes = [eliteAffix];
+      const affixMeta = ELITE_AFFIX_META[eliteAffix];
+      eliteAuraRingMesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.86, 1.06, 24),
+        new THREE.MeshBasicMaterial({
+          color: affixMeta.colorHex,
+          transparent: true,
+          opacity: 0.72,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        })
+      );
+      eliteAuraRingMesh.rotation.x = -Math.PI / 2;
+      eliteAuraRingMesh.position.set(x, 0.04, z);
+      eliteAuraRingMesh.scale.setScalar(radius * 1.32);
+      eliteAuraRingMesh.renderOrder = 6;
+      this.entitiesGroup.add(eliteAuraRingMesh);
+
+      if (allowDualAffix) {
+        const idx2 = (idx1 + 1 + (this.nextEntityId % 2)) % ELITE_AFFIX_LIST.length;
+        const affix2 = ELITE_AFFIX_LIST[idx2];
+        if (affix2 !== eliteAffix) {
+          eliteAffixes.push(affix2);
+          const affixMeta2 = ELITE_AFFIX_META[affix2];
+          eliteAuraRingMesh2 = new THREE.Mesh(
+            new THREE.RingGeometry(1.14, 1.3, 24),
+            new THREE.MeshBasicMaterial({
+              color: affixMeta2.colorHex,
+              transparent: true,
+              opacity: 0.68,
+              side: THREE.DoubleSide,
+              depthWrite: false,
+              polygonOffset: true,
+              polygonOffsetFactor: -3,
+              polygonOffsetUnits: -3,
+            })
+          );
+          eliteAuraRingMesh2.rotation.x = -Math.PI / 2;
+          eliteAuraRingMesh2.position.set(x, 0.045, z);
+          eliteAuraRingMesh2.scale.setScalar(radius * 1.36);
+          eliteAuraRingMesh2.renderOrder = 7;
+          this.entitiesGroup.add(eliteAuraRingMesh2);
+        }
+      }
+
+      if (eliteAffixes.includes('aegis')) {
+        eliteShieldHp = Math.round(finalHp * 0.3);
+      }
+    }
+
+    const hasHasteAffix = Boolean(eliteAffixes?.includes('haste'));
+    const hasFrostAffix = Boolean(eliteAffixes?.includes('frost'));
+
     this.enemies.push({
       id: this.nextEntityId++,
       kind,
@@ -4112,13 +4347,13 @@ export class GameEngine {
       radius,
       hp: finalHp,
       maxHp: finalHp,
-      speed: speed * speedScale,
+      speed: speed * speedScale * (hasHasteAffix ? 1.25 : 1.0),
       damage: Math.round(damage * dmgMult * (isElite ? 1.25 : 1.0)),
       xpValue: Math.round(xpValue * (isElite ? 1.5 : 1.0)),
       goldValue: Math.round(goldValue * this.currentChapter.goldBonusMult * (isElite ? 1.6 : 1.0)),
       isBoss,
       spawnTimer: 0.48,
-      attackTimer: 0.7 + Math.random() * 0.9,
+      attackTimer: (0.7 + Math.random() * 0.9) * (hasHasteAffix ? 0.8 : 1.0),
       telegraphTimer: 0,
       telegraphDuration: 0.65,
       telegraphType: 'none',
@@ -4130,6 +4365,7 @@ export class GameEngine {
       laneAngles: [],
       bossPhase: 1,
       phaseTransitioned: false,
+      phaseThreeTransitioned: false,
       burnTimer: 0,
       burnDps: 0,
       poisonDps: 0,
@@ -4139,7 +4375,15 @@ export class GameEngine {
       model,
       shadow,
       telegraphGroup,
+      telegraphOuterRing: outerRing,
       telegraphFill,
+      punishRingMesh,
+      eliteAffix,
+      eliteAffixes,
+      eliteShieldHp,
+      eliteFrostPulseTimer: hasFrostAffix ? 2.6 : undefined,
+      eliteAuraRingMesh,
+      eliteAuraRingMesh2,
       laserLine,
     });
   }
@@ -4976,6 +5220,46 @@ export class GameEngine {
     if (this.bossBrokenBannerTimer > 0) {
       this.bossBrokenBannerTimer = Math.max(0, this.bossBrokenBannerTimer - dt);
     }
+    if (this.bossPhaseTwoBannerTimer > 0) {
+      this.bossPhaseTwoBannerTimer = Math.max(0, this.bossPhaseTwoBannerTimer - dt);
+    }
+    if (this.bossPhaseThreeBannerTimer > 0) {
+      this.bossPhaseThreeBannerTimer = Math.max(0, this.bossPhaseThreeBannerTimer - dt);
+    }
+    if (this.playerFrostSlowTimer > 0) {
+      this.playerFrostSlowTimer = Math.max(0, this.playerFrostSlowTimer - dt);
+    }
+    this.updateArenaHazards(dt);
+    // Phase 3: Update Elite Volatile death ground blasts
+    for (let vi = this.volatileBlasts.length - 1; vi >= 0; vi--) {
+      const vb = this.volatileBlasts[vi];
+      vb.timer -= dt;
+      const progress = Math.max(0, Math.min(1, 1 - vb.timer / vb.maxTimer));
+      vb.fill.scale.setScalar(Math.max(0.08, progress * vb.radius));
+      const ringMat = vb.ring.material as THREE.MeshBasicMaterial;
+      if (vb.timer <= 0.12) {
+        ringMat.color.setHex(0xffffff);
+        ringMat.opacity = 0.95;
+      } else {
+        ringMat.color.setHex(0xf97316);
+        ringMat.opacity = 0.65 + progress * 0.25;
+      }
+      if (vb.timer <= 0) {
+        this.spawnShockwave(vb.x, vb.z, 0xf97316, vb.radius * 1.15, 0.3);
+        this.spawnParticles(vb.x, 0.7, vb.z, 0xf97316, 22);
+        if (Math.hypot(this.px - vb.x, this.pz - vb.z) <= vb.radius + 0.35) {
+          this.damagePlayer(vb.damage, {
+            code: 'boss_slam',
+            label: 'Vụ Nổ Tinh Anh Hỏa Bộc',
+            killerName: 'Tinh Anh Hỏa Bộc',
+            tip: 'Tránh vòng nổ Hỏa Bộc trên sàn sau khi hạ Quái Tinh Anh.',
+          });
+        }
+        this.releaseObject(vb.ring);
+        this.releaseObject(vb.fill);
+        this.volatileBlasts.splice(vi, 1);
+      }
+    }
     if (this.bossWarningTimer > 0) {
       this.bossWarningTimer = Math.max(0, this.bossWarningTimer - dt);
       if (this.bossWarningTimer <= 0) {
@@ -5178,6 +5462,176 @@ export class GameEngine {
     }
   }
 
+  private updateArenaHazards(dt: number): void {
+    const isCampaignEndgame =
+      !this.isTowerMode &&
+      !this.isBossRushMode &&
+      !this.isDailyRiftMode &&
+      !this.isGuildBossMode &&
+      !this.isArenaMode &&
+      !this.isCoopRaidMode &&
+      !this.isElementalTowerMode &&
+      !this.isCrystalDefenseMode &&
+      !this.isWorldBossMode &&
+      !this.isBloodMoonMode &&
+      !this.isAbyssalMode &&
+      !this.isGuildWarMode &&
+      !this.isPantheonMode &&
+      !this.isChampionshipMode &&
+      !this.isCrystalVaultMode &&
+      !this.isDragonLairMode &&
+      !this.isSkyCitadelMode &&
+      this.currentChapter.id >= 7;
+    const isTowerEndgame = this.isTowerMode && this.towerFloor >= 10;
+
+    if ((isCampaignEndgame || isTowerEndgame) && this.enemies.length > 0 && this.arenaHazards.length < 2) {
+      this.arenaHazardSpawnTimer -= dt;
+      if (this.arenaHazardSpawnTimer <= 0) {
+        this.arenaHazardSpawnTimer = this.isTowerMode
+          ? Math.max(4.0, 5.6 - Math.floor(this.towerFloor / 10) * 0.35)
+          : Math.max(4.2, 5.8 - (this.currentChapter.id - 7) * 0.25);
+
+        const kinds: ArenaHazardType[] = ['solar_eruption', 'frost_zone', 'void_pulse'];
+        const kind: ArenaHazardType = this.isTowerMode
+          ? kinds[this.towerFloor % kinds.length]
+          : kinds[(this.currentChapter.id - 7) % kinds.length];
+        const meta = ARENA_HAZARD_META[kind];
+
+        const angle = Math.random() * Math.PI * 2;
+        const offsetDist = 1.8 + Math.random() * 2.8;
+        const hx = THREE.MathUtils.clamp(
+          this.px + Math.cos(angle) * offsetDist,
+          -ARENA_HALF_W + 2.4,
+          ARENA_HALF_W - 2.4
+        );
+        const hz = THREE.MathUtils.clamp(
+          this.pz + Math.sin(angle) * offsetDist,
+          -ARENA_HALF_D + 2.6,
+          ARENA_HALF_D - 2.6
+        );
+        const radius = kind === 'frost_zone' ? 2.75 : 2.45;
+        const baseDmg = this.isTowerMode
+          ? Math.round(28 * getEndlessTowerScaling(this.towerFloor, this.towerHighestCleared).enemyDmgScale)
+          : Math.round(26 * this.currentChapter.dmgScale);
+
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(radius - 0.16, radius, 28),
+          new THREE.MeshBasicMaterial({
+            color: meta.colorHex,
+            transparent: true,
+            opacity: 0.78,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2,
+          })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(hx, 0.055, hz);
+        ring.renderOrder = 7;
+
+        const fill = new THREE.Mesh(
+          new THREE.CircleGeometry(1, 24),
+          new THREE.MeshBasicMaterial({
+            color: meta.colorHex,
+            transparent: true,
+            opacity: 0.24,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          })
+        );
+        fill.rotation.x = -Math.PI / 2;
+        fill.position.set(hx, 0.05, hz);
+        fill.scale.setScalar(0.12);
+        fill.renderOrder = 6;
+
+        this.entitiesGroup.add(ring, fill);
+        soundEngine.playArenaHazardWarn();
+        this.arenaHazards.push({
+          kind,
+          x: hx,
+          z: hz,
+          radius,
+          timer: 1.25,
+          maxTimer: 1.25,
+          damage: baseDmg,
+          ring,
+          fill,
+        });
+      }
+    }
+
+    for (let i = this.arenaHazards.length - 1; i >= 0; i--) {
+      const hz = this.arenaHazards[i];
+      hz.timer -= dt;
+      const meta = ARENA_HAZARD_META[hz.kind];
+      const progress = Math.max(0, Math.min(1, 1 - hz.timer / hz.maxTimer));
+      hz.fill.scale.setScalar(Math.max(0.1, progress * hz.radius));
+      const ringMat = hz.ring.material as THREE.MeshBasicMaterial;
+      if (hz.timer <= 0.14) {
+        ringMat.color.setHex(0xffffff);
+        ringMat.opacity = 0.96;
+      } else {
+        ringMat.color.setHex(meta.colorHex);
+        ringMat.opacity = 0.62 + progress * 0.28;
+      }
+
+      if (hz.timer <= 0) {
+        soundEngine.playArenaHazardTrigger(hz.kind);
+        this.spawnShockwave(hz.x, hz.z, meta.colorHex, hz.radius * 1.15, 0.34);
+        this.spawnParticles(hz.x, 0.75, hz.z, meta.colorHex, 20);
+        const dist = Math.hypot(this.px - hz.x, this.pz - hz.z);
+        if (dist <= hz.radius + 0.32 && this.invulnTimer <= 0) {
+          if (hz.kind === 'solar_eruption') {
+            this.damagePlayer(hz.damage, {
+              code: 'boss_slam',
+              label: 'Bẫy Phun Trào Thái Dương',
+              killerName: 'Bẫy Sàn Thái Dương',
+              tip: 'Lướt né vòng cảnh báo cam trên sàn trước khi cột lửa bùng nổ.',
+            });
+          } else if (hz.kind === 'frost_zone') {
+            this.playerFrostSlowTimer = Math.max(this.playerFrostSlowTimer, 1.8);
+            this.emitFloatingNumber(this.px, 2.0, this.pz, 0, false, false, 'ice', 'BẪY HÀN BĂNG!');
+            this.damagePlayer(Math.max(8, Math.round(hz.damage * 0.72)), {
+              code: 'boss_slam',
+              label: 'Bẫy Vùng Hàn Băng',
+              killerName: 'Bẫy Sàn Hàn Băng',
+              tip: 'Di chuyển khỏi vùng băng xanh để tránh bị làm chậm và trúng sát thương.',
+            });
+          } else {
+            const dx = hz.x - this.px;
+            const dz = hz.z - this.pz;
+            const dLen = Math.max(0.01, Math.hypot(dx, dz));
+            this.px = THREE.MathUtils.clamp(
+              this.px + (dx / dLen) * 1.1,
+              -ARENA_HALF_W + 0.6,
+              ARENA_HALF_W - 0.6
+            );
+            this.pz = THREE.MathUtils.clamp(
+              this.pz + (dz / dLen) * 1.1,
+              -ARENA_HALF_D + 0.6,
+              ARENA_HALF_D - 0.6
+            );
+            this.emitFloatingNumber(this.px, 2.0, this.pz, 0, false, false, 'storm', 'XUNG HƯ KHÔNG!');
+            this.damagePlayer(Math.max(8, Math.round(hz.damage * 0.85)), {
+              code: 'boss_slam',
+              label: 'Bẫy Xung Hư Không',
+              killerName: 'Bẫy Sàn Hư Không',
+              tip: 'Dùng Lướt đúng thời điểm để vô hiệu hóa lực kéo của Xung Hư Không.',
+            });
+          }
+        }
+        this.releaseObject(hz.ring);
+        this.releaseObject(hz.fill);
+        this.arenaHazards.splice(i, 1);
+      }
+    }
+  }
+
   private updateStarfallWeather(dt: number): void {
     if (!this.starfallEnabled || !this.starfallMesh) return;
     if (this.phase === GamePhase.TITLE && this.lobbyWeatherId === 'clear') {
@@ -5250,7 +5704,7 @@ export class GameEngine {
       mult *= this.dailyRiftPair.atkMult;
     }
     if (this.baseStats.heroId === 'dracoola' && this.hp >= this.maxHp * 0.9) {
-      mult *= 1.35;
+      mult *= 1.18;
     }
     if (this.hasRune('star_of_fury') && this.hp < this.maxHp * 0.6) {
       mult *= 1.25;
@@ -5301,7 +5755,8 @@ export class GameEngine {
     }
 
     const moveMult = this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.playerSpeedMult : 1.0;
-    const effectiveMoveSpeed = this.baseStats.moveSpeed * moveMult;
+    const frostSlowMult = this.playerFrostSlowTimer > 0 ? 0.72 : 1.0;
+    const effectiveMoveSpeed = this.baseStats.moveSpeed * moveMult * frostSlowMult;
 
     if (this.dashTimer > 0) {
       this.dashTimer -= dt;
@@ -5570,8 +6025,10 @@ export class GameEngine {
     proj.x = this.px + dirX * 0.65 + perpX * lateralOffset;
     proj.y = 1.02;
     proj.z = this.pz + dirZ * 0.65 + perpZ * lateralOffset;
-    proj.vx = dirX * this.baseStats.arrowSpeed;
-    proj.vz = dirZ * this.baseStats.arrowSpeed;
+    const hasPiercingVolley = evaluateActiveSynergies(this.activeSkills).includes('piercing_volley');
+    const finalArrowSpeed = this.baseStats.arrowSpeed * (hasPiercingVolley ? 1.15 : 1.0);
+    proj.vx = dirX * finalArrowSpeed;
+    proj.vz = dirZ * finalArrowSpeed;
     proj.damage = isAtreusOrb ? rawDamage * 1.15 : rawDamage;
     proj.radius = this.baseStats.weaponArchetype === 'claw' ? 0.45 : 0.3;
     proj.life = 2.2;
@@ -5631,7 +6088,7 @@ export class GameEngine {
     // 1. Artemis Silvermoon Falcon Strike on marked enemies
     if (this.baseStats.heroId === 'artemis' && this.markedEnemyIds.size > 0) {
       this.artemisMarkTimer += dt;
-      if (this.artemisMarkTimer >= 2.2) {
+      if (this.artemisMarkTimer >= 2.4) {
         this.artemisMarkTimer = 0;
         const target = liveEnemies.find((e) => this.markedEnemyIds.has(e.id));
         if (target) {
@@ -5643,11 +6100,13 @@ export class GameEngine {
       }
     }
 
-    // 2. Flying Swords / Sword of Time
+    // 2. Flying Swords / Sword of Time (+ Homing Blades Synergy)
     const swordStacks = (this.activeSkills.flying_swords ?? 0) + (this.hasRune('sword_of_time') ? 1 : 0);
     if (swordStacks > 0) {
+      const hasHomingBlades = evaluateActiveSynergies(this.activeSkills).includes('homing_blades');
       this.swordStrikeTimer += dt;
-      const interval = this.hasRune('sword_of_time') ? 1.45 : 1.7;
+      const baseInterval = this.hasRune('sword_of_time') ? 1.45 : 1.7;
+      const interval = hasHomingBlades ? baseInterval * 0.8 : baseInterval;
       if (this.swordStrikeTimer >= interval) {
         this.swordStrikeTimer = 0;
         const twinMult = (this.activeSkills.twin_strike ?? 0) > 0 ? 2 : 1;
@@ -5671,7 +6130,11 @@ export class GameEngine {
           proj.z = this.pz + Math.cos(yaw) * 0.7;
           proj.vx = Math.sin(yaw) * 26;
           proj.vz = Math.cos(yaw) * 26;
-          proj.damage = this.baseStats.attack * this.getCurrentAtkMultiplier() * 1.22;
+          proj.damage =
+            this.baseStats.attack *
+            this.getCurrentAtkMultiplier() *
+            1.22 *
+            (hasHomingBlades ? 1.2 : 1.0);
           proj.radius = 0.35;
           proj.life = 1.8;
           proj.pierceLeft = 1;
@@ -5726,7 +6189,8 @@ export class GameEngine {
     const m = this.meteorPool.find((x) => !x.active);
     if (!m) return;
     const isGiant = this.hasRune('giant_meteor');
-    const radius = isGiant ? 3.2 : 2.3;
+    const hasInfernoMeteor = evaluateActiveSynergies(this.activeSkills).includes('inferno_meteor');
+    const radius = (isGiant ? 3.2 : 2.3) * (hasInfernoMeteor ? 1.25 : 1.0);
     const mult = (isFrost ? 1.5 : 1.85) * (isGiant ? 1.6 : 1.0);
 
     m.active = true;
@@ -5782,11 +6246,13 @@ export class GameEngine {
   private updateOrbitOrbs(dt: number): void {
     const count = this.getOrbitOrbCount();
     if (count <= 0) return;
+    const activeSynergies = evaluateActiveSynergies(this.activeSkills);
+    const hasSolarOrbit = activeSynergies.includes('solar_orbit');
     const orbitR = 2.45;
-    const speed = (this.activeSkills.super_circle ?? 0) > 0 ? 4.8 : 3.8;
+    const speed = ((this.activeSkills.super_circle ?? 0) > 0 ? 4.8 : 3.8) * (hasSolarOrbit ? 1.28 : 1.0);
     const baseAngle = this.elapsed * speed;
     const sawRune = this.hasRune('sawblade_circle');
-    const dmgMult = 0.72 * (sawRune ? 1.55 : 1.0);
+    const dmgMult = 0.72 * (sawRune ? 1.55 : 1.0) * (hasSolarOrbit ? 1.25 : 1.0);
 
     for (let i = 0; i < count; i++) {
       const a = baseAngle + (i * Math.PI * 2) / count;
@@ -5909,7 +6375,9 @@ export class GameEngine {
         (this.activeSkills.laser_sprite ?? 0) > 0 ||
         this.hasRune('healing_sprite');
 
-      if (hasSprites && this.spriteFireTimer >= 1.45) {
+      const hasVenomEclipse = evaluateActiveSynergies(this.activeSkills).includes('venom_eclipse');
+      const spriteInterval = hasVenomEclipse ? 1.16 : 1.45;
+      if (hasSprites && this.spriteFireTimer >= spriteInterval) {
         this.spriteFireTimer = 0;
         const comp = this.companionModels[count - 1];
         const yaw = Math.atan2(nearest.x - comp.position.x, nearest.z - comp.position.z);
@@ -6249,6 +6717,8 @@ export class GameEngine {
         e.telegraphType = 'none';
         e.telegraphGroup.visible = false;
         e.laserLine.visible = false;
+        e.punishWindowTimer = 0;
+        if (e.punishRingMesh) e.punishRingMesh.visible = false;
         e.model.bodyGroup.rotation.z = Math.sin(this.elapsed * 26) * 0.12;
         if (e.stunTimer <= 0) {
           e.model.bodyGroup.rotation.z = 0;
@@ -6262,6 +6732,60 @@ export class GameEngine {
       const superFreeze = (this.activeSkills.super_freeze ?? 0) > 0;
       const slowMult = e.chillTimer > 0 ? (superFreeze ? 0.42 : 0.58) : 1.0;
       if (e.chillTimer > 0) e.chillTimer -= dt;
+
+      // Phase 2: 3D Boss Punish Window emerald halo tick
+      if (e.isBoss && e.punishWindowTimer && e.punishWindowTimer > 0) {
+        e.punishWindowTimer = Math.max(0, e.punishWindowTimer - dt);
+        if (e.punishRingMesh) {
+          const active = e.punishWindowTimer > 0 && e.telegraphType === 'none';
+          e.punishRingMesh.visible = active;
+          if (active) {
+            const pRatio = e.punishWindowMax
+              ? Math.max(0, Math.min(1, e.punishWindowTimer / e.punishWindowMax))
+              : 1;
+            const pulseScale = 1.42 + Math.sin(this.elapsed * 12) * 0.06;
+            e.punishRingMesh.position.set(e.x, 0.055, e.z);
+            e.punishRingMesh.scale.setScalar(e.radius * pulseScale);
+            (e.punishRingMesh.material as THREE.MeshBasicMaterial).opacity =
+              0.45 + pRatio * 0.4;
+          }
+        }
+      } else if (e.punishRingMesh && e.punishRingMesh.visible) {
+        e.punishRingMesh.visible = false;
+      }
+
+      // Phase 3–4: Elite Affix 3D ground ring sync (Single & Dual) & Frost pulse behavior
+      const activeAffixes = e.eliteAffixes ?? (e.eliteAffix ? [e.eliteAffix] : []);
+      if (e.eliteAuraRingMesh && activeAffixes.length > 0) {
+        e.eliteAuraRingMesh.position.set(e.x, 0.04, e.z);
+        const pulse = 1.28 + Math.sin(this.elapsed * 5.2 + e.phaseAngle) * 0.07;
+        e.eliteAuraRingMesh.scale.setScalar(e.radius * pulse);
+        if (activeAffixes[0] === 'aegis') {
+          const hasShield = (e.eliteShieldHp ?? 0) > 0;
+          e.eliteAuraRingMesh.visible = hasShield;
+        }
+        if (e.eliteAuraRingMesh2 && activeAffixes[1]) {
+          e.eliteAuraRingMesh2.position.set(e.x, 0.045, e.z);
+          const pulse2 = 1.34 + Math.cos(this.elapsed * 4.4 + e.phaseAngle) * 0.07;
+          e.eliteAuraRingMesh2.scale.setScalar(e.radius * pulse2);
+          if (activeAffixes[1] === 'aegis') {
+            e.eliteAuraRingMesh2.visible = (e.eliteShieldHp ?? 0) > 0;
+          }
+        }
+        if (activeAffixes.includes('frost') && e.eliteFrostPulseTimer !== undefined) {
+          e.eliteFrostPulseTimer -= dt;
+          if (e.eliteFrostPulseTimer <= 0) {
+            e.eliteFrostPulseTimer = 3.6;
+            const dHero = Math.hypot(this.px - e.x, this.pz - e.z);
+            if (dHero <= 5.4) {
+              soundEngine.playEliteAffixTrigger('frost');
+              this.spawnShockwave(e.x, e.z, 0x67e8f9, 4.6, 0.38);
+              this.playerFrostSlowTimer = 1.4;
+              this.emitFloatingNumber(this.px, 2.0, this.pz, 0, false, false, 'ice', 'HÀN KHÍ CHẬM!');
+            }
+          }
+        }
+      }
 
       const dx = this.px - e.x;
       const dz = this.pz - e.z;
@@ -6277,7 +6801,7 @@ export class GameEngine {
       const dirX = moveDist > 0.001 ? moveDx / moveDist : 0;
       const dirZ = moveDist > 0.001 ? moveDz / moveDist : 1;
 
-      const isEnraged = e.isBoss && e.bossPhase === 2;
+      const isEnraged = e.isBoss && e.bossPhase >= 2;
 
       // Hide danger lanes each frame unless active enemy lane telegraph refreshes them
       if (e.telegraphType !== 'none') {
@@ -6287,6 +6811,7 @@ export class GameEngine {
           1 - e.telegraphTimer / Math.max(0.01, e.telegraphDuration)
         );
         const pulse = 0.65 + 0.35 * Math.sin(this.elapsed * 20);
+        const isImpactFlash = e.telegraphTimer <= 0.12;
 
         if (e.telegraphType === 'shot') {
           e.laserLine.visible = true;
@@ -6296,11 +6821,24 @@ export class GameEngine {
           posAttr.setXYZ(0, e.x, 0.95, e.z);
           posAttr.setXYZ(1, e.x + e.aimX * 14, 0.95, e.z + e.aimZ * 14);
           posAttr.needsUpdate = true;
+          const lMat = e.laserLine.material as THREE.LineBasicMaterial;
+          lMat.color.setHex(isImpactFlash ? 0xffffff : 0xf43f5e);
+          lMat.opacity = isImpactFlash ? 1.0 : 0.78;
         } else if (e.telegraphType === 'slam' || e.telegraphType === 'lunge') {
           e.telegraphGroup.visible = true;
           e.telegraphGroup.position.set(e.slamX, 0.05, e.slamZ);
-          e.telegraphGroup.scale.setScalar(e.slamRadius * (0.98 + pulse * 0.03));
+          e.telegraphGroup.scale.setScalar(
+            e.slamRadius * (isImpactFlash ? 1.05 : 0.98 + pulse * 0.03)
+          );
           e.telegraphFill.scale.setScalar(0.15 + progress * 0.85);
+          const fillMat = e.telegraphFill.material as THREE.MeshBasicMaterial;
+          fillMat.color.setHex(isImpactFlash ? 0xfef08a : 0xf43f5e);
+          fillMat.opacity = isImpactFlash ? 0.68 : 0.28 + progress * 0.28;
+          if (e.telegraphOuterRing) {
+            const outMat = e.telegraphOuterRing.material as THREE.MeshBasicMaterial;
+            outMat.color.setHex(isImpactFlash ? 0xffffff : 0xfef08a);
+            outMat.opacity = isImpactFlash ? 1.0 : 0.92;
+          }
         } else if (e.telegraphType === 'lane') {
           e.laneAngles.forEach((ang, lIdx) => {
             const lane = this.dangerLanePool[lIdx % this.dangerLanePool.length];
@@ -6310,7 +6848,9 @@ export class GameEngine {
             lane.mesh.position.set(e.x, 0.04, e.z);
             lane.mesh.rotation.y = ang;
             lane.fillMesh.scale.set(0.1 + progress * 0.9, 1, 1);
-            (lane.fillMesh.material as THREE.MeshBasicMaterial).opacity = 0.38 + pulse * 0.32;
+            const laneMat = lane.fillMesh.material as THREE.MeshBasicMaterial;
+            laneMat.color.setHex(isImpactFlash ? 0xfef08a : 0xf43f5e);
+            laneMat.opacity = isImpactFlash ? 0.92 : 0.42 + pulse * 0.34;
           });
         }
 
@@ -6327,7 +6867,9 @@ export class GameEngine {
           e.telegraphType = 'none';
           // Deliberate punish recovery windows per boss archetype so players can dodge then counterattack cleanly
           e.attackTimer = e.isBoss
-            ? isEnraged
+            ? e.bossPhase === 3
+              ? 1.0
+              : isEnraged
               ? 1.15
               : e.kind === EnemyKind.WARDEN_BOSS
               ? 1.55
@@ -6335,6 +6877,10 @@ export class GameEngine {
               ? 1.5
               : 1.45
             : 1.85 + Math.random() * 0.8;
+          if (e.isBoss) {
+            e.punishWindowMax = e.attackTimer;
+            e.punishWindowTimer = e.attackTimer;
+          }
         }
       } else {
         e.attackTimer -= dt * slowMult;
@@ -6573,7 +7119,7 @@ export class GameEngine {
                 code: 'boss_contact',
                 label: `Áp sát trực diện ${e.bossTitle ?? 'Boss'}`,
                 tip: 'Thả diều vòng quanh sân, chỉ dừng bắn trong 1.5s ngay sau khi Boss vừa tung chiêu.',
-                enemyName: e.bossTitle,
+                killerName: e.bossTitle,
               }
             : {
                 code: 'melee_swarm',
@@ -6717,7 +7263,7 @@ export class GameEngine {
             code: 'boss_slam',
             label: `Vòng Chấn Động của ${e.bossTitle ?? 'Boss'}`,
             tip: 'Rời khỏi vòng cảnh báo vàng-đỏ trước khi vòng đầy, sau đó tận dụng 1.5s hồi chiêu để xả đạn.',
-            enemyName: e.bossTitle,
+            killerName: e.bossTitle,
           });
         }
       }
@@ -6884,6 +7430,10 @@ export class GameEngine {
 
           let critMult = this.baseStats.critDamage + critStacks * 0.35;
           if (this.baseStats.heroId === 'atreus' && this.shield > 0) {
+            critMult += 0.18;
+          }
+          const activeSynergies = evaluateActiveSynergies(this.activeSkills);
+          if (e.chillTimer > 0 && activeSynergies.includes('frost_shatter')) {
             critMult += 0.25;
           }
           const dmg = p.damage * (isCrit ? critMult : 1);
@@ -6909,7 +7459,7 @@ export class GameEngine {
             if (this.baseStats.heroId === 'cleo') {
               this.cleoHitCount++;
               if (this.cleoHitCount % 8 === 0) {
-                const novaDmg = this.baseStats.attack * this.getCurrentAtkMultiplier() * 2.6;
+                const novaDmg = this.baseStats.attack * this.getCurrentAtkMultiplier() * 2.0;
                 this.spawnShockwave(e.x, e.z, 0xf97316, 3.6, 0.35);
                 this.spawnParticles(e.x, 1.0, e.z, 0xf97316, 26);
                 soundEngine.playMeteorImpact();
@@ -6949,7 +7499,7 @@ export class GameEngine {
 
           if (p.pierceLeft > 0) {
             p.pierceLeft--;
-            p.damage *= 0.85;
+            p.damage *= activeSynergies.includes('piercing_volley') ? 1.0 : 0.85;
           } else {
             p.active = false;
             p.mesh.visible = false;
@@ -7028,10 +7578,14 @@ export class GameEngine {
     dmgSource: 'basic' | 'ultimate' | 'pet' | 'elemental' = 'basic',
     coopAllyIndex?: number
   ): void {
+    const activeSynergies = evaluateActiveSynergies(this.activeSkills);
     let mult = 1.0;
-    if (this.markedEnemyIds.has(e.id)) mult += 0.25;
+    if (this.markedEnemyIds.has(e.id)) mult += 0.2;
     if (e.isBoss && (this.baseStats.bossDamageBonus ?? 0) > 0) {
       mult += this.baseStats.bossDamageBonus;
+    }
+    if ((e.isBoss || e.isElite) && activeSynergies.includes('boss_barrage')) {
+      mult += 0.14;
     }
     if (e.chillTimer > 0 && ((this.activeSkills.super_freeze ?? 0) > 0 || this.hasRune('rune_frost'))) {
       mult += 0.25;
@@ -7056,17 +7610,39 @@ export class GameEngine {
       mult *= isMatch ? 1.5 : 0.94;
     }
 
-    // Wave 12: Dynamic Combo Tier Damage Bonus + Boss Stun (+45% DMG)
+    // Wave 12: Dynamic Combo Tier Damage Bonus + Boss Stun (+45% DMG) + Phase 2 Punish Window (+18% Counter-Strike)
     const comboMeta = getComboTierMeta(this.comboCount);
     if (comboMeta.dmgBonusPct > 0) {
       mult *= 1 + comboMeta.dmgBonusPct;
     }
+    let resolvedLabel = label;
     if (e.isBoss && e.stunTimer && e.stunTimer > 0) {
       mult *= 1.45;
+    } else if (e.isBoss && e.punishWindowTimer && e.punishWindowTimer > 0) {
+      const punishBonus =
+        e.bossPhase === 3 ? PUNISH_WINDOW_PHASE3_BONUS : PUNISH_WINDOW_DAMAGE_BONUS;
+      mult *= 1 + punishBonus;
+      soundEngine.playPunishHit();
+      if (!resolvedLabel && isCrit) {
+        resolvedLabel = e.bossPhase === 3 ? 'PHẢN ĐÒN TỐI THƯỢNG!' : 'PHẢN ĐÒN!';
+      }
     }
 
     const finalDmg = Math.max(1, Math.round(amount * mult));
-    e.hp -= finalDmg;
+    const hasAegisAffix = e.eliteAffix === 'aegis' || Boolean(e.eliteAffixes?.includes('aegis'));
+    if (hasAegisAffix && e.eliteShieldHp && e.eliteShieldHp > 0) {
+      const absorbed = Math.min(e.eliteShieldHp, finalDmg);
+      e.eliteShieldHp -= absorbed;
+      const overflow = finalDmg - absorbed;
+      if (overflow > 0) e.hp -= overflow;
+      if (e.eliteShieldHp <= 0) {
+        soundEngine.playEliteAffixTrigger('aegis');
+        this.spawnShockwave(e.x, e.z, 0x38bdf8, 2.4, 0.28);
+        this.emitFloatingNumber(e.x, 2.1, e.z, 0, true, false, 'ice', 'VỠ HỘ THUẪN!');
+      }
+    } else {
+      e.hp -= finalDmg;
+    }
     e.hitFlashTimer = 0.1;
 
     // Wave 12: Boss Break-Shield Mechanic (Lazy init & Shatter Stun 3s)
@@ -7083,6 +7659,8 @@ export class GameEngine {
         e.breakShield = Math.max(0, (e.breakShield ?? e.maxBreakShield) - finalDmg * breakMult);
         if (e.breakShield <= 0) {
           e.stunTimer = 3.0;
+          e.punishWindowTimer = 0;
+          if (e.punishRingMesh) e.punishRingMesh.visible = false;
           e.telegraphType = 'none';
           e.telegraphGroup.visible = false;
           e.laserLine.visible = false;
@@ -7135,10 +7713,12 @@ export class GameEngine {
       }
     }
 
-    // Boss Phase II Transition (< 55% HP)
-    if (e.isBoss && !e.phaseTransitioned && e.hp > 0 && e.hp <= e.maxHp * 0.55) {
+    // Boss Phase II Transition (<= 50% HP)
+    if (e.isBoss && !e.phaseTransitioned && e.hp > 0 && e.hp <= e.maxHp * 0.5) {
       e.phaseTransitioned = true;
       e.bossPhase = 2;
+      e.punishWindowTimer = 0;
+      if (e.punishRingMesh) e.punishRingMesh.visible = false;
       e.telegraphType = 'none';
       e.laserLine.visible = false;
       e.telegraphGroup.visible = false;
@@ -7146,35 +7726,89 @@ export class GameEngine {
         l.active = false;
         l.mesh.visible = false;
       });
-      e.attackTimer = 0.55;
-      this.hitstopTimer = 0.085;
-      this.shakeIntensity = Math.max(this.shakeIntensity, 0.52);
-      soundEngine.playBossPhaseRoar();
-      this.spawnShockwave(e.x, e.z, 0xf43f5e, 6.2, 0.52);
+      e.attackTimer = 0.5;
+      this.bossPhaseTwoBannerTimer = 2.6;
+      const reducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (!reducedMotion) {
+        this.hitstopTimer = Math.max(this.hitstopTimer, 0.045);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.52);
+      }
+      soundEngine.playBossPhaseTwo();
+      this.spawnShockwave(e.x, e.z, 0xf43f5e, 6.8, 0.54);
       this.spawnParticles(e.x, 1.2, e.z, 0xf43f5e, 34);
-      this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', 'PHA II · CUỒNG NỘ!');
+      this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', 'PHA II · CUỒNG NỘ!', true);
       this.triggerBossWarning(
         e.bossTitle || this.currentChapter.bossName,
         'PHA II CUỒNG NỘ · CẢNH BÁO TĂNG TỐC ĐÒN ĐÁNH'
       );
     }
 
+    // Phase 4: Boss Phase III Transition (<= 25% HP) for Ch.10–12 final bosses & Tower Floor 20+
+    const canEnterPhaseThree =
+      (!this.isTowerMode && this.currentChapter.id >= 10) ||
+      (this.isTowerMode && this.towerFloor >= 20);
+    if (
+      e.isBoss &&
+      e.phaseTransitioned &&
+      !e.phaseThreeTransitioned &&
+      canEnterPhaseThree &&
+      e.hp > 0 &&
+      e.hp <= e.maxHp * 0.25
+    ) {
+      e.phaseThreeTransitioned = true;
+      e.bossPhase = 3;
+      e.punishWindowTimer = 0;
+      if (e.punishRingMesh) e.punishRingMesh.visible = false;
+      e.telegraphType = 'none';
+      e.laserLine.visible = false;
+      e.telegraphGroup.visible = false;
+      this.dangerLanePool.forEach((l) => {
+        l.active = false;
+        l.mesh.visible = false;
+      });
+      e.attackTimer = 0.45;
+      this.bossPhaseThreeBannerTimer = 2.8;
+      const reducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (!reducedMotion) {
+        this.hitstopTimer = Math.max(this.hitstopTimer, 0.055);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.62);
+      }
+      soundEngine.playBossPhaseThree();
+      this.spawnShockwave(e.x, e.z, 0xfbbf24, 7.6, 0.56);
+      this.spawnShockwave(e.x, e.z, 0xe11d48, 5.4, 0.42);
+      this.spawnParticles(e.x, 1.35, e.z, 0xfbbf24, 42);
+      this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHA III · TỐI THƯỢNG!', true);
+      this.triggerBossWarning(
+        e.bossTitle || this.currentChapter.bossName,
+        'PHA III TỐI THƯỢNG · PHẢN ĐÒN +24% SÁT THƯƠNG'
+      );
+    }
+
     // Dracoola + Wave 12 Mythic Golden Stat Lifesteal
     const totalLifesteal =
-      (this.baseStats.heroId === 'dracoola' ? 0.04 : 0) + (this.baseStats.lifeStealPct ?? 0);
+      (this.baseStats.heroId === 'dracoola' ? 0.03 : 0) + (this.baseStats.lifeStealPct ?? 0);
     if (totalLifesteal > 0 && this.hp < this.maxHp && coopAllyIndex === undefined) {
       const leach = Math.max(1, Math.round(finalDmg * totalLifesteal));
       this.hp = Math.min(this.maxHp, this.hp + leach);
     }
 
     const flameRuneMult = this.hasRune('rune_flame') ? 1.6 : 1.0;
+    const infernoBurnMult = activeSynergies.includes('inferno_meteor') ? 1.22 : 1.0;
+    const venomSynergyMult = activeSynergies.includes('venom_eclipse') ? 1.3 : 1.0;
     if (blaze) {
       const superMult = (this.activeSkills.super_blaze ?? 0) > 0 ? 2.2 : 1.0;
       e.burnTimer = 2.8;
-      e.burnDps = Math.max(e.burnDps, finalDmg * 0.26 * superMult * flameRuneMult);
+      e.burnDps = Math.max(
+        e.burnDps,
+        finalDmg * 0.26 * superMult * flameRuneMult * infernoBurnMult
+      );
     }
     if (poison) {
-      e.poisonDps = Math.max(e.poisonDps, finalDmg * 0.22 * flameRuneMult);
+      e.poisonDps = Math.max(e.poisonDps, finalDmg * 0.22 * flameRuneMult * venomSynergyMult);
     }
     if (frost) {
       e.chillTimer = 2.6;
@@ -7210,18 +7844,19 @@ export class GameEngine {
       isCrit,
       false,
       blaze ? 'fire' : frost ? 'ice' : storm ? 'storm' : poison ? 'poison' : undefined,
-      label,
+      resolvedLabel,
       isSuperCrit
     );
 
-    // Chain Lightning (Storm Skill or Thor Crit Passive)
+    // Chain Lightning (Storm Skill or Thor Crit Passive + Storm Chain Synergy)
     const shouldChain =
       storm || (isCrit && this.baseStats.heroId === 'thor');
     if (shouldChain) {
+      const hasStormChain = activeSynergies.includes('storm_chain');
       const maxChains =
-        this.baseStats.heroId === 'thor' || (this.activeSkills.super_bolt ?? 0) > 0
+        (this.baseStats.heroId === 'thor' || (this.activeSkills.super_bolt ?? 0) > 0
           ? 3
-          : 1;
+          : 1) + (hasStormChain ? 1 : 0);
       const chainExclude = new Set<number>([e.id]);
       let currX = e.x;
       let currZ = e.z;
@@ -7231,7 +7866,11 @@ export class GameEngine {
         chainExclude.add(nearby.id);
         const arcDmg = Math.max(
           2,
-          Math.round(finalDmg * (this.hasRune('rune_frost') ? 0.6 : 0.45))
+          Math.round(
+            finalDmg *
+              (this.hasRune('rune_frost') ? 0.6 : 0.45) *
+              (hasStormChain ? 1.2 : 1.0)
+          )
         );
         nearby.hp -= arcDmg;
         this.dmgElemental += arcDmg;
@@ -7291,12 +7930,70 @@ export class GameEngine {
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.11);
     }
 
-    // Bloodthirst / Healing Sprite heal on kill
+    // Bloodthirst / Healing Sprite + Aegis Sanctuary Synergy heal on Elite/Boss kill
     const vamp = (this.activeSkills.bloodthirst ?? 0) + (this.hasRune('healing_sprite') ? 0.6 : 0);
+    const hasAegisSanctuary = evaluateActiveSynergies(this.activeSkills).includes('aegis_sanctuary');
     if (vamp > 0) {
       const healAmt = Math.round(4 + this.maxHp * 0.025 * vamp);
       this.hp = Math.min(this.maxHp, this.hp + healAmt);
       this.emitFloatingNumber(this.px, 1.9, this.pz, healAmt, false, true);
+    }
+    if (hasAegisSanctuary && (e.isBoss || e.isElite)) {
+      const synHeal = Math.max(8, Math.round(this.maxHp * 0.06));
+      this.hp = Math.min(this.maxHp, this.hp + synHeal);
+      this.emitFloatingNumber(this.px, 2.2, this.pz, synHeal, false, true, undefined, 'THÁNH GIÁP!');
+    }
+
+    // Phase 3–4: Elite Volatile Affix spawns 0.85s ground telegraph blast on death
+    if (e.eliteAffix === 'volatile' || e.eliteAffixes?.includes('volatile')) {
+      const blastRadius = 2.85;
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(blastRadius - 0.16, blastRadius, 28),
+        new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.8,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(e.x, 0.06, e.z);
+      ring.renderOrder = 7;
+
+      const fill = new THREE.Mesh(
+        new THREE.CircleGeometry(1, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.28,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        })
+      );
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.set(e.x, 0.055, e.z);
+      fill.scale.setScalar(0.1);
+      fill.renderOrder = 6;
+
+      this.entitiesGroup.add(ring, fill);
+      soundEngine.playEliteAffixTrigger('volatile');
+      this.volatileBlasts.push({
+        x: e.x,
+        z: e.z,
+        radius: blastRadius,
+        timer: 0.85,
+        maxTimer: 0.85,
+        damage: Math.round(e.damage * 1.15),
+        ring,
+        fill,
+      });
     }
 
     const goldAmt = Math.max(1, Math.round(e.goldValue * this.baseStats.goldGainMult));
@@ -7369,6 +8066,9 @@ export class GameEngine {
     this.releaseObject(e.model.root);
     this.releaseObject(e.shadow);
     this.releaseObject(e.telegraphGroup);
+    if (e.punishRingMesh) this.releaseObject(e.punishRingMesh);
+    if (e.eliteAuraRingMesh) this.releaseObject(e.eliteAuraRingMesh);
+    if (e.eliteAuraRingMesh2) this.releaseObject(e.eliteAuraRingMesh2);
     this.releaseObject(e.laserLine);
     this.enemies.splice(index, 1);
 
@@ -7867,6 +8567,7 @@ export class GameEngine {
         isTowerMode: false,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
+        activeSynergies: evaluateActiveSynergies(this.activeSkills),
       });
       return;
     }
@@ -8063,6 +8764,7 @@ export class GameEngine {
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
         defeatCause: this.lastDamageSource ?? undefined,
+        activeSynergies: evaluateActiveSynergies(this.activeSkills),
       });
     }
   }
@@ -8666,6 +9368,41 @@ export class GameEngine {
       bossMaxShield: (boss ?? rival)?.maxBreakShield,
       bossStunTimer: (boss ?? rival)?.stunTimer,
       bossBrokenBannerTimer: this.bossBrokenBannerTimer > 0 ? this.bossBrokenBannerTimer : undefined,
+      bossPunishActive: Boolean(
+        boss &&
+          boss.punishWindowTimer &&
+          boss.punishWindowTimer > 0 &&
+          boss.telegraphType === 'none' &&
+          (!boss.stunTimer || boss.stunTimer <= 0)
+      ),
+      bossPunishRatio:
+        boss && boss.punishWindowMax && boss.punishWindowTimer && boss.punishWindowTimer > 0
+          ? Math.max(0, Math.min(1, boss.punishWindowTimer / boss.punishWindowMax))
+          : undefined,
+      bossPunishBonusPct:
+        boss && boss.bossPhase === 3
+          ? Math.round(PUNISH_WINDOW_PHASE3_BONUS * 100)
+          : Math.round(PUNISH_WINDOW_DAMAGE_BONUS * 100),
+      bossPhaseTwoBannerTimer: this.bossPhaseTwoBannerTimer > 0 ? this.bossPhaseTwoBannerTimer : undefined,
+      bossPhaseThreeBannerTimer:
+        this.bossPhaseThreeBannerTimer > 0 ? this.bossPhaseThreeBannerTimer : undefined,
+      activeEliteAffixLabel: (() => {
+        const eliteWithAffix = this.enemies.find(
+          (en) => en.isElite && !en.isBoss && (en.eliteAffix || (en.eliteAffixes && en.eliteAffixes.length > 0))
+        );
+        if (!eliteWithAffix) return undefined;
+        const list =
+          eliteWithAffix.eliteAffixes && eliteWithAffix.eliteAffixes.length > 0
+            ? eliteWithAffix.eliteAffixes
+            : eliteWithAffix.eliteAffix
+            ? [eliteWithAffix.eliteAffix]
+            : [];
+        return list.length > 0
+          ? `Tinh Anh · ${list.map((af) => ELITE_AFFIX_META[af].label).join(' + ')}`
+          : undefined;
+      })(),
+      activeArenaHazardLabel:
+        this.arenaHazards.length > 0 ? ARENA_HAZARD_META[this.arenaHazards[0].kind].label : undefined,
       isTowerMode: this.isTowerMode,
       towerFloor: this.towerFloor,
       isBossRushMode: this.isBossRushMode,
@@ -8752,6 +9489,7 @@ export class GameEngine {
       bossWarningSubtitle: this.bossWarningTimer > 0 ? this.bossWarningSubtitle : null,
       bossWarningTimer: this.bossWarningTimer > 0 ? this.bossWarningTimer : undefined,
       activeSkills: { ...this.activeSkills },
+      activeSynergies: evaluateActiveSynergies(this.activeSkills),
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,
       comboTimerRatio: this.comboCount > 0 ? Math.max(0, this.comboTimer / this.comboWindow) : 0,

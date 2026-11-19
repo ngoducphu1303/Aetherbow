@@ -138,6 +138,7 @@ test('Wave 14: Wings, Zodiac Relics, Guild Sanctuary, and Royal 3D Titles boost 
 
 test('Wave 14: Sky Citadel, Astral Board, and Guild Sanctuary flow into previewLobbyClaimAll and clear when claimed', () => {
   const save = createInitialSaveData();
+  save.highestChapterCleared = 2;
   save.skyCitadel = {
     ...normalizeSkyCitadel(save.skyCitadel),
     totalScore: SKY_CITADEL_MILESTONES[0].scoreTarget + 200,

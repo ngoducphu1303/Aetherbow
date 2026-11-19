@@ -263,14 +263,14 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
               <div className="grid grid-cols-3 gap-2.5 w-full max-w-md my-1 text-xs font-black font-mono-nums">
                 <div className="rounded-xl bg-[#070b1a] border border-amber-400/45 p-2.5 text-amber-300 flex items-center justify-center gap-1.5">
                   <GoldCoinIcon className="w-4 h-4 shrink-0" />
-                  <span>+300 Vàng</span>
+                  <span>+30 Vàng</span>
                 </div>
                 <div className="rounded-xl bg-[#070b1a] border border-purple-400/45 p-2.5 text-purple-300 flex items-center justify-center gap-1.5">
                   <SoulGemIcon className="w-4 h-4 shrink-0" />
-                  <span>+35 Ngọc</span>
+                  <span>+10 Ngọc</span>
                 </div>
                 <div className="rounded-xl bg-[#070b1a] border border-sky-400/45 p-2.5 text-sky-300 flex items-center justify-center">
-                  <span>+1 Đồ Hiếm</span>
+                  <span>+2 Mảnh Hiếm</span>
                 </div>
               </div>
 

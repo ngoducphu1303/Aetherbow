@@ -155,6 +155,7 @@ test('Wave 13: 7-Day Carnival, Starlight Race, Dragon Lair milestones flow into 
   assert.ok(CARNIVAL_7DAY_TASKS.length >= 10);
 
   const save = createInitialSaveData();
+  save.highestChapterCleared = 2;
   save.carnival7Day = normalizeCarnival7Day(save.carnival7Day);
   save.starlightRace = {
     date: save.carnival7Day.lastLoginDate,

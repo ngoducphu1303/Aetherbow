@@ -43,6 +43,15 @@ import zodiacMountsArt from '../assets/images/zodiac_mounts_sanctum_179500759567
 import zodiacWingsArt from '../assets/images/zodiac_wings_sanctum_1795005955367.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import {
+  DEFAULT_LOADOUT_PRESET_SLOTS,
+  HERO_MASTERY_MAX_LEVEL,
+  computeHeroMasteryBonuses,
+  getEarlyProgressionPolicy,
+  isEarlyFeatureUnlocked,
+  normalizeLoadoutPresets,
+  RARITY_RANK,
+} from '../data/earlyProgressionData';
+import {
   CHEST_DROP_RATES,
   getDailyFlashDeals,
   normalizeFlashDeals,
@@ -52,6 +61,7 @@ import {
   GEAR_TEMPLATES,
   RARITY_META,
   RARITY_ORDER,
+  evaluateEquippedGearSets,
   getGearPowerScore,
   getGearStats,
   getUpgradeCost,
@@ -229,6 +239,8 @@ interface GearPanelProps {
   ) => void;
   onSaveBuildPreset: (idx: number) => void;
   onApplyBuildPreset: (idx: number) => void;
+  onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onOpenWardrobe?: () => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
@@ -250,6 +262,8 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   onOpenForgeSubTab,
   onSaveBuildPreset,
   onApplyBuildPreset,
+  onSaveLoadoutPreset,
+  onApplyLoadoutPreset,
   onOpenWardrobe,
   onRotateHero,
   onResetHeroRotation,
@@ -494,6 +508,49 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                     <strong>{save.starDust ?? 0}</strong>
                   </span>
                 </div>
+
+                {(() => {
+                  const gearSetEval = evaluateEquippedGearSets(save);
+                  if (gearSetEval.sets.length === 0) return null;
+                  return (
+                    <div className="w-full border-t border-amber-400/15 pt-1.5 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                      <span className="font-black text-amber-300 uppercase tracking-wider text-[10px]">
+                        Bộ Trang Bị:
+                      </span>
+                      {gearSetEval.sets.map((setEntry) => (
+                        <span
+                          key={setEntry.setId}
+                          className="font-mono-nums text-slate-200"
+                          title={
+                            setEntry.nextTier
+                              ? `Mốc ${setEntry.nextTier.piecesRequired} món: ${setEntry.nextTier.label}`
+                              : setEntry.unlockedTiers.map((t) => t.label).join(' · ')
+                          }
+                        >
+                          <strong
+                            className={
+                              setEntry.unlockedTiers.length > 0
+                                ? 'text-emerald-300'
+                                : 'text-sky-300'
+                            }
+                          >
+                            {setEntry.displayName} ({setEntry.equippedCount}/{setEntry.maxPieces})
+                          </strong>
+                          {setEntry.unlockedTiers.length > 0 ? (
+                            <span className="text-amber-200">
+                              {' · '}
+                              {setEntry.unlockedTiers.map((t) => t.label).join(' · ')}
+                            </span>
+                          ) : setEntry.nextTier ? (
+                            <span className="text-slate-400">
+                              {' · '}Mốc {setEntry.nextTier.piecesRequired}: {setEntry.nextTier.label}
+                            </span>
+                          ) : null}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
@@ -885,48 +942,78 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                 })}
               </div>
 
-              {/* Compact 3-Slot Quick Build Presets */}
+              {/* Phase 4: 3-Slot Saved Loadout Presets (Campaign / Boss / Tower) */}
               <div className="cel-panel rounded-xl p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-1 text-[11px] font-black text-amber-200 shrink-0">
-                  <Bookmark className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Bộ Nhanh:</span>
+                <div className="flex items-center gap-1 text-[11px] font-black text-amber-200 shrink-0 whitespace-nowrap">
+                  <Bookmark className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>Bộ Loadout:</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 flex-1">
-                  {buildPresets.map((preset, idx) => {
-                    const presetHero = HERO_MAP[preset.heroId]?.name ?? 'Anh Hùng';
+                  {DEFAULT_LOADOUT_PRESET_SLOTS.map((slotMeta, idx) => {
+                    const savedLoadouts = normalizeLoadoutPresets(save.loadoutPresets);
+                    const savedPreset = savedLoadouts.find((p) => p.slotId === slotMeta.slotId);
+                    const legacyPreset = buildPresets[idx];
+                    const isActive = save.activeLoadoutPresetId === slotMeta.slotId;
+                    const displayHeroId = savedPreset?.heroId ?? legacyPreset?.heroId;
+                    const presetHero = displayHeroId ? HERO_MAP[displayHeroId]?.name ?? 'Anh Hùng' : 'Trống';
+                    const gearCount = savedPreset
+                      ? Object.values(savedPreset.equipped).filter(Boolean).length
+                      : 0;
+                    const runeCount = savedPreset
+                      ? savedPreset.equippedRunes.length
+                      : legacyPreset?.equippedRunes.length ?? 0;
+
                     return (
                       <div
-                        key={preset.id}
-                        className="rounded-lg bg-[#070b1a] border border-amber-400/20 px-2 py-1 flex items-center justify-between gap-1.5"
+                        key={slotMeta.slotId}
+                        className={`rounded-lg bg-[#070b1a] border px-2 py-1 flex items-center justify-between gap-1.5 ${
+                          isActive ? 'border-emerald-400/70' : 'border-amber-400/20'
+                        }`}
                       >
                         <div className="min-w-0">
-                          <div className="text-[10px] font-black text-white truncate">
-                            {preset.name}
+                          <div className="text-[10px] font-black text-white truncate flex items-center gap-1">
+                            <span className="truncate">{savedPreset?.name ?? slotMeta.defaultName}</span>
+                            {isActive && <Check className="w-3 h-3 text-emerald-300 shrink-0" />}
                           </div>
-                          <div className="text-[8px] text-slate-400 font-semibold truncate">
-                            {presetHero} · {preset.equippedRunes.length} Ngọc
+                          <div className="text-[9px] text-slate-400 font-semibold font-mono-nums truncate">
+                            {savedPreset
+                              ? `${presetHero} · ${gearCount}/6 đồ · ${runeCount} Ngọc`
+                              : 'Chưa lưu · Bấm Lưu'}
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={() => {
-                              soundEngine.playUiClick(1.05);
-                              onSaveBuildPreset(idx);
+                              if (onSaveLoadoutPreset) {
+                                onSaveLoadoutPreset(slotMeta.slotId);
+                              } else {
+                                soundEngine.playUiClick(1.05);
+                                onSaveBuildPreset(idx);
+                              }
                             }}
-                            className="a2-slate-btn px-1.5 py-0.5 rounded text-[9px] font-black text-sky-200 cursor-pointer"
+                            className="a2-slate-btn px-1.5 py-0.5 rounded text-[9px] font-black text-sky-200 whitespace-nowrap cursor-pointer"
                           >
                             Lưu
                           </button>
                           <button
                             type="button"
+                            disabled={Boolean(onApplyLoadoutPreset) && !savedPreset}
                             onClick={() => {
-                              soundEngine.playLevelUp();
-                              onApplyBuildPreset(idx);
+                              if (onApplyLoadoutPreset) {
+                                onApplyLoadoutPreset(slotMeta.slotId);
+                              } else {
+                                soundEngine.playLevelUp();
+                                onApplyBuildPreset(idx);
+                              }
                             }}
-                            className="a2-emerald-btn px-1.5 py-0.5 rounded text-[9px] font-black cursor-pointer"
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-black whitespace-nowrap ${
+                              !onApplyLoadoutPreset || savedPreset
+                                ? 'a2-emerald-btn cursor-pointer'
+                                : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                            }`}
                           >
-                            Mặc
+                            Dùng
                           </button>
                         </div>
                       </div>
@@ -1174,6 +1261,50 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   {hero.ultDesc}
                 </p>
               </div>
+
+              {/* Phase 4: Hero Mastery Lv.1–10 Progress Strip */}
+              {(() => {
+                const mastery = computeHeroMasteryBonuses(save.heroMastery, hero.id);
+                const expPct = mastery.isMax
+                  ? 100
+                  : Math.max(
+                      4,
+                      Math.min(100, Math.round((mastery.exp / Math.max(1, mastery.nextExp)) * 100))
+                    );
+                return (
+                  <div className="rounded-xl bg-[#070b1a]/90 border border-amber-400/20 px-2.5 py-2 space-y-1">
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-black">
+                      <span className="text-amber-200 flex items-center gap-1">
+                        <Crown className="w-3 h-3 text-amber-300 shrink-0" />
+                        <span>
+                          Tinh Thông Anh Hùng · Lv.{mastery.level}/{HERO_MASTERY_MAX_LEVEL}
+                        </span>
+                      </span>
+                      <span className="font-mono-nums text-slate-300 shrink-0">
+                        {mastery.isMax ? 'Đạt Tối Đa' : `${mastery.exp}/${mastery.nextExp} EXP`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-400 via-yellow-300 to-emerald-400"
+                        style={{ width: `${expPct}%` }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono-nums">
+                      <span className={mastery.level > 1 ? 'text-emerald-300 font-bold' : 'text-slate-400'}>
+                        {mastery.summaryLabel}
+                      </span>
+                      <span className="text-slate-400">
+                        {mastery.level < 5
+                          ? 'Mốc Lv.5: +4% Chí Mạng'
+                          : mastery.level < 10
+                          ? 'Mốc Lv.10: +8% ST Boss'
+                          : 'Đã mở toàn bộ mốc Tinh Thông'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-400/15">
                 {unlocked ? (
@@ -3409,6 +3540,12 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   }, []);
 
   const pity = normalizePity(save.pity);
+  const earlyPolicy = getEarlyProgressionPolicy(save);
+  const ironChestUnlock = isEarlyFeatureUnlocked(save, 'iron_chest');
+  const mythicChestUnlock = isEarlyFeatureUnlocked(save, 'mythic_chest');
+  const runesUnlock = isEarlyFeatureUnlocked(save, 'runes');
+  const flashDealsUnlock = isEarlyFeatureUnlocked(save, 'flash_deals');
+  const epicPoolOpen = RARITY_RANK[earlyPolicy.maxGearRarity] >= RARITY_RANK[Rarity.EPIC];
   const rollsUntilEpic = Math.max(1, 10 - pity.mythicRollsSinceEpic);
   const rollsUntilSTier = Math.max(1, 25 - pity.mythicRollsSinceSTier);
 
@@ -5474,6 +5611,14 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {dailyDeals.map((deal) => {
                 const isBought = flashState.purchasedIds.includes(deal.id);
+                const dealLockReason = !flashDealsUnlock.unlocked
+                  ? flashDealsUnlock.requiredLabel
+                  : deal.rewardKind === 'gear_s' && !earlyPolicy.allowSTier
+                  ? 'Mở khi vào Chương 3'
+                  : (deal.rewardKind === 'gear_epic' || deal.rewardKind === 'rune_epic') &&
+                    !epicPoolOpen
+                  ? 'Mở sau khi vượt Chương 1'
+                  : null;
                 const canAfford =
                   deal.currency === 'free'
                     ? true
@@ -5515,12 +5660,12 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
 
                     <button
                       type="button"
-                      disabled={isBought || !canAfford}
+                      disabled={isBought || Boolean(dealLockReason) || !canAfford}
                       onClick={() => onBuyFlashDeal(deal)}
                       className={`w-full py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
                         isBought
                           ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
-                          : !canAfford
+                          : dealLockReason || !canAfford
                           ? 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
                           : deal.currency === 'free'
                           ? 'a2-emerald-btn'
@@ -5533,6 +5678,11 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                         <>
                           <Check className="w-3.5 h-3.5" />
                           <span>Đã Nhận Hôm Nay</span>
+                        </>
+                      ) : dealLockReason ? (
+                        <>
+                          <Lock className="w-3.5 h-3.5 text-amber-400/70" />
+                          <span className="truncate">{dealLockReason}</span>
                         </>
                       ) : deal.currency === 'free' ? (
                         <span>Nhận Miễn Phí</span>
@@ -5559,27 +5709,46 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
         {storeSection === 'gacha' && (
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <div className="text-sm font-display font-black text-amber-200">
-                Triệu Hồi Rương Tinh Giới (×10 Giảm 10%)
+              <div>
+                <div className="text-sm font-display font-black text-amber-200">
+                  Triệu Hồi Rương Tinh Giới (×10 Giảm 10%)
+                </div>
+                <div className="text-[11px] text-slate-300 mt-0.5">
+                  {earlyPolicy.stageLabel} · Bộ đếm Pity luôn được bảo toàn khi pool Sử Thi / [S] chưa mở
+                </div>
               </div>
-              <div className="cel-panel rounded-xl px-3.5 py-1.5 flex items-center gap-4 text-[11px] font-mono-nums">
+              <div className="cel-panel rounded-xl px-3.5 py-1.5 flex flex-wrap items-center gap-3 text-[11px] font-mono-nums">
                 <div>
                   <span className="text-slate-400">Bảo hiểm Sử Thi+: </span>
-                  <span className="font-black text-purple-300">còn {rollsUntilEpic}</span>
+                  <span className="font-black text-purple-300">
+                    {epicPoolOpen
+                      ? `còn ${rollsUntilEpic}`
+                      : `tích ${pity.mythicRollsSinceEpic}/10 (mở sau Ch.1)`}
+                  </span>
                 </div>
                 <span aria-hidden="true" className="text-amber-400/40">|</span>
                 <div>
                   <span className="text-slate-400">Bảo hiểm [S]-Tier: </span>
-                  <span className="font-black text-amber-300">còn {rollsUntilSTier}</span>
+                  <span className="font-black text-amber-300">
+                    {earlyPolicy.allowSTier
+                      ? `còn ${rollsUntilSTier}`
+                      : `tích ${pity.mythicRollsSinceSTier}/25 (mở ở Ch.3)`}
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {chests.map((c) => {
+                const unlockState =
+                  c.variant === 'iron'
+                    ? ironChestUnlock
+                    : c.variant === 'mythic'
+                    ? mythicChestUnlock
+                    : runesUnlock;
                 const balance = c.currency === 'gold' ? save.gold : save.gems;
-                const can1 = balance >= c.cost1;
-                const can10 = balance >= c.cost10;
+                const can1 = unlockState.unlocked && balance >= c.cost1;
+                const can10 = unlockState.unlocked && balance >= c.cost10;
                 const CurrencyIcon = c.currency === 'gold' ? GoldCoinIcon : SoulGemIcon;
 
                 return (
@@ -5609,6 +5778,12 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                           <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
                             {c.desc}
                           </p>
+                          {!unlockState.unlocked && (
+                            <p className="text-[11px] font-bold text-amber-300 mt-1 flex items-center gap-1">
+                              <Lock className="w-3 h-3 shrink-0" />
+                              <span>{unlockState.requiredLabel}</span>
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -5637,9 +5812,18 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                             : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
                         }`}
                       >
-                        <span>Mở ×1 ·</span>
-                        <span className="font-mono-nums">{c.cost1}</span>
-                        <CurrencyIcon className="w-3.5 h-3.5" />
+                        {!unlockState.unlocked ? (
+                          <>
+                            <Lock className="w-3.5 h-3.5 shrink-0" />
+                            <span>Chưa Mở</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Mở ×1 ·</span>
+                            <span className="font-mono-nums">{c.cost1}</span>
+                            <CurrencyIcon className="w-3.5 h-3.5" />
+                          </>
+                        )}
                       </button>
 
                       <button
@@ -5652,9 +5836,18 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                             : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
                         }`}
                       >
-                        <span>Mở ×10 ·</span>
-                        <span className="font-mono-nums">{c.cost10}</span>
-                        <CurrencyIcon className="w-3.5 h-3.5" />
+                        {!unlockState.unlocked ? (
+                          <>
+                            <Lock className="w-3.5 h-3.5 shrink-0" />
+                            <span>Chưa Mở</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Mở ×10 ·</span>
+                            <span className="font-mono-nums">{c.cost10}</span>
+                            <CurrencyIcon className="w-3.5 h-3.5" />
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>

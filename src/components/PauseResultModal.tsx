@@ -1,8 +1,10 @@
 import React from 'react';
-import { ArrowUpRight, BarChart3, Crown, Home, Play, RotateCcw, Settings, Skull, Sparkles, Trophy, Users } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, BarChart3, Crown, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Trophy, Users } from 'lucide-react';
+import { getNextTargetGoal } from '../data/earlyProgressionData';
+import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { evaluateMatchMvpReport } from '../data/wave11Data';
-import { CoopRaidDifficulty, DamageBreakdown, ElementalTowerId, GamePhase } from '../types/game';
+import { CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, SaveData } from '../types/game';
 import {
   ArtifactRelicIcon,
   AwakenCrystalIcon,
@@ -88,6 +90,13 @@ interface PauseResultModalProps {
   maxCombo?: number;
   damageBreakdown?: DamageBreakdown;
   seasonXpEarned?: number;
+  save?: SaveData;
+  defeatCause?: DefeatCauseInfo;
+  milestoneNotes?: string[];
+  prevBestStage?: number;
+  masteryExpGained?: number;
+  masteryLeveledUpTo?: number;
+  onQuickUpgradeWeapon?: () => void;
   onResume?: () => void;
   onRetry: () => void;
   onReturnTitle: () => void;
@@ -168,6 +177,13 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   maxCombo = 0,
   damageBreakdown,
   seasonXpEarned = 0,
+  save,
+  defeatCause,
+  milestoneNotes,
+  prevBestStage,
+  masteryExpGained = 0,
+  masteryLeveledUpTo,
+  onQuickUpgradeWeapon,
   onResume,
   onRetry,
   onReturnTitle,
@@ -176,6 +192,43 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
 }) => {
   const isPause = phase === GamePhase.PAUSED;
   const isVictory = phase === GamePhase.VICTORY;
+  const isCampaignRun =
+    !isTowerMode &&
+    !isBossRushMode &&
+    !isDailyRiftMode &&
+    !isGuildBossMode &&
+    !isArenaMode &&
+    !isCoopRaidMode &&
+    !isElementalTowerMode &&
+    !isCrystalDefenseMode &&
+    !isWorldBossMode &&
+    !isBloodMoonMode &&
+    !isAbyssalMode &&
+    !isGuildWarMode &&
+    !isPantheonMode &&
+    !isChampionshipMode &&
+    !isCrystalVaultMode &&
+    !isDragonLairMode &&
+    !isSkyCitadelMode;
+
+  const targetGoal = !isPause && save ? getNextTargetGoal(save) : null;
+  const equippedWeapon =
+    save && save.equipped[GearSlot.WEAPON]
+      ? save.inventory.find((g) => g.uid === save.equipped[GearSlot.WEAPON])
+      : undefined;
+  const weaponUpgradeCost = equippedWeapon ? getUpgradeCost(equippedWeapon) : null;
+  const canQuickUpgradeWeapon = Boolean(
+    !isPause &&
+      save &&
+      equippedWeapon &&
+      weaponUpgradeCost !== null &&
+      save.gold >= weaponUpgradeCost &&
+      onQuickUpgradeWeapon
+  );
+  const bestCampaignStage =
+    prevBestStage !== undefined ? Math.max(prevBestStage, stageReached) : stageReached;
+  const isNewStageRecord =
+    !isPause && isCampaignRun && prevBestStage !== undefined && stageReached > prevBestStage;
 
   const totalDamage = damageBreakdown
     ? damageBreakdown.basic + damageBreakdown.ultimate + damageBreakdown.pet + damageBreakdown.elemental
@@ -399,6 +452,73 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             ? 'Kỷ lục tầng tháp mới cùng Vàng và Ngọc Hồn đã được lưu vào Kho Báu.'
             : 'Số Vàng và Ngọc Hồn thu thập được đã được lưu vào Kho Báu.'}
         </p>
+
+        {/* Defeat Cause Diagnostic (Game Over only) */}
+        {!isPause && !isVictory && defeatCause && (
+          <div className="mb-3.5 rounded-2xl border border-rose-400/35 bg-[#120916]/90 px-4 py-3 text-left">
+            <div className="flex items-center gap-2 text-xs font-bold text-rose-300">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>
+                Nguyên nhân thất bại: {defeatCause.label}
+                {defeatCause.killerName ? ` · ${defeatCause.killerName}` : ''}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">{defeatCause.tip}</p>
+          </div>
+        )}
+
+        {/* Campaign Record & Next Target Gear Progress */}
+        {!isPause && isCampaignRun && targetGoal && (
+          <div className="mb-3.5 rounded-2xl border border-amber-400/30 bg-[#080d20]/95 px-4 py-3 text-left space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-bold text-amber-200">{targetGoal.title}</span>
+              <span className="font-mono-nums text-slate-300">
+                Ải {stageReached}/{totalStages} · Kỷ lục {bestCampaignStage}/{totalStages}
+                {isNewStageRecord ? ' (Kỷ lục mới)' : ''}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-400"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.max(4, Math.round((targetGoal.current / Math.max(1, targetGoal.target)) * 100))
+                  )}%`,
+                }}
+              />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+              <span>{targetGoal.dropSourceText}</span>
+              <span className="font-mono-nums font-bold text-amber-300 shrink-0">
+                {targetGoal.current}/{targetGoal.target}
+                {targetGoal.canCraftNow ? ' · Sẵn sàng rèn tại Sảnh' : !targetGoal.unlocked ? ` · ${targetGoal.unlockRequirement}` : ''}
+              </span>
+            </div>
+            {milestoneNotes && milestoneNotes.length > 0 && (
+              <div className="pt-2 border-t border-amber-400/15 text-[11px] text-emerald-300 font-semibold">
+                Mốc vừa đạt: {milestoneNotes.join(' · ')}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Phase 4: Hero Mastery EXP Gain Strip */}
+        {!isPause && masteryExpGained > 0 && (
+          <div className="mb-3.5 rounded-2xl border border-amber-400/25 bg-[#0a1024]/95 px-4 py-2 text-left flex flex-wrap items-center justify-between gap-2 text-xs font-mono-nums">
+            <span className="inline-flex items-center gap-1.5 font-bold text-amber-200">
+              <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Tinh Thông Anh Hùng: +{masteryExpGained} EXP</span>
+            </span>
+            {masteryLeveledUpTo ? (
+              <span className="font-black text-emerald-300">
+                Lên Cấp Lv.{masteryLeveledUpTo}!
+              </span>
+            ) : (
+              <span className="text-[11px] text-slate-400">Tự động cộng vào Anh Hùng đang ra trận</span>
+            )}
+          </div>
+        )}
 
         {/* Wave 11: Match MVP Grade & Title Plaque */}
         {mvpReport && (
@@ -976,9 +1096,22 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
               isPause ? 'a2-emerald-btn' : 'a2-yellow-btn'
             }`}
           >
-            <RotateCcw className="w-4 h-4" />
-            <span>{isPause ? 'Đánh Lại Từ Đầu' : 'Chơi Lại'}</span>
+            <RotateCcw className="w-4 h-4 shrink-0" />
+            <span>{isPause ? 'Đánh Lại Từ Đầu' : isVictory ? 'Chơi Lại' : 'Thử Lại Ngay'}</span>
           </button>
+
+          {canQuickUpgradeWeapon && equippedWeapon && weaponUpgradeCost !== null && (
+            <button
+              type="button"
+              onClick={onQuickUpgradeWeapon}
+              className="a2-emerald-btn w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-black text-xs sm:text-sm whitespace-nowrap cursor-pointer"
+            >
+              <Hammer className="w-4 h-4 shrink-0" />
+              <span className="font-mono-nums">
+                Cường Hóa {GEAR_TEMPLATES[equippedWeapon.templateId]?.name ?? 'Vũ Khí'} Lv.{equippedWeapon.level + 1} ({weaponUpgradeCost} Vàng)
+              </span>
+            </button>
+          )}
 
           {!isPause && onQuickAction && (
             <button
@@ -988,19 +1121,19 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   isVictory
                     ? festivalLanternsEarned > 0
                       ? 'festival'
-                      : 'pets'
+                      : 'gear'
                     : 'gear'
                 )
               }
-              className="a2-purple-btn w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-black text-xs sm:text-sm whitespace-nowrap cursor-pointer"
+              className="a2-slate-btn w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap cursor-pointer"
             >
-              <ArrowUpRight className="w-4 h-4 text-amber-300" />
+              <ArrowUpRight className="w-4 h-4 text-amber-300 shrink-0" />
               <span>
                 {isVictory
                   ? festivalLanternsEarned > 0
                     ? 'Đổi Đèn Lồng Tại Lễ Hội Tinh Giới'
-                    : 'Tiến Hóa Thần Sủng & Nâng Lực Chiến'
-                  : 'Tăng Lực Chiến Ngay (Cường Hóa Trang Bị)'}
+                    : 'Mở Kho Trang Bị & Rèn Mục Tiêu'
+                  : 'Mở Kho Trang Bị & Nâng Cấp'}
               </span>
             </button>
           )}

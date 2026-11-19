@@ -730,6 +730,241 @@ class SoundEngine {
       osc.stop(t + 0.2);
     });
   }
+
+  private lastPunishHitSfxAt = 0;
+
+  public playPunishHit(): void {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowMs - this.lastPunishHitSfxAt < 240) return;
+    this.lastPunishHitSfxAt = nowMs;
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    // Emerald counter-strike resonant chime + crisp punch
+    const chime = ctx.createOscillator();
+    const cGain = ctx.createGain();
+    chime.type = 'triangle';
+    chime.frequency.setValueAtTime(784, now);
+    chime.frequency.exponentialRampToValueAtTime(1174.66, now + 0.085);
+    cGain.gain.setValueAtTime(0.11, now);
+    cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    chime.connect(cGain);
+    cGain.connect(dest);
+    chime.start(now);
+    chime.stop(now + 0.14);
+
+    const punch = ctx.createOscillator();
+    const pGain = ctx.createGain();
+    punch.type = 'sine';
+    punch.frequency.setValueAtTime(210, now);
+    punch.frequency.exponentialRampToValueAtTime(82, now + 0.06);
+    pGain.gain.setValueAtTime(0.12, now);
+    pGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+    punch.connect(pGain);
+    pGain.connect(dest);
+    punch.start(now);
+    punch.stop(now + 0.075);
+  }
+
+  public playSynergyUnlock(): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    // Golden ascending harmonic triad fanfare
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.055;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.1, t + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.36);
+    });
+  }
+
+  public playBossPhaseTwo(): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    // Deep dramatic sub-bass drop + brassy sawtooth warning horn
+    const sub = ctx.createOscillator();
+    const sGain = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(140, now);
+    sub.frequency.exponentialRampToValueAtTime(42, now + 0.42);
+    sGain.gain.setValueAtTime(0.24, now);
+    sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+    sub.connect(sGain);
+    sGain.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.48);
+
+    const horn = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const hGain = ctx.createGain();
+    horn.type = 'sawtooth';
+    horn.frequency.setValueAtTime(196, now + 0.04);
+    horn.frequency.linearRampToValueAtTime(146.83, now + 0.38);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1100, now + 0.04);
+    filter.frequency.exponentialRampToValueAtTime(340, now + 0.42);
+    hGain.gain.setValueAtTime(0.001, now + 0.04);
+    hGain.gain.linearRampToValueAtTime(0.12, now + 0.09);
+    hGain.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+    horn.connect(filter);
+    filter.connect(hGain);
+    hGain.connect(dest);
+    horn.start(now + 0.04);
+    horn.stop(now + 0.46);
+  }
+
+  public playEliteAffixTrigger(kind: 'volatile' | 'frost' | 'aegis' = 'volatile'): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    if (kind === 'frost') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1120, now);
+      osc.frequency.exponentialRampToValueAtTime(520, now + 0.18);
+    } else if (kind === 'aegis') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(660, now + 0.12);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(85, now + 0.22);
+    }
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+
+  public playBossPhaseThree(): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Deep tectonic sub drop
+    const sub = ctx.createOscillator();
+    const sGain = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(160, now);
+    sub.frequency.exponentialRampToValueAtTime(36, now + 0.56);
+    sGain.gain.setValueAtTime(0.28, now);
+    sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    sub.connect(sGain);
+    sGain.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.62);
+
+    // Resonant royal-crimson power chord swell (D3 - A3 - D4)
+    const chord = [146.83, 220.0, 293.66];
+    chord.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      osc.type = idx === 2 ? 'triangle' : 'sawtooth';
+      const t = now + idx * 0.045;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.linearRampToValueAtTime(freq * 1.03, t + 0.45);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1600, t);
+      filter.frequency.exponentialRampToValueAtTime(420, t + 0.52);
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.09, t + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.54);
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.56);
+    });
+  }
+
+  public playArenaHazardWarn(): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(360, now);
+    osc.frequency.exponentialRampToValueAtTime(540, now + 0.14);
+    gain.gain.setValueAtTime(0.055, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+
+  public playArenaHazardTrigger(kind: 'solar_eruption' | 'frost_zone' | 'void_pulse'): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    if (kind === 'solar_eruption') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(64, now + 0.24);
+    } else if (kind === 'frost_zone') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1280, now);
+      osc.frequency.exponentialRampToValueAtTime(620, now + 0.22);
+    } else {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(420, now + 0.14);
+      osc.frequency.exponentialRampToValueAtTime(92, now + 0.28);
+    }
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.29);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  public playLoadoutSwitch(): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const notes = [587.33, 880];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.055;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.17);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();
