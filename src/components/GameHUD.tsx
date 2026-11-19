@@ -1313,15 +1313,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       ) : bossIntroTitle ? (
         <div className="mt-4 flex justify-center px-4">
-          <div className="a2-boss-intro w-full max-w-md rounded-2xl bg-gradient-to-r from-[#240814]/95 via-[#3f0b20]/95 to-[#240814]/95 border border-amber-300/75 px-5 py-3 shadow-[0_0_28px_rgba(244,63,94,0.5)] flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-rose-500/25 border border-amber-300/70 flex items-center justify-center shrink-0">
+          <div className="a2-boss-intro w-full max-w-md rounded-2xl bg-[#180710]/96 border border-amber-300/80 px-5 py-3 shadow-[0_12px_36px_rgba(0,0,0,0.72)] flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-300/70 flex items-center justify-center shrink-0">
               <Crown className="w-5 h-5 text-amber-300" />
             </div>
-            <div className="min-w-0">
-              <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
-                Cảnh Báo · Thủ Lĩnh Xuất Hiện
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
+                <span>Đại Boss Hoàng Đạo</span>
+                <span aria-hidden="true" className="text-amber-500/60">·</span>
+                <span className="text-rose-300">Khai Chiến</span>
               </div>
-              <div className="font-display text-base sm:text-lg font-black text-white truncate">
+              <div className="font-display text-base sm:text-xl font-black text-white truncate tracking-wide">
                 {bossIntroTitle}
               </div>
             </div>

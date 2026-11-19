@@ -1,4 +1,5 @@
 import { computeComboHitPitch } from './audioCurves';
+import { computeBossBgmStepDuration } from '../engine/zodiacArena';
 
 export type BgmMode = 'silent' | 'lobby' | 'combat' | 'boss';
 
@@ -15,6 +16,7 @@ class SoundEngine {
   private sfxVol = 0.9;
 
   private bgmMode: BgmMode = 'silent';
+  private bossIntensity: 1 | 2 | 3 = 1;
   private bgmTimer: number | null = null;
   private bgmStep = 0;
   private bgmNextNoteTime = 0;
@@ -119,10 +121,50 @@ class SoundEngine {
     }
   }
 
+  public setBossIntensity(phase: 1 | 2 | 3): void {
+    this.bossIntensity = phase;
+  }
+
+  public playBossEntranceFanfare(): void {
+    const dest = this.getSfxDest();
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    // Imperial brass fifth chord + rising gold horn + timpani boom
+    const notes = [
+      { freq: 146.83, delay: 0, dur: 0.65, gain: 0.14 },
+      { freq: 220.0, delay: 0.08, dur: 0.62, gain: 0.12 },
+      { freq: 293.66, delay: 0.16, dur: 0.72, gain: 0.11 },
+      { freq: 440.0, delay: 0.24, dur: 0.82, gain: 0.09 },
+    ];
+    for (const n of notes) {
+      const osc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(n.freq, now + n.delay);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1400, now + n.delay);
+      filter.frequency.exponentialRampToValueAtTime(520, now + n.delay + n.dur);
+      g.gain.setValueAtTime(0.001, now + n.delay);
+      g.gain.linearRampToValueAtTime(n.gain, now + n.delay + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, now + n.delay + n.dur);
+      osc.connect(filter);
+      filter.connect(g);
+      g.connect(dest);
+      osc.start(now + n.delay);
+      osc.stop(now + n.delay + n.dur + 0.02);
+    }
+    this.playNoiseBurst(ctx, dest, now, 0.22, 'lowpass', 420, 120, 0.18, 1.0);
+  }
+
   public setBgmMode(mode: BgmMode): void {
     if (this.bgmMode === mode) return;
     this.bgmMode = mode;
     this.bgmStep = 0;
+    if (mode !== 'boss') {
+      this.bossIntensity = 1;
+    }
     if (mode === 'silent' || this.muted) {
       this.stopBgmScheduler();
       return;
@@ -158,7 +200,11 @@ class SoundEngine {
 
     const lookAhead = 0.26;
     const stepDur =
-      this.bgmMode === 'boss' ? 0.21 : this.bgmMode === 'combat' ? 0.24 : 0.36;
+      this.bgmMode === 'boss'
+        ? computeBossBgmStepDuration(this.bossIntensity)
+        : this.bgmMode === 'combat'
+        ? 0.24
+        : 0.36;
 
     while (this.bgmNextNoteTime < ctx.currentTime + lookAhead) {
       this.triggerBgmNote(ctx, dest, this.bgmNextNoteTime, this.bgmStep, stepDur);
@@ -273,7 +319,8 @@ class SoundEngine {
       return;
     }
 
-    // Boss Encounter: Intense orchestral minor ostinato + brassy power fifths + war drum
+    // Boss Encounter: Adaptive 3-phase orchestral minor ostinato + brassy power fifths + war drum
+    const intensity = this.bossIntensity;
     const bossSeq = [
       220, 220, 261.63, 220, 293.66, 220, 329.63, 293.66,
       196, 196, 246.94, 196, 261.63, 246.94, 220, 196,
@@ -282,14 +329,15 @@ class SoundEngine {
     const fifth = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = 'sawtooth';
-    fifth.type = 'triangle';
+    fifth.type = intensity >= 3 ? 'sawtooth' : 'triangle';
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(980, time);
-    filter.frequency.exponentialRampToValueAtTime(520, time + stepDur * 0.8);
+    const filterStart = intensity === 3 ? 1750 : intensity === 2 ? 1320 : 980;
+    filter.frequency.setValueAtTime(filterStart, time);
+    filter.frequency.exponentialRampToValueAtTime(Math.round(filterStart * 0.52), time + stepDur * 0.8);
     osc.frequency.setValueAtTime(bossSeq[step], time);
     fifth.frequency.setValueAtTime(bossSeq[step] * 1.498, time);
-    g.gain.setValueAtTime(0.075, time);
+    g.gain.setValueAtTime(intensity === 3 ? 0.09 : intensity === 2 ? 0.082 : 0.075, time);
     g.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.82);
     osc.connect(filter);
     fifth.connect(filter);
@@ -300,18 +348,50 @@ class SoundEngine {
     osc.stop(time + stepDur * 0.85);
     fifth.stop(time + stepDur * 0.85);
 
-    if (step % 4 === 0) {
+    // Phase III heroic high brass octave counter-line on accent steps
+    if (intensity === 3 && (step % 4 === 0 || step === 6 || step === 14)) {
+      const lead = ctx.createOscillator();
+      const lg = ctx.createGain();
+      lead.type = 'triangle';
+      lead.frequency.setValueAtTime(bossSeq[step] * 2, time);
+      lg.gain.setValueAtTime(0.065, time);
+      lg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 1.15);
+      lead.connect(lg);
+      lg.connect(dest);
+      lead.start(time);
+      lead.stop(time + stepDur * 1.2);
+    }
+
+    // War drum (4/4 in Phase I; driving double-time in Phase II & III)
+    const hitDrum = intensity >= 2 ? step % 2 === 0 : step % 4 === 0;
+    if (hitDrum) {
+      const isDownbeat = step % 4 === 0;
       const sub = ctx.createOscillator();
       const sg = ctx.createGain();
       sub.type = 'sine';
-      sub.frequency.setValueAtTime(110, time);
-      sub.frequency.exponentialRampToValueAtTime(52, time + 0.15);
-      sg.gain.setValueAtTime(0.24, time);
-      sg.gain.exponentialRampToValueAtTime(0.001, time + 0.17);
+      sub.frequency.setValueAtTime(isDownbeat ? 114 : 92, time);
+      sub.frequency.exponentialRampToValueAtTime(48, time + 0.14);
+      sg.gain.setValueAtTime(isDownbeat ? 0.25 : 0.15, time);
+      sg.gain.exponentialRampToValueAtTime(0.001, time + 0.16);
       sub.connect(sg);
       sg.connect(dest);
       sub.start(time);
-      sub.stop(time + 0.19);
+      sub.stop(time + 0.18);
+    }
+
+    // Crisp battle snare transient on backbeats in Phase II & III
+    if (intensity >= 2 && step % 4 === 2) {
+      this.playNoiseBurst(
+        ctx,
+        dest,
+        time,
+        0.075,
+        'bandpass',
+        intensity === 3 ? 2100 : 1650,
+        920,
+        intensity === 3 ? 0.095 : 0.068,
+        1.6
+      );
     }
   }
 

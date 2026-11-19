@@ -1059,7 +1059,7 @@ export default function App() {
     }
   }, [save, currentSettings]);
 
-  // Sync dynamic BGM track to game state
+  // Sync dynamic BGM track & 3-phase Boss symphony intensity to game state
   useEffect(() => {
     if (!enteredGame) {
       soundEngine.setBgmMode('silent');
@@ -1067,10 +1067,11 @@ export default function App() {
       soundEngine.setBgmMode('lobby');
     } else if (hud.bossName) {
       soundEngine.setBgmMode('boss');
+      soundEngine.setBossIntensity((hud.bossPhase ?? 1) as 1 | 2 | 3);
     } else {
       soundEngine.setBgmMode('combat');
     }
-  }, [enteredGame, phase, hud.bossName]);
+  }, [enteredGame, phase, hud.bossName, hud.bossPhase]);
 
   // Detect newly unlocked achievements & trigger non-blocking Toast
   useEffect(() => {

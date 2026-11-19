@@ -126,6 +126,12 @@ import {
   projectFloatingScreenPos,
 } from './combatFeel';
 import { stepGhostRatio } from '../audio/audioCurves';
+import {
+  computeBossIntroBlend,
+  computeCountdownRingScale,
+  resolveZodiacArenaStyle,
+  ZodiacArenaThemeSpec,
+} from './zodiacArena';
 
 // Pre-allocated math & color helpers for zero GC in tick
 const _v1 = new THREE.Vector3();
@@ -210,8 +216,10 @@ interface EnemyEntity {
   shadow: THREE.Mesh;
   telegraphGroup: THREE.Group;
   telegraphOuterRing?: THREE.Mesh;
+  telegraphCountdownRing?: THREE.Mesh;
   telegraphFill: THREE.Mesh;
   punishRingMesh?: THREE.Mesh;
+  breakShieldRingMesh?: THREE.Mesh;
   eliteAffix?: EliteAffix;
   eliteAffixes?: EliteAffix[];
   eliteShieldHp?: number;
@@ -496,7 +504,12 @@ export class GameEngine {
     scale: number;
   }> = [];
   private arenaDustMesh: THREE.InstancedMesh | null = null;
-  private arenaBrazierGems: THREE.Mesh[] = [];
+  private arenaBrazierGems: THREE.Object3D[] = [];
+  private arenaThemeSpec: ZodiacArenaThemeSpec = resolveZodiacArenaStyle('leo');
+  private bossIntroTimer = 0;
+  private bossIntroDuration = 1.55;
+  private bossIntroFocusX = 0;
+  private bossIntroFocusZ = -5;
   private arenaDustSeeds: Array<{
     x: number;
     y: number;
@@ -1839,11 +1852,18 @@ export class GameEngine {
       this.releaseObject(this.arenaGroup.children[0]);
     }
 
+    const themeSpec = resolveZodiacArenaStyle(chapter.zodiacId);
+    this.arenaThemeSpec = themeSpec;
     this.scene.background = new THREE.Color(chapter.skyHex);
     this.scene.fog = new THREE.FogExp2(chapter.fogHex, 0.0175);
     this.keyLight.color.setHex(chapter.keyLightHex);
     this.hemiLight.color.setHex(chapter.hemiSkyHex);
     this.hemiLight.groundColor.setHex(chapter.hemiGroundHex);
+    this.rimLight.color.setHex(themeSpec.rimLightHex);
+    if (this.arenaDustMesh) {
+      const dustMat = this.arenaDustMesh.material as THREE.MeshBasicMaterial;
+      if (dustMat && 'color' in dustMat) dustMat.color.setHex(themeSpec.dustHex);
+    }
 
     const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     const floorTex = createStoneTileTexture(
@@ -2033,27 +2053,76 @@ export class GameEngine {
       this.arenaGroup.add(inst);
     }
 
-    // 5. Four Corner Celestial Crystal Braziers
+    // 5. Four Corner 12-Zodiac Elemental Shrines (4 distinct architectural silhouettes)
     const cornerCoords: Array<[number, number]> = [
       [-ARENA_HALF_W - 1.25, -ARENA_HALF_D - 1.25],
       [ARENA_HALF_W + 1.25, -ARENA_HALF_D - 1.25],
       [-ARENA_HALF_W - 1.25, ARENA_HALF_D + 1.25],
       [ARENA_HALF_W + 1.25, ARENA_HALF_D + 1.25],
     ];
-    const brazierBaseGeo = new THREE.CylinderGeometry(0.65, 0.85, 0.7, 8);
-    const brazierBowlGeo = new THREE.TorusGeometry(0.56, 0.08, 8, 16);
-    const brazierGemGeo = new THREE.OctahedronGeometry(0.42, 0);
+    const shrineStyle = themeSpec.style;
+    const brazierBaseGeo = new THREE.CylinderGeometry(0.65, 0.88, 0.72, 8);
+    const brazierBowlGeo = new THREE.TorusGeometry(0.56, 0.08, 8, 18);
+    const brazierGemGeo = new THREE.OctahedronGeometry(0.4, 0);
+    const frostPetalGeo = new THREE.ConeGeometry(0.2, 0.75, 4);
+    const orreryRingGeo = new THREE.TorusGeometry(0.58, 0.045, 6, 20);
+    const monolithShaftGeo = new THREE.CylinderGeometry(0.32, 0.46, 1.35, 6);
+    const monolithCrownGeo = new THREE.CylinderGeometry(0.54, 0.44, 0.16, 6);
+
     for (const [cx, cz] of cornerCoords) {
       const bBase = new THREE.Mesh(brazierBaseGeo, marbleMat);
-      bBase.position.set(cx, 0.35, cz);
+      bBase.position.set(cx, 0.36, cz);
       const bRing = new THREE.Mesh(brazierBowlGeo, goldTrimMat);
       bRing.rotation.x = Math.PI / 2;
-      bRing.position.set(cx, 0.82, cz);
-      const bGem = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
-      bGem.scale.set(0.85, 1.45, 0.85);
-      bGem.position.set(cx, 1.45, cz);
-      this.arenaBrazierGems.push(bGem);
-      this.arenaGroup.add(bBase, bRing, bGem);
+      bRing.position.set(cx, 0.8, cz);
+      this.arenaGroup.add(bBase, bRing);
+
+      const topper = new THREE.Group();
+      topper.position.set(cx, 1.5, cz);
+
+      if (shrineStyle === 'solar_obelisk') {
+        const core = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
+        core.scale.set(0.82, 1.75, 0.82);
+        const solarHalo = new THREE.Mesh(orreryRingGeo, goldTrimMat);
+        solarHalo.rotation.x = Math.PI / 2;
+        solarHalo.scale.setScalar(0.88);
+        topper.add(core, solarHalo);
+      } else if (shrineStyle === 'frost_lotus') {
+        const spire = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
+        spire.scale.set(0.7, 1.5, 0.7);
+        topper.add(spire);
+        for (let p = 0; p < 4; p++) {
+          const petal = new THREE.Mesh(frostPetalGeo, chapterGlowMat);
+          const ang = (p * Math.PI) / 2;
+          petal.position.set(Math.cos(ang) * 0.34, -0.18, Math.sin(ang) * 0.34);
+          petal.rotation.z = -Math.cos(ang) * 0.55;
+          petal.rotation.x = Math.sin(ang) * 0.55;
+          topper.add(petal);
+        }
+      } else if (shrineStyle === 'astral_orrery') {
+        const core = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
+        core.scale.setScalar(0.72);
+        const outerGyro = new THREE.Mesh(orreryRingGeo, goldTrimMat);
+        outerGyro.rotation.set(0.65, 0.4, 0);
+        const innerGyro = new THREE.Mesh(orreryRingGeo, chapterGlowMat);
+        innerGyro.scale.setScalar(0.72);
+        innerGyro.rotation.set(-0.75, 0.8, 0.4);
+        topper.add(core, outerGyro, innerGyro);
+      } else {
+        // earth_monolith
+        const pillar = new THREE.Mesh(monolithShaftGeo, marbleMat);
+        pillar.position.set(cx, 1.02, cz);
+        const crown = new THREE.Mesh(monolithCrownGeo, goldTrimMat);
+        crown.position.set(cx, 1.72, cz);
+        this.arenaGroup.add(pillar, crown);
+        const keystone = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
+        keystone.scale.set(0.92, 1.28, 0.92);
+        topper.position.set(cx, 2.22, cz);
+        topper.add(keystone);
+      }
+
+      this.arenaBrazierGems.push(topper);
+      this.arenaGroup.add(topper);
     }
 
     // 6. Distant Obsidian Temple Spires & Crown Crystals (Horizon Silhouette)
@@ -4452,6 +4521,7 @@ export class GameEngine {
       this.releaseObject(e.shadow);
       this.releaseObject(e.telegraphGroup);
       if (e.punishRingMesh) this.releaseObject(e.punishRingMesh);
+      if (e.breakShieldRingMesh) this.releaseObject(e.breakShieldRingMesh);
       if (e.eliteAuraRingMesh) this.releaseObject(e.eliteAuraRingMesh);
       if (e.eliteAuraRingMesh2) this.releaseObject(e.eliteAuraRingMesh2);
       if (e.hpBarGroup) this.releaseObject(e.hpBarGroup);
@@ -4472,6 +4542,7 @@ export class GameEngine {
     });
     this.arenaHazards = [];
     this.arenaHazardSpawnTimer = 5.4;
+    this.bossIntroTimer = 0;
     this.bossPhaseTwoBannerTimer = 0;
     this.bossPhaseThreeBannerTimer = 0;
     this.playerFrostSlowTimer = 0;
@@ -5117,12 +5188,29 @@ export class GameEngine {
     telegraphFill.scale.setScalar(0.15);
     telegraphFill.renderOrder = 8;
 
-    telegraphGroup.add(backingRing, outerRing, telegraphFill);
+    const telegraphCountdownRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.9, 1.0, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0xfef9c3,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4,
+      })
+    );
+    telegraphCountdownRing.rotation.x = -Math.PI / 2;
+    telegraphCountdownRing.renderOrder = 10;
+
+    telegraphGroup.add(backingRing, outerRing, telegraphFill, telegraphCountdownRing);
     telegraphGroup.position.set(x, 0.06, z);
     telegraphGroup.visible = false;
     this.entitiesGroup.add(telegraphGroup);
 
     let punishRingMesh: THREE.Mesh | undefined;
+    let breakShieldRingMesh: THREE.Mesh | undefined;
     if (isBoss) {
       punishRingMesh = new THREE.Mesh(
         new THREE.RingGeometry(0.92, 1.16, 28),
@@ -5142,6 +5230,25 @@ export class GameEngine {
       punishRingMesh.renderOrder = 8;
       punishRingMesh.visible = false;
       this.entitiesGroup.add(punishRingMesh);
+
+      breakShieldRingMesh = new THREE.Mesh(
+        new THREE.RingGeometry(radius + 0.48, radius + 0.7, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.58,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        })
+      );
+      breakShieldRingMesh.rotation.x = -Math.PI / 2;
+      breakShieldRingMesh.position.set(x, 0.052, z);
+      breakShieldRingMesh.renderOrder = 7;
+      this.entitiesGroup.add(breakShieldRingMesh);
     }
 
     const laserGeo = new THREE.BufferGeometry().setFromPoints([
@@ -5411,8 +5518,10 @@ export class GameEngine {
       shadow,
       telegraphGroup,
       telegraphOuterRing: outerRing,
+      telegraphCountdownRing,
       telegraphFill,
       punishRingMesh,
+      breakShieldRingMesh,
       eliteAffix,
       eliteAffixes,
       eliteShieldHp,
@@ -5427,6 +5536,21 @@ export class GameEngine {
       hpBarGhostRatio: 1,
       hpBarHeight,
     });
+
+    // Cinematic 1.55s Boss Entrance Camera Sweep + Imperial Summoning Beam + Fanfare
+    if (isBoss && !this.isTrainingMode && !this.isArenaMode) {
+      const reducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      this.bossIntroFocusX = x;
+      this.bossIntroFocusZ = z;
+      if (!reducedMotion) {
+        this.bossIntroTimer = this.bossIntroDuration;
+      }
+      this.spawnUltColumn(x, z, this.currentChapter.trimHex, 0.92);
+      this.spawnShockwave(x, z, 0xfbbf24, 5.2, 0.55);
+      soundEngine.playBossEntranceFanfare();
+    }
   }
 
   private bindEvents(): void {
@@ -6753,10 +6877,16 @@ export class GameEngine {
     this.updateDashGhosts(simDt);
     this.updateLightning(simDt);
     this.updatePortalAndShrine(simDt);
+    if (this.bossIntroTimer > 0) {
+      this.bossIntroTimer = Math.max(0, this.bossIntroTimer - dt);
+    }
+    const baseShrineY = this.arenaThemeSpec.style === 'earth_monolith' ? 2.22 : 1.5;
     for (let bi = 0; bi < this.arenaBrazierGems.length; bi++) {
       const gem = this.arenaBrazierGems[bi];
-      gem.rotation.y += simDt * 1.4;
-      gem.position.y = 1.45 + Math.sin(this.elapsed * 2.6 + bi * 1.57) * 0.14;
+      gem.rotation.y += simDt * this.arenaThemeSpec.brazierSpinSpeed;
+      gem.position.y =
+        baseShrineY +
+        Math.sin(this.elapsed * 2.5 + bi * 1.57) * this.arenaThemeSpec.brazierBobAmp;
     }
     this.updateCamera(dt);
 
@@ -7042,6 +7172,11 @@ export class GameEngine {
     if (inputLen > 1) {
       moveX /= inputLen;
       moveZ /= inputLen;
+    }
+
+    // Allow players to smoothly cancel Boss intro camera sweep the instant they move or dash
+    if (this.bossIntroTimer > 0.22 && (inputLen > 0.15 || this.dashBufferTimer > 0)) {
+      this.bossIntroTimer = 0.22;
     }
 
     if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - dt);
@@ -8239,6 +8374,13 @@ export class GameEngine {
             outMat.color.setHex(isImpactFlash ? 0xffffff : 0xfef08a);
             outMat.opacity = isImpactFlash ? 1.0 : 0.92;
           }
+          if (e.telegraphCountdownRing) {
+            const cd = computeCountdownRingScale(progress);
+            e.telegraphCountdownRing.scale.setScalar(cd.scale);
+            const cdMat = e.telegraphCountdownRing.material as THREE.MeshBasicMaterial;
+            cdMat.color.setHex(cd.isImminent ? 0xffffff : 0xfef08a);
+            cdMat.opacity = cd.isImminent ? 1.0 : 0.85;
+          }
         } else if (e.telegraphType === 'lane') {
           e.laneAngles.forEach((ang, lIdx) => {
             const lane = this.dangerLanePool[lIdx % this.dangerLanePool.length];
@@ -8553,6 +8695,22 @@ export class GameEngine {
           if (e.hpBarGhost) {
             e.hpBarGhost.scale.x = Math.max(0.01, e.hpBarGhostRatio);
           }
+        }
+      }
+
+      if (e.breakShieldRingMesh && e.isBoss) {
+        const stunned = Boolean(e.stunTimer && e.stunTimer > 0);
+        e.breakShieldRingMesh.visible = !stunned && e.hp > 0;
+        if (e.breakShieldRingMesh.visible) {
+          const maxBs = e.maxBreakShield ?? Math.max(120, Math.round(e.maxHp * 0.42));
+          const curBs = e.breakShield ?? maxBs;
+          const bsRatio = Math.max(0, Math.min(1, curBs / Math.max(1, maxBs)));
+          e.breakShieldRingMesh.position.set(e.x, 0.052, e.z);
+          e.breakShieldRingMesh.rotation.z += dt * (bsRatio < 0.35 ? 2.4 : 0.85);
+          e.breakShieldRingMesh.scale.setScalar(0.82 + bsRatio * 0.24);
+          const bsMat = e.breakShieldRingMesh.material as THREE.MeshBasicMaterial;
+          bsMat.color.setHex(bsRatio < 0.35 ? 0xfbbf24 : 0x38bdf8);
+          bsMat.opacity = bsRatio < 0.35 ? 0.65 + Math.sin(this.elapsed * 14) * 0.22 : 0.46;
         }
       }
 
@@ -9534,6 +9692,7 @@ export class GameEngine {
     this.releaseObject(e.shadow);
     this.releaseObject(e.telegraphGroup);
     if (e.punishRingMesh) this.releaseObject(e.punishRingMesh);
+    if (e.breakShieldRingMesh) this.releaseObject(e.breakShieldRingMesh);
     if (e.eliteAuraRingMesh) this.releaseObject(e.eliteAuraRingMesh);
     if (e.eliteAuraRingMesh2) this.releaseObject(e.eliteAuraRingMesh2);
     if (e.hpBarGroup) this.releaseObject(e.hpBarGroup);
@@ -10641,9 +10800,22 @@ export class GameEngine {
       Boolean(focusEnemy?.isBoss)
     );
 
-    const targetCamX = THREE.MathUtils.clamp(this.px * 0.55 + (sightline.lookX - this.px * 0.45) * 0.28, -5.8, 5.8);
-    const targetCamZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2 + sightline.camZBias, 6.2, 22.0);
-    const targetCamY = 16.5;
+    const introBlend = computeBossIntroBlend(this.bossIntroTimer, this.bossIntroDuration);
+    const baseCamX = THREE.MathUtils.clamp(
+      this.px * 0.55 + (sightline.lookX - this.px * 0.45) * 0.28,
+      -5.8,
+      5.8
+    );
+    const baseCamZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2 + sightline.camZBias, 6.2, 22.0);
+    const baseCamY = 16.5;
+
+    const introCamX = THREE.MathUtils.clamp(this.bossIntroFocusX * 0.75, -5.2, 5.2);
+    const introCamY = 12.4;
+    const introCamZ = THREE.MathUtils.clamp(this.bossIntroFocusZ + 9.2, 3.8, 16.5);
+
+    const targetCamX = THREE.MathUtils.lerp(baseCamX, introCamX, introBlend);
+    const targetCamY = THREE.MathUtils.lerp(baseCamY, introCamY, introBlend);
+    const targetCamZ = THREE.MathUtils.lerp(baseCamZ, introCamZ, introBlend);
 
     this.camera.position.x = THREE.MathUtils.damp(
       this.camera.position.x,
@@ -10681,15 +10853,18 @@ export class GameEngine {
       this.cameraFovOffset = THREE.MathUtils.damp(this.cameraFovOffset, 0, 8.5, dt);
       if (this.cameraFovOffset < 0.02) this.cameraFovOffset = 0;
     }
-    const desiredFov = 46 + this.cameraFovOffset;
+    const desiredFov = 46 + this.cameraFovOffset - introBlend * 3.5;
     if (Math.abs(this.camera.fov - desiredFov) > 0.015) {
       this.camera.fov = desiredFov;
       this.camera.updateProjectionMatrix();
     }
 
-    this.smoothLookX = THREE.MathUtils.damp(this.smoothLookX, sightline.lookX, 6.5, dt);
-    this.smoothLookZ = THREE.MathUtils.damp(this.smoothLookZ, sightline.lookZ, 6.5, dt);
-    _v1.set(this.smoothLookX, 0.5, this.smoothLookZ);
+    const desiredLookX = THREE.MathUtils.lerp(sightline.lookX, this.bossIntroFocusX, introBlend);
+    const desiredLookZ = THREE.MathUtils.lerp(sightline.lookZ, this.bossIntroFocusZ, introBlend);
+    const desiredLookY = THREE.MathUtils.lerp(0.5, 1.35, introBlend);
+    this.smoothLookX = THREE.MathUtils.damp(this.smoothLookX, desiredLookX, 6.5, dt);
+    this.smoothLookZ = THREE.MathUtils.damp(this.smoothLookZ, desiredLookZ, 6.5, dt);
+    _v1.set(this.smoothLookX, desiredLookY, this.smoothLookZ);
     this.camera.lookAt(_v1);
     if (shakeRollZ !== 0) {
       this.camera.rotation.z += shakeRollZ;
