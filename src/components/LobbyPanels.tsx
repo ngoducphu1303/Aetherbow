@@ -398,74 +398,86 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto a2-scroll pointer-events-auto">
-      {/* 1. UPPER PAPER-DOLL STAGE OVER LIVE 3D HERO */}
-      <div className="relative px-3 sm:px-6 pt-2 pb-2 shrink-0">
-        <div className="max-w-4xl mx-auto grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-8">
-          <div className="flex flex-col gap-2 items-center z-10">
+    <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden a2-scroll pointer-events-none">
+      {/* LEFT STAGE: FULL-BODY LIVE 3D HERO + 6 FLOATING RELIC SLOTS */}
+      <div
+        onPointerDown={handleStagePointerDown}
+        onPointerMove={handleStagePointerMove}
+        onPointerUp={handleStagePointerUp}
+        onPointerCancel={handleStagePointerUp}
+        className="lg:col-span-5 relative flex flex-col justify-between px-3 sm:px-5 py-3 min-h-[340px] lg:min-h-0 pointer-events-auto cursor-grab active:cursor-grabbing touch-none select-none"
+      >
+        {/* Top breathing room so hero head & halo never touch header */}
+        <div className="h-2 shrink-0" />
+
+        {/* Middle: 3 Left Slots · Unobstructed Full-Body 3D Hero · 3 Right Slots */}
+        <div className="flex-1 flex items-center justify-between gap-2 my-1">
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex flex-col gap-2.5 items-center z-10"
+          >
             {LEFT_SLOTS.map(renderEquippedSlot)}
           </div>
 
-          {/* Center Window (360° Drag-to-Rotate) + Compact Stat Strip */}
-          <div
-            onPointerDown={handleStagePointerDown}
-            onPointerMove={handleStagePointerMove}
-            onPointerUp={handleStagePointerUp}
-            onPointerCancel={handleStagePointerUp}
-            className="flex flex-col items-center justify-end gap-1.5 min-h-[260px] sm:min-h-[305px] cursor-grab active:cursor-grabbing touch-none select-none"
-          >
-            <div
-              onPointerDown={(e) => e.stopPropagation()}
-              className="flex items-center gap-1.5 bg-[#080d20]/88 border border-amber-400/25 rounded-2xl px-3 py-1.5"
-            >
-              <span className="flex items-center gap-1 text-[11px] font-mono-nums font-black text-amber-200">
-                <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                {stats.attack}
-              </span>
-              <span aria-hidden="true" className="text-amber-400/35">·</span>
-              <span className="flex items-center gap-1 text-[11px] font-mono-nums font-black text-emerald-200">
-                <Heart className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                {stats.maxHp}
-              </span>
-              {onResetHeroRotation && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    onResetHeroRotation();
-                  }}
-                  title="Đặt lại góc nhìn 360°"
-                  aria-label="Đặt lại góc nhìn"
-                  className="ml-1 w-6 h-6 rounded-lg bg-[#0d1530] border border-amber-400/25 flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-              )}
-              {onOpenWardrobe && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    onOpenWardrobe();
-                  }}
-                  className="px-2 h-6 rounded-lg bg-[#0d1530] border border-sky-400/35 flex items-center gap-1 text-[10px] font-black text-sky-200 hover:border-sky-300 cursor-pointer whitespace-nowrap"
-                >
-                  <Sparkles className="w-3 h-3 text-amber-300" />
-                  <span>Thử Đồ 3D</span>
-                </button>
-              )}
-            </div>
-          </div>
+          <div className="flex-1 min-h-[220px]" aria-hidden="true" />
 
-          <div className="flex flex-col gap-2 items-center z-10">
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex flex-col gap-2.5 items-center z-10"
+          >
             {RIGHT_SLOTS.map(renderEquippedSlot)}
+          </div>
+        </div>
+
+        {/* Bottom Compact Stat & 360° Action Pill (tucked cleanly below hero feet) */}
+        <div className="flex justify-center pt-1 shrink-0">
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex items-center gap-1.5 bg-[#080d20]/92 border border-amber-400/35 rounded-2xl px-3.5 py-1.5 shadow-xl"
+          >
+            <span className="flex items-center gap-1 text-[11px] font-mono-nums font-black text-amber-200">
+              <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              {stats.attack}
+            </span>
+            <span aria-hidden="true" className="text-amber-400/35">·</span>
+            <span className="flex items-center gap-1 text-[11px] font-mono-nums font-black text-emerald-200">
+              <Heart className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+              {stats.maxHp}
+            </span>
+            {onResetHeroRotation && (
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  onResetHeroRotation();
+                }}
+                title="Đặt lại góc nhìn 360°"
+                aria-label="Đặt lại góc nhìn"
+                className="ml-1 w-6 h-6 rounded-lg bg-[#0d1530] border border-amber-400/30 flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            )}
+            {onOpenWardrobe && (
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  onOpenWardrobe();
+                }}
+                className="px-2.5 h-6 rounded-lg bg-[#0d1530] border border-sky-400/40 flex items-center gap-1 text-[10px] font-black text-sky-200 hover:border-sky-300 cursor-pointer whitespace-nowrap"
+              >
+                <Sparkles className="w-3 h-3 text-amber-300" />
+                <span>Thử Đồ 3D</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 2. LOWER CELESTIAL GEAR VAULT (2-COLUMN SIDE-BY-SIDE DESKTOP CONSOLE) */}
-      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-3 flex flex-col gap-2.5">
-        <div className="max-w-5xl w-full mx-auto flex flex-col gap-2.5">
+      {/* RIGHT SIDE DRAWER: INDEPENDENTLY SCROLLABLE CELESTIAL GEAR VAULT */}
+      <div className="lg:col-span-7 cel-side-drawer border-t lg:border-t-0 lg:border-l border-amber-400/35 flex flex-col min-h-0 pointer-events-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto a2-scroll px-3 sm:px-4 py-3 flex flex-col gap-3">
           {/* Unified Vault Header: Telemetry + Action Toolbar */}
           {(() => {
             const awakenedCount = save.inventory.filter((g) => (g.awakeningLevel ?? 0) > 0).length;
@@ -588,10 +600,10 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
             );
           })()}
 
-          {/* Split-Column Console: Left = Selected Item Inspector (5 cols), Right = Slot Filters + Relic Grid + Build Presets (7 cols) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start pb-3">
-            {/* LEFT COLUMN: SELECTED ITEM INSPECTOR */}
-            <div className="lg:col-span-5">
+          {/* Vertical Flow inside Right Drawer: Selected Item Inspector → Filters & Relic Grid → Saved Loadouts */}
+          <div className="flex flex-col gap-3 pb-4">
+            {/* SELECTED ITEM INSPECTOR */}
+            <div>
               {selectedItem && (
                 <div className="cel-panel-ornate rounded-2xl p-3">
                   {(() => {
@@ -852,8 +864,8 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
               )}
             </div>
 
-            {/* RIGHT COLUMN: SLOT FILTERS + IMMEDIATE VISIBLE RELIC GRID + QUICK PRESETS */}
-            <div className="lg:col-span-7 flex flex-col gap-2.5">
+            {/* SLOT FILTERS + IMMEDIATE VISIBLE RELIC GRID + QUICK PRESETS */}
+            <div className="flex flex-col gap-2.5">
               {/* Slot Filter Pills */}
               <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
                 {(['ALL', ...Object.values(GearSlot)] as const).map((tab) => (
@@ -1169,52 +1181,69 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto a2-scroll pointer-events-auto">
-      {/* Upper Showcase (Live 3D Hero + Pet + Skin + Aura) */}
-      <div className="px-3 sm:px-6 pt-2 pb-2.5 shrink-0">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          {/* Left: Wide Open 3D Hero Window (360° Drag-to-Rotate) + Compact Nameplate */}
-          <div
-            onPointerDown={handleHeroDragDown}
-            onPointerMove={handleHeroDragMove}
-            onPointerUp={handleHeroDragUp}
-            onPointerCancel={handleHeroDragUp}
-            className="md:col-span-7 flex flex-col items-center justify-end gap-1.5 min-h-[260px] sm:min-h-[305px] cursor-grab active:cursor-grabbing touch-none select-none"
-          >
-            <div
-              onPointerDown={(e) => e.stopPropagation()}
-              className="cel-panel-ornate flex items-center justify-center gap-2.5 rounded-2xl px-3.5 py-1.5"
-            >
-              <div className="text-left">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-display text-sm font-black text-white">{hero.name}</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                    {hero.rarity}
-                  </span>
-                </div>
-                <div className="text-[10px] font-semibold text-slate-300">
-                  {hero.title} · {unlocked ? `★${star}/5` : 'Chưa Chiêu Mộ'}
-                </div>
-              </div>
-              {onResetHeroRotation && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    onResetHeroRotation();
-                  }}
-                  title="Đặt lại góc nhìn 360°"
-                  aria-label="Đặt lại góc nhìn"
-                  className="cel-panel w-7 h-7 rounded-lg flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer shrink-0"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              )}
+    <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden a2-scroll pointer-events-none">
+      {/* LEFT STAGE: WIDE OPEN FULL-BODY 3D HERO SHOWCASE (360° DRAG-TO-ROTATE) */}
+      <div
+        onPointerDown={handleHeroDragDown}
+        onPointerMove={handleHeroDragMove}
+        onPointerUp={handleHeroDragUp}
+        onPointerCancel={handleHeroDragUp}
+        className="lg:col-span-5 relative flex flex-col justify-end p-3 sm:p-5 min-h-[340px] lg:min-h-0 pointer-events-auto cursor-grab active:cursor-grabbing touch-none select-none"
+      >
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="cel-panel-ornate self-center lg:self-start flex items-center gap-2.5 rounded-2xl px-3.5 py-2 shadow-2xl"
+        >
+          <div className="text-left">
+            <div className="flex items-center gap-1.5">
+              <span className="font-display text-sm sm:text-base font-black text-white">
+                {hero.name}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                {hero.rarity}
+              </span>
+            </div>
+            <div className="text-[11px] font-semibold text-slate-300">
+              {hero.title} · {unlocked ? `★${star}/5` : 'Chưa Chiêu Mộ'}
             </div>
           </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onResetHeroRotation && (
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  onResetHeroRotation();
+                }}
+                title="Đặt lại góc nhìn 360°"
+                aria-label="Đặt lại góc nhìn"
+                className="cel-panel w-7 h-7 rounded-lg flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer shrink-0"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onOpenWardrobe && (
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  onOpenWardrobe();
+                }}
+                className="a2-slate-btn px-2.5 h-7 rounded-lg text-[10px] font-black flex items-center gap-1 text-sky-200 whitespace-nowrap cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
+                <span>Thử Đồ 360°</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
-          {/* Right: Compact Hero Dossier Art-Card */}
-          <div className="md:col-span-5 cel-panel-ornate rounded-2xl overflow-hidden">
+      {/* RIGHT SIDE DRAWER: HERO DOSSIER + ROSTER / COSMETICS / MOUNTS / HALOS */}
+      <div className="lg:col-span-7 cel-side-drawer border-t lg:border-t-0 lg:border-l border-amber-400/35 flex flex-col min-h-0 pointer-events-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto a2-scroll px-3 sm:px-4 py-3 flex flex-col gap-3 pb-5">
+          {/* Hero Dossier Art-Card */}
+          <div className="cel-panel-ornate rounded-2xl overflow-hidden shrink-0">
             <div className="px-3 py-1.5 bg-[#121c42] border-b border-amber-400/30 flex items-center justify-between gap-2">
               <h3 className="font-display text-xs sm:text-sm font-black text-amber-200 truncate">
                 Nội Tại · {hero.skillName}
@@ -1370,14 +1399,9 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Lower Vault: Sub-Tab Navigation + Content */}
-      <div className="flex-1 a2-gear-vault-bg border-t border-amber-400/35 px-3 sm:px-6 py-2.5">
-        <div className="max-w-5xl mx-auto">
-          {/* Sub-Tabs — Single-Line Compact Ribbon, Zero Horizontal Scrollbar */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
+          {/* Sub-Tabs — Clean Compact Ribbon inside Right Drawer */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 bg-[#060916] border border-amber-400/25 rounded-xl p-1 shrink-0">
             <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
@@ -1536,9 +1560,9 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
             </div>
           </div>
 
-          {/* SUB-TAB 1: HERO ROSTER (ALL 8 HEROES VISIBLE ABOVE THE FOLD) */}
+          {/* SUB-TAB 1: HERO ROSTER */}
           {heroSubTab === 'roster' && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pb-2">
+            <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-2 pb-2">
               {HEROES.map((h) => {
                 const isUnlocked = save.unlockedHeroes.includes(h.id);
                 const isSelected = save.selectedHeroId === h.id;
@@ -3109,14 +3133,16 @@ interface RunesPanelProps {
   onUnequipRune: (uid: string) => void;
   onFuseRune: (uid: string) => void;
   onBulkFuseRunes: () => void;
+  onRotateHero?: (deltaRad: number) => void;
+  onResetHeroRotation?: () => void;
   onGoShop: () => void;
 }
 
-const SOCKET_COORDS: Array<{ left: string; top: string; label: string }> = [
-  { left: '20%', top: '28%', label: 'Ấn I' },
-  { left: '80%', top: '28%', label: 'Ấn II' },
-  { left: '20%', top: '72%', label: 'Ấn III' },
-  { left: '80%', top: '72%', label: 'Ấn IV' },
+const RUNE_SEAL_SLOTS: Array<{ idx: number; label: string }> = [
+  { idx: 0, label: 'Ấn I' },
+  { idx: 1, label: 'Ấn II' },
+  { idx: 2, label: 'Ấn III' },
+  { idx: 3, label: 'Ấn IV' },
 ];
 
 export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
@@ -3125,12 +3151,15 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   onUnequipRune,
   onFuseRune,
   onBulkFuseRunes,
+  onRotateHero,
+  onResetHeroRotation,
   onGoShop,
 }) => {
   const [selectedRuneUid, setSelectedRuneUid] = useState<string>(
     save.equippedRunes[0] || save.runeInventory[0]?.uid || ''
   );
   const [catFilter, setCatFilter] = useState<'ALL' | 'ability' | 'enhancement' | 'blessing'>('ALL');
+  const dragRef = useRef<{ active: boolean; lastX: number }>({ active: false, lastX: 0 });
 
   const selectedRune =
     save.runeInventory.find((r) => r.uid === selectedRuneUid) || save.runeInventory[0];
@@ -3159,6 +3188,20 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
     return sets;
   })();
 
+  const equippedTotals = save.equippedRunes.reduce(
+    (acc, uid) => {
+      const inst = save.runeInventory.find((r) => r.uid === uid);
+      const def = inst ? RUNES_CATALOG[inst.runeId] : null;
+      if (def) {
+        acc.atk += Math.round(def.atkBonusPct * 100);
+        acc.hp += Math.round(def.hpBonusPct * 100);
+        acc.crit += Math.round(def.critBonus * 100);
+      }
+      return acc;
+    },
+    { atk: 0, hp: 0, crit: 0 }
+  );
+
   const filteredRunes = save.runeInventory
     .filter((r) => {
       if (catFilter === 'ALL') return true;
@@ -3166,230 +3209,300 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
     })
     .sort((a, b) => RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity));
 
-  return (
-    <div className="flex-1 a2-gear-vault-bg overflow-y-auto a2-scroll px-3 sm:px-6 py-3 pointer-events-auto">
-      <div className="max-w-5xl mx-auto flex flex-col gap-3 pb-4">
-        <div className="cel-panel rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-amber-400/20">
-          <div>
-            <h2 className="font-display text-sm sm:text-base font-black text-amber-200">
-              Đài Khắc Ngọc Hoàng Đạo ({save.equippedRunes.length}/4 Ô)
-            </h2>
-            <p className="text-[11px] text-slate-400">
-              Khảm tối đa 4 Ngọc Khắc để mở khóa kỹ năng khởi đầu &amp; cộng hưởng chỉ số.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              disabled={fusableRuneSets === 0}
-              onClick={onBulkFuseRunes}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                fusableRuneSets > 0
-                  ? 'a2-emerald-btn'
-                  : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span className="font-mono-nums">
-                {fusableRuneSets > 0
-                  ? `Ghép Nhanh (${fusableRuneSets})`
-                  : 'Ghép Nhanh Ngọc'}
-              </span>
-            </button>
+  const handleStageDragDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    dragRef.current = { active: true, lastX: e.clientX };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const handleStageDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.lastX;
+    dragRef.current.lastX = e.clientX;
+    onRotateHero?.(dx * 0.014);
+  };
+  const handleStageDragUp = () => {
+    dragRef.current.active = false;
+  };
 
-            <button
-              type="button"
-              onClick={onGoShop}
-              className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
-            >
-              Khắc Thêm Ngọc
-            </button>
+  const renderRuneSeal = (slot: { idx: number; label: string }) => {
+    const rUid = save.equippedRunes[slot.idx];
+    const inst = save.runeInventory.find((r) => r.uid === rUid);
+    const def = inst ? RUNES_CATALOG[inst.runeId] : null;
+    const isSel = inst && selectedRune?.uid === inst.uid;
+
+    return (
+      <button
+        key={slot.idx}
+        type="button"
+        onClick={() => inst && setSelectedRuneUid(inst.uid)}
+        className={`w-[72px] h-[72px] sm:w-[82px] sm:h-[82px] rounded-2xl cursor-pointer flex flex-col items-center justify-center p-1.5 transition-transform hover:scale-105 ${
+          inst && def
+            ? `a2-item-card ${RARITY_FRAME_CLASS[inst.rarity]} ${
+                isSel ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-[#070b18]' : ''
+              }`
+            : 'bg-[#090f26]/90 border border-dashed border-amber-400/50 text-amber-200/80 shadow-[0_0_20px_rgba(234,179,8,0.12)] hover:border-amber-300'
+        }`}
+        title={def ? def.name : `${slot.label} Trống`}
+      >
+        {inst && def ? (
+          <div className="a2-item-inner flex flex-col items-center justify-center p-1 text-center">
+            <span
+              className="w-5 h-5 rounded-full border-2 border-white shadow"
+              style={{ backgroundColor: def.color }}
+            />
+            <span className="text-[9px] font-black text-white truncate max-w-full mt-1">
+              {def.archetype}
+            </span>
+            <span className="text-[8px] font-bold text-amber-200/90 leading-none">
+              {slot.label}
+            </span>
+          </div>
+        ) : (
+          <>
+            <Sparkles className="w-4 h-4 text-amber-300/65 mb-0.5" />
+            <span className="text-[11px] font-bold">{slot.label}</span>
+          </>
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden a2-scroll pointer-events-none">
+      {/* LEFT STAGE: LIVE 3D HERO SURROUNDED BY 4 GLOWING CELESTIAL RUNE SEALS */}
+      <div
+        onPointerDown={handleStageDragDown}
+        onPointerMove={handleStageDragMove}
+        onPointerUp={handleStageDragUp}
+        onPointerCancel={handleStageDragUp}
+        className="lg:col-span-5 relative flex flex-col justify-between px-3 sm:px-5 py-3 min-h-[340px] lg:min-h-0 pointer-events-auto cursor-grab active:cursor-grabbing touch-none select-none"
+      >
+        <div className="h-2 shrink-0" />
+
+        {/* 4 Symmetrical Rune Seals flanking full-body 3D Hero */}
+        <div className="flex-1 flex items-center justify-between gap-2 my-1">
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex flex-col gap-6 items-center z-10"
+          >
+            {renderRuneSeal(RUNE_SEAL_SLOTS[0])}
+            {renderRuneSeal(RUNE_SEAL_SLOTS[2])}
+          </div>
+
+          <div className="flex-1 min-h-[220px]" aria-hidden="true" />
+
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex flex-col gap-6 items-center z-10"
+          >
+            {renderRuneSeal(RUNE_SEAL_SLOTS[1])}
+            {renderRuneSeal(RUNE_SEAL_SLOTS[3])}
           </div>
         </div>
 
-        {/* 2-Column Side-by-Side Console: Left = Astrolabe Altar + Selected Rune Inspector, Right = Category Filters + Immediate Visible Rune Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
-          <div className="lg:col-span-5 flex flex-col gap-2.5">
-            <div className="rune-altar w-full max-w-[360px] mx-auto h-[225px] sm:h-[240px]">
-              <div className="rune-altar-ring" />
-              <div className="rune-altar-core" />
+        {/* Bottom Celestial Rune Resonance Strip */}
+        <div className="flex justify-center pt-1 shrink-0">
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex flex-wrap items-center justify-center gap-2 bg-[#080d20]/92 border border-amber-400/35 rounded-2xl px-3.5 py-1.5 shadow-xl text-[11px]"
+          >
+            <span className="font-display font-black text-amber-200">
+              {activeHero.name} · {save.equippedRunes.length}/4 Ấn
+            </span>
+            <span aria-hidden="true" className="text-amber-400/35">·</span>
+            <span className="font-mono-nums font-bold text-slate-200">
+              +{equippedTotals.atk}% ATK · +{equippedTotals.hp}% HP · +{equippedTotals.crit}% Crit
+            </span>
+            {onResetHeroRotation && (
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick();
+                  onResetHeroRotation();
+                }}
+                title="Đặt lại góc nhìn 360°"
+                aria-label="Đặt lại góc nhìn"
+                className="w-6 h-6 rounded-lg bg-[#0d1530] border border-amber-400/30 flex items-center justify-center text-amber-200 hover:border-amber-300 cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[2] flex flex-col items-center">
-                <HeroCrestSvg
-                  heroId={activeHero.id}
-                  accentHex={activeHero.accentHex}
-                  cloakHex={activeHero.cloakHex}
-                  hairHex={activeHero.hairHex}
-                  className="w-16 h-16 sm:w-20 sm:h-20 drop-shadow-[0_0_20px_rgba(232,121,249,0.45)]"
-                />
-                <span className="mt-0.5 px-2 py-0.5 rounded-full bg-[#090d1e]/95 border border-amber-300/60 text-[10px] font-black text-amber-200">
-                  {activeHero.name}
+      {/* RIGHT SIDE DRAWER: RUNE ALTAR MANAGEMENT, INSPECTOR & INVENTORY */}
+      <div className="lg:col-span-7 cel-side-drawer border-t lg:border-t-0 lg:border-l border-amber-400/35 flex flex-col min-h-0 pointer-events-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto a2-scroll px-3 sm:px-4 py-3 flex flex-col gap-3 pb-5">
+          {/* Header Banner */}
+          <div className="cel-panel rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-amber-400/25">
+            <div>
+              <h2 className="font-display text-sm sm:text-base font-black text-amber-200">
+                Đài Khắc Ngọc Hoàng Đạo ({save.equippedRunes.length}/4 Ô)
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                Khảm tối đa 4 Ngọc Khắc để mở khóa kỹ năng khởi đầu &amp; cộng hưởng chỉ số.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                disabled={fusableRuneSets === 0}
+                onClick={onBulkFuseRunes}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  fusableRuneSets > 0
+                    ? 'a2-emerald-btn'
+                    : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span className="font-mono-nums">
+                  {fusableRuneSets > 0 ? `Ghép Nhanh (${fusableRuneSets})` : 'Ghép Nhanh Ngọc'}
                 </span>
-              </div>
+              </button>
 
-              {SOCKET_COORDS.map((coord, idx) => {
-                const rUid = save.equippedRunes[idx];
-                const inst = save.runeInventory.find((r) => r.uid === rUid);
-                const def = inst ? RUNES_CATALOG[inst.runeId] : null;
-                const isSel = inst && selectedRune?.uid === inst.uid;
+              <button
+                type="button"
+                onClick={onGoShop}
+                className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+              >
+                Khắc Thêm Ngọc
+              </button>
+            </div>
+          </div>
+
+          {/* Selected Rune Inspector or Welcoming Empty CTA */}
+          {selectedRune ? (
+            <div className="cel-panel-ornate rounded-2xl p-3">
+              {(() => {
+                const def = RUNES_CATALOG[selectedRune.runeId];
+                if (!def) return null;
+                const rMeta = RARITY_META[selectedRune.rarity];
+                const isEq = save.equippedRunes.includes(selectedRune.uid);
+                const fuseReady = canFuseRune(selectedRune);
 
                 return (
-                  <button
-                    key={idx}
-                    type="button"
-                    style={{ left: coord.left, top: coord.top }}
-                    onClick={() => inst && setSelectedRuneUid(inst.uid)}
-                    className={`rune-socket w-14 h-14 sm:w-16 sm:h-16 rounded-2xl cursor-pointer flex flex-col items-center justify-center p-1 ${
-                      inst && def
-                        ? `a2-item-card ${RARITY_FRAME_CLASS[inst.rarity]} ${
-                            isSel ? 'ring-2 ring-amber-300' : ''
-                          }`
-                        : 'bg-[#10132d]/95 border border-dashed border-amber-400/45 text-amber-200/75'
-                    }`}
-                    title={def ? def.name : `${coord.label} Trống`}
-                  >
-                    {inst && def ? (
-                      <div className="a2-item-inner flex flex-col items-center justify-center p-1">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs">
                         <span
-                          className="w-4 h-4 rounded-full border-2 border-white shadow"
+                          className="w-3 h-3 rounded-full border border-white"
                           style={{ backgroundColor: def.color }}
                         />
-                        <span className="text-[8px] font-black text-white truncate max-w-full mt-0.5">
+                        <span className={`font-black ${rMeta.textClass}`}>{rMeta.label}</span>
+                        <span aria-hidden="true" className="text-slate-600">·</span>
+                        <span style={{ color: def.color }} className="font-bold">
                           {def.archetype}
                         </span>
                       </div>
-                    ) : (
-                      <span className="text-[10px] font-bold">{coord.label}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                      {isEq && (
+                        <span className="text-[10px] font-black text-emerald-300">Đang Khảm</span>
+                      )}
+                    </div>
 
-            {selectedRune ? (
-              <div className="cel-panel-ornate rounded-2xl p-3">
-                {(() => {
-                  const def = RUNES_CATALOG[selectedRune.runeId];
-                  if (!def) return null;
-                  const rMeta = RARITY_META[selectedRune.rarity];
-                  const isEq = save.equippedRunes.includes(selectedRune.uid);
-                  const fuseReady = canFuseRune(selectedRune);
+                    <h3 className="font-display text-base font-black text-white">{def.name}</h3>
+                    <p className="text-[11px] text-slate-200 leading-snug">{def.description}</p>
 
-                  return (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <span
-                            className="w-3 h-3 rounded-full border border-white"
-                            style={{ backgroundColor: def.color }}
-                          />
-                          <span className={`font-black ${rMeta.textClass}`}>
-                            {rMeta.label}
-                          </span>
-                          <span aria-hidden="true" className="text-slate-600">·</span>
-                          <span style={{ color: def.color }} className="font-bold">
-                            {def.archetype}
-                          </span>
-                        </div>
-                        {isEq && (
-                          <span className="text-[10px] font-black text-emerald-300">
-                            Đang Khảm
-                          </span>
-                        )}
-                      </div>
+                    <div className="flex flex-wrap gap-2.5 text-[11px] font-mono-nums text-amber-200 font-bold">
+                      <span>+{Math.round(def.atkBonusPct * 100)}% ATK</span>
+                      <span>+{Math.round(def.hpBonusPct * 100)}% HP</span>
+                      <span>+{Math.round(def.critBonus * 100)}% Crit</span>
+                    </div>
 
-                      <h3 className="font-display text-base font-black text-white">
-                        {def.name}
-                      </h3>
-                      <p className="text-[11px] text-slate-200 leading-snug">
-                        {def.description}
-                      </p>
+                    <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-amber-400/20">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          isEq ? onUnequipRune(selectedRune.uid) : onEquipRune(selectedRune.uid)
+                        }
+                        disabled={!isEq && save.equippedRunes.length >= 4}
+                        className={`flex-1 px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                          isEq
+                            ? 'a2-slate-btn'
+                            : save.equippedRunes.length < 4
+                            ? 'a2-purple-btn'
+                            : 'bg-slate-900 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {isEq
+                          ? 'Tháo Ngọc'
+                          : save.equippedRunes.length >= 4
+                          ? 'Đã Đầy 4 Ô'
+                          : 'Khảm Lên Đài'}
+                      </button>
 
-                      <div className="flex flex-wrap gap-2.5 text-[11px] font-mono-nums text-amber-200 font-bold">
-                        <span>+{Math.round(def.atkBonusPct * 100)}% ATK</span>
-                        <span>+{Math.round(def.hpBonusPct * 100)}% HP</span>
-                        <span>+{Math.round(def.critBonus * 100)}% Crit</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-amber-400/20">
+                      {selectedRune.rarity !== Rarity.MYTHIC && (
                         <button
                           type="button"
-                          onClick={() =>
-                            isEq
-                              ? onUnequipRune(selectedRune.uid)
-                              : onEquipRune(selectedRune.uid)
-                          }
-                          disabled={!isEq && save.equippedRunes.length >= 4}
-                          className={`flex-1 px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
-                            isEq
-                              ? 'a2-slate-btn'
-                              : save.equippedRunes.length < 4
-                              ? 'a2-purple-btn'
+                          disabled={!fuseReady}
+                          onClick={() => onFuseRune(selectedRune.uid)}
+                          className={`flex-1 px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                            fuseReady
+                              ? 'a2-yellow-btn'
                               : 'bg-slate-900 text-slate-500 cursor-not-allowed'
                           }`}
                         >
-                          {isEq
-                            ? 'Tháo Ngọc'
-                            : save.equippedRunes.length >= 4
-                            ? 'Đã Đầy 4 Ô'
-                            : 'Khảm Lên Đài'}
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>{fuseReady ? 'Ghép 3→1 Bậc' : 'Cần 3 viên cùng bậc'}</span>
                         </button>
-
-                        {selectedRune.rarity !== Rarity.MYTHIC && (
-                          <button
-                            type="button"
-                            disabled={!fuseReady}
-                            onClick={() => onFuseRune(selectedRune.uid)}
-                            className={`flex-1 px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
-                              fuseReady
-                                ? 'a2-yellow-btn'
-                                : 'bg-slate-900 text-slate-500 cursor-not-allowed'
-                            }`}
-                          >
-                            <Layers className="w-3.5 h-3.5" />
-                            <span>
-                              {fuseReady ? 'Ghép 3→1 Bậc' : 'Cần 3 viên cùng bậc'}
-                            </span>
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  );
-                })()}
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="cel-panel-ornate rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-purple-500/15 border border-purple-400/45 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <div className="font-display text-sm font-black text-amber-200">
+                    Chưa có Ngọc Khắc nào trong kho
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    Mở Túi Ngọc Khắc Cổ Đại hoặc Rương Ngọc Hiếm tại Kho Báu để kích hoạt 4 Ấn Hoàng Đạo quanh {activeHero.name}.
+                  </p>
+                </div>
               </div>
-            ) : (
-              <div className="cel-panel rounded-2xl p-4 text-center text-xs text-slate-300">
-                Chưa có Ngọc Khắc nào. Hãy sang Kho Báu để triệu hồi Ngọc!
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={onGoShop}
+                className="a2-yellow-btn px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Triệu Hồi Ngọc Ngay
+              </button>
+            </div>
+          )}
+
+          {/* Category Filter Ribbon */}
+          <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
+            {(
+              [
+                ['ALL', `Tất cả (${save.runeInventory.length})`],
+                ['ability', 'Kỹ năng'],
+                ['enhancement', 'Cường hóa'],
+                ['blessing', 'Phước lành'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setCatFilter(key)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer ${
+                  catFilter === key
+                    ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 font-black'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          <div className="lg:col-span-7 flex flex-col gap-2.5">
-            <div className="flex flex-wrap items-center gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
-              {(
-                [
-                  ['ALL', `Tất cả (${save.runeInventory.length})`],
-                  ['ability', 'Kỹ năng'],
-                  ['enhancement', 'Cường hóa'],
-                  ['blessing', 'Phước lành'],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setCatFilter(key)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer ${
-                    catFilter === key
-                      ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 font-black'
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+          {/* Visible Rune Grid */}
+          {filteredRunes.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 gap-2">
               {filteredRunes.map((r) => {
                 const def = RUNES_CATALOG[r.runeId];
                 if (!def) return null;
@@ -3413,9 +3526,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                       <span className="text-[10px] font-black text-white line-clamp-2 leading-tight">
                         {def.name.split('(')[0].trim()}
                       </span>
-                      <span className="text-[9px] text-white/80 font-bold">
-                        {def.archetype}
-                      </span>
+                      <span className="text-[9px] text-white/80 font-bold">{def.archetype}</span>
                     </div>
                     {isEq && (
                       <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-emerald-600 border border-emerald-200/70 text-[8px] font-black text-white">
@@ -3431,7 +3542,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                 );
               })}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -3488,7 +3599,7 @@ interface ShopPanelProps {
 export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   save,
   powerRating,
-  initialSection = 'chain_bank',
+  initialSection = 'gacha',
   wishLastOutcomes = [],
   onOpenChestWithGacha,
   onBuyFlashDeal,
@@ -3519,6 +3630,9 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
   onOpenArenaModal,
 }) => {
   const [storeSection, setStoreSection] = useState<ShopSectionTab>(initialSection);
+  useEffect(() => {
+    setStoreSection(initialSection);
+  }, [initialSection]);
   const [chestImgFailed, setChestImgFailed] = useState(false);
   const [vaultBannerFailed, setVaultBannerFailed] = useState(false);
   const [weekendBannerFailed, setWeekendBannerFailed] = useState(false);
@@ -3683,42 +3797,118 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
           </div>
         </div>
 
-        {/* 8-Column Commercial Navigation Ribbon (Zero Horizontal Scrollbar) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1 bg-[#060916] border border-amber-400/25 rounded-xl p-1">
-          {(
-            [
-              ['chain_bank', 'Chuỗi Quà & Két', chainBankBadge],
-              ['wish_topup', 'Hồ Ước & Nạp X2', wishMilestonesReady],
-              ['privilege', 'Thẻ Tháng & VIP', claimableWave7Count],
-              ['packs', 'Quỹ & Gói Nạp', claimableGfCount],
-              ['mystic_exchange', 'Chợ Mảnh Dư', 0],
-              ['arena_shop', 'Shop Xu Arena', 0],
-              ['deals', 'Flash & Cuối Tuần', dealsBadge],
-              ['gacha', 'Triệu Hồi Rương', 0],
-            ] as const
-          ).map(([k, label, badge]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => {
-                soundEngine.playUiClick();
-                setStoreSection(k);
-              }}
-              className={`px-2 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 transition-colors ${
-                storeSection === k
-                  ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <span className="truncate">{label}</span>
-              {badge > 0 && (
-                <span className="px-1 py-0.5 rounded bg-emerald-500 text-slate-950 font-mono-nums text-[8px] font-black shrink-0 leading-none">
-                  +{badge}
-                </span>
+        {/* 4-Group Consolidated Commercial Navigation (Zero Truncation + Clean Sub-Pills) */}
+        {(() => {
+          type ShopGroupId = 'summon' | 'chain' | 'privilege' | 'exchange';
+          const shopGroups: Array<{
+            id: ShopGroupId;
+            label: string;
+            badge: number;
+            subTabs: Array<{ id: ShopSectionTab; label: string; badge: number }>;
+          }> = [
+            {
+              id: 'summon',
+              label: 'Triệu Hồi & Hồ Ước',
+              badge: wishMilestonesReady,
+              subTabs: [
+                { id: 'gacha', label: 'Triệu Hồi Rương', badge: 0 },
+                { id: 'wish_topup', label: 'Hồ Ước SSR & Nạp X2', badge: wishMilestonesReady },
+              ],
+            },
+            {
+              id: 'chain',
+              label: 'Chuỗi Quà & Két Ngọc',
+              badge: chainBankBadge,
+              subTabs: [{ id: 'chain_bank', label: 'Chuỗi Quà & Két Tinh Ngân', badge: chainBankBadge }],
+            },
+            {
+              id: 'privilege',
+              label: 'Đặc Quyền & Gói Quà',
+              badge: claimableWave7Count + claimableGfCount + dealsBadge,
+              subTabs: [
+                { id: 'privilege', label: 'Thẻ Tháng & VIP', badge: claimableWave7Count },
+                { id: 'packs', label: 'Quỹ & Gói Nạp', badge: claimableGfCount },
+                { id: 'deals', label: 'Flash & Cuối Tuần', badge: dealsBadge },
+              ],
+            },
+            {
+              id: 'exchange',
+              label: 'Cửa Hàng Đổi Thưởng',
+              badge: 0,
+              subTabs: [
+                { id: 'arena_shop', label: 'Shop Xu Arena', badge: 0 },
+                { id: 'mystic_exchange', label: 'Chợ Mảnh Dư', badge: 0 },
+              ],
+            },
+          ];
+
+          const activeGroup =
+            shopGroups.find((g) => g.subTabs.some((st) => st.id === storeSection)) ?? shopGroups[0];
+
+          return (
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 bg-[#060916] border border-amber-400/25 rounded-xl p-1.5">
+                {shopGroups.map((g) => {
+                  const isActive = activeGroup.id === g.id;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick();
+                        if (!isActive) {
+                          setStoreSection(g.subTabs[0].id);
+                        }
+                      }}
+                      className={`px-3 py-2 rounded-lg text-xs font-black whitespace-nowrap cursor-pointer flex items-center justify-center gap-1.5 transition-colors ${
+                        isActive
+                          ? 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 shadow'
+                          : 'text-slate-300 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <span>{g.label}</span>
+                      {g.badge > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-mono-nums text-[9px] font-black shrink-0 leading-none">
+                          +{g.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeGroup.subTabs.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {activeGroup.subTabs.map((sub) => {
+                    const isSubActive = storeSection === sub.id;
+                    return (
+                      <button
+                        key={sub.id}
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setStoreSection(sub.id);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer flex items-center gap-1.5 border transition-colors ${
+                          isSubActive
+                            ? 'bg-amber-400/18 border-amber-300/80 text-amber-200 shadow'
+                            : 'bg-[#080d20] border-amber-400/20 text-slate-300 hover:border-amber-300/50 hover:text-white'
+                        }`}
+                      >
+                        <span>{sub.label}</span>
+                        {sub.badge > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-mono-nums text-[9px] font-black leading-none">
+                            +{sub.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
-            </button>
-          ))}
-        </div>
+            </div>
+          );
+        })()}
 
         {/* SECTION WAVE 10: STEP-UP COMMERCIAL CHAIN RELAY + ASTRAL GEM REBATE VAULT */}
         {storeSection === 'chain_bank' && (

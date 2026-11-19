@@ -551,7 +551,7 @@ export default function App() {
   const [heroSubTabInitial, setHeroSubTabInitial] = useState<
     'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos'
   >('roster');
-  const [shopSection, setShopSection] = useState<ShopSectionTab>('chain_bank');
+  const [shopSection, setShopSection] = useState<ShopSectionTab>('gacha');
   const [selectedCoopDifficulty, setSelectedCoopDifficulty] = useState<CoopRaidDifficulty>('normal');
   const [selectedElementalTower, setSelectedElementalTower] = useState<ElementalTowerId>('fire');
   const [previewHeroId, setPreviewHeroId] = useState<HeroId | null>(null);
@@ -2271,6 +2271,8 @@ export default function App() {
         ? 'gear'
         : activeLobbyTab === 'heroes'
         ? 'heroes'
+        : activeLobbyTab === 'runes'
+        ? 'runes'
         : 'vault';
     engineRef.current?.setLobbyViewMode(mode);
   }, [activeLobbyTab]);

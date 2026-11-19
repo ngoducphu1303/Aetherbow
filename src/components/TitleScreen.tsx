@@ -406,7 +406,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   gameMode,
   activeTab,
   heroSubTabInitial = 'roster',
-  shopSection = 'privilege',
+  shopSection = 'gacha',
   previewHeroId,
   cameraPreset = 'overview',
   wishLastOutcomes = [],
@@ -1099,7 +1099,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   return (
     <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between">
       {/* SLIM SINGLE-ROW TOP HEADER */}
-      <header className="pointer-events-auto z-20 flex items-center justify-between gap-2 px-3 sm:px-5 py-1.5 bg-gradient-to-b from-[#060914]/95 via-[#090e20]/88 to-transparent shrink-0">
+      <header
+        className={`pointer-events-auto z-20 flex items-center justify-between gap-2 px-3 sm:px-5 py-1.5 shrink-0 transition-colors ${
+          activeTab === 'shop'
+            ? 'bg-[#070b1a] border-b border-amber-400/25 shadow-[0_6px_20px_rgba(0,0,0,0.55)]'
+            : 'bg-gradient-to-b from-[#060914]/94 via-[#090e20]/82 to-transparent'
+        }`}
+      >
         {/* Left: Compact Hero Portrait + Name + Power Rating */}
         <button
           type="button"
@@ -1614,7 +1620,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onUnequipRune={onUnequipRune}
             onFuseRune={onFuseRune}
             onBulkFuseRunes={onBulkFuseRunes}
-            onGoShop={() => onTabChange('shop')}
+            onRotateHero={onRotateHero}
+            onResetHeroRotation={onResetHeroRotation}
+            onGoShop={() => onOpenShopSection('gacha')}
           />
         )}
 

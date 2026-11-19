@@ -93,7 +93,9 @@ import {
   WheelOutcome,
 } from '../types/game';
 import {
+  CelestialSanctuaryRefs,
   createAncientDragonBossModel,
+  createCelestialSanctuaryBackdrop,
   createCompanionModel,
   createEnemyModel,
   createHeroModel,
@@ -471,6 +473,15 @@ export class GameEngine {
   private heroShadow!: THREE.Mesh;
   private heroShieldMesh!: THREE.Mesh;
   private lobbyHaloGroup: THREE.Group | null = null;
+  private lobbySanctuary: CelestialSanctuaryRefs | null = null;
+  private lobbySanctuaryDustSeeds: Array<{
+    x: number;
+    y: number;
+    z: number;
+    speed: number;
+    phase: number;
+    scale: number;
+  }> = [];
   private combatAuraGroup: THREE.Group | null = null;
   private petModel: THREE.Group | null = null;
   private builtPetId: PetId | null = null;
@@ -508,7 +519,7 @@ export class GameEngine {
   }> = [];
 
   private phase: GamePhase = GamePhase.TITLE;
-  private lobbyViewMode: 'battle' | 'gear' | 'heroes' | 'vault' = 'battle';
+  private lobbyViewMode: 'battle' | 'gear' | 'heroes' | 'runes' | 'vault' = 'battle';
   private lobbyCameraPreset: LobbyCameraPreset = 'overview';
   private lobbyDragActive = false;
   private lobbyDragPointerId: number | null = null;
@@ -847,12 +858,12 @@ export class GameEngine {
     this.keyLight.shadow.normalBias = 0.02;
     this.scene.add(this.keyLight);
 
-    this.rimLight = new THREE.DirectionalLight(0x93c5fd, 0.65);
-    this.rimLight.position.set(-12, 10, -14);
+    this.rimLight = new THREE.DirectionalLight(0xfde68a, 1.05);
+    this.rimLight.position.set(-6.5, 6.2, -3.5);
     this.scene.add(this.rimLight);
 
-    this.heroLight = new THREE.PointLight(0x38bdf8, 1.2, 9, 2);
-    this.heroLight.position.set(0, 2.2, 8);
+    this.heroLight = new THREE.PointLight(0xfff3d1, 1.55, 11, 2);
+    this.heroLight.position.set(1.8, 2.55, 7.6);
     this.scene.add(this.heroLight);
 
     this.scene.add(
@@ -1564,6 +1575,35 @@ export class GameEngine {
     this.lobbyHaloGroup.add(outerHalo, innerHalo);
     this.lobbyHaloGroup.visible = this.phase === GamePhase.TITLE;
     this.entitiesGroup.add(this.lobbyHaloGroup);
+
+    // Ornate 3D Celestial Marble-Gold Sanctuary Backdrop (exclusively visible in Lobby)
+    if (this.lobbySanctuary) {
+      this.releaseObject(this.lobbySanctuary.group);
+      this.lobbySanctuary = null;
+    }
+    this.lobbySanctuary = createCelestialSanctuaryBackdrop(
+      floorTheme.floorHex,
+      floorTheme.ringHex,
+      floorTheme.pillarGlowHex,
+      this.isSoftwareGl || this.lowEndGpu
+    );
+    this.lobbySanctuary.group.visible = this.phase === GamePhase.TITLE;
+    this.scene.add(this.lobbySanctuary.group);
+    this.arenaGroup.visible = this.phase !== GamePhase.TITLE;
+
+    this.lobbySanctuaryDustSeeds = [];
+    for (let i = 0; i < this.lobbySanctuary.dustCount; i++) {
+      const ang = (i / this.lobbySanctuary.dustCount) * Math.PI * 2 + (i % 5) * 0.41;
+      const rad = 2.0 + ((i * 1.73) % 7.5);
+      this.lobbySanctuaryDustSeeds.push({
+        x: Math.cos(ang) * rad,
+        y: 0.4 + ((i * 0.67) % 5.4),
+        z: 1.8 + Math.sin(ang) * rad * 0.72,
+        speed: 0.22 + (i % 4) * 0.08,
+        phase: i * 0.9,
+        scale: 0.65 + (i % 3) * 0.35,
+      });
+    }
   }
 
   public setLobbySkyTheme(themeId: LobbySkyThemeId): void {
@@ -1760,6 +1800,7 @@ export class GameEngine {
     this.portal = createPortalModel(chapter.trimHex);
     this.portal.group.position.set(0, 0, -ARENA_HALF_D - 0.65);
     this.arenaGroup.add(this.portal.group);
+    this.arenaGroup.visible = this.phase !== GamePhase.TITLE;
   }
 
   public startChapter(chapterId: number, stats: ComputedPlayerStats, nightmareTier = 0): void {
@@ -3812,10 +3853,16 @@ export class GameEngine {
 
   public setPhase(phase: GamePhase): void {
     this.phase = phase;
+    const isTitle = phase === GamePhase.TITLE;
     if (this.lobbyHaloGroup) {
-      this.lobbyHaloGroup.visible = phase === GamePhase.TITLE;
+      this.lobbyHaloGroup.visible = isTitle;
     }
-    if (phase === GamePhase.TITLE) {
+    if (this.lobbySanctuary) {
+      this.lobbySanctuary.group.visible = isTitle;
+    }
+    this.arenaGroup.visible = !isTitle;
+
+    if (isTitle) {
       this.clearCombatEntities();
       this.px = 0;
       this.pz = 4.5;
@@ -3824,6 +3871,20 @@ export class GameEngine {
       this.heroShadow.position.set(0, 0.02, 4.5);
       this.reticleMesh.visible = false;
       this.companionModels.forEach((c) => (c.visible = false));
+      // Warm gilded rim + ivory fill light tailored for Lobby Sanctuary hero showcase
+      this.rimLight.color.setHex(0xfde68a);
+      this.rimLight.intensity = 1.05;
+      this.rimLight.position.set(-6.5, 6.2, -3.5);
+      this.heroLight.color.setHex(0xfff3d1);
+      this.heroLight.intensity = 1.55;
+      this.heroLight.position.set(1.8, 2.55, 7.6);
+    } else {
+      // Restore crisp combat arena lighting
+      this.rimLight.color.setHex(0x93c5fd);
+      this.rimLight.intensity = 0.65;
+      this.rimLight.position.set(-12, 10, -14);
+      this.heroLight.color.setHex(0x38bdf8);
+      this.heroLight.intensity = 1.2;
     }
   }
 
@@ -3842,7 +3903,7 @@ export class GameEngine {
     }
   }
 
-  public setLobbyViewMode(mode: 'battle' | 'gear' | 'heroes' | 'vault'): void {
+  public setLobbyViewMode(mode: 'battle' | 'gear' | 'heroes' | 'runes' | 'vault'): void {
     this.lobbyViewMode = mode;
   }
 
@@ -5528,18 +5589,21 @@ export class GameEngine {
         targetCamZ = 10.9 + mountExtraZ + aspectExtraZ;
         lookX = 0.48;
         lookY = 0.92 + mountLookY;
-      } else if (this.lobbyViewMode === 'gear') {
-        targetCamX = sway * 0.2;
-        targetCamY = 2.12 + mountExtraY;
-        targetCamZ = 11.15 + mountExtraZ + aspectExtraZ;
-        lookX = 0;
-        lookY = 0.46 + mountLookY;
-      } else if (this.lobbyViewMode === 'heroes') {
-        targetCamX = 1.05 + sway * 0.14;
-        targetCamY = 2.12 + mountExtraY;
-        targetCamZ = 11.05 + mountExtraZ + aspectExtraZ;
-        lookX = 1.08;
-        lookY = 0.52 + mountLookY;
+      } else if (
+        this.lobbyViewMode === 'gear' ||
+        this.lobbyViewMode === 'heroes' ||
+        this.lobbyViewMode === 'runes'
+      ) {
+        // AAA Left-Right Split framing: shift camera right so full-body 3D Hero stands cleanly centered in the LEFT half
+        const splitOffsetX =
+          this.camera.aspect >= 1.08
+            ? Math.min(2.1, Math.max(1.15, (this.camera.aspect - 0.9) * 1.85))
+            : 0;
+        targetCamX = splitOffsetX + sway * 0.14;
+        targetCamY = 1.98 + mountExtraY;
+        targetCamZ = 11.1 + mountExtraZ + aspectExtraZ;
+        lookX = splitOffsetX;
+        lookY = 0.95 + mountLookY;
       }
 
       // Wave 14: Smooth 360° Lobby Pitch & Zoom Damping
@@ -5653,6 +5717,32 @@ export class GameEngine {
         this.lobbyHaloGroup.visible = true;
         this.lobbyHaloGroup.rotation.y += dt * 0.55;
       }
+      if (this.lobbySanctuary) {
+        this.lobbySanctuary.group.visible = true;
+        this.arenaGroup.visible = false;
+        this.lobbySanctuary.outerArchRing.rotation.z += dt * 0.14;
+        this.lobbySanctuary.innerArchRing.rotation.z -= dt * 0.26;
+        for (let i = 0; i < this.lobbySanctuary.floatingCrystals.length; i++) {
+          const fc = this.lobbySanctuary.floatingCrystals[i];
+          const baseY = (fc.userData.baseY as number | undefined) ?? 2.2;
+          fc.position.y = baseY + Math.sin(this.elapsed * 1.9 + i * 1.35) * 0.14;
+          fc.rotation.y += dt * 0.75;
+        }
+        const seeds = this.lobbySanctuaryDustSeeds;
+        for (let i = 0; i < seeds.length; i++) {
+          const s = seeds[i];
+          const yCycle = ((s.y + this.elapsed * s.speed) % 6.2) + 0.35;
+          const driftX = s.x + Math.sin(this.elapsed * 0.65 + s.phase) * 0.35;
+          const driftZ = s.z + Math.cos(this.elapsed * 0.52 + s.phase) * 0.28;
+          const pulse = s.scale * (0.72 + Math.sin(this.elapsed * 2.4 + s.phase) * 0.28);
+          _dummy.position.set(driftX, yCycle, driftZ);
+          _dummy.rotation.set(this.elapsed * 0.8 + s.phase, this.elapsed * 1.1, 0);
+          _dummy.scale.setScalar(pulse);
+          _dummy.updateMatrix();
+          this.lobbySanctuary.dustMesh.setMatrixAt(i, _dummy.matrix);
+        }
+        this.lobbySanctuary.dustMesh.instanceMatrix.needsUpdate = true;
+      }
       if (this.combatAuraGroup) {
         this.combatAuraGroup.visible = false;
       }
@@ -5701,6 +5791,17 @@ export class GameEngine {
 
     if (this.lobbyHaloGroup) {
       this.lobbyHaloGroup.visible = false;
+    }
+    if (this.lobbySanctuary && this.lobbySanctuary.group.visible) {
+      this.lobbySanctuary.group.visible = false;
+      this.rimLight.color.setHex(0x93c5fd);
+      this.rimLight.intensity = 0.65;
+      this.rimLight.position.set(-12, 10, -14);
+      this.heroLight.color.setHex(0x38bdf8);
+      this.heroLight.intensity = 1.2;
+    }
+    if (!this.arenaGroup.visible) {
+      this.arenaGroup.visible = true;
     }
     if (this.combatAuraGroup) {
       this.combatAuraGroup.visible = this.phase === GamePhase.PLAYING;

@@ -2243,6 +2243,325 @@ export function createRoyalPedestalDecor(
   return g;
 }
 
+export interface CelestialSanctuaryRefs {
+  group: THREE.Group;
+  outerArchRing: THREE.Mesh;
+  innerArchRing: THREE.Mesh;
+  floatingCrystals: THREE.Object3D[];
+  dustMesh: THREE.InstancedMesh;
+  dustCount: number;
+}
+
+/**
+ * Ornate 3D Celestial Marble-Gold Sanctuary backdrop exclusively shown in Lobby (TITLE phase).
+ * Replaces plain brown combat posts/monoliths with fluted obsidian-marble colonnade,
+ * reflective astrolabe floor, layered golden starlight gate, and floating crystal braziers.
+ */
+export function createCelestialSanctuaryBackdrop(
+  marbleHex: number,
+  goldHex: number,
+  crystalHex: number,
+  isLowEnd: boolean
+): CelestialSanctuaryRefs {
+  const group = new THREE.Group();
+  const dummy = new THREE.Object3D();
+
+  // Derive a deep royal marble tone from active sanctuary floor theme
+  const floorBaseColor = new THREE.Color(marbleHex).lerp(new THREE.Color(0x0b1228), 0.42);
+  const columnMarbleColor = new THREE.Color(marbleHex).lerp(new THREE.Color(0x131d3b), 0.36);
+
+  const polishedFloorMat = new THREE.MeshStandardMaterial({
+    color: floorBaseColor,
+    roughness: 0.28,
+    metalness: 0.42,
+  });
+  const marbleColumnMat = new THREE.MeshStandardMaterial({
+    color: columnMarbleColor,
+    roughness: 0.32,
+    metalness: 0.34,
+  });
+  const darkPlinthMat = new THREE.MeshStandardMaterial({
+    color: 0x0c1329,
+    roughness: 0.45,
+    metalness: 0.48,
+  });
+  const gildedMat = new THREE.MeshStandardMaterial({
+    color: goldHex,
+    emissive: goldHex,
+    emissiveIntensity: 0.34,
+    roughness: 0.2,
+    metalness: 0.92,
+  });
+  const brightGoldLineMat = new THREE.MeshBasicMaterial({
+    color: goldHex,
+    transparent: true,
+    opacity: 0.62,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const starlightStripMat = new THREE.MeshStandardMaterial({
+    color: crystalHex,
+    emissive: crystalHex,
+    emissiveIntensity: 1.45,
+    roughness: 0.14,
+    metalness: 0.25,
+  });
+  const veilMat = new THREE.MeshBasicMaterial({
+    color: crystalHex,
+    transparent: true,
+    opacity: 0.16,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  // 1. Grand Polished Celestial Marble Sanctuary Floor (covers full lobby view)
+  const grandFloor = new THREE.Mesh(
+    new THREE.CylinderGeometry(19.5, 20.5, 0.26, isLowEnd ? 32 : 48),
+    polishedFloorMat
+  );
+  grandFloor.position.set(0, -0.14, 1.8);
+  grandFloor.receiveShadow = true;
+  group.add(grandFloor);
+
+  // Outer stepped circular terrace rim
+  const outerRim = new THREE.Mesh(
+    new THREE.TorusGeometry(13.8, 0.16, 8, isLowEnd ? 36 : 56),
+    gildedMat
+  );
+  outerRim.rotation.x = Math.PI / 2;
+  outerRim.position.set(0, 0.02, 2.2);
+  group.add(outerRim);
+
+  // 2. Luminous Golden Zodiac Astrolabe Floor Mandala centered beneath Hero (0, 0, 4.5)
+  const mandalaCenterZ = 4.5;
+  const mandalaMidRing = new THREE.Mesh(
+    new THREE.RingGeometry(2.85, 3.02, isLowEnd ? 36 : 56),
+    brightGoldLineMat
+  );
+  mandalaMidRing.rotation.x = -Math.PI / 2;
+  mandalaMidRing.position.set(0, 0.008, mandalaCenterZ);
+  group.add(mandalaMidRing);
+
+  const mandalaOuterRing = new THREE.Mesh(
+    new THREE.RingGeometry(5.15, 5.29, isLowEnd ? 40 : 64),
+    brightGoldLineMat
+  );
+  mandalaOuterRing.rotation.x = -Math.PI / 2;
+  mandalaOuterRing.position.set(0, 0.008, mandalaCenterZ);
+  group.add(mandalaOuterRing);
+
+  // 12 Radiant Zodiac Spokes on the Sanctuary Floor (single InstancedMesh)
+  const spokeGeo = new THREE.BoxGeometry(0.055, 0.012, 2.15);
+  const spokeMesh = new THREE.InstancedMesh(spokeGeo, gildedMat, 12);
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * Math.PI * 2;
+    const rad = 4.05;
+    dummy.position.set(Math.cos(ang) * rad, 0.009, mandalaCenterZ + Math.sin(ang) * rad);
+    dummy.rotation.set(0, -ang + Math.PI / 2, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    spokeMesh.setMatrixAt(i, dummy.matrix);
+  }
+  spokeMesh.instanceMatrix.needsUpdate = true;
+  group.add(spokeMesh);
+
+  // Ceremonial Golden Walkway leading from the Hero Dais toward the Rear Celestial Gate
+  const walkwayBase = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.04, 8.2), darkPlinthMat);
+  walkwayBase.position.set(0, 0.015, -0.45);
+  walkwayBase.receiveShadow = true;
+  const walkwayTrimL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.055, 8.2), gildedMat);
+  walkwayTrimL.position.set(-1.58, 0.025, -0.45);
+  const walkwayTrimR = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.055, 8.2), gildedMat);
+  walkwayTrimR.position.set(1.58, 0.025, -0.45);
+  group.add(walkwayBase, walkwayTrimL, walkwayTrimR);
+
+  // 3. Semicircular Ornate Fluted Colonnade (replaces ugly brown combat cylinders)
+  const colPositions: Array<[number, number]> = [
+    [-4.9, -1.2],
+    [4.9, -1.2],
+    [-8.2, 0.6],
+    [8.2, 0.6],
+    [-10.6, 3.6],
+    [10.6, 3.6],
+    [-7.6, -4.8],
+    [7.6, -4.8],
+    [-4.6, -7.2],
+    [4.6, -7.2],
+  ];
+  const colCount = colPositions.length;
+
+  const plinthGeo = new THREE.BoxGeometry(1.38, 0.52, 1.38);
+  const shaftGeo = new THREE.CylinderGeometry(0.39, 0.49, 7.8, isLowEnd ? 8 : 12);
+  const collarGeo = new THREE.TorusGeometry(0.49, 0.065, 8, isLowEnd ? 14 : 20);
+  const capitalGeo = new THREE.CylinderGeometry(0.7, 0.42, 0.5, 8);
+  const stripGeo = new THREE.BoxGeometry(0.08, 6.4, 0.08);
+
+  const plinthInst = new THREE.InstancedMesh(plinthGeo, darkPlinthMat, colCount);
+  const shaftInst = new THREE.InstancedMesh(shaftGeo, marbleColumnMat, colCount);
+  const lowerCollarInst = new THREE.InstancedMesh(collarGeo, gildedMat, colCount);
+  const upperCollarInst = new THREE.InstancedMesh(collarGeo, gildedMat, colCount);
+  const capitalInst = new THREE.InstancedMesh(capitalGeo, gildedMat, colCount);
+  const stripInst = new THREE.InstancedMesh(stripGeo, starlightStripMat, colCount);
+
+  colPositions.forEach(([cx, cz], idx) => {
+    const faceAng = Math.atan2(mandalaCenterZ - cz, -cx);
+
+    dummy.position.set(cx, 0.25, cz);
+    dummy.rotation.set(0, faceAng, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    plinthInst.setMatrixAt(idx, dummy.matrix);
+
+    dummy.position.set(cx, 4.35, cz);
+    dummy.rotation.set(0, faceAng, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    shaftInst.setMatrixAt(idx, dummy.matrix);
+
+    dummy.position.set(cx, 0.56, cz);
+    dummy.rotation.set(Math.PI / 2, 0, 0);
+    dummy.scale.set(1.06, 1.06, 1);
+    dummy.updateMatrix();
+    lowerCollarInst.setMatrixAt(idx, dummy.matrix);
+
+    dummy.position.set(cx, 8.05, cz);
+    dummy.rotation.set(Math.PI / 2, 0, 0);
+    dummy.scale.set(0.92, 0.92, 1);
+    dummy.updateMatrix();
+    upperCollarInst.setMatrixAt(idx, dummy.matrix);
+
+    dummy.position.set(cx, 8.46, cz);
+    dummy.rotation.set(0, faceAng + Math.PI / 8, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    capitalInst.setMatrixAt(idx, dummy.matrix);
+
+    // Starlight strip facing toward Hero center dais
+    const inwardX = Math.cos(faceAng) * 0.45;
+    const inwardZ = Math.sin(faceAng) * 0.45;
+    dummy.position.set(cx + inwardX, 4.35, cz + inwardZ);
+    dummy.rotation.set(0, -faceAng, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    stripInst.setMatrixAt(idx, dummy.matrix);
+  });
+
+  plinthInst.instanceMatrix.needsUpdate = true;
+  shaftInst.instanceMatrix.needsUpdate = true;
+  lowerCollarInst.instanceMatrix.needsUpdate = true;
+  upperCollarInst.instanceMatrix.needsUpdate = true;
+  capitalInst.instanceMatrix.needsUpdate = true;
+  stripInst.instanceMatrix.needsUpdate = true;
+
+  group.add(plinthInst, shaftInst, lowerCollarInst, upperCollarInst, capitalInst, stripInst);
+
+  // 4. Grand Rear Starlight Celestial Gate centered behind Hero at z = -4.9
+  const gateGroup = new THREE.Group();
+  gateGroup.position.set(0, 0, -4.9);
+
+  const gateBase = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.34, 1.65), darkPlinthMat);
+  gateBase.position.y = 0.16;
+  const gateBaseTrim = new THREE.Mesh(new THREE.BoxGeometry(7.76, 0.08, 1.78), gildedMat);
+  gateBaseTrim.position.y = 0.34;
+  gateGroup.add(gateBase, gateBaseTrim);
+
+  const towerGeo = new THREE.BoxGeometry(0.92, 5.9, 0.96);
+  const towerCapGeo = new THREE.CylinderGeometry(0.2, 0.72, 0.85, 4);
+  const towerBandGeo = new THREE.BoxGeometry(1.04, 0.14, 1.08);
+  for (const side of [-1, 1]) {
+    const tx = side * 2.85;
+    const tower = new THREE.Mesh(towerGeo, marbleColumnMat);
+    tower.position.set(tx, 3.25, 0);
+    const cap = new THREE.Mesh(towerCapGeo, gildedMat);
+    cap.rotation.y = Math.PI / 4;
+    cap.position.set(tx, 6.55, 0);
+    const lowBand = new THREE.Mesh(towerBandGeo, gildedMat);
+    lowBand.position.set(tx, 1.45, 0);
+    const midBand = new THREE.Mesh(towerBandGeo, gildedMat);
+    midBand.position.set(tx, 3.6, 0);
+    const hiBand = new THREE.Mesh(towerBandGeo, gildedMat);
+    hiBand.position.set(tx, 5.75, 0);
+    const crownGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), starlightStripMat);
+    crownGem.scale.set(0.75, 1.5, 0.75);
+    crownGem.position.set(tx, 7.28, 0);
+    gateGroup.add(tower, cap, lowBand, midBand, hiBand, crownGem);
+  }
+
+  // Ornate Double Astrolabe Arch Rings inside the Gate
+  const outerArchRing = new THREE.Mesh(
+    new THREE.TorusGeometry(2.38, 0.095, 10, isLowEnd ? 36 : 56),
+    gildedMat
+  );
+  outerArchRing.position.set(0, 3.32, 0);
+
+  const innerArchRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1.82, 0.055, 8, isLowEnd ? 32 : 48),
+    starlightStripMat
+  );
+  innerArchRing.position.set(0, 3.32, 0.04);
+
+  const archVeil = new THREE.Mesh(
+    new THREE.CircleGeometry(1.78, isLowEnd ? 24 : 36),
+    veilMat
+  );
+  archVeil.position.set(0, 3.32, -0.02);
+
+  const keystoneGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), starlightStripMat);
+  keystoneGem.scale.set(0.85, 1.45, 0.85);
+  keystoneGem.position.set(0, 6.02, 0.06);
+
+  gateGroup.add(outerArchRing, innerArchRing, archVeil, keystoneGem);
+  group.add(gateGroup);
+
+  // 5. Floating Crystal Braziers & Twin Obelisks framing Artemis symmetrically
+  const floatingCrystals: THREE.Object3D[] = [];
+  const brazierCoords: Array<[number, number, number, number]> = [
+    [-3.75, 2.05, 0.65, 1.0],
+    [3.75, 2.05, 0.65, 1.0],
+    [-4.35, 2.55, -3.15, 1.25],
+    [4.35, 2.55, -3.15, 1.25],
+  ];
+  const crystalCoreGeo = new THREE.OctahedronGeometry(0.22, 0);
+  const crystalRingGeo = new THREE.TorusGeometry(0.36, 0.025, 6, 20);
+  brazierCoords.forEach(([bx, by, bz, sc]) => {
+    const holder = new THREE.Group();
+    holder.position.set(bx, by, bz);
+    holder.userData.baseY = by;
+    const crystal = new THREE.Mesh(crystalCoreGeo, starlightStripMat);
+    crystal.scale.set(0.75 * sc, 1.75 * sc, 0.75 * sc);
+    const gyro = new THREE.Mesh(crystalRingGeo, gildedMat);
+    gyro.scale.setScalar(sc);
+    gyro.rotation.x = Math.PI / 2.6;
+    holder.add(crystal, gyro);
+    group.add(holder);
+    floatingCrystals.push(holder);
+  });
+
+  // 6. Drifting Golden Starlight Dust Motes (single InstancedMesh)
+  const dustCount = isLowEnd ? 22 : 46;
+  const dustGeo = new THREE.OctahedronGeometry(0.048, 0);
+  const dustMat = new THREE.MeshBasicMaterial({
+    color: 0xfef08a,
+    transparent: true,
+    opacity: 0.78,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const dustMesh = new THREE.InstancedMesh(dustGeo, dustMat, dustCount);
+  dustMesh.frustumCulled = false;
+  group.add(dustMesh);
+
+  return {
+    group,
+    outerArchRing,
+    innerArchRing,
+    floatingCrystals,
+    dustMesh,
+    dustCount,
+  };
+}
+
 // ============================================================================
 // WAVE 12 COMPOSITE 3D MODELS: WAR BANNER, MYTHIC WEAPON FX & VAULT PILLAR
 // ============================================================================
