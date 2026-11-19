@@ -48,6 +48,24 @@ import {
   rollProgressionGatedGear,
 } from './gearData';
 import { HEROES } from './heroesData';
+import {
+  HERO_ACTIVE_SKILLS,
+  NIGHTMARE_MAX_TIER,
+  PERFECT_DODGE_DAMAGE_BONUS,
+  PERFECT_DODGE_INTERNAL_CD,
+  SAVE_CODE_PREFIX,
+  buildBossCodexEntries,
+  buildSynergyCodexEntries,
+  computeTrainingDpsSnapshot,
+  createTrainingDpsState,
+  decodeSaveTransferCode,
+  encodeSaveTransferCode,
+  getHeroActiveSkill,
+  getNightmareTierConfig,
+  isNightmareUnlocked,
+  recordTrainingHit,
+  resolvePerfectDodgeTrigger,
+} from './phase5Data';
 import { CHECK_IN_REWARDS, DAILY_QUESTS } from './questsData';
 import { rollRuneChestBatch } from './runesData';
 import {
@@ -1059,4 +1077,221 @@ test('Phase 4 · Ch.7–12 Smart Valkyrie Drafting & Boss Phase III Punish Windo
     `Expected strong synergy-completion bias in Ch.7-12 Valkyrie drafts, got ${lateCompletionHits}/48`
   );
 });
+
+test('Phase 5 · 8 Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
+  assert.equal(HEROES.length, 8);
+  const effectKinds = new Set<string>();
+  for (const hero of HEROES) {
+    const skill = getHeroActiveSkill(hero.id);
+    assert.equal(skill.heroId, hero.id);
+    assert.ok(HERO_ACTIVE_SKILLS[hero.id], `Missing active skill definition for ${hero.id}`);
+    assert.ok(skill.name.length > 0 && skill.desc.length > 0);
+    assert.ok(skill.cooldownSec >= 8.0 && skill.cooldownSec <= 10.5);
+    assert.ok(skill.damageMult >= 1.2 && skill.damageMult <= 2.0);
+    effectKinds.add(skill.effectKind);
+  }
+  assert.equal(effectKinds.size, 8, 'All 8 heroes must have distinct active skill effect kinds');
+
+  // Fresh Ch.1 static baseline must stay completely untouched
+  const fresh = createInitialSaveData();
+  const stats = computePlayerStats(fresh);
+  assert.equal(stats.attack, 80);
+  assert.equal(stats.maxHp, 439);
+  assert.equal(stats.powerRating, 547);
+});
+
+test('Phase 5 · Perfect Dodge Counter Rewards & Internal Cooldown Anti-Spam', () => {
+  const ready = resolvePerfectDodgeTrigger({
+    internalCooldown: 0,
+    activeSkillCooldown: 6.5,
+    ultCharge: 75,
+  });
+  assert.equal(ready.triggered, true);
+  assert.equal(ready.damageMultiplier, 1 + PERFECT_DODGE_DAMAGE_BONUS);
+  assert.equal(ready.nextActiveSkillCooldown, 4.5);
+  assert.equal(ready.nextUltCharge, 87);
+  assert.equal(ready.nextInternalCooldown, PERFECT_DODGE_INTERNAL_CD);
+
+  // Clamping at 0s cooldown and 100% ult charge
+  const clamped = resolvePerfectDodgeTrigger({
+    internalCooldown: 0,
+    activeSkillCooldown: 1.0,
+    ultCharge: 95,
+  });
+  assert.equal(clamped.nextActiveSkillCooldown, 0);
+  assert.equal(clamped.nextUltCharge, 100);
+
+  // Blocked while internal cooldown is active
+  const blocked = resolvePerfectDodgeTrigger({
+    internalCooldown: 1.2,
+    activeSkillCooldown: 5.0,
+    ultCharge: 40,
+  });
+  assert.equal(blocked.triggered, false);
+  assert.equal(blocked.damageMultiplier, 1);
+  assert.equal(blocked.nextActiveSkillCooldown, 5.0);
+  assert.equal(blocked.nextUltCharge, 40);
+});
+
+test('Phase 5 · Nightmare Ascension I–V Unlock Gating, Monotonic Scaling & Distinct Mutators', () => {
+  assert.equal(isNightmareUnlocked(0), false);
+  assert.equal(isNightmareUnlocked(1), false);
+  assert.equal(isNightmareUnlocked(2), false);
+  assert.equal(isNightmareUnlocked(3), true);
+  assert.equal(isNightmareUnlocked(12), true);
+
+  const configs = Array.from({ length: NIGHTMARE_MAX_TIER + 1 }, (_, tier) =>
+    getNightmareTierConfig(6, tier)
+  );
+  assert.equal(configs[0].mutators.length, 0);
+
+  for (let t = 1; t <= NIGHTMARE_MAX_TIER; t++) {
+    const prev = configs[t - 1];
+    const cur = configs[t];
+    assert.ok(cur.enemyHpMult > prev.enemyHpMult, `Tier ${t} HP mult must strictly increase`);
+    assert.ok(cur.enemyDmgMult > prev.enemyDmgMult, `Tier ${t} DMG mult must strictly increase`);
+    assert.ok(cur.goldRewardMult > prev.goldRewardMult, `Tier ${t} Gold mult must strictly increase`);
+    assert.ok(
+      cur.starDustRewardMult > prev.starDustRewardMult,
+      `Tier ${t} StarDust mult must strictly increase`
+    );
+    assert.ok(
+      cur.masteryExpMult > prev.masteryExpMult,
+      `Tier ${t} Mastery EXP mult must strictly increase`
+    );
+    const ids = new Set(cur.mutators.map((m) => m.id));
+    assert.equal(ids.size, cur.mutators.length, `Tier ${t} mutators must not duplicate`);
+    if (t <= 2) {
+      assert.equal(cur.mutators.length, 1);
+    } else {
+      assert.equal(cur.mutators.length, 2);
+    }
+  }
+});
+
+test('Phase 5 · 3D Training Grounds 5s Sliding-Window DPS Tracker', () => {
+  const tracker = createTrainingDpsState();
+  recordTrainingHit(tracker, 0.0, 200, false);
+  recordTrainingHit(tracker, 1.0, 400, true);
+  recordTrainingHit(tracker, 2.0, 300, false);
+  const midSnap = recordTrainingHit(tracker, 3.0, 500, true);
+
+  assert.equal(midSnap.totalDamage, 1400);
+  assert.equal(midSnap.hits, 4);
+  assert.equal(midSnap.critRatePct, 50);
+  assert.ok(midSnap.dps5s > 0);
+  assert.ok(midSnap.peakDps >= midSnap.dps5s);
+
+  // After 5.5s with no new hits, sliding window evicts all stale samples while keeping peak & totals
+  const expiredSnap = computeTrainingDpsSnapshot(tracker, 8.6);
+  assert.equal(expiredSnap.dps5s, 0);
+  assert.equal(expiredSnap.peakDps, midSnap.peakDps);
+  assert.equal(expiredSnap.totalDamage, 1400);
+  assert.equal(expiredSnap.hits, 4);
+});
+
+test('Phase 5 · Save Export/Import Codec (ABW5 Checksum, Tamper Rejection & Legacy JSON Migration)', () => {
+  const base = createInitialSaveData();
+  const sample: SaveData = {
+    ...base,
+    gold: 4321,
+    gems: 185,
+    highestChapterCleared: 5,
+    bestTowerFloor: 14,
+    nightmareClears: { 4: 2, 5: 1 },
+    discoveredSynergies: ['storm_chain', 'frost_shatter'],
+  };
+
+  const encoded = encodeSaveTransferCode(sample);
+  assert.ok(encoded.startsWith(`${SAVE_CODE_PREFIX}:`));
+
+  const decoded = decodeSaveTransferCode(encoded);
+  assert.equal(decoded.ok, true);
+  assert.ok(decoded.save && decoded.preview);
+  assert.equal(decoded.save.gold, 4321);
+  assert.equal(decoded.save.gems, 185);
+  assert.equal(decoded.save.highestChapterCleared, 5);
+  assert.equal(decoded.save.nightmareClears?.[4], 2);
+  assert.deepEqual(decoded.save.discoveredSynergies, ['storm_chain', 'frost_shatter']);
+  assert.equal(decoded.preview.bestTowerFloor, 14);
+  assert.equal(decoded.preview.version, SAVE_CODE_PREFIX);
+
+  // Tampering with checksum must fail
+  const parts = encoded.split(':');
+  const badChecksum = `${parts[0]}:00000000:${parts[2]}`;
+  assert.equal(decodeSaveTransferCode(badChecksum).ok, false);
+
+  // Truncating base64 payload must fail
+  const truncated = `${parts[0]}:${parts[1]}:${parts[2].slice(0, 12)}`;
+  assert.equal(decodeSaveTransferCode(truncated).ok, false);
+
+  // Raw legacy JSON without Phase 4/5 optional keys migrates cleanly
+  const legacyRaw = JSON.stringify({
+    gold: 750,
+    gems: 40,
+    highestChapterCleared: 2,
+    bestStagePerChapter: { 1: 12, 2: 12 },
+    inventory: base.inventory,
+    equipped: base.equipped,
+  });
+  const legacyRes = decodeSaveTransferCode(legacyRaw);
+  assert.equal(legacyRes.ok, true);
+  assert.equal(legacyRes.save?.gold, 750);
+  assert.equal(legacyRes.save?.highestChapterCleared, 2);
+  assert.equal(legacyRes.preview?.version, 'JSON');
+});
+
+test('Phase 5 · Strategy Codex Builders (9 Skill Synergies & 12 Zodiac Bosses)', () => {
+  const base = createInitialSaveData();
+  const enriched: SaveData = {
+    ...base,
+    highestChapterCleared: 10,
+    nightmareClears: { 4: 3, 10: 2 },
+    discoveredSynergies: ['solar_orbit'],
+    playtestMetrics: {
+      ...resetPlaytestMetrics(),
+      synergyPickCounts: { storm_chain: 4 },
+    },
+    runHistory: [
+      {
+        id: 'run_1',
+        mode: 'chapter',
+        label: 'Chương 10',
+        stageReached: 12,
+        kills: 92,
+        maxCombo: 45,
+        gold: 900,
+        gems: 60,
+        victory: true,
+        heroId: 'artemis',
+        timestamp: 1700000000000,
+        activeSynergies: ['frost_shatter'],
+      },
+    ],
+  };
+
+  const synEntries = buildSynergyCodexEntries(enriched);
+  assert.equal(synEntries.length, 9);
+  const synById = Object.fromEntries(synEntries.map((s) => [s.id, s]));
+  assert.equal(synById.solar_orbit.discovered, true);
+  assert.equal(synById.storm_chain.discovered, true);
+  assert.equal(synById.storm_chain.pickCount, 4);
+  assert.equal(synById.frost_shatter.discovered, true);
+  assert.equal(synById.aegis_sanctuary.discovered, false);
+
+  const bossEntries = buildBossCodexEntries(enriched);
+  assert.equal(bossEntries.length, 12);
+  assert.equal(bossEntries[0].chapterId, 1);
+  assert.equal(bossEntries[0].hasPhaseThree, false);
+  assert.equal(bossEntries[0].punishBonusPct, 18);
+  assert.equal(bossEntries[3].highestNightmareTier, 3);
+  assert.equal(bossEntries[9].chapterId, 10);
+  assert.equal(bossEntries[9].hasPhaseThree, true);
+  assert.equal(bossEntries[9].punishBonusPct, 24);
+  assert.equal(bossEntries[9].highestNightmareTier, 2);
+  assert.equal(bossEntries[11].chapterId, 12);
+  assert.equal(bossEntries[11].hasPhaseThree, true);
+  assert.equal(bossEntries[11].cleared, false);
+});
+
 

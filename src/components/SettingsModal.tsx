@@ -7,10 +7,12 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  Download,
   Monitor,
   RotateCcw,
   Sliders,
   Trash2,
+  Upload,
   Volume2,
   VolumeX,
   X,
@@ -23,8 +25,9 @@ import {
 } from '../data/earlyProgressionData';
 import { evaluateEquippedGearSets } from '../data/gearData';
 import { HERO_MAP } from '../data/heroesData';
+import { decodeSaveTransferCode, encodeSaveTransferCode } from '../data/phase5Data';
 import { SKILL_SYNERGIES, SKILL_SYNERGY_MAP } from '../data/skillsData';
-import { GameSettings, GraphicsQuality, SaveData } from '../types/game';
+import { GameSettings, GraphicsQuality, SaveData, SaveTransferPreview } from '../types/game';
 
 interface SettingsModalProps {
   settings: GameSettings;
@@ -34,6 +37,7 @@ interface SettingsModalProps {
   onToggleMute: () => void;
   onReplayTutorial?: () => void;
   onResetPlaytestMetrics?: () => void;
+  onImportSave?: (nextSave: SaveData) => void;
   onClose: () => void;
 }
 
@@ -71,11 +75,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleMute,
   onReplayTutorial,
   onResetPlaytestMetrics,
+  onImportSave,
   onClose,
 }) => {
   const [showPlaytestKpi, setShowPlaytestKpi] = useState(false);
+  const [showSaveTransfer, setShowSaveTransfer] = useState(false);
   const [kpiTab, setKpiTab] = useState<'kpi' | 'history'>('kpi');
   const [copiedJson, setCopiedJson] = useState(false);
+  const [copiedSaveCode, setCopiedSaveCode] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importPending, setImportPending] = useState<{
+    save: SaveData;
+    preview: SaveTransferPreview;
+  } | null>(null);
+  const [importSuccess, setImportSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
   const qualityOptions: Array<{ id: GraphicsQuality; label: string; hint: string }> = [
@@ -111,6 +125,231 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       window.setTimeout(() => setCopiedJson(false), 2200);
     }
   };
+
+  const handleCopySaveCode = async () => {
+    if (!save) return;
+    const code = encodeSaveTransferCode(save);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+      }
+    } catch {
+      // Fallback handled silently
+    }
+    soundEngine.playUiClick(1.12);
+    setCopiedSaveCode(true);
+    window.setTimeout(() => setCopiedSaveCode(false), 2200);
+  };
+
+  const handleDownloadSaveJson = () => {
+    if (!save) return;
+    soundEngine.playUiClick(1.08);
+    const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `aetherbow-save-ch${save.highestChapterCleared}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleValidateImport = (rawText: string) => {
+    setImportSuccess(false);
+    const res = decodeSaveTransferCode(rawText);
+    if (!res.ok || !res.save || !res.preview) {
+      setImportError(res.error ?? 'Mã sao lưu không hợp lệ.');
+      setImportPending(null);
+      return;
+    }
+    setImportError(null);
+    setImportPending({ save: res.save, preview: res.preview });
+  };
+
+  if (showSaveTransfer && save) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#040611]/90">
+        <div className="cel-panel-ornate w-full max-w-lg rounded-3xl p-5 sm:p-6 max-h-[90vh] flex flex-col gap-4">
+          <div className="flex items-center justify-between border-b border-amber-400/25 pb-3 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick(0.95);
+                  setShowSaveTransfer(false);
+                  setImportError(null);
+                  setImportPending(null);
+                  setImportSuccess(false);
+                }}
+                aria-label="Quay Lại Cài Đặt"
+                className="cel-panel w-8 h-8 rounded-xl flex items-center justify-center text-amber-200 hover:text-white cursor-pointer shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div className="min-w-0">
+                <h2 className="font-display text-base sm:text-lg font-black text-amber-200 truncate">
+                  Sao Lưu &amp; Khôi Phục Mã Save
+                </h2>
+                <p className="text-[11px] text-slate-400 font-semibold truncate">
+                  Chuẩn ABW5 có kiểm tra toàn vẹn checksum hoặc tệp .JSON
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onClose();
+              }}
+              aria-label="Đóng"
+              className="cel-panel w-8 h-8 rounded-xl flex items-center justify-center text-slate-300 hover:text-white cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-0.5">
+            {/* Export Block */}
+            <div className="rounded-2xl bg-[#080d1e] border border-amber-400/25 p-3.5 space-y-2.5">
+              <div className="text-xs font-black text-amber-200">1. Xuất Dữ Liệu Hiện Tại</div>
+              <div className="text-[11px] text-slate-300 font-mono-nums">
+                Chương đã vượt: {save.highestChapterCleared} · Vàng:{' '}
+                {save.gold.toLocaleString('vi-VN')} · Ngọc: {save.gems.toLocaleString('vi-VN')} ·
+                Trang bị: {save.inventory.length}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopySaveCode}
+                  className="a2-yellow-btn py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  {copiedSaveCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                      <span>Đã Sao Chép Mã ABW5</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 shrink-0" />
+                      <span>Sao Chép Mã Save</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadSaveJson}
+                  className="a2-slate-btn py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <Download className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                  <span>Tải Tệp .JSON</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Import Block */}
+            <div className="rounded-2xl bg-[#080d1e] border border-sky-400/25 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-black text-sky-200">2. Nhập Mã Save Hoặc Tệp .JSON</span>
+                <label className="text-[11px] font-bold text-amber-300 hover:text-amber-200 cursor-pointer flex items-center gap-1 whitespace-nowrap">
+                  <Upload className="w-3.5 h-3.5 shrink-0" />
+                  <span>Chọn Tệp</span>
+                  <input
+                    type="file"
+                    accept=".json,.txt"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const text = typeof reader.result === 'string' ? reader.result : '';
+                        setImportText(text);
+                        handleValidateImport(text);
+                      };
+                      reader.readAsText(file);
+                    }}
+                  />
+                </label>
+              </div>
+
+              <textarea
+                value={importText}
+                onChange={(e) => {
+                  setImportText(e.target.value);
+                  setImportError(null);
+                  setImportPending(null);
+                  setImportSuccess(false);
+                }}
+                placeholder="Dán mã ABW5:... hoặc nội dung JSON sao lưu vào đây..."
+                rows={4}
+                className="w-full rounded-xl bg-[#040712] border border-slate-700 focus:border-amber-300 outline-none p-2.5 text-[11px] font-mono text-slate-200 resize-none"
+              />
+
+              <button
+                type="button"
+                onClick={() => handleValidateImport(importText)}
+                disabled={!importText.trim()}
+                className={`w-full py-2 rounded-xl text-xs font-black whitespace-nowrap ${
+                  importText.trim()
+                    ? 'a2-slate-btn cursor-pointer'
+                    : 'bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                Kiểm Tra Mã Save
+              </button>
+
+              {importError && (
+                <div className="rounded-xl bg-rose-500/15 border border-rose-400/45 px-3 py-2 text-[11px] font-semibold text-rose-200 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-300 shrink-0 mt-0.5" />
+                  <span>{importError}</span>
+                </div>
+              )}
+
+              {importPending && (
+                <div className="rounded-xl bg-emerald-500/10 border border-emerald-400/45 p-3 space-y-2">
+                  <div className="text-xs font-black text-emerald-200 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+                    <span>Mã Save Hợp Lệ ({importPending.preview.version})</span>
+                  </div>
+                  <div className="text-[11px] text-slate-200 font-mono-nums leading-relaxed">
+                    Chương cao nhất: {importPending.preview.highestChapterCleared} · Anh Hùng:{' '}
+                    {HERO_MAP[importPending.preview.selectedHeroId]?.name ??
+                      importPending.preview.selectedHeroId}{' '}
+                    · Vàng: {importPending.preview.gold.toLocaleString('vi-VN')} · Ngọc:{' '}
+                    {importPending.preview.gems.toLocaleString('vi-VN')} · Trang bị:{' '}
+                    {importPending.preview.gearCount} · Tháp Vô Tận: Tầng{' '}
+                    {importPending.preview.bestTowerFloor}
+                  </div>
+                  {onImportSave && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playLevelUp();
+                        onImportSave(importPending.save);
+                        setImportPending(null);
+                        setImportText('');
+                        setImportSuccess(true);
+                      }}
+                      className="a2-emerald-btn w-full py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                    >
+                      Xác Nhận Khôi Phục &amp; Ghi Đè Save Hiện Tại
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {importSuccess && (
+                <div className="rounded-xl bg-emerald-500/15 border border-emerald-400/50 px-3 py-2 text-xs font-bold text-emerald-200">
+                  Khôi phục dữ liệu thành công! Tiến trình đã được cập nhật ngay lập tức.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (showPlaytestKpi && metrics) {
     const hasFirstDefeat = typeof metrics.firstDefeatRunIndex === 'number';
@@ -707,17 +946,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           )}
           {save && (
-            <button
-              type="button"
-              onClick={() => {
-                soundEngine.playUiClick(1.02);
-                setShowPlaytestKpi(true);
-              }}
-              className="w-full py-2 px-3 rounded-xl text-[11px] font-bold text-slate-300 hover:text-amber-200 border border-slate-800 hover:border-amber-400/35 bg-[#070b18] flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
-            >
-              <BarChart3 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span>Dữ Liệu Playtest &amp; KPI</span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick(1.02);
+                  setShowPlaytestKpi(true);
+                }}
+                className="w-full py-2 px-3 rounded-xl text-[11px] font-bold text-slate-300 hover:text-amber-200 border border-slate-800 hover:border-amber-400/35 bg-[#070b18] flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Dữ Liệu Playtest &amp; KPI</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick(1.04);
+                  setShowSaveTransfer(true);
+                }}
+                className="w-full py-2 px-3 rounded-xl text-[11px] font-bold text-slate-300 hover:text-sky-200 border border-slate-800 hover:border-sky-400/40 bg-[#070b18] flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
+              >
+                <Download className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span>Sao Lưu / Khôi Phục Save</span>
+              </button>
+            </div>
           )}
           <button
             type="button"

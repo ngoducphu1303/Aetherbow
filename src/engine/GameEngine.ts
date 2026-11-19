@@ -10,6 +10,18 @@ import {
   PUNISH_WINDOW_PHASE3_BONUS,
 } from '../data/earlyProgressionData';
 import { HERO_MAP } from '../data/heroesData';
+import {
+  computeTrainingDpsSnapshot,
+  createTrainingDpsState,
+  getHeroActiveSkill,
+  getNightmareTierConfig,
+  PERFECT_DODGE_DAMAGE_BONUS,
+  PERFECT_DODGE_SLOWMO_DURATION,
+  PERFECT_DODGE_SLOWMO_SCALE,
+  recordTrainingHit,
+  resolvePerfectDodgeTrigger,
+  TrainingDpsState,
+} from '../data/phase5Data';
 import { evaluateActiveSynergies, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import { PET_MAP } from '../data/wave3Data';
 import {
@@ -63,6 +75,8 @@ import {
   LobbyCameraPreset,
   LobbyHeroPoseId,
   LobbySkyThemeId,
+  NightmareTierConfig,
+  TrainingTargetMode,
   LobbyWeatherId,
   PantheonBlessingDef,
   PetId,
@@ -171,6 +185,7 @@ interface EnemyEntity {
   punishWindowMax?: number;
   isVaultPillar?: boolean;
   isGoldenPillar?: boolean;
+  isTrainingDummy?: boolean;
   burnTimer: number;
   burnDps: number;
   poisonDps: number;
@@ -671,6 +686,22 @@ export class GameEngine {
   private hasFullRevive = false;
   private stageBannerTimer = 0;
   private stageBannerText: string | null = null;
+
+  // Phase 5: 8 Hero Active Skills (KeyE), Perfect Dodge, Nightmare Ascension, 3D Training Grounds
+  private activeSkillCooldown = 0;
+  private activeSkillMaxCooldown = 9.0;
+  private alexCadenceTimer = 0;
+  private perfectDodgeInternalCd = 0;
+  private perfectDodgeBuffTimer = 0;
+  private perfectDodgeBannerTimer = 0;
+  private perfectDodgeSlowTimer = 0;
+  private perfectDodgeCount = 0;
+  private nightmareTier = 0;
+  private nightmareConfig: NightmareTierConfig = getNightmareTierConfig(1, 0);
+  private isTrainingMode = false;
+  private trainingTargetMode: TrainingTargetMode = 'single';
+  private trainingDpsState: TrainingDpsState = createTrainingDpsState();
+  private trainingClockSec = 0;
 
   // Hero Passive & Skill Periodic Timers
   private markedEnemyIds = new Set<number>();
@@ -1546,7 +1577,7 @@ export class GameEngine {
     this.arenaGroup.add(this.portal.group);
   }
 
-  public startChapter(chapterId: number, stats: ComputedPlayerStats): void {
+  public startChapter(chapterId: number, stats: ComputedPlayerStats, nightmareTier = 0): void {
     const ch = CHAPTERS.find((c) => c.id === chapterId) || CHAPTERS[0];
     this.isTowerMode = false;
     this.towerFloor = 0;
@@ -1563,6 +1594,9 @@ export class GameEngine {
     this.isBloodMoonMode = false;
     this.isAbyssalMode = false;
     this.isGuildWarMode = false;
+    this.isTrainingMode = false;
+    this.nightmareTier = Math.max(0, Math.min(5, Math.floor(nightmareTier || 0)));
+    this.nightmareConfig = getNightmareTierConfig(ch.id, this.nightmareTier);
     this.currentChapter = ch;
     this.baseStats = stats;
 
@@ -1571,8 +1605,297 @@ export class GameEngine {
 
     this.rebuildCompanions();
     this.loadStage(0);
+    if (this.nightmareTier > 0) {
+      soundEngine.playNightmareActivate();
+      const mutLabel = this.nightmareConfig.mutators.map((m) => m.name).join(' + ');
+      this.stageBannerText = `${this.nightmareConfig.label.toUpperCase()} · ${mutLabel}`;
+      this.stageBannerTimer = 2.6;
+    }
     this.phase = GamePhase.PLAYING;
     this.syncHudImmediate();
+  }
+
+  public startTrainingGrounds(
+    stats: ComputedPlayerStats,
+    targetMode: TrainingTargetMode = 'single'
+  ): void {
+    const ch = CHAPTERS[0];
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
+    this.nightmareTier = 0;
+    this.nightmareConfig = getNightmareTierConfig(1, 0);
+    this.isTrainingMode = true;
+    this.trainingTargetMode = targetMode;
+    this.trainingDpsState = createTrainingDpsState();
+    this.trainingClockSec = 0;
+    this.currentChapter = ch;
+    this.baseStats = stats;
+
+    this.buildArena(ch);
+    this.resetRunState(stats);
+    this.clearCombatEntities();
+    this.rebuildCompanions();
+
+    this.px = 0;
+    this.pz = 4.2;
+    this.pvx = 0;
+    this.pvz = 0;
+    this.pFacing = Math.PI;
+    this.portalOpen = false;
+    this.hero.root.position.set(this.px, 0, this.pz);
+    this.heroShadow.position.set(this.px, 0.02, this.pz);
+
+    this.spawnTrainingDummies(targetMode);
+    this.stageBannerText =
+      targetMode === 'single'
+        ? 'SÂN TẬP 3D · MỤC TIÊU BOSS ĐƠN'
+        : 'SÂN TẬP 3D · CỤM 3 HÌNH NHÂN AOE';
+    this.stageBannerTimer = 2.0;
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  public setTrainingTargetMode(mode: TrainingTargetMode): void {
+    if (!this.isTrainingMode) return;
+    this.trainingTargetMode = mode;
+    this.trainingDpsState = createTrainingDpsState();
+    this.trainingClockSec = 0;
+    this.clearCombatEntities();
+    this.spawnTrainingDummies(mode);
+    soundEngine.playTrainingReset();
+    this.stageBannerText =
+      mode === 'single' ? 'CHẾ ĐỘ ĐƠN MỤC TIÊU (BOSS)' : 'CHẾ ĐỘ 3 MỤC TIÊU (AOE)';
+    this.stageBannerTimer = 1.6;
+    this.syncHudImmediate();
+  }
+
+  public resetTrainingMetrics(): void {
+    if (!this.isTrainingMode) return;
+    this.trainingDpsState = createTrainingDpsState();
+    this.trainingClockSec = 0;
+    this.activeSkillCooldown = 0;
+    this.ultCharge = 100;
+    this.perfectDodgeCount = 0;
+    soundEngine.playTrainingReset();
+    this.syncHudImmediate();
+  }
+
+  public refreshTrainingStats(stats: ComputedPlayerStats, visualCfg?: HeroVisualConfig): void {
+    if (!this.isTrainingMode) return;
+    this.baseStats = stats;
+    this.maxHp = stats.maxHp;
+    this.hp = stats.maxHp;
+    this.activeSkillCooldown = 0;
+    this.activeSkillMaxCooldown = getHeroActiveSkill(stats.heroId).cooldownSec;
+    if (visualCfg) {
+      this.heroVisualCfg = visualCfg;
+      this.weaponAccentHex = visualCfg.weaponAccentHex;
+      this.buildHero();
+      this.hero.root.position.set(this.px, 0, this.pz);
+    }
+    this.rebuildCompanions();
+    this.trainingDpsState = createTrainingDpsState();
+    this.trainingClockSec = 0;
+    this.syncHudImmediate();
+  }
+
+  public exitTrainingGrounds(): void {
+    this.isTrainingMode = false;
+    this.trainingDpsState = createTrainingDpsState();
+    this.trainingClockSec = 0;
+    this.setPhase(GamePhase.TITLE);
+  }
+
+  private spawnTrainingDummies(mode: TrainingTargetMode): void {
+    const coords: Array<[number, number, boolean]> =
+      mode === 'single'
+        ? [[0, -2.6, true]]
+        : [
+            [-2.9, -2.8, false],
+            [0, -3.5, true],
+            [2.9, -2.8, false],
+          ];
+
+    coords.forEach(([x, z, isBossScaled], idx) => {
+      const root = new THREE.Group();
+      const bodyGroup = new THREE.Group();
+      root.add(bodyGroup);
+      const hitMeshes: THREE.Mesh[] = [];
+
+      // Composite 5-part grounded Zodiac Training Dummy (varied roughness/metalness, bottom-center at Y=0)
+      const pedestalMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.78,
+        metalness: 0.25,
+      });
+      const pedestal = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.76, 0.92, 0.28, 12),
+        pedestalMat
+      );
+      pedestal.position.y = 0.14;
+      pedestal.castShadow = true;
+      pedestal.receiveShadow = true;
+      bodyGroup.add(pedestal);
+
+      const postMat = new THREE.MeshStandardMaterial({
+        color: 0x78350f,
+        roughness: 0.85,
+        metalness: 0.08,
+      });
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 1.45, 10), postMat);
+      post.position.y = 0.95;
+      post.castShadow = true;
+      bodyGroup.add(post);
+
+      const torsoMat = new THREE.MeshStandardMaterial({
+        color: isBossScaled ? 0xd97706 : 0x38bdf8,
+        roughness: 0.34,
+        metalness: 0.76,
+      });
+      const torso = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.56, 0.44, 1.02, 12),
+        torsoMat
+      );
+      torso.position.y = 1.24;
+      torso.castShadow = true;
+      bodyGroup.add(torso);
+      hitMeshes.push(torso);
+
+      const shoulderMat = new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        roughness: 0.28,
+        metalness: 0.82,
+      });
+      const crossbar = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.2, 0.22), shoulderMat);
+      crossbar.position.y = 1.56;
+      crossbar.castShadow = true;
+      bodyGroup.add(crossbar);
+      hitMeshes.push(crossbar);
+
+      const head = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.38, 1),
+        new THREE.MeshStandardMaterial({
+          color: isBossScaled ? 0xfbbf24 : 0x7dd3fc,
+          roughness: 0.22,
+          metalness: 0.86,
+        })
+      );
+      head.position.y = 2.04;
+      head.castShadow = true;
+      bodyGroup.add(head);
+      hitMeshes.push(head);
+
+      const targetRing = new THREE.Mesh(
+        new THREE.RingGeometry(1.05, 1.22, 28),
+        new THREE.MeshBasicMaterial({
+          color: isBossScaled ? 0xf59e0b : 0x38bdf8,
+          transparent: true,
+          opacity: 0.52,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        })
+      );
+      targetRing.rotation.x = -Math.PI / 2;
+      targetRing.position.y = 0.03;
+      root.add(targetRing);
+
+      root.position.set(x, 0, z);
+      this.entitiesGroup.add(root);
+
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.3, 2.3),
+        new THREE.MeshBasicMaterial({
+          map: this.contactShadowTex,
+          transparent: true,
+          opacity: 0.42,
+          depthWrite: false,
+        })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.set(x, 0.02, z);
+      this.entitiesGroup.add(shadow);
+
+      const telegraphGroup = new THREE.Group();
+      telegraphGroup.visible = false;
+      this.entitiesGroup.add(telegraphGroup);
+      const telegraphFill = new THREE.Mesh(
+        new THREE.CircleGeometry(0.1, 8),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      telegraphGroup.add(telegraphFill);
+      const laserLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]),
+        new THREE.LineBasicMaterial({ visible: false })
+      );
+      laserLine.visible = false;
+      this.entitiesGroup.add(laserLine);
+
+      this.enemies.push({
+        id: this.nextEntityId++,
+        kind: EnemyKind.GOLEM,
+        isElite: false,
+        isTrainingDummy: true,
+        x,
+        z,
+        vx: 0,
+        vz: 0,
+        radius: 0.9,
+        hp: 9999999,
+        maxHp: 9999999,
+        speed: 0,
+        damage: 0,
+        xpValue: 0,
+        goldValue: 0,
+        isBoss: isBossScaled,
+        bossTitle: isBossScaled ? 'Hình Nhân Hoàng Đạo' : undefined,
+        spawnTimer: 0,
+        attackTimer: 999,
+        telegraphTimer: 0,
+        telegraphDuration: 1,
+        telegraphType: 'none',
+        aimX: 0,
+        aimZ: 1,
+        slamX: x,
+        slamZ: z,
+        slamRadius: 1,
+        laneAngles: [],
+        bossPhase: 1,
+        phaseTransitioned: false,
+        burnTimer: 0,
+        burnDps: 0,
+        poisonDps: 0,
+        chillTimer: 0,
+        hitFlashTimer: 0,
+        phaseAngle: idx * 1.4,
+        model: {
+          root,
+          bodyGroup,
+          headOrCore: head,
+          hitMeshes,
+          weaponOrRing: targetRing,
+        },
+        shadow,
+        telegraphGroup,
+        telegraphFill,
+        laserLine,
+      });
+    });
   }
 
   public startEndlessTower(stats: ComputedPlayerStats, highestChapterCleared = 0): void {
@@ -3268,6 +3591,14 @@ export class GameEngine {
     this.ultCharge = 55;
     this.alexOverdriveTimer = 0;
     this.wukongOverdriveTimer = 0;
+    this.activeSkillCooldown = 0;
+    this.activeSkillMaxCooldown = getHeroActiveSkill(stats.heroId).cooldownSec;
+    this.alexCadenceTimer = 0;
+    this.perfectDodgeInternalCd = 0;
+    this.perfectDodgeBuffTimer = 0;
+    this.perfectDodgeBannerTimer = 0;
+    this.perfectDodgeSlowTimer = 0;
+    this.perfectDodgeCount = 0;
     this.stageIndex = 0;
     this.waveIndex = 0;
     this.activeSkills = {};
@@ -3986,8 +4317,10 @@ export class GameEngine {
     this.waveIndex = waveIdx;
 
     const stageMult = 1 + this.stageIndex * 0.14;
-    const hpMult = this.currentChapter.hpScale * stageMult;
-    const dmgMult = this.currentChapter.dmgScale * (1 + this.stageIndex * 0.085);
+    const nmHpMult = this.nightmareTier > 0 ? this.nightmareConfig.enemyHpMult : 1;
+    const nmDmgMult = this.nightmareTier > 0 ? this.nightmareConfig.enemyDmgMult : 1;
+    const hpMult = this.currentChapter.hpScale * stageMult * nmHpMult;
+    const dmgMult = this.currentChapter.dmgScale * (1 + this.stageIndex * 0.085) * nmDmgMult;
     this.spawnEnemyGroups(wave.enemies, hpMult, dmgMult, stage.bossTitle);
   }
 
@@ -4255,11 +4588,14 @@ export class GameEngine {
         break;
     }
 
-    const speedScale = this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.enemySpeedMult : 1.0;
+    const nmSpeedMult = this.nightmareTier > 0 ? this.nightmareConfig.enemySpeedMult : 1.0;
+    const speedScale =
+      (this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.enemySpeedMult : 1.0) *
+      nmSpeedMult;
     const eliteMult = isElite && !isBoss ? 1.75 : 1.0;
     const finalHp = Math.round(baseHp * hpMult * eliteMult);
 
-    // Phase 3–4: Elite Affixes (Single from Ch.2+, Dual-Affix from Ch.7+ & Tower Floor 12+)
+    // Phase 3–5: Elite Affixes (Single from Ch.2+, Dual-Affix from Ch.7+, Tower Floor 12+, or Nightmare Empowered Elites)
     let eliteAffix: EliteAffix | undefined;
     let eliteAffixes: EliteAffix[] | undefined;
     let eliteShieldHp: number | undefined;
@@ -4269,12 +4605,14 @@ export class GameEngine {
       isElite &&
       !isBoss &&
       (this.currentChapter.id >= 2 ||
+        this.nightmareTier > 0 ||
         this.isDailyRiftMode ||
         this.isBossRushMode ||
         (this.isTowerMode && this.towerFloor >= 2));
     const allowDualAffix =
       allowEliteAffix &&
       ((!this.isTowerMode && this.currentChapter.id >= 7) ||
+        (this.nightmareTier > 0 && this.nightmareConfig.extraEliteAffix) ||
         (this.isTowerMode && this.towerFloor >= 12));
     if (allowEliteAffix) {
       const idx1 = this.nextEntityId % ELITE_AFFIX_LIST.length;
@@ -4472,8 +4810,10 @@ export class GameEngine {
       !this.keys[code]
     ) {
       this.dashBufferTimer = 0.14;
-    } else if ((code === 'KeyQ' || code === 'KeyE') && !this.keys[code]) {
+    } else if (code === 'KeyQ' && !this.keys[code]) {
       this.triggerHeroUltimate();
+    } else if (code === 'KeyE' && !this.keys[code]) {
+      this.triggerHeroActiveSkill();
     }
     this.keys[code] = true;
   };
@@ -4591,6 +4931,176 @@ export class GameEngine {
     if (this.phase === GamePhase.PLAYING) {
       this.dashBufferTimer = 0.14;
     }
+  }
+
+  private tryTriggerPerfectDodge(): void {
+    const res = resolvePerfectDodgeTrigger({
+      internalCooldown: this.perfectDodgeInternalCd,
+      activeSkillCooldown: this.activeSkillCooldown,
+      ultCharge: this.ultCharge,
+    });
+    if (!res.triggered) return;
+
+    this.perfectDodgeInternalCd = res.nextInternalCooldown;
+    this.perfectDodgeBuffTimer = res.buffDuration;
+    this.perfectDodgeBannerTimer = 1.9;
+    this.activeSkillCooldown = res.nextActiveSkillCooldown;
+    this.ultCharge = res.nextUltCharge;
+    this.perfectDodgeCount += 1;
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    if (!prefersReducedMotion) {
+      this.perfectDodgeSlowTimer = PERFECT_DODGE_SLOWMO_DURATION;
+    }
+
+    soundEngine.playPerfectDodge();
+    this.spawnShockwave(this.px, this.pz, 0xe0f2fe, 3.6, 0.34);
+    this.spawnParticles(this.px, 0.9, this.pz, 0x38bdf8, 16);
+    this.emitFloatingNumber(this.px, 2.25, this.pz, 0, true, false, 'ice', 'NÉ HOÀN HẢO!');
+    this.syncHudImmediate();
+  }
+
+  public triggerHeroActiveSkill(): void {
+    if (this.phase !== GamePhase.PLAYING || this.activeSkillCooldown > 0) return;
+
+    const skillDef = getHeroActiveSkill(this.baseStats.heroId);
+    this.activeSkillMaxCooldown = skillDef.cooldownSec;
+    this.activeSkillCooldown = skillDef.cooldownSec;
+
+    const atkPower = this.baseStats.attack * this.getCurrentAtkMultiplier();
+    const skillDmg = Math.max(1, Math.round(atkPower * skillDef.damageMult));
+    const liveEnemies = this.enemies.filter((e) => e.spawnTimer <= 0);
+    const nearest = this.findNearestEnemy(this.px, this.pz);
+
+    soundEngine.playHeroActiveSkill(this.baseStats.heroId);
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
+    this.spawnShockwave(this.px, this.pz, skillDef.accentHex, Math.min(5.2, skillDef.radius), 0.34);
+    this.spawnParticles(this.px, 1.0, this.pz, skillDef.accentHex, 18);
+    this.emitFloatingNumber(
+      this.px,
+      2.18,
+      this.pz,
+      0,
+      true,
+      false,
+      undefined,
+      skillDef.shortLabel.toUpperCase()
+    );
+
+    switch (skillDef.effectKind) {
+      case 'moon_fan_mark': {
+        const baseYaw = nearest
+          ? Math.atan2(nearest.x - this.px, nearest.z - this.pz)
+          : this.pFacing;
+        [-0.24, 0, 0.24].forEach((offset) => {
+          this.firePlayerArrow(baseYaw + offset, 0, false, 'ultimate');
+        });
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
+          .slice(0, 4)
+          .forEach((e) => {
+            this.markedEnemyIds.add(e.id);
+            this.spawnShockwave(e.x, e.z, skillDef.accentHex, 1.8, 0.26);
+            this.damageEnemy(e, skillDmg, true, false, false, false, false, 'NGUYỆT ẤN', 'ultimate');
+          });
+        break;
+      }
+      case 'valiant_cadence': {
+        this.alexCadenceTimer = skillDef.durationSec ?? 3.5;
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
+          .forEach((e) => {
+            if (!e.isBoss && !e.isTrainingDummy) {
+              const dx = e.x - this.px;
+              const dz = e.z - this.pz;
+              const d = Math.max(0.1, Math.hypot(dx, dz));
+              e.x = THREE.MathUtils.clamp(e.x + (dx / d) * 1.4, -ARENA_HALF_W + 0.8, ARENA_HALF_W - 0.8);
+              e.z = THREE.MathUtils.clamp(e.z + (dz / d) * 1.4, -ARENA_HALF_D + 0.8, ARENA_HALF_D - 0.8);
+            }
+            this.damageEnemy(e, skillDmg, false, false, false, false, false, 'DŨNG KHÍ', 'ultimate');
+          });
+        break;
+      }
+      case 'crimson_swarm': {
+        const healAmt = Math.round(this.maxHp * 0.08);
+        this.hp = Math.min(this.maxHp, this.hp + healAmt);
+        this.emitFloatingNumber(this.px, 1.85, this.pz, healAmt, false, true);
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
+          .slice(0, 6)
+          .forEach((e) => {
+            this.spawnParticles(e.x, 1.0, e.z, skillDef.accentHex, 8);
+            this.damageEnemy(e, skillDmg, false, false, false, false, false, 'HUYẾT DƠI', 'ultimate');
+          });
+        break;
+      }
+      case 'glacial_spire': {
+        const cx = nearest ? nearest.x : this.px;
+        const cz = nearest ? nearest.z : this.pz - 3.2;
+        this.spawnUltColumn(cx, cz, skillDef.accentHex, 0.42);
+        this.spawnShockwave(cx, cz, skillDef.accentHex, skillDef.radius, 0.36);
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - cx, e.z - cz) <= skillDef.radius)
+          .forEach((e) => {
+            e.chillTimer = Math.max(e.chillTimer, skillDef.durationSec ?? 1.6);
+            this.damageEnemy(e, skillDmg, true, false, true, false, false, 'BĂNG TRỤ', 'ultimate');
+          });
+        break;
+      }
+      case 'ember_nova': {
+        this.spawnShockwave(this.px, this.pz, 0xf97316, skillDef.radius, 0.4);
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
+          .forEach((e) => {
+            e.burnTimer = Math.max(e.burnTimer, 3.2);
+            e.burnDps = Math.max(e.burnDps, atkPower * 0.42);
+            this.damageEnemy(e, skillDmg, false, true, false, false, false, 'HỎA NGỤC', 'ultimate');
+          });
+        break;
+      }
+      case 'thunder_arc': {
+        const targets = liveEnemies
+          .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
+          .slice(0, 4);
+        let prevX = this.px;
+        let prevZ = this.pz;
+        targets.forEach((e) => {
+          this.spawnLightningArc(prevX, 1.3, prevZ, e.x, 1.1, e.z);
+          prevX = e.x;
+          prevZ = e.z;
+          this.damageEnemy(e, skillDmg, true, false, false, true, false, 'LÔI ĐÌNH', 'ultimate');
+        });
+        break;
+      }
+      case 'abyssal_aegis': {
+        const shieldAdd = Math.round(this.maxHp * 0.16);
+        this.shield = Math.min(Math.round(this.maxHp * 0.65), this.shield + shieldAdd);
+        this.emitFloatingNumber(this.px, 1.85, this.pz, shieldAdd, false, true, 'ice', 'KHIÊN HẮC ÁM');
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
+          .forEach((e) => {
+            this.damageEnemy(e, skillDmg, false, false, false, false, false, 'HẮC GAI', 'ultimate');
+          });
+        break;
+      }
+      case 'cudgel_vault': {
+        this.wukongOverdriveTimer = Math.max(this.wukongOverdriveTimer, skillDef.durationSec ?? 3.5);
+        const cx = nearest ? nearest.x : this.px;
+        const cz = nearest ? nearest.z : this.pz - 3.0;
+        this.spawnUltColumn(cx, cz, 0xf59e0b, 0.36);
+        this.spawnShockwave(cx, cz, 0xf59e0b, skillDef.radius, 0.38);
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - cx, e.z - cz) <= skillDef.radius)
+          .forEach((e) => {
+            this.damageEnemy(e, skillDmg, true, false, false, false, false, 'KIM CÔ!', 'ultimate');
+          });
+        break;
+      }
+    }
+
+    this.syncHudImmediate();
   }
 
   public triggerHeroUltimate(): void {
@@ -5423,6 +5933,18 @@ export class GameEngine {
       return;
     }
 
+    let simDt = dt;
+    if (this.perfectDodgeSlowTimer > 0) {
+      this.perfectDodgeSlowTimer = Math.max(0, this.perfectDodgeSlowTimer - dt);
+      simDt = dt * PERFECT_DODGE_SLOWMO_SCALE;
+    }
+    if (this.perfectDodgeBannerTimer > 0) {
+      this.perfectDodgeBannerTimer = Math.max(0, this.perfectDodgeBannerTimer - dt);
+    }
+    if (this.isTrainingMode) {
+      this.trainingClockSec += dt;
+    }
+
     if (this.stageBannerTimer > 0) {
       this.stageBannerTimer -= dt;
       if (this.stageBannerTimer <= 0) {
@@ -5431,28 +5953,28 @@ export class GameEngine {
     }
 
     if (this.comboTimer > 0) {
-      this.comboTimer -= dt;
+      this.comboTimer -= simDt;
       if (this.comboTimer <= 0) {
         this.comboTimer = 0;
         this.comboCount = 0;
       }
     }
 
-    this.updateStarfallWeather(dt);
-    this.updatePlayer(dt);
-    this.updateCoopAllies(dt);
-    this.updatePassivesAndPeriodicSkills(dt);
-    this.updateOrbitOrbs(dt);
-    this.updateCompanions(dt);
-    this.updateEnemies(dt);
-    this.updateProjectiles(dt);
-    this.updateMeteors(dt);
-    this.updateLootOrbs(dt);
-    this.updateParticles(dt);
-    this.updateShockwaves(dt);
-    this.updateUltColumns(dt);
-    this.updateLightning(dt);
-    this.updatePortalAndShrine(dt);
+    this.updateStarfallWeather(simDt);
+    this.updatePlayer(simDt);
+    this.updateCoopAllies(simDt);
+    this.updatePassivesAndPeriodicSkills(simDt);
+    this.updateOrbitOrbs(simDt);
+    this.updateCompanions(simDt);
+    this.updateEnemies(simDt);
+    this.updateProjectiles(simDt);
+    this.updateMeteors(simDt);
+    this.updateLootOrbs(simDt);
+    this.updateParticles(simDt);
+    this.updateShockwaves(simDt);
+    this.updateUltColumns(simDt);
+    this.updateLightning(simDt);
+    this.updatePortalAndShrine(simDt);
     this.updateCamera(dt);
 
     this.hudSyncTimer += dt;
@@ -5463,6 +5985,7 @@ export class GameEngine {
   }
 
   private updateArenaHazards(dt: number): void {
+    if (this.isTrainingMode) return;
     const isCampaignEndgame =
       !this.isTowerMode &&
       !this.isBossRushMode &&
@@ -5481,20 +6004,23 @@ export class GameEngine {
       !this.isCrystalVaultMode &&
       !this.isDragonLairMode &&
       !this.isSkyCitadelMode &&
-      this.currentChapter.id >= 7;
+      (this.currentChapter.id >= 7 ||
+        (this.nightmareTier > 0 && this.nightmareConfig.hazardIntervalMult < 1));
     const isTowerEndgame = this.isTowerMode && this.towerFloor >= 10;
 
     if ((isCampaignEndgame || isTowerEndgame) && this.enemies.length > 0 && this.arenaHazards.length < 2) {
       this.arenaHazardSpawnTimer -= dt;
       if (this.arenaHazardSpawnTimer <= 0) {
-        this.arenaHazardSpawnTimer = this.isTowerMode
+        const baseInterval = this.isTowerMode
           ? Math.max(4.0, 5.6 - Math.floor(this.towerFloor / 10) * 0.35)
-          : Math.max(4.2, 5.8 - (this.currentChapter.id - 7) * 0.25);
+          : Math.max(4.2, 5.8 - Math.max(0, this.currentChapter.id - 7) * 0.25);
+        this.arenaHazardSpawnTimer =
+          baseInterval * (this.nightmareTier > 0 ? this.nightmareConfig.hazardIntervalMult : 1);
 
         const kinds: ArenaHazardType[] = ['solar_eruption', 'frost_zone', 'void_pulse'];
         const kind: ArenaHazardType = this.isTowerMode
           ? kinds[this.towerFloor % kinds.length]
-          : kinds[(this.currentChapter.id - 7) % kinds.length];
+          : kinds[Math.abs(this.currentChapter.id - 7) % kinds.length];
         const meta = ARENA_HAZARD_META[kind];
 
         const angle = Math.random() * Math.PI * 2;
@@ -5585,7 +6111,9 @@ export class GameEngine {
         this.spawnShockwave(hz.x, hz.z, meta.colorHex, hz.radius * 1.15, 0.34);
         this.spawnParticles(hz.x, 0.75, hz.z, meta.colorHex, 20);
         const dist = Math.hypot(this.px - hz.x, this.pz - hz.z);
-        if (dist <= hz.radius + 0.32 && this.invulnTimer <= 0) {
+        if (dist <= hz.radius + 0.32 && this.dashTimer > 0 && this.invulnTimer > 0) {
+          this.tryTriggerPerfectDodge();
+        } else if (dist <= hz.radius + 0.32 && this.invulnTimer <= 0) {
           if (hz.kind === 'solar_eruption') {
             this.damagePlayer(hz.damage, {
               code: 'boss_slam',
@@ -5712,6 +6240,9 @@ export class GameEngine {
     if (this.isChampionshipMode) {
       mult *= this.championshipAtkMult;
     }
+    if (this.perfectDodgeBuffTimer > 0) {
+      mult *= 1 + PERFECT_DODGE_DAMAGE_BONUS;
+    }
     return mult;
   }
 
@@ -5736,7 +6267,15 @@ export class GameEngine {
     if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
     if (this.alexAspdBuffTimer > 0) this.alexAspdBuffTimer -= dt;
     if (this.alexOverdriveTimer > 0) this.alexOverdriveTimer -= dt;
+    if (this.alexCadenceTimer > 0) this.alexCadenceTimer -= dt;
     if (this.wukongOverdriveTimer > 0) this.wukongOverdriveTimer -= dt;
+    if (this.activeSkillCooldown > 0) this.activeSkillCooldown = Math.max(0, this.activeSkillCooldown - dt);
+    if (this.perfectDodgeInternalCd > 0) {
+      this.perfectDodgeInternalCd = Math.max(0, this.perfectDodgeInternalCd - dt);
+    }
+    if (this.perfectDodgeBuffTimer > 0) {
+      this.perfectDodgeBuffTimer = Math.max(0, this.perfectDodgeBuffTimer - dt);
+    }
 
     if (this.dashBufferTimer > 0 && this.dashCooldown <= 0 && this.dashTimer <= 0) {
       this.dashBufferTimer = 0;
@@ -5754,7 +6293,9 @@ export class GameEngine {
       this.spawnParticles(this.px, 0.7, this.pz, this.weaponAccentHex, 10);
     }
 
-    const moveMult = this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.playerSpeedMult : 1.0;
+    const moveMult =
+      (this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.playerSpeedMult : 1.0) *
+      (this.alexCadenceTimer > 0 ? 1.15 : 1.0);
     const frostSlowMult = this.playerFrostSlowTimer > 0 ? 0.72 : 1.0;
     const effectiveMoveSpeed = this.baseStats.moveSpeed * moveMult * frostSlowMult;
 
@@ -5916,6 +6457,7 @@ export class GameEngine {
       (this.activeSkills.aspd_boost ?? 0) * 0.24 +
       (this.activeSkills.power_trio ?? 0) * 0.2 +
       (this.alexAspdBuffTimer > 0 ? 0.15 : 0) +
+      (this.alexCadenceTimer > 0 ? 0.28 : 0) +
       (this.alexOverdriveTimer > 0 ? 0.45 : 0);
     const attackInterval = Math.max(
       0.13,
@@ -6646,8 +7188,9 @@ export class GameEngine {
     proj.x = x;
     proj.y = 0.98;
     proj.z = z;
-    proj.vx = vx;
-    proj.vz = vz;
+    const bulletSpeedScale = this.nightmareTier > 0 ? this.nightmareConfig.bulletSpeedMult : 1.0;
+    proj.vx = vx * bulletSpeedScale;
+    proj.vz = vz * bulletSpeedScale;
     proj.damage = damage;
     proj.life = 4.2;
     proj.mesh.position.set(x, 0.98, z);
@@ -6695,6 +7238,16 @@ export class GameEngine {
           this.spawnParticles(e.x, 1.0, e.z, 0x4ade80, 1);
         }
       }
+      if (e.isTrainingDummy) {
+        e.hp = e.maxHp;
+        if (e.model.weaponOrRing) {
+          e.model.weaponOrRing.rotation.z += dt * 1.1;
+        }
+        e.model.bodyGroup.rotation.z =
+          e.hitFlashTimer > 0 ? Math.sin(this.elapsed * 42) * 0.14 : THREE.MathUtils.damp(e.model.bodyGroup.rotation.z, 0, 12, dt);
+        continue;
+      }
+
       if (e.hp <= 0) {
         this.killEnemy(i);
         continue;
@@ -7619,8 +8172,10 @@ export class GameEngine {
     if (e.isBoss && e.stunTimer && e.stunTimer > 0) {
       mult *= 1.45;
     } else if (e.isBoss && e.punishWindowTimer && e.punishWindowTimer > 0) {
-      const punishBonus =
+      const basePunish =
         e.bossPhase === 3 ? PUNISH_WINDOW_PHASE3_BONUS : PUNISH_WINDOW_DAMAGE_BONUS;
+      const punishBonus =
+        basePunish * (this.nightmareTier > 0 ? this.nightmareConfig.punishBonusMult : 1);
       mult *= 1 + punishBonus;
       soundEngine.playPunishHit();
       if (!resolvedLabel && isCrit) {
@@ -7629,24 +8184,30 @@ export class GameEngine {
     }
 
     const finalDmg = Math.max(1, Math.round(amount * mult));
-    const hasAegisAffix = e.eliteAffix === 'aegis' || Boolean(e.eliteAffixes?.includes('aegis'));
-    if (hasAegisAffix && e.eliteShieldHp && e.eliteShieldHp > 0) {
-      const absorbed = Math.min(e.eliteShieldHp, finalDmg);
-      e.eliteShieldHp -= absorbed;
-      const overflow = finalDmg - absorbed;
-      if (overflow > 0) e.hp -= overflow;
-      if (e.eliteShieldHp <= 0) {
-        soundEngine.playEliteAffixTrigger('aegis');
-        this.spawnShockwave(e.x, e.z, 0x38bdf8, 2.4, 0.28);
-        this.emitFloatingNumber(e.x, 2.1, e.z, 0, true, false, 'ice', 'VỠ HỘ THUẪN!');
-      }
+    if (e.isTrainingDummy) {
+      recordTrainingHit(this.trainingDpsState, this.trainingClockSec, finalDmg, isCrit);
+      e.hp = e.maxHp;
+      e.hitFlashTimer = 0.1;
     } else {
-      e.hp -= finalDmg;
+      const hasAegisAffix = e.eliteAffix === 'aegis' || Boolean(e.eliteAffixes?.includes('aegis'));
+      if (hasAegisAffix && e.eliteShieldHp && e.eliteShieldHp > 0) {
+        const absorbed = Math.min(e.eliteShieldHp, finalDmg);
+        e.eliteShieldHp -= absorbed;
+        const overflow = finalDmg - absorbed;
+        if (overflow > 0) e.hp -= overflow;
+        if (e.eliteShieldHp <= 0) {
+          soundEngine.playEliteAffixTrigger('aegis');
+          this.spawnShockwave(e.x, e.z, 0x38bdf8, 2.4, 0.28);
+          this.emitFloatingNumber(e.x, 2.1, e.z, 0, true, false, 'ice', 'VỠ HỘ THUẪN!');
+        }
+      } else {
+        e.hp -= finalDmg;
+      }
+      e.hitFlashTimer = 0.1;
     }
-    e.hitFlashTimer = 0.1;
 
     // Wave 12: Boss Break-Shield Mechanic (Lazy init & Shatter Stun 3s)
-    if (e.isBoss && e.hp > 0) {
+    if (e.isBoss && e.hp > 0 && !e.isTrainingDummy) {
       if (e.maxBreakShield === undefined) {
         e.maxBreakShield = Math.max(120, Math.round(e.maxHp * 0.42));
         e.breakShield = e.maxBreakShield;
@@ -8591,7 +9152,13 @@ export class GameEngine {
   }
 
   private damagePlayer(rawAmount: number, cause?: DefeatCauseInfo): void {
-    if (this.invulnTimer > 0 || this.phase !== GamePhase.PLAYING) return;
+    if (this.phase !== GamePhase.PLAYING) return;
+    if (this.invulnTimer > 0) {
+      if (this.dashTimer > 0) {
+        this.tryTriggerPerfectDodge();
+      }
+      return;
+    }
     if (cause) {
       this.lastDamageSource = cause;
     } else if (!this.lastDamageSource) {
@@ -9186,11 +9753,11 @@ export class GameEngine {
 
   private syncHudImmediate(): void {
     const stage = this.currentChapter.stages[this.stageIndex];
-    const boss = this.enemies.find((e) => e.isBoss && !e.isArenaRival);
+    const boss = this.enemies.find((e) => e.isBoss && !e.isArenaRival && !e.isTrainingDummy);
     const rival = this.enemies.find((e) => e.isArenaRival);
     const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.artemis;
     const elemDef = this.isElementalTowerMode ? ELEMENTAL_TOWER_MAP[this.elementalTowerId] : null;
-    const isBossFloor = this.isArenaMode
+    const isBossFloor = this.isTrainingMode || this.isArenaMode
       ? false
       : this.isGuildBossMode || this.isCoopRaidMode || this.isWorldBossMode
       ? true
@@ -9257,7 +9824,11 @@ export class GameEngine {
           : this.isTowerMode
           ? this.towerFloor
           : this.currentChapter.stages.length,
-      stageName: this.isChampionshipMode
+      stageName: this.isTrainingMode
+        ? this.trainingTargetMode === 'single'
+          ? 'Sân Tập 3D · Đơn Mục Tiêu (Boss)'
+          : 'Sân Tập 3D · 3 Mục Tiêu (AoE)'
+        : this.isChampionshipMode
         ? `Giải Đấu Quán Quân 3D · Hiệp ${Math.max(1, this.championshipRound)}/${CHAMPIONSHIP_TOTAL_ROUNDS}`
         : this.isPantheonMode
         ? `Viễn Chinh Điện Thần · Tầng ${Math.max(1, this.pantheonStage)}/${PANTHEON_TOTAL_STAGES}`
@@ -9286,7 +9857,9 @@ export class GameEngine {
         : this.isTowerMode
         ? `Tháp Vô Tận · Tầng ${this.towerFloor}`
         : stage.name,
-      chapterName: this.isCrystalVaultMode
+      chapterName: this.isTrainingMode
+        ? 'Sân Tập 3D'
+        : this.isCrystalVaultMode
         ? '💎 Hầm Mỏ Kho Báu'
         : this.isChampionshipMode
         ? '🏆 Giải Đấu Quán Quân'
@@ -9316,6 +9889,8 @@ export class GameEngine {
         ? `⚔️ Săn Boss`
         : this.isTowerMode
         ? `🗼 Tháp Vô Tận`
+        : this.nightmareTier > 0
+        ? `${this.currentChapter.zodiacIcon} ${this.currentChapter.zodiacName} · ${this.nightmareConfig.label}`
         : `${this.currentChapter.zodiacIcon} ${this.currentChapter.zodiacName}`,
       heroName: this.baseStats.heroName,
       enemiesRemaining: this.enemies.length,
@@ -9515,6 +10090,37 @@ export class GameEngine {
             kind: (orb.kind === 'gold' || orb.kind === 'gem' ? orb.kind : 'heal') as 'gold' | 'gem' | 'heal',
           })),
       },
+      // Phase 5 HUD telemetry
+      activeSkillName: getHeroActiveSkill(this.baseStats.heroId).shortLabel,
+      activeSkillCooldownRatio: Math.min(
+        1,
+        this.activeSkillCooldown / Math.max(0.1, this.activeSkillMaxCooldown)
+      ),
+      activeSkillCooldownSec:
+        this.activeSkillCooldown > 0 ? Number(this.activeSkillCooldown.toFixed(1)) : 0,
+      activeSkillReady: this.activeSkillCooldown <= 0.05,
+      perfectDodgeBannerTimer:
+        this.perfectDodgeBannerTimer > 0 ? this.perfectDodgeBannerTimer : undefined,
+      perfectDodgeBuffTimer:
+        this.perfectDodgeBuffTimer > 0 ? Number(this.perfectDodgeBuffTimer.toFixed(1)) : undefined,
+      perfectDodgeCount: this.perfectDodgeCount,
+      nightmareTier: this.nightmareTier > 0 ? this.nightmareTier : undefined,
+      nightmareMutatorLabels:
+        this.nightmareTier > 0 ? this.nightmareConfig.mutators.map((m) => m.name) : undefined,
+      isTrainingMode: this.isTrainingMode || undefined,
+      trainingTargetMode: this.isTrainingMode ? this.trainingTargetMode : undefined,
+      ...(this.isTrainingMode
+        ? (() => {
+            const snap = computeTrainingDpsSnapshot(this.trainingDpsState, this.trainingClockSec);
+            return {
+              trainingDps5s: snap.dps5s,
+              trainingPeakDps: snap.peakDps,
+              trainingTotalDamage: snap.totalDamage,
+              trainingCritRatePct: snap.critRatePct,
+              trainingHits: snap.hits,
+            };
+          })()
+        : {}),
     });
   }
 

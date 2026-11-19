@@ -1278,6 +1278,10 @@ export interface SaveData {
   earlyMilestonesClaimed?: string[];
   earlyForgeProgress?: EarlyForgeProgress;
   playtestMetrics?: PlaytestMetrics;
+  // Phase 5: Nightmare Ascension, Synergy Discovery Codex
+  nightmareClears?: Record<number, number>;
+  selectedNightmareTier?: number;
+  discoveredSynergies?: SkillSynergyId[];
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
@@ -1700,6 +1704,23 @@ export interface HudSnapshot {
   comboTierLabel: string;
   comboDmgBonusPct?: number;
   radarData?: HudRadarSnapshot;
+  // Phase 5: Active Skill E, Perfect Dodge, Nightmare Ascension, 3D Training Grounds
+  activeSkillName?: string;
+  activeSkillCooldownRatio?: number;
+  activeSkillCooldownSec?: number;
+  activeSkillReady?: boolean;
+  perfectDodgeBannerTimer?: number;
+  perfectDodgeBuffTimer?: number;
+  perfectDodgeCount?: number;
+  nightmareTier?: number;
+  nightmareMutatorLabels?: string[];
+  isTrainingMode?: boolean;
+  trainingTargetMode?: TrainingTargetMode;
+  trainingDps5s?: number;
+  trainingPeakDps?: number;
+  trainingTotalDamage?: number;
+  trainingCritRatePct?: number;
+  trainingHits?: number;
 }
 
 export interface EncounterOffer {
@@ -2630,6 +2651,112 @@ export interface Royal3DTitleDef {
   unlockMethodLabel: string;
   unlockGems: number;
 }
+
+// ============================================================================
+// PHASE 5 TYPES: 8 HERO ACTIVE SKILLS, PERFECT DODGE, NIGHTMARE ASCENSION I-V,
+// 3D TRAINING GROUNDS DPS, SYNERGY/BOSS CODEX & SAVE EXPORT/IMPORT
+// ============================================================================
+
+export type HeroActiveSkillEffectKind =
+  | 'moon_fan_mark'
+  | 'valiant_cadence'
+  | 'crimson_swarm'
+  | 'glacial_spire'
+  | 'ember_nova'
+  | 'thunder_arc'
+  | 'abyssal_aegis'
+  | 'cudgel_vault';
+
+export interface HeroActiveSkillDef {
+  heroId: HeroId;
+  name: string;
+  shortLabel: string;
+  desc: string;
+  cooldownSec: number;
+  damageMult: number;
+  effectKind: HeroActiveSkillEffectKind;
+  accentHex: number;
+  accentCss: string;
+  radius: number;
+  durationSec?: number;
+}
+
+export type NightmareMutatorId =
+  | 'blood_frenzy'
+  | 'rapid_barrage'
+  | 'dense_hazards'
+  | 'empowered_elites'
+  | 'double_punish';
+
+export interface NightmareMutatorDef {
+  id: NightmareMutatorId;
+  name: string;
+  shortDesc: string;
+  isSkillReward?: boolean;
+}
+
+export interface NightmareTierConfig {
+  tier: number; // 0 = Normal, 1..5 = Nightmare I..V
+  chapterId: number;
+  label: string;
+  enemyHpMult: number;
+  enemyDmgMult: number;
+  enemySpeedMult: number;
+  bulletSpeedMult: number;
+  hazardIntervalMult: number;
+  extraEliteAffix: boolean;
+  punishBonusMult: number;
+  goldRewardMult: number;
+  starDustRewardMult: number;
+  masteryExpMult: number;
+  mutators: NightmareMutatorDef[];
+}
+
+export type TrainingTargetMode = 'single' | 'aoe';
+
+export interface TrainingDpsSnapshot {
+  dps5s: number;
+  peakDps: number;
+  totalDamage: number;
+  critRatePct: number;
+  hits: number;
+}
+
+export interface SaveTransferPreview {
+  version: string;
+  highestChapterCleared: number;
+  selectedHeroId: HeroId;
+  gold: number;
+  gems: number;
+  gearCount: number;
+  bestTowerFloor: number;
+}
+
+export interface SynergyCodexEntry {
+  id: SkillSynergyId;
+  name: string;
+  buildTag: 'aoe' | 'boss' | 'sustain';
+  groupALabels: string[];
+  groupBLabels: string[];
+  shortEffect: string;
+  accentColor: string;
+  discovered: boolean;
+  pickCount: number;
+}
+
+export interface BossCodexEntry {
+  chapterId: number;
+  chapterName: string;
+  bossName: string;
+  bossKey: string;
+  hasPhaseThree: boolean;
+  punishBonusPct: number;
+  tacticalTip: string;
+  cleared: boolean;
+  attempts: number;
+  highestNightmareTier: number;
+}
+
 
 
 

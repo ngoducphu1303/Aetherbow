@@ -241,6 +241,7 @@ interface GearPanelProps {
   onApplyBuildPreset: (idx: number) => void;
   onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onStartTrainingGrounds?: () => void;
   onOpenWardrobe?: () => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
@@ -264,6 +265,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   onApplyBuildPreset,
   onSaveLoadoutPreset,
   onApplyLoadoutPreset,
+  onStartTrainingGrounds,
   onOpenWardrobe,
   onRotateHero,
   onResetHeroRotation,
@@ -942,11 +944,25 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                 })}
               </div>
 
-              {/* Phase 4: 3-Slot Saved Loadout Presets (Campaign / Boss / Tower) */}
+              {/* Phase 4 & 5: 3-Slot Saved Loadout Presets + 3D Training Grounds Entry */}
               <div className="cel-panel rounded-xl p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-1 text-[11px] font-black text-amber-200 shrink-0 whitespace-nowrap">
-                  <Bookmark className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>Bộ Loadout:</span>
+                <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+                  <div className="flex items-center gap-1 text-[11px] font-black text-amber-200 whitespace-nowrap">
+                    <Bookmark className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>Bộ Loadout:</span>
+                  </div>
+                  {onStartTrainingGrounds && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.08);
+                        onStartTrainingGrounds();
+                      }}
+                      className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-sky-500/15 border border-sky-400/50 text-sky-200 hover:border-sky-300 whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      Sân Tập 3D
+                    </button>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 flex-1">
                   {DEFAULT_LOADOUT_PRESET_SLOTS.map((slotMeta, idx) => {

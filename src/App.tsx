@@ -8,6 +8,7 @@ import { BundlePreviewModal } from './components/BundlePreviewModal';
 import { CelestialFestivalModal } from './components/CelestialFestivalModal';
 import { ChestGachaModal, GachaRevealState } from './components/ChestGachaModal';
 import { ClaimAllSummaryModal } from './components/ClaimAllSummaryModal';
+import { CodexGuideModal } from './components/CodexGuideModal';
 import { CombatPowerBreakdownModal } from './components/CombatPowerBreakdownModal';
 import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
 import { ConstellationModal } from './components/ConstellationModal';
@@ -76,11 +77,13 @@ import {
   isEarlyFeatureUnlocked,
   migrateSaveData,
   normalizeEarlyForgeProgress,
+  normalizeLoadoutPresets,
   recordPlaytestMilestone,
   recordPlaytestRunEnd,
   recordPlaytestRunStart,
   resetPlaytestMetrics,
 } from './data/earlyProgressionData';
+import { getNightmareTierConfig, isNightmareUnlocked } from './data/phase5Data';
 import { HERO_MAP, getHeroStarUpgradeCost } from './data/heroesData';
 import {
   ACHIEVEMENTS_CATALOG,
@@ -353,6 +356,8 @@ import {
   AchievementDefinition,
   AltarBlessingId,
   ArenaOpponent,
+  LoadoutPresetSlotId,
+  TrainingTargetMode,
   ArtifactId,
   AstralSteedId,
   AuctionLotItem,
@@ -630,9 +635,12 @@ export default function App() {
   const [mailModalOpen, setMailModalOpen] = useState<boolean>(false);
   const [sweepResult, setSweepResult] = useState<SweepResultState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [codexGuideOpen, setCodexGuideOpen] = useState<boolean>(false);
   const [earlyRoadmapOpen, setEarlyRoadmapOpen] = useState<boolean>(false);
   const [onboardingOpen, setOnboardingOpen] = useState<boolean>(false);
   const campaignRunStartAtRef = useRef<number>(0);
+  const activeNightmareTierRef = useRef<number>(0);
+  const isTrainingModeRef = useRef<boolean>(false);
   const [activeAchievementToast, setActiveAchievementToast] =
     useState<AchievementDefinition | null>(null);
   const [powerToast, setPowerToast] = useState<PowerToastData | null>(null);
@@ -1324,13 +1332,39 @@ export default function App() {
             : victory
             ? 22 * summary.chapterId
             : 2;
-          const totalGold =
+          const isCampaignRun =
+            !isSkyCitadel &&
+            !isDragonLair &&
+            !isCrystalVault &&
+            !isChampionship &&
+            !isPantheon &&
+            !isAbyssal &&
+            !isGuildWar &&
+            !isBloodMoon &&
+            !isCrystalDefense &&
+            !isWorldBoss &&
+            !isCoopRaid &&
+            !isElementalTower &&
+            !isGuildBoss &&
+            !isDailyRift &&
+            !isBossRush &&
+            !isTower &&
+            !isArena;
+          const activeNightmareTier = isCampaignRun ? activeNightmareTierRef.current : 0;
+          const nightmareCfg =
+            activeNightmareTier > 0
+              ? getNightmareTierConfig(summary.chapterId, activeNightmareTier)
+              : null;
+          const baseTotalGold =
             summary.gold +
             (isDragonLair
               ? 260 + dragonScalesLooted * 30
               : isCrystalVault
               ? 120 + vaultPillarsBroken * 35
               : bonusGold);
+          const totalGold = nightmareCfg
+            ? Math.round(baseTotalGold * nightmareCfg.goldRewardMult)
+            : baseTotalGold;
           const totalGems =
             summary.gems +
             (isDragonLair
@@ -1338,14 +1372,18 @@ export default function App() {
               : isCrystalVault
               ? vaultGemsLooted
               : bonusGems);
-          const starDustGain =
+          const baseStarDustGain =
             (isDailyRift || isBossRush) && sideModeScale
               ? Math.round((summary.starDust ?? 0) * sideModeScale.goldRewardMult) +
                 (victory ? Math.round(sideModeScale.starDustBonus * 0.25) : 0)
               : isTower && towerScale
               ? (summary.starDust ?? 0) + towerScale.starDustReward
               : summary.starDust ?? 0;
-          const runMasteryExp = computeRunMasteryExpGain({
+          const starDustGain = nightmareCfg
+            ? Math.round(baseStarDustGain * nightmareCfg.starDustRewardMult) +
+              (victory ? nightmareCfg.tier * 25 : 0)
+            : baseStarDustGain;
+          const baseRunMasteryExp = computeRunMasteryExpGain({
             chapterId: summary.chapterId,
             stageReached: summary.stageReached,
             victory,
@@ -1354,6 +1392,9 @@ export default function App() {
             isBossRushMode: isBossRush,
             isDailyRiftMode: isDailyRift,
           });
+          const runMasteryExp = nightmareCfg
+            ? Math.round(baseRunMasteryExp * nightmareCfg.masteryExpMult)
+            : baseRunMasteryExp;
           const petEssenceGain = summary.petEssence ?? 0;
           const guildCoinGain = isGuildBoss
             ? Math.min(180, 25 + Math.floor(guildBossDamage / 600))
@@ -2047,11 +2088,28 @@ export default function App() {
               });
             }
 
+            const mergedSynergies = Array.from(
+              new Set([
+                ...(prev.discoveredSynergies ?? []),
+                ...(summary.activeSynergies ?? []),
+              ])
+            );
+            const nextNightmareClears =
+              nightmareCfg && victory
+                ? {
+                    ...(prev.nightmareClears ?? {}),
+                    [summary.chapterId]: Math.max(
+                      prev.nightmareClears?.[summary.chapterId] ?? 0,
+                      nightmareCfg.tier
+                    ),
+                  }
+                : prev.nightmareClears;
             const prevBest = prev.bestStagePerChapter[summary.chapterId] ?? 0;
             const baseNext: SaveData = {
               ...prev,
               gold: prev.gold + totalGold,
               gems: prev.gems + totalGems,
+              starDust: (prev.starDust ?? 0) + starDustGain,
               highestChapterCleared: victory
                 ? Math.max(prev.highestChapterCleared, summary.chapterId)
                 : prev.highestChapterCleared,
@@ -2059,6 +2117,8 @@ export default function App() {
                 ...prev.bestStagePerChapter,
                 [summary.chapterId]: Math.max(prevBest, summary.stageReached),
               },
+              nightmareClears: nextNightmareClears,
+              discoveredSynergies: mergedSynergies,
               gemRebateVault: nextGemVault,
               battlePass: nextBp,
               career: nextCareer,
@@ -2075,6 +2135,7 @@ export default function App() {
                 ? Math.max(1, (performance.now() - campaignRunStartAtRef.current) / 1000)
                 : 0;
             campaignRunStartAtRef.current = 0;
+            activeNightmareTierRef.current = 0;
             const withTelemetry: SaveData = withMastery({
               ...withMilestones,
               playtestMetrics: recordPlaytestRunEnd(withMilestones.playtestMetrics, {
@@ -2086,6 +2147,9 @@ export default function App() {
               }),
             });
             const notes: string[] = [...msSummary.titles];
+            if (nightmareCfg && victory) {
+              notes.push(`Chinh phục ${nightmareCfg.label} · Thưởng x${nightmareCfg.goldRewardMult.toFixed(2)} Vàng`);
+            }
             if (msSummary.rareShardsGained > 0) {
               notes.push(`+${msSummary.rareShardsGained} Mảnh Rèn Hiếm`);
             }
@@ -2174,6 +2238,9 @@ export default function App() {
   // Sync hero visual loadout when hero/gear/runes change
   useEffect(() => {
     engineRef.current?.updateLoadoutAppearance(playerStats, heroVisualCfg);
+    if (isTrainingModeRef.current) {
+      engineRef.current?.refreshTrainingStats(playerStats, heroVisualCfg);
+    }
   }, [playerStats, heroVisualCfg]);
 
   // Sync dynamic 3D Lobby Sky & Royal Celestial Pedestal theme
@@ -2237,14 +2304,76 @@ export default function App() {
     transitionTimerRef.current = window.setTimeout(() => {
       setTransitionState(null);
     }, 560);
+    const activeTier = isNightmareUnlocked(save.highestChapterCleared)
+      ? Math.max(0, Math.min(5, save.selectedNightmareTier ?? 0))
+      : 0;
+    activeNightmareTierRef.current = activeTier;
+    isTrainingModeRef.current = false;
+    if (activeTier > 0) {
+      soundEngine.playNightmareActivate();
+    }
     campaignRunStartAtRef.current = performance.now();
     setSave((prev) => ({
       ...prev,
       playtestMetrics: recordPlaytestRunStart(prev.playtestMetrics),
     }));
     setPhase(GamePhase.PLAYING);
-    engineRef.current?.startChapter(selectedChapterId, playerStats);
-  }, [selectedChapterId, save.highestChapterCleared, playerStats]);
+    engineRef.current?.startChapter(selectedChapterId, playerStats, activeTier);
+  }, [selectedChapterId, save.highestChapterCleared, save.selectedNightmareTier, playerStats]);
+
+  const handleSelectNightmareTier = useCallback((tier: number) => {
+    const clamped = Math.max(0, Math.min(5, Math.floor(tier)));
+    if (clamped > 0) {
+      soundEngine.playNightmareActivate();
+    } else {
+      soundEngine.playUiClick(0.95);
+    }
+    setSave((prev) => ({
+      ...prev,
+      selectedNightmareTier: clamped,
+    }));
+  }, []);
+
+  const handleStartTrainingGrounds = useCallback(() => {
+    soundEngine.unlock();
+    soundEngine.playUiClick(1.08);
+    setEnteredGame(true);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setMailModalOpen(false);
+    setCodexGuideOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    activeNightmareTierRef.current = 0;
+    isTrainingModeRef.current = true;
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startTrainingGrounds(playerStats, 'single');
+  }, [playerStats]);
+
+  const handleTrainingTargetMode = useCallback((mode: TrainingTargetMode) => {
+    soundEngine.playUiClick(1.06);
+    engineRef.current?.setTrainingTargetMode(mode);
+  }, []);
+
+  const handleTrainingReset = useCallback(() => {
+    soundEngine.playTrainingReset();
+    engineRef.current?.resetTrainingMetrics();
+  }, []);
+
+  const handleTrainingExit = useCallback(() => {
+    soundEngine.playUiClick(0.95);
+    isTrainingModeRef.current = false;
+    engineRef.current?.exitTrainingGrounds();
+    setDamages([]);
+    setPhase(GamePhase.TITLE);
+  }, []);
+
+  const handleImportSave = useCallback((nextSave: SaveData) => {
+    setSave(nextSave);
+    setSelectedChapterId(Math.min(CHAPTERS.length, Math.max(1, nextSave.highestChapterCleared + 1)));
+  }, []);
 
   const handleStartTower = useCallback(() => {
     soundEngine.unlock();
@@ -4916,9 +5045,15 @@ export default function App() {
   }, [phase]);
 
   const handleReturnTitle = useCallback(() => {
+    if (isTrainingModeRef.current) {
+      isTrainingModeRef.current = false;
+      engineRef.current?.exitTrainingGrounds();
+    } else {
+      engineRef.current?.setPhase(GamePhase.TITLE);
+    }
+    activeNightmareTierRef.current = 0;
     setPhase(GamePhase.TITLE);
     setDamages([]);
-    engineRef.current?.setPhase(GamePhase.TITLE);
   }, []);
 
   useEffect(() => {
@@ -8984,6 +9119,12 @@ export default function App() {
           onApplyBuildPreset={handleApplyBuildPreset}
           onSaveLoadoutPreset={handleSaveLoadoutPreset}
           onApplyLoadoutPreset={handleApplyLoadoutPreset}
+          onSelectNightmareTier={handleSelectNightmareTier}
+          onStartTrainingGrounds={handleStartTrainingGrounds}
+          onOpenCodexGuide={() => {
+            soundEngine.playUiClick(1.05);
+            setCodexGuideOpen(true);
+          }}
           onOpenChestWithGacha={handleOpenChestWithGacha}
           onCraftEarlyTargetGear={handleCraftEarlyTargetGear}
           onBuyFlashDeal={handleBuyFlashDeal}
@@ -9057,8 +9198,15 @@ export default function App() {
           onToggleMute={handleToggleMute}
           onPause={handlePause}
           onDashClick={() => engineRef.current?.triggerDash()}
+          onActiveSkillClick={() => engineRef.current?.triggerHeroActiveSkill()}
           onUltimateClick={() => engineRef.current?.triggerHeroUltimate()}
           onSelectChampionshipTactic={handleSelectChampionshipTactic}
+          loadoutPresets={normalizeLoadoutPresets(save.loadoutPresets)}
+          activeLoadoutPresetId={save.activeLoadoutPresetId ?? null}
+          onTrainingTargetMode={handleTrainingTargetMode}
+          onTrainingReset={handleTrainingReset}
+          onTrainingLoadoutSwitch={(slotId: LoadoutPresetSlotId) => handleApplyLoadoutPreset(slotId)}
+          onTrainingExit={handleTrainingExit}
         />
       )}
 
@@ -9513,8 +9661,13 @@ export default function App() {
           onResetPlaytestMetrics={() =>
             setSave((prev) => ({ ...prev, playtestMetrics: resetPlaytestMetrics() }))
           }
+          onImportSave={handleImportSave}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && codexGuideOpen && (
+        <CodexGuideModal save={save} onClose={() => setCodexGuideOpen(false)} />
       )}
 
       {phase === GamePhase.TITLE && enteredGame && earlyRoadmapOpen && (

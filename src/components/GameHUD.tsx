@@ -1,5 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowUp, Crown, Feather, Flame, Gem, Heart, Moon, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUp,
+  Crosshair,
+  Crown,
+  Feather,
+  Flame,
+  Gem,
+  Heart,
+  LogOut,
+  Moon,
+  Pause,
+  RotateCcw,
+  Shield,
+  Skull,
+  Sparkles,
+  Trophy,
+  Users,
+  Volume2,
+  VolumeX,
+  Zap,
+} from 'lucide-react';
 import { SKILLS_CATALOG, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
@@ -8,7 +29,10 @@ import {
   FloatingDamage,
   HudSnapshot,
   JoystickState,
+  LoadoutPreset,
+  LoadoutPresetSlotId,
   SkillId,
+  TrainingTargetMode,
 } from '../types/game';
 import { GoldCoinIcon, SoulGemIcon } from './GameIcons';
 
@@ -20,8 +44,15 @@ interface GameHUDProps {
   onToggleMute: () => void;
   onPause: () => void;
   onDashClick: () => void;
+  onActiveSkillClick?: () => void;
   onUltimateClick: () => void;
   onSelectChampionshipTactic?: (tacticId: ChampionshipTacticId) => void;
+  loadoutPresets?: LoadoutPreset[];
+  activeLoadoutPresetId?: LoadoutPresetSlotId | null;
+  onTrainingTargetMode?: (mode: TrainingTargetMode) => void;
+  onTrainingReset?: () => void;
+  onTrainingLoadoutSwitch?: (slotId: LoadoutPresetSlotId) => void;
+  onTrainingExit?: () => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -32,8 +63,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onToggleMute,
   onPause,
   onDashClick,
+  onActiveSkillClick,
   onUltimateClick,
   onSelectChampionshipTactic,
+  loadoutPresets,
+  activeLoadoutPresetId,
+  onTrainingTargetMode,
+  onTrainingReset,
+  onTrainingLoadoutSwitch,
+  onTrainingExit,
 }) => {
   const hpPct = Math.max(0, Math.min(100, (hud.hp / Math.max(1, hud.maxHp)) * 100));
   const shieldPct = Math.max(
@@ -96,6 +134,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const [inspectedSkillId, setInspectedSkillId] = useState<SkillId | null>(null);
   const skillEntries = Object.entries(hud.activeSkills) as Array<[SkillId, number]>;
   const dashReady = hud.dashCooldownRatio <= 0.02;
+  const activeSkillCdRatio = Math.max(0, Math.min(1, hud.activeSkillCooldownRatio ?? 0));
+  const activeSkillReady = hud.activeSkillReady ?? activeSkillCdRatio <= 0.01;
+  const activeSkillCdSec = Math.max(0, hud.activeSkillCooldownSec ?? 0);
   const ultPct = Math.max(0, Math.min(100, Math.floor(hud.ultCharge)));
   const ultReady = ultPct >= 100;
   const inspectedSkill = inspectedSkillId ? SKILLS_CATALOG[inspectedSkillId] : null;
@@ -265,7 +306,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="font-display text-[11px] sm:text-xs font-black text-amber-200 font-mono-nums whitespace-nowrap flex items-center justify-center gap-1.5">
               {hud.portalOpen && <ArrowUp className="w-3.5 h-3.5 text-emerald-300 shrink-0" />}
               <span>
-                {hud.isSkyCitadelMode
+                {hud.isTrainingMode
+                  ? 'Sân Tập 3D · Đo DPS Thực Chiến'
+                  : hud.isSkyCitadelMode
                   ? `Không Chiến Tinh Giới 3D · ${hud.skyCitadelTimeLeft ?? 75}s`
                   : hud.isDragonLairMode
                   ? `Lãnh Địa Rồng Cổ 3D · ${hud.dragonTimeLeft ?? 75}s`
@@ -311,7 +354,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </span>
             </div>
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
-              {hud.isSkyCitadelMode
+              {hud.isTrainingMode
+                ? hud.trainingTargetMode === 'aoe'
+                  ? '3 Mục Tiêu (Đa Mục Tiêu) · Miễn Phí Thử Build'
+                  : '1 Mục Tiêu (Boss Chuẩn) · Miễn Phí Thử Build'
+                : hud.isSkyCitadelMode
                 ? `Đợt Không Chiến ${hud.skyCitadelWave ?? 1}/3 · Điểm ${(hud.skyCitadelScore ?? 0).toLocaleString('vi-VN')} · +${hud.skyCitadelFeathersLooted ?? 0} Lông Vũ`
                 : hud.isDragonLairMode
                 ? `Pha ${hud.dragonPhase ?? 1}/3 · Vảy Rồng +${hud.dragonScalesLooted ?? 0} · ST ${(hud.dragonDamageDealt ?? 0).toLocaleString('vi-VN')}`
@@ -347,7 +394,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       : `${hud.stageName} · `
                   }Còn ${hud.enemiesRemaining} mục tiêu`}
             </div>
-            {!hud.isTowerMode && hud.totalStages > 1 && hud.totalStages <= 15 && (
+            {!hud.isTowerMode && !hud.isTrainingMode && hud.totalStages > 1 && hud.totalStages <= 15 && (
               <div className="mt-1 flex items-center justify-center gap-1" aria-hidden="true">
                 {Array.from({ length: hud.totalStages }).map((_, idx) => {
                   const num = idx + 1;
@@ -403,6 +450,146 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Phase 5: Nightmare Ascension Active Mutator Line (clean unboxed text strip) */}
+        {(hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode && (
+          <div className="mx-auto max-w-xl rounded-xl px-3.5 py-1 bg-[#180912]/95 border border-rose-400/45 text-[11px] font-bold text-rose-200 flex items-center justify-center gap-2 whitespace-nowrap overflow-hidden">
+            <Flame className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span className="truncate font-mono-nums">
+              Ác Mộng {['', 'I', 'II', 'III', 'IV', 'V'][hud.nightmareTier ?? 0] ?? hud.nightmareTier}
+              {hud.nightmareMutatorLabels && hud.nightmareMutatorLabels.length > 0
+                ? ` · ${hud.nightmareMutatorLabels.join(' · ')}`
+                : ''}
+            </span>
+          </div>
+        )}
+
+        {/* Phase 5: Perfect Dodge Tactical Micro-Banner */}
+        {(hud.perfectDodgeBannerTimer ?? 0) > 0 && (
+          <div className="mx-auto rounded-xl px-3.5 py-1 bg-[#071b28]/95 border border-cyan-300/75 text-[11px] font-black text-cyan-100 flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_20px_rgba(34,211,238,0.45)]">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+            <span className="font-mono-nums">
+              NÉ HOÀN HẢO · +20% Sát Thương · -2s Hồi Chiêu E · +12% Tuyệt Kỹ
+            </span>
+          </div>
+        )}
+
+        {/* Phase 5: 3D Training Grounds Live DPS Panel (solid dark obsidian, zero backdrop-blur) */}
+        {hud.isTrainingMode && (
+          <div className="max-w-5xl w-full mx-auto flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 pt-1">
+            <div className="pointer-events-auto rounded-2xl bg-[#070b1a]/95 border border-amber-400/35 px-3.5 py-2.5 w-full sm:w-auto sm:min-w-[280px] shadow-xl">
+              <div className="flex items-center justify-between gap-3 border-b border-amber-400/15 pb-1.5 mb-2">
+                <span className="text-[11px] font-black text-amber-200 flex items-center gap-1.5 whitespace-nowrap">
+                  <Crosshair className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>Đo Sát Thương Thực Chiến (5s)</span>
+                </span>
+                <span className="text-[10px] font-semibold text-slate-400 font-mono-nums whitespace-nowrap">
+                  {hud.trainingHits ?? 0} đòn
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400">DPS 5 giây</div>
+                  <div className="text-base font-black text-amber-300 font-mono-nums">
+                    {(hud.trainingDps5s ?? 0).toLocaleString('vi-VN')}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400">DPS Đỉnh</div>
+                  <div className="text-base font-black text-emerald-300 font-mono-nums">
+                    {(hud.trainingPeakDps ?? 0).toLocaleString('vi-VN')}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400">Tổng ST</div>
+                  <div className="text-sm font-black text-white font-mono-nums">
+                    {(hud.trainingTotalDamage ?? 0).toLocaleString('vi-VN')}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400">Chí Mạng</div>
+                  <div className="text-sm font-black text-sky-300 font-mono-nums">
+                    {hud.trainingCritRatePct ?? 0}%
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pointer-events-auto rounded-2xl bg-[#070b1a]/95 border border-amber-400/30 p-2 flex flex-wrap items-center gap-1.5 shadow-xl">
+              {onTrainingTargetMode && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onTrainingTargetMode('single')}
+                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                      (hud.trainingTargetMode ?? 'single') === 'single'
+                        ? 'bg-amber-400/20 border-amber-300 text-amber-200'
+                        : 'bg-[#0c1328] border-slate-700 text-slate-300 hover:border-amber-400/50'
+                    }`}
+                  >
+                    1 Mục Tiêu (Boss)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onTrainingTargetMode('aoe')}
+                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                      hud.trainingTargetMode === 'aoe'
+                        ? 'bg-amber-400/20 border-amber-300 text-amber-200'
+                        : 'bg-[#0c1328] border-slate-700 text-slate-300 hover:border-amber-400/50'
+                    }`}
+                  >
+                    3 Mục Tiêu (AoE)
+                  </button>
+                </>
+              )}
+
+              {onTrainingLoadoutSwitch && loadoutPresets && loadoutPresets.length > 0 && (
+                <div className="flex items-center gap-1 pl-1 border-l border-slate-700/80">
+                  {loadoutPresets.map((preset) => {
+                    const isActive = activeLoadoutPresetId === preset.slotId;
+                    return (
+                      <button
+                        key={preset.slotId}
+                        type="button"
+                        onClick={() => onTrainingLoadoutSwitch(preset.slotId)}
+                        className={`px-2 py-1.5 rounded-xl text-[10px] font-black border whitespace-nowrap shrink-0 cursor-pointer ${
+                          isActive
+                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                            : 'bg-[#0c1328] border-slate-700 text-slate-300 hover:border-amber-300'
+                        }`}
+                      >
+                        {preset.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {onTrainingReset && (
+                <button
+                  type="button"
+                  onClick={onTrainingReset}
+                  className="px-2.5 py-1.5 rounded-xl text-[11px] font-black bg-[#0c1328] border border-sky-400/40 text-sky-200 hover:border-sky-300 flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  <span>Đặt Lại</span>
+                </button>
+              )}
+
+              {onTrainingExit && (
+                <button
+                  type="button"
+                  onClick={onTrainingExit}
+                  className="px-2.5 py-1.5 rounded-xl text-[11px] font-black bg-rose-500/20 border border-rose-400/55 text-rose-100 hover:bg-rose-500/30 flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5 shrink-0" />
+                  <span>Thoát</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Wave 14: Sky Citadel Aerial Arena 3D Live Progress Strip */}
         {hud.isSkyCitadelMode && (
@@ -1227,8 +1414,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
 
-        {/* Dual Action Medallions: Ultimate (Q) + Dash (Space) */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Action Medallions: Ultimate (Q) + Signature Active Skill (E) + Dash (Space) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <div className="relative shrink-0">
             {ultReady && (
               <>
@@ -1246,7 +1433,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               disabled={!ultReady}
               onClick={onUltimateClick}
               title={hud.ultName}
-              className={`pointer-events-auto relative overflow-hidden w-[62px] h-[62px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
+              className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[66px] sm:h-[66px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
                 ultReady
                   ? 'a2-purple-btn w13-skill-ready-glow cursor-pointer shadow-[0_0_26px_rgba(251,191,36,0.65)] hover:scale-105'
                   : 'hv2-panel text-slate-300 cursor-not-allowed'
@@ -1269,10 +1456,39 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </button>
           </div>
 
+          {onActiveSkillClick && (
+            <button
+              type="button"
+              disabled={!activeSkillReady}
+              onClick={onActiveSkillClick}
+              title={hud.activeSkillName ?? 'Kỹ Năng Chủ Động (E)'}
+              className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[64px] sm:h-[64px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
+                activeSkillReady
+                  ? 'bg-gradient-to-b from-sky-500/95 to-indigo-700/95 border-2 border-cyan-200/85 text-white shadow-[0_0_22px_rgba(56,189,248,0.55)] cursor-pointer hover:scale-105'
+                  : 'hv2-panel text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              {!activeSkillReady && (
+                <span
+                  className="absolute inset-x-0 bottom-0 bg-sky-500/30 pointer-events-none"
+                  style={{ height: `${Math.max(0, 100 - activeSkillCdRatio * 100)}%` }}
+                />
+              )}
+              <Sparkles
+                className={`w-4 h-4 relative z-[1] ${
+                  activeSkillReady ? 'text-cyan-200' : 'text-slate-400'
+                }`}
+              />
+              <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                {activeSkillReady ? 'CHIÊU E' : `${activeSkillCdSec.toFixed(1)}s`}
+              </span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onDashClick}
-            className={`pointer-events-auto relative overflow-hidden w-[62px] h-[62px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
+            className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[66px] sm:h-[66px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
               dashReady
                 ? 'a2-emerald-btn w13-skill-ready-glow shadow-[0_0_22px_rgba(52,211,153,0.55)] hover:scale-105'
                 : 'hv2-panel text-slate-400'

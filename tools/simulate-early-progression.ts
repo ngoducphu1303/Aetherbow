@@ -29,6 +29,13 @@ import {
   rollProgressionGatedGear,
 } from '../src/data/gearData';
 import { HEROES } from '../src/data/heroesData';
+import {
+  PERFECT_DODGE_BUFF_DURATION,
+  PERFECT_DODGE_CD_REDUCTION,
+  PERFECT_DODGE_DAMAGE_BONUS,
+  getHeroActiveSkill,
+  getNightmareTierConfig,
+} from '../src/data/phase5Data';
 import { CHECK_IN_REWARDS, DAILY_QUESTS } from '../src/data/questsData';
 import { rollRuneChestBatch } from '../src/data/runesData';
 import { EnemyKind, GearInstance, GearSlot, Rarity, SaveData } from '../src/types/game';
@@ -1089,6 +1096,99 @@ for (const lv of [1, 2, 5, 8, 10]) {
     })
   );
 }
+
+// ============================================================================
+// PART 13: PHASE 5 · NIGHTMARE ASCENSION TIERS I–V SCALING & BOSS TTK TABLE
+// ============================================================================
+console.log('\n=== 13. PHASE 5 · NIGHTMARE ASCENSION TIERS I–V (CH.4 / CH.7 / CH.12) ===');
+const nightmareBenchmarks: Array<{ chapterId: number; label: string; save: SaveData }> = [
+  { chapterId: 4, label: 'Ch.4 Mid', save: ch4Profile },
+  { chapterId: 7, label: 'Ch.7 Endgame', save: ch7Profile },
+  { chapterId: 12, label: 'Ch.12 Pinnacle', save: ch12Profile },
+];
+
+for (const bm of nightmareBenchmarks) {
+  const baseSyn = simulateChapterBossDepth(bm.chapterId - 1, bm.label, bm.save, true, 120);
+  for (const tier of [0, 1, 2, 3, 4, 5]) {
+    const cfg = getNightmareTierConfig(bm.chapterId, tier);
+    // Double Punish mutator rewards clean dodges with extra ~6% blended TTK shave
+    const punishRelief = cfg.punishBonusMult > 1 ? 0.94 : 1.0;
+    const estTtk = Number((baseSyn.avgBossTtkSec * cfg.enemyHpMult * punishRelief).toFixed(1));
+    console.log(
+      JSON.stringify({
+        chapter: `Ch.${bm.chapterId}`,
+        tier: cfg.label,
+        hpMult: cfg.enemyHpMult,
+        dmgMult: cfg.enemyDmgMult,
+        goldMult: cfg.goldRewardMult,
+        dustMult: cfg.starDustRewardMult,
+        masteryMult: cfg.masteryExpMult,
+        mutators: cfg.mutators.map((m) => m.name),
+        estBossTtkSec: estTtk,
+      })
+    );
+  }
+}
+
+// ============================================================================
+// PART 14: PHASE 5 · 8-HERO ACTIVE SKILL (E) + PERFECT DODGE DPS COMPARISON
+// ============================================================================
+console.log('\n=== 14. PHASE 5 · 8-HERO SIGNATURE ACTIVE SKILL (E) + PERFECT DODGE DPS ===');
+// Standardized Ch.4 Epic build across all 8 heroes to measure pure kit + Active Skill E + Perfect Dodge uplift
+for (const hero of HEROES) {
+  const heroSave: SaveData = {
+    ...ch4Profile,
+    selectedHeroId: hero.id,
+    unlockedHeroes: HEROES.map((h) => h.id),
+  };
+  const st = computePlayerStats(heroSave);
+  const baseDps = computeExpectedDps(st);
+  const skill = getHeroActiveSkill(hero.id);
+
+  // Active Skill E direct burst + hero tactical buff averaged over cooldown (assuming 1 Perfect Dodge every 12s)
+  const dodgeRatePerSec = 1 / 12;
+  const effectiveCd = Math.max(
+    4.5,
+    skill.cooldownSec - PERFECT_DODGE_CD_REDUCTION * (skill.cooldownSec * dodgeRatePerSec)
+  );
+  const skillDirectDps = (st.attack * skill.damageMult * (1 + st.critChance * (st.critDamage - 1))) / effectiveCd;
+  const utilityBuffUptime =
+    skill.effectKind === 'valiant_cadence'
+      ? (skill.durationSec ?? 3.5) / effectiveCd
+      : skill.effectKind === 'moon_fan_mark'
+      ? 3.0 / effectiveCd
+      : skill.effectKind === 'cudgel_vault'
+      ? (skill.durationSec ?? 3.5) / effectiveCd
+      : 0;
+  const utilityDpsMult =
+    skill.effectKind === 'valiant_cadence'
+      ? 1 + 0.28 * utilityBuffUptime
+      : skill.effectKind === 'moon_fan_mark'
+      ? 1 + 0.2 * utilityBuffUptime
+      : skill.effectKind === 'cudgel_vault'
+      ? 1 + 0.14 * utilityBuffUptime
+      : 1;
+  const activeSkillDps = Math.round(baseDps * utilityDpsMult + skillDirectDps);
+
+  // Perfect Dodge +20% counter damage uptime (~2.2s every 12s -> +3.7% sustained + faster Skill E rotation)
+  const dodgeUptime = Math.min(0.45, PERFECT_DODGE_BUFF_DURATION * dodgeRatePerSec);
+  const withPerfectDodgeDps = Math.round(activeSkillDps * (1 + PERFECT_DODGE_DAMAGE_BONUS * dodgeUptime));
+  const upliftPct = Number((((withPerfectDodgeDps - baseDps) / Math.max(1, baseDps)) * 100).toFixed(1));
+
+  console.log(
+    JSON.stringify({
+      heroId: hero.id,
+      heroName: hero.name,
+      activeSkill: skill.name,
+      cooldownSec: skill.cooldownSec,
+      baseDps: Math.round(baseDps),
+      withActiveSkillDps: activeSkillDps,
+      withPerfectDodgeDps,
+      totalUpliftPct: upliftPct,
+    })
+  );
+}
+
 
 
 

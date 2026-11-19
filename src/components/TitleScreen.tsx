@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ChevronUp,
   Compass,
+  Crosshair,
   Crown,
   Dice5,
   Download,
@@ -72,6 +73,7 @@ import {
   isEarlyFeatureUnlocked,
   normalizeLoadoutPresets,
 } from '../data/earlyProgressionData';
+import { getNightmareTierConfig, isNightmareUnlocked } from '../data/phase5Data';
 import { HERO_MAP } from '../data/heroesData';
 import {
   EVENT_BANNERS,
@@ -388,6 +390,9 @@ interface TitleScreenProps {
   onApplyBuildPreset: (idx: number) => void;
   onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onSelectNightmareTier?: (tier: number) => void;
+  onStartTrainingGrounds?: () => void;
+  onOpenCodexGuide?: () => void;
   onOpenChestWithGacha: (
     variant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare',
     count?: 1 | 10
@@ -589,6 +594,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onApplyBuildPreset,
   onSaveLoadoutPreset,
   onApplyLoadoutPreset,
+  onSelectNightmareTier,
+  onStartTrainingGrounds,
+  onOpenCodexGuide,
   onOpenChestWithGacha,
   onBuyFlashDeal,
   onUnlockGrowthFundPremium,
@@ -3301,6 +3309,66 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       );
                     })()}
 
+                    {/* Phase 5: Nightmare Ascension Tiers I–V Selector (unlocks after Ch.3) */}
+                    {isNightmareUnlocked(save.highestChapterCleared) && onSelectNightmareTier && (() => {
+                      const activeTier = Math.max(0, Math.min(5, save.selectedNightmareTier ?? 0));
+                      const nmCfg = getNightmareTierConfig(selectedChapter.id, activeTier);
+                      const tierButtons = [
+                        { tier: 0, label: 'Chuẩn' },
+                        { tier: 1, label: 'I' },
+                        { tier: 2, label: 'II' },
+                        { tier: 3, label: 'III' },
+                        { tier: 4, label: 'IV' },
+                        { tier: 5, label: 'V' },
+                      ];
+                      return (
+                        <div className="mt-1.5 pt-1.5 border-t border-amber-400/15 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-black text-rose-300 flex items-center gap-1 shrink-0 whitespace-nowrap">
+                              <Flame className="w-3 h-3 text-rose-400 shrink-0" />
+                              <span>Ác Mộng:</span>
+                            </span>
+                            <div className="flex items-center gap-1 overflow-x-auto">
+                              {tierButtons.map((btn) => {
+                                const selected = activeTier === btn.tier;
+                                return (
+                                  <button
+                                    key={btn.tier}
+                                    type="button"
+                                    onClick={() => onSelectNightmareTier(btn.tier)}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-black border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                                      selected
+                                        ? btn.tier === 0
+                                          ? 'bg-amber-400/20 border-amber-300 text-amber-200'
+                                          : 'bg-rose-500/25 border-rose-400 text-rose-100'
+                                        : 'bg-[#070b1a] border-slate-700 text-slate-400 hover:text-slate-200 hover:border-rose-400/50'
+                                    }`}
+                                  >
+                                    {btn.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {activeTier > 0 && (
+                            <div className="text-[10px] font-semibold text-slate-300 font-mono-nums truncate">
+                              <span className="text-amber-300">
+                                +{Math.round((nmCfg.goldRewardMult - 1) * 100)}% Vàng · +
+                                {Math.round((nmCfg.starDustRewardMult - 1) * 100)}% Bụi Sao · +
+                                {Math.round((nmCfg.masteryExpMult - 1) * 100)}% Tinh Thông
+                              </span>
+                              {nmCfg.mutators.length > 0 && (
+                                <span className="text-rose-200">
+                                  {' '}
+                                  · Biến số: {nmCfg.mutators.map((m) => m.name).join(' · ')}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <div className="mt-2 flex flex-wrap sm:flex-nowrap items-center gap-2">
                       <button
                         type="button"
@@ -3310,6 +3378,30 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         <Map className="w-4 h-4 text-amber-300 shrink-0" />
                         <span>12 Chương</span>
                       </button>
+
+                      {onStartTrainingGrounds && (
+                        <button
+                          type="button"
+                          onClick={onStartTrainingGrounds}
+                          className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap text-sky-200"
+                          title="Sân Tập 3D đo DPS miễn phí"
+                        >
+                          <Crosshair className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                          <span>Sân Tập 3D</span>
+                        </button>
+                      )}
+
+                      {onOpenCodexGuide && (
+                        <button
+                          type="button"
+                          onClick={onOpenCodexGuide}
+                          className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap text-amber-200"
+                          title="Sổ Tay 9 Cộng Hưởng & 12 Boss Hoàng Đạo"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          <span>Sổ Tay</span>
+                        </button>
+                      )}
 
                       {isChapterCleared && sweepUnlock.unlocked && (
                         <button
@@ -3342,7 +3434,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       >
                         {isChapterUnlocked ? (
                           <>
-                            <span>CHIẾN ĐẤU</span>
+                            <span>
+                              {isNightmareUnlocked(save.highestChapterCleared) &&
+                              (save.selectedNightmareTier ?? 0) > 0
+                                ? `ÁC MỘNG ${['', 'I', 'II', 'III', 'IV', 'V'][save.selectedNightmareTier ?? 0] ?? ''}`
+                                : 'CHIẾN ĐẤU'}
+                            </span>
                             <ChevronRight className="w-5 h-5" />
                           </>
                         ) : (
@@ -4804,6 +4901,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             onApplyBuildPreset={onApplyBuildPreset}
             onSaveLoadoutPreset={onSaveLoadoutPreset}
             onApplyLoadoutPreset={onApplyLoadoutPreset}
+            onStartTrainingGrounds={onStartTrainingGrounds}
             onOpenWardrobe={onOpenWardrobe}
             onRotateHero={onRotateHero}
             onResetHeroRotation={onResetHeroRotation}
