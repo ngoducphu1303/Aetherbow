@@ -321,7 +321,9 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         onClick={() => onUnlockMount(m.id)}
                         className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
                       >
-                        {hasShards ? `${m.unlockShards} Mảnh` : `${m.unlockGems} Ngọc`}
+                        {m.unlockShards === 0 && m.unlockGems === 0
+                          ? 'Nhận Miễn Phí'
+                          : hasShards ? `${m.unlockShards} Mảnh` : `${m.unlockGems} Ngọc`}
                       </button>
                     )}
                   </div>

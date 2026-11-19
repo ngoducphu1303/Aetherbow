@@ -1284,7 +1284,7 @@ export interface SaveData {
   discoveredSynergies?: SkillSynergyId[];
 }
 
-export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
+export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm' | 'azure_dragon';
 
 export interface MountDefinition {
   id: MountId;

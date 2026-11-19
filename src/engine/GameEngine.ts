@@ -454,6 +454,8 @@ export class GameEngine {
   private artemisModel?: THREE.Group;
   private artemisMotion?: ReturnType<typeof createArtemisMotion>;
   private artemisModelLoading = false;
+  private dragonMount?: THREE.Group;
+  private dragonMountLoading = false;
   private heroShadow!: THREE.Mesh;
   private heroShieldMesh!: THREE.Mesh;
   private lobbyHaloGroup: THREE.Group | null = null;
@@ -1216,9 +1218,64 @@ export class GameEngine {
       .finally(() => { this.artemisModelLoading = false; });
   }
 
+  private useDragonMount(): void {
+    const mount = this.hero.mountGroup;
+    if (!mount || this.heroVisualCfg.mountId !== 'azure_dragon' || this.heroVisualCfg.astralSteedId) return;
+
+    if (this.dragonMount) {
+      for (const part of mount.children) part.visible = false;
+      mount.add(this.dragonMount);
+      return;
+    }
+
+    if (this.dragonMountLoading) return;
+    this.dragonMountLoading = true;
+    new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/mounts/dragon.glb`)
+      .then(({ scene }) => {
+        if (this.disposed) {
+          this.releaseObject(scene);
+          return;
+        }
+
+        scene.scale.setScalar(9.2);
+        scene.traverse((object) => {
+          if (object instanceof THREE.Mesh) object.castShadow = true;
+        });
+        const saddle = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 20, 12),
+          new THREE.MeshStandardMaterial({ color: 0x462d27, roughness: 0.78 })
+        );
+        saddle.scale.set(0.34, 0.075, 0.24);
+        saddle.position.set(0, 0.87, -0.36);
+        saddle.castShadow = true;
+
+        this.dragonMount = new THREE.Group();
+        this.dragonMount.name = 'Thanh Long';
+        this.dragonMount.add(scene, saddle);
+        this.useDragonMount();
+      })
+      .catch((error) => console.warn('Could not load the Thanh Long mount.', error))
+      .finally(() => { this.dragonMountLoading = false; });
+  }
+
+  private updateDragonRide(moving: boolean): number {
+    const artemis = this.artemisModel?.parent === this.hero.bodyGroup;
+    const bob = moving
+      ? 0.065 + Math.sin(this.elapsed * 13) * 0.055
+      : Math.sin(this.elapsed * 2.7) * 0.018;
+    if (this.dragonMount) this.dragonMount.position.y = bob;
+    this.hero.bodyGroup.position.z = -0.36;
+    if (!artemis) {
+      this.hero.leftLeg.rotation.set(-0.88, 0, -0.54);
+      this.hero.rightLeg.rotation.set(-0.88, 0, 0.54);
+    }
+    return (artemis ? -0.03 : 0.43) + bob;
+  }
+
   private buildHero(): void {
     if (this.hero) {
       this.artemisModel?.removeFromParent();
+      this.dragonMount?.removeFromParent();
       this.releaseObject(this.hero.root);
       this.releaseObject(this.heroShadow);
     }
@@ -1227,6 +1284,7 @@ export class GameEngine {
     this.hero.root.position.set(this.px, 0, this.pz);
     this.entitiesGroup.add(this.hero.root);
     if (this.baseStats.heroId === 'artemis') this.useArtemisModel();
+    this.useDragonMount();
 
     this.heroShadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.3, 1.3),
@@ -5432,7 +5490,8 @@ export class GameEngine {
         });
       }
 
-      const mountOffset = this.hero.mountGroup ? 0.68 : 0;
+      const onDragon = Boolean(this.dragonMount && this.dragonMount.parent === this.hero.mountGroup);
+      const mountOffset = onDragon ? this.updateDragonRide(false) : this.hero.mountGroup ? 0.68 : 0;
       const poseFloatY = this.lobbyHeroPose === 'astral_float' ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1 : Math.sin(this.elapsed * 2.2) * 0.04;
       const targetBodyTiltX = this.lobbyHeroPose === 'aim_ready' ? 0.1 : this.lobbyHeroPose === 'astral_float' ? -0.08 : 0;
       const targetDrawArmX = this.lobbyHeroPose === 'victory_salute' ? -1.15 : this.lobbyHeroPose === 'aim_ready' ? -0.45 : 0;
@@ -5442,7 +5501,7 @@ export class GameEngine {
         (this.heroVisualCfg.mythicWeaponTier ?? 0) >= 1;
 
       this.hero.root.rotation.y = this.lobbyYaw;
-      this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset + poseFloatY, 6, dt);
+      this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset + (onDragon ? 0 : poseFloatY), 6, dt);
       this.hero.bodyGroup.rotation.x = THREE.MathUtils.damp(this.hero.bodyGroup.rotation.x, targetBodyTiltX, 6, dt);
       this.hero.drawArm.rotation.x = THREE.MathUtils.damp(this.hero.drawArm.rotation.x, targetDrawArmX, 6, dt);
       this.hero.capeTail.rotation.x = 0.22 + Math.sin(this.elapsed * 3.1) * 0.07;
@@ -5499,7 +5558,7 @@ export class GameEngine {
       this.hero.bowGroup.visible = showWeaponInLobby;
       if (this.artemisModel?.parent === this.hero.bodyGroup) {
         this.hero.nockedArrow.visible = showWeaponInLobby;
-        this.artemisMotion?.update(dt, this.elapsed, 0, showWeaponInLobby, 0.35, this.hero.bowGroup);
+        this.artemisMotion?.update(dt, this.elapsed, 0, showWeaponInLobby, 0.35, this.hero.bowGroup, onDragon);
       }
       if (this.lobbyHaloGroup) {
         this.lobbyHaloGroup.visible = true;
@@ -6404,6 +6463,7 @@ export class GameEngine {
 
     const nearest = this.findNearestEnemy(this.px, this.pz);
 
+    const onDragon = Boolean(this.dragonMount && this.dragonMount.parent === this.hero.mountGroup);
     const mountOffset = this.hero.mountGroup ? 0.68 : 0;
 
     if (isMoving) {
@@ -6447,6 +6507,11 @@ export class GameEngine {
         const aimYaw = Math.atan2(nearest.x - this.px, nearest.z - this.pz);
         this.pFacing = this.lerpAngle(this.pFacing, aimYaw, 1 - Math.exp(-22 * dt));
       }
+    }
+
+    if (onDragon) {
+      this.hero.bodyGroup.position.y = this.updateDragonRide(isMoving);
+      this.hero.bodyGroup.rotation.x = isMoving ? 0.07 : 0;
     }
 
     if (this.hero.weaponAuraGroup) {
@@ -6534,7 +6599,7 @@ export class GameEngine {
     if (this.artemisModel?.parent === this.hero.bodyGroup) {
       this.hero.nockedArrow.visible = aimingBow;
       this.artemisMotion?.update(
-        dt, this.elapsed, isMoving ? 1 : 0, aimingBow, drawProgress, this.hero.bowGroup
+        dt, this.elapsed, isMoving && !onDragon ? 1 : 0, aimingBow, drawProgress, this.hero.bowGroup, onDragon
       );
     }
 
@@ -10210,6 +10275,10 @@ export class GameEngine {
       this.releaseObject(this.artemisModel);
       this.artemisModel = undefined;
       this.artemisMotion = undefined;
+    }
+    if (this.dragonMount) {
+      this.releaseObject(this.dragonMount);
+      this.dragonMount = undefined;
     }
     this.releaseObject(this.scene);
     this.contactShadowTex.dispose();

@@ -2466,32 +2466,42 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                             </button>
                           </>
                         ) : (
-                          <>
+                          m.unlockShards === 0 && m.unlockGems === 0 ? (
                             <button
                               type="button"
-                              disabled={mountShards < m.unlockShards}
-                              onClick={() => {
-                                soundEngine.playLevelUp();
-                                onUnlockMount?.(m.id, 'shards');
-                              }}
-                              className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                              onClick={() => onUnlockMount?.(m.id, 'shards')}
+                              className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black cursor-pointer"
                             >
-                              <MountShardIcon className="w-3.5 h-3.5" />
-                              <span>Mở · {m.unlockShards} Mảnh</span>
+                              Nhận Miễn Phí
                             </button>
-                            <button
-                              type="button"
-                              disabled={save.gems < m.unlockGems}
-                              onClick={() => {
-                                soundEngine.playLevelUp();
-                                onUnlockMount?.(m.id, 'gems');
-                              }}
-                              className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
-                            >
-                              <SoulGemIcon className="w-3.5 h-3.5" />
-                              <span>Mở · {m.unlockGems} Ngọc</span>
-                            </button>
-                          </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={mountShards < m.unlockShards}
+                                onClick={() => {
+                                  soundEngine.playLevelUp();
+                                  onUnlockMount?.(m.id, 'shards');
+                                }}
+                                className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                              >
+                                <MountShardIcon className="w-3.5 h-3.5" />
+                                <span>Mở · {m.unlockShards} Mảnh</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={save.gems < m.unlockGems}
+                                onClick={() => {
+                                  soundEngine.playLevelUp();
+                                  onUnlockMount?.(m.id, 'gems');
+                                }}
+                                className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
+                              >
+                                <SoulGemIcon className="w-3.5 h-3.5" />
+                                <span>Mở · {m.unlockGems} Ngọc</span>
+                              </button>
+                            </>
+                          )
                         )}
                       </div>
                     </div>

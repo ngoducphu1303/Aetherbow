@@ -22,6 +22,25 @@ export const MAX_WEAPON_AURA_LEVEL = 10;
 
 export const ZODIAC_MOUNTS: MountDefinition[] = [
   {
+    id: 'azure_dragon',
+    name: 'Thanh Long',
+    badge: 'HIẾM · RỒNG XANH',
+    rarity: 'Hiếm',
+    desc: 'Rồng vảy xanh với sừng ngà. Nhận miễn phí để cưỡi trong sảnh và khi ra trận.',
+    bodyHex: 0x37647f,
+    armorHex: 0xd8b990,
+    maneHex: 0x9c4936,
+    glowHex: 0x93d8ef,
+    baseAtk: 34,
+    baseHp: 220,
+    baseMoveSpeed: 0.1,
+    baseDr: 0.03,
+    atkPerLv: 9,
+    hpPerLv: 55,
+    unlockGems: 0,
+    unlockShards: 0,
+  },
+  {
     id: 'aries_steed',
     name: 'Chiến Mã Bạch Dương',
     badge: 'HIẾM · TỐC ĐỘ',
