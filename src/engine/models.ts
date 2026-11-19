@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WING_MAP } from '../data/wave7Data';
 import { MOUNT_MAP, WEAPON_AURA_MAP } from '../data/wave8Data';
 import { ARTIFACT_MAP } from '../data/wave9Data';
@@ -64,6 +65,7 @@ export interface HeroVisualConfig {
 export interface HeroModelRefs {
   root: THREE.Group;
   bodyGroup: THREE.Group;
+  bodyMeshes: THREE.Mesh[];
   cloak: THREE.Mesh;
   capeTail: THREE.Mesh;
   bowGroup: THREE.Group;
@@ -92,6 +94,59 @@ export interface HeroModelRefs {
   soulRingsGroup?: THREE.Group;
   soulRingNodes?: THREE.Object3D[];
   hitMeshes: THREE.Mesh[];
+}
+
+// Elliptical cross-sections give cloth, stone and helmets a shaped silhouette
+// without changing the pivots used by animation and hit detection.
+function makeSculptedShell(
+  sections: ReadonlyArray<readonly [height: number, width: number, depth: number, centerZ?: number]>,
+  segments = 20,
+  fluting = 0,
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const uv: number[] = [];
+  const indices: number[] = [];
+  sections.forEach(([height, width, depth, centerZ = 0], row) => {
+    for (let column = 0; column <= segments; column++) {
+      const angle = (column % segments) * Math.PI * 2 / segments;
+      const fold = 1 + Math.cos(6 * angle) * fluting;
+      positions.push(Math.sin(angle) * width * fold, height, centerZ + Math.cos(angle) * depth * fold);
+      uv.push(column / segments, row / (sections.length - 1));
+      if (row > 0 && column > 0) {
+        const corner = row * (segments + 1) + column;
+        const below = corner - segments - 1;
+        indices.push(below - 1, below, corner - 1, below, corner, corner - 1);
+      }
+    }
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const normals = geometry.getAttribute('normal');
+  for (let row = 0; row < sections.length; row++) {
+    const first = row * (segments + 1);
+    const last = first + segments;
+    const normal = new THREE.Vector3().fromBufferAttribute(normals, first)
+      .add(new THREE.Vector3().fromBufferAttribute(normals, last)).normalize();
+    normals.setXYZ(first, normal.x, normal.y, normal.z);
+    normals.setXYZ(last, normal.x, normal.y, normal.z);
+  }
+  return geometry;
+}
+
+function makeCrestPlate(width: number, height: number, depth: number): THREE.ExtrudeGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, -height * 0.58);
+  shape.quadraticCurveTo(width * 0.5, -height * 0.35, width * 0.5, height * 0.23);
+  shape.lineTo(width * 0.31, height * 0.48);
+  shape.quadraticCurveTo(0, height * 0.32, -width * 0.31, height * 0.48);
+  shape.lineTo(-width * 0.5, height * 0.23);
+  shape.quadraticCurveTo(-width * 0.5, -height * 0.35, 0, -height * 0.58);
+  return new THREE.ExtrudeGeometry(shape, {
+    depth, bevelThickness: depth * 0.32, bevelSize: depth * 0.3, bevelSegments: 2, curveSegments: 4,
+  });
 }
 
 function makeBeveledWingGeo(w: number, h: number, depth = 0.05): THREE.ExtrudeGeometry {
@@ -176,7 +231,9 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
   });
   const cloakMat = new THREE.MeshStandardMaterial({
     map: cloakTex,
-    roughness: 0.62,
+    bumpMap: cloakTex,
+    bumpScale: 0.014,
+    roughness: 0.72,
     metalness: 0.06,
   });
   const whiteClothMat = new THREE.MeshStandardMaterial({
@@ -255,13 +312,10 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
   bodyGroup.add(leftLeg, rightLeg);
 
   // 2. Layered Skirt + Gold-Trimmed Cloak
-  const skirtPoints = [
-    new THREE.Vector2(0.38, 0.34),
-    new THREE.Vector2(0.32, 0.54),
-    new THREE.Vector2(0.22, 0.72),
-    new THREE.Vector2(0.18, 0.8),
-  ];
-  const cloak = new THREE.Mesh(new THREE.LatheGeometry(skirtPoints, 18), cloakMat);
+  const cloak = new THREE.Mesh(makeSculptedShell([
+    [0.30, 0.40, 0.29, -0.025], [0.36, 0.39, 0.28, -0.02],
+    [0.51, 0.33, 0.24], [0.67, 0.25, 0.19], [0.80, 0.18, 0.15],
+  ], 36, 0.075), cloakMat);
   cloak.castShadow = true;
   cloak.receiveShadow = true;
   bodyGroup.add(cloak);
@@ -283,12 +337,18 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
 
   // 3. Fitted White Bodice + High Capelet Collar + Gold Gem Belt
   const bodice = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.22, 0.18, 0.4, 16),
+    makeSculptedShell([
+      [-0.2, 0.18, 0.14], [-0.10, 0.19, 0.15], [0.02, 0.23, 0.18],
+      [0.13, 0.25, 0.16], [0.2, 0.17, 0.13],
+    ]),
     whiteClothMat
   );
   bodice.position.set(0, 0.92, 0.01);
   bodice.castShadow = true;
-  bodyGroup.add(bodice);
+  const breastplate = new THREE.Mesh(makeCrestPlate(0.33, 0.31, 0.035), silverMat);
+  breastplate.position.set(0, 0.93, 0.156);
+  breastplate.castShadow = true;
+  bodyGroup.add(bodice, breastplate);
   hitMeshes.push(bodice);
 
   const belt = new THREE.Mesh(new THREE.TorusGeometry(0.195, 0.032, 10, 20), goldMat);
@@ -325,7 +385,16 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
   headGroup.position.set(0, 1.54, 0.02);
   bodyGroup.add(headGroup);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 28, 22), faceMat);
+  const headGeometry = new THREE.SphereGeometry(0.42, 32, 24);
+  const facePositions = headGeometry.getAttribute('position');
+  for (let index = 0; index < facePositions.count; index++) {
+    const height = facePositions.getY(index);
+    const jaw = THREE.MathUtils.smoothstep(-height, 0.06, 0.42);
+    facePositions.setX(index, facePositions.getX(index) * (1 - jaw * 0.13));
+    facePositions.setZ(index, facePositions.getZ(index) * (1 - jaw * 0.22));
+  }
+  headGeometry.computeVertexNormals();
+  const head = new THREE.Mesh(headGeometry, faceMat);
   head.rotation.y = -Math.PI / 2;
   head.scale.set(1.03, 0.96, 1.0);
   head.castShadow = true;
@@ -608,6 +677,14 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
   drawArm.add(rSleeve, rCuff, rHand, magicOrb);
   bodyGroup.add(drawArm);
 
+  const bodyMeshes: THREE.Mesh[] = [];
+  for (const part of bodyGroup.children) {
+    if (part === bowGroup) continue;
+    part.traverse((object) => {
+      if (object instanceof THREE.Mesh && object !== magicOrb) bodyMeshes.push(object);
+    });
+  }
+
   // 7. Composite 3D Zodiac Wings attached to Hero's back
   let wingGroup: THREE.Group | undefined;
   let leftWingPivot: THREE.Group | undefined;
@@ -720,6 +797,7 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
   return {
     root,
     bodyGroup,
+    bodyMeshes,
     cloak,
     capeTail,
     bowGroup,
@@ -859,7 +937,10 @@ export function createEnemyModel(
     const steelMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.28, metalness: 0.85 });
     const ivoryMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.35 });
 
-    const legGeo = new THREE.CylinderGeometry(0.095, 0.11, 0.34, 12);
+    const legGeo = makeSculptedShell([
+      [-0.17, 0.074, 0.075], [-0.08, 0.093, 0.09],
+      [0.05, 0.110, 0.095], [0.17, 0.102, 0.10],
+    ], 14);
     const lLeg = new THREE.Mesh(legGeo, skinMat);
     lLeg.position.set(-0.15, 0.17, 0);
     lLeg.castShadow = true;
@@ -867,7 +948,13 @@ export function createEnemyModel(
     rLeg.position.set(0.15, 0.17, 0);
     rLeg.castShadow = true;
 
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.44, 14), tunicMat);
+    const torso = new THREE.Mesh(makeSculptedShell([
+      [-0.22, 0.23, 0.16], [-0.14, 0.27, 0.20], [0.03, 0.24, 0.19],
+      [0.15, 0.30, 0.17], [0.22, 0.15, 0.12],
+    ]), tunicMat);
+    const cuirass = new THREE.Mesh(makeCrestPlate(0.46, 0.35, 0.045), steelMat);
+    cuirass.position.set(0, 0.58, 0.16);
+    bodyGroup.add(cuirass);
     torso.position.y = 0.52;
     torso.castShadow = true;
     hitMeshes.push(torso);
@@ -915,6 +1002,18 @@ export function createEnemyModel(
     maceHead.position.y = 0.34;
     mace.add(handle, maceHead);
 
+    const bootGeometry = new THREE.SphereGeometry(0.12, 14, 10);
+    const greaveGeometry = makeCrestPlate(0.14, 0.16, 0.035);
+    for (const side of [-1, 1]) {
+      const boot = new THREE.Mesh(bootGeometry, tunicMat);
+      boot.scale.set(0.92, 0.56, 1.4);
+      boot.position.set(side * 0.15, 0.072, 0.063);
+      boot.castShadow = true;
+      const greave = new THREE.Mesh(greaveGeometry, steelMat);
+      greave.position.set(side * 0.15, 0.17, 0.08);
+      bodyGroup.add(boot, greave);
+    }
+
     bodyGroup.add(lLeg, rLeg, torso, belt, head, helm, helmRim, mace);
     if (isElite) bodyGroup.scale.setScalar(1.22);
     return { root, bodyGroup, headOrCore: head, weaponOrRing: mace, hitMeshes };
@@ -933,12 +1032,11 @@ export function createEnemyModel(
       roughness: 0.15,
     });
 
-    const robePts = [
-      new THREE.Vector2(0.4, 0.14),
-      new THREE.Vector2(0.3, 0.44),
-      new THREE.Vector2(0.22, 0.76),
-    ];
-    const robe = new THREE.Mesh(new THREE.LatheGeometry(robePts, 16), cloakMat);
+    const robe = new THREE.Mesh(makeSculptedShell([
+      [0.14, 0.41, 0.31, -0.08], [0.25, 0.36, 0.29, -0.055],
+      [0.47, 0.28, 0.22], [0.64, 0.25, 0.17], [0.76, 0.30, 0.18],
+      [0.85, 0.18, 0.13],
+    ], 24, 0.10), cloakMat);
     robe.castShadow = true;
     hitMeshes.push(robe);
 
@@ -947,7 +1045,10 @@ export function createEnemyModel(
     head.castShadow = true;
     hitMeshes.push(head);
 
-    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.65, 14), cloakMat);
+    const hood = new THREE.Mesh(makeSculptedShell([
+      [-0.28, 0.33, 0.31, 0.02], [-0.11, 0.37, 0.34, 0.05],
+      [0.08, 0.31, 0.29], [0.23, 0.19, 0.18, -0.09], [0.38, 0, 0, -0.19],
+    ]), cloakMat);
     hood.position.set(0, 1.28, -0.06);
     hood.rotation.x = -0.3;
     hood.castShadow = true;
@@ -1006,7 +1107,7 @@ export function createEnemyModel(
     rLeg.position.set(0.26, 0.225, 0);
     rLeg.castShadow = true;
 
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.56, 20, 16), stoneMat);
+    const body = new THREE.Mesh(new THREE.DodecahedronGeometry(0.56, 0), stoneMat);
     body.scale.set(1.08, 0.96, 0.92);
     body.position.y = 0.88;
     body.castShadow = true;
@@ -1026,7 +1127,9 @@ export function createEnemyModel(
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 8), coreMat);
       eye.scale.set(1.25, 0.8, 0.6);
       eye.position.set(side * 0.14, 1.46, 0.37);
-      const pauldron = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 12), goldMat);
+      const pauldron = new THREE.Mesh(new THREE.DodecahedronGeometry(0.29, 0), stoneMat);
+      pauldron.scale.set(1.2, 0.88, 1);
+      pauldron.rotation.z = side * 0.35;
       pauldron.position.set(side * 0.62, 1.06, 0);
       pauldron.castShadow = true;
       const fist = new THREE.Mesh(new THREE.DodecahedronGeometry(0.22, 0), stoneMat);
@@ -1058,7 +1161,18 @@ export function createEnemyModel(
       metalness: 0.3,
     });
 
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.34, 20, 16), crystalMat);
+    const shellMat = new THREE.MeshStandardMaterial({
+      color: isDragon ? 0x662231 : 0x154c68,
+      roughness: 0.36, metalness: 0.58,
+    });
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 0), crystalMat);
+    core.scale.set(0.86, 1.2, 0.86);
+    for (const side of [-1, 1]) {
+      const shell = new THREE.Mesh(makeCrestPlate(0.20, 0.46, 0.06), shellMat);
+      shell.position.set(side * 0.22, 1.00, 0.11);
+      shell.rotation.set(0.15, side * 0.68, side * 0.26);
+      bodyGroup.add(shell);
+    }
     core.position.y = 1.02;
     core.castShadow = true;
     hitMeshes.push(core);
@@ -1109,7 +1223,9 @@ export function createEnemyModel(
     .padStart(6, '0')}`;
   const accentHexStr = `#${zodiacAccentHex.toString(16).padStart(6, '0')}`;
   const armorTex = createEngravedArmorTexture(armorHexStr, accentHexStr);
-  const bossArmorMat = new THREE.MeshStandardMaterial({ map: armorTex, roughness: 0.28, metalness: 0.82 });
+  const bossArmorMat = new THREE.MeshStandardMaterial({
+    map: armorTex, bumpMap: armorTex, bumpScale: 0.025, roughness: 0.38, metalness: 0.72,
+  });
   const bossGoldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.2, metalness: 0.92 });
   const bossCoreMat = new THREE.MeshStandardMaterial({
     color: isZodiac ? zodiacAccentHex : isTitan ? 0xef4444 : 0x38bdf8,
@@ -1132,7 +1248,10 @@ export function createEnemyModel(
   cape.rotation.x = 0.14;
   cape.castShadow = true;
 
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.38, 0.84, 14), bossArmorMat);
+  const torso = new THREE.Mesh(makeSculptedShell([
+    [-0.42, 0.32, 0.25], [-0.26, 0.35, 0.28], [-0.08, 0.46, 0.38],
+    [0.17, 0.56, 0.42], [0.31, 0.48, 0.32], [0.42, 0.27, 0.24],
+  ]), bossArmorMat);
   torso.position.y = 0.98;
   torso.castShadow = true;
   hitMeshes.push(torso);
@@ -1142,7 +1261,11 @@ export function createEnemyModel(
   const core = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), bossCoreMat);
   core.position.set(0, 1.0, 0.44);
 
-  const helm = new THREE.Mesh(new THREE.SphereGeometry(0.46, 22, 18), bossArmorMat);
+  const helm = new THREE.Mesh(makeSculptedShell([
+    [-0.39, 0, 0, 0.17], [-0.29, 0.23, 0.29, 0.08],
+    [-0.08, 0.40, 0.36, 0.04], [0.13, 0.43, 0.39],
+    [0.32, 0.35, 0.32, -0.03], [0.46, 0, 0, -0.04],
+  ]), bossArmorMat);
   helm.position.set(0, 1.72, 0.04);
   helm.castShadow = true;
   hitMeshes.push(helm);
@@ -1160,7 +1283,13 @@ export function createEnemyModel(
     pauldron.position.set(side * 0.62, 1.32, 0);
     pauldron.rotation.z = -side * 0.45;
     pauldron.castShadow = true;
-    bodyGroup.add(pauldron);
+    const mantle = new THREE.Mesh(makeCrestPlate(0.43, 0.45, 0.07), bossArmorMat);
+    mantle.position.set(side * 0.67, 1.30, 0.19);
+    mantle.rotation.set(-0.15, side * 0.3, -side * 0.38);
+    const cheekGuard = new THREE.Mesh(makeCrestPlate(0.17, 0.29, 0.055), bossGoldMat);
+    cheekGuard.position.set(side * 0.28, 1.55, 0.34);
+    cheekGuard.rotation.set(0, side * 0.45, -side * 0.24);
+    bodyGroup.add(pauldron, mantle, cheekGuard);
   }
 
   if (isZodiac || isTitan) {
@@ -1204,8 +1333,9 @@ export function createEnemyModel(
   hilt.position.y = -0.32;
   const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 0.14), bossGoldMat);
   crossguard.position.y = -0.08;
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.28, 0.06), bossGoldMat);
-  blade.position.y = 0.58;
+  const blade = new THREE.Mesh(makeCrestPlate(isTitan ? 0.36 : 0.24, 1.24, 0.07), bossGoldMat);
+  blade.rotation.z = Math.PI;
+  blade.position.y = 0.61;
   blade.castShadow = true;
   const bladeGlow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.12, 0.09), bossCoreMat);
   bladeGlow.position.y = 0.56;
@@ -2558,15 +2688,33 @@ export function createAncientDragonBossModel(): EnemyModelRefs {
   neck.position.set(0, 2.68, 0.35);
   neck.rotation.x = 0.28;
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.64, 1.16), scaleMat);
+  const head = new THREE.Mesh(makeSculptedShell([
+    [-0.32, 0, 0, 0.28], [-0.21, 0.34, 0.49, 0.22], [-0.02, 0.43, 0.64, 0.13],
+    [0.17, 0.43, 0.54], [0.31, 0.34, 0.38, -0.14], [0.45, 0, 0, -0.21],
+  ], 16, 0.065), scaleMat);
   head.position.set(0, 3.22, 0.74);
   head.castShadow = true;
   hitMeshes.push(head);
 
-  const fieryJaw = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.2, 0.72), moltenMat);
-  fieryJaw.position.set(0, 2.9, 0.88);
+  const fieryJaw = new THREE.Mesh(makeSculptedShell([
+    [-0.12, 0, 0, 0.08], [-0.07, 0.24, 0.36], [0.02, 0.31, 0.46],
+    [0.12, 0.27, 0.42], [0.15, 0, 0],
+  ], 16), scaleMat);
+  fieryJaw.position.set(0, 2.9, 1.11);
+  const snout = new THREE.Mesh(makeSculptedShell([
+    [-0.12, 0, 0], [-0.08, 0.24, 0.30], [0.03, 0.29, 0.37],
+    [0.14, 0.23, 0.27, -0.07], [0.22, 0, 0, -0.15],
+  ], 18), scaleMat);
+  snout.position.set(0, 3.13, 1.27);
+  snout.castShadow = true;
+  bodyGroup.add(snout);
 
+  const nostrilGeometry = new THREE.SphereGeometry(0.062, 10, 8);
   for (const side of [-1, 1] as const) {
+    const nostril = new THREE.Mesh(nostrilGeometry, moltenMat);
+    nostril.scale.set(1.15, 0.45, 0.64);
+    nostril.position.set(side * 0.132, 3.239, 1.52);
+    bodyGroup.add(nostril);
     const horn = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.92, 6), crystalHornMat);
     horn.position.set(side * 0.36, 3.74, 0.38);
     horn.rotation.x = -0.58;
@@ -2574,14 +2722,34 @@ export function createAncientDragonBossModel(): EnemyModelRefs {
     bodyGroup.add(horn);
 
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), moltenMat);
-    eye.position.set(side * 0.34, 3.3, 1.24);
-    bodyGroup.add(eye);
+    eye.scale.set(1.05, 0.53, 0.75);
+    eye.position.set(side * 0.34, 3.32, 1.15);
+    eye.rotation.z = side * 0.32;
+    const brow = new THREE.Mesh(makeCrestPlate(0.27, 0.21, 0.075), goldArmorMat);
+    brow.position.set(side * 0.33, 3.48, 1.03);
+    brow.rotation.set(-0.45, side * 0.40, side * 0.30);
+    const fang = new THREE.Mesh(new THREE.ConeGeometry(0.063, 0.26, 9), goldArmorMat);
+    fang.rotation.z = Math.PI - side * 0.22;
+    fang.position.set(side * 0.23, 3.05, 1.44);
+    bodyGroup.add(eye, brow, fang);
   }
 
   // 4. Massive Swept Solar-Crimson Dragon Wings
-  const wingGeo = makeBeveledWingGeo(2.35, 1.95, 0.09);
+  const membrane = new THREE.MeshStandardMaterial({
+    color: 0x8f253c, emissive: 0x52121e, emissiveIntensity: 0.4,
+    roughness: 0.56, metalness: 0.15,
+  });
+  const wingShape = new THREE.Shape()
+    .moveTo(0, 0.2).quadraticCurveTo(0.83, 1.66, 2.32, 1.74)
+    .quadraticCurveTo(1.87, 1.40, 1.96, 0.55)
+    .quadraticCurveTo(1.58, 1.01, 1.27, 0.14)
+    .quadraticCurveTo(1.04, 0.52, 0.74, 0)
+    .quadraticCurveTo(0.44, 0.31, 0, 0.2);
+  const wingGeo = new THREE.ExtrudeGeometry(wingShape, {
+    depth: 0.045, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 2, curveSegments: 8,
+  }).center();
   for (const side of [-1, 1] as const) {
-    const wing = new THREE.Mesh(wingGeo, moltenMat);
+    const wing = new THREE.Mesh(wingGeo, membrane);
     wing.position.set(side * 1.65, 2.55, -0.45);
     wing.rotation.y = side > 0 ? -0.35 : Math.PI + 0.35;
     wing.rotation.z = side * 0.14;
@@ -2596,11 +2764,24 @@ export function createAncientDragonBossModel(): EnemyModelRefs {
   }
 
   // 5. Grounded Claws & Armored Tail
+  const pawGeometry = new THREE.SphereGeometry(0.40, 14, 10);
+  const clawGeometry = new THREE.ConeGeometry(0.067, 0.25, 8);
   for (const side of [-1, 1] as const) {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.42, 1.0, 8), scaleMat);
     leg.position.set(side * 0.72, 0.5, 0.25);
     leg.castShadow = true;
-    bodyGroup.add(leg);
+    const paw = new THREE.Mesh(pawGeometry, scaleMat);
+    paw.scale.set(1.05, 0.48, 1.3);
+    paw.position.set(side * 0.72, 0.19, 0.43);
+    paw.castShadow = true;
+    bodyGroup.add(leg, paw);
+    for (let toe = -1; toe <= 1; toe++) {
+      const claw = new THREE.Mesh(clawGeometry, goldArmorMat);
+      claw.rotation.x = Math.PI / 2;
+      claw.rotation.z = toe * -0.17;
+      claw.position.set(side * 0.72 + toe * 0.17, 0.15, 0.88 - Math.abs(toe) * 0.045);
+      bodyGroup.add(claw);
+    }
   }
   const tail = new THREE.Mesh(new THREE.ConeGeometry(0.38, 2.1, 7), scaleMat);
   tail.rotation.x = -Math.PI / 2.2;
@@ -2715,6 +2896,27 @@ export function createCelestialWings3DGroup(
   return { group, leftPivot, rightPivot };
 }
 
+function makeSeraphWingGeometry(): THREE.BufferGeometry {
+  const feathers: THREE.BufferGeometry[] = [];
+  for (let index = 0; index < 6; index++) {
+    const length = 0.82 + (5 - index) * 0.15;
+    const shape = new THREE.Shape()
+      .moveTo(0, 0)
+      .quadraticCurveTo(length * 0.62, 0.51, length, 0.06)
+      .quadraticCurveTo(length * 0.63, -0.16, 0.12, -0.19)
+      .quadraticCurveTo(-0.07, -0.14, 0, 0);
+    const feather = new THREE.ExtrudeGeometry(shape, {
+      depth: 0.055, bevelThickness: 0.018, bevelSize: 0.022, bevelSegments: 2, curveSegments: 5,
+    });
+    feather.rotateZ(0.58 - index * 0.17);
+    feather.translate(index * 0.12, 0.22 - index * 0.15, -index * 0.028);
+    feathers.push(feather);
+  }
+  const wing = mergeGeometries(feathers)!;
+  for (const feather of feathers) feather.dispose();
+  return wing.center();
+}
+
 export function createSkySeraphBossModel(): EnemyModelRefs {
   const root = new THREE.Group();
   const bodyGroup = new THREE.Group();
@@ -2742,17 +2944,31 @@ export function createSkySeraphBossModel(): EnemyModelRefs {
   });
 
   // 1. Armored Celestial Torso & Mantle
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.95, 1.95, 8), armorMat);
+  const torso = new THREE.Mesh(makeSculptedShell([
+    [-0.98, 0.73, 0.5], [-0.79, 0.76, 0.52], [-0.48, 0.62, 0.43],
+    [-0.17, 0.48, 0.35], [0.15, 0.53, 0.43], [0.57, 0.71, 0.54],
+    [0.79, 0.66, 0.49], [0.98, 0.35, 0.32],
+  ], 24, 0.07), armorMat);
   torso.position.set(0, 1.45, 0);
   torso.castShadow = true;
   hitMeshes.push(torso);
 
-  const chestCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.42, 1), azureMat);
-  chestCore.position.set(0, 1.7, 0.52);
+  const cuirass = new THREE.Mesh(makeCrestPlate(0.94, 1.00, 0.12), goldMat);
+  cuirass.position.set(0, 1.76, 0.41);
+  bodyGroup.add(cuirass);
+  const chestCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.37, 0), azureMat);
+  chestCore.scale.set(0.79, 1.20, 0.55);
+  chestCore.position.set(0, 1.76, 0.66);
   hitMeshes.push(chestCore);
 
   // 2. Crowned Visor Head & Radiant Halo
-  const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.46, 0), armorMat);
+  const head = new THREE.Mesh(makeSculptedShell([
+    [-0.43, 0, 0, 0.18], [-0.25, 0.27, 0.31, 0.06], [0, 0.38, 0.37],
+    [0.27, 0.35, 0.32, -0.03], [0.48, 0, 0, -0.09],
+  ]), armorMat);
+  const visor = new THREE.Mesh(makeCrestPlate(0.56, 0.14, 0.045), azureMat);
+  visor.position.set(0, 2.75, 0.32);
+  bodyGroup.add(visor);
   head.position.set(0, 2.72, 0);
   head.castShadow = true;
   hitMeshes.push(head);
@@ -2762,7 +2978,7 @@ export function createSkySeraphBossModel(): EnemyModelRefs {
   crown.position.set(0, 3.05, -0.05);
 
   // 3. Quad Articulated Sky Seraph Wings
-  const wingGeo = makeBeveledWingGeo(2.15, 1.35, 0.07);
+  const wingGeo = makeSeraphWingGeometry();
   for (const side of [-1, 1] as const) {
     const upperWing = new THREE.Mesh(wingGeo, azureMat);
     upperWing.position.set(side * 1.48, 2.25, -0.35);

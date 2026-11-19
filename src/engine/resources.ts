@@ -8,6 +8,7 @@ export function disposeObjectResources(
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
+  const skeletons = new Set<THREE.Skeleton>();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (mesh.geometry) geometries.add(mesh.geometry);
@@ -20,9 +21,11 @@ export function disposeObjectResources(
       }
     }
     if (object instanceof THREE.InstancedMesh) object.dispose();
+    if (object instanceof THREE.SkinnedMesh) skeletons.add(object.skeleton);
   });
   root.removeFromParent();
   geometries.forEach((geometry) => geometry.dispose());
   materials.forEach((material) => material.dispose());
   textures.forEach((texture) => texture.dispose());
+  skeletons.forEach((skeleton) => skeleton.dispose());
 }

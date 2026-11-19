@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObjectResources } from './resources';
+import { createArtemisMotion } from './artemisMotion';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
 import {
@@ -449,6 +451,9 @@ export class GameEngine {
   private reticleMesh!: THREE.Mesh;
 
   private hero!: HeroModelRefs;
+  private artemisModel?: THREE.Group;
+  private artemisMotion?: ReturnType<typeof createArtemisMotion>;
+  private artemisModelLoading = false;
   private heroShadow!: THREE.Mesh;
   private heroShieldMesh!: THREE.Mesh;
   private lobbyHaloGroup: THREE.Group | null = null;
@@ -1173,8 +1178,47 @@ export class GameEngine {
     this.scene.add(this.reticleMesh);
   }
 
+  private useArtemisModel(): void {
+    if (this.artemisModel) {
+      const meshes: THREE.Mesh[] = [];
+      this.artemisModel.traverse((object) => {
+        if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
+          meshes.push(object);
+        }
+      });
+      for (const mesh of this.hero.bodyMeshes) mesh.visible = false;
+      this.hero.hitMeshes = meshes;
+      this.hero.bodyGroup.add(this.artemisModel);
+      return;
+    }
+
+    if (this.artemisModelLoading) return;
+    this.artemisModelLoading = true;
+    new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/heroes/golden-dress-girl.glb`)
+      .then(({ scene }) => {
+        if (this.disposed) {
+          this.releaseObject(scene);
+          return;
+        }
+        const bounds = new THREE.Box3().setFromObject(scene);
+        const scale = 2.05 / (bounds.max.y - bounds.min.y);
+        const center = bounds.getCenter(new THREE.Vector3());
+        scene.scale.setScalar(scale);
+        scene.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+        scene.traverse((object) => {
+          if (object instanceof THREE.Mesh) object.castShadow = true;
+        });
+        this.artemisMotion = createArtemisMotion(scene);
+        this.artemisModel = scene;
+        if (this.baseStats.heroId === 'artemis') this.useArtemisModel();
+      })
+      .catch((error) => console.warn('Could not load the Artemis appearance.', error))
+      .finally(() => { this.artemisModelLoading = false; });
+  }
+
   private buildHero(): void {
     if (this.hero) {
+      this.artemisModel?.removeFromParent();
       this.releaseObject(this.hero.root);
       this.releaseObject(this.heroShadow);
     }
@@ -1182,6 +1226,7 @@ export class GameEngine {
     this.hero = createHeroModel(this.heroVisualCfg);
     this.hero.root.position.set(this.px, 0, this.pz);
     this.entitiesGroup.add(this.hero.root);
+    if (this.baseStats.heroId === 'artemis') this.useArtemisModel();
 
     this.heroShadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.3, 1.3),
@@ -5452,6 +5497,10 @@ export class GameEngine {
       this.hero.magicOrb.visible = !showWeaponInLobby;
       this.hero.magicOrb.rotation.z += dt * 2.8;
       this.hero.bowGroup.visible = showWeaponInLobby;
+      if (this.artemisModel?.parent === this.hero.bodyGroup) {
+        this.hero.nockedArrow.visible = showWeaponInLobby;
+        this.artemisMotion?.update(dt, this.elapsed, 0, showWeaponInLobby, 0.35, this.hero.bowGroup);
+      }
       if (this.lobbyHaloGroup) {
         this.lobbyHaloGroup.visible = true;
         this.lobbyHaloGroup.rotation.y += dt * 0.55;
@@ -6465,12 +6514,14 @@ export class GameEngine {
     );
 
     const canFire = !isMoving || isThor;
-    if (canFire && nearest && nearest.spawnTimer <= 0) {
+    const aimingBow = canFire && nearest !== null && nearest.spawnTimer <= 0;
+    let drawProgress = 0;
+    if (aimingBow) {
       if (this.attackCooldown <= 0) {
         this.attackCooldown = attackInterval;
         this.queuePlayerVolley();
       }
-      const drawProgress = Math.max(0, 1 - this.attackCooldown / attackInterval);
+      drawProgress = Math.max(0, 1 - this.attackCooldown / attackInterval);
       this.hero.nockedArrow.position.z = 0.2 - drawProgress * 0.26;
       this.hero.drawArm.position.z = 0.08 - drawProgress * 0.16;
       this.hero.bowGroup.position.z = 0.46 - drawProgress * 0.04;
@@ -6478,6 +6529,13 @@ export class GameEngine {
       this.hero.nockedArrow.position.z = 0.1;
       this.hero.drawArm.position.z = 0.06;
       this.hero.bowGroup.position.z = 0.46;
+    }
+
+    if (this.artemisModel?.parent === this.hero.bodyGroup) {
+      this.hero.nockedArrow.visible = aimingBow;
+      this.artemisMotion?.update(
+        dt, this.elapsed, isMoving ? 1 : 0, aimingBow, drawProgress, this.hero.bowGroup
+      );
     }
 
     if (this.volleyQueue.length > 0 && nearest) {
@@ -10148,6 +10206,11 @@ export class GameEngine {
     dom.removeEventListener('webglcontextlost', this.onContextLost);
     dom.removeEventListener('webglcontextrestored', this.onContextRestored);
 
+    if (this.artemisModel) {
+      this.releaseObject(this.artemisModel);
+      this.artemisModel = undefined;
+      this.artemisMotion = undefined;
+    }
     this.releaseObject(this.scene);
     this.contactShadowTex.dispose();
     this.keyLight.shadow.dispose();
