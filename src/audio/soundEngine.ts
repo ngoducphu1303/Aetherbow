@@ -1,3 +1,5 @@
+import { computeComboHitPitch } from './audioCurves';
+
 export type BgmMode = 'silent' | 'lobby' | 'combat' | 'boss';
 
 class SoundEngine {
@@ -5,6 +7,7 @@ class SoundEngine {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private bgmGain: GainNode | null = null;
+  private noiseBuffer: AudioBuffer | null = null;
 
   public muted = false;
   private masterVol = 0.85;
@@ -31,6 +34,13 @@ class SoundEngine {
         this.sfxGain.connect(this.masterGain);
         this.bgmGain.connect(this.masterGain);
         this.masterGain.connect(this.ctx.destination);
+        // Pre-bake a 0.25s white noise buffer once for crisp zero-GC transients
+        const bufLen = Math.floor(this.ctx.sampleRate * 0.25);
+        this.noiseBuffer = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+        const channel = this.noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) {
+          channel[i] = Math.random() * 2 - 1;
+        }
         this.applyGains();
       }
     }
@@ -38,6 +48,36 @@ class SoundEngine {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
+  }
+
+  private playNoiseBurst(
+    ctx: AudioContext,
+    dest: AudioNode,
+    startTime: number,
+    duration: number,
+    filterType: BiquadFilterType,
+    startFreq: number,
+    endFreq: number,
+    peakGain: number,
+    q = 1.4
+  ): void {
+    if (!this.noiseBuffer) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = filterType;
+    filter.Q.setValueAtTime(q, startTime);
+    filter.frequency.setValueAtTime(startFreq, startTime);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(80, endFreq), startTime + duration);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, startTime);
+    gain.gain.linearRampToValueAtTime(peakGain, startTime + Math.min(0.012, duration * 0.25));
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(dest);
+    src.start(startTime);
+    src.stop(startTime + duration + 0.01);
   }
 
   private getSfxDest(): AudioNode | null {
@@ -343,34 +383,37 @@ class SoundEngine {
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
 
+    // Taut bowstring release twang + crisp filtered air whoosh
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(340 * pitchShift, now);
-    osc.frequency.exponentialRampToValueAtTime(125 * pitchShift, now + 0.085);
-
-    gain.gain.setValueAtTime(0.11, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-
+    osc.frequency.setValueAtTime(360 * pitchShift, now);
+    osc.frequency.exponentialRampToValueAtTime(132 * pitchShift, now + 0.08);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.088);
     osc.connect(gain);
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.095);
+
+    this.playNoiseBurst(ctx, dest, now, 0.065, 'bandpass', 2400 * pitchShift, 980 * pitchShift, 0.055, 2.2);
   }
 
-  public playHit(isCrit: boolean): void {
+  public playHit(isCrit: boolean, comboCount = 0): void {
     const dest = this.getSfxDest();
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
+    const comboPitch = computeComboHitPitch(comboCount);
 
+    // Impact body thump
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = isCrit ? 'sawtooth' : 'sine';
-    osc.frequency.setValueAtTime(isCrit ? 620 : 210, now);
-    osc.frequency.exponentialRampToValueAtTime(isCrit ? 290 : 85, now + 0.09);
+    osc.frequency.setValueAtTime((isCrit ? 580 : 215) * comboPitch, now);
+    osc.frequency.exponentialRampToValueAtTime((isCrit ? 260 : 88) * comboPitch, now + 0.09);
 
-    gain.gain.setValueAtTime(isCrit ? 0.12 : 0.08, now);
+    gain.gain.setValueAtTime(isCrit ? 0.115 : 0.08, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
 
     osc.connect(gain);
@@ -378,18 +421,21 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.1);
 
+    // Subtle crisp hit transient
+    this.playNoiseBurst(ctx, dest, now, 0.04, 'highpass', isCrit ? 2200 : 1500, 900, isCrit ? 0.055 : 0.03, 1.0);
+
     if (isCrit) {
       const chime = ctx.createOscillator();
       const cGain = ctx.createGain();
-      chime.type = 'sine';
-      chime.frequency.setValueAtTime(980, now);
-      chime.frequency.exponentialRampToValueAtTime(1320, now + 0.11);
-      cGain.gain.setValueAtTime(0.06, now);
-      cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      chime.type = 'triangle';
+      chime.frequency.setValueAtTime(980 * comboPitch, now);
+      chime.frequency.exponentialRampToValueAtTime(1380 * comboPitch, now + 0.11);
+      cGain.gain.setValueAtTime(0.065, now);
+      cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.125);
       chime.connect(cGain);
       cGain.connect(dest);
       chime.start(now);
-      chime.stop(now + 0.13);
+      chime.stop(now + 0.135);
     }
   }
 
@@ -420,40 +466,47 @@ class SoundEngine {
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
 
+    // Airy celestial wind whoosh + upward kinetic sweep
+    this.playNoiseBurst(ctx, dest, now, 0.14, 'bandpass', 720, 2600, 0.075, 1.6);
+
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(190, now);
-    osc.frequency.exponentialRampToValueAtTime(480, now + 0.11);
+    osc.frequency.setValueAtTime(210, now);
+    osc.frequency.exponentialRampToValueAtTime(520, now + 0.11);
 
-    gain.gain.setValueAtTime(0.09, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    gain.gain.setValueAtTime(0.085, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.125);
 
     osc.connect(gain);
     gain.connect(dest);
     osc.start(now);
-    osc.stop(now + 0.13);
+    osc.stop(now + 0.135);
   }
 
-  public playEnemyDefeated(): void {
+  public playEnemyDefeated(isMajor = false): void {
     const dest = this.getSfxDest();
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(260, now);
-    osc.frequency.exponentialRampToValueAtTime(520, now + 0.12);
-
-    gain.gain.setValueAtTime(0.09, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
-
-    osc.connect(gain);
-    gain.connect(dest);
-    osc.start(now);
-    osc.stop(now + 0.14);
+    // Harmonic starlight shatter chord (deeper imperial triad for Elite/Boss)
+    const freqs = isMajor ? [261.63, 392.0, 523.25, 783.99] : [329.63, 493.88, 659.25];
+    freqs.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.025;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.12, t + (isMajor ? 0.22 : 0.12));
+      gain.gain.setValueAtTime(isMajor ? 0.085 : 0.065, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + (isMajor ? 0.24 : 0.14));
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + (isMajor ? 0.26 : 0.15));
+    });
+    this.playNoiseBurst(ctx, dest, now, isMajor ? 0.14 : 0.07, 'highpass', 1800, 620, isMajor ? 0.06 : 0.035, 1.2);
   }
 
   public playPickup(isGem = false): void {

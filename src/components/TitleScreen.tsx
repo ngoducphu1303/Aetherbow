@@ -3,6 +3,7 @@ import {
   Camera,
   ChevronLeft,
   ChevronRight,
+  Compass,
   Download,
   Eye,
   EyeOff,
@@ -1478,7 +1479,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         title="Nhấn để chọn 12 Chương, Ác Mộng, Loadout & Quét Nhanh"
                       >
                         <div className="flex items-center justify-center gap-1.5">
-                          <span className="text-sm shrink-0">{selectedChapter.zodiacIcon}</span>
+                          <Compass className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                           <span className="font-display text-xs sm:text-sm font-black text-white truncate">
                             {selectedChapter.name}
                           </span>
@@ -1861,7 +1862,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">E</kbd>{' '}
                 tung Kỹ Năng Chủ Động 3D, và{' '}
                 <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">Q</kbd>{' '}
-                khi Nộ đầy 100%.
+                khi Nộ đầy 100%. Nhấn{' '}
+                <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">P / Esc</kbd>{' '}
+                để tạm dừng và{' '}
+                <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">M</kbd>{' '}
+                để bật/tắt âm thanh nhanh.
               </p>
               <p>
                 <strong className="text-sky-300">3. Sảnh Tối Giản 360°:</strong> Kéo trực tiếp giữa màn hình Sảnh để xoay ngắm Anh Hùng, dùng nút Chế Độ và Sự Kiện ở thanh đáy để mở nhanh toàn bộ hoạt động.

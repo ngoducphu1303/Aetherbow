@@ -125,6 +125,7 @@ import {
   computeTraumaShake,
   projectFloatingScreenPos,
 } from './combatFeel';
+import { stepGhostRatio } from '../audio/audioCurves';
 
 // Pre-allocated math & color helpers for zero GC in tick
 const _v1 = new THREE.Vector3();
@@ -221,6 +222,8 @@ interface EnemyEntity {
   baseScale?: number;
   hpBarGroup?: THREE.Group;
   hpBarFill?: THREE.Mesh;
+  hpBarGhost?: THREE.Mesh;
+  hpBarGhostRatio?: number;
   hpBarHeight?: number;
 }
 
@@ -510,6 +513,14 @@ export class GameEngine {
   private reticleSnapScale = 1;
   private smoothLookX = 0;
   private smoothLookZ = 0;
+  private dashGhostPool: Array<{
+    active: boolean;
+    life: number;
+    maxLife: number;
+    group: THREE.Group;
+    mat: THREE.MeshBasicMaterial;
+  }> = [];
+  private dashGhostEmitTimer = 0;
   private petModel: THREE.Group | null = null;
   private builtPetId: PetId | null = null;
   private builtPetEvolved = false;
@@ -1145,6 +1156,39 @@ export class GameEngine {
         maxLife: 0.4,
         maxRadius: 3,
         mesh,
+      });
+    }
+
+    // Celestial Dash Afterimage Echo pool (zero per-frame allocations)
+    const ghostCloakGeo = new THREE.CylinderGeometry(0.19, 0.54, 1.52, 10, 1, true);
+    ghostCloakGeo.translate(0, 0.78, 0);
+    const ghostHaloGeo = new THREE.TorusGeometry(0.38, 0.032, 6, 18);
+    const ghostCoreGeo = new THREE.OctahedronGeometry(0.22, 0);
+    for (let i = 0; i < 6; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.56,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const group = new THREE.Group();
+      const cloak = new THREE.Mesh(ghostCloakGeo, mat);
+      const halo = new THREE.Mesh(ghostHaloGeo, mat);
+      halo.position.set(0, 1.38, -0.18);
+      halo.rotation.x = 0.25;
+      const core = new THREE.Mesh(ghostCoreGeo, mat);
+      core.position.set(0, 1.05, 0);
+      group.add(cloak, halo, core);
+      group.visible = false;
+      this.particlesGroup.add(group);
+      this.dashGhostPool.push({
+        active: false,
+        life: 0,
+        maxLife: 0.34,
+        group,
+        mat,
       });
     }
 
@@ -4476,6 +4520,10 @@ export class GameEngine {
       c.active = false;
       c.mesh.visible = false;
     });
+    this.dashGhostPool?.forEach((g) => {
+      g.active = false;
+      g.group.visible = false;
+    });
     this.dangerLanePool.forEach((l) => {
       l.active = false;
       l.mesh.visible = false;
@@ -5266,22 +5314,43 @@ export class GameEngine {
 
     let hpBarGroup: THREE.Group | undefined;
     let hpBarFill: THREE.Mesh | undefined;
+    let hpBarGhost: THREE.Mesh | undefined;
     let hpBarHeight: number | undefined;
     if (!isBoss) {
       hpBarGroup = new THREE.Group();
-      const barW = isElite ? 1.32 : 1.02;
-      const barH = isElite ? 0.14 : 0.115;
-      const bg = new THREE.Mesh(
-        new THREE.PlaneGeometry(barW + 0.08, barH + 0.06),
+      const barW = isElite ? 1.38 : 1.06;
+      const barH = isElite ? 0.145 : 0.12;
+      const border = new THREE.Mesh(
+        new THREE.PlaneGeometry(barW + 0.14, barH + 0.11),
         new THREE.MeshBasicMaterial({
-          color: 0x050814,
+          color: isElite ? 0xfbbf24 : 0xcbd5e1,
           transparent: true,
-          opacity: 0.88,
+          opacity: isElite ? 0.94 : 0.62,
           depthTest: false,
         })
       );
+      const bg = new THREE.Mesh(
+        new THREE.PlaneGeometry(barW + 0.06, barH + 0.05),
+        new THREE.MeshBasicMaterial({
+          color: 0x050814,
+          transparent: true,
+          opacity: 0.92,
+          depthTest: false,
+        })
+      );
+      bg.position.set(0, 0, 0.002);
       const fillGeo = new THREE.PlaneGeometry(barW, barH);
       fillGeo.translate(barW * 0.5, 0, 0);
+      hpBarGhost = new THREE.Mesh(
+        fillGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xfef08a,
+          transparent: true,
+          opacity: 0.9,
+          depthTest: false,
+        })
+      );
+      hpBarGhost.position.set(-barW * 0.5, 0, 0.006);
       hpBarFill = new THREE.Mesh(
         fillGeo,
         new THREE.MeshBasicMaterial({
@@ -5289,10 +5358,12 @@ export class GameEngine {
           depthTest: false,
         })
       );
-      hpBarFill.position.set(-barW * 0.5, 0, 0.01);
+      hpBarFill.position.set(-barW * 0.5, 0, 0.012);
+      border.renderOrder = 19;
       bg.renderOrder = 20;
-      hpBarFill.renderOrder = 21;
-      hpBarGroup.add(bg, hpBarFill);
+      hpBarGhost.renderOrder = 21;
+      hpBarFill.renderOrder = 22;
+      hpBarGroup.add(border, bg, hpBarGhost, hpBarFill);
       hpBarHeight = (kind === EnemyKind.GOLEM ? 2.45 : 2.05) * (isElite ? 1.12 : 1.0);
       hpBarGroup.position.set(x, hpBarHeight, z);
       hpBarGroup.visible = false;
@@ -5352,6 +5423,8 @@ export class GameEngine {
       baseScale,
       hpBarGroup,
       hpBarFill,
+      hpBarGhost,
+      hpBarGhostRatio: 1,
       hpBarHeight,
     });
   }
@@ -6677,6 +6750,7 @@ export class GameEngine {
     this.updateParticles(simDt);
     this.updateShockwaves(simDt);
     this.updateUltColumns(simDt);
+    this.updateDashGhosts(simDt);
     this.updateLightning(simDt);
     this.updatePortalAndShrine(simDt);
     for (let bi = 0; bi < this.arenaBrazierGems.length; bi++) {
@@ -7003,6 +7077,8 @@ export class GameEngine {
       this.cameraFovOffset = Math.max(this.cameraFovOffset, 3.2);
       this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 1.65, 0.22);
       this.spawnParticles(this.px, 0.7, this.pz, this.weaponAccentHex, 12);
+      this.dashGhostEmitTimer = 0;
+      this.spawnDashGhost(this.px, this.pz, this.pFacing, this.weaponAccentHex);
     }
 
     const moveMult =
@@ -7016,6 +7092,11 @@ export class GameEngine {
       const dashSpeed = effectiveMoveSpeed * 2.75;
       this.pvx = this.dashDirX * dashSpeed;
       this.pvz = this.dashDirZ * dashSpeed;
+      this.dashGhostEmitTimer -= dt;
+      if (this.dashGhostEmitTimer <= 0) {
+        this.dashGhostEmitTimer = 0.045;
+        this.spawnDashGhost(this.px, this.pz, this.pFacing, this.weaponAccentHex);
+      }
       if (Math.random() < 0.65) {
         this.spawnParticles(this.px, 0.6, this.pz, this.weaponAccentHex, 1);
       }
@@ -8461,12 +8542,17 @@ export class GameEngine {
       }
 
       if (e.hpBarGroup && e.hpBarFill) {
+        const liveRatio = Math.max(0, Math.min(1, e.hp / Math.max(1, e.maxHp)));
+        e.hpBarGhostRatio = stepGhostRatio(e.hpBarGhostRatio ?? 1, liveRatio, dt);
         const showBar = e.hp > 0 && e.hp < e.maxHp;
         e.hpBarGroup.visible = showBar;
         if (showBar) {
           e.hpBarGroup.position.set(e.x, e.hpBarHeight ?? 2.15, e.z);
           e.hpBarGroup.quaternion.copy(this.camera.quaternion);
-          e.hpBarFill.scale.x = Math.max(0.01, e.hp / Math.max(1, e.maxHp));
+          e.hpBarFill.scale.x = Math.max(0.01, liveRatio);
+          if (e.hpBarGhost) {
+            e.hpBarGhost.scale.x = Math.max(0.01, e.hpBarGhostRatio);
+          }
         }
       }
 
@@ -9177,7 +9263,7 @@ export class GameEngine {
       e.chillTimer = 2.6;
     }
 
-    soundEngine.playHit(isCrit);
+    soundEngine.playHit(isCrit, this.comboCount);
     this.spawnParticles(
       e.x,
       1.05,
@@ -9275,7 +9361,7 @@ export class GameEngine {
       maxCombo: this.maxRunCombo,
     });
     this.markedEnemyIds.delete(e.id);
-    soundEngine.playEnemyDefeated();
+    soundEngine.playEnemyDefeated(e.isBoss || e.isElite);
 
     const burstColor = e.isBoss ? 0xfbbf24 : e.isElite ? 0xc084fc : 0x38bdf8;
     this.spawnParticles(e.x, 1.0, e.z, burstColor, e.isBoss ? 44 : e.isElite ? 28 : 20);
@@ -10470,6 +10556,39 @@ export class GameEngine {
       col.mesh.scale.set(spread, 1 + p * 0.25, spread);
       col.mesh.rotation.y += dt * 4.5;
       (col.mesh.material as THREE.MeshBasicMaterial).opacity = 0.72 * (1 - p);
+    }
+  }
+
+  private spawnDashGhost(x: number, z: number, yaw: number, colorHex: number): void {
+    const slot = this.dashGhostPool?.find((g) => !g.active);
+    if (!slot) return;
+    slot.active = true;
+    slot.maxLife = 0.34;
+    slot.life = 0.34;
+    slot.mat.color.setHex(colorHex);
+    slot.mat.opacity = 0.56;
+    slot.group.position.set(x, 0.04, z);
+    slot.group.rotation.y = yaw;
+    slot.group.scale.set(0.96, 1.04, 0.96);
+    slot.group.visible = true;
+  }
+
+  private updateDashGhosts(dt: number): void {
+    if (!this.dashGhostPool) return;
+    for (const g of this.dashGhostPool) {
+      if (!g.active) continue;
+      g.life -= dt;
+      if (g.life <= 0) {
+        g.active = false;
+        g.group.visible = false;
+        continue;
+      }
+      const p = 1 - g.life / g.maxLife;
+      g.mat.opacity = 0.56 * Math.pow(1 - p, 1.45);
+      const sx = 0.96 + p * 0.24;
+      const sy = 1.04 - p * 0.16;
+      g.group.scale.set(sx, sy, sx);
+      g.group.position.y = 0.04 + p * 0.18;
     }
   }
 
