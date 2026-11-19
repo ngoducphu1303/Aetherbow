@@ -748,6 +748,7 @@ export class GameEngine {
 
   // Game feel & Combo timers
   private hitstopTimer = 0;
+  private hitstopCooldown = 0;
   private shakeIntensity = 0;
   private comboCount = 0;
   private comboTimer = 0;
@@ -892,29 +893,33 @@ export class GameEngine {
   }
 
   private initPools(): void {
-    // Player projectile pool + sleek elemental trail cones
-    const arrowGeo = new THREE.ConeGeometry(0.12, 0.75, 6);
+    // Player projectile pool + faceted celestial lance arrowheads & luminous elemental trails
+    const arrowGeo = new THREE.ConeGeometry(0.13, 0.88, 6);
     arrowGeo.rotateX(Math.PI / 2);
-    const trailGeo = new THREE.ConeGeometry(0.11, 1.15, 5);
+    const trailGeo = new THREE.ConeGeometry(0.125, 1.55, 6);
     trailGeo.rotateX(-Math.PI / 2);
-    trailGeo.translate(0, 0, -0.68);
+    trailGeo.translate(0, 0, -0.88);
+    const arrowCoreRingGeo = new THREE.TorusGeometry(0.11, 0.02, 6, 12);
     for (let i = 0; i < 85; i++) {
       const mat = new THREE.MeshStandardMaterial({
-        color: 0x7dd3fc,
+        color: 0xe0f2fe,
         emissive: 0x38bdf8,
-        emissiveIntensity: 1.5,
-        roughness: 0.2,
+        emissiveIntensity: 1.95,
+        roughness: 0.14,
+        metalness: 0.4,
       });
       const mesh = new THREE.Mesh(arrowGeo, mat);
       const trailMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: 0.56,
+        opacity: 0.68,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
       const trailMesh = new THREE.Mesh(trailGeo, trailMat);
-      mesh.add(trailMesh);
+      const collarRing = new THREE.Mesh(arrowCoreRingGeo, trailMat);
+      collarRing.position.z = -0.14;
+      mesh.add(trailMesh, collarRing);
       mesh.visible = false;
       this.projectilesGroup.add(mesh);
       this.arrowPool.push({
@@ -1106,11 +1111,13 @@ export class GameEngine {
       });
     }
 
-    // 3D Red Danger Lane pool (Boss linear / cross danger corridors)
-    const laneOuterGeo = new THREE.PlaneGeometry(1.32, 16);
+    // 3D Crimson-Gold Danger Lane pool (Boss linear / cross danger corridors with glowing side rails)
+    const laneOuterGeo = new THREE.PlaneGeometry(1.38, 16);
     laneOuterGeo.translate(0, 0, 8);
-    const laneFillGeo = new THREE.PlaneGeometry(1.06, 16);
+    const laneFillGeo = new THREE.PlaneGeometry(1.12, 16);
     laneFillGeo.translate(0, 0, 8);
+    const laneRailGeo = new THREE.PlaneGeometry(0.08, 16);
+    laneRailGeo.translate(0, 0, 8);
     for (let i = 0; i < 8; i++) {
       const group = new THREE.Group();
       const outer = new THREE.Mesh(
@@ -1118,7 +1125,7 @@ export class GameEngine {
         new THREE.MeshBasicMaterial({
           color: 0xfef08a,
           transparent: true,
-          opacity: 0.42,
+          opacity: 0.34,
           side: THREE.DoubleSide,
           depthWrite: false,
           polygonOffset: true,
@@ -1129,12 +1136,32 @@ export class GameEngine {
       outer.rotation.x = -Math.PI / 2;
       outer.renderOrder = 7;
 
+      const railMat = new THREE.MeshBasicMaterial({
+        color: 0xfde047,
+        transparent: true,
+        opacity: 0.86,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        polygonOffset: true,
+        polygonOffsetFactor: -5,
+        polygonOffsetUnits: -5,
+      });
+      const leftRail = new THREE.Mesh(laneRailGeo, railMat);
+      leftRail.rotation.x = -Math.PI / 2;
+      leftRail.position.set(-0.67, 0.02, 0);
+      leftRail.renderOrder = 9;
+      const rightRail = new THREE.Mesh(laneRailGeo, railMat);
+      rightRail.rotation.x = -Math.PI / 2;
+      rightRail.position.set(0.67, 0.02, 0);
+      rightRail.renderOrder = 9;
+
       const fillMesh = new THREE.Mesh(
         laneFillGeo,
         new THREE.MeshBasicMaterial({
           color: 0xf43f5e,
           transparent: true,
-          opacity: 0.68,
+          opacity: 0.72,
           side: THREE.DoubleSide,
           depthWrite: false,
           polygonOffset: true,
@@ -1147,7 +1174,7 @@ export class GameEngine {
       fillMesh.scale.set(0.1, 1, 1);
       fillMesh.renderOrder = 8;
 
-      group.add(outer, fillMesh);
+      group.add(outer, fillMesh, leftRail, rightRail);
       group.visible = false;
       this.particlesGroup.add(group);
       this.dangerLanePool.push({ active: false, mesh: group, fillMesh });
@@ -1692,7 +1719,7 @@ export class GameEngine {
     }
 
     this.scene.background = new THREE.Color(chapter.skyHex);
-    this.scene.fog = new THREE.FogExp2(chapter.fogHex, 0.019);
+    this.scene.fog = new THREE.FogExp2(chapter.fogHex, 0.0175);
     this.keyLight.color.setHex(chapter.keyLightHex);
     this.hemiLight.color.setHex(chapter.hemiSkyHex);
     this.hemiLight.groundColor.setHex(chapter.hemiGroundHex);
@@ -1705,97 +1732,229 @@ export class GameEngine {
     );
     const bumpTex = createStoneBumpTexture(maxAniso);
 
+    // 1. Polished Marble Temple Arena Floor
     const floorGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.6, 1.4, ARENA_HALF_D * 2 + 1.6);
     const floorMat = new THREE.MeshStandardMaterial({
       map: floorTex,
       bumpMap: bumpTex,
-      bumpScale: 0.04,
-      roughness: 0.82,
-      metalness: 0.08,
+      bumpScale: 0.036,
+      roughness: 0.54,
+      metalness: 0.16,
+      envMapIntensity: 1.15,
     });
     this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
     this.floorMesh.position.set(0, -0.7, 0);
     this.floorMesh.receiveShadow = true;
     this.arenaGroup.add(this.floorMesh);
 
-    const terraceMat = new THREE.MeshStandardMaterial({
+    const marbleMat = new THREE.MeshStandardMaterial({
       color: chapter.stoneHex,
-      roughness: 0.88,
-      metalness: 0.05,
+      roughness: 0.44,
+      metalness: 0.22,
+      envMapIntensity: 1.15,
     });
-    const trimMat = new THREE.MeshStandardMaterial({
+    const goldTrimMat = new THREE.MeshStandardMaterial({
+      color: 0xfcd34d,
+      roughness: 0.2,
+      metalness: 0.94,
+      envMapIntensity: 1.55,
+    });
+    const chapterGlowMat = new THREE.MeshStandardMaterial({
       color: chapter.trimHex,
-      roughness: 0.3,
-      metalness: 0.82,
+      emissive: chapter.trimHex,
+      emissiveIntensity: 1.55,
+      roughness: 0.12,
+      metalness: 0.32,
     });
 
-    const outerTerrace = new THREE.Mesh(
-      new THREE.BoxGeometry(ARENA_HALF_W * 2 + 4.8, 1.2, ARENA_HALF_D * 2 + 4.8),
-      terraceMat
+    // 2. Flush Inlaid Celestial Astrolabe Floor Medallion (Center spatial orientation)
+    const compassGroup = new THREE.Group();
+    compassGroup.position.y = 0.018;
+    const outerCompass = new THREE.Mesh(
+      new THREE.RingGeometry(4.45, 4.66, 48),
+      new THREE.MeshBasicMaterial({
+        color: 0xfcd34d,
+        transparent: true,
+        opacity: 0.34,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
     );
-    outerTerrace.position.set(0, -1.25, 0);
+    outerCompass.rotation.x = -Math.PI / 2;
+    const innerCompass = new THREE.Mesh(
+      new THREE.RingGeometry(2.1, 2.26, 36),
+      new THREE.MeshBasicMaterial({
+        color: chapter.trimHex,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+    );
+    innerCompass.rotation.x = -Math.PI / 2;
+    compassGroup.add(outerCompass, innerCompass);
+    const spokeGeo = new THREE.PlaneGeometry(0.11, 8.8);
+    const spokeMat = new THREE.MeshBasicMaterial({
+      color: 0xfcd34d,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    for (let s = 0; s < 4; s++) {
+      const spoke = new THREE.Mesh(spokeGeo, spokeMat);
+      spoke.rotation.x = -Math.PI / 2;
+      spoke.rotation.z = (s * Math.PI) / 4;
+      compassGroup.add(spoke);
+    }
+    this.arenaGroup.add(compassGroup);
+
+    // 3. Stepped Sanctuary Terrace & Double Gilded Cornice Perimeter
+    const outerTerrace = new THREE.Mesh(
+      new THREE.BoxGeometry(ARENA_HALF_W * 2 + 5.4, 1.3, ARENA_HALF_D * 2 + 5.4),
+      marbleMat
+    );
+    outerTerrace.position.set(0, -1.3, 0);
     outerTerrace.receiveShadow = true;
     this.arenaGroup.add(outerTerrace);
 
-    const borderThick = 0.35;
-    const hBorderGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.8, 0.14, borderThick);
-    const vBorderGeo = new THREE.BoxGeometry(borderThick, 0.14, ARENA_HALF_D * 2 + 1.8);
-    const nEdge = new THREE.Mesh(hBorderGeo, trimMat);
-    nEdge.position.set(0, 0.05, -ARENA_HALF_D - 0.75);
-    const sEdge = new THREE.Mesh(hBorderGeo, trimMat);
-    sEdge.position.set(0, 0.05, ARENA_HALF_D + 0.75);
-    const wEdge = new THREE.Mesh(vBorderGeo, trimMat);
-    wEdge.position.set(-ARENA_HALF_W - 0.75, 0.05, 0);
-    const eEdge = new THREE.Mesh(vBorderGeo, trimMat);
-    eEdge.position.set(ARENA_HALF_W + 0.75, 0.05, 0);
+    const borderThick = 0.38;
+    const hBorderGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.9, 0.16, borderThick);
+    const vBorderGeo = new THREE.BoxGeometry(borderThick, 0.16, ARENA_HALF_D * 2 + 1.9);
+    const nEdge = new THREE.Mesh(hBorderGeo, goldTrimMat);
+    nEdge.position.set(0, 0.06, -ARENA_HALF_D - 0.78);
+    const sEdge = new THREE.Mesh(hBorderGeo, goldTrimMat);
+    sEdge.position.set(0, 0.06, ARENA_HALF_D + 0.78);
+    const wEdge = new THREE.Mesh(vBorderGeo, goldTrimMat);
+    wEdge.position.set(-ARENA_HALF_W - 0.78, 0.06, 0);
+    const eEdge = new THREE.Mesh(vBorderGeo, goldTrimMat);
+    eEdge.position.set(ARENA_HALF_W + 0.78, 0.06, 0);
     this.arenaGroup.add(nEdge, sEdge, wEdge, eEdge);
 
-    const postGeo = new THREE.CylinderGeometry(0.32, 0.38, 1.45, 8);
+    // 4. Perimeter Gilded Temple Colonnade (4 batched InstancedMeshes for ultra-low draw calls)
     const postPositions: Array<[number, number]> = [];
     for (let x = -10; x <= 10; x += 2.5) {
-      if (Math.abs(x) > 1.8) postPositions.push([x, -ARENA_HALF_D - 1.1]);
-      postPositions.push([x, ARENA_HALF_D + 1.1]);
+      if (Math.abs(x) > 1.8) postPositions.push([x, -ARENA_HALF_D - 1.18]);
+      postPositions.push([x, ARENA_HALF_D + 1.18]);
     }
     for (let z = -10; z <= 10; z += 2.5) {
-      postPositions.push([-ARENA_HALF_W - 1.1, z]);
-      postPositions.push([ARENA_HALF_W + 1.1, z]);
+      postPositions.push([-ARENA_HALF_W - 1.18, z]);
+      postPositions.push([ARENA_HALF_W + 1.18, z]);
     }
-    const postsInstanced = new THREE.InstancedMesh(
-      postGeo,
-      terraceMat,
-      postPositions.length
+    const postCount = postPositions.length;
+    const plinthInst = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.46, 0.54, 0.34, 8),
+      marbleMat,
+      postCount
     );
-    postsInstanced.castShadow = !this.isSoftwareGl;
-    postsInstanced.receiveShadow = true;
-    postPositions.forEach(([px, pz], idx) => {
-      _dummy.position.set(px, 0.72, pz);
-      _dummy.scale.set(1, 0.9 + (idx % 3) * 0.08, 1);
-      _dummy.rotation.y = idx * 0.4;
-      _dummy.updateMatrix();
-      postsInstanced.setMatrixAt(idx, _dummy.matrix);
-    });
-    postsInstanced.instanceMatrix.needsUpdate = true;
-    postsInstanced.computeBoundingSphere();
-    this.arenaGroup.add(postsInstanced);
+    const shaftInst = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.28, 0.34, 1.55, 10),
+      marbleMat,
+      postCount
+    );
+    const collarInst = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.42, 0.36, 0.14, 8),
+      goldTrimMat,
+      postCount
+    );
+    const finialInst = new THREE.InstancedMesh(
+      new THREE.OctahedronGeometry(0.16, 0),
+      chapterGlowMat,
+      postCount
+    );
+    shaftInst.castShadow = !this.isSoftwareGl;
+    shaftInst.receiveShadow = true;
+    plinthInst.receiveShadow = true;
 
-    const monolithGeo = new THREE.CylinderGeometry(1.1, 2.2, 16, 6);
-    const monoliths = new THREE.InstancedMesh(monolithGeo, terraceMat, 22);
+    postPositions.forEach(([px, pz], idx) => {
+      const hScale = 0.94 + (idx % 3) * 0.07;
+      _dummy.rotation.set(0, idx * 0.35, 0);
+
+      _dummy.position.set(px, 0.17, pz);
+      _dummy.scale.set(1, 1, 1);
+      _dummy.updateMatrix();
+      plinthInst.setMatrixAt(idx, _dummy.matrix);
+
+      _dummy.position.set(px, 0.34 + 0.775 * hScale, pz);
+      _dummy.scale.set(1, hScale, 1);
+      _dummy.updateMatrix();
+      shaftInst.setMatrixAt(idx, _dummy.matrix);
+
+      _dummy.position.set(px, 0.34 + 1.56 * hScale, pz);
+      _dummy.scale.set(1, 1, 1);
+      _dummy.updateMatrix();
+      collarInst.setMatrixAt(idx, _dummy.matrix);
+
+      _dummy.position.set(px, 0.62 + 1.56 * hScale, pz);
+      _dummy.scale.set(0.85, 1.35, 0.85);
+      _dummy.updateMatrix();
+      finialInst.setMatrixAt(idx, _dummy.matrix);
+    });
+    for (const inst of [plinthInst, shaftInst, collarInst, finialInst]) {
+      inst.instanceMatrix.needsUpdate = true;
+      inst.computeBoundingSphere();
+      this.arenaGroup.add(inst);
+    }
+
+    // 5. Four Corner Celestial Crystal Braziers
+    const cornerCoords: Array<[number, number]> = [
+      [-ARENA_HALF_W - 1.25, -ARENA_HALF_D - 1.25],
+      [ARENA_HALF_W + 1.25, -ARENA_HALF_D - 1.25],
+      [-ARENA_HALF_W - 1.25, ARENA_HALF_D + 1.25],
+      [ARENA_HALF_W + 1.25, ARENA_HALF_D + 1.25],
+    ];
+    const brazierBaseGeo = new THREE.CylinderGeometry(0.65, 0.85, 0.7, 8);
+    const brazierBowlGeo = new THREE.TorusGeometry(0.56, 0.08, 8, 16);
+    const brazierGemGeo = new THREE.OctahedronGeometry(0.42, 0);
+    for (const [cx, cz] of cornerCoords) {
+      const bBase = new THREE.Mesh(brazierBaseGeo, marbleMat);
+      bBase.position.set(cx, 0.35, cz);
+      const bRing = new THREE.Mesh(brazierBowlGeo, goldTrimMat);
+      bRing.rotation.x = Math.PI / 2;
+      bRing.position.set(cx, 0.82, cz);
+      const bGem = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
+      bGem.scale.set(0.85, 1.45, 0.85);
+      bGem.position.set(cx, 1.45, cz);
+      this.arenaGroup.add(bBase, bRing, bGem);
+    }
+
+    // 6. Distant Obsidian Temple Spires & Crown Crystals (Horizon Silhouette)
+    const spireGeo = new THREE.CylinderGeometry(0.95, 2.05, 16, 6);
+    const spireTipGeo = new THREE.OctahedronGeometry(1.1, 0);
+    const monoliths = new THREE.InstancedMesh(spireGeo, marbleMat, 22);
+    const monolithTips = new THREE.InstancedMesh(spireTipGeo, chapterGlowMat, 22);
     for (let i = 0; i < 22; i++) {
       const ang = (i / 22) * Math.PI * 2;
-      const dist = 23 + (i % 4) * 5.5;
-      _dummy.position.set(
-        Math.cos(ang) * dist,
-        -6 + (i % 3) * 2.5,
-        Math.sin(ang) * dist
-      );
-      _dummy.scale.set(0.8 + (i % 3) * 0.35, 0.75 + (i % 4) * 0.28, 0.8 + (i % 2) * 0.3);
-      _dummy.rotation.set(0, ang, (i % 2 === 0 ? 1 : -1) * 0.04);
+      const dist = 24 + (i % 4) * 5.5;
+      const baseY = -5.5 + (i % 3) * 2.4;
+      const sy = 0.78 + (i % 4) * 0.28;
+      _dummy.position.set(Math.cos(ang) * dist, baseY, Math.sin(ang) * dist);
+      _dummy.scale.set(0.8 + (i % 3) * 0.3, sy, 0.8 + (i % 2) * 0.28);
+      _dummy.rotation.set(0, ang, (i % 2 === 0 ? 1 : -1) * 0.03);
       _dummy.updateMatrix();
       monoliths.setMatrixAt(i, _dummy.matrix);
+
+      _dummy.position.set(Math.cos(ang) * dist, baseY + 8.3 * sy, Math.sin(ang) * dist);
+      _dummy.scale.set(0.7, 1.35, 0.7);
+      _dummy.rotation.set(0, ang, 0);
+      _dummy.updateMatrix();
+      monolithTips.setMatrixAt(i, _dummy.matrix);
     }
     monoliths.instanceMatrix.needsUpdate = true;
     monoliths.computeBoundingSphere();
-    this.arenaGroup.add(monoliths);
+    monolithTips.instanceMatrix.needsUpdate = true;
+    monolithTips.computeBoundingSphere();
+    this.arenaGroup.add(monoliths, monolithTips);
 
     this.portal = createPortalModel(chapter.trimHex);
     this.portal.group.position.set(0, 0, -ARENA_HALF_D - 0.65);
@@ -6225,6 +6384,9 @@ export class GameEngine {
       }
     }
 
+    if (this.hitstopCooldown > 0) {
+      this.hitstopCooldown = Math.max(0, this.hitstopCooldown - dt);
+    }
     if (this.hitstopTimer > 0) {
       this.hitstopTimer -= dt;
       this.updateCamera(dt);
@@ -7532,8 +7694,8 @@ export class GameEngine {
       const flash = e.hitFlashTimer > 0;
       for (const hm of e.model.hitMeshes) {
         const mat = hm.material as THREE.MeshStandardMaterial;
-        mat.emissive.setHex(flash ? 0xffffff : e.chillTimer > 0 ? 0x22d3ee : 0x000000);
-        mat.emissiveIntensity = flash ? 0.95 : e.chillTimer > 0 ? 0.35 : 0;
+        mat.emissive.setHex(flash ? 0xfff3c4 : e.chillTimer > 0 ? 0x22d3ee : 0x000000);
+        mat.emissiveIntensity = flash ? 1.15 : e.chillTimer > 0 ? 0.35 : 0;
       }
 
       // Burn & Poison DoT
@@ -8003,17 +8165,32 @@ export class GameEngine {
       e.shadow.position.set(e.x, 0.02, e.z);
 
       if (e.hitFlashTimer > 0) {
-        const s = 1 + e.hitFlashTimer * 1.1;
+        const s = 1 + e.hitFlashTimer * 1.25;
         e.model.root.scale.set(s, 1 / Math.sqrt(s), s);
       } else {
         e.model.root.scale.set(1, 1, 1);
       }
 
       if (e.model.weaponOrRing) {
-        e.model.weaponOrRing.rotation.z += dt * (e.isBoss ? 1.8 : 2.6);
+        const phaseSpeedMult = e.isBoss ? (e.bossPhase === 3 ? 2.6 : e.bossPhase === 2 ? 1.85 : 1.0) : 1.0;
+        e.model.weaponOrRing.rotation.z += dt * (e.isBoss ? 1.85 * phaseSpeedMult : 2.6);
         if (e.kind === EnemyKind.WISP || e.kind === EnemyKind.DRAGON_WHELP) {
           e.model.weaponOrRing.rotation.x += dt * 1.8;
         }
+      }
+
+      if (e.model.eliteCrown) {
+        e.model.eliteCrown.rotation.y += dt * 2.2;
+        e.model.eliteCrown.position.y += Math.sin(this.elapsed * 4.5 + e.phaseAngle) * 0.0012;
+      }
+
+      if (e.model.bossAuraRing) {
+        const pRate = e.bossPhase === 3 ? 2.8 : e.bossPhase === 2 ? 1.8 : 0.95;
+        e.model.bossAuraRing.rotation.y -= dt * pRate;
+        const targetAuraScale =
+          (e.bossPhase === 3 ? 1.32 : e.bossPhase === 2 ? 1.16 : 1.0) +
+          Math.sin(this.elapsed * (e.bossPhase >= 2 ? 7 : 3)) * 0.04;
+        e.model.bossAuraRing.scale.setScalar(targetAuraScale);
       }
 
       if (e.model.wings) {
@@ -8613,6 +8790,11 @@ export class GameEngine {
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.52);
       }
       soundEngine.playBossPhaseTwo();
+      if (e.model.bossCoreMat) {
+        e.model.bossCoreMat.emissive.setHex(0xf43f5e);
+        e.model.bossCoreMat.emissiveIntensity = 2.85;
+      }
+      this.spawnUltColumn(e.x, e.z, 0xf43f5e, 0.72);
       this.spawnShockwave(e.x, e.z, 0xf43f5e, 6.8, 0.54);
       this.spawnParticles(e.x, 1.2, e.z, 0xf43f5e, 34);
       this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', 'PHA II · CUỒNG NỘ!', true);
@@ -8655,6 +8837,11 @@ export class GameEngine {
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.62);
       }
       soundEngine.playBossPhaseThree();
+      if (e.model.bossCoreMat) {
+        e.model.bossCoreMat.emissive.setHex(0xfde047);
+        e.model.bossCoreMat.emissiveIntensity = 3.4;
+      }
+      this.spawnUltColumn(e.x, e.z, 0xfbbf24, 0.85);
       this.spawnShockwave(e.x, e.z, 0xfbbf24, 7.6, 0.56);
       this.spawnShockwave(e.x, e.z, 0xe11d48, 5.4, 0.42);
       this.spawnParticles(e.x, 1.35, e.z, 0xfbbf24, 42);
@@ -8700,18 +8887,23 @@ export class GameEngine {
       isCrit ? 12 : 7
     );
 
+    const isSuperCrit =
+      isCrit && (dmgSource === 'ultimate' || finalDmg >= this.baseStats.attack * 3.1);
+
     if (isCrit && (blaze || frost || storm)) {
       const ringColor = blaze ? 0xf97316 : frost ? 0x67e8f9 : 0xa78bfa;
       this.spawnShockwave(e.x, e.z, ringColor, 1.85, 0.24);
+    } else if (isSuperCrit) {
+      this.spawnShockwave(e.x, e.z, 0xfde047, 1.65, 0.2);
     }
 
     if (isCrit) {
-      this.hitstopTimer = Math.max(this.hitstopTimer, 0.032);
-      this.shakeIntensity = Math.max(this.shakeIntensity, 0.14);
+      if (this.hitstopCooldown <= 0) {
+        this.hitstopTimer = Math.max(this.hitstopTimer, isSuperCrit ? 0.036 : 0.022);
+        this.hitstopCooldown = isSuperCrit ? 0.36 : 0.52;
+      }
+      this.shakeIntensity = Math.max(this.shakeIntensity, isSuperCrit ? 0.24 : 0.14);
     }
-
-    const isSuperCrit =
-      isCrit && (dmgSource === 'ultimate' || finalDmg >= this.baseStats.attack * 3.1);
 
     this.emitFloatingNumber(
       e.x,

@@ -287,19 +287,19 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center p-4 bg-[#040611]/90 overflow-y-auto">
       <div className="cel-panel-ornate w-full max-w-lg rounded-3xl p-5 sm:p-6 text-center my-auto max-h-[92vh] overflow-y-auto a2-modal-enter">
-        <div className="flex justify-center mb-2.5">
+        <div className="flex justify-center mb-3">
           {isVictory ? (
-            <div className="p-3 rounded-2xl bg-amber-400/15 border border-amber-300/70 shadow-lg">
-              <Trophy className="w-7 h-7 text-amber-300" />
+            <div className="relative p-3.5 rounded-2xl bg-gradient-to-b from-amber-400/25 to-amber-600/10 border-2 border-amber-300/80 shadow-[0_0_28px_rgba(251,191,36,0.38)]">
+              <Trophy className="w-8 h-8 text-amber-300" />
             </div>
           ) : phase === GamePhase.GAME_OVER ? (
-            <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-400/65 shadow-lg">
-              <Skull className="w-7 h-7 text-rose-400" />
+            <div className="relative p-3.5 rounded-2xl bg-gradient-to-b from-rose-500/22 to-rose-900/15 border-2 border-rose-400/75 shadow-[0_0_24px_rgba(244,63,94,0.32)]">
+              <Skull className="w-8 h-8 text-rose-400" />
             </div>
           ) : null}
         </div>
 
-        <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-amber-300 mb-1">
           {isSkyCitadelMode
             ? `Không Chiến Tinh Giới 3D · Đợt ${skyCitadelWave}/3`
             : isDragonLairMode

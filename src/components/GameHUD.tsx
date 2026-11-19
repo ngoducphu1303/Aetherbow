@@ -863,57 +863,84 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           const underBg =
             curLayer > 1 ? underPalette[(curLayer - 1) % underPalette.length] : 'bg-slate-950/90';
 
+          const totalHpPct = Math.max(0, Math.min(100, bossHpPct));
           return (
             <div
-              className={`w-full max-w-md mx-auto rounded-2xl px-4 py-2 shadow-2xl border ${
+              className={`w-full max-w-lg mx-auto rounded-2xl px-4 py-2.5 shadow-2xl border ${
                 hud.bossPhase === 3
-                  ? 'bg-[#2a0611]/95 border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.5)]'
+                  ? 'bg-[#260612]/96 border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.48)]'
                   : hud.bossPhase === 2
-                  ? 'bg-[#240713]/95 border-amber-400 shadow-[0_0_24px_rgba(244,63,94,0.45)]'
-                  : 'bg-[#170914]/95 border-rose-500/70'
+                  ? 'bg-[#200713]/96 border-amber-400/85 shadow-[0_0_22px_rgba(244,63,94,0.42)]'
+                  : 'bg-[#120816]/96 border-amber-300/45 shadow-[0_8px_28px_rgba(0,0,0,0.65)]'
               }`}
             >
               <div className="flex items-center justify-between gap-2 text-xs font-black mb-1.5">
-                <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
                   <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span className="font-display text-rose-100 tracking-wide truncate">
+                  <span className="font-display text-amber-50 tracking-wide truncate">
                     {hud.bossName}
                   </span>
                   {totalLayers > 1 && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-300/70 font-mono-nums text-[9px] font-black text-amber-200 whitespace-nowrap">
+                    <span className="font-mono-nums text-[10px] font-black text-amber-300 whitespace-nowrap">
                       ×{curLayer}
                     </span>
                   )}
-                  {hud.bossPhase === 2 && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300 whitespace-nowrap">
-                      <Flame className="w-3 h-3 text-rose-400 shrink-0" />
-                      <span>Pha II · Cuồng Nộ</span>
-                    </span>
-                  )}
-                  {hud.bossPhase === 3 && (
+                  <span aria-hidden="true" className="text-slate-600">·</span>
+                  {hud.bossPhase === 3 ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-200 whitespace-nowrap">
                       <Crown className="w-3 h-3 text-amber-300 shrink-0" />
                       <span>Pha III · Tối Thượng</span>
                     </span>
+                  ) : hud.bossPhase === 2 ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-rose-300 whitespace-nowrap">
+                      <Flame className="w-3 h-3 text-rose-400 shrink-0" />
+                      <span>Pha II · Cuồng Nộ</span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 whitespace-nowrap">
+                      Pha I
+                    </span>
                   )}
                 </div>
-                <span className="font-mono-nums text-rose-200 shrink-0">
+                <span className="font-mono-nums text-amber-100/95 shrink-0">
                   {hud.isWorldBossMode
                     ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
                     : hud.isGuildBossMode
                     ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
-                    : `${Math.max(0, hud.bossHp)} / ${hud.bossMaxHp}`}
+                    : `${Math.max(0, hud.bossHp).toLocaleString('vi-VN')} / ${hud.bossMaxHp.toLocaleString('vi-VN')}`}
                 </span>
               </div>
-              <div className={`hv2-boss-track ${underBg}`}>
+              <div className={`hv2-boss-track relative ${underBg}`}>
                 <div
-                  className="h-full bg-white/35 absolute top-0 left-0 transition-all duration-300"
+                  className="h-full bg-amber-200/55 absolute top-0 left-0 transition-all duration-300"
                   style={{ width: `${Math.max(layerFrac, bossGhostPct > bossHpPct ? 100 : layerFrac)}%` }}
                 />
                 <div
                   className={`h-full relative z-[1] transition-all duration-100 bg-gradient-to-r ${barGrad}`}
                   style={{ width: `${layerFrac}%` }}
                 />
+                {/* Segmented Raid-Boss Notches + 50% (Pha II) & 25% (Pha III) Threshold Ticks */}
+                <div className="pointer-events-none absolute inset-0 z-[2]" aria-hidden="true">
+                  {[10, 20, 30, 40, 60, 70, 80, 90].map((pct) => (
+                    <span
+                      key={pct}
+                      className="absolute top-0 bottom-0 w-px bg-black/35"
+                      style={{ left: `${pct}%` }}
+                    />
+                  ))}
+                  <span
+                    className={`absolute top-0 bottom-0 w-[2px] ${
+                      totalHpPct <= 50 ? 'bg-amber-200/35' : 'bg-amber-300 shadow-[0_0_6px_rgba(251,191,36,0.9)]'
+                    }`}
+                    style={{ left: '50%' }}
+                  />
+                  <span
+                    className={`absolute top-0 bottom-0 w-[2px] ${
+                      totalHpPct <= 25 ? 'bg-rose-200/35' : 'bg-rose-300 shadow-[0_0_6px_rgba(251,113,133,0.9)]'
+                    }`}
+                    style={{ left: '25%' }}
+                  />
+                </div>
               </div>
 
               {/* Wave 12: Boss Break-Shield Sub-bar */}
@@ -1414,101 +1441,162 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
 
-        {/* Action Medallions: Ultimate (Q) + Signature Active Skill (E) + Dash (Space) */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          <div className="relative shrink-0">
-            {ultReady && (
+        {/* Action Medallions: Ultimate (Q) + Signature Active Skill (E) + Dash (Space) with Radial Rings */}
+        <div className="flex items-end gap-2 sm:gap-3 shrink-0">
+          {(() => {
+            const circ = 2 * Math.PI * 29;
+            const ultOffset = circ * (1 - ultPct / 100);
+            const activeFill = Math.max(0, Math.min(1, 1 - activeSkillCdRatio));
+            const activeOffset = circ * (1 - activeFill);
+            const dashFill = Math.max(0, Math.min(1, 1 - hud.dashCooldownRatio));
+            const dashOffset = circ * (1 - dashFill);
+            return (
               <>
-                <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-500 to-rose-500 border border-amber-200 text-[9px] font-black text-slate-950 whitespace-nowrap shadow-lg">
-                  TUYỆT KỸ ĐẦY
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="a2-ult-ready-ring absolute -inset-1 rounded-full border-2 border-dashed border-amber-300/90 pointer-events-none"
-                />
+                <div className="relative flex flex-col items-center shrink-0">
+                  {ultReady && (
+                    <>
+                      <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-yellow-300 border border-amber-100 text-[9px] font-black text-slate-950 whitespace-nowrap shadow-lg">
+                        TUYỆT KỸ ĐẦY
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="a2-ult-ready-ring absolute -inset-1 rounded-full border-2 border-dashed border-amber-300/90 pointer-events-none"
+                      />
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    disabled={!ultReady}
+                    onClick={onUltimateClick}
+                    title={hud.ultName}
+                    className={`pointer-events-auto relative overflow-hidden w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
+                      ultReady
+                        ? 'a2-purple-btn w13-skill-ready-glow cursor-pointer shadow-[0_0_26px_rgba(251,191,36,0.65)] hover:scale-105'
+                        : 'hv2-panel text-slate-300 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 64 64"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                    >
+                      <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                      <circle
+                        cx="32"
+                        cy="32"
+                        r="29"
+                        fill="none"
+                        stroke={ultReady ? '#fde047' : '#c084fc'}
+                        strokeWidth="2.8"
+                        strokeLinecap="round"
+                        strokeDasharray={circ}
+                        strokeDashoffset={ultOffset}
+                      />
+                    </svg>
+                    <Flame
+                      className={`w-5 h-5 relative z-[1] ${
+                        ultReady ? 'text-amber-200' : 'text-purple-300'
+                      }`}
+                    />
+                    <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                      {ultReady ? 'CHIÊU Q' : `${ultPct}%`}
+                    </span>
+                  </button>
+                  <span className="mt-1 text-[9px] font-mono-nums font-black tracking-wider text-amber-200/85">
+                    Q
+                  </span>
+                </div>
+
+                {onActiveSkillClick && (
+                  <div className="relative flex flex-col items-center shrink-0">
+                    <button
+                      type="button"
+                      disabled={!activeSkillReady}
+                      onClick={onActiveSkillClick}
+                      title={hud.activeSkillName ?? 'Kỹ Năng Chủ Động (E)'}
+                      className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[64px] sm:h-[64px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
+                        activeSkillReady
+                          ? 'bg-gradient-to-b from-sky-500/95 to-indigo-700/95 border border-cyan-200/80 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)] cursor-pointer hover:scale-105'
+                          : 'hv2-panel text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg
+                        viewBox="0 0 64 64"
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                      >
+                        <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                        <circle
+                          cx="32"
+                          cy="32"
+                          r="29"
+                          fill="none"
+                          stroke={activeSkillReady ? '#67e8f9' : '#38bdf8'}
+                          strokeWidth="2.8"
+                          strokeLinecap="round"
+                          strokeDasharray={circ}
+                          strokeDashoffset={activeOffset}
+                        />
+                      </svg>
+                      <Sparkles
+                        className={`w-4 h-4 relative z-[1] ${
+                          activeSkillReady ? 'text-cyan-100' : 'text-slate-400'
+                        }`}
+                      />
+                      <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                        {activeSkillReady ? 'CHIÊU E' : `${activeSkillCdSec.toFixed(1)}s`}
+                      </span>
+                    </button>
+                    <span className="mt-1 text-[9px] font-mono-nums font-black tracking-wider text-sky-200/85">
+                      E
+                    </span>
+                  </div>
+                )}
+
+                <div className="relative flex flex-col items-center shrink-0">
+                  <button
+                    type="button"
+                    onClick={onDashClick}
+                    className={`pointer-events-auto relative overflow-hidden w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
+                      dashReady
+                        ? 'a2-emerald-btn w13-skill-ready-glow shadow-[0_0_22px_rgba(52,211,153,0.52)] hover:scale-105'
+                        : 'hv2-panel text-slate-400'
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 64 64"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                    >
+                      <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                      <circle
+                        cx="32"
+                        cy="32"
+                        r="29"
+                        fill="none"
+                        stroke={dashReady ? '#6ee7b7' : '#34d399'}
+                        strokeWidth="2.8"
+                        strokeLinecap="round"
+                        strokeDasharray={circ}
+                        strokeDashoffset={dashOffset}
+                      />
+                    </svg>
+                    <Zap
+                      className={`w-5 h-5 relative z-[1] ${
+                        dashReady ? 'text-amber-200' : 'text-slate-400'
+                      }`}
+                    />
+                    <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                      {dashReady ? 'LƯỚT' : `${Math.ceil(hud.dashCooldownRatio * 100)}%`}
+                    </span>
+                  </button>
+                  <span className="mt-1 text-[9px] font-mono-nums font-black tracking-wider text-emerald-200/85">
+                    SPACE
+                  </span>
+                </div>
               </>
-            )}
-            <button
-              type="button"
-              disabled={!ultReady}
-              onClick={onUltimateClick}
-              title={hud.ultName}
-              className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[66px] sm:h-[66px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
-                ultReady
-                  ? 'a2-purple-btn w13-skill-ready-glow cursor-pointer shadow-[0_0_26px_rgba(251,191,36,0.65)] hover:scale-105'
-                  : 'hv2-panel text-slate-300 cursor-not-allowed'
-              }`}
-            >
-              {!ultReady && (
-                <span
-                  className="absolute inset-x-0 bottom-0 bg-purple-500/35 pointer-events-none"
-                  style={{ height: `${ultPct}%` }}
-                />
-              )}
-              <Flame
-                className={`w-5 h-5 relative z-[1] ${
-                  ultReady ? 'text-amber-300' : 'text-purple-300'
-                }`}
-              />
-              <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                {ultReady ? 'CHIÊU Q' : `${ultPct}%`}
-              </span>
-            </button>
-          </div>
-
-          {onActiveSkillClick && (
-            <button
-              type="button"
-              disabled={!activeSkillReady}
-              onClick={onActiveSkillClick}
-              title={hud.activeSkillName ?? 'Kỹ Năng Chủ Động (E)'}
-              className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[64px] sm:h-[64px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
-                activeSkillReady
-                  ? 'bg-gradient-to-b from-sky-500/95 to-indigo-700/95 border-2 border-cyan-200/85 text-white shadow-[0_0_22px_rgba(56,189,248,0.55)] cursor-pointer hover:scale-105'
-                  : 'hv2-panel text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              {!activeSkillReady && (
-                <span
-                  className="absolute inset-x-0 bottom-0 bg-sky-500/30 pointer-events-none"
-                  style={{ height: `${Math.max(0, 100 - activeSkillCdRatio * 100)}%` }}
-                />
-              )}
-              <Sparkles
-                className={`w-4 h-4 relative z-[1] ${
-                  activeSkillReady ? 'text-cyan-200' : 'text-slate-400'
-                }`}
-              />
-              <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                {activeSkillReady ? 'CHIÊU E' : `${activeSkillCdSec.toFixed(1)}s`}
-              </span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onDashClick}
-            className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[66px] sm:h-[66px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
-              dashReady
-                ? 'a2-emerald-btn w13-skill-ready-glow shadow-[0_0_22px_rgba(52,211,153,0.55)] hover:scale-105'
-                : 'hv2-panel text-slate-400'
-            }`}
-          >
-            {!dashReady && (
-              <span
-                className="absolute inset-x-0 bottom-0 bg-emerald-500/25 pointer-events-none"
-                style={{ height: `${Math.max(0, 100 - hud.dashCooldownRatio * 100)}%` }}
-              />
-            )}
-            <Zap
-              className={`w-5 h-5 relative z-[1] ${
-                dashReady ? 'text-amber-200' : 'text-slate-400'
-              }`}
-            />
-            <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-              {dashReady ? 'LƯỚT' : `${Math.ceil(hud.dashCooldownRatio * 100)}%`}
-            </span>
-          </button>
+            );
+          })()}
         </div>
       </div>
 

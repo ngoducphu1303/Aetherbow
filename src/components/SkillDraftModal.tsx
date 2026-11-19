@@ -256,13 +256,29 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                 const isRelatedAlreadyActive = relatedSynergy
                   ? activeSynergyIds.includes(relatedSynergy.id)
                   : false;
+                const isHighlightEvolution = Boolean(completingSynergy || comboTag?.isEvolution);
                 return (
                   <button
                     key={skill.id}
                     type="button"
                     onClick={() => onPickSkill(skill.id)}
-                    className={`relative text-left rounded-2xl overflow-hidden border-2 ${rMeta.borderClass} bg-[#090d1e] hover:-translate-y-1.5 hover:shadow-[0_14px_34px_rgba(251,191,36,0.22)] active:translate-y-0 transition-all duration-150 cursor-pointer shadow-2xl group flex flex-col justify-between min-h-[268px] sm:min-h-[300px]`}
+                    className={`relative text-left rounded-2xl overflow-hidden border-2 ${
+                      isHighlightEvolution
+                        ? 'border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.28)]'
+                        : rMeta.borderClass
+                    } bg-[#090d1e] hover:-translate-y-1.5 hover:shadow-[0_14px_34px_rgba(251,191,36,0.28)] active:translate-y-0 transition-all duration-150 cursor-pointer shadow-2xl group flex flex-col justify-between min-h-[276px] sm:min-h-[308px]`}
                   >
+                    {/* Top Gilded Rarity Accent Bar & Corner Ornaments */}
+                    <div
+                      aria-hidden="true"
+                      className="absolute top-0 inset-x-0 h-1 z-20 pointer-events-none"
+                      style={{
+                        background: `linear-gradient(90deg, transparent 0%, ${skill.accentColor} 50%, transparent 100%)`,
+                      }}
+                    />
+                    <span aria-hidden="true" className="pointer-events-none absolute top-2 left-2 w-2.5 h-2.5 border-t border-l border-amber-300/60 z-20" />
+                    <span aria-hidden="true" className="pointer-events-none absolute top-2 right-2 w-2.5 h-2.5 border-t border-r border-amber-300/60 z-20" />
+
                     {/* Tarot Card Art Layer + Fallback */}
                     {!tarotArtFailed && (
                       <img
@@ -271,13 +287,13 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                         aria-hidden="true"
                         referrerPolicy="no-referrer"
                         onError={() => setTarotArtFailed(true)}
-                        className="absolute inset-0 w-full h-full object-cover opacity-55 group-hover:opacity-75 transition-opacity duration-200 pointer-events-none"
+                        className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-72 transition-opacity duration-200 pointer-events-none"
                       />
                     )}
                     <div
                       className="absolute inset-0 pointer-events-none"
                       style={{
-                        background: `linear-gradient(180deg, rgba(6, 9, 22, 0.52) 0%, rgba(7, 10, 24, 0.84) 52%, rgba(5, 7, 17, 0.97) 100%)`,
+                        background: `linear-gradient(180deg, rgba(6, 9, 22, 0.56) 0%, rgba(7, 10, 24, 0.86) 52%, rgba(5, 7, 17, 0.98) 100%)`,
                       }}
                     />
 
@@ -312,15 +328,15 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
 
                       {/* Emblem Medallion */}
                       <div
-                        className="w-12 h-12 rounded-2xl border border-amber-200/80 flex items-center justify-center shadow-[0_0_22px_rgba(0,0,0,0.7)] mb-2.5 text-slate-950 group-hover:scale-105 transition-transform"
+                        className="w-13 h-13 rounded-2xl border-2 border-amber-200/85 flex items-center justify-center shadow-[0_0_24px_rgba(0,0,0,0.75)] mb-3 text-slate-950 group-hover:scale-105 transition-transform"
                         style={{
-                          background: `radial-gradient(circle at 35% 30%, #ffffff 0%, ${skill.accentColor} 55%, #0f172a 130%)`,
+                          background: `radial-gradient(circle at 35% 30%, #ffffff 0%, ${skill.accentColor} 58%, #0f172a 130%)`,
                         }}
                       >
                         <CategoryIcon category={skill.category} className="w-5 h-5" />
                       </div>
 
-                      <h3 className="font-display text-base font-black text-white group-hover:text-amber-300 transition-colors leading-snug">
+                      <h3 className="font-display text-base sm:text-[17px] font-black text-white group-hover:text-amber-300 transition-colors leading-snug">
                         {skill.name}
                       </h3>
 
@@ -330,35 +346,50 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
 
                       {relatedSynergy ? (
                         <div
-                          className={`mt-2.5 pt-2 w-full border-t text-left ${
+                          className={`mt-3 pt-2.5 w-full border-t text-left ${
                             completingSynergy
-                              ? 'border-amber-300/60 text-amber-200'
+                              ? 'border-amber-300/75 text-amber-200'
                               : isRelatedAlreadyActive
-                              ? 'border-emerald-400/40 text-emerald-300'
+                              ? 'border-emerald-400/45 text-emerald-300'
                               : 'border-slate-700/80 text-slate-300'
                           }`}
                         >
-                          <div className="text-[10px] font-black uppercase tracking-wider">
-                            {completingSynergy
-                              ? `Kích Hoạt Cộng Hưởng · ${relatedSynergy.name}`
-                              : isRelatedAlreadyActive
-                              ? `Đã Bật · ${relatedSynergy.name}`
-                              : `Ghép Cặp · ${relatedSynergy.name}`}
+                          <div className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                            {completingSynergy && <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />}
+                            <span>
+                              {completingSynergy
+                                ? `Kích Hoạt Cộng Hưởng · ${relatedSynergy.name}`
+                                : isRelatedAlreadyActive
+                                ? `Đã Bật · ${relatedSynergy.name}`
+                                : `Ghép Cặp · ${relatedSynergy.name}`}
+                            </span>
                           </div>
                           <div className="text-[11px] text-slate-200/90 mt-0.5 leading-snug">
                             {relatedSynergy.shortEffect}
                           </div>
                         </div>
                       ) : comboTag ? (
-                        <div className="mt-2.5 pt-2 w-full border-t border-slate-700/70 text-[11px] font-bold text-amber-200">
+                        <div
+                          className={`mt-3 pt-2 w-full border-t text-[11px] font-black ${
+                            comboTag.isEvolution
+                              ? 'border-amber-300/70 text-amber-300'
+                              : 'border-slate-700/70 text-amber-200'
+                          }`}
+                        >
                           {comboTag.label}
                         </div>
                       ) : null}
                     </div>
 
                     {/* Card Footer */}
-                    <div className="relative z-10 px-4 py-2.5 border-t border-amber-300/25 bg-[#050814]/90 flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-amber-300">
-                      <span>Lĩnh Hội Thẻ Bài</span>
+                    <div
+                      className={`relative z-10 px-4 py-2.5 border-t flex items-center justify-between text-[11px] font-black uppercase tracking-wider ${
+                        isHighlightEvolution
+                          ? 'border-amber-300/45 bg-amber-500/15 text-amber-200'
+                          : 'border-amber-300/25 bg-[#050814]/92 text-amber-300'
+                      }`}
+                    >
+                      <span>{isHighlightEvolution ? 'Đột Phá Sức Mạnh' : 'Lĩnh Hội Thẻ Bài'}</span>
                       <span className="group-hover:translate-x-1 transition-transform">→</span>
                     </div>
                   </button>

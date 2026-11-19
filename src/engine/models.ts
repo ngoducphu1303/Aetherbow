@@ -242,28 +242,31 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     metalness: 0.05,
   });
   const silverMat = new THREE.MeshStandardMaterial({
-    color: 0xcbd5e1,
-    roughness: 0.24,
-    metalness: 0.88,
+    color: 0xe2e8f0,
+    roughness: 0.18,
+    metalness: 0.92,
+    envMapIntensity: 1.45,
   });
   const goldMat = new THREE.MeshStandardMaterial({
-    color: 0xfbbf24,
-    roughness: 0.22,
-    metalness: 0.9,
+    color: 0xfcd34d,
+    roughness: 0.16,
+    metalness: 0.95,
+    envMapIntensity: 1.6,
   });
   const accentGemMat = new THREE.MeshStandardMaterial({
     color: cfg.weaponAccentHex,
     emissive: cfg.weaponAccentHex,
-    emissiveIntensity: 1.25,
-    roughness: 0.1,
-    metalness: 0.25,
+    emissiveIntensity: 1.45,
+    roughness: 0.08,
+    metalness: 0.3,
+    envMapIntensity: 1.4,
   });
   const magicEnergyMat = new THREE.MeshStandardMaterial({
     color: cfg.weaponAccentHex,
     emissive: cfg.weaponAccentHex,
-    emissiveIntensity: 1.65,
-    roughness: 0.14,
-    metalness: 0.3,
+    emissiveIntensity: 1.85,
+    roughness: 0.12,
+    metalness: 0.32,
   });
 
   // 1. Chibi Legs & Boots
@@ -911,7 +914,43 @@ export interface EnemyModelRefs {
   headOrCore: THREE.Mesh;
   weaponOrRing?: THREE.Object3D;
   wings?: THREE.Object3D[];
+  eliteCrown?: THREE.Group;
+  bossAuraRing?: THREE.Group;
+  bossCoreMat?: THREE.MeshStandardMaterial;
   hitMeshes: THREE.Mesh[];
+}
+
+function attachEliteCrown(bodyGroup: THREE.Group, accentHex: number, heightY: number): THREE.Group {
+  const crown = new THREE.Group();
+  crown.position.y = heightY;
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfcd34d,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.45,
+    roughness: 0.18,
+    metalness: 0.94,
+    envMapIntensity: 1.5,
+  });
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: accentHex,
+    emissive: accentHex,
+    emissiveIntensity: 1.65,
+    roughness: 0.1,
+    metalness: 0.3,
+  });
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.024, 8, 24), goldMat);
+  halo.rotation.x = Math.PI / 2;
+  crown.add(halo);
+  const shardGeo = new THREE.OctahedronGeometry(0.075, 0);
+  for (let i = 0; i < 3; i++) {
+    const ang = (i / 3) * Math.PI * 2;
+    const shard = new THREE.Mesh(shardGeo, crystalMat);
+    shard.scale.set(0.75, 1.45, 0.75);
+    shard.position.set(Math.cos(ang) * 0.44, 0.06, Math.sin(ang) * 0.44);
+    crown.add(shard);
+  }
+  bodyGroup.add(crown);
+  return crown;
 }
 
 export function createEnemyModel(
@@ -1015,8 +1054,12 @@ export function createEnemyModel(
     }
 
     bodyGroup.add(lLeg, rLeg, torso, belt, head, helm, helmRim, mace);
-    if (isElite) bodyGroup.scale.setScalar(1.22);
-    return { root, bodyGroup, headOrCore: head, weaponOrRing: mace, hitMeshes };
+    let eliteCrown: THREE.Group | undefined;
+    if (isElite) {
+      bodyGroup.scale.setScalar(1.22);
+      eliteCrown = attachEliteCrown(bodyGroup, zodiacAccentHex, 1.54);
+    }
+    return { root, bodyGroup, headOrCore: head, weaponOrRing: mace, eliteCrown, hitMeshes };
   }
 
   if (kind === EnemyKind.IMP_ARCHER || kind === EnemyKind.SHADOW_STALKER) {
@@ -1084,8 +1127,12 @@ export function createEnemyModel(
     orb.position.set(0.36, 1.42, 0.32);
 
     bodyGroup.add(robe, head, hood, hoodRim, haloGroup, staff, orb);
-    if (isElite) bodyGroup.scale.setScalar(1.2);
-    return { root, bodyGroup, headOrCore: head, weaponOrRing: haloGroup, hitMeshes };
+    let eliteCrown: THREE.Group | undefined;
+    if (isElite) {
+      bodyGroup.scale.setScalar(1.2);
+      eliteCrown = attachEliteCrown(bodyGroup, zodiacAccentHex, 1.66);
+    }
+    return { root, bodyGroup, headOrCore: head, weaponOrRing: haloGroup, eliteCrown, hitMeshes };
   }
 
   if (kind === EnemyKind.GOLEM) {
@@ -1139,8 +1186,12 @@ export function createEnemyModel(
     }
 
     bodyGroup.add(lLeg, rLeg, body, coreRing, core, helm);
-    if (isElite) bodyGroup.scale.setScalar(1.2);
-    return { root, bodyGroup, headOrCore: core, hitMeshes };
+    let eliteCrown: THREE.Group | undefined;
+    if (isElite) {
+      bodyGroup.scale.setScalar(1.2);
+      eliteCrown = attachEliteCrown(bodyGroup, zodiacAccentHex, 1.92);
+    }
+    return { root, bodyGroup, headOrCore: core, eliteCrown, hitMeshes };
   }
 
   if (kind === EnemyKind.WISP || kind === EnemyKind.DRAGON_WHELP) {
@@ -1210,11 +1261,15 @@ export function createEnemyModel(
     }
 
     bodyGroup.add(core, ringGroup);
-    if (isElite) bodyGroup.scale.setScalar(1.22);
-    return { root, bodyGroup, headOrCore: core, weaponOrRing: ringGroup, wings, hitMeshes };
+    let eliteCrown: THREE.Group | undefined;
+    if (isElite) {
+      bodyGroup.scale.setScalar(1.22);
+      eliteCrown = attachEliteCrown(bodyGroup, zodiacAccentHex, 1.68);
+    }
+    return { root, bodyGroup, headOrCore: core, weaponOrRing: ringGroup, wings, eliteCrown, hitMeshes };
   }
 
-  // Bosses: WARDEN_BOSS, TITAN_BOSS, ZODIAC_BOSS
+  // Bosses: WARDEN_BOSS, TITAN_BOSS, ZODIAC_BOSS — PBR Gilded Celestial Deities
   const isZodiac = kind === EnemyKind.ZODIAC_BOSS;
   const isTitan = kind === EnemyKind.TITAN_BOSS;
   const scale = isZodiac ? 1.56 : isTitan ? 1.44 : 1.26;
@@ -1224,17 +1279,28 @@ export function createEnemyModel(
   const accentHexStr = `#${zodiacAccentHex.toString(16).padStart(6, '0')}`;
   const armorTex = createEngravedArmorTexture(armorHexStr, accentHexStr);
   const bossArmorMat = new THREE.MeshStandardMaterial({
-    map: armorTex, bumpMap: armorTex, bumpScale: 0.025, roughness: 0.38, metalness: 0.72,
+    map: armorTex,
+    bumpMap: armorTex,
+    bumpScale: 0.028,
+    roughness: 0.26,
+    metalness: 0.84,
+    envMapIntensity: 1.4,
   });
-  const bossGoldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.2, metalness: 0.92 });
+  const bossGoldMat = new THREE.MeshStandardMaterial({
+    color: 0xfcd34d,
+    roughness: 0.16,
+    metalness: 0.96,
+    envMapIntensity: 1.65,
+  });
   const bossCoreMat = new THREE.MeshStandardMaterial({
     color: isZodiac ? zodiacAccentHex : isTitan ? 0xef4444 : 0x38bdf8,
     emissive: isZodiac ? zodiacAccentHex : isTitan ? 0xef4444 : 0x0ea5e9,
-    emissiveIntensity: 1.95,
-    roughness: 0.14,
+    emissiveIntensity: 2.1,
+    roughness: 0.1,
+    metalness: 0.3,
   });
   const capeTex = createFabricWeaveTexture(isZodiac ? '#4c1d95' : isTitan ? '#7f1d1d' : '#1d4ed8', '#fbbf24');
-  const capeMat = new THREE.MeshStandardMaterial({ map: capeTex, roughness: 0.62, metalness: 0.1 });
+  const capeMat = new THREE.MeshStandardMaterial({ map: capeTex, roughness: 0.58, metalness: 0.14 });
 
   const lLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.6, 12), bossArmorMat);
   lLeg.position.set(-0.28, 0.3, 0);
@@ -1242,6 +1308,12 @@ export function createEnemyModel(
   const rLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.6, 12), bossArmorMat);
   rLeg.position.set(0.28, 0.3, 0);
   rLeg.castShadow = true;
+
+  for (const side of [-1, 1] as const) {
+    const kneeGuard = new THREE.Mesh(makeCrestPlate(0.22, 0.28, 0.055), bossGoldMat);
+    kneeGuard.position.set(side * 0.28, 0.36, 0.19);
+    bodyGroup.add(kneeGuard);
+  }
 
   const cape = new THREE.Mesh(makeCapeShapeGeo(0.95, 1.55, 1.32), capeMat);
   cape.position.set(0, 0.24, -0.4);
@@ -1256,9 +1328,9 @@ export function createEnemyModel(
   torso.castShadow = true;
   hitMeshes.push(torso);
 
-  const coreRing = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.04, 8, 20), bossGoldMat);
+  const coreRing = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.044, 8, 22), bossGoldMat);
   coreRing.position.set(0, 1.0, 0.42);
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), bossCoreMat);
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 1), bossCoreMat);
   core.position.set(0, 1.0, 0.44);
 
   const helm = new THREE.Mesh(makeSculptedShell([
@@ -1283,13 +1355,17 @@ export function createEnemyModel(
     pauldron.position.set(side * 0.62, 1.32, 0);
     pauldron.rotation.z = -side * 0.45;
     pauldron.castShadow = true;
+    const shoulderCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), bossCoreMat);
+    shoulderCrystal.scale.set(0.75, 1.75, 0.75);
+    shoulderCrystal.position.set(side * 0.72, 1.62, 0);
+    shoulderCrystal.rotation.z = -side * 0.35;
     const mantle = new THREE.Mesh(makeCrestPlate(0.43, 0.45, 0.07), bossArmorMat);
     mantle.position.set(side * 0.67, 1.30, 0.19);
     mantle.rotation.set(-0.15, side * 0.3, -side * 0.38);
     const cheekGuard = new THREE.Mesh(makeCrestPlate(0.17, 0.29, 0.055), bossGoldMat);
     cheekGuard.position.set(side * 0.28, 1.55, 0.34);
     cheekGuard.rotation.set(0, side * 0.45, -side * 0.24);
-    bodyGroup.add(pauldron, mantle, cheekGuard);
+    bodyGroup.add(pauldron, shoulderCrystal, mantle, cheekGuard);
   }
 
   if (isZodiac || isTitan) {
@@ -1304,24 +1380,28 @@ export function createEnemyModel(
     }
   }
   if (isZodiac) {
-    const starCrown = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), bossCoreMat);
-    starCrown.position.set(0, 2.38, 0.08);
+    const starCrown = new THREE.Mesh(new THREE.OctahedronGeometry(0.26, 0), bossCoreMat);
+    starCrown.position.set(0, 2.4, 0.08);
     bodyGroup.add(starCrown);
   } else if (!isTitan) {
-    const crown = new THREE.Mesh(makeCrescentGeo(0.36, 0.24, 0.06), bossGoldMat);
-    crown.position.set(0, 2.22, 0.16);
+    const crown = new THREE.Mesh(makeCrescentGeo(0.38, 0.26, 0.06), bossGoldMat);
+    crown.position.set(0, 2.24, 0.16);
     bodyGroup.add(crown);
   }
 
   const runeRing = new THREE.Group();
   runeRing.position.set(0, 1.42, -0.44);
-  const halo = new THREE.Mesh(new THREE.TorusGeometry(isZodiac ? 1.12 : 0.95, 0.045, 8, 32), bossCoreMat);
-  runeRing.add(halo);
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(isZodiac ? 1.16 : 0.98, 0.048, 8, 32), bossCoreMat);
+  const outerGildedHalo = new THREE.Mesh(
+    new THREE.TorusGeometry(isZodiac ? 1.32 : 1.12, 0.024, 8, 32),
+    bossGoldMat
+  );
+  runeRing.add(halo, outerGildedHalo);
   const nodeCount = isZodiac ? 12 : 6;
   for (let i = 0; i < nodeCount; i++) {
     const a = (i / nodeCount) * Math.PI * 2;
-    const node = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), bossGoldMat);
-    const rad = isZodiac ? 1.12 : 0.95;
+    const node = new THREE.Mesh(new THREE.OctahedronGeometry(0.105, 0), bossGoldMat);
+    const rad = isZodiac ? 1.16 : 0.98;
     node.position.set(Math.cos(a) * rad, Math.sin(a) * rad, 0);
     runeRing.add(node);
   }
@@ -1331,20 +1411,62 @@ export function createEnemyModel(
   weaponGroup.rotation.x = 0.45;
   const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.46, 8), bossArmorMat);
   hilt.position.y = -0.32;
-  const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 0.14), bossGoldMat);
+  const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.095, 0.15), bossGoldMat);
   crossguard.position.y = -0.08;
-  const blade = new THREE.Mesh(makeCrestPlate(isTitan ? 0.36 : 0.24, 1.24, 0.07), bossGoldMat);
+  const blade = new THREE.Mesh(makeCrestPlate(isTitan ? 0.38 : 0.26, 1.28, 0.07), bossGoldMat);
   blade.rotation.z = Math.PI;
-  blade.position.y = 0.61;
+  blade.position.y = 0.62;
   blade.castShadow = true;
-  const bladeGlow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.12, 0.09), bossCoreMat);
-  bladeGlow.position.y = 0.56;
+  const bladeGlow = new THREE.Mesh(new THREE.BoxGeometry(0.068, 1.16, 0.095), bossCoreMat);
+  bladeGlow.position.y = 0.58;
   weaponGroup.add(hilt, crossguard, blade, bladeGlow);
 
   bodyGroup.add(lLeg, rLeg, cape, torso, coreRing, core, helm, runeRing, weaponGroup);
   bodyGroup.scale.setScalar(scale);
 
-  return { root, bodyGroup, headOrCore: core, weaponOrRing: runeRing, hitMeshes };
+  // Ground Celestial Zodiac Aura Ring (scales & surges on Boss Phase II / III)
+  const bossAuraRing = new THREE.Group();
+  bossAuraRing.position.y = 0.07;
+  const auraOuter = new THREE.Mesh(
+    new THREE.RingGeometry(1.45, 1.62, 36),
+    new THREE.MeshBasicMaterial({
+      color: isZodiac ? zodiacAccentHex : isTitan ? 0xf43f5e : 0x38bdf8,
+      transparent: true,
+      opacity: 0.48,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    })
+  );
+  auraOuter.rotation.x = -Math.PI / 2;
+  const auraGoldTrim = new THREE.Mesh(
+    new THREE.TorusGeometry(1.52, 0.025, 6, 36),
+    bossGoldMat
+  );
+  auraGoldTrim.rotation.x = Math.PI / 2;
+  bossAuraRing.add(auraOuter, auraGoldTrim);
+  const sigilShardGeo = new THREE.OctahedronGeometry(0.085, 0);
+  for (let i = 0; i < 6; i++) {
+    const ang = (i / 6) * Math.PI * 2;
+    const shard = new THREE.Mesh(sigilShardGeo, bossCoreMat);
+    shard.scale.set(0.75, 1.6, 0.75);
+    shard.position.set(Math.cos(ang) * 1.54, 0.14, Math.sin(ang) * 1.54);
+    bossAuraRing.add(shard);
+  }
+  root.add(bossAuraRing);
+
+  return {
+    root,
+    bodyGroup,
+    headOrCore: core,
+    weaponOrRing: runeRing,
+    bossAuraRing,
+    bossCoreMat,
+    hitMeshes,
+  };
 }
 
 export function createCompanionModel(kind: 'sprite' | 'wukong'): THREE.Group {
@@ -1622,28 +1744,56 @@ export function createPetModel(petId: PetId, evolved = false): THREE.Group {
 
 export function createPillarModel(stoneHex: number, trimHex: number): THREE.Group {
   const g = new THREE.Group();
-  const stoneMat = new THREE.MeshStandardMaterial({ color: stoneHex, roughness: 0.85, metalness: 0.08 });
-  const trimMat = new THREE.MeshStandardMaterial({ color: trimHex, roughness: 0.32, metalness: 0.78 });
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: stoneHex,
+    roughness: 0.42,
+    metalness: 0.22,
+    envMapIntensity: 1.15,
+  });
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0xfcd34d,
+    roughness: 0.2,
+    metalness: 0.92,
+    envMapIntensity: 1.5,
+  });
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: trimHex,
+    emissive: trimHex,
+    emissiveIntensity: 1.45,
+    roughness: 0.12,
+    metalness: 0.3,
+  });
 
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.96, 0.34, 8), stoneMat);
-  base.position.y = 0.17;
-  base.castShadow = true;
-  base.receiveShadow = true;
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 1.04, 0.24, 8), stoneMat);
+  plinth.position.y = 0.12;
+  plinth.castShadow = true;
+  plinth.receiveShadow = true;
 
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.68, 1.8, 8), stoneMat);
-  shaft.position.y = 1.24;
+  const baseTrim = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.88, 0.1, 8), trimMat);
+  baseTrim.position.y = 0.28;
+
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.66, 1.78, 12), stoneMat);
+  shaft.position.y = 1.22;
   shaft.castShadow = true;
   shaft.receiveShadow = true;
 
-  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.74, 0.16, 8), trimMat);
-  collar.position.y = 2.15;
+  const midRing = new THREE.Mesh(new THREE.TorusGeometry(0.63, 0.04, 8, 16), trimMat);
+  midRing.rotation.x = Math.PI / 2;
+  midRing.position.y = 1.22;
+
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.68, 0.14, 8), trimMat);
+  collar.position.y = 2.16;
   collar.castShadow = true;
 
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.78, 0.26, 8), stoneMat);
-  cap.position.y = 2.36;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.78, 0.22, 8), stoneMat);
+  cap.position.y = 2.34;
   cap.castShadow = true;
 
-  g.add(base, shaft, collar, cap);
+  const crystalFinial = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), crystalMat);
+  crystalFinial.scale.set(0.85, 1.45, 0.85);
+  crystalFinial.position.y = 2.74;
+
+  g.add(plinth, baseTrim, shaft, midRing, collar, cap, crystalFinial);
   return g;
 }
 
@@ -1679,31 +1829,61 @@ export function createPortalModel(trimHex: number): {
   ringMat: THREE.MeshStandardMaterial;
 } {
   const group = new THREE.Group();
-  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8, metalness: 0.18 });
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.38,
+    metalness: 0.28,
+    envMapIntensity: 1.2,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfcd34d,
+    roughness: 0.18,
+    metalness: 0.94,
+    envMapIntensity: 1.55,
+  });
   const ringMat = new THREE.MeshStandardMaterial({
     color: trimHex,
     emissive: trimHex,
-    emissiveIntensity: 0.3,
-    roughness: 0.25,
-    metalness: 0.75,
+    emissiveIntensity: 0.45,
+    roughness: 0.18,
+    metalness: 0.8,
   });
 
-  const leftCol = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.8, 0.6), stoneMat);
-  leftCol.position.set(-1.35, 1.4, 0);
-  leftCol.castShadow = true;
-  const rightCol = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.8, 0.6), stoneMat);
-  rightCol.position.set(1.35, 1.4, 0);
-  rightCol.castShadow = true;
+  for (const side of [-1, 1] as const) {
+    const colBase = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.32, 0.84), stoneMat);
+    colBase.position.set(side * 1.42, 0.16, 0);
+    colBase.castShadow = true;
+    const colShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.33, 2.55, 10), stoneMat);
+    colShaft.position.set(side * 1.42, 1.58, 0);
+    colShaft.castShadow = true;
+    const colBandLow = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.04, 8, 16), goldMat);
+    colBandLow.rotation.x = Math.PI / 2;
+    colBandLow.position.set(side * 1.42, 0.65, 0);
+    const colBandHigh = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.04, 8, 16), goldMat);
+    colBandHigh.rotation.x = Math.PI / 2;
+    colBandHigh.position.set(side * 1.42, 2.65, 0);
+    group.add(colBase, colShaft, colBandLow, colBandHigh);
+  }
 
-  const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.52, 0.74), stoneMat);
-  lintel.position.set(0, 2.95, 0);
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.75, 0.42, 0.84), stoneMat);
+  lintel.position.set(0, 3.04, 0);
   lintel.castShadow = true;
 
-  const archRing = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.1, 10, 28), ringMat);
-  archRing.position.set(0, 1.5, 0);
+  const lintelTrim = new THREE.Mesh(new THREE.BoxGeometry(3.92, 0.12, 0.92), goldMat);
+  lintelTrim.position.set(0, 3.3, 0);
+
+  const apexCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.26, 0), ringMat);
+  apexCrystal.scale.set(0.8, 1.45, 0.8);
+  apexCrystal.position.set(0, 3.74, 0);
+
+  const archRing = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.095, 10, 32), ringMat);
+  archRing.position.set(0, 1.52, 0);
+
+  const outerGoldRing = new THREE.Mesh(new THREE.TorusGeometry(1.26, 0.036, 8, 32), goldMat);
+  outerGoldRing.position.set(0, 1.52, 0);
 
   const vortex = new THREE.Mesh(
-    new THREE.CircleGeometry(0.98, 28),
+    new THREE.CircleGeometry(1.04, 32),
     new THREE.MeshBasicMaterial({
       color: trimHex,
       transparent: true,
@@ -1711,9 +1891,9 @@ export function createPortalModel(trimHex: number): {
       side: THREE.DoubleSide,
     })
   );
-  vortex.position.set(0, 1.5, 0);
+  vortex.position.set(0, 1.52, 0);
 
-  group.add(leftCol, rightCol, lintel, archRing, vortex);
+  group.add(lintel, lintelTrim, apexCrystal, archRing, outerGoldRing, vortex);
   return { group, vortex, ringMat };
 }
 
