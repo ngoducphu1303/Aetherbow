@@ -64,6 +64,10 @@ interface PauseResultModalProps {
   vaultPillarsBroken?: number;
   vaultReforgeLooted?: number;
   vaultShardsLooted?: number;
+  isDragonLairMode?: boolean;
+  dragonDamageDealt?: number;
+  dragonScalesLooted?: number;
+  dragonPhase?: number;
   warCrestsEarned?: number;
   wingFeathersEarned?: number;
   mountShardsEarned?: number;
@@ -135,6 +139,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   vaultPillarsBroken = 0,
   vaultReforgeLooted = 0,
   vaultShardsLooted = 0,
+  isDragonLairMode = false,
+  dragonDamageDealt = 0,
+  dragonScalesLooted = 0,
+  dragonPhase = 1,
   warCrestsEarned = 0,
   wingFeathersEarned = 0,
   mountShardsEarned = 0,
@@ -229,7 +237,9 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         </div>
 
         <div className="text-xs font-extrabold uppercase tracking-widest text-amber-300 mb-1">
-          {isCrystalVaultMode
+          {isDragonLairMode
+            ? `Lãnh Địa Rồng Cổ 3D · Pha ${dragonPhase}/3`
+            : isCrystalVaultMode
             ? `Hầm Mỏ Pha Lê Kho Báu 3D · Phá ${vaultPillarsBroken} Trụ`
             : isChampionshipMode
             ? `Giải Đấu Quán Quân 3D · Hiệp ${championshipRound}/3`
@@ -264,6 +274,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <h2 className="font-display text-2xl font-black text-white mb-1.5">
           {isPause
             ? 'Tạm Dừng Trận Đấu'
+            : isDragonLairMode
+            ? isVictory
+              ? 'Đồ Long Thành Công · Chinh Phục Cổ Long!'
+              : 'Tổng Kết Lãnh Địa Rồng Cổ 3D!'
             : isCrystalVaultMode
             ? 'Hoàn Tất Khai Phá Hầm Mỏ Pha Lê!'
             : isChampionshipMode
@@ -319,6 +333,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <p className="text-xs text-slate-300 mb-3">
           {isPause
             ? 'Nghỉ ngơi đôi chút hoặc tùy chỉnh âm thanh & đồ họa 3D.'
+            : isDragonLairMode
+            ? `Bạn gây ${dragonDamageDealt.toLocaleString('vi-VN')} sát thương lên Cổ Long Tinh Giới (Pha ${dragonPhase}/3) và thu thập ${dragonScalesLooted} Vảy Rồng Cổ!`
             : isCrystalVaultMode
             ? `Bạn đã phá vỡ ${vaultPillarsBroken} Trụ Pha Lê Kho Báu! Ngọc Hồn, Đá Đúc Hoàng Kim, Mảnh Thần Binh & Huy Hiệu Chiến Trận đã chuyển vào Kho.`
             : isChampionshipMode
@@ -403,7 +419,9 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4 text-left bg-[#060916]/95 border border-amber-400/30 rounded-2xl p-3.5">
           <div>
             <div className="text-[10px] text-slate-400 font-bold">
-              {isCrystalVaultMode
+              {isDragonLairMode
+                ? 'Sát Thương Cổ Long'
+                : isCrystalVaultMode
                 ? 'Trụ Pha Lê Phá'
                 : isChampionshipMode
                 ? 'Hiệp Quán Quân'
@@ -444,7 +462,9 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   : 'text-white'
               }`}
             >
-              {isCrystalVaultMode
+              {isDragonLairMode
+                ? `${dragonDamageDealt.toLocaleString('vi-VN')} ST`
+                : isCrystalVaultMode
                 ? `${vaultPillarsBroken} Trụ`
                 : isChampionshipMode
                 ? `Hiệp ${championshipRound}/3 (${championshipScore.toLocaleString('vi-VN')}đ)`
@@ -512,8 +532,20 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             festivalLanternsEarned > 0 ||
             vaultReforgeLooted > 0 ||
             vaultShardsLooted > 0 ||
+            dragonScalesLooted > 0 ||
             warCrestsEarned > 0) && (
             <>
+              {dragonScalesLooted > 0 && (
+                <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-rose-200 font-bold">
+                    <Sparkles className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>Vảy Rồng Cổ</span>
+                  </span>
+                  <span className="font-mono-nums font-black text-rose-300">
+                    +{dragonScalesLooted}
+                  </span>
+                </div>
+              )}
               {vaultReforgeLooted > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-orange-200 font-bold">

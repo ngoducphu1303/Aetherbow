@@ -799,12 +799,89 @@
   animation-play-state: paused;
 }
 
+/* Wave 13: Animated VIP Avatar Frames (conic metallic shimmer rings) */
+@keyframes w13FrameSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes w13SkillSheen {
+  0% {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-18deg);
+  }
+}
+
+.w13-vip-frame-gold,
+.w13-vip-frame-nebula,
+.w13-vip-frame-diamond,
+.w13-vip-frame-dragon {
+  position: relative;
+  border-radius: 16px;
+  padding: 2.5px;
+  overflow: hidden;
+}
+
+.w13-vip-frame-gold::before,
+.w13-vip-frame-nebula::before,
+.w13-vip-frame-diamond::before,
+.w13-vip-frame-dragon::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  animation: w13FrameSpin 4.2s linear infinite;
+  pointer-events: none;
+}
+
+.w13-vip-frame-gold::before {
+  background: conic-gradient(#fde047, #b45309, #fef08a, #d97706, #fde047);
+}
+
+.w13-vip-frame-nebula::before {
+  background: conic-gradient(#38bdf8, #a855f7, #e0f2fe, #6366f1, #38bdf8);
+}
+
+.w13-vip-frame-diamond::before {
+  background: conic-gradient(#f8fafc, #38bdf8, #fde047, #c084fc, #f8fafc);
+}
+
+.w13-vip-frame-dragon::before {
+  background: conic-gradient(#f97316, #e11d48, #fde047, #991b1b, #f97316);
+}
+
+.w13-skill-ready-glow {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 18px rgba(250, 204, 21, 0.42), inset 0 0 12px rgba(254, 240, 138, 0.28);
+}
+
+.w13-skill-ready-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 48%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  animation: w13SkillSheen 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .a2-title-shimmer-gold,
   .a2-title-shimmer-crimson,
   .a2-title-shimmer-arcane,
   .a2-title-shimmer-cyan,
-  .a2-honor-marquee {
+  .a2-honor-marquee,
+  .w13-vip-frame-gold::before,
+  .w13-vip-frame-nebula::before,
+  .w13-vip-frame-diamond::before,
+  .w13-vip-frame-dragon::before,
+  .w13-skill-ready-glow::after {
     animation: none;
   }
   .a2-flip-card {
@@ -815,5 +892,6 @@
     animation-duration: 240ms;
   }
 }
+
 
 

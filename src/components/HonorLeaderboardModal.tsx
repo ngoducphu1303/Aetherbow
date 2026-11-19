@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Award, Check, Crown, Frame, Swords, Trophy, X } from 'lucide-react';
+import { Award, Check, Copy, Crown, Eye, Frame, Sparkles, Swords, Trophy, X } from 'lucide-react';
 import worldBossArt from '../assets/images/world_boss_abyss_1795005956955.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { HERO_MAP } from '../data/heroesData';
@@ -13,10 +13,19 @@ import {
   HonorBoardTab,
   normalizeWorldBoss,
 } from '../data/wave7Data';
+import { WAR_BANNER_MAP } from '../data/wave12Data';
+import {
+  ASTRAL_STEED_MAP,
+  TOP_SERVER_PROFILES,
+  VIP_AVATAR_FRAME_DEFS,
+  VIP_AVATAR_FRAME_MAP,
+} from '../data/wave13Data';
 import {
   AvatarFrameId,
   MythicBadgeId,
   SaveData,
+  TopPlayerBuildProfile,
+  VipAvatarFrameId,
 } from '../types/game';
 import {
   SoulGemIcon,
@@ -29,8 +38,12 @@ interface HonorLeaderboardModalProps {
   save: SaveData;
   powerRating: number;
   heroName: string;
+  vipLevel?: number;
   onUnlockAvatarFrame: (frameId: AvatarFrameId) => void;
   onEquipAvatarFrame: (frameId: AvatarFrameId) => void;
+  onUnlockVipFrame?: (frameId: VipAvatarFrameId) => void;
+  onEquipVipFrame?: (frameId: VipAvatarFrameId | null) => void;
+  onCopyTopProfile?: (profile: TopPlayerBuildProfile) => void;
   onClaimMythicBadge: (badgeId: MythicBadgeId) => void;
   onEquipMythicBadge: (badgeId: MythicBadgeId | null) => void;
   onClaimWorldBossMilestone: (milestoneId: string) => void;
@@ -42,8 +55,12 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   save,
   powerRating,
   heroName,
+  vipLevel = 0,
   onUnlockAvatarFrame,
   onEquipAvatarFrame,
+  onUnlockVipFrame,
+  onEquipVipFrame,
+  onCopyTopProfile,
   onClaimMythicBadge,
   onEquipMythicBadge,
   onClaimWorldBossMilestone,
@@ -53,6 +70,8 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   const [section, setSection] = useState<'rankings' | 'badges' | 'frames'>('rankings');
   const [rankTab, setRankTab] = useState<HonorBoardTab>('power');
   const [wbImgErr, setWbImgErr] = useState(false);
+  const [inspectedProfile, setInspectedProfile] = useState<TopPlayerBuildProfile | null>(null);
+  const [copiedRank, setCopiedRank] = useState<number | null>(null);
 
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const rows = useMemo(
@@ -63,8 +82,12 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   const wb = normalizeWorldBoss(save.worldBoss);
   const unlockedFrames = new Set<AvatarFrameId>(save.unlockedAvatarFrames ?? ['default_gold']);
   const equippedFrame = save.equippedAvatarFrameId ?? 'default_gold';
+  const unlockedVipFrames = new Set<VipAvatarFrameId>(save.unlockedVipFrames ?? []);
+  const equippedVipFrame = save.equippedVipFrameId ?? null;
   const claimedBadges = new Set<MythicBadgeId>(save.claimedMythicBadges ?? []);
   const equippedBadge = save.equippedMythicBadgeId ?? null;
+
+  const podiumOrder = [TOP_SERVER_PROFILES[1], TOP_SERVER_PROFILES[0], TOP_SERVER_PROFILES[2]];
 
   const scoreSuffix =
     rankTab === 'power'
@@ -141,6 +164,100 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
         {/* SECTION 1: LEADERBOARDS & WORLD BOSS MILESTONES */}
         {section === 'rankings' && (
           <div className="space-y-4">
+            {/* Wave 13: Đài Vinh Danh Đỉnh Cao 3D · Top 3 Liên Server & Soi Đội Hình */}
+            <div className="rounded-2xl border border-amber-300/45 bg-gradient-to-b from-[#171234] via-[#0b1026] to-[#070b18] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">
+                    Đài Vinh Danh Đỉnh Cao 3D · Top 3 Chí Tôn Liên Server
+                  </div>
+                  <div className="text-xs text-slate-300">
+                    Bấm Soi Đội Hình để xem Thú Cưỡi 3D, Hồn Hoàn, Thần Binh &amp; Sao Chép Đội Hình Top 1!
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.1);
+                    setInspectedProfile(TOP_SERVER_PROFILES[0]);
+                  }}
+                  className="a2-yellow-btn px-3 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Soi Đội Hình Top 1</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                {podiumOrder.map((profile) => {
+                  const pHero = HERO_MAP[profile.heroId] ?? HERO_MAP.artemis;
+                  const pSteed = ASTRAL_STEED_MAP[profile.astralSteedId];
+                  const pVipFrame = VIP_AVATAR_FRAME_MAP[profile.vipFrameId];
+                  const isRank1 = profile.rank === 1;
+                  return (
+                    <div
+                      key={profile.rank}
+                      className={`rounded-2xl border p-3.5 flex flex-col items-center text-center transition-transform ${
+                        isRank1
+                          ? 'sm:-mt-3 border-amber-300 bg-gradient-to-b from-amber-500/20 via-[#151232] to-[#080c1d] shadow-[0_0_28px_rgba(251,191,36,0.22)]'
+                          : profile.rank === 2
+                          ? 'border-sky-300/60 bg-gradient-to-b from-sky-500/15 to-[#080c1d]'
+                          : 'border-orange-400/60 bg-gradient-to-b from-orange-500/15 to-[#080c1d]'
+                      }`}
+                    >
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black font-mono-nums mb-2 ${
+                          isRank1
+                            ? 'bg-amber-300 text-slate-950'
+                            : profile.rank === 2
+                            ? 'bg-sky-400/20 text-sky-200 border border-sky-300/50'
+                            : 'bg-orange-400/20 text-orange-200 border border-orange-300/50'
+                        }`}
+                      >
+                        TOP #{profile.rank} · {profile.titleBadge}
+                      </span>
+
+                      <div className={`rounded-full p-[3px] ${pVipFrame?.frameClass ?? ''}`}>
+                        <ZodiacAvatar
+                          heroId={pHero.id}
+                          accentHex={pHero.accentHex}
+                          cloakHex={pHero.cloakHex}
+                          hairHex={pHero.hairHex}
+                          frameId={isRank1 ? 'world_dragon' : 'seraph_crown'}
+                          sizeClass={isRank1 ? 'w-14 h-14' : 'w-12 h-12'}
+                        />
+                      </div>
+
+                      <div className="font-display text-sm font-black text-white mt-2 truncate max-w-full">
+                        {profile.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate max-w-full">
+                        Bang {profile.guild} · {pHero.name} {profile.heroStar}★
+                      </div>
+                      <div className="font-mono-nums text-sm font-black text-amber-300 mt-1">
+                        {profile.powerRating.toLocaleString('vi-VN')} LC
+                      </div>
+                      <div className="text-[10px] text-cyan-200 font-bold mt-0.5 truncate max-w-full">
+                        {pSteed?.name ?? 'Thú Cưỡi 3D'} · Hồn Hoàn Lv.{profile.soulRingTotalLv}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick(1.05);
+                          setInspectedProfile(profile);
+                        }}
+                        className="mt-2.5 w-full py-1.5 rounded-xl bg-slate-900/90 hover:bg-amber-400/20 border border-amber-300/45 text-[11px] font-black text-amber-200 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Soi Đội Hình</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Board Category Tabs */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
@@ -441,79 +558,319 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
           </div>
         )}
 
-        {/* SECTION 3: ZODIAC AVATAR FRAMES */}
+        {/* SECTION 3: ANIMATED VIP AVATAR FRAMES + ZODIAC AVATAR FRAMES */}
         {section === 'frames' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {AVATAR_FRAMES.map((frame) => {
-              const unlocked = unlockedFrames.has(frame.id);
-              const equipped = equippedFrame === frame.id;
-              return (
-                <div
-                  key={frame.id}
-                  className={`rounded-2xl border p-4 flex flex-col items-center text-center justify-between gap-3 ${
-                    equipped
-                      ? 'bg-[#171209]/95 border-amber-300'
-                      : unlocked
-                      ? 'bg-[#081523]/95 border-sky-400/50'
-                      : 'bg-[#070b1a]/95 border-slate-800'
-                  }`}
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">
-                      {frame.tierLabel}
-                    </span>
-                    <ZodiacAvatar
-                      heroId={activeHero.id}
-                      accentHex={activeHero.accentHex}
-                      cloakHex={activeHero.cloakHex}
-                      hairHex={activeHero.hairHex}
-                      frameId={frame.id}
-                      sizeClass="w-16 h-16"
-                    />
-                    <div className="font-display text-sm font-black text-white">{frame.name}</div>
-                    <p className="text-[11px] text-slate-300 leading-snug">{frame.desc}</p>
-                    <div className="text-[10px] font-bold text-sky-300">
-                      {frame.unlockMethodLabel}
-                    </div>
+          <div className="space-y-5">
+            {/* Wave 13: Animated VIP Avatar Frames */}
+            <div className="rounded-2xl border border-amber-300/45 bg-gradient-to-b from-[#1a1335]/95 to-[#070b1a]/95 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-300">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Khung Avatar Động VIP · Hào Quang Xoay 360°</span>
                   </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Mở khóa tăng Công &amp; Máu cộng dồn vĩnh viễn cho toàn đội hình. Hiện có{' '}
+                    <span className="font-mono-nums font-black text-rose-300">
+                      {save.dragonScales ?? 0} Vảy Rồng Cổ
+                    </span>{' '}
+                    · VIP {vipLevel}.
+                  </p>
+                </div>
+                {equippedVipFrame && onEquipVipFrame && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(0.95);
+                      onEquipVipFrame(null);
+                    }}
+                    className="a2-slate-btn px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer"
+                  >
+                    Tháo Khung Động VIP
+                  </button>
+                )}
+              </div>
 
-                  {unlocked ? (
-                    <button
-                      type="button"
-                      disabled={equipped}
-                      onClick={() => {
-                        soundEngine.playUiClick(1.05);
-                        onEquipAvatarFrame(frame.id);
-                      }}
-                      className={`w-full py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:cursor-default ${
-                        equipped ? 'a2-emerald-btn' : 'a2-yellow-btn'
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {VIP_AVATAR_FRAME_DEFS.map((vf) => {
+                  const unlocked = unlockedVipFrames.has(vf.id);
+                  const equipped = equippedVipFrame === vf.id;
+                  const meetsVip = vipLevel >= vf.unlockVipLevel;
+                  const canAfford =
+                    meetsVip ||
+                    ((save.dragonScales ?? 0) >= vf.unlockDragonScales &&
+                      save.gems >= vf.unlockGems);
+
+                  return (
+                    <div
+                      key={vf.id}
+                      className={`rounded-2xl border p-3.5 flex items-center gap-3.5 ${
+                        equipped
+                          ? 'bg-[#1a1409] border-amber-300'
+                          : unlocked
+                          ? 'bg-[#091826] border-cyan-400/50'
+                          : 'bg-[#070b18] border-slate-800'
                       }`}
                     >
-                      {equipped ? 'Đang Trang Bị' : 'Trang Bị Khung'}
-                    </button>
-                  ) : frame.unlockGems ? (
-                    <button
-                      type="button"
-                      disabled={save.gems < frame.unlockGems}
-                      onClick={() => {
-                        soundEngine.playLevelUp();
-                        onUnlockAvatarFrame(frame.id);
-                      }}
-                      className="a2-purple-btn w-full py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
-                    >
-                      Mở Khóa ({frame.unlockGems} Ngọc)
-                    </button>
-                  ) : (
-                    <div className="w-full py-2 rounded-xl text-[11px] font-black bg-slate-900 text-slate-400 border border-slate-800">
-                      Đạt Điều Kiện Để Mở
+                      <div className={`rounded-full p-[3px] shrink-0 ${vf.frameClass}`}>
+                        <ZodiacAvatar
+                          heroId={activeHero.id}
+                          accentHex={activeHero.accentHex}
+                          cloakHex={activeHero.cloakHex}
+                          hairHex={activeHero.hairHex}
+                          frameId={equippedFrame}
+                          sizeClass="w-14 h-14"
+                        />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">
+                          {vf.tierLabel}
+                        </div>
+                        <div className="font-display text-sm font-black text-white truncate">
+                          {vf.name}
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug line-clamp-2 mt-0.5">
+                          {vf.desc}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-1.5 text-[10px] font-mono-nums font-black text-emerald-300">
+                          <span>+{vf.bonusAtk} ATK</span>
+                          <span>+{vf.bonusHp} HP</span>
+                        </div>
+
+                        <div className="mt-2">
+                          {unlocked ? (
+                            <button
+                              type="button"
+                              disabled={equipped}
+                              onClick={() => {
+                                soundEngine.playUiClick(1.1);
+                                onEquipVipFrame?.(vf.id);
+                              }}
+                              className={`w-full py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer disabled:cursor-default ${
+                                equipped ? 'a2-emerald-btn' : 'a2-yellow-btn'
+                              }`}
+                            >
+                              {equipped ? 'Đang Trang Bị Khung VIP' : 'Trang Bị Khung Động'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={!canAfford || !onUnlockVipFrame}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUnlockVipFrame?.(vf.id);
+                              }}
+                              className="a2-purple-btn w-full py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                            >
+                              {meetsVip
+                                ? `Nhận Miễn Phí (VIP ${vf.unlockVipLevel})`
+                                : `Mở: ${vf.unlockDragonScales} Vảy + ${vf.unlockGems} Ngọc`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Classic Zodiac Avatar Frames */}
+            <div>
+              <div className="text-xs font-black uppercase tracking-wider text-slate-300 mb-2.5">
+                Khung Avatar Hoàng Đạo ({unlockedFrames.size}/{AVATAR_FRAMES.length})
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {AVATAR_FRAMES.map((frame) => {
+                  const unlocked = unlockedFrames.has(frame.id);
+                  const equipped = equippedFrame === frame.id;
+                  return (
+                    <div
+                      key={frame.id}
+                      className={`rounded-2xl border p-4 flex flex-col items-center text-center justify-between gap-3 ${
+                        equipped
+                          ? 'bg-[#171209]/95 border-amber-300'
+                          : unlocked
+                          ? 'bg-[#081523]/95 border-sky-400/50'
+                          : 'bg-[#070b1a]/95 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">
+                          {frame.tierLabel}
+                        </span>
+                        <ZodiacAvatar
+                          heroId={activeHero.id}
+                          accentHex={activeHero.accentHex}
+                          cloakHex={activeHero.cloakHex}
+                          hairHex={activeHero.hairHex}
+                          frameId={frame.id}
+                          sizeClass="w-16 h-16"
+                        />
+                        <div className="font-display text-sm font-black text-white">{frame.name}</div>
+                        <p className="text-[11px] text-slate-300 leading-snug">{frame.desc}</p>
+                        <div className="text-[10px] font-bold text-sky-300">
+                          {frame.unlockMethodLabel}
+                        </div>
+                      </div>
+
+                      {unlocked ? (
+                        <button
+                          type="button"
+                          disabled={equipped}
+                          onClick={() => {
+                            soundEngine.playUiClick(1.05);
+                            onEquipAvatarFrame(frame.id);
+                          }}
+                          className={`w-full py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:cursor-default ${
+                            equipped ? 'a2-emerald-btn' : 'a2-yellow-btn'
+                          }`}
+                        >
+                          {equipped ? 'Đang Trang Bị' : 'Trang Bị Khung'}
+                        </button>
+                      ) : frame.unlockGems ? (
+                        <button
+                          type="button"
+                          disabled={save.gems < frame.unlockGems}
+                          onClick={() => {
+                            soundEngine.playLevelUp();
+                            onUnlockAvatarFrame(frame.id);
+                          }}
+                          className="a2-purple-btn w-full py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                        >
+                          Mở Khóa ({frame.unlockGems} Ngọc)
+                        </button>
+                      ) : (
+                        <div className="w-full py-2 rounded-xl text-[11px] font-black bg-slate-900 text-slate-400 border border-slate-800">
+                          Đạt Điều Kiện Để Mở
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Wave 13: Top Player Build Inspector Drawer */}
+      {inspectedProfile && (() => {
+        const heroDef = HERO_MAP[inspectedProfile.heroId] ?? HERO_MAP.artemis;
+        const steedDef = ASTRAL_STEED_MAP[inspectedProfile.astralSteedId];
+        const bannerDef = WAR_BANNER_MAP[inspectedProfile.warBannerId];
+        const vipFrameDef = VIP_AVATAR_FRAME_MAP[inspectedProfile.vipFrameId];
+        const copied = copiedRank === inspectedProfile.rank;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#03050d]/88">
+            <div className="cel-panel-ornate w-full max-w-lg rounded-3xl p-5 a2-modal-enter">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`rounded-full p-[3px] shrink-0 ${vipFrameDef?.frameClass ?? ''}`}>
+                    <ZodiacAvatar
+                      heroId={heroDef.id}
+                      accentHex={heroDef.accentHex}
+                      cloakHex={heroDef.cloakHex}
+                      hairHex={heroDef.hairHex}
+                      frameId="world_dragon"
+                      sizeClass="w-14 h-14"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">
+                      TOP #{inspectedProfile.rank} · {inspectedProfile.titleBadge}
+                    </div>
+                    <h3 className="font-display text-lg font-black text-white truncate">
+                      {inspectedProfile.name}
+                    </h3>
+                    <div className="text-[11px] text-slate-300">
+                      Bang {inspectedProfile.guild} ·{' '}
+                      <span className="font-mono-nums font-black text-amber-300">
+                        {inspectedProfile.powerRating.toLocaleString('vi-VN')} LC
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInspectedProfile(null)}
+                  aria-label="Đóng Soi Đội Hình"
+                  className="a2-slate-btn w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs italic text-amber-100/90 bg-[#0b1126] border border-amber-400/25 rounded-2xl px-3.5 py-2.5 mb-3.5">
+                “{inspectedProfile.signatureQuote}”
+              </p>
+
+              <div className="grid grid-cols-2 gap-2.5 mb-4">
+                <div className="rounded-xl bg-[#070b1a] border border-slate-800 p-3">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Anh Hùng Chủ Lực</div>
+                  <div className="text-xs font-black text-white mt-0.5">
+                    {heroDef.name} · {inspectedProfile.heroStar}★
+                  </div>
+                  <div className="text-[10px] text-sky-300 mt-0.5">{heroDef.title}</div>
+                </div>
+                <div className="rounded-xl bg-[#070b1a] border border-slate-800 p-3">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Thú Cưỡi Tinh Giới 3D</div>
+                  <div className="text-xs font-black text-amber-200 mt-0.5">
+                    {steedDef?.name ?? 'Thánh Long'} · {inspectedProfile.steedStar}★
+                  </div>
+                  <div className="text-[10px] text-cyan-300 mt-0.5">{steedDef?.badge}</div>
+                </div>
+                <div className="rounded-xl bg-[#070b1a] border border-slate-800 p-3">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Cờ Hiệu &amp; Khung VIP</div>
+                  <div className="text-xs font-black text-emerald-200 mt-0.5">
+                    {bannerDef?.name ?? 'Cờ Phượng Hoàng'}
+                  </div>
+                  <div className="text-[10px] text-amber-300 mt-0.5">{vipFrameDef?.name}</div>
+                </div>
+                <div className="rounded-xl bg-[#070b1a] border border-slate-800 p-3">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Hồn Hoàn &amp; Thần Binh</div>
+                  <div className="text-xs font-black text-purple-200 mt-0.5 font-mono-nums">
+                    Hồn Hoàn Lv.{inspectedProfile.soulRingTotalLv} · Thần Binh Bậc {inspectedProfile.mythicWeaponTier}
+                  </div>
+                  <div className="text-[10px] text-slate-300 mt-0.5">Cộng hưởng Ngũ Hồn Chí Tôn</div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                {onCopyTopProfile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playLevelUp();
+                      onCopyTopProfile(inspectedProfile);
+                      setCopiedRank(inspectedProfile.rank);
+                    }}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      copied ? 'a2-emerald-btn' : 'a2-yellow-btn'
+                    }`}
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>
+                      {copied
+                        ? 'Đã Đồng Bộ Đội Hình (Các Mục Đã Sở Hữu)!'
+                        : 'Sao Chép Đội Hình Cao Thủ'}
+                    </span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setInspectedProfile(null)}
+                  className="a2-slate-btn py-2.5 px-4 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

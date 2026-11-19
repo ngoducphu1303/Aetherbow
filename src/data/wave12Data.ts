@@ -30,6 +30,12 @@ import {
 } from './wave11Data';
 import { countClaimableVaultRewards, hasFreeChainStepReady } from './wave10Data';
 import { isMonthlyCardActive, normalizeMonthlyPrivilege } from './wave7Data';
+import {
+  computeSoulRingBonuses,
+  countClaimableCarnivalRewards,
+  countClaimableDragonLairMilestones,
+  countClaimableStarlightMilestones,
+} from './wave13Data';
 
 // ============================================================================
 // 1. MYTHIC WEAPON TRANSCENDENCE 3D & GOLDEN STAT REFORGE (THẦN BINH 3D)
@@ -671,11 +677,16 @@ export function analyzeCombatPower(save: SaveData, totalPower: number): CombatPo
   const wingLv = save.equippedWingId ? save.wingLevels?.[save.equippedWingId] ?? 1 : 0;
   const mountLv = save.equippedMountId ? save.mountLevels?.[save.equippedMountId] ?? 1 : 0;
   const haloLv = save.equippedHaloId ? save.haloLevels?.[save.equippedHaloId] ?? 1 : 0;
-  const cosmeticScore = Math.max(45, wingLv * 90 + mountLv * 95 + haloLv * 120 + (save.equippedArtifactId ? 150 : 0));
+  const steedStar = save.equippedAstralSteedId ? save.astralSteedStars?.[save.equippedAstralSteedId] ?? 1 : 0;
+  const cosmeticScore = Math.max(
+    45,
+    wingLv * 90 + mountLv * 95 + haloLv * 120 + steedStar * 150 + (save.equippedArtifactId ? 150 : 0)
+  );
 
   const altar = computeAltarBonuses(save.blessingAltar);
+  const soulRings = computeSoulRingBonuses(save.soulRings);
   const bannerLv = save.equippedWarBannerId ? save.warBannerLevels?.[save.equippedWarBannerId] ?? 1 : 0;
-  const altarBannerScore = Math.max(35, altar.totalLevel * 55 + bannerLv * 140);
+  const altarBannerScore = Math.max(35, altar.totalLevel * 55 + bannerLv * 140 + soulRings.totalLevel * 65);
 
   const codex = computeCodexSummary(save);
   const codexScore = Math.max(50, codex.totalPoints * 1.4 + codex.currentRank.rank * 95);
@@ -881,6 +892,36 @@ export function previewLobbyClaimAll(save: SaveData): ClaimAllPreview {
       label: 'Mốc Vòng Quay Kho Báu',
       detail: `${wheelMilestoneCount} mốc quay tích lũy`,
       count: wheelMilestoneCount,
+    });
+  }
+
+  const carnivalCount = countClaimableCarnivalRewards(save);
+  if (carnivalCount > 0) {
+    sources.push({
+      id: 'carnival_7day',
+      label: 'Lộ Trình Quà 7 Ngày',
+      detail: `${carnivalCount} nhiệm vụ & mốc điểm 7 ngày`,
+      count: carnivalCount,
+    });
+  }
+
+  const raceCount = countClaimableStarlightMilestones(save);
+  if (raceCount > 0) {
+    sources.push({
+      id: 'starlight_race',
+      label: 'Mốc Đường Đua Ánh Sao',
+      detail: `${raceCount} mốc thưởng tốc độ sẵn sàng`,
+      count: raceCount,
+    });
+  }
+
+  const dragonCount = countClaimableDragonLairMilestones(save);
+  if (dragonCount > 0) {
+    sources.push({
+      id: 'dragon_lair',
+      label: 'Mốc Lãnh Địa Rồng Cổ 3D',
+      detail: `${dragonCount} mốc Vảy Rồng Cổ chưa nhận`,
+      count: dragonCount,
     });
   }
 

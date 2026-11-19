@@ -40,6 +40,8 @@ import {
 import { VipPrivilegeModal } from './components/VipPrivilegeModal';
 import { WardrobeModal } from './components/WardrobeModal';
 import { Wave12SanctumModal, Wave12SanctumTab } from './components/Wave12SanctumModal';
+import { Wave13CarnivalModal } from './components/Wave13CarnivalModal';
+import { Wave13Tab, Wave13TreasuryModal } from './components/Wave13TreasuryModal';
 import { ZodiacGuildModal } from './components/ZodiacGuildModal';
 import { CHAPTERS } from './data/chaptersData';
 import {
@@ -269,6 +271,33 @@ import {
   rollGoldenStats,
   spinTreasureWheelOnce,
 } from './data/wave12Data';
+import {
+  ASTRAL_STEED_MAP,
+  ASTRAL_STEED_MAX_STAR,
+  BLIND_BOX_COST_GEMS,
+  CARNIVAL_7DAY_MILESTONES,
+  CARNIVAL_7DAY_TASKS,
+  DRAGON_LAIR_MILESTONES,
+  EVOLVING_FIRST_TOPUP_TIERS,
+  ROYAL_DUTCH_LOTS,
+  SOUL_RING_MAX_LEVEL,
+  STARLIGHT_RACE_MILESTONES,
+  VIP_AVATAR_FRAME_MAP,
+  fuseSpiritJades,
+  getAstralSteedStarUpCost,
+  getCarnivalTaskProgress,
+  getCarnivalTotalPoints,
+  getSoulRingUpgradeCost,
+  normalizeCarnival7Day,
+  normalizeDragonLair,
+  normalizeEvolvingFirstTopUp,
+  normalizeRoyalBlindBox,
+  normalizeRoyalDutchAuction,
+  normalizeSoulRings,
+  normalizeStarlightRace,
+  resolveBlindBoxOpen,
+  simulateStarlightSprint,
+} from './data/wave13Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
@@ -276,6 +305,7 @@ import {
   AltarBlessingId,
   ArenaOpponent,
   ArtifactId,
+  AstralSteedId,
   AuctionLotItem,
   AuraStyleId,
   AvatarFrameId,
@@ -306,6 +336,7 @@ import {
   LobbyCameraPreset,
   LobbyHeroPoseId,
   LobbySkyThemeId,
+  LobbyWeatherId,
   MonthlyCardTier,
   MountId,
   MysteryBoxTierId,
@@ -313,6 +344,9 @@ import {
   NightMarketOffer,
   PantheonBlessingId,
   PetId,
+  SoulRingSlotId,
+  TopPlayerBuildProfile,
+  VipAvatarFrameId,
   Rarity,
   RunHistoryEntry,
   RuneInstance,
@@ -494,10 +528,13 @@ export default function App() {
     isPantheonMode?: boolean;
     isChampionshipMode?: boolean;
     isCrystalVaultMode?: boolean;
+    isDragonLairMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
   const [wave12SanctumTab, setWave12SanctumTab] = useState<Wave12SanctumTab | null>(null);
+  const [wave13TreasuryTab, setWave13TreasuryTab] = useState<Wave13Tab | null>(null);
+  const [wave13CarnivalOpen, setWave13CarnivalOpen] = useState<boolean>(false);
   const [cpBreakdownOpen, setCpBreakdownOpen] = useState<boolean>(false);
   const [claimAllModalOpen, setClaimAllModalOpen] = useState<boolean>(false);
   const [photoMode, setPhotoMode] = useState<boolean>(false);
@@ -616,6 +653,10 @@ export default function App() {
     vaultPillarsBroken?: number;
     vaultReforgeLooted?: number;
     vaultShardsLooted?: number;
+    isDragonLairMode?: boolean;
+    dragonDamageDealt?: number;
+    dragonScalesLooted?: number;
+    dragonPhase?: number;
     warCrests?: number;
     maxCombo?: number;
     damageBreakdown?: DamageBreakdown;
@@ -708,6 +749,15 @@ export default function App() {
     const warBannerLevel = effectiveWarBannerId
       ? Math.max(1, save.warBannerLevels?.[effectiveWarBannerId] ?? 1)
       : 1;
+    const effectiveAstralSteedId: AstralSteedId | null =
+      save.equippedAstralSteedId &&
+      (save.unlockedAstralSteeds ?? []).includes(save.equippedAstralSteedId)
+        ? save.equippedAstralSteedId
+        : null;
+    const astralSteedStar = effectiveAstralSteedId
+      ? Math.max(1, save.astralSteedStars?.[effectiveAstralSteedId] ?? 1)
+      : 1;
+    const soulRingLevels = normalizeSoulRings(save.soulRings).levels;
 
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
@@ -734,6 +784,9 @@ export default function App() {
       mythicWeaponTier,
       warBannerId: effectiveWarBannerId,
       warBannerLevel,
+      astralSteedId: effectiveAstralSteedId,
+      astralSteedStar,
+      soulRingLevels,
     };
   }, [
     save,
@@ -763,6 +816,8 @@ export default function App() {
       setFestivalModalOpen(false);
       setBundlePreview(null);
       setWave12SanctumTab(null);
+      setWave13TreasuryTab(null);
+      setWave13CarnivalOpen(false);
       setCpBreakdownOpen(false);
       setClaimAllModalOpen(false);
       setPhotoMode(false);
@@ -1046,6 +1101,10 @@ export default function App() {
           const vaultGemsLooted = summary.vaultGemsLooted ?? 0;
           const vaultReforgeLooted = summary.vaultReforgeLooted ?? 0;
           const vaultShardsLooted = summary.vaultShardsLooted ?? 0;
+          const isDragonLair = Boolean(summary.isDragonLairMode);
+          const dragonDamageDealt = summary.dragonDamageDealt ?? 0;
+          const dragonScalesLooted = summary.dragonScalesLooted ?? 0;
+          const dragonPhase = summary.dragonPhase ?? 1;
           const warCrestsGain = summary.warCrests ?? (isCrystalVault ? 4 + Math.floor(vaultPillarsBroken / 2) : 0);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
@@ -1148,8 +1207,20 @@ export default function App() {
             : victory
             ? 22 * summary.chapterId
             : 2;
-          const totalGold = summary.gold + (isCrystalVault ? 120 + vaultPillarsBroken * 35 : bonusGold);
-          const totalGems = summary.gems + (isCrystalVault ? vaultGemsLooted : bonusGems);
+          const totalGold =
+            summary.gold +
+            (isDragonLair
+              ? 260 + dragonScalesLooted * 30
+              : isCrystalVault
+              ? 120 + vaultPillarsBroken * 35
+              : bonusGold);
+          const totalGems =
+            summary.gems +
+            (isDragonLair
+              ? 12 + Math.floor(dragonScalesLooted * 1.4)
+              : isCrystalVault
+              ? vaultGemsLooted
+              : bonusGems);
           const starDustGain = summary.starDust ?? 0;
           const petEssenceGain = summary.petEssence ?? 0;
           const guildCoinGain = isGuildBoss
@@ -1158,7 +1229,9 @@ export default function App() {
             ? guildWarCoinsGain
             : 0;
 
-          const rawSeasonXp = isArena
+          const rawSeasonXp = isDragonLair
+            ? 120 + dragonPhase * 35 + (victory ? 65 : 0)
+            : isArena
             ? victory
               ? 95
               : 40
@@ -1215,6 +1288,10 @@ export default function App() {
             vaultPillarsBroken: isCrystalVault ? vaultPillarsBroken : undefined,
             vaultReforgeLooted: isCrystalVault ? vaultReforgeLooted : undefined,
             vaultShardsLooted: isCrystalVault ? vaultShardsLooted : undefined,
+            isDragonLairMode: isDragonLair || undefined,
+            dragonDamageDealt: isDragonLair ? dragonDamageDealt : undefined,
+            dragonScalesLooted: isDragonLair ? dragonScalesLooted : undefined,
+            dragonPhase: isDragonLair ? dragonPhase : undefined,
             warCrests: warCrestsGain > 0 ? warCrestsGain : undefined,
             guildCoins: isGuildWar ? guildWarCoinsGain : undefined,
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
@@ -1245,7 +1322,9 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isCrystalVault
+              mode: isDragonLair
+                ? 'dragon_lair'
+                : isCrystalVault
                 ? 'crystal_vault'
                 : isChampionship
                 ? 'championship_3round'
@@ -1276,7 +1355,9 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isCrystalVault
+              label: isDragonLair
+                ? `Lãnh Địa Rồng Cổ 3D · Pha ${dragonPhase}/3 (+${dragonScalesLooted} Vảy)`
+                : isCrystalVault
                 ? `Hầm Mỏ Pha Lê 3D · ${vaultPillarsBroken} Trụ`
                 : isChampionship
                 ? `Giải Quán Quân 3H · Hiệp ${championshipRound}/${CHAMPIONSHIP_TOTAL_ROUNDS}`
@@ -1309,6 +1390,8 @@ export default function App() {
                 : `Chương ${summary.chapterId} · ${chName}`,
               stageReached: isArena || isGuildBoss || isWorldBoss
                 ? 1
+                : isDragonLair
+                ? dragonPhase
                 : isCrystalVault
                 ? vaultPillarsBroken
                 : isChampionship
@@ -1339,6 +1422,44 @@ export default function App() {
               timestamp: Date.now(),
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isDragonLair) {
+              const dl = normalizeDragonLair(prev.dragonLair);
+              const sr = normalizeSoulRings(prev.soulRings);
+              const grassGain = Math.max(4, Math.floor(dragonScalesLooted * 0.65));
+              const jadeT1Gain = Math.max(2, dragonPhase + (victory ? 2 : 0));
+              const nextJades: [number, number, number, number, number] = [...sr.spiritJades];
+              nextJades[0] += jadeT1Gain;
+              const nextHonor =
+                victory || dragonScalesLooted >= 12
+                  ? appendHonorEntry(
+                      prev.honorFeed,
+                      'ĐỒ LONG TINH GIỚI 3D',
+                      `vừa gây ${dragonDamageDealt.toLocaleString('vi-VN')} ST lên Cổ Long (+${dragonScalesLooted} Vảy Rồng Cổ)!`,
+                      'gold'
+                    )
+                  : prev.honorFeed;
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                dragonScales: (prev.dragonScales ?? 0) + dragonScalesLooted,
+                starlightGrass: (prev.starlightGrass ?? 0) + grassGain,
+                soulRings: { ...sr, spiritJades: nextJades },
+                festivalState: nextFest,
+                dragonLair: {
+                  ...dl,
+                  bestDamage: Math.max(dl.bestDamage, dragonDamageDealt),
+                  totalClears: dl.totalClears + (victory ? 1 : 0),
+                  totalScalesEarned: dl.totalScalesEarned + dragonScalesLooted,
+                },
+                honorFeed: nextHonor,
+                battlePass: nextBp,
+                career: nextCareer,
+                gemRebateVault: nextGemVault,
+                runHistory: nextHistory,
+              };
+            }
 
             if (isCrystalVault) {
               const cv = normalizeCrystalVault(prev.crystalVault, isSupremeMonthlyActive(prev.supremeMonthly));
@@ -1787,6 +1908,11 @@ export default function App() {
   useEffect(() => {
     engineRef.current?.setLobbySkyTheme(save.lobbySkyTheme ?? 'golden_galaxy');
   }, [save.lobbySkyTheme]);
+
+  // Sync Wave 13 Real-Time 3D Lobby Weather
+  useEffect(() => {
+    engineRef.current?.setLobbyWeather(save.lobbyWeather ?? 'meteor_shower');
+  }, [save.lobbyWeather]);
 
   // Sync 3D camera lobby framing with active lobby tab
   useEffect(() => {
@@ -3077,6 +3203,91 @@ export default function App() {
       }
       next.treasureWheel = { ...tw, claimedMilestoneSpins: nextTwMs };
 
+      // 12. Wave 13: 7-Day Carnival Tasks & Point Milestones
+      const c7 = normalizeCarnival7Day(next.carnival7Day);
+      const nextC7Tasks = [...c7.claimedTaskIds];
+      const nextC7Ms = [...c7.claimedMilestones];
+      const srForC7 = normalizeSoulRings(next.soulRings);
+      const nextJadesForC7: [number, number, number, number, number] = [...srForC7.spiritJades];
+      let c7Changed = false;
+      for (const task of CARNIVAL_7DAY_TASKS) {
+        if (!nextC7Tasks.includes(task.id) && getCarnivalTaskProgress(next, task) >= task.target) {
+          nextC7Tasks.push(task.id);
+          next.gold += task.rewardGold;
+          next.gems += task.rewardGems;
+          next.starlightGrass = (next.starlightGrass ?? 0) + (task.rewardGrass ?? 0);
+          next.blindBoxTickets = (next.blindBoxTickets ?? 0) + (task.rewardBlindBoxTickets ?? 0);
+          if (task.rewardJadeT1) nextJadesForC7[0] += task.rewardJadeT1;
+          totalGoldGained += task.rewardGold;
+          totalGemsGained += task.rewardGems;
+          claimedBundles += 1;
+          c7Changed = true;
+        }
+      }
+      if (c7Changed) {
+        next.carnival7Day = { ...c7, claimedTaskIds: nextC7Tasks, claimedMilestones: nextC7Ms };
+        next.soulRings = { ...srForC7, spiritJades: nextJadesForC7 };
+      }
+      const c7Points = getCarnivalTotalPoints(next);
+      for (const ms of CARNIVAL_7DAY_MILESTONES) {
+        if (c7Points >= ms.pointsTarget && !nextC7Ms.includes(ms.pointsTarget)) {
+          nextC7Ms.push(ms.pointsTarget);
+          next.gems += ms.rewardGems;
+          next.starlightGrass = (next.starlightGrass ?? 0) + ms.rewardGrass;
+          next.blindBoxTickets = (next.blindBoxTickets ?? 0) + ms.rewardBlindBoxTickets;
+          if (ms.unlockSteedId && !(next.unlockedAstralSteeds ?? []).includes(ms.unlockSteedId)) {
+            next.unlockedAstralSteeds = [...(next.unlockedAstralSteeds ?? []), ms.unlockSteedId];
+            next.astralSteedStars = { ...(next.astralSteedStars ?? {}), [ms.unlockSteedId]: 1 };
+          }
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+          c7Changed = true;
+        }
+      }
+      if (c7Changed) {
+        next.carnival7Day = { ...c7, claimedTaskIds: nextC7Tasks, claimedMilestones: nextC7Ms };
+      }
+
+      // 13. Wave 13: Starlight Race Milestones
+      const race = normalizeStarlightRace(next.starlightRace);
+      const nextRaceMs = [...race.claimedMilestones];
+      for (const ms of STARLIGHT_RACE_MILESTONES) {
+        if (race.totalRacePoints >= ms.pointsTarget && !nextRaceMs.includes(ms.pointsTarget)) {
+          nextRaceMs.push(ms.pointsTarget);
+          next.gems += ms.rewardGems;
+          next.starlightGrass = (next.starlightGrass ?? 0) + ms.rewardGrass;
+          next.dragonScales = (next.dragonScales ?? 0) + ms.rewardDragonScales;
+          next.blindBoxTickets = (next.blindBoxTickets ?? 0) + ms.rewardBlindBoxTickets;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+        }
+      }
+      next.starlightRace = { ...race, claimedMilestones: nextRaceMs };
+
+      // 14. Wave 13: Ancient Dragon Lair Milestones
+      const dl = normalizeDragonLair(next.dragonLair);
+      const nextDlMs = [...dl.claimedMilestones];
+      const srForDl = normalizeSoulRings(next.soulRings);
+      const nextJadesForDl: [number, number, number, number, number] = [...srForDl.spiritJades];
+      let dlChanged = false;
+      for (const ms of DRAGON_LAIR_MILESTONES) {
+        if (dl.totalScalesEarned >= ms.scalesTarget && !nextDlMs.includes(ms.scalesTarget)) {
+          nextDlMs.push(ms.scalesTarget);
+          next.gems += ms.rewardGems;
+          next.dragonScales = (next.dragonScales ?? 0) + ms.rewardDragonScales;
+          next.starlightGrass = (next.starlightGrass ?? 0) + ms.rewardGrass;
+          next.blindBoxTickets = (next.blindBoxTickets ?? 0) + ms.rewardBlindBoxTickets;
+          nextJadesForDl[2] += ms.rewardJadeT3;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+          dlChanged = true;
+        }
+      }
+      if (dlChanged) {
+        next.dragonLair = { ...dl, claimedMilestones: nextDlMs };
+        next.soulRings = { ...srForDl, spiritJades: nextJadesForDl };
+      }
+
       return next;
     });
 
@@ -3088,6 +3299,612 @@ export default function App() {
       );
     }
   }, [triggerUpgradeCelebration]);
+
+  // =========================================================================
+  // WAVE 13 HANDLERS: Astral Steeds 3D, Starlight Race, Multi-Tier Soul Rings,
+  // Royal Dutch Auction & 9-Box Blind Box, Ancient Dragon Lair 3D,
+  // 7-Day Carnival & Evolving First Top-Up, VIP Animated Frames & Lobby Weather
+  // =========================================================================
+
+  const handleStartDragonLair = useCallback(() => {
+    const dl = normalizeDragonLair(save.dragonLair);
+    if (dl.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeDragonLair(prev.dragonLair);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        dragonLair: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setPhotoMode(false);
+    setWave12SanctumTab(null);
+    setWave13TreasuryTab(null);
+    setWave13CarnivalOpen(false);
+    setCpBreakdownOpen(false);
+    setClaimAllModalOpen(false);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setFestivalModalOpen(false);
+    setBundlePreview(null);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 15,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isDragonLairMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startDragonLair(playerStats);
+  }, [save.dragonLair, playerStats]);
+
+  const handleClaimDragonLairMilestone = useCallback(
+    (scalesTarget: number) => {
+      const ms = DRAGON_LAIR_MILESTONES.find((m) => m.scalesTarget === scalesTarget);
+      if (!ms) return;
+      setSave((prev) => {
+        const dl = normalizeDragonLair(prev.dragonLair);
+        if (dl.totalScalesEarned < ms.scalesTarget || dl.claimedMilestones.includes(ms.scalesTarget)) {
+          return prev;
+        }
+        const sr = normalizeSoulRings(prev.soulRings);
+        const nextJades: [number, number, number, number, number] = [...sr.spiritJades];
+        nextJades[2] += ms.rewardJadeT3;
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          dragonScales: (prev.dragonScales ?? 0) + ms.rewardDragonScales,
+          starlightGrass: (prev.starlightGrass ?? 0) + ms.rewardGrass,
+          blindBoxTickets: (prev.blindBoxTickets ?? 0) + ms.rewardBlindBoxTickets,
+          soulRings: { ...sr, spiritJades: nextJades },
+          dragonLair: {
+            ...dl,
+            claimedMilestones: [...dl.claimedMilestones, ms.scalesTarget],
+          },
+        };
+      });
+      triggerUpgradeCelebration(
+        ms.title,
+        `+${ms.rewardGems} Ngọc · +${ms.rewardDragonScales} Vảy Rồng · +${ms.rewardBlindBoxTickets} Vé Hộp Mù`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUnlockSteed = useCallback(
+    (steedId: AstralSteedId) => {
+      const def = ASTRAL_STEED_MAP[steedId];
+      if (!def) return;
+      let unlockedNow = false;
+      setSave((prev) => {
+        const owned = prev.unlockedAstralSteeds ?? [];
+        if (owned.includes(steedId)) return prev;
+        const hasGrass = (prev.starlightGrass ?? 0) >= def.unlockGrass;
+        const hasGems = prev.gems >= def.unlockGems;
+        if (!hasGrass && !hasGems) return prev;
+        unlockedNow = true;
+        return {
+          ...prev,
+          starlightGrass: hasGrass ? (prev.starlightGrass ?? 0) - def.unlockGrass : prev.starlightGrass ?? 0,
+          gems: hasGrass ? prev.gems : prev.gems - def.unlockGems,
+          unlockedAstralSteeds: [...owned, steedId],
+          astralSteedStars: { ...(prev.astralSteedStars ?? {}), [steedId]: 1 },
+          equippedAstralSteedId: steedId,
+          honorFeed: appendHonorEntry(
+            prev.honorFeed,
+            'THÚ CƯỠI TINH GIỚI 3D',
+            `vừa triệu hồi thành công ${def.name} (1★) tại Sảnh 3D!`,
+            'gold'
+          ),
+        };
+      });
+      if (unlockedNow) {
+        triggerUpgradeCelebration(`Triệu Hồi ${def.name}!`, 'Đã tự động trang bị dưới chân Anh Hùng 3D!');
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleEquipSteed = useCallback((steedId: AstralSteedId | null) => {
+    setSave((prev) => {
+      if (steedId && !(prev.unlockedAstralSteeds ?? []).includes(steedId)) return prev;
+      return { ...prev, equippedAstralSteedId: steedId };
+    });
+  }, []);
+
+  const handleStarUpSteed = useCallback(
+    (steedId: AstralSteedId) => {
+      const def = ASTRAL_STEED_MAP[steedId];
+      if (!def) return;
+      let nextStarRes = 0;
+      setSave((prev) => {
+        if (!(prev.unlockedAstralSteeds ?? []).includes(steedId)) return prev;
+        const curStar = Math.max(1, prev.astralSteedStars?.[steedId] ?? 1);
+        if (curStar >= ASTRAL_STEED_MAX_STAR) return prev;
+        const cost = getAstralSteedStarUpCost(curStar);
+        if ((prev.starlightGrass ?? 0) < cost.grass || prev.gold < cost.gold) return prev;
+        nextStarRes = curStar + 1;
+        return {
+          ...prev,
+          starlightGrass: (prev.starlightGrass ?? 0) - cost.grass,
+          gold: prev.gold - cost.gold,
+          astralSteedStars: { ...(prev.astralSteedStars ?? {}), [steedId]: nextStarRes },
+        };
+      });
+      if (nextStarRes > 0) {
+        triggerUpgradeCelebration(`Thăng Sao ${def.name} → ${nextStarRes}★!`, 'Tăng mạnh ATK, HP & Tốc Độ Đường Đua Ánh Sao!');
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleRunStarlightRace = useCallback(() => {
+    const steedId = save.equippedAstralSteedId ?? (save.unlockedAstralSteeds ?? [])[0] ?? null;
+    const steedStar = steedId ? Math.max(1, save.astralSteedStars?.[steedId] ?? 1) : 1;
+    const race = normalizeStarlightRace(save.starlightRace);
+    if (race.dailyRunsRemaining <= 0) return;
+
+    const result = simulateStarlightSprint(steedId, steedStar);
+    setSave((prev) => {
+      const cur = normalizeStarlightRace(prev.starlightRace);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      const bestLap =
+        cur.bestLapTimeSec <= 0
+          ? result.lapTimeSec
+          : Math.min(cur.bestLapTimeSec, result.lapTimeSec);
+      return {
+        ...prev,
+        gold: prev.gold + result.rewardGold,
+        gems: prev.gems + result.rewardGems,
+        starlightGrass: (prev.starlightGrass ?? 0) + result.rewardGrass,
+        starlightRace: {
+          ...cur,
+          dailyRunsRemaining: cur.dailyRunsRemaining - 1,
+          totalRacePoints: cur.totalRacePoints + result.pointsEarned,
+          bestLapTimeSec: bestLap,
+          lastRaceLog: `${result.rankLabel} (${result.lapTimeSec}s) · +${result.pointsEarned} Điểm · +${result.rewardGrass} Cỏ Tinh Tú · +${result.rewardGems} Ngọc`,
+        },
+      };
+    });
+    triggerUpgradeCelebration(
+      `${result.rankLabel} · ${result.lapTimeSec}s!`,
+      `+${result.pointsEarned} Điểm Đua · +${result.rewardGrass} Cỏ Tinh Tú · +${result.rewardGems} Ngọc`
+    );
+  }, [save.equippedAstralSteedId, save.unlockedAstralSteeds, save.astralSteedStars, save.starlightRace, triggerUpgradeCelebration]);
+
+  const handleClaimRaceMilestone = useCallback(
+    (pointsTarget: number) => {
+      const ms = STARLIGHT_RACE_MILESTONES.find((m) => m.pointsTarget === pointsTarget);
+      if (!ms) return;
+      setSave((prev) => {
+        const cur = normalizeStarlightRace(prev.starlightRace);
+        if (cur.totalRacePoints < ms.pointsTarget || cur.claimedMilestones.includes(ms.pointsTarget)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          starlightGrass: (prev.starlightGrass ?? 0) + ms.rewardGrass,
+          dragonScales: (prev.dragonScales ?? 0) + ms.rewardDragonScales,
+          blindBoxTickets: (prev.blindBoxTickets ?? 0) + ms.rewardBlindBoxTickets,
+          starlightRace: {
+            ...cur,
+            claimedMilestones: [...cur.claimedMilestones, ms.pointsTarget],
+          },
+        };
+      });
+      triggerUpgradeCelebration(
+        ms.title,
+        `+${ms.rewardGems} Ngọc · +${ms.rewardGrass} Cỏ · +${ms.rewardDragonScales} Vảy Rồng`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUpgradeSoulRing = useCallback(
+    (slotId: SoulRingSlotId) => {
+      let nextLvRes = 0;
+      setSave((prev) => {
+        const sr = normalizeSoulRings(prev.soulRings);
+        const curLv = sr.levels[slotId] ?? 0;
+        if (curLv >= SOUL_RING_MAX_LEVEL) return prev;
+        const cost = getSoulRingUpgradeCost(slotId, curLv);
+        const tierIdx = cost.jadeTier - 1;
+        if ((sr.spiritJades[tierIdx] ?? 0) < cost.jadeCount || prev.gold < cost.gold) return prev;
+        const nextJades: [number, number, number, number, number] = [...sr.spiritJades];
+        nextJades[tierIdx] -= cost.jadeCount;
+        nextLvRes = curLv + 1;
+        return {
+          ...prev,
+          gold: prev.gold - cost.gold,
+          soulRings: {
+            ...sr,
+            levels: { ...sr.levels, [slotId]: nextLvRes },
+            spiritJades: nextJades,
+          },
+        };
+      });
+      if (nextLvRes > 0) {
+        triggerUpgradeCelebration(`Hồn Hoàn 3D Lên Cấp ${nextLvRes}!`, 'Vòng Hồn Hoàn 3D quanh Anh Hùng rực sáng mạnh mẽ hơn!');
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleFuseSpiritJade = useCallback(
+    (sourceTier: 1 | 2 | 3 | 4, fuseAll = false) => {
+      let fusedNow = 0;
+      setSave((prev) => {
+        const sr = normalizeSoulRings(prev.soulRings);
+        const maxPossible = Math.floor((sr.spiritJades[sourceTier - 1] ?? 0) / 3);
+        if (maxPossible <= 0) return prev;
+        const { nextState, fusedCount } = fuseSpiritJades(sr, sourceTier, fuseAll ? maxPossible : 1);
+        if (fusedCount <= 0) return prev;
+        fusedNow = fusedCount;
+        return { ...prev, soulRings: nextState };
+      });
+      if (fusedNow > 0) {
+        triggerUpgradeCelebration(
+          `Hợp Thành +${fusedNow} Linh Ngọc Bậc ${sourceTier + 1}!`,
+          `Đã dung hợp ${fusedNow * 3} Linh Ngọc Bậc ${sourceTier} thành công!`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleBuyDutchLot = useCallback(
+    (lotId: string, livePriceGems: number) => {
+      const lot = ROYAL_DUTCH_LOTS.find((l) => l.id === lotId);
+      if (!lot) return;
+      let bought = false;
+      setSave((prev) => {
+        const auc = normalizeRoyalDutchAuction(prev.royalDutchAuction);
+        if (auc.purchasedLotIds.includes(lotId) || prev.gems < livePriceGems) return prev;
+        bought = true;
+        const sr = normalizeSoulRings(prev.soulRings);
+        const nextJades: [number, number, number, number, number] = [...sr.spiritJades];
+        let nextGrass = prev.starlightGrass ?? 0;
+        let nextScales = prev.dragonScales ?? 0;
+        let nextTickets = prev.blindBoxTickets ?? 0;
+        let nextMythicShards = prev.mythicShards ?? 0;
+        if (lot.rewardKind === 'starlightGrass') nextGrass += lot.rewardAmount;
+        if (lot.rewardKind === 'dragonScales') nextScales += lot.rewardAmount;
+        if (lot.rewardKind === 'spiritJadeT3') nextJades[2] += lot.rewardAmount;
+        if (lot.rewardKind === 'blindBoxTickets') {
+          nextTickets += lot.rewardAmount;
+          nextMythicShards += 12;
+        }
+        return {
+          ...prev,
+          gems: prev.gems - livePriceGems,
+          gold: prev.gold + lot.bonusGold,
+          starlightGrass: nextGrass,
+          dragonScales: nextScales,
+          blindBoxTickets: nextTickets,
+          mythicShards: nextMythicShards,
+          soulRings: { ...sr, spiritJades: nextJades },
+          royalDutchAuction: {
+            ...auc,
+            purchasedLotIds: [...auc.purchasedLotIds, lotId],
+          },
+        };
+      });
+      if (bought) {
+        triggerUpgradeCelebration(`Chốt Đơn Sàn Đấu Giá (${livePriceGems} Ngọc)!`, lot.title);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleRefreshDutchAuction = useCallback(() => {
+    setSave((prev) => {
+      const auc = normalizeRoyalDutchAuction(prev.royalDutchAuction);
+      return {
+        ...prev,
+        royalDutchAuction: {
+          sessionStartedAt: Date.now(),
+          purchasedLotIds: [],
+          refreshCount: auc.refreshCount + 1,
+        },
+      };
+    });
+  }, []);
+
+  const handleOpenBlindBox = useCallback(
+    (boxIndex: number) => {
+      let openedRewardLabel = '';
+      let wasGrand = false;
+      setSave((prev) => {
+        const bb = normalizeRoyalBlindBox(prev.royalBlindBox);
+        if (bb.openedBoxes[boxIndex]) return prev;
+        const hasTicket = (prev.blindBoxTickets ?? 0) > 0;
+        if (!hasTicket && prev.gems < BLIND_BOX_COST_GEMS) return prev;
+        const { nextState, reward } = resolveBlindBoxOpen(bb, boxIndex);
+        openedRewardLabel = reward.label;
+        wasGrand = reward.isGrandPrize;
+        const sr = normalizeSoulRings(prev.soulRings);
+        const nextJades: [number, number, number, number, number] = [...sr.spiritJades];
+        if (reward.rewardJadeTier && reward.rewardJadeAmount) {
+          nextJades[reward.rewardJadeTier - 1] += reward.rewardJadeAmount;
+        }
+        return {
+          ...prev,
+          blindBoxTickets: hasTicket ? (prev.blindBoxTickets ?? 0) - 1 : prev.blindBoxTickets ?? 0,
+          gems: (hasTicket ? prev.gems : prev.gems - BLIND_BOX_COST_GEMS) + reward.rewardGems,
+          gold: prev.gold + reward.rewardGold,
+          starlightGrass: (prev.starlightGrass ?? 0) + reward.rewardGrass,
+          dragonScales: (prev.dragonScales ?? 0) + reward.rewardDragonScales,
+          soulRings: { ...sr, spiritJades: nextJades },
+          royalBlindBox: nextState,
+          honorFeed: reward.isGrandPrize
+            ? appendHonorEntry(
+                prev.honorFeed,
+                'HỘP MÙ HOÀNG ĐẠO',
+                'vừa khui trúng ĐẠI THƯỞNG THẦN THOẠI 120 Ngọc + Linh Ngọc Bậc IV!',
+                'gold'
+              )
+            : prev.honorFeed,
+        };
+      });
+      if (openedRewardLabel) {
+        triggerUpgradeCelebration(
+          wasGrand ? 'ĐẠI THƯỞNG HỘP MÙ THẦN THOẠI!' : 'Khui Hộp Mù Thành Công!',
+          openedRewardLabel
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleResetBlindBoxBoard = useCallback(() => {
+    setSave((prev) => {
+      const bb = normalizeRoyalBlindBox(prev.royalBlindBox);
+      return {
+        ...prev,
+        royalBlindBox: {
+          cycleNumber: bb.cycleNumber + 1,
+          grandPrizeIndex: Math.floor(Math.random() * 9),
+          openedBoxes: {},
+          totalBoxesOpened: bb.totalBoxesOpened,
+          sessionEndsAt: Date.now() + 6 * 3600 * 1000,
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimCarnivalTask = useCallback(
+    (taskId: string) => {
+      const task = CARNIVAL_7DAY_TASKS.find((t) => t.id === taskId);
+      if (!task) return;
+      let claimedNow = false;
+      setSave((prev) => {
+        const c7 = normalizeCarnival7Day(prev.carnival7Day);
+        if (c7.claimedTaskIds.includes(taskId) || getCarnivalTaskProgress(prev, task) < task.target) {
+          return prev;
+        }
+        claimedNow = true;
+        const sr = normalizeSoulRings(prev.soulRings);
+        const nextJades: [number, number, number, number, number] = [...sr.spiritJades];
+        if (task.rewardJadeT1) nextJades[0] += task.rewardJadeT1;
+        return {
+          ...prev,
+          gold: prev.gold + task.rewardGold,
+          gems: prev.gems + task.rewardGems,
+          starlightGrass: (prev.starlightGrass ?? 0) + (task.rewardGrass ?? 0),
+          blindBoxTickets: (prev.blindBoxTickets ?? 0) + (task.rewardBlindBoxTickets ?? 0),
+          soulRings: { ...sr, spiritJades: nextJades },
+          carnival7Day: {
+            ...c7,
+            claimedTaskIds: [...c7.claimedTaskIds, taskId],
+          },
+        };
+      });
+      if (claimedNow) {
+        triggerUpgradeCelebration(`Nhận Quà Ngày ${task.day}!`, `+${task.rewardGems} Ngọc · +${task.points} Điểm Lễ Hội 7 Ngày`);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimCarnivalMilestone = useCallback(
+    (pointsTarget: number) => {
+      const ms = CARNIVAL_7DAY_MILESTONES.find((m) => m.pointsTarget === pointsTarget);
+      if (!ms) return;
+      let claimedNow = false;
+      setSave((prev) => {
+        const c7 = normalizeCarnival7Day(prev.carnival7Day);
+        if (c7.claimedMilestones.includes(pointsTarget) || getCarnivalTotalPoints(prev) < pointsTarget) {
+          return prev;
+        }
+        claimedNow = true;
+        const ownedSteeds = prev.unlockedAstralSteeds ?? [];
+        const grantSteed = ms.unlockSteedId && !ownedSteeds.includes(ms.unlockSteedId);
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          starlightGrass: (prev.starlightGrass ?? 0) + ms.rewardGrass,
+          blindBoxTickets: (prev.blindBoxTickets ?? 0) + ms.rewardBlindBoxTickets,
+          unlockedAstralSteeds: grantSteed ? [...ownedSteeds, ms.unlockSteedId!] : ownedSteeds,
+          astralSteedStars: grantSteed
+            ? { ...(prev.astralSteedStars ?? {}), [ms.unlockSteedId!]: 1 }
+            : prev.astralSteedStars,
+          equippedAstralSteedId: grantSteed ? ms.unlockSteedId! : prev.equippedAstralSteedId,
+          carnival7Day: {
+            ...c7,
+            claimedMilestones: [...c7.claimedMilestones, pointsTarget],
+          },
+        };
+      });
+      if (claimedNow) {
+        triggerUpgradeCelebration(
+          ms.title,
+          `+${ms.rewardGems} Ngọc · +${ms.rewardGrass} Cỏ · +${ms.rewardBlindBoxTickets} Vé Hộp Mù`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimEvolvingTopUp = useCallback(
+    (tier: 1 | 2 | 3) => {
+      const def = EVOLVING_FIRST_TOPUP_TIERS.find((t) => t.tier === tier);
+      if (!def) return;
+      let claimedNow = false;
+      setSave((prev) => {
+        const st = normalizeEvolvingFirstTopUp(prev.evolvingFirstTopUp);
+        if (st.claimedTiers.includes(tier) || prev.gems < def.costGems) return prev;
+        claimedNow = true;
+        const sr = normalizeSoulRings(prev.soulRings);
+        const nextJades: [number, number, number, number, number] = [...sr.spiritJades];
+        nextJades[1] += def.rewardJadeT2;
+        const ownedSteeds = prev.unlockedAstralSteeds ?? [];
+        const grantSteed = def.unlockSteedId && !ownedSteeds.includes(def.unlockSteedId);
+        const ownedVipFrames = prev.unlockedVipFrames ?? [];
+        const grantFrame = def.unlockVipFrameId && !ownedVipFrames.includes(def.unlockVipFrameId);
+        return {
+          ...prev,
+          gems: prev.gems - def.costGems + def.rewardGems,
+          gold: prev.gold + def.rewardGold,
+          starlightGrass: (prev.starlightGrass ?? 0) + def.rewardGrass,
+          dragonScales: (prev.dragonScales ?? 0) + def.rewardDragonScales,
+          blindBoxTickets: (prev.blindBoxTickets ?? 0) + def.rewardBlindBoxTickets,
+          mythicShards: (prev.mythicShards ?? 0) + def.rewardMythicShards,
+          soulRings: { ...sr, spiritJades: nextJades },
+          unlockedAstralSteeds: grantSteed ? [...ownedSteeds, def.unlockSteedId!] : ownedSteeds,
+          astralSteedStars: grantSteed
+            ? { ...(prev.astralSteedStars ?? {}), [def.unlockSteedId!]: 1 }
+            : prev.astralSteedStars,
+          equippedAstralSteedId: grantSteed ? def.unlockSteedId! : prev.equippedAstralSteedId,
+          unlockedVipFrames: grantFrame ? [...ownedVipFrames, def.unlockVipFrameId!] : ownedVipFrames,
+          equippedVipFrameId: grantFrame ? def.unlockVipFrameId! : prev.equippedVipFrameId,
+          topUpEvolution: addTopUpPoints(prev, def.topUpPoints),
+          evolvingFirstTopUp: {
+            claimedTiers: [...st.claimedTiers, tier],
+          },
+          honorFeed: appendHonorEntry(
+            prev.honorFeed,
+            'NẠP ĐẦU TIẾN HÓA',
+            `vừa kích hoạt ${def.title} (${def.valueLabel})!`,
+            'gold'
+          ),
+        };
+      });
+      if (claimedNow) {
+        triggerUpgradeCelebration(
+          `Kích Hoạt ${def.title}!`,
+          `+${def.rewardGems} Ngọc · +${def.rewardGold.toLocaleString('vi-VN')} Vàng · +${def.rewardBlindBoxTickets} Vé Hộp Mù`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUnlockVipFrame = useCallback(
+    (frameId: VipAvatarFrameId) => {
+      const def = VIP_AVATAR_FRAME_MAP[frameId];
+      if (!def) return;
+      let unlockedNow = false;
+      setSave((prev) => {
+        const owned = prev.unlockedVipFrames ?? [];
+        if (owned.includes(frameId)) return prev;
+        const vipLv = Math.min(
+          8,
+          Math.floor((normalizeTopUpEvolution(prev.topUpEvolution).points ?? 0) / 150) +
+            (isVipActive(prev.vip) ? 1 : 0)
+        );
+        const freeByVip = vipLv >= def.unlockVipLevel;
+        if (
+          !freeByVip &&
+          ((prev.dragonScales ?? 0) < def.unlockDragonScales || prev.gems < def.unlockGems)
+        ) {
+          return prev;
+        }
+        unlockedNow = true;
+        return {
+          ...prev,
+          dragonScales: freeByVip ? prev.dragonScales ?? 0 : (prev.dragonScales ?? 0) - def.unlockDragonScales,
+          gems: freeByVip ? prev.gems : prev.gems - def.unlockGems,
+          unlockedVipFrames: [...owned, frameId],
+          equippedVipFrameId: frameId,
+        };
+      });
+      if (unlockedNow) {
+        triggerUpgradeCelebration(`Mở Khung Động VIP: ${def.name}!`, `+${def.bonusAtk} ATK & +${def.bonusHp} HP vĩnh viễn!`);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleEquipVipFrame = useCallback((frameId: VipAvatarFrameId | null) => {
+    setSave((prev) => {
+      if (frameId && !(prev.unlockedVipFrames ?? []).includes(frameId)) return prev;
+      return { ...prev, equippedVipFrameId: frameId };
+    });
+  }, []);
+
+  const handleCopyTopProfile = useCallback(
+    (profile: TopPlayerBuildProfile) => {
+      const syncedParts: string[] = [];
+      setSave((prev) => {
+        const next = { ...prev };
+        if (prev.unlockedHeroes.includes(profile.heroId)) {
+          next.selectedHeroId = profile.heroId;
+          syncedParts.push(`Anh Hùng ${HERO_MAP[profile.heroId]?.name ?? profile.heroId}`);
+        }
+        if ((prev.unlockedAstralSteeds ?? []).includes(profile.astralSteedId)) {
+          next.equippedAstralSteedId = profile.astralSteedId;
+          syncedParts.push(ASTRAL_STEED_MAP[profile.astralSteedId]?.name ?? 'Thú Cưỡi 3D');
+        }
+        if ((prev.unlockedWarBanners ?? []).includes(profile.warBannerId)) {
+          next.equippedWarBannerId = profile.warBannerId;
+          syncedParts.push(WAR_BANNER_MAP[profile.warBannerId]?.name ?? 'Cờ Hiệu 3D');
+        }
+        if ((prev.unlockedVipFrames ?? []).includes(profile.vipFrameId)) {
+          next.equippedVipFrameId = profile.vipFrameId;
+          syncedParts.push(VIP_AVATAR_FRAME_MAP[profile.vipFrameId]?.name ?? 'Khung VIP');
+        }
+        return next;
+      });
+      triggerUpgradeCelebration(
+        `Đã Sao Chép Đội Hình Top #${profile.rank}!`,
+        syncedParts.length > 0
+          ? `Đồng bộ: ${syncedParts.join(' · ')}`
+          : 'Mở khóa thêm Anh Hùng / Thú Cưỡi của Top 1 để đồng bộ đầy đủ!'
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleSelectLobbyWeather = useCallback((weather: LobbyWeatherId) => {
+    setSave((prev) => ({ ...prev, lobbyWeather: weather }));
+  }, []);
 
   const handleCaptureLobbyPhoto = useCallback(() => {
     const dataUrl = engineRef.current?.capturePhotoDataUrl();
@@ -7224,6 +8041,11 @@ export default function App() {
           }
           onCapturePhoto={handleCaptureLobbyPhoto}
           onOpenWave12Sanctum={(tab) => setWave12SanctumTab(tab)}
+          onOpenWave13Treasury={(tab) => setWave13TreasuryTab(tab)}
+          onOpenWave13Carnival={() => setWave13CarnivalOpen(true)}
+          onSelectLobbyWeather={handleSelectLobbyWeather}
+          onStartDragonLair={handleStartDragonLair}
+          onClaimDragonLairMilestone={handleClaimDragonLairMilestone}
           onOpenCpBreakdown={() => setCpBreakdownOpen(true)}
           onOpenClaimAllModal={() => setClaimAllModalOpen(true)}
           onStartCrystalVault={handleStartCrystalVault}
@@ -7366,6 +8188,10 @@ export default function App() {
           vaultPillarsBroken={runSummary?.vaultPillarsBroken ?? hud.vaultPillarsBroken ?? 0}
           vaultReforgeLooted={runSummary?.vaultReforgeLooted ?? hud.vaultReforgeLooted ?? 0}
           vaultShardsLooted={runSummary?.vaultShardsLooted ?? hud.vaultShardsLooted ?? 0}
+          isDragonLairMode={runSummary?.isDragonLairMode ?? hud.isDragonLairMode}
+          dragonDamageDealt={runSummary?.dragonDamageDealt ?? hud.dragonDamageDealt ?? 0}
+          dragonScalesLooted={runSummary?.dragonScalesLooted ?? hud.dragonScalesLooted ?? 0}
+          dragonPhase={runSummary?.dragonPhase ?? hud.dragonPhase ?? 1}
           warCrestsEarned={runSummary?.warCrests ?? 0}
           wingFeathersEarned={runSummary?.wingFeathers ?? 0}
           mountShardsEarned={runSummary?.mountShards ?? 0}
@@ -7383,7 +8209,15 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isCrystalVaultMode ?? hud.isCrystalVaultMode)
+            (runSummary?.isDragonLairMode ?? hud.isDragonLairMode)
+              ? () => {
+                  if (normalizeDragonLair(save.dragonLair).dailyRunsRemaining > 0) {
+                    handleStartDragonLair();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isCrystalVaultMode ?? hud.isCrystalVaultMode)
               ? () => {
                   if (
                     normalizeCrystalVault(
@@ -7715,8 +8549,16 @@ export default function App() {
           save={save}
           powerRating={playerStats.powerRating}
           heroName={(HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis).name}
+          vipLevel={Math.min(
+            8,
+            Math.floor((normalizeTopUpEvolution(save.topUpEvolution).points ?? 0) / 150) +
+              (isVipActive(save.vip) ? 1 : 0)
+          )}
           onUnlockAvatarFrame={handleUnlockAvatarFrame}
           onEquipAvatarFrame={handleEquipAvatarFrame}
+          onUnlockVipFrame={handleUnlockVipFrame}
+          onEquipVipFrame={handleEquipVipFrame}
+          onCopyTopProfile={handleCopyTopProfile}
           onClaimMythicBadge={handleClaimMythicBadge}
           onEquipMythicBadge={handleEquipMythicBadge}
           onClaimWorldBossMilestone={handleClaimWorldBossMilestone}
@@ -7820,6 +8662,36 @@ export default function App() {
         />
       )}
 
+      {phase === GamePhase.TITLE && enteredGame && wave13TreasuryTab && (
+        <Wave13TreasuryModal
+          save={save}
+          initialTab={wave13TreasuryTab}
+          onUnlockSteed={handleUnlockSteed}
+          onEquipSteed={handleEquipSteed}
+          onStarUpSteed={handleStarUpSteed}
+          onRunStarlightRace={handleRunStarlightRace}
+          onClaimRaceMilestone={handleClaimRaceMilestone}
+          onUpgradeSoulRing={handleUpgradeSoulRing}
+          onFuseSpiritJade={handleFuseSpiritJade}
+          onBuyDutchLot={handleBuyDutchLot}
+          onRefreshDutchAuction={handleRefreshDutchAuction}
+          onOpenBlindBox={handleOpenBlindBox}
+          onResetBlindBoxBoard={handleResetBlindBoxBoard}
+          onClose={() => setWave13TreasuryTab(null)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && wave13CarnivalOpen && (
+        <Wave13CarnivalModal
+          save={save}
+          onClaimCarnivalTask={handleClaimCarnivalTask}
+          onClaimCarnivalMilestone={handleClaimCarnivalMilestone}
+          onClaimEvolvingTopUp={handleClaimEvolvingTopUp}
+          onOpenBundlePreview={(payload) => handleOpenBundlePreview(payload, payload.onConfirm)}
+          onClose={() => setWave13CarnivalOpen(false)}
+        />
+      )}
+
       {phase === GamePhase.TITLE && enteredGame && cpBreakdownOpen && (
         <CombatPowerBreakdownModal
           save={save}
@@ -7870,6 +8742,7 @@ export default function App() {
           isPantheonMode={transitionState.isPantheonMode}
           isChampionshipMode={transitionState.isChampionshipMode}
           isCrystalVaultMode={transitionState.isCrystalVaultMode}
+          isDragonLairMode={transitionState.isDragonLairMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

@@ -890,7 +890,8 @@ export interface RunHistoryEntry {
     | 'guild_war'
     | 'pantheon_expedition'
     | 'championship_3round'
-    | 'crystal_vault';
+    | 'crystal_vault'
+    | 'dragon_lair';
   label: string;
   stageReached: number;
   kills: number;
@@ -1020,6 +1021,23 @@ export interface SaveData {
   equippedWarBannerId?: WarBannerId | null;
   crystalVault?: CrystalVaultState;
   lobbyHeroPose?: LobbyHeroPoseId;
+  // Wave 13 fields
+  starlightGrass?: number;
+  dragonScales?: number;
+  blindBoxTickets?: number;
+  unlockedAstralSteeds?: AstralSteedId[];
+  astralSteedStars?: Partial<Record<AstralSteedId, number>>;
+  equippedAstralSteedId?: AstralSteedId | null;
+  starlightRace?: StarlightRaceState;
+  soulRings?: SoulRingState;
+  royalDutchAuction?: RoyalDutchAuctionState;
+  royalBlindBox?: RoyalBlindBoxState;
+  dragonLair?: DragonLairState;
+  lobbyWeather?: LobbyWeatherId;
+  unlockedVipFrames?: VipAvatarFrameId[];
+  equippedVipFrameId?: VipAvatarFrameId | null;
+  carnival7Day?: Carnival7DayState;
+  evolvingFirstTopUp?: EvolvingFirstTopUpState;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
@@ -1412,6 +1430,12 @@ export interface HudSnapshot {
   vaultGemsLooted?: number;
   vaultReforgeLooted?: number;
   vaultShardsLooted?: number;
+  isDragonLairMode?: boolean;
+  dragonTimeLeft?: number;
+  dragonPhase?: 1 | 2 | 3;
+  dragonBreathWarning?: boolean;
+  dragonScalesLooted?: number;
+  dragonDamageDealt?: number;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;
@@ -1885,5 +1909,266 @@ export interface ClaimAllPreview {
   totalClaimableCount: number;
   sources: ClaimAllSourceItem[];
 }
+
+// ============================================================================
+// WAVE 13 TYPES: ASTRAL STEEDS 3D & STARLIGHT RACE, MULTI-TIER SOUL RINGS &
+// SPIRIT JADE FUSION, ROYAL DUTCH AUCTION & BLIND BOX, ANCIENT DRAGON LAIR 3D,
+// 3D LOBBY WEATHER & ANIMATED VIP FRAMES, 7-DAY CARNIVAL & 3-TIER FIRST TOP-UP
+// ============================================================================
+
+export type AstralSteedId =
+  | 'galaxy_pegasus'
+  | 'frost_starwolf'
+  | 'eclipse_phoenix'
+  | 'golden_sovereign_dragon';
+
+export interface AstralSteedDef {
+  id: AstralSteedId;
+  name: string;
+  badge: string;
+  rarity: 'Sử Thi' | 'Huyền Thoại' | 'Thần Thoại' | 'Chí Tôn';
+  desc: string;
+  bodyHex: number;
+  armorHex: number;
+  accentHex: number;
+  glowHex: number;
+  baseAtkPct: number;
+  baseHpPct: number;
+  baseMoveSpeed: number;
+  baseCrit: number;
+  atkPctPerStar: number;
+  hpPctPerStar: number;
+  raceSpeedRating: number; // 100..160 for Starlight Race
+  unlockGrass: number;
+  unlockGems: number;
+}
+
+export interface StarlightRaceMilestone {
+  pointsTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardGrass: number;
+  rewardDragonScales: number;
+  rewardBlindBoxTickets: number;
+}
+
+export interface StarlightRaceState {
+  date: string;
+  dailyRunsRemaining: number;
+  totalRacePoints: number;
+  bestLapTimeSec: number;
+  claimedMilestones: number[];
+  lastRaceLog: string;
+}
+
+export type SoulRingSlotId =
+  | 'ring_silver'
+  | 'ring_gold'
+  | 'ring_amethyst'
+  | 'ring_crimson'
+  | 'ring_aurora';
+
+export interface SoulRingDef {
+  id: SoulRingSlotId;
+  tierIndex: number; // 1..5
+  name: string;
+  badge: string;
+  statLabel: string;
+  ringHex: number;
+  emissiveHex: number;
+  requiredJadeTier: 1 | 2 | 3 | 4 | 5;
+  atkPctPerLv: number;
+  hpPctPerLv: number;
+  critPerLv: number;
+  bossDmgPerLv: number;
+  critDmgPerLv: number;
+}
+
+export interface SoulRingState {
+  levels: Record<SoulRingSlotId, number>; // 0..10
+  spiritJades: [number, number, number, number, number]; // Tier 1..5 counts
+  totalFusions: number;
+}
+
+export interface RoyalDutchLotDef {
+  id: string;
+  title: string;
+  subtitle: string;
+  rarity: 'epic' | 'legendary' | 'mythic';
+  startGems: number;
+  floorGems: number;
+  dropStepGems: number;
+  rewardKind:
+    | 'starlightGrass'
+    | 'dragonScales'
+    | 'spiritJadeT3'
+    | 'spiritJadeT4'
+    | 'blindBoxTickets'
+    | 'mythicShards';
+  rewardAmount: number;
+  bonusGold: number;
+}
+
+export interface RoyalDutchAuctionState {
+  sessionStartedAt: number;
+  purchasedLotIds: string[];
+  refreshCount: number;
+}
+
+export interface BlindBoxSlotReward {
+  boxIndex: number; // 0..8
+  label: string;
+  rarity: 'rare' | 'epic' | 'legendary' | 'mythic';
+  isGrandPrize: boolean;
+  rewardGems: number;
+  rewardGold: number;
+  rewardGrass: number;
+  rewardDragonScales: number;
+  rewardJadeTier?: 1 | 2 | 3 | 4;
+  rewardJadeAmount?: number;
+}
+
+export interface RoyalBlindBoxState {
+  cycleNumber: number;
+  grandPrizeIndex: number; // 0..8
+  openedBoxes: Record<number, BlindBoxSlotReward>;
+  totalBoxesOpened: number;
+  sessionEndsAt: number;
+}
+
+export interface DragonLairMilestone {
+  scalesTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardDragonScales: number;
+  rewardGrass: number;
+  rewardBlindBoxTickets: number;
+  rewardJadeT3: number;
+}
+
+export interface DragonLairState {
+  date: string;
+  dailyRunsRemaining: number;
+  bestDamage: number;
+  totalClears: number;
+  totalScalesEarned: number;
+  claimedMilestones: number[];
+}
+
+export type LobbyWeatherId =
+  | 'clear'
+  | 'meteor_shower'
+  | 'starlight_snow'
+  | 'sakura_petals'
+  | 'golden_embers';
+
+export interface LobbyWeatherDef {
+  id: LobbyWeatherId;
+  name: string;
+  shortDesc: string;
+  swatchClass: string;
+  particleHex: number;
+  secondaryHex: number;
+}
+
+export type VipAvatarFrameId =
+  | 'vip_royal_gold'
+  | 'vip_nebula_flow'
+  | 'vip_diamond_crown'
+  | 'vip_dragon_soul';
+
+export interface VipAvatarFrameDef {
+  id: VipAvatarFrameId;
+  name: string;
+  tierLabel: string;
+  desc: string;
+  frameClass: string;
+  bonusAtk: number;
+  bonusHp: number;
+  unlockVipLevel: number;
+  unlockDragonScales: number;
+  unlockGems: number;
+}
+
+export interface CarnivalDayTaskDef {
+  id: string;
+  day: number; // 1..7
+  title: string;
+  desc: string;
+  metric:
+    | 'login_days'
+    | 'runs'
+    | 'kills'
+    | 'soul_ring_lv'
+    | 'steed_count'
+    | 'dragon_scales'
+    | 'blind_boxes';
+  target: number;
+  points: number;
+  rewardGold: number;
+  rewardGems: number;
+  rewardGrass?: number;
+  rewardJadeT1?: number;
+  rewardBlindBoxTickets?: number;
+}
+
+export interface CarnivalPointMilestone {
+  pointsTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardGrass: number;
+  rewardBlindBoxTickets: number;
+  unlockSteedId?: AstralSteedId;
+}
+
+export interface Carnival7DayState {
+  startDate: string;
+  daysLoggedIn: number; // 1..7
+  lastLoginDate: string;
+  claimedTaskIds: string[];
+  claimedMilestones: number[];
+}
+
+export interface EvolvingFirstTopUpTierDef {
+  tier: 1 | 2 | 3;
+  id: 'tier_origin' | 'tier_golden' | 'tier_sovereign';
+  title: string;
+  subtitle: string;
+  badge: string;
+  valueLabel: string;
+  costGems: number;
+  rewardGems: number;
+  rewardGold: number;
+  rewardGrass: number;
+  rewardDragonScales: number;
+  rewardBlindBoxTickets: number;
+  rewardJadeT2: number;
+  rewardMythicShards: number;
+  unlockSteedId?: AstralSteedId;
+  unlockVipFrameId?: VipAvatarFrameId;
+  topUpPoints: number;
+}
+
+export interface EvolvingFirstTopUpState {
+  claimedTiers: number[]; // [1, 2, 3]
+}
+
+export interface TopPlayerBuildProfile {
+  rank: number;
+  name: string;
+  guild: string;
+  titleBadge: string;
+  powerRating: number;
+  heroId: HeroId;
+  heroStar: number;
+  astralSteedId: AstralSteedId;
+  steedStar: number;
+  warBannerId: WarBannerId;
+  vipFrameId: VipAvatarFrameId;
+  mythicWeaponTier: number;
+  soulRingTotalLv: number;
+  signatureQuote: string;
+}
+
 
 

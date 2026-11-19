@@ -103,6 +103,18 @@ import {
   normalizeSupremeMonthly,
   normalizeTreasureWheel,
 } from './wave12Data';
+import {
+  computeSoulRingBonuses,
+  computeVipFrameBonuses,
+  getAstralSteedStats,
+  normalizeCarnival7Day,
+  normalizeDragonLair,
+  normalizeEvolvingFirstTopUp,
+  normalizeRoyalBlindBox,
+  normalizeRoyalDutchAuction,
+  normalizeSoulRings,
+  normalizeStarlightRace,
+} from './wave13Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -818,10 +830,29 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     : 0;
   const warBannerStats = getWarBannerStats(equippedWarBannerId, warBannerLevel);
 
-  critDamage += mythicBonuses.critDmgBonus;
-  bossDamageBonus += mythicBonuses.bossDmgBonus + altarBonuses.bossDmgBonus + warBannerStats.bossDmg;
+  // Wave 13: Astral Steeds 3D, Multi-Tier Soul Rings & Animated VIP Frames
+  const equippedAstralSteedId =
+    save.equippedAstralSteedId &&
+    (save.unlockedAstralSteeds ?? []).includes(save.equippedAstralSteedId)
+      ? save.equippedAstralSteedId
+      : null;
+  const astralSteedStar = equippedAstralSteedId
+    ? Math.max(1, save.astralSteedStars?.[equippedAstralSteedId] ?? 1)
+    : 0;
+  const steedStats = getAstralSteedStats(equippedAstralSteedId, astralSteedStar);
+  const soulRingBonuses = computeSoulRingBonuses(save.soulRings);
+  const vipFrameBonuses = computeVipFrameBonuses(save);
 
-  // Apply Zodiac Guild Tech + 12 Constellations + Talents + Wave 11 Codex + Wave 12 Systems
+  attack += vipFrameBonuses.atk;
+  maxHp += vipFrameBonuses.hp;
+  critDamage += mythicBonuses.critDmgBonus + soulRingBonuses.critDmg;
+  bossDamageBonus +=
+    mythicBonuses.bossDmgBonus +
+    altarBonuses.bossDmgBonus +
+    warBannerStats.bossDmg +
+    soulRingBonuses.bossDmg;
+
+  // Apply Zodiac Guild Tech + 12 Constellations + Talents + Wave 11 Codex + Wave 12-13 Systems
   const guildTech = computeGuildTechBonuses(save.guild);
   const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
@@ -839,7 +870,9 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
         codexSummary.totalAtkPct +
         mythicBonuses.atkPct +
         altarBonuses.atkPct +
-        warBannerStats.atkPct)
+        warBannerStats.atkPct +
+        steedStats.atkPct +
+        soulRingBonuses.atkPct)
   );
   maxHp = Math.round(
     (maxHp + tal.hp + constellation.hpFlat) *
@@ -851,7 +884,9 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
         haloStats.hpPct +
         codexSummary.totalHpPct +
         altarBonuses.hpPct +
-        warBannerStats.hpPct)
+        warBannerStats.hpPct +
+        steedStats.hpPct +
+        soulRingBonuses.hpPct)
   );
   critChance = Math.min(
     0.94,
@@ -861,10 +896,12 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       constellation.critBonus +
       codexSummary.totalCrit +
       mythicBonuses.critBonus +
-      altarBonuses.critBonus
+      altarBonuses.critBonus +
+      steedStats.crit +
+      soulRingBonuses.crit
   );
   attackSpeedMult += tal.aspdMult + constellation.aspdBonus + wingAspd + mythicBonuses.aspdBonus;
-  moveSpeedMult += tal.moveSpeedMult;
+  moveSpeedMult += tal.moveSpeedMult + steedStats.moveSpeed;
   damageReduction = Math.min(
     0.72,
     damageReduction + tal.damageReduction + constellation.drBonus + haloStats.dr
@@ -895,7 +932,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       bondBonuses.activeCount * 85 +
       mythicBonuses.tier * 135 +
       altarBonuses.totalLevel * 24 +
-      (equippedWarBannerId ? warBannerLevel * 68 : 0)
+      (equippedWarBannerId ? warBannerLevel * 68 : 0) +
+      (equippedAstralSteedId ? astralSteedStar * 115 : 0) +
+      soulRingBonuses.totalLevel * 48 +
+      (save.unlockedVipFrames?.length ?? 0) * 65
   );
 
   return {
@@ -1155,6 +1195,23 @@ export function createInitialSaveData(): SaveData {
     equippedWarBannerId: null,
     crystalVault: normalizeCrystalVault(),
     lobbyHeroPose: 'heroic',
+    // Wave 13 initial defaults
+    starlightGrass: 24,
+    dragonScales: 12,
+    blindBoxTickets: 2,
+    unlockedAstralSteeds: [],
+    astralSteedStars: {},
+    equippedAstralSteedId: null,
+    starlightRace: normalizeStarlightRace(),
+    soulRings: normalizeSoulRings(),
+    royalDutchAuction: normalizeRoyalDutchAuction(),
+    royalBlindBox: normalizeRoyalBlindBox(),
+    dragonLair: normalizeDragonLair(),
+    lobbyWeather: 'meteor_shower',
+    unlockedVipFrames: [],
+    equippedVipFrameId: null,
+    carnival7Day: normalizeCarnival7Day(),
+    evolvingFirstTopUp: normalizeEvolvingFirstTopUp(),
   };
 }
 

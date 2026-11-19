@@ -43,6 +43,7 @@ import {
   Zap,
 } from 'lucide-react';
 import abyssalGauntletArt from '../assets/images/abyssal_gauntlet_arena_1795010358870.jpg';
+import ancientDragonLairArt from '../assets/images/ancient_dragon_lair_1795056419369.jpg';
 import bloodMoonArt from '../assets/images/blood_moon_nightmare_1795007597791.jpg';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
 import celestialFestivalArt from '../assets/images/celestial_festival_lanterns_1795051178335.jpg';
@@ -177,6 +178,16 @@ import {
   previewLobbyClaimAll,
 } from '../data/wave12Data';
 import {
+  DRAGON_LAIR_MILESTONES,
+  LOBBY_WEATHER_DEFS,
+  MAX_DAILY_DRAGON_LAIR_RUNS,
+  VIP_AVATAR_FRAME_MAP,
+  countClaimableCarnivalRewards,
+  countClaimableDragonLairMilestones,
+  countClaimableStarlightMilestones,
+  normalizeDragonLair,
+} from '../data/wave13Data';
+import {
   ArtifactId,
   AuraStyleId,
   AvatarFrameId,
@@ -191,6 +202,7 @@ import {
   LobbyCameraPreset,
   LobbyHeroPoseId,
   LobbySkyThemeId,
+  LobbyWeatherId,
   MonthlyCardTier,
   MountId,
   PantheonBlessingId,
@@ -219,6 +231,7 @@ import {
   ShopSectionTab,
 } from './LobbyPanels';
 import { Wave12SanctumTab } from './Wave12SanctumModal';
+import { Wave13Tab } from './Wave13TreasuryModal';
 
 export type LobbyTab = 'battle' | 'gear' | 'heroes' | 'runes' | 'shop';
 export type LobbyGameMode =
@@ -235,7 +248,8 @@ export type LobbyGameMode =
   | 'guild_war'
   | 'pantheon_expedition'
   | 'championship_3round'
-  | 'crystal_vault';
+  | 'crystal_vault'
+  | 'dragon_lair';
 
 interface TitleScreenProps {
   save: SaveData;
@@ -385,6 +399,11 @@ interface TitleScreenProps {
   onSelectHeroPose?: (pose: LobbyHeroPoseId) => void;
   onCapturePhoto?: () => void;
   onOpenWave12Sanctum?: (tab: Wave12SanctumTab) => void;
+  onOpenWave13Treasury?: (tab: Wave13Tab) => void;
+  onOpenWave13Carnival?: () => void;
+  onSelectLobbyWeather?: (weather: LobbyWeatherId) => void;
+  onStartDragonLair?: () => void;
+  onClaimDragonLairMilestone?: (scalesTarget: number) => void;
   onOpenCpBreakdown?: () => void;
   onOpenClaimAllModal?: () => void;
   onStartCrystalVault?: () => void;
@@ -565,6 +584,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onSelectHeroPose,
   onCapturePhoto,
   onOpenWave12Sanctum,
+  onOpenWave13Treasury,
+  onOpenWave13Carnival,
+  onSelectLobbyWeather,
+  onStartDragonLair,
+  onClaimDragonLairMilestone,
   onOpenCpBreakdown,
   onOpenClaimAllModal,
   onStartCrystalVault,
@@ -590,6 +614,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [pantheonImgFailed, setPantheonImgFailed] = useState(false);
   const [championshipImgFailed, setChampionshipImgFailed] = useState(false);
   const [crystalVaultImgFailed, setCrystalVaultImgFailed] = useState(false);
+  const [dragonLairImgFailed, setDragonLairImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -688,6 +713,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const supremeActive = isSupremeMonthlyActive(save.supremeMonthly);
   const crystalVaultState = normalizeCrystalVault(save.crystalVault, supremeActive);
   const crystalVaultClaimCount = countClaimableCrystalVaultMilestones(save);
+  const dragonLairState = normalizeDragonLair(save.dragonLair);
+  const dragonLairClaimCount = countClaimableDragonLairMilestones(save);
+  const carnivalClaimCount = countClaimableCarnivalRewards(save);
+  const starlightRaceClaimCount = countClaimableStarlightMilestones(save);
+  const wave13Badges = dragonLairClaimCount + carnivalClaimCount + starlightRaceClaimCount;
+  const activeWeatherId: LobbyWeatherId = save.lobbyWeather ?? 'meteor_shower';
+  const equippedVipFrameDef = save.equippedVipFrameId
+    ? VIP_AVATAR_FRAME_MAP[save.equippedVipFrameId]
+    : null;
   const claimAllPreview = previewLobbyClaimAll(save);
   const activeSkyThemeId: LobbySkyThemeId = save.lobbySkyTheme ?? 'golden_galaxy';
   const unlockedSkyThemes: LobbySkyThemeId[] = save.unlockedSkyThemes ?? [
@@ -711,7 +745,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     wave9Badges +
     wave10Badges +
     wave11Badges +
-    crystalVaultClaimCount;
+    crystalVaultClaimCount +
+    wave13Badges;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -799,6 +834,34 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
           </div>
 
+          {onSelectLobbyWeather && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-amber-400/15">
+              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 mr-1">
+                Thời Tiết 3D:
+              </span>
+              {LOBBY_WEATHER_DEFS.map((w) => {
+                const active = activeWeatherId === w.id;
+                return (
+                  <button
+                    key={w.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.06);
+                      onSelectLobbyWeather(w.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer transition-colors ${
+                      active
+                        ? 'a2-emerald-btn'
+                        : 'bg-[#090f24] border border-slate-700 text-slate-300 hover:border-cyan-300'
+                    }`}
+                  >
+                    {w.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-400/20">
             <div className="flex items-center gap-1.5">
               <button
@@ -855,14 +918,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           className="relative flex items-center gap-2.5 pr-3 pl-1 py-1 rounded-2xl bg-[#0b1229]/95 border border-amber-400/35 hover:border-amber-300/80 transition-colors cursor-pointer shrink-0"
           title="Mở Hồ Sơ, Thành Tựu & Thư Viện"
         >
-          <ZodiacAvatar
-            heroId={activeHero.id}
-            accentHex={activeHero.accentHex}
-            cloakHex={activeHero.cloakHex}
-            hairHex={activeHero.hairHex}
-            frameId={save.equippedAvatarFrameId ?? 'default_gold'}
-            sizeClass="w-10 h-10 sm:w-11 sm:h-11"
-          />
+          <div
+            className={`rounded-full shrink-0 ${
+              equippedVipFrameDef ? `${equippedVipFrameDef.frameClass} p-[2.5px]` : ''
+            }`}
+          >
+            <ZodiacAvatar
+              heroId={activeHero.id}
+              accentHex={activeHero.accentHex}
+              cloakHex={activeHero.cloakHex}
+              hairHex={activeHero.hairHex}
+              frameId={save.equippedAvatarFrameId ?? 'default_gold'}
+              sizeClass="w-10 h-10 sm:w-11 sm:h-11"
+            />
+          </div>
           <div className="text-left leading-tight">
             <div className="flex items-center gap-1.5">
               <span className="font-display text-xs sm:text-sm font-black text-white whitespace-nowrap">
@@ -1352,6 +1421,40 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                               );
                             })}
                           </div>
+
+                          {/* Wave 13: 3D Lobby Weather Switcher */}
+                          {onSelectLobbyWeather && (
+                            <div className="mt-2.5 pt-2 border-t border-amber-400/20">
+                              <div className="text-[10px] font-black uppercase tracking-wider text-cyan-300 mb-1.5">
+                                Thời Tiết 3D Sảnh Chính (Miễn Phí)
+                              </div>
+                              <div className="grid grid-cols-2 gap-1">
+                                {LOBBY_WEATHER_DEFS.map((w) => {
+                                  const active = activeWeatherId === w.id;
+                                  return (
+                                    <button
+                                      key={w.id}
+                                      type="button"
+                                      onClick={() => {
+                                        soundEngine.playUiClick(1.08);
+                                        onSelectLobbyWeather(w.id);
+                                      }}
+                                      className={`px-2 py-1 rounded-lg text-[10px] font-black text-left flex items-center gap-1.5 cursor-pointer border transition-colors ${
+                                        active
+                                          ? 'bg-cyan-500/20 border-cyan-300 text-cyan-100'
+                                          : 'bg-[#070b1a] border-slate-800 text-slate-300 hover:border-cyan-400/50'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-2.5 h-2.5 rounded-full shrink-0 bg-gradient-to-br ${w.swatchClass}`}
+                                      />
+                                      <span className="truncate">{w.name}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1373,6 +1476,27 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     {festivalClaimCount > 0 && (
                       <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
                         +{festivalClaimCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                {onOpenWave13Carnival && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.08);
+                      setFeatureDockOpen(false);
+                      onOpenWave13Carnival();
+                    }}
+                    className="a2-yellow-btn flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap shadow-lg"
+                    title="Lộ Trình Quà 7 Ngày & Gói Nạp Đầu 3 Mốc Tiến Hóa x18"
+                  >
+                    <Crown className="w-4 h-4 shrink-0" />
+                    <span className="hidden sm:inline">Quà 7 Ngày &amp; Nạp Đầu</span>
+                    {carnivalClaimCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 font-mono-nums text-[9px] font-black">
+                        +{carnivalClaimCount}
                       </span>
                     )}
                   </button>
@@ -1412,6 +1536,25 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               {/* Right-Edge Expandable Feature Dock + Featured Event Banner */}
               <div className="pointer-events-auto flex flex-col items-end gap-2 z-20 shrink-0 relative">
                 <div className="flex items-center gap-1.5">
+                  {onOpenWave13Treasury && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.08);
+                        onOpenWave13Treasury('steeds');
+                      }}
+                      className="a2-emerald-btn flex items-center gap-1.5 px-3 py-2 rounded-xl border border-cyan-200/75 text-xs font-black cursor-pointer whitespace-nowrap shadow-lg"
+                      title="Thú Cưỡi 3D · Đường Đua Ánh Sao · Hồn Hoàn 3D · Đấu Giá & Hộp Mù"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                      <span className="hidden sm:inline">Thú Cưỡi &amp; Hồn Hoàn</span>
+                      {starlightRaceClaimCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-slate-950 text-emerald-300 font-mono-nums text-[9px] font-black">
+                          +{starlightRaceClaimCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
                   {onOpenWave12Sanctum && (
                     <button
                       type="button"
@@ -1423,7 +1566,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       title="Thần Binh Thức Tỉnh 3D · Vòng Quay Kho Báu · Tế Đàn & Cờ Hiệu 3D"
                     >
                       <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                      <span className="hidden sm:inline">Thần Binh &amp; Cờ 3D</span>
+                      <span className="hidden md:inline">Thần Binh &amp; Cờ 3D</span>
                     </button>
                   )}
 
@@ -1949,6 +2092,82 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         </>
                       )}
 
+                      {onOpenWave13Treasury && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave13Treasury('steeds');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-cyan-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-cyan-200 truncate">
+                              <Sparkles className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                              <span className="truncate">Thú Cưỡi &amp; Đua</span>
+                            </span>
+                            {starlightRaceClaimCount > 0 && (
+                              <span className="px-1 py-0.5 rounded bg-emerald-400 text-slate-950 text-[9px] font-black font-mono-nums">
+                                +{starlightRaceClaimCount}
+                              </span>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave13Treasury('soul_rings');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-purple-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-purple-200 truncate">
+                              <Gem className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                              <span className="truncate">Hồn Hoàn 3D</span>
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave13Treasury('royal_vault');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                              <Gift className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                              <span className="truncate">Đấu Giá &amp; Hộp Mù</span>
+                            </span>
+                          </button>
+                        </>
+                      )}
+
+                      {onOpenWave13Carnival && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFeatureDockOpen(false);
+                            onOpenWave13Carnival();
+                          }}
+                          className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-black text-yellow-200 truncate">
+                            <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span className="truncate">Quà 7 Ngày</span>
+                          </span>
+                          {carnivalClaimCount > 0 && (
+                            <span className="px-1 py-0.5 rounded bg-emerald-400 text-slate-950 text-[9px] font-black font-mono-nums">
+                              +{carnivalClaimCount}
+                            </span>
+                          )}
+                        </button>
+                      )}
+
                       {onOpenCpBreakdown && (
                         <button
                           type="button"
@@ -2463,6 +2682,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   >
                     <Gem className="w-3 h-3 shrink-0" />
                     <span>Hầm Mỏ 3D</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('dragon_lair');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'dragon_lair'
+                        ? 'bg-gradient-to-b from-rose-300 via-orange-400 to-amber-400 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Flame className="w-3 h-3 shrink-0" />
+                    <span>Rồng Cổ 3D</span>
                   </button>
                 </div>
 
@@ -3686,6 +3920,115 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                             : 'Đã Hết Lượt Hôm Nay'}
                         </span>
                         {crystalVaultState.dailyRunsRemaining > 0 && (
+                          <ChevronRight className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                  </>
+                ) : gameMode === 'dragon_lair' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-rose-400/80 bg-[#15080f] shrink-0">
+                        {!dragonLairImgFailed ? (
+                          <img
+                            src={ancientDragonLairArt}
+                            alt="Lãnh Địa Rồng Cổ 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setDragonLairImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Flame className="w-6 h-6 text-rose-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-rose-200 truncate">
+                            Lãnh Địa Rồng Cổ 3D · 3 Pha Đồ Long (75s)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            {dragonLairState.dailyRunsRemaining}/{MAX_DAILY_DRAGON_LAIR_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Đối đầu Cổ Long Tinh Giới 3D, né vùng đỏ Hơi Thở Rồng để săn Vảy Rồng Cổ, Cỏ Tinh Tú &amp; Linh Ngọc!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-rose-400/25 py-1.5 px-1">
+                      <span className="text-amber-300 font-bold">
+                        Kỷ lục: {dragonLairState.bestDamage.toLocaleString('vi-VN')} ST · Tổng Vảy:{' '}
+                        {dragonLairState.totalScalesEarned}
+                      </span>
+                      <span className="text-rose-300 font-bold">
+                        Vảy Rồng Kho: {save.dragonScales ?? 0} · Cỏ Tinh Tú: {save.starlightGrass ?? 0}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {DRAGON_LAIR_MILESTONES.map((ms) => {
+                        const met = dragonLairState.totalScalesEarned >= ms.scalesTarget;
+                        const claimed = dragonLairState.claimedMilestones.includes(ms.scalesTarget);
+                        return (
+                          <button
+                            key={ms.scalesTarget}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimDragonLairMilestone?.(ms.scalesTarget);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ ${ms.scalesTarget} Vảy`
+                              : met
+                              ? `Nhận ${ms.scalesTarget} (+${ms.rewardGems} Ngọc)`
+                              : `${ms.scalesTarget} Vảy (+${ms.rewardBlindBoxTickets} Vé)`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onOpenWave13Treasury?.('steeds');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Sparkles className="w-4 h-4 text-cyan-300 shrink-0" />
+                        <span>Đổi Thú Cưỡi</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-start="true"
+                        disabled={dragonLairState.dailyRunsRemaining <= 0}
+                        onClick={onStartDragonLair}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          dragonLairState.dailyRunsRemaining > 0
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {dragonLairState.dailyRunsRemaining > 0
+                            ? 'KHAI CHIẾN LÃNH ĐỊA RỒNG CỔ 3D'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {dragonLairState.dailyRunsRemaining > 0 && (
                           <ChevronRight className="w-5 h-5" />
                         )}
                       </button>

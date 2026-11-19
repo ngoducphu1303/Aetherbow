@@ -154,6 +154,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           ? 'a2-crit-float'
           : 'a2-dmg-float';
 
+        const elementBadge =
+          d.element === 'fire'
+            ? { text: 'HỎA', cls: 'bg-orange-500/85 border-amber-200/80 text-white' }
+            : d.element === 'ice'
+            ? { text: 'BĂNG', cls: 'bg-cyan-500/85 border-sky-100/80 text-slate-950' }
+            : d.element === 'storm'
+            ? { text: 'LÔI', cls: 'bg-purple-500/85 border-fuchsia-200/80 text-white' }
+            : d.element === 'poison'
+            ? { text: 'ĐỘC', cls: 'bg-lime-500/85 border-emerald-100/80 text-slate-950' }
+            : null;
+
         return (
           <div
             key={d.id}
@@ -163,15 +174,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             }}
             className={`absolute font-mono-nums font-black ${animClass} ${
               d.isSuperCrit
-                ? 'text-xl sm:text-2xl drop-shadow-[0_0_12px_rgba(251,191,36,0.95)]'
+                ? 'text-xl sm:text-2xl drop-shadow-[0_0_16px_rgba(251,191,36,0.98)]'
                 : d.isCrit
-                ? 'text-lg sm:text-xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]'
+                ? 'text-lg sm:text-xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.75)]'
                 : 'text-xs sm:text-sm drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]'
             } ${colorClass}`}
           >
             {d.isSuperCrit && !d.label && (
-              <span className="mr-1 px-1 py-0.5 rounded bg-rose-600/90 border border-amber-300/80 text-[9px] text-amber-100 align-middle">
+              <span className="mr-1 px-1.5 py-0.5 rounded bg-gradient-to-r from-rose-600 to-amber-500 border border-amber-200 text-[9px] text-white align-middle shadow">
                 BẠO ĐỈNH
+              </span>
+            )}
+            {elementBadge && !d.label && !d.isHeal && (
+              <span
+                className={`mr-1 px-1 py-0.5 rounded border text-[8px] font-black align-middle ${elementBadge.cls}`}
+              >
+                {elementBadge.text}
               </span>
             )}
             {d.label
@@ -247,7 +265,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="font-display text-[11px] sm:text-xs font-black text-amber-200 font-mono-nums whitespace-nowrap flex items-center justify-center gap-1.5">
               {hud.portalOpen && <ArrowUp className="w-3.5 h-3.5 text-emerald-300 shrink-0" />}
               <span>
-                {hud.isCrystalVaultMode
+                {hud.isDragonLairMode
+                  ? `Lãnh Địa Rồng Cổ 3D · ${hud.dragonTimeLeft ?? 75}s`
+                  : hud.isCrystalVaultMode
                   ? `Hầm Mỏ Pha Lê 3D · ${hud.vaultTimeLeft ?? 60}s`
                   : hud.isChampionshipMode
                   ? `Giải Đấu Quán Quân · Hiệp ${hud.championshipRound ?? 1}/${hud.championshipTotalRounds ?? 3}`
@@ -289,7 +309,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </span>
             </div>
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
-              {hud.isCrystalVaultMode
+              {hud.isDragonLairMode
+                ? `Pha ${hud.dragonPhase ?? 1}/3 · Vảy Rồng +${hud.dragonScalesLooted ?? 0} · ST ${(hud.dragonDamageDealt ?? 0).toLocaleString('vi-VN')}`
+                : hud.isCrystalVaultMode
                 ? `Trụ Phá: ${hud.vaultPillarsBroken ?? 0} · Đợt ${hud.vaultWave ?? 1} · +${hud.vaultGemsLooted ?? 0} Ngọc`
                 : hud.isChampionshipMode
                 ? `${hud.championshipRivalName ?? 'Quán Quân'} · Điểm: ${(hud.championshipScore ?? 0).toLocaleString('vi-VN')}`
@@ -377,6 +399,36 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Wave 13: Ancient Dragon Lair 3D Live Strip & Crimson Breath Warning */}
+        {hud.isDragonLairMode && (
+          <div className="w-full max-w-lg mx-auto space-y-1.5">
+            <div className="rounded-2xl px-4 py-2 bg-[#1e080d]/95 border border-rose-400/75 shadow-2xl">
+              <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+                <span className="flex items-center gap-1.5 text-rose-200">
+                  <Flame className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Lãnh Địa Rồng Cổ · Pha {hud.dragonPhase ?? 1}/3</span>
+                </span>
+                <span className="font-mono-nums text-amber-300">
+                  Vảy Rồng +{hud.dragonScalesLooted ?? 0} · {hud.dragonTimeLeft ?? 75}s
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-950 border border-rose-500/40 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-rose-600 via-orange-500 to-amber-300 transition-all duration-300"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, ((hud.dragonTimeLeft ?? 0) / 75) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+            {hud.dragonBreathWarning && (
+              <div className="rounded-xl px-4 py-1.5 bg-gradient-to-r from-rose-700/95 via-red-600/95 to-orange-600/95 border border-amber-300 text-center text-xs font-black uppercase tracking-wider text-white shadow-[0_0_24px_rgba(244,63,94,0.85)]">
+                CẢNH BÁO HƠI THỞ RỒNG CỔ · LƯỚT NÉ KHỎI VÙNG ĐỎ NGAY!
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Arena 1v1 Duel VS Bar */}
         {hud.isArenaMode && (
@@ -1034,7 +1086,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               title={hud.ultName}
               className={`pointer-events-auto relative overflow-hidden w-[62px] h-[62px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
                 ultReady
-                  ? 'a2-purple-btn cursor-pointer shadow-[0_0_26px_rgba(251,191,36,0.65)] hover:scale-105'
+                  ? 'a2-purple-btn w13-skill-ready-glow cursor-pointer shadow-[0_0_26px_rgba(251,191,36,0.65)] hover:scale-105'
                   : 'hv2-panel text-slate-300 cursor-not-allowed'
               }`}
             >
@@ -1060,7 +1112,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             onClick={onDashClick}
             className={`pointer-events-auto relative overflow-hidden w-[62px] h-[62px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
               dashReady
-                ? 'a2-emerald-btn shadow-[0_0_22px_rgba(52,211,153,0.55)] hover:scale-105'
+                ? 'a2-emerald-btn w13-skill-ready-glow shadow-[0_0_22px_rgba(52,211,153,0.55)] hover:scale-105'
                 : 'hv2-panel text-slate-400'
             }`}
           >

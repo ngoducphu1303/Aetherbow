@@ -4,13 +4,16 @@ import { MOUNT_MAP, WEAPON_AURA_MAP } from '../data/wave8Data';
 import { ARTIFACT_MAP } from '../data/wave9Data';
 import { DIVINE_HALO_MAP } from '../data/wave10Data';
 import { MYTHIC_WEAPON_TIERS, WAR_BANNER_MAP } from '../data/wave12Data';
+import { ASTRAL_STEED_MAP, SOUL_RING_DEFS } from '../data/wave13Data';
 import {
   ArtifactId,
+  AstralSteedId,
   CrownStyle,
   EnemyKind,
   HaloId,
   MountId,
   PetId,
+  SoulRingSlotId,
   StageEventAfter,
   WarBannerId,
   WeaponArchetype,
@@ -49,6 +52,9 @@ export interface HeroVisualConfig {
   mythicWeaponTier?: number;
   warBannerId?: WarBannerId | null;
   warBannerLevel?: number;
+  astralSteedId?: AstralSteedId | null;
+  astralSteedStar?: number;
+  soulRingLevels?: Partial<Record<SoulRingSlotId, number>>;
 }
 
 export interface HeroModelRefs {
@@ -74,6 +80,10 @@ export interface HeroModelRefs {
   warBannerGroup?: THREE.Group;
   warBannerCloth?: THREE.Mesh;
   mythicCrownGroup?: THREE.Group;
+  astralSteedGroup?: THREE.Group;
+  astralSteedWings?: THREE.Group[];
+  soulRingsGroup?: THREE.Group;
+  soulRingNodes?: THREE.Object3D[];
   hitMeshes: THREE.Mesh[];
 }
 
@@ -649,10 +659,34 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     bodyGroup.add(warBannerGroup);
   }
 
-  // 11. Composite 3D Zodiac Mount under Hero
+  // 10d. Wave 13: Multi-Tier Orbiting 3D Soul Rings encircling Hero
+  let soulRingsGroup: THREE.Group | undefined;
+  let soulRingNodes: THREE.Object3D[] | undefined;
+  if (cfg.soulRingLevels) {
+    const hasAnyRing = Object.values(cfg.soulRingLevels).some((lv) => (lv ?? 0) > 0);
+    if (hasAnyRing) {
+      const builtRings = createSoulRingsGroup(cfg.soulRingLevels);
+      soulRingsGroup = builtRings.group;
+      soulRingNodes = builtRings.ringNodes;
+      soulRingsGroup.position.set(0, 0.96, 0);
+      bodyGroup.add(soulRingsGroup);
+    }
+  }
+
+  // 11. Composite 3D Astral Steed (Wave 13) or Legacy Zodiac Mount under Hero
   let mountGroup: THREE.Group | undefined;
   let mountLegs: THREE.Group[] | undefined;
-  if (cfg.mountId) {
+  let astralSteedGroup: THREE.Group | undefined;
+  let astralSteedWings: THREE.Group[] | undefined;
+  if (cfg.astralSteedId && ASTRAL_STEED_MAP[cfg.astralSteedId]) {
+    const builtSteed = createAstralSteedModel(cfg.astralSteedId, cfg.astralSteedStar ?? 1);
+    astralSteedGroup = builtSteed.group;
+    astralSteedWings = builtSteed.wingPivots;
+    mountGroup = builtSteed.group;
+    mountLegs = builtSteed.legs;
+    root.add(astralSteedGroup);
+    bodyGroup.position.y = 0.72;
+  } else if (cfg.mountId) {
     const builtMount = createZodiacMountModel(cfg.mountId, cfg.mountLevel ?? 1);
     mountGroup = builtMount.group;
     mountLegs = builtMount.legs;
@@ -683,6 +717,10 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     warBannerGroup,
     warBannerCloth,
     mythicCrownGroup,
+    astralSteedGroup,
+    astralSteedWings,
+    soulRingsGroup,
+    soulRingNodes,
     hitMeshes,
   };
 }
@@ -2241,6 +2279,316 @@ export function createVaultCrystalPillarModel(isGolden: boolean): EnemyModelRefs
   bodyGroup.add(plinth, collar, mainSpire, orbitRing);
   return { root, bodyGroup, headOrCore: mainSpire, weaponOrRing: orbitRing, hitMeshes };
 }
+
+// ============================================================================
+// WAVE 13 COMPOSITE PBR 3D MODELS: ASTRAL STEEDS, MULTI-TIER SOUL RINGS &
+// ANCIENT CELESTIAL DRAGON BOSS 3D
+// ============================================================================
+
+export function createSoulRingsGroup(
+  levels: Partial<Record<SoulRingSlotId, number>>
+): { group: THREE.Group; ringNodes: THREE.Object3D[] } {
+  const group = new THREE.Group();
+  const ringNodes: THREE.Object3D[] = [];
+
+  for (const def of SOUL_RING_DEFS) {
+    const lv = Math.max(0, Math.floor(levels[def.id] ?? 0));
+    if (lv <= 0) continue;
+
+    const ringHolder = new THREE.Group();
+    const radius = 0.68 + def.tierIndex * 0.14;
+    const tube = 0.014 + Math.min(10, lv) * 0.0012;
+
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: def.ringHex,
+      emissive: def.emissiveHex,
+      emissiveIntensity: 1.05 + lv * 0.12,
+      roughness: 0.16,
+      metalness: 0.78,
+      transparent: true,
+      opacity: 0.88,
+    });
+    const jadeMat = new THREE.MeshStandardMaterial({
+      color: def.ringHex,
+      emissive: def.ringHex,
+      emissiveIntensity: 1.7 + lv * 0.14,
+      roughness: 0.1,
+      metalness: 0.3,
+    });
+
+    const torus = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 8, 36), ringMat);
+    ringHolder.add(torus);
+
+    const jadeCount = 2 + Math.min(4, Math.ceil(lv / 2));
+    const jadeGeo = new THREE.OctahedronGeometry(0.044 + def.tierIndex * 0.004, 0);
+    for (let j = 0; j < jadeCount; j++) {
+      const a = (j / jadeCount) * Math.PI * 2;
+      const node = new THREE.Mesh(jadeGeo, jadeMat);
+      node.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0);
+      node.scale.set(0.85, 1.45, 0.85);
+      ringHolder.add(node);
+    }
+
+    // Distinct inclination angles per tier so all 5 rings form a majestic 3D armillary aura
+    ringHolder.rotation.x = Math.PI / 2 + (def.tierIndex - 3) * 0.28;
+    ringHolder.rotation.y = def.tierIndex * 0.42;
+    ringHolder.userData = {
+      speed: (def.tierIndex % 2 === 0 ? 1 : -1) * (0.75 + def.tierIndex * 0.22),
+      tierIndex: def.tierIndex,
+    };
+
+    group.add(ringHolder);
+    ringNodes.push(ringHolder);
+  }
+
+  return { group, ringNodes };
+}
+
+export function createAstralSteedModel(
+  steedId: AstralSteedId,
+  star = 1
+): { group: THREE.Group; legs: THREE.Group[]; wingPivots: THREE.Group[] } {
+  const def = ASTRAL_STEED_MAP[steedId] ?? ASTRAL_STEED_MAP.galaxy_pegasus;
+  const scaleBoost = 1 + Math.min(4, Math.max(0, star - 1)) * 0.045;
+  const group = new THREE.Group();
+  const legs: THREE.Group[] = [];
+  const wingPivots: THREE.Group[] = [];
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: def.bodyHex,
+    roughness: 0.44,
+    metalness: 0.22,
+  });
+  const armorMat = new THREE.MeshStandardMaterial({
+    color: def.armorHex,
+    emissive: def.armorHex,
+    emissiveIntensity: 0.28 + star * 0.06,
+    roughness: 0.18,
+    metalness: 0.92,
+  });
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: def.glowHex,
+    emissive: def.glowHex,
+    emissiveIntensity: 1.35 + star * 0.15,
+    roughness: 0.12,
+    metalness: 0.35,
+  });
+
+  // 1. Primary sculpted steed torso (bottom-center grounded around y=0.62)
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.92, 8, 16), bodyMat);
+  torso.rotation.x = Math.PI / 2;
+  torso.position.set(0, 0.66, -0.05);
+  torso.castShadow = true;
+
+  // 2. Gilded saddle & chestplate barding
+  const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.16, 0.56), armorMat);
+  saddle.position.set(0, 0.92, -0.06);
+  const chestGuard = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.52, 6), armorMat);
+  chestGuard.rotation.x = Math.PI / 2.2;
+  chestGuard.position.set(0, 0.72, 0.52);
+
+  // 3. Neck, Head & Crown Horns / Crest
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 0.58, 12), bodyMat);
+  neck.rotation.x = -0.42;
+  neck.position.set(0, 1.02, 0.56);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.24, 0.48), bodyMat);
+  head.position.set(0, 1.24, 0.8);
+  const helmCrest = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), glowMat);
+  helmCrest.scale.set(0.6, 1.8, 0.9);
+  helmCrest.position.set(0, 1.44, 0.78);
+
+  // Twin eyes
+  for (const side of [-1, 1] as const) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.036, 8, 8), glowMat);
+    eye.position.set(side * 0.135, 1.28, 0.88);
+    group.add(eye);
+  }
+
+  // 4. 4 Articulated Legs with glowing hooves grounded at y = 0
+  const legOffsets: Array<[number, number]> = [
+    [-0.24, 0.42],
+    [0.24, 0.42],
+    [-0.24, -0.48],
+    [0.24, -0.48],
+  ];
+  for (const [lx, lz] of legOffsets) {
+    const legPivot = new THREE.Group();
+    legPivot.position.set(lx, 0.58, lz);
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.062, 0.48, 8), bodyMat);
+    upper.position.y = -0.24;
+    upper.castShadow = true;
+    const hoof = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.086, 0.14, 8), glowMat);
+    hoof.position.y = -0.51;
+    legPivot.add(upper, hoof);
+    group.add(legPivot);
+    legs.push(legPivot);
+  }
+
+  // 5. Flowing Tail Plume
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.72, 6), glowMat);
+  tail.rotation.x = -Math.PI / 2.6;
+  tail.position.set(0, 0.66, -0.88);
+
+  // 6. Steed-specific silhouette extensions (Wings / Dorsal Spikes / Dragon Horns)
+  if (
+    steedId === 'galaxy_pegasus' ||
+    steedId === 'eclipse_phoenix' ||
+    steedId === 'golden_sovereign_dragon'
+  ) {
+    const wingW = steedId === 'galaxy_pegasus' ? 0.92 : 1.05;
+    const wingH = steedId === 'eclipse_phoenix' ? 0.82 : 0.74;
+    const wingGeo = makeBeveledWingGeo(wingW, wingH, 0.04);
+    for (const side of [-1, 1] as const) {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.3, 0.88, 0.12);
+      const wingMesh = new THREE.Mesh(wingGeo, side === 1 ? armorMat : armorMat);
+      wingMesh.position.set(side * (wingW * 0.48), 0.18, -0.1);
+      wingMesh.rotation.y = side > 0 ? -0.25 : Math.PI + 0.25;
+      const featherTrim = new THREE.Mesh(
+        new THREE.BoxGeometry(wingW * 0.86, 0.07, 0.06),
+        glowMat
+      );
+      featherTrim.position.set(side * (wingW * 0.42), 0.42, -0.1);
+      pivot.add(wingMesh, featherTrim);
+      group.add(pivot);
+      wingPivots.push(pivot);
+    }
+  } else {
+    // Frost Starwolf crystalline dorsal ridge + ice collar
+    for (let i = 0; i < 4; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36 - i * 0.04, 5), glowMat);
+      spike.position.set(0, 1.05 - i * 0.06, 0.32 - i * 0.28);
+      spike.rotation.x = -0.35;
+      group.add(spike);
+    }
+  }
+
+  // 7. Ground Starlight Aura Ring underneath steed
+  const groundAura = new THREE.Mesh(new THREE.TorusGeometry(0.94, 0.025, 8, 36), glowMat);
+  groundAura.rotation.x = Math.PI / 2;
+  groundAura.position.y = 0.04;
+
+  group.add(torso, saddle, chestGuard, neck, head, helmCrest, tail, groundAura);
+  group.scale.setScalar(scaleBoost);
+  return { group, legs, wingPivots };
+}
+
+export function createAncientDragonBossModel(): EnemyModelRefs {
+  const root = new THREE.Group();
+  const bodyGroup = new THREE.Group();
+  root.add(bodyGroup);
+  const hitMeshes: THREE.Mesh[] = [];
+
+  const scaleMat = new THREE.MeshStandardMaterial({
+    color: 0x1c1917,
+    roughness: 0.48,
+    metalness: 0.55,
+  });
+  const goldArmorMat = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    emissive: 0xb45309,
+    emissiveIntensity: 0.42,
+    roughness: 0.2,
+    metalness: 0.92,
+  });
+  const moltenMat = new THREE.MeshStandardMaterial({
+    color: 0xf97316,
+    emissive: 0xea580c,
+    emissiveIntensity: 1.75,
+    roughness: 0.14,
+    metalness: 0.25,
+  });
+  const crystalHornMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.3,
+    roughness: 0.12,
+    metalness: 0.4,
+  });
+
+  // 1. Armored Obsidian Chest & Molten Core
+  const torso = new THREE.Mesh(new THREE.DodecahedronGeometry(0.95, 1), scaleMat);
+  torso.scale.set(1.15, 1.3, 1.05);
+  torso.position.set(0, 1.55, 0);
+  torso.castShadow = true;
+  hitMeshes.push(torso);
+
+  const chestCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.46, 0), moltenMat);
+  chestCore.position.set(0, 1.65, 0.72);
+  hitMeshes.push(chestCore);
+
+  // 2. Gilded Shoulder Pauldrons
+  for (const side of [-1, 1] as const) {
+    const pauldron = new THREE.Mesh(new THREE.ConeGeometry(0.46, 0.68, 6), goldArmorMat);
+    pauldron.position.set(side * 1.05, 2.05, 0.18);
+    pauldron.rotation.z = -side * 0.65;
+    pauldron.castShadow = true;
+    hitMeshes.push(pauldron);
+    bodyGroup.add(pauldron);
+  }
+
+  // 3. Articulated Neck & Horned Draconic Head
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.54, 1.05, 10), scaleMat);
+  neck.position.set(0, 2.68, 0.35);
+  neck.rotation.x = 0.28;
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.64, 1.16), scaleMat);
+  head.position.set(0, 3.22, 0.74);
+  head.castShadow = true;
+  hitMeshes.push(head);
+
+  const fieryJaw = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.2, 0.72), moltenMat);
+  fieryJaw.position.set(0, 2.9, 0.88);
+
+  for (const side of [-1, 1] as const) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.92, 6), crystalHornMat);
+    horn.position.set(side * 0.36, 3.74, 0.38);
+    horn.rotation.x = -0.58;
+    horn.rotation.z = -side * 0.34;
+    bodyGroup.add(horn);
+
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), moltenMat);
+    eye.position.set(side * 0.34, 3.3, 1.24);
+    bodyGroup.add(eye);
+  }
+
+  // 4. Massive Swept Solar-Crimson Dragon Wings
+  const wingGeo = makeBeveledWingGeo(2.35, 1.95, 0.09);
+  for (const side of [-1, 1] as const) {
+    const wing = new THREE.Mesh(wingGeo, moltenMat);
+    wing.position.set(side * 1.65, 2.55, -0.45);
+    wing.rotation.y = side > 0 ? -0.35 : Math.PI + 0.35;
+    wing.rotation.z = side * 0.14;
+    wing.castShadow = true;
+    hitMeshes.push(wing);
+    bodyGroup.add(wing);
+
+    const wingBone = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 2.3, 8), goldArmorMat);
+    wingBone.position.set(side * 1.3, 2.85, -0.36);
+    wingBone.rotation.z = -side * 1.15;
+    bodyGroup.add(wingBone);
+  }
+
+  // 5. Grounded Claws & Armored Tail
+  for (const side of [-1, 1] as const) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.42, 1.0, 8), scaleMat);
+    leg.position.set(side * 0.72, 0.5, 0.25);
+    leg.castShadow = true;
+    bodyGroup.add(leg);
+  }
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.38, 2.1, 7), scaleMat);
+  tail.rotation.x = -Math.PI / 2.2;
+  tail.position.set(0, 0.78, -1.48);
+
+  // 6. Orbiting Starfire Dragon Crown Ring
+  const dragonRing = new THREE.Mesh(new THREE.TorusGeometry(1.65, 0.055, 10, 36), goldArmorMat);
+  dragonRing.rotation.x = Math.PI / 2;
+  dragonRing.position.set(0, 0.18, 0);
+
+  bodyGroup.add(torso, chestCore, neck, head, fieryJaw, tail, dragonRing);
+  return { root, bodyGroup, headOrCore: head, weaponOrRing: dragonRing, hitMeshes };
+}
+
 
 
 

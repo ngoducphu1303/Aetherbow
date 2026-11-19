@@ -30,6 +30,7 @@ import {
   LOBBY_SKY_THEME_MAP,
 } from '../data/wave11Data';
 import { CRYSTAL_VAULT_DURATION_SEC, getComboTierMeta } from '../data/wave12Data';
+import { DRAGON_LAIR_DURATION_SEC, LOBBY_WEATHER_DEFS } from '../data/wave13Data';
 import {
   ArenaOpponent,
   ChampionshipTacticDef,
@@ -51,6 +52,7 @@ import {
   LobbyCameraPreset,
   LobbyHeroPoseId,
   LobbySkyThemeId,
+  LobbyWeatherId,
   PantheonBlessingDef,
   PetId,
   RuneId,
@@ -59,6 +61,7 @@ import {
   WheelOutcome,
 } from '../types/game';
 import {
+  createAncientDragonBossModel,
   createCompanionModel,
   createEnemyModel,
   createHeroModel,
@@ -339,6 +342,10 @@ export interface EngineCallbacks {
       vaultReforgeLooted?: number;
       vaultShardsLooted?: number;
       warCrests?: number;
+      isDragonLairMode?: boolean;
+      dragonDamageDealt?: number;
+      dragonScalesLooted?: number;
+      dragonPhase?: 1 | 2 | 3;
       maxCombo?: number;
       damageBreakdown?: DamageBreakdown;
     }
@@ -502,6 +509,16 @@ export class GameEngine {
   private lobbyHeroPose: LobbyHeroPoseId = 'heroic';
   private lobbyPhotoMode = false;
   private lobbyPhotoAngle: 'full' | 'closeup' | 'hero_wide' = 'full';
+  private lobbyWeatherId: LobbyWeatherId = 'meteor_shower';
+  private isDragonLairMode = false;
+  private dragonTimeLeft = 0;
+  private dragonPhase: 1 | 2 | 3 = 1;
+  private dragonBreathCooldown = 6.0;
+  private dragonBreathWarningTimer = 0;
+  private dragonBreathAngle = 0;
+  private dragonBreathCone: THREE.Mesh | null = null;
+  private dragonScalesLooted = 0;
+  private dragonDamageDealt = 0;
   private starfallMesh!: THREE.InstancedMesh;
   private starfallEnabled = true;
   private starfallSeeds: Array<{
@@ -1242,6 +1259,13 @@ export class GameEngine {
     this.lobbySkyThemeId = themeId;
     if (this.hero) {
       this.rebuildLobbyPedestal();
+    }
+  }
+
+  public setLobbyWeather(weatherId: LobbyWeatherId): void {
+    this.lobbyWeatherId = weatherId;
+    if (this.starfallMesh) {
+      this.starfallMesh.visible = this.starfallEnabled && weatherId !== 'clear';
     }
   }
 
@@ -2751,10 +2775,165 @@ export class GameEngine {
     this.spawnShockwave(0, -4.5, 0xfbbf24, 6.4, 0.48);
   }
 
+  public startDragonLair(stats: ComputedPlayerStats): void {
+    this.isTowerMode = false;
+    this.towerFloor = 0;
+    this.isBossRushMode = false;
+    this.bossRushRound = 0;
+    this.isDailyRiftMode = false;
+    this.dailyRiftPair = null;
+    this.isGuildBossMode = false;
+    this.isArenaMode = false;
+    this.isCoopRaidMode = false;
+    this.isElementalTowerMode = false;
+    this.isCrystalDefenseMode = false;
+    this.isWorldBossMode = false;
+    this.isBloodMoonMode = false;
+    this.isAbyssalMode = false;
+    this.isGuildWarMode = false;
+    this.isPantheonMode = false;
+    this.currentChapter = CHAPTERS[4] ?? CHAPTERS[0];
+    this.baseStats = stats;
+
+    this.buildArena(this.currentChapter);
+    this.scene.background = new THREE.Color(0x1b0b12);
+    this.scene.fog = new THREE.FogExp2(0x2b1019, 0.017);
+    this.keyLight.color.setHex(0xfb923c);
+    this.hemiLight.color.setHex(0xf97316);
+    this.hemiLight.groundColor.setHex(0x1c1917);
+
+    this.resetRunState(stats);
+    this.isDragonLairMode = true;
+    this.dragonTimeLeft = DRAGON_LAIR_DURATION_SEC;
+    this.dragonPhase = 1;
+    this.dragonBreathCooldown = 5.5;
+    this.dragonBreathWarningTimer = 0;
+    this.dragonScalesLooted = 0;
+    this.dragonDamageDealt = 0;
+    this.ultCharge = 100;
+    this.rebuildCompanions();
+    this.setupStageArena(
+      'sanctum',
+      true,
+      'LÃNH ĐỊA RỒNG CỔ 3D · NÉ HƠI THỞ RỒNG & SĂN VẢY RỒNG CỔ!'
+    );
+
+    // Spawn Composite 3D Ancient Celestial Dragon Boss
+    const dragonModel = createAncientDragonBossModel();
+    dragonModel.root.position.set(0, 0, -5.8);
+    this.entitiesGroup.add(dragonModel.root);
+
+    const shadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.2, 4.2),
+      new THREE.MeshBasicMaterial({
+        map: this.contactShadowTex,
+        transparent: true,
+        opacity: 0.56,
+        depthWrite: false,
+      })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.set(0, 0.02, -5.8);
+    this.entitiesGroup.add(shadow);
+
+    const telegraphGroup = new THREE.Group();
+    const telegraphFill = new THREE.Mesh(
+      new THREE.CircleGeometry(0.1, 8),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    telegraphGroup.visible = false;
+    this.entitiesGroup.add(telegraphGroup);
+
+    const laserLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+      new THREE.LineBasicMaterial({ visible: false })
+    );
+    laserLine.visible = false;
+    this.entitiesGroup.add(laserLine);
+
+    // Reusable 3D crimson telegraphed Dragon Breath cone on arena floor
+    const coneGeo = new THREE.CircleGeometry(10.5, 22, -0.44, 0.88);
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: 0xf43f5e,
+      transparent: true,
+      opacity: 0.34,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+    coneMesh.rotation.x = -Math.PI / 2;
+    coneMesh.position.set(0, 0.06, -5.8);
+    coneMesh.visible = false;
+    this.entitiesGroup.add(coneMesh);
+    this.dragonBreathCone = coneMesh;
+
+    const dragonHp = Math.round(Math.max(4800, stats.attack * 56));
+    const dragonDmg = Math.round(Math.max(38, stats.maxHp * 0.14));
+    const bossShieldMax = Math.round(dragonHp * 0.24);
+
+    this.enemies.push({
+      id: this.nextEntityId++,
+      kind: EnemyKind.TITAN_BOSS,
+      isElite: true,
+      isBoss: true,
+      x: 0,
+      z: -5.8,
+      vx: 0,
+      vz: 0,
+      radius: 1.95,
+      hp: dragonHp,
+      maxHp: dragonHp,
+      speed: 2.35,
+      damage: dragonDmg,
+      xpValue: 180,
+      goldValue: 950,
+      spawnTimer: 0.4,
+      attackTimer: 1.8,
+      telegraphTimer: 0,
+      telegraphDuration: 1.1,
+      telegraphType: 'none',
+      aimX: 0,
+      aimZ: 1,
+      slamX: 0,
+      slamZ: -5.8,
+      slamRadius: 3.4,
+      laneAngles: [],
+      bossPhase: 1,
+      phaseTransitioned: false,
+      breakShield: bossShieldMax,
+      maxBreakShield: bossShieldMax,
+      stunTimer: 0,
+      burnTimer: 0,
+      burnDps: 0,
+      poisonDps: 0,
+      chillTimer: 0,
+      hitFlashTimer: 0,
+      phaseAngle: 0,
+      model: dragonModel,
+      shadow,
+      telegraphGroup,
+      telegraphFill,
+      laserLine,
+    });
+
+    this.spawnShockwave(0, -5.8, 0xf97316, 8.5, 0.62);
+    soundEngine.playBossPhaseRoar();
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
   private resetRunState(stats: ComputedPlayerStats): void {
     this.isPantheonMode = false;
     this.isChampionshipMode = false;
     this.isCrystalVaultMode = false;
+    this.isDragonLairMode = false;
+    this.dragonTimeLeft = 0;
+    this.dragonPhase = 1;
+    this.dragonBreathCooldown = 6.0;
+    this.dragonBreathWarningTimer = 0;
+    this.dragonBreathCone = null;
+    this.dragonScalesLooted = 0;
+    this.dragonDamageDealt = 0;
     this.vaultTimeLeft = 0;
     this.vaultPillarsBroken = 0;
     this.vaultWave = 0;
@@ -4218,6 +4397,18 @@ export class GameEngine {
         this.hero.haloGroup.rotation.z += dt * 0.95;
         this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.2) * 0.04;
       }
+      if (this.hero.soulRingNodes) {
+        for (const node of this.hero.soulRingNodes) {
+          const sp = (node.userData?.speed as number) ?? 0.9;
+          node.rotation.z += dt * sp;
+        }
+      }
+      if (this.hero.astralSteedWings) {
+        const sFlap = Math.sin(this.elapsed * 3.8) * 0.28;
+        this.hero.astralSteedWings.forEach((wp, idx) => {
+          wp.rotation.z = idx === 0 ? sFlap : -sFlap;
+        });
+      }
       this.hero.magicOrb.visible = !showWeaponInLobby;
       this.hero.magicOrb.rotation.z += dt * 2.8;
       this.hero.bowGroup.visible = showWeaponInLobby;
@@ -4234,8 +4425,9 @@ export class GameEngine {
         this.petModel.position.set(-1.14, 1.08 + petBob, 4.78);
         this.petModel.rotation.y = this.lobbyYaw * 0.6 + Math.sin(this.elapsed * 1.4) * 0.25;
       }
-      // Wave 11: Smooth Lobby 3D Sky & Lighting Theme Damping (zero allocations)
+      // Wave 11 & Wave 13: Smooth Lobby 3D Sky & Weather Theme Damping (zero allocations)
       const skyTheme = LOBBY_SKY_THEME_MAP[this.lobbySkyThemeId] ?? LOBBY_SKY_THEME_MAP.golden_galaxy;
+      const weatherDef = LOBBY_WEATHER_DEFS.find((w) => w.id === this.lobbyWeatherId);
       const dampAlpha = 1 - Math.exp(-3.5 * dt);
       if (this.scene.background instanceof THREE.Color) {
         _skyCol.setHex(skyTheme.skyHex);
@@ -4253,7 +4445,11 @@ export class GameEngine {
       this.hemiLight.groundColor.lerp(_hemiGndCol, dampAlpha);
       const starMat = this.starfallMesh?.material as THREE.MeshBasicMaterial | undefined;
       if (starMat?.color) {
-        _starCol.setHex(skyTheme.starfallHex);
+        const targetParticleHex =
+          this.lobbyWeatherId !== 'clear' && weatherDef
+            ? weatherDef.particleHex
+            : skyTheme.starfallHex;
+        _starCol.setHex(targetParticleHex);
         starMat.color.lerp(_starCol, dampAlpha);
       }
 
@@ -4466,15 +4662,120 @@ export class GameEngine {
       }
     }
 
-    // Wave 12: Crystal Vault 3D Raid Timer & Combat Banner Animation
+    // Wave 12 & 13: Combat Banner, Mythic Crown, Soul Rings & Astral Steed Animation
     if (this.hero.mythicCrownGroup) {
       this.hero.mythicCrownGroup.rotation.z += dt * 2.6;
     }
     if (this.hero.warBannerCloth) {
       this.hero.warBannerCloth.rotation.x = 0.14 + Math.sin(this.elapsed * 4.5) * 0.14;
     }
+    if (this.hero.soulRingNodes) {
+      for (const node of this.hero.soulRingNodes) {
+        const sp = (node.userData?.speed as number) ?? 1.05;
+        node.rotation.z += dt * sp * 1.25;
+      }
+    }
+    if (this.hero.astralSteedWings) {
+      const sFlap = Math.sin(this.elapsed * 5.2) * 0.3;
+      this.hero.astralSteedWings.forEach((wp, idx) => {
+        wp.rotation.z = idx === 0 ? sFlap : -sFlap;
+      });
+    }
     if (this.bossBrokenBannerTimer > 0) {
       this.bossBrokenBannerTimer = Math.max(0, this.bossBrokenBannerTimer - dt);
+    }
+
+    // Wave 13: Ancient Dragon Lair 3D Multi-Phase & Telegraphed Dragon Breath Cone
+    if (this.isDragonLairMode) {
+      this.dragonTimeLeft = Math.max(0, this.dragonTimeLeft - dt);
+      const dragonBoss = this.enemies.find((en) => en.isBoss);
+      if (dragonBoss) {
+        const hpRatio = dragonBoss.hp / Math.max(1, dragonBoss.maxHp);
+        const nextPhase: 1 | 2 | 3 = hpRatio <= 0.3 ? 3 : hpRatio <= 0.65 ? 2 : 1;
+        if (nextPhase > this.dragonPhase) {
+          this.dragonPhase = nextPhase;
+          const phaseScaleBonus = nextPhase === 2 ? 4 : 6;
+          this.dragonScalesLooted += phaseScaleBonus;
+          this.stageBannerText =
+            nextPhase === 2
+              ? `CỔ LONG PHA II · HƠI THỞ DUNG NHAM (+${phaseScaleBonus} Vảy Rồng!)`
+              : `CỔ LONG PHA III · NỘ LONG THIÊN THẠCH (+${phaseScaleBonus} Vảy Rồng!)`;
+          this.stageBannerTimer = 2.6;
+          soundEngine.playBossPhaseRoar();
+          this.spawnShockwave(dragonBoss.x, dragonBoss.z, 0xf97316, 7.6, 0.55);
+          this.emitFloatingNumber(
+            dragonBoss.x,
+            3.1,
+            dragonBoss.z,
+            phaseScaleBonus,
+            true,
+            false,
+            'fire',
+            `+${phaseScaleBonus} VẢY RỒNG`,
+            true
+          );
+        }
+
+        // Telegraphed Dragon Breath Cone attack
+        if (this.dragonBreathWarningTimer > 0) {
+          this.dragonBreathWarningTimer -= dt;
+          if (this.dragonBreathCone) {
+            this.dragonBreathCone.visible = true;
+            this.dragonBreathCone.position.set(dragonBoss.x, 0.06, dragonBoss.z);
+            this.dragonBreathCone.rotation.z = -this.dragonBreathAngle + Math.PI / 2;
+            const cMat = this.dragonBreathCone.material as THREE.MeshBasicMaterial;
+            cMat.opacity = 0.24 + Math.abs(Math.sin(this.elapsed * 14)) * 0.34;
+          }
+          if (this.dragonBreathWarningTimer <= 0) {
+            if (this.dragonBreathCone) this.dragonBreathCone.visible = false;
+            // Execute sweeping molten breath check
+            const dx = this.px - dragonBoss.x;
+            const dz = this.pz - dragonBoss.z;
+            const dist = Math.hypot(dx, dz);
+            const playerAng = Math.atan2(dz, dx);
+            let angDiff = playerAng - this.dragonBreathAngle;
+            while (angDiff > Math.PI) angDiff -= Math.PI * 2;
+            while (angDiff < -Math.PI) angDiff += Math.PI * 2;
+            soundEngine.playShockwave();
+            this.spawnShockwave(dragonBoss.x, dragonBoss.z, 0xf43f5e, 9.2, 0.45);
+            this.spawnParticles(dragonBoss.x, 1.8, dragonBoss.z, 0xf97316, 28);
+            if (dist < 10.2 && Math.abs(angDiff) < 0.48 && this.dashTimer <= 0) {
+              const breathDmg = Math.round(dragonBoss.damage * (this.dragonPhase === 3 ? 1.45 : 1.15));
+              this.damagePlayer(breathDmg);
+            }
+            this.dragonBreathCooldown = this.dragonPhase === 3 ? 4.4 : this.dragonPhase === 2 ? 5.6 : 7.0;
+          }
+        } else {
+          if (this.dragonBreathCone) this.dragonBreathCone.visible = false;
+          this.dragonBreathCooldown -= dt;
+          if (this.dragonBreathCooldown <= 0 && (dragonBoss.stunTimer ?? 0) <= 0) {
+            this.dragonBreathAngle = Math.atan2(this.pz - dragonBoss.z, this.px - dragonBoss.x);
+            this.dragonBreathWarningTimer = 1.75;
+            soundEngine.playBossPhaseRoar();
+          }
+        }
+      }
+
+      if (this.dragonTimeLeft <= 0) {
+        const finalScales = Math.max(4, this.dragonScalesLooted + Math.floor(this.dragonDamageDealt / 1800));
+        soundEngine.playVictory();
+        this.phase = GamePhase.VICTORY;
+        this.syncHudImmediate();
+        this.callbacks.onRunEnded(true, {
+          chapterId: this.currentChapter.id,
+          stageReached: this.dragonPhase,
+          kills: this.kills,
+          gold: this.runGold + 420 + finalScales * 45,
+          gems: this.runGems + 22 + finalScales * 2,
+          isDragonLairMode: true,
+          dragonDamageDealt: Math.round(this.dragonDamageDealt),
+          dragonScalesLooted: finalScales,
+          dragonPhase: this.dragonPhase,
+          maxCombo: this.maxRunCombo,
+          damageBreakdown: this.getDamageBreakdownSnapshot(),
+        });
+        return;
+      }
     }
 
     if (this.isCrystalVaultMode) {
@@ -4553,18 +4854,58 @@ export class GameEngine {
 
   private updateStarfallWeather(dt: number): void {
     if (!this.starfallEnabled || !this.starfallMesh) return;
+    if (this.phase === GamePhase.TITLE && this.lobbyWeatherId === 'clear') {
+      this.starfallMesh.visible = false;
+      return;
+    }
+    this.starfallMesh.visible = true;
+    const mode = this.phase === GamePhase.TITLE ? this.lobbyWeatherId : 'meteor_shower';
     for (let i = 0; i < this.STARFALL_COUNT; i++) {
       const s = this.starfallSeeds[i];
-      s.y += s.vy * dt;
-      s.x += s.vx * dt;
-      if (s.y < 0.3) {
-        s.y = 14 + Math.random() * 3.5;
-        s.x = (Math.random() - 0.5) * 30;
-        s.z = (Math.random() - 0.5) * 32;
+      if (mode === 'golden_embers') {
+        s.y += Math.abs(s.vy) * 0.85 * dt;
+        s.x += Math.sin(this.elapsed * 2.1 + s.phase) * 0.65 * dt;
+        if (s.y > 16.5) {
+          s.y = 0.2 + Math.random() * 1.4;
+          s.x = (Math.random() - 0.5) * 28;
+          s.z = (Math.random() - 0.5) * 28;
+        }
+        _dummy.scale.setScalar(s.scale * (0.85 + 0.35 * Math.sin(this.elapsed * 6 + s.phase)));
+      } else if (mode === 'starlight_snow') {
+        s.y += s.vy * 0.48 * dt;
+        s.x += Math.sin(this.elapsed * 1.4 + s.phase) * 0.55 * dt;
+        if (s.y < 0.2) {
+          s.y = 14 + Math.random() * 3.5;
+          s.x = (Math.random() - 0.5) * 30;
+          s.z = (Math.random() - 0.5) * 30;
+        }
+        _dummy.scale.setScalar(s.scale * 1.18);
+      } else if (mode === 'sakura_petals') {
+        s.y += s.vy * 0.52 * dt;
+        s.x += (0.85 + Math.cos(this.elapsed * 2.2 + s.phase) * 0.7) * dt;
+        if (s.y < 0.2 || s.x > 16) {
+          s.y = 13 + Math.random() * 4;
+          s.x = -14 + Math.random() * 24;
+          s.z = (Math.random() - 0.5) * 30;
+        }
+        _dummy.scale.set(s.scale * 1.5, s.scale * 0.35, s.scale * 1.1);
+      } else {
+        // meteor_shower
+        s.y += s.vy * 1.35 * dt;
+        s.x += (s.vx - 1.35) * dt;
+        if (s.y < 0.3) {
+          s.y = 14 + Math.random() * 3.5;
+          s.x = (Math.random() - 0.5) * 30 + 4;
+          s.z = (Math.random() - 0.5) * 32;
+        }
+        _dummy.scale.set(s.scale * 0.65, s.scale * 2.4, s.scale * 0.65);
       }
       _dummy.position.set(s.x, s.y, s.z);
-      _dummy.rotation.y = this.elapsed * 1.9 + s.phase;
-      _dummy.scale.setScalar(s.scale * (0.75 + 0.25 * Math.sin(this.elapsed * 3.6 + s.phase)));
+      _dummy.rotation.set(
+        mode === 'sakura_petals' ? this.elapsed * 1.8 + s.phase : 0,
+        this.elapsed * 1.9 + s.phase,
+        mode === 'meteor_shower' ? 0.38 : 0
+      );
       _dummy.updateMatrix();
       this.starfallMesh.setMatrixAt(i, _dummy.matrix);
     }
@@ -6363,6 +6704,9 @@ export class GameEngine {
     if (this.isWorldBossMode && e.isBoss) {
       this.worldBossTotalDamage += finalDmg;
     }
+    if (this.isDragonLairMode && e.isBoss) {
+      this.dragonDamageDealt += finalDmg;
+    }
 
     if (coopAllyIndex !== undefined && this.coopAllies[coopAllyIndex]) {
       this.coopAllies[coopAllyIndex].damageDealt += finalDmg;
@@ -6601,7 +6945,29 @@ export class GameEngine {
     this.enemies.splice(index, 1);
 
     if (this.enemies.length === 0) {
-      if (this.isCrystalVaultMode) {
+      if (this.isDragonLairMode) {
+        if (this.dragonBreathCone) this.dragonBreathCone.visible = false;
+        const slayBonusScales = 14 + Math.floor(this.dragonTimeLeft / 8);
+        const totalScales = this.dragonScalesLooted + slayBonusScales;
+        this.dragonScalesLooted = totalScales;
+        soundEngine.playVictory();
+        this.phase = GamePhase.VICTORY;
+        this.syncHudImmediate();
+        this.callbacks.onRunEnded(true, {
+          chapterId: this.currentChapter.id,
+          stageReached: 3,
+          kills: this.kills,
+          gold: this.runGold + 920 + totalScales * 55,
+          gems: this.runGems + 45 + totalScales * 2,
+          isDragonLairMode: true,
+          dragonDamageDealt: Math.round(this.dragonDamageDealt),
+          dragonScalesLooted: totalScales,
+          dragonPhase: 3,
+          maxCombo: this.maxRunCombo,
+          damageBreakdown: this.getDamageBreakdownSnapshot(),
+        });
+        return;
+      } else if (this.isCrystalVaultMode) {
         if (this.vaultTimeLeft > 2) {
           this.spawnCrystalVaultWave(this.vaultWave + 1);
         }
@@ -7183,6 +7549,12 @@ export class GameEngine {
         isAbyssalMode: this.isAbyssalMode,
         abyssalWave: this.isAbyssalMode ? Math.max(0, this.abyssalWave - 1) : undefined,
         abyssalScore: this.isAbyssalMode ? Math.round(this.abyssalScore) : undefined,
+        isDragonLairMode: this.isDragonLairMode,
+        dragonDamageDealt: this.isDragonLairMode ? Math.round(this.dragonDamageDealt) : undefined,
+        dragonScalesLooted: this.isDragonLairMode
+          ? Math.max(3, this.dragonScalesLooted + Math.floor(this.dragonDamageDealt / 2600))
+          : undefined,
+        dragonPhase: this.isDragonLairMode ? this.dragonPhase : undefined,
         artifactShards: this.isPantheonMode
           ? Math.max(3, (this.pantheonStage - 1) * 4)
           : this.isAbyssalMode
@@ -7898,6 +8270,12 @@ export class GameEngine {
       vaultGemsLooted: this.isCrystalVaultMode ? this.vaultGemsLooted : undefined,
       vaultReforgeLooted: this.isCrystalVaultMode ? this.vaultReforgeLooted : undefined,
       vaultShardsLooted: this.isCrystalVaultMode ? this.vaultShardsLooted : undefined,
+      isDragonLairMode: this.isDragonLairMode,
+      dragonTimeLeft: this.isDragonLairMode ? Math.ceil(this.dragonTimeLeft) : undefined,
+      dragonPhase: this.isDragonLairMode ? this.dragonPhase : undefined,
+      dragonBreathWarning: this.isDragonLairMode ? this.dragonBreathWarningTimer > 0 : undefined,
+      dragonScalesLooted: this.isDragonLairMode ? this.dragonScalesLooted : undefined,
+      dragonDamageDealt: this.isDragonLairMode ? Math.round(this.dragonDamageDealt) : undefined,
       activeSkills: { ...this.activeSkills },
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,
