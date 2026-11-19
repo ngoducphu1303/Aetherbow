@@ -783,7 +783,15 @@ export interface DamageBreakdown {
   elemental: number;
   peakCrit: number;
   elapsedSeconds: number;
+  perfectDodges?: number;
+  punishHits?: number;
   coopAllies?: CoopAllySummary[];
+}
+
+export interface EdgeThreatIndicator {
+  angleDeg: number;
+  severity: 'high' | 'medium';
+  kind: 'boss_charge' | 'orb';
 }
 
 export interface BuildPreset {
@@ -1742,6 +1750,15 @@ export interface HudSnapshot {
   bossFinisherName?: string | null;
   synergyAwakenedName?: string | null;
   synergyAwakenedTimer?: number;
+  // AAA Wave 3: Ultimate Cut-in, Boss Phase Shift, Edge Threat Arrows & Biome Weather
+  ultCutinTimer?: number;
+  ultCutinTitle?: string | null;
+  ultCutinHeroName?: string | null;
+  ultCutinAccentHex?: string | null;
+  bossPhaseShiftTimer?: number;
+  bossPhaseShiftLevel?: 2 | 3 | null;
+  edgeThreats?: EdgeThreatIndicator[];
+  biomeWeatherLabel?: string | null;
 }
 
 export interface EncounterOffer {

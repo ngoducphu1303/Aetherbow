@@ -1570,6 +1570,120 @@ class SoundEngine {
       osc.stop(t + 0.56);
     });
   }
+
+  /**
+   * AAA Wave 3: Non-blocking Ultimate Cut-in cinematic sub-drop + crystalline rising triad.
+   */
+  public playUltimateCutin(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const sub = ctx.createOscillator();
+    const sg = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(150, now);
+    sub.frequency.exponentialRampToValueAtTime(42, now + 0.36);
+    sg.gain.setValueAtTime(0.24, now);
+    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    sub.connect(sg);
+    sg.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.42);
+
+    this.playNoiseBurst(ctx, dest, now, 0.22, 'bandpass', 720, 2600, 0.095, 1.5);
+
+    [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx < 2 ? 'triangle' : 'sine';
+      const t = now + 0.02 + idx * 0.032;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.085, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.42);
+    });
+  }
+
+  /**
+   * AAA Wave 3: Layered Boss Phase II / III transformation shockwave roar + brass swell.
+   */
+  public playBossPhaseShift(phase: 2 | 3 = 2): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const baseFreq = phase === 3 ? 115 : 145;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(baseFreq * 1.4, now);
+    osc.frequency.exponentialRampToValueAtTime(34, now + 0.62);
+    g.gain.setValueAtTime(phase === 3 ? 0.24 : 0.19, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.66);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.7);
+
+    const brass = ctx.createOscillator();
+    const bg = ctx.createGain();
+    brass.type = 'triangle';
+    brass.frequency.setValueAtTime(phase === 3 ? 233.08 : 293.66, now + 0.05);
+    brass.frequency.exponentialRampToValueAtTime(phase === 3 ? 185.0 : 220.0, now + 0.56);
+    bg.gain.setValueAtTime(0.001, now + 0.05);
+    bg.gain.linearRampToValueAtTime(0.11, now + 0.14);
+    bg.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+    brass.connect(bg);
+    bg.connect(dest);
+    brass.start(now + 0.05);
+    brass.stop(now + 0.62);
+
+    this.playNoiseBurst(ctx, dest, now, 0.34, 'lowpass', 1400, 180, 0.14, 1.0);
+  }
+
+  /**
+   * AAA Wave 3: Interactive 3D Lobby Hero bow-draw tension + arcane string resonance.
+   */
+  public playLobbyBowEmote(): void {
+    const dest = this.getSfxDest(0, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const tension = ctx.createOscillator();
+    const tg = ctx.createGain();
+    tension.type = 'triangle';
+    tension.frequency.setValueAtTime(210, now);
+    tension.frequency.exponentialRampToValueAtTime(420, now + 0.36);
+    tg.gain.setValueAtTime(0.001, now);
+    tg.gain.linearRampToValueAtTime(0.065, now + 0.18);
+    tg.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+    tension.connect(tg);
+    tg.connect(dest);
+    tension.start(now);
+    tension.stop(now + 0.45);
+
+    [659.25, 987.77, 1318.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      const t = now + 0.24 + idx * 0.045;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.055, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.35);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();

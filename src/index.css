@@ -1055,6 +1055,52 @@
   animation: aaaRankPop 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+@keyframes aaaUltCutinSweep {
+  0% {
+    opacity: 0;
+    transform: translate3d(-44px, 0, 0) skewX(-8deg) scale(0.94);
+  }
+  16% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) skewX(-6deg) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate3d(6px, 0, 0) skewX(-6deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(36px, 0, 0) skewX(-8deg) scale(0.97);
+  }
+}
+
+@keyframes aaaPhaseShiftFlash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.aaa-ult-cutin-strip {
+  animation: aaaUltCutinSweep 780ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.aaa-phase-shift-flash {
+  animation: aaaPhaseShiftFlash 640ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity;
+}
+
+.aaa-skill-card-3d {
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms ease;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .a2-title-shimmer-gold,
   .a2-title-shimmer-crimson,
@@ -1074,10 +1120,13 @@
   .aaa-gacha-ring,
   .aaa-card-foil-shimmer::after,
   .aaa-finisher-banner,
-  .aaa-rank-pop {
+  .aaa-rank-pop,
+  .aaa-ult-cutin-strip,
+  .aaa-phase-shift-flash {
     animation: none;
   }
-  .a2-flip-card {
+  .a2-flip-card,
+  .aaa-skill-card-3d {
     transition: transform 120ms linear;
   }
   .a2-gold-upgrade-banner,

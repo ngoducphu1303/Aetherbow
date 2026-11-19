@@ -200,6 +200,80 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       )}
 
+      {/* AAA Wave 3: Non-Blocking Hero Ultimate Cut-In Strip */}
+      {(hud.ultCutinTimer ?? 0) > 0 && hud.ultCutinTitle && (
+        <div className="fixed inset-x-0 top-[15%] z-[19] flex justify-center px-4 pointer-events-none">
+          <div
+            className="aaa-ult-cutin-strip px-6 py-2.5 rounded-xl border-y-2 bg-[#070b1a]/92 shadow-[0_0_36px_rgba(251,191,36,0.45)] flex items-center gap-3.5"
+            style={{ borderColor: hud.ultCutinAccentHex || '#fbbf24' }}
+          >
+            <Zap
+              className="w-5 h-5 shrink-0"
+              style={{ color: hud.ultCutinAccentHex || '#fde047' }}
+            />
+            <div className="text-left">
+              <div className="text-[10px] font-black uppercase tracking-[0.26em] text-amber-300">
+                TUYỆT KỸ · {hud.ultCutinHeroName || hud.heroName}
+              </div>
+              <div className="font-display text-lg sm:text-xl font-black text-white tracking-wide leading-tight">
+                {hud.ultCutinTitle}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AAA Wave 3: Boss Phase II / III Atmosphere Shift Flash */}
+      {(hud.bossPhaseShiftTimer ?? 0) > 0 && hud.bossPhaseShiftLevel && (
+        <div
+          key={`phase-shift-${hud.bossPhaseShiftLevel}`}
+          aria-hidden="true"
+          className="fixed inset-0 z-[17] pointer-events-none aaa-phase-shift-flash"
+          style={{
+            boxShadow:
+              hud.bossPhaseShiftLevel === 3
+                ? 'inset 0 0 110px 28px rgba(244, 63, 94, 0.72)'
+                : 'inset 0 0 96px 24px rgba(245, 158, 11, 0.62)',
+          }}
+        />
+      )}
+
+      {/* AAA Wave 3: Screen-Edge Directional Threat Arrows (up to 4 prioritized vectors) */}
+      {hud.edgeThreats && hud.edgeThreats.length > 0 && (
+        <div
+          aria-hidden="true"
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(78vw,460px)] h-[min(64vh,420px)] pointer-events-none z-[12]"
+        >
+          {hud.edgeThreats.map((threat, idx) => {
+            const rad = ((threat.angleDeg - 90) * Math.PI) / 180;
+            const leftPct = 50 + Math.cos(rad) * 46;
+            const topPct = 50 + Math.sin(rad) * 46;
+            const isHigh = threat.severity === 'high' || threat.kind === 'boss_charge';
+            return (
+              <div
+                key={`threat-${idx}-${threat.kind}`}
+                className="absolute -translate-x-1/2 -translate-y-1/2 transition-transform duration-75"
+                style={{
+                  left: `${leftPct}%`,
+                  top: `${topPct}%`,
+                  transform: `translate(-50%, -50%) rotate(${threat.angleDeg}deg)`,
+                }}
+              >
+                <svg width={isHigh ? 24 : 18} height={isHigh ? 24 : 18} viewBox="0 0 24 24">
+                  <polygon
+                    points="12,2 21,19 12,14 3,19"
+                    fill={isHigh ? '#fb7185' : '#fbbf24'}
+                    stroke="#090d1e"
+                    strokeWidth="1.5"
+                    opacity={isHigh ? '0.94' : '0.76'}
+                  />
+                </svg>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Persistent Low-HP Pulsing Crimson Vignette (<=30% HP) */}
       {hpPct <= 30 && hud.hp > 0 && (
         <div

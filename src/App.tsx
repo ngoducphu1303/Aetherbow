@@ -9232,6 +9232,7 @@ export default function App() {
           onResetLobbyOrbit={() => engineRef.current?.resetLobbyOrbit()}
           onAdjustLobbyZoom={(delta) => engineRef.current?.adjustLobbyZoom(delta)}
           onReplayEntranceVfx={() => engineRef.current?.triggerRoyalEntranceVfx()}
+          onTriggerLobbyEmote={() => engineRef.current?.triggerLobbyHeroEmote()}
           lobbyHeadPos={lobbyHeadPos}
         />
       )}

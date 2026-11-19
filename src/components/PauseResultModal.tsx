@@ -4,6 +4,8 @@ import { getNextTargetGoal } from '../data/earlyProgressionData';
 import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { evaluateMatchMvpReport } from '../data/wave11Data';
+import { computeComboStyleRank } from '../engine/aaaCombatDirector';
+import { computePostRunDamageShares } from '../engine/aaaWave3Director';
 import { CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, SaveData } from '../types/game';
 import {
   ArtifactRelicIcon,
@@ -639,6 +641,9 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   return { ...row, segLen, offset };
                 });
 
+                const dmgShares = computePostRunDamageShares(damageBreakdown);
+                const styleRank = computeComboStyleRank(maxCombo);
+
                 return (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
@@ -647,7 +652,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                         <span>Phân Tích Sát Thương</span>
                       </span>
                       <span className="font-mono-nums text-xs font-bold text-slate-300">
-                        Tổng {totalDamage.toLocaleString('vi-VN')}
+                        Chủ Lực: {dmgShares.dominantLabel} · Tổng {totalDamage.toLocaleString('vi-VN')}
                       </span>
                     </div>
 
@@ -721,7 +726,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                     </div>
 
                     {/* Efficiency Metrics Row */}
-                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800/80 text-left">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-3 border-t border-slate-800/80 text-left">
                       <div>
                         <div className="text-[10px] text-slate-400 font-bold">Chí Mạng Đỉnh</div>
                         <div className="font-mono-nums text-xs font-black text-amber-300 mt-0.5">
@@ -729,9 +734,21 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                         </div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-slate-400 font-bold">Liên Kích Tối Đa</div>
-                        <div className="font-mono-nums text-xs font-black text-rose-300 mt-0.5">
-                          ×{maxCombo}
+                        <div className="text-[10px] text-slate-400 font-bold">Hạng Combo</div>
+                        <div className={`font-mono-nums text-xs font-black mt-0.5 ${styleRank.textClass}`}>
+                          {styleRank.grade} · ×{maxCombo}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400 font-bold">Né Hoàn Hảo</div>
+                        <div className="font-mono-nums text-xs font-black text-emerald-300 mt-0.5">
+                          {damageBreakdown.perfectDodges ?? 0} lần
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400 font-bold">Phản Đòn Boss</div>
+                        <div className="font-mono-nums text-xs font-black text-amber-200 mt-0.5">
+                          {damageBreakdown.punishHits ?? 0} phát
                         </div>
                       </div>
                       <div>

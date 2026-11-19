@@ -20,6 +20,7 @@ import {
   evaluateActiveSynergies,
   getSynergyHintsForSkill,
 } from '../data/skillsData';
+import { computeSkillSynergyProgress } from '../engine/aaaWave3Director';
 import {
   EncounterOffer,
   SkillBuildTag,
@@ -168,6 +169,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   const [wheelAngle, setWheelAngle] = useState(0);
   const [wheelResult, setWheelResult] = useState<WheelOutcome | null>(null);
   const [tarotArtFailed, setTarotArtFailed] = useState(false);
+  const [tiltCard, setTiltCard] = useState<{ id: string; rx: number; ry: number } | null>(null);
 
   const handleSpinWheel = () => {
     if (wheelSpinning || wheelResult) return;
@@ -279,17 +281,45 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                 const isRelatedAlreadyActive = relatedSynergy
                   ? activeSynergyIds.includes(relatedSynergy.id)
                   : false;
-                const isHighlightEvolution = Boolean(completingSynergy || comboTag?.isEvolution);
+                const synergyPreview = computeSkillSynergyProgress(
+                  skill.id,
+                  currentStacks,
+                  SKILL_SYNERGIES
+                );
+                const isHighlightEvolution = Boolean(
+                  completingSynergy || synergyPreview?.willActivateNow || comboTag?.isEvolution
+                );
+                const cardTilt = tiltCard && tiltCard.id === skill.id ? tiltCard : null;
                 return (
                   <button
                     key={skill.id}
                     type="button"
                     onClick={() => onPickSkill(skill.id)}
-                    className={`relative text-left rounded-2xl overflow-hidden border-2 ${
+                    onPointerMove={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const nx = (e.clientX - rect.left) / Math.max(1, rect.width) - 0.5;
+                      const ny = (e.clientY - rect.top) / Math.max(1, rect.height) - 0.5;
+                      setTiltCard({
+                        id: skill.id,
+                        rx: Number((-ny * 7.5).toFixed(2)),
+                        ry: Number((nx * 9.5).toFixed(2)),
+                      });
+                    }}
+                    onPointerLeave={() => {
+                      if (tiltCard?.id === skill.id) setTiltCard(null);
+                    }}
+                    style={
+                      cardTilt
+                        ? {
+                            transform: `perspective(900px) rotateX(${cardTilt.rx}deg) rotateY(${cardTilt.ry}deg) translateY(-5px)`,
+                          }
+                        : undefined
+                    }
+                    className={`aaa-skill-card-3d relative text-left rounded-2xl overflow-hidden border-2 ${
                       isHighlightEvolution
-                        ? 'border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.28)]'
+                        ? 'border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.32)] aaa-card-foil-shimmer'
                         : rMeta.borderClass
-                    } bg-[#090d1e] hover:-translate-y-1.5 hover:shadow-[0_14px_34px_rgba(251,191,36,0.28)] active:translate-y-0 transition-all duration-150 cursor-pointer shadow-2xl group flex flex-col justify-between min-h-[276px] sm:min-h-[308px]`}
+                    } bg-[#090d1e] hover:-translate-y-1.5 hover:shadow-[0_14px_34px_rgba(251,191,36,0.28)] active:translate-y-0 cursor-pointer shadow-2xl group flex flex-col justify-between min-h-[276px] sm:min-h-[308px]`}
                   >
                     {/* Top Gilded Rarity Accent Bar & Corner Ornaments */}
                     <div
@@ -370,24 +400,62 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                       {relatedSynergy ? (
                         <div
                           className={`mt-3 pt-2.5 w-full border-t text-left ${
-                            completingSynergy
+                            completingSynergy || synergyPreview?.willActivateNow
                               ? 'border-amber-300/75 text-amber-200'
                               : isRelatedAlreadyActive
                               ? 'border-emerald-400/45 text-emerald-300'
                               : 'border-slate-700/80 text-slate-300'
                           }`}
                         >
-                          <div className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                            {completingSynergy && <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />}
-                            <span>
-                              {completingSynergy
-                                ? `Kích Hoạt Cộng Hưởng · ${relatedSynergy.name}`
-                                : isRelatedAlreadyActive
-                                ? `Đã Bật · ${relatedSynergy.name}`
-                                : `Ghép Cặp · ${relatedSynergy.name}`}
+                          <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider">
+                            <span className="flex items-center gap-1 min-w-0 truncate">
+                              {(completingSynergy || synergyPreview?.willActivateNow) && (
+                                <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
+                              )}
+                              <span className="truncate">
+                                {completingSynergy || synergyPreview?.willActivateNow
+                                  ? `Kích Hoạt Ngay · ${relatedSynergy.name}`
+                                  : isRelatedAlreadyActive
+                                  ? `Đã Bật · ${relatedSynergy.name}`
+                                  : `Ghép Cặp · ${relatedSynergy.name}`}
+                              </span>
                             </span>
+                            {synergyPreview && (
+                              <span className="font-mono-nums shrink-0 text-[10px]">
+                                {synergyPreview.alreadyActive
+                                  ? '2/2'
+                                  : synergyPreview.willActivateNow
+                                  ? '1→2/2'
+                                  : `${synergyPreview.matchedCount}/2`}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[11px] text-slate-200/90 mt-0.5 leading-snug">
+                          {synergyPreview && (
+                            <div className="grid grid-cols-2 gap-1 mt-1.5">
+                              {[0, 1].map((segIdx) => {
+                                const filled =
+                                  synergyPreview.alreadyActive ||
+                                  segIdx < synergyPreview.matchedCount;
+                                const previewNext =
+                                  !filled &&
+                                  (synergyPreview.willActivateNow ||
+                                    segIdx === synergyPreview.matchedCount);
+                                return (
+                                  <div
+                                    key={segIdx}
+                                    className={`h-1 rounded-full ${
+                                      filled
+                                        ? 'bg-emerald-400'
+                                        : previewNext
+                                        ? 'bg-amber-300'
+                                        : 'bg-slate-800'
+                                    }`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div className="text-[11px] text-slate-200/90 mt-1 leading-snug">
                             {relatedSynergy.shortEffect}
                           </div>
                         </div>

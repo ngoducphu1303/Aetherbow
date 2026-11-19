@@ -29,6 +29,14 @@ import {
   ElementalGroundKind,
   evaluateElementalZoneEffect,
 } from './aaaCombatDirector';
+import {
+  computeArenaEntryFlyBlend,
+  computeEdgeThreatIndicators,
+  computeLobbyEmotePose,
+  computeUltimateCutinState,
+  RawThreatSample,
+  resolveChapterBiomeAtmosphere,
+} from './aaaWave3Director';
 import { computeSpatialPan } from '../audio/aaaAudioMix';
 import { createArtemisMotion } from './artemisMotion';
 import { createDragonMountMotion } from './dragonMountMotion';
@@ -593,6 +601,23 @@ export class GameEngine {
     ringMesh: THREE.Mesh;
   }> = [];
   private elementalZoneSpawnCd = 0;
+  // AAA Wave 3 session-only cinematic, atmosphere, threat & lobby emote state
+  private ultCutinTimer = 0;
+  private ultCutinDuration = 0.75;
+  private ultCutinTitle: string | null = null;
+  private ultCutinHeroName: string | null = null;
+  private ultCutinAccentHex: string | null = null;
+  private bossPhaseShiftTimer = 0;
+  private bossPhaseShiftLevel: 2 | 3 | null = null;
+  private arenaEntryFlyTimer = 0;
+  private arenaEntryFlyDuration = 0.55;
+  private arenaEntryStartCam = new THREE.Vector3(0, 2.02, 10.65);
+  private arenaEntryStartLook = new THREE.Vector3(0, 0.96, 4.5);
+  private lobbyEmoteTimer = 0;
+  private lobbyEmoteDuration = 1.05;
+  private lobbyDragMovedDist = 0;
+  private punishHitsCount = 0;
+  private threatSamplesBuf: RawThreatSample[] = [];
   private arenaDustSeeds: Array<{
     x: number;
     y: number;
@@ -4695,10 +4720,38 @@ export class GameEngine {
     this.dmgPet = 0;
     this.dmgElemental = 0;
     this.peakCritDmg = 0;
+    this.punishHitsCount = 0;
     this.runElapsedSeconds = 0;
+    if (this.phase === GamePhase.TITLE) {
+      this.beginArenaEntryFly();
+    }
+  }
+
+  private beginArenaEntryFly(): void {
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion || !this.camera) {
+      this.arenaEntryFlyTimer = 0;
+      return;
+    }
+    this.arenaEntryStartCam.copy(this.camera.position);
+    this.arenaEntryStartLook.set(0, 1.05, 4.5);
+    this.arenaEntryFlyTimer = this.arenaEntryFlyDuration;
+  }
+
+  public triggerLobbyHeroEmote(): void {
+    if (this.phase !== GamePhase.TITLE || this.disposed) return;
+    this.lobbyEmoteTimer = this.lobbyEmoteDuration;
+    this.lobbyAutoSpinIdleTimer = Math.max(this.lobbyAutoSpinIdleTimer, 2.4);
+    soundEngine.playLobbyBowEmote();
+    this.spawnShockwave(0, 4.5, this.weaponAccentHex, 2.6, 0.42);
+    this.spawnCritStar(0, 1.45, 4.5, 0xfde047, 1.5);
+    this.spawnParticles(0, 1.15, 4.5, this.weaponAccentHex, 22);
   }
 
   public setPhase(phase: GamePhase): void {
+    const prevPhase = this.phase;
     this.phase = phase;
     const isTitle = phase === GamePhase.TITLE;
     if (this.lobbyHaloGroup) {
@@ -4744,12 +4797,17 @@ export class GameEngine {
         this.stridePhase = 0;
         this.lockedTargetId = -1;
         this.reticleSnapScale = 1;
-        const snapX = THREE.MathUtils.clamp(this.px * 0.55, -5.5, 5.5);
-        const snapZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2, 6.5, 22.0);
-        this.smoothLookX = THREE.MathUtils.clamp(this.px * 0.45, -4, 4);
-        this.smoothLookZ = THREE.MathUtils.clamp(this.pz * 0.72 - 1.55, -7, 7);
-        this.camera.position.set(snapX, 16.5, snapZ);
-        this.camera.lookAt(this.smoothLookX, 0.5, this.smoothLookZ);
+        if (prevPhase === GamePhase.TITLE && this.arenaEntryFlyTimer <= 0) {
+          this.beginArenaEntryFly();
+        }
+        if (this.arenaEntryFlyTimer <= 0) {
+          const snapX = THREE.MathUtils.clamp(this.px * 0.55, -5.5, 5.5);
+          const snapZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2, 6.5, 22.0);
+          this.smoothLookX = THREE.MathUtils.clamp(this.px * 0.45, -4, 4);
+          this.smoothLookZ = THREE.MathUtils.clamp(this.pz * 0.72 - 1.55, -7, 7);
+          this.camera.position.set(snapX, 16.5, snapZ);
+          this.camera.lookAt(this.smoothLookX, 0.5, this.smoothLookZ);
+        }
       }
     }
   }
@@ -5015,6 +5073,13 @@ export class GameEngine {
     this.synergyAwakenedTimer = 0;
     this.synergyAwakenedName = null;
     this.elementalZoneSpawnCd = 0;
+    this.ultCutinTimer = 0;
+    this.ultCutinTitle = null;
+    this.ultCutinHeroName = null;
+    this.ultCutinAccentHex = null;
+    this.bossPhaseShiftTimer = 0;
+    this.bossPhaseShiftLevel = null;
+    this.arenaEntryFlyTimer = 0;
     this.bossPhaseTwoBannerTimer = 0;
     this.bossPhaseThreeBannerTimer = 0;
     this.playerFrostSlowTimer = 0;
@@ -6208,6 +6273,7 @@ export class GameEngine {
       this.lobbyDragPointerId = e.pointerId;
       this.lobbyDragLastX = e.clientX;
       this.lobbyDragLastY = e.clientY;
+      this.lobbyDragMovedDist = 0;
       return;
     }
     if (this.phase !== GamePhase.PLAYING) return;
@@ -6235,6 +6301,7 @@ export class GameEngine {
       const dy = e.clientY - this.lobbyDragLastY;
       this.lobbyDragLastX = e.clientX;
       this.lobbyDragLastY = e.clientY;
+      this.lobbyDragMovedDist += Math.hypot(dx, dy);
       this.rotateLobbyHero(dx * 0.013);
       this.lobbyTargetPitch = Math.max(-0.26, Math.min(0.55, this.lobbyTargetPitch + dy * 0.0045));
       return;
@@ -6267,8 +6334,12 @@ export class GameEngine {
 
   private onPointerUp = (e: PointerEvent) => {
     if (this.lobbyDragActive && e.pointerId === this.lobbyDragPointerId) {
+      const wasTap = this.phase === GamePhase.TITLE && this.lobbyDragMovedDist < 8;
       this.lobbyDragActive = false;
       this.lobbyDragPointerId = null;
+      if (wasTap) {
+        this.triggerLobbyHeroEmote();
+      }
     }
     if (!this.pointerDown || e.pointerId !== this.pointerId) return;
     this.pointerDown = false;
@@ -6474,6 +6545,11 @@ export class GameEngine {
     const liveEnemies = this.enemies.filter((e) => e.spawnTimer <= 0);
 
     soundEngine.playUltimate();
+    soundEngine.playUltimateCutin();
+    this.ultCutinTimer = this.ultCutinDuration;
+    this.ultCutinTitle = heroDef.ultName;
+    this.ultCutinHeroName = heroDef.name;
+    this.ultCutinAccentHex = `#${this.weaponAccentHex.toString(16).padStart(6, '0')}`;
     this.invulnTimer = Math.max(this.invulnTimer, 0.75);
     this.hitstopTimer = 0.045;
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.36);
@@ -6769,12 +6845,32 @@ export class GameEngine {
         });
       }
 
+      if (this.lobbyEmoteTimer > 0) {
+        this.lobbyEmoteTimer = Math.max(0, this.lobbyEmoteTimer - dt);
+      }
+      const emotePose = computeLobbyEmotePose(this.lobbyEmoteTimer, this.lobbyEmoteDuration);
       const onDragon = Boolean(this.dragonMount && this.dragonMount.parent === this.hero.mountGroup);
       const mountOffset = onDragon ? this.updateDragonRide(dt, 0) : this.hero.mountGroup ? 0.68 : 0;
-      const poseFloatY = this.lobbyHeroPose === 'astral_float' ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1 : Math.sin(this.elapsed * 2.2) * 0.04;
-      const targetBodyTiltX = this.lobbyHeroPose === 'aim_ready' ? 0.1 : this.lobbyHeroPose === 'astral_float' ? -0.08 : 0;
-      const targetDrawArmX = this.lobbyHeroPose === 'victory_salute' ? -1.15 : this.lobbyHeroPose === 'aim_ready' ? -0.45 : 0;
+      const poseFloatY =
+        (this.lobbyHeroPose === 'astral_float'
+          ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1
+          : Math.sin(this.elapsed * 2.2) * 0.04) + emotePose.liftY;
+      const targetBodyTiltX = emotePose.active
+        ? 0.08 * emotePose.drawProgress
+        : this.lobbyHeroPose === 'aim_ready'
+        ? 0.1
+        : this.lobbyHeroPose === 'astral_float'
+        ? -0.08
+        : 0;
+      const targetDrawArmX = emotePose.active
+        ? -0.58 * emotePose.drawProgress
+        : this.lobbyHeroPose === 'victory_salute'
+        ? -1.15
+        : this.lobbyHeroPose === 'aim_ready'
+        ? -0.45
+        : 0;
       const showWeaponInLobby =
+        emotePose.active ||
         this.lobbyHeroPose === 'aim_ready' ||
         this.lobbyHeroPose === 'victory_salute' ||
         (this.heroVisualCfg.mythicWeaponTier ?? 0) >= 1;
@@ -6784,8 +6880,23 @@ export class GameEngine {
         ? mountOffset
         : THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset + poseFloatY, 6, dt);
       this.hero.bodyGroup.rotation.x = THREE.MathUtils.damp(this.hero.bodyGroup.rotation.x, targetBodyTiltX, 6, dt);
-      this.hero.drawArm.rotation.x = THREE.MathUtils.damp(this.hero.drawArm.rotation.x, targetDrawArmX, 6, dt);
-      this.hero.capeTail.rotation.x = 0.22 + Math.sin(this.elapsed * 3.1) * 0.07;
+      this.hero.drawArm.rotation.x = THREE.MathUtils.damp(this.hero.drawArm.rotation.x, targetDrawArmX, 8, dt);
+      this.hero.capeTail.rotation.x = 0.22 + Math.sin(this.elapsed * 3.1) * 0.07 + emotePose.drawProgress * 0.14;
+      this.heroLight.intensity = 1.55 + emotePose.glowBoost * 1.15;
+      if (this.hero.bowStringTop && this.hero.bowStringBottom) {
+        const bowPose = computeBowStringPose(emotePose.active ? emotePose.drawProgress : 0);
+        this.hero.bowStringTop.position.set(0, bowPose.topPosY, bowPose.topPosZ);
+        this.hero.bowStringBottom.position.set(0, bowPose.bottomPosY, bowPose.bottomPosZ);
+        this.hero.bowStringTop.rotation.x = bowPose.topRotX;
+        this.hero.bowStringBottom.rotation.x = bowPose.bottomRotX;
+        this.hero.bowStringTop.scale.y = bowPose.segmentScaleY;
+        this.hero.bowStringBottom.scale.y = bowPose.segmentScaleY;
+        this.hero.nockedArrow.visible = showWeaponInLobby && (emotePose.active || this.lobbyHeroPose === 'aim_ready');
+        this.hero.nockedArrow.position.z = bowPose.nockZ;
+        if (this.hero.nockedArrowTipMat) {
+          this.hero.nockedArrowTipMat.emissiveIntensity = bowPose.tipEmissiveIntensity;
+        }
+      }
       if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
         const flap = Math.sin(this.elapsed * 3.2) * 0.24;
         this.hero.leftWingPivot.rotation.y = 0.22 + flap;
@@ -6804,8 +6915,8 @@ export class GameEngine {
         });
       }
       if (this.hero.weaponAuraGroup) {
-        this.hero.weaponAuraGroup.rotation.z += dt * 1.9;
-        this.hero.weaponAuraGroup.rotation.y += dt * 1.1;
+        this.hero.weaponAuraGroup.rotation.z += dt * (1.9 + emotePose.glowBoost * 3.2);
+        this.hero.weaponAuraGroup.rotation.y += dt * (1.1 + emotePose.glowBoost * 2.0);
       }
       if (this.hero.mythicCrownGroup) {
         this.hero.mythicCrownGroup.rotation.z += dt * 2.1;
@@ -6840,7 +6951,15 @@ export class GameEngine {
       this.hero.bowGroup.visible = showWeaponInLobby;
       if (hasRealisticArtemis) {
         this.hero.nockedArrow.visible = showWeaponInLobby;
-        this.artemisMotion?.update(dt, this.elapsed, 0, showWeaponInLobby, 0.35, this.hero.bowGroup, onDragon);
+        this.artemisMotion?.update(
+          dt,
+          this.elapsed,
+          0,
+          showWeaponInLobby,
+          emotePose.active ? 0.35 + emotePose.drawProgress * 0.65 : 0.35,
+          this.hero.bowGroup,
+          onDragon
+        );
       }
       if (this.lobbyHaloGroup) {
         this.lobbyHaloGroup.visible = true;
@@ -7431,6 +7550,26 @@ export class GameEngine {
     if (this.elementalZoneSpawnCd > 0) {
       this.elementalZoneSpawnCd = Math.max(0, this.elementalZoneSpawnCd - dt);
     }
+    if (this.ultCutinTimer > 0) {
+      this.ultCutinTimer = Math.max(0, this.ultCutinTimer - dt);
+      if (this.ultCutinTimer <= 0) {
+        this.ultCutinTitle = null;
+        this.ultCutinHeroName = null;
+        this.ultCutinAccentHex = null;
+      }
+    }
+    if (this.bossPhaseShiftTimer > 0) {
+      this.bossPhaseShiftTimer = Math.max(0, this.bossPhaseShiftTimer - dt);
+      if (this.bossPhaseShiftTimer <= 0) {
+        this.bossPhaseShiftLevel = null;
+      }
+    }
+    if (this.arenaEntryFlyTimer > 0) {
+      this.arenaEntryFlyTimer = Math.max(0, this.arenaEntryFlyTimer - dt);
+    }
+    const ultCutin = computeUltimateCutinState(this.ultCutinTimer, this.ultCutinDuration);
+    this.keyLight.intensity = 1.92 * (1 - ultCutin.eclipseDarken);
+    this.hemiLight.intensity = 0.88 * (1 - ultCutin.eclipseDarken * 0.72);
     soundEngine.setCombatTelemetry(
       this.comboCount,
       this.hp / Math.max(1, this.maxHp),
@@ -7455,6 +7594,7 @@ export class GameEngine {
       }
     }
 
+    this.updateChapterAtmosphere(dt);
     this.updateStarfallWeather(simDt);
     this.updatePlayer(simDt);
     this.updateCoopAllies(simDt);
@@ -7700,6 +7840,30 @@ export class GameEngine {
     }
   }
 
+  private updateChapterAtmosphere(dt: number): void {
+    if (this.phase === GamePhase.TITLE) return;
+    const boss = this.enemies.find((e) => e.isBoss);
+    const biome = resolveChapterBiomeAtmosphere(this.currentChapter.zodiacId, boss?.bossPhase ?? 1);
+    const alpha = 1 - Math.exp(-3.2 * dt);
+
+    if (this.scene.background instanceof THREE.Color) {
+      _skyCol.setHex(biome.skyHex);
+      this.scene.background.lerp(_skyCol, alpha);
+    }
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      _fogCol.setHex(biome.fogHex);
+      this.scene.fog.color.lerp(_fogCol, alpha);
+      this.scene.fog.density = THREE.MathUtils.damp(this.scene.fog.density, biome.fogDensity, 3.0, dt);
+    }
+    _keyCol.setHex(biome.rimLightHex);
+    this.rimLight.color.lerp(_keyCol, alpha);
+    const starMat = this.starfallMesh?.material as THREE.MeshBasicMaterial | undefined;
+    if (starMat?.color) {
+      _starCol.setHex(biome.weatherColorHex);
+      starMat.color.lerp(_starCol, alpha);
+    }
+  }
+
   private updateStarfallWeather(dt: number): void {
     if (!this.starfallEnabled || !this.starfallMesh) return;
     if (this.phase === GamePhase.TITLE && this.lobbyWeatherId === 'clear') {
@@ -7707,7 +7871,19 @@ export class GameEngine {
       return;
     }
     this.starfallMesh.visible = true;
-    const mode = this.phase === GamePhase.TITLE ? this.lobbyWeatherId : 'meteor_shower';
+    let mode: LobbyWeatherId | 'meteor_shower' = this.lobbyWeatherId;
+    if (this.phase !== GamePhase.TITLE) {
+      const boss = this.enemies.find((e) => e.isBoss);
+      const biome = resolveChapterBiomeAtmosphere(this.currentChapter.zodiacId, boss?.bossPhase ?? 1);
+      mode =
+        biome.weatherKind === 'embers'
+          ? 'golden_embers'
+          : biome.weatherKind === 'snow'
+          ? 'starlight_snow'
+          : biome.weatherKind === 'petals'
+          ? 'sakura_petals'
+          : 'meteor_shower';
+    }
     for (let i = 0; i < this.STARFALL_COUNT; i++) {
       const s = this.starfallSeeds[i];
       if (mode === 'golden_embers') {
@@ -7801,9 +7977,12 @@ export class GameEngine {
       moveZ /= inputLen;
     }
 
-    // Allow players to smoothly cancel Boss intro camera sweep the instant they move or dash
+    // Allow players to smoothly cancel Boss intro sweep or Lobby-to-Arena entry fly-through on move/dash
     if (this.bossIntroTimer > 0.22 && (inputLen > 0.15 || this.dashBufferTimer > 0)) {
       this.bossIntroTimer = 0.22;
+    }
+    if (this.arenaEntryFlyTimer > 0 && (inputLen > 0.15 || this.dashBufferTimer > 0)) {
+      this.arenaEntryFlyTimer = 0;
     }
 
     if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - dt);
@@ -10075,6 +10254,9 @@ export class GameEngine {
       const punishBonus =
         basePunish * (this.nightmareTier > 0 ? this.nightmareConfig.punishBonusMult : 1);
       mult *= 1 + punishBonus;
+      if (coopAllyIndex === undefined) {
+        this.punishHitsCount += 1;
+      }
       soundEngine.playPunishHit();
       if (!resolvedLabel && isCrit) {
         resolvedLabel = e.bossPhase === 3 ? 'PHẢN ĐÒN TỐI THƯỢNG!' : 'PHẢN ĐÒN!';
@@ -10193,6 +10375,8 @@ export class GameEngine {
       });
       e.attackTimer = 0.5;
       this.bossPhaseTwoBannerTimer = 2.6;
+      this.bossPhaseShiftTimer = 0.65;
+      this.bossPhaseShiftLevel = 2;
       const reducedMotion =
         typeof window !== 'undefined' &&
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -10202,6 +10386,7 @@ export class GameEngine {
         this.triggerPostFxImpulse('boss_phase');
       }
       soundEngine.playBossPhaseTwo();
+      soundEngine.playBossPhaseShift(2);
       this.spawnImpactLight(e.x, 1.8, e.z, 'boss_slam');
       if (e.model.bossCoreMat) {
         e.model.bossCoreMat.emissive.setHex(0xf43f5e);
@@ -10242,14 +10427,18 @@ export class GameEngine {
       });
       e.attackTimer = 0.45;
       this.bossPhaseThreeBannerTimer = 2.8;
+      this.bossPhaseShiftTimer = 0.65;
+      this.bossPhaseShiftLevel = 3;
       const reducedMotion =
         typeof window !== 'undefined' &&
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       if (!reducedMotion) {
         this.hitstopTimer = Math.max(this.hitstopTimer, 0.055);
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.62);
+        this.triggerPostFxImpulse('boss_phase');
       }
       soundEngine.playBossPhaseThree();
+      soundEngine.playBossPhaseShift(3);
       if (e.model.bossCoreMat) {
         e.model.bossCoreMat.emissive.setHex(0xfde047);
         e.model.bossCoreMat.emissiveIntensity = 3.4;
@@ -10765,6 +10954,8 @@ export class GameEngine {
       elemental,
       peakCrit: Math.round(this.peakCritDmg),
       elapsedSeconds: Math.max(1, Math.round(this.runElapsedSeconds)),
+      perfectDodges: this.perfectDodgeCount,
+      punishHits: this.punishHitsCount,
       coopAllies: coopAlliesSummary,
     };
   }
@@ -11768,6 +11959,11 @@ export class GameEngine {
     );
 
     const introBlend = computeBossIntroBlend(this.bossIntroTimer, this.bossIntroDuration);
+    const entryFlyBlend = computeArenaEntryFlyBlend(
+      this.arenaEntryFlyTimer,
+      this.arenaEntryFlyDuration
+    );
+    const ultCutin = computeUltimateCutinState(this.ultCutinTimer, this.ultCutinDuration);
     const finisherKin = computeBossKillSlowMoState(
       this.bossFinisherTimer,
       this.bossFinisherDuration
@@ -11798,24 +11994,30 @@ export class GameEngine {
       targetCamZ = THREE.MathUtils.lerp(targetCamZ, finisherCamZ, finisherKin.cameraBlend);
     }
 
-    this.camera.position.x = THREE.MathUtils.damp(
-      this.camera.position.x,
-      targetCamX,
-      7,
-      dt
-    );
-    this.camera.position.y = THREE.MathUtils.damp(
-      this.camera.position.y,
-      targetCamY,
-      7,
-      dt
-    );
-    this.camera.position.z = THREE.MathUtils.damp(
-      this.camera.position.z,
-      targetCamZ,
-      7,
-      dt
-    );
+    if (entryFlyBlend > 0.001) {
+      this.camera.position.x = THREE.MathUtils.lerp(targetCamX, this.arenaEntryStartCam.x, entryFlyBlend);
+      this.camera.position.y = THREE.MathUtils.lerp(targetCamY, this.arenaEntryStartCam.y, entryFlyBlend);
+      this.camera.position.z = THREE.MathUtils.lerp(targetCamZ, this.arenaEntryStartCam.z, entryFlyBlend);
+    } else {
+      this.camera.position.x = THREE.MathUtils.damp(
+        this.camera.position.x,
+        targetCamX,
+        7,
+        dt
+      );
+      this.camera.position.y = THREE.MathUtils.damp(
+        this.camera.position.y,
+        targetCamY,
+        7,
+        dt
+      );
+      this.camera.position.z = THREE.MathUtils.damp(
+        this.camera.position.z,
+        targetCamZ,
+        7,
+        dt
+      );
+    }
 
     let shakeRollZ = 0;
     if (this.shakeIntensity > 0.005) {
@@ -11834,7 +12036,8 @@ export class GameEngine {
       this.cameraFovOffset = THREE.MathUtils.damp(this.cameraFovOffset, 0, 8.5, dt);
       if (this.cameraFovOffset < 0.02) this.cameraFovOffset = 0;
     }
-    const desiredFov = 46 + this.cameraFovOffset - introBlend * 3.5 + finisherKin.fovBoost;
+    const desiredFov =
+      46 + this.cameraFovOffset - introBlend * 3.5 + finisherKin.fovBoost + ultCutin.fovPunch;
     if (Math.abs(this.camera.fov - desiredFov) > 0.015) {
       this.camera.fov = desiredFov;
       this.camera.updateProjectionMatrix();
@@ -11848,8 +12051,14 @@ export class GameEngine {
       desiredLookZ = THREE.MathUtils.lerp(desiredLookZ, this.bossFinisherFocusZ, finisherKin.cameraBlend);
       desiredLookY = THREE.MathUtils.lerp(desiredLookY, 1.25, finisherKin.cameraBlend);
     }
-    this.smoothLookX = THREE.MathUtils.damp(this.smoothLookX, desiredLookX, 6.5, dt);
-    this.smoothLookZ = THREE.MathUtils.damp(this.smoothLookZ, desiredLookZ, 6.5, dt);
+    if (entryFlyBlend > 0.001) {
+      this.smoothLookX = THREE.MathUtils.lerp(desiredLookX, this.arenaEntryStartLook.x, entryFlyBlend);
+      this.smoothLookZ = THREE.MathUtils.lerp(desiredLookZ, this.arenaEntryStartLook.z, entryFlyBlend);
+      desiredLookY = THREE.MathUtils.lerp(desiredLookY, this.arenaEntryStartLook.y, entryFlyBlend);
+    } else {
+      this.smoothLookX = THREE.MathUtils.damp(this.smoothLookX, desiredLookX, 6.5, dt);
+      this.smoothLookZ = THREE.MathUtils.damp(this.smoothLookZ, desiredLookZ, 6.5, dt);
+    }
     _v1.set(this.smoothLookX, desiredLookY, this.smoothLookZ);
     this.camera.lookAt(_v1);
     if (shakeRollZ !== 0) {
@@ -12289,6 +12498,45 @@ export class GameEngine {
       bossFinisherName: this.bossFinisherTimer > 0 ? this.bossFinisherName : null,
       synergyAwakenedName: this.synergyAwakenedTimer > 0 ? this.synergyAwakenedName : null,
       synergyAwakenedTimer: this.synergyAwakenedTimer > 0 ? this.synergyAwakenedTimer : undefined,
+      ultCutinTimer: this.ultCutinTimer > 0 ? this.ultCutinTimer : undefined,
+      ultCutinTitle: this.ultCutinTimer > 0 ? this.ultCutinTitle : null,
+      ultCutinHeroName: this.ultCutinTimer > 0 ? this.ultCutinHeroName : null,
+      ultCutinAccentHex: this.ultCutinTimer > 0 ? this.ultCutinAccentHex : null,
+      bossPhaseShiftTimer: this.bossPhaseShiftTimer > 0 ? this.bossPhaseShiftTimer : undefined,
+      bossPhaseShiftLevel: this.bossPhaseShiftTimer > 0 ? this.bossPhaseShiftLevel : null,
+      edgeThreats: (() => {
+        if (this.phase !== GamePhase.PLAYING) return undefined;
+        this.threatSamplesBuf.length = 0;
+        for (let i = 0; i < this.enemies.length; i++) {
+          const en = this.enemies[i];
+          if (en.spawnTimer > 0 || en.isTrainingDummy) continue;
+          if (en.telegraphType !== 'none' || (en.isBoss && en.attackTimer < 0.65)) {
+            this.threatSamplesBuf.push({
+              x: en.x,
+              z: en.z,
+              kind: 'boss_charge',
+              urgent: en.isBoss || en.telegraphType === 'lunge' || en.telegraphType === 'lane',
+            });
+          }
+        }
+        for (let i = 0; i < this.enemyOrbPool.length; i++) {
+          const orb = this.enemyOrbPool[i];
+          if (!orb.active) continue;
+          this.threatSamplesBuf.push({
+            x: orb.x,
+            z: orb.z,
+            kind: 'orb',
+            urgent:
+              orb.enemySourceKind === 'boss_lane' || orb.enemySourceKind === 'boss_projectile',
+          });
+        }
+        const arrows = computeEdgeThreatIndicators(this.px, this.pz, this.threatSamplesBuf, 4);
+        return arrows.length > 0 ? arrows : undefined;
+      })(),
+      biomeWeatherLabel: resolveChapterBiomeAtmosphere(
+        this.currentChapter.zodiacId,
+        boss?.bossPhase ?? 1
+      ).weatherLabel,
       isTrainingMode: this.isTrainingMode || undefined,
       trainingTargetMode: this.isTrainingMode ? this.trainingTargetMode : undefined,
       ...(this.isTrainingMode

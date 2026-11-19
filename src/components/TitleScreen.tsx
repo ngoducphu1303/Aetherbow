@@ -364,6 +364,7 @@ interface TitleScreenProps {
   onResetLobbyOrbit?: () => void;
   onAdjustLobbyZoom?: (delta: number) => void;
   onReplayEntranceVfx?: () => void;
+  onTriggerLobbyEmote?: () => void;
   onCraftEarlyTargetGear?: (tier: 'rare' | 'epic' | 's_tier') => void;
   lobbyHeadPos?: { x: number; y: number; visible: boolean };
 }
@@ -563,6 +564,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onResetLobbyOrbit,
   onAdjustLobbyZoom,
   onReplayEntranceVfx,
+  onTriggerLobbyEmote,
   onCraftEarlyTargetGear,
   lobbyHeadPos,
 }) => {
@@ -1079,6 +1081,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   <span>Hiệu Ứng</span>
                 </button>
               )}
+              {onTriggerLobbyEmote && (
+                <button
+                  type="button"
+                  onClick={() => onTriggerLobbyEmote()}
+                  className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 text-amber-200 cursor-pointer"
+                >
+                  <Flame className="w-3.5 h-3.5 shrink-0 text-amber-300" />
+                  <span>Giương Cung</span>
+                </button>
+              )}
             </div>
 
             <button
@@ -1369,6 +1381,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     />
                   )}
                 </div>
+              )}
+
+              {onTriggerLobbyEmote && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSkyPickerOpen(false);
+                    onTriggerLobbyEmote();
+                  }}
+                  title="Giương Cung Biểu Cảm 3D"
+                  aria-label="Giương cung biểu cảm 3D"
+                  className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/35 hover:border-amber-300 flex items-center justify-center text-amber-300 cursor-pointer"
+                >
+                  <Flame className="w-4 h-4" />
+                </button>
               )}
 
               {onOpenWardrobe && (
