@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Crown,
   Disc,
@@ -188,6 +188,29 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   const isSkillMode = mode === 'skill' || mode === 'valkyrie';
   const activeSynergyIds = evaluateActiveSynergies(currentStacks);
 
+  useEffect(() => {
+    if (!isSkillMode) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return;
+      if (e.key === '1' && skillChoices[0]) {
+        e.preventDefault();
+        onPickSkill(skillChoices[0].id);
+      } else if (e.key === '2' && skillChoices[1]) {
+        e.preventDefault();
+        onPickSkill(skillChoices[1].id);
+      } else if (e.key === '3' && skillChoices[2]) {
+        e.preventDefault();
+        onPickSkill(skillChoices[2].id);
+      } else if ((e.key === 'r' || e.key === 'R') && !rerollUsed) {
+        e.preventDefault();
+        onRerollSkills();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isSkillMode, skillChoices, rerollUsed, onPickSkill, onRerollSkills]);
+
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/88">
       <div className="cel-panel-ornate w-full max-w-3xl rounded-3xl p-5 sm:p-7 max-h-[92vh] overflow-y-auto a2-scroll">
@@ -241,7 +264,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
         {isSkillMode && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
-              {skillChoices.map((skill) => {
+              {skillChoices.map((skill, idx) => {
                 const stack = currentStacks[skill.id] ?? 0;
                 const rMeta = SKILL_RARITY_META[skill.rarity];
                 const catMeta = CATEGORY_META[skill.category];
@@ -389,7 +412,12 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                           : 'border-amber-300/25 bg-[#050814]/92 text-amber-300'
                       }`}
                     >
-                      <span>{isHighlightEvolution ? 'Đột Phá Sức Mạnh' : 'Lĩnh Hội Thẻ Bài'}</span>
+                      <span className="flex items-center gap-1.5">
+                        <kbd className="hidden md:inline-flex items-center justify-center w-5 h-5 rounded-md bg-slate-950/90 border border-amber-300/45 text-[10px] font-mono-nums text-amber-200">
+                          {idx + 1}
+                        </kbd>
+                        <span>{isHighlightEvolution ? 'Đột Phá Sức Mạnh' : 'Lĩnh Hội Thẻ Bài'}</span>
+                      </span>
                       <span className="group-hover:translate-x-1 transition-transform">→</span>
                     </div>
                   </button>
@@ -410,6 +438,11 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
               >
                 <RefreshCw className="w-3.5 h-3.5 shrink-0" />
                 <span>{rerollUsed ? 'Đã Đổi Lại (0/1)' : 'Đổi Lại Thẻ Bài (1 lần)'}</span>
+                {!rerollUsed && (
+                  <kbd className="hidden md:inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-slate-950/70 border border-purple-200/40 text-[10px] font-mono-nums text-purple-100">
+                    R
+                  </kbd>
+                )}
               </button>
             </div>
           </>

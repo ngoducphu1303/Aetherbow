@@ -212,6 +212,10 @@ interface EnemyEntity {
   eliteAuraRingMesh?: THREE.Mesh;
   eliteAuraRingMesh2?: THREE.Mesh;
   laserLine: THREE.Line;
+  baseScale?: number;
+  hpBarGroup?: THREE.Group;
+  hpBarFill?: THREE.Mesh;
+  hpBarHeight?: number;
 }
 
 const ELITE_AFFIX_META: Record<EliteAffix, { label: string; colorHex: number }> = {
@@ -965,16 +969,26 @@ export class GameEngine {
       });
     }
 
-    // Enemy orb pool
-    const orbGeo = new THREE.SphereGeometry(0.24, 10, 8);
+    // Enemy orb pool (dual-layer bullet-hell readability: incandescent core + crimson halo)
+    const orbCoreGeo = new THREE.SphereGeometry(0.15, 10, 8);
+    const orbHaloGeo = new THREE.SphereGeometry(0.3, 10, 8);
     for (let i = 0; i < 75; i++) {
       const mat = new THREE.MeshStandardMaterial({
-        color: 0xfb7185,
-        emissive: 0xf43f5e,
-        emissiveIntensity: 1.6,
-        roughness: 0.2,
+        color: 0xfff7ed,
+        emissive: 0xfef08a,
+        emissiveIntensity: 1.9,
+        roughness: 0.14,
       });
-      const mesh = new THREE.Mesh(orbGeo, mat);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: 0xf43f5e,
+        transparent: true,
+        opacity: 0.58,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(orbCoreGeo, mat);
+      const halo = new THREE.Mesh(orbHaloGeo, haloMat);
+      mesh.add(halo);
       mesh.visible = false;
       this.projectilesGroup.add(mesh);
       this.enemyOrbPool.push({
@@ -4358,6 +4372,7 @@ export class GameEngine {
       if (e.punishRingMesh) this.releaseObject(e.punishRingMesh);
       if (e.eliteAuraRingMesh) this.releaseObject(e.eliteAuraRingMesh);
       if (e.eliteAuraRingMesh2) this.releaseObject(e.eliteAuraRingMesh2);
+      if (e.hpBarGroup) this.releaseObject(e.hpBarGroup);
       this.releaseObject(e.laserLine);
     });
     this.enemies = [];
@@ -4912,8 +4927,8 @@ export class GameEngine {
       kind === EnemyKind.ZODIAC_BOSS;
 
     // Crisp ARPG silhouette readability from the isometric combat camera
-    const visualScale = isBoss ? 1.08 : isElite ? 1.24 : 1.34;
-    model.root.scale.setScalar(visualScale);
+    const baseScale = isBoss ? 1.08 : isElite ? 1.24 : 1.38;
+    model.root.scale.setScalar(baseScale);
     if (!isBoss) {
       const threatRing = new THREE.Mesh(
         new THREE.RingGeometry(0.45, 0.56, 20),
@@ -5208,6 +5223,41 @@ export class GameEngine {
     const hasHasteAffix = Boolean(eliteAffixes?.includes('haste'));
     const hasFrostAffix = Boolean(eliteAffixes?.includes('frost'));
 
+    let hpBarGroup: THREE.Group | undefined;
+    let hpBarFill: THREE.Mesh | undefined;
+    let hpBarHeight: number | undefined;
+    if (!isBoss) {
+      hpBarGroup = new THREE.Group();
+      const barW = isElite ? 1.32 : 1.02;
+      const barH = isElite ? 0.14 : 0.115;
+      const bg = new THREE.Mesh(
+        new THREE.PlaneGeometry(barW + 0.08, barH + 0.06),
+        new THREE.MeshBasicMaterial({
+          color: 0x050814,
+          transparent: true,
+          opacity: 0.88,
+          depthTest: false,
+        })
+      );
+      const fillGeo = new THREE.PlaneGeometry(barW, barH);
+      fillGeo.translate(barW * 0.5, 0, 0);
+      hpBarFill = new THREE.Mesh(
+        fillGeo,
+        new THREE.MeshBasicMaterial({
+          color: isElite ? 0xc084fc : 0xf43f5e,
+          depthTest: false,
+        })
+      );
+      hpBarFill.position.set(-barW * 0.5, 0, 0.01);
+      bg.renderOrder = 20;
+      hpBarFill.renderOrder = 21;
+      hpBarGroup.add(bg, hpBarFill);
+      hpBarHeight = (kind === EnemyKind.GOLEM ? 2.45 : 2.05) * (isElite ? 1.12 : 1.0);
+      hpBarGroup.position.set(x, hpBarHeight, z);
+      hpBarGroup.visible = false;
+      this.entitiesGroup.add(hpBarGroup);
+    }
+
     this.enemies.push({
       id: this.nextEntityId++,
       kind,
@@ -5258,6 +5308,10 @@ export class GameEngine {
       eliteAuraRingMesh,
       eliteAuraRingMesh2,
       laserLine,
+      baseScale,
+      hpBarGroup,
+      hpBarFill,
+      hpBarHeight,
     });
   }
 
@@ -8314,11 +8368,22 @@ export class GameEngine {
       e.model.root.rotation.y = Math.atan2(dirX, dirZ);
       e.shadow.position.set(e.x, 0.02, e.z);
 
+      const bScale = e.baseScale ?? 1;
       if (e.hitFlashTimer > 0) {
         const s = 1 + e.hitFlashTimer * 1.25;
-        e.model.root.scale.set(s, 1 / Math.sqrt(s), s);
+        e.model.root.scale.set(bScale * s, bScale / Math.sqrt(s), bScale * s);
       } else {
-        e.model.root.scale.set(1, 1, 1);
+        e.model.root.scale.setScalar(bScale);
+      }
+
+      if (e.hpBarGroup && e.hpBarFill) {
+        const showBar = e.hp > 0 && e.hp < e.maxHp;
+        e.hpBarGroup.visible = showBar;
+        if (showBar) {
+          e.hpBarGroup.position.set(e.x, e.hpBarHeight ?? 2.15, e.z);
+          e.hpBarGroup.quaternion.copy(this.camera.quaternion);
+          e.hpBarFill.scale.x = Math.max(0.01, e.hp / Math.max(1, e.maxHp));
+        }
       }
 
       if (e.model.weaponOrRing) {
@@ -9288,6 +9353,7 @@ export class GameEngine {
     if (e.punishRingMesh) this.releaseObject(e.punishRingMesh);
     if (e.eliteAuraRingMesh) this.releaseObject(e.eliteAuraRingMesh);
     if (e.eliteAuraRingMesh2) this.releaseObject(e.eliteAuraRingMesh2);
+    if (e.hpBarGroup) this.releaseObject(e.hpBarGroup);
     this.releaseObject(e.laserLine);
     this.enemies.splice(index, 1);
 
