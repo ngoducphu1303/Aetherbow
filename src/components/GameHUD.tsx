@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Crown, Flame, Gem, Heart, Moon, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowUp, Crown, Feather, Flame, Gem, Heart, Moon, Pause, Shield, Skull, Trophy, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import { SKILLS_CATALOG } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
@@ -265,7 +265,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="font-display text-[11px] sm:text-xs font-black text-amber-200 font-mono-nums whitespace-nowrap flex items-center justify-center gap-1.5">
               {hud.portalOpen && <ArrowUp className="w-3.5 h-3.5 text-emerald-300 shrink-0" />}
               <span>
-                {hud.isDragonLairMode
+                {hud.isSkyCitadelMode
+                  ? `Không Chiến Tinh Giới 3D · ${hud.skyCitadelTimeLeft ?? 75}s`
+                  : hud.isDragonLairMode
                   ? `Lãnh Địa Rồng Cổ 3D · ${hud.dragonTimeLeft ?? 75}s`
                   : hud.isCrystalVaultMode
                   ? `Hầm Mỏ Pha Lê 3D · ${hud.vaultTimeLeft ?? 60}s`
@@ -309,7 +311,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </span>
             </div>
             <div className="text-[10px] font-semibold text-slate-300 truncate max-w-[190px] sm:max-w-xs">
-              {hud.isDragonLairMode
+              {hud.isSkyCitadelMode
+                ? `Đợt Không Chiến ${hud.skyCitadelWave ?? 1}/3 · Điểm ${(hud.skyCitadelScore ?? 0).toLocaleString('vi-VN')} · +${hud.skyCitadelFeathersLooted ?? 0} Lông Vũ`
+                : hud.isDragonLairMode
                 ? `Pha ${hud.dragonPhase ?? 1}/3 · Vảy Rồng +${hud.dragonScalesLooted ?? 0} · ST ${(hud.dragonDamageDealt ?? 0).toLocaleString('vi-VN')}`
                 : hud.isCrystalVaultMode
                 ? `Trụ Phá: ${hud.vaultPillarsBroken ?? 0} · Đợt ${hud.vaultWave ?? 1} · +${hud.vaultGemsLooted ?? 0} Ngọc`
@@ -399,6 +403,29 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Wave 14: Sky Citadel Aerial Arena 3D Live Progress Strip */}
+        {hud.isSkyCitadelMode && (
+          <div className="w-full max-w-lg mx-auto rounded-2xl px-4 py-2 bg-[#07162a]/95 border border-sky-400/75 shadow-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
+              <span className="flex items-center gap-1.5 text-sky-200 truncate">
+                <Feather className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span>Không Chiến Tinh Giới · Đợt {hud.skyCitadelWave ?? 1}/3</span>
+              </span>
+              <span className="font-mono-nums text-amber-300 shrink-0">
+                {(hud.skyCitadelScore ?? 0).toLocaleString('vi-VN')} điểm · +{hud.skyCitadelFeathersLooted ?? 0} Lông Vũ · {hud.skyCitadelTimeLeft ?? 75}s
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-950 border border-sky-400/40 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-sky-500 via-cyan-300 to-amber-300 transition-all duration-300"
+                style={{
+                  width: `${Math.max(0, Math.min(100, ((hud.skyCitadelTimeLeft ?? 0) / 75) * 100))}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Wave 13: Ancient Dragon Lair 3D Live Strip & Crimson Breath Warning */}
         {hud.isDragonLairMode && (
@@ -891,11 +918,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {hud.radarData && (
             <div
               aria-hidden="true"
-              className="hidden sm:block relative w-[86px] h-[86px] rounded-2xl bg-[#050814]/90 border border-amber-400/45 shadow-xl overflow-hidden shrink-0"
+              className="hidden sm:block relative w-[94px] h-[94px] rounded-2xl bg-[#050814]/92 border border-amber-400/50 shadow-xl overflow-hidden shrink-0"
             >
-              {/* Grid Crosshairs */}
-              <div className="absolute inset-y-0 left-1/2 w-px bg-amber-300/10" />
-              <div className="absolute inset-x-0 top-1/2 h-px bg-amber-300/10" />
+              {/* Concentric Range Rings & Crosshairs */}
+              <div className="absolute inset-2.5 rounded-full border border-sky-400/15" />
+              <div className="absolute inset-6 rounded-full border border-sky-400/15" />
+              <div className="absolute inset-y-0 left-1/2 w-px bg-amber-300/12" />
+              <div className="absolute inset-x-0 top-1/2 h-px bg-amber-300/12" />
+              <span className="absolute top-0.5 right-1.5 text-[7px] font-mono-nums font-black text-amber-300/70">
+                RADAR
+              </span>
               {/* North Portal Beacon */}
               <span
                 className={`absolute top-1 left-1/2 -translate-x-1/2 w-4 h-1.5 rounded-full ${
@@ -904,6 +936,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     : 'bg-slate-600/70'
                 }`}
               />
+              {/* Loot Drop Blips (Wave 14) */}
+              {(hud.radarData.drops ?? []).map((dr, idx) => (
+                <span
+                  key={`d_${idx}`}
+                  style={{
+                    left: `${50 + dr.x * 42}%`,
+                    top: `${50 + dr.z * 42}%`,
+                  }}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rotate-45 ${
+                    dr.kind === 'gem'
+                      ? 'bg-cyan-300 shadow-[0_0_5px_#67e8f9]'
+                      : dr.kind === 'heal'
+                      ? 'bg-emerald-400'
+                      : 'bg-amber-300'
+                  }`}
+                />
+              ))}
               {/* Enemy Blips */}
               {hud.radarData.enemies.map((en, idx) => (
                 <span
@@ -921,21 +970,50 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   }`}
                 />
               ))}
-              {/* Player Dot */}
-              <span
+              {/* Player Facing Wedge & Dot */}
+              <div
                 style={{
                   left: `${50 + hud.radarData.playerX * 42}%`,
                   top: `${50 + hud.radarData.playerZ * 42}%`,
+                  transform: `translate(-50%, -50%) rotate(${Math.round(((hud.radarData.playerYaw ?? 0) * 180) / Math.PI)}deg)`,
                 }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-emerald-300 border border-white shadow-[0_0_8px_#34d399]"
-              />
+                className="absolute w-5 h-5 flex items-center justify-center"
+              >
+                <span
+                  className="absolute -top-1.5 w-0 h-0 border-l-[4px] border-r-[4px] border-b-[7px] border-l-transparent border-r-transparent border-b-emerald-300/80"
+                />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 border border-white shadow-[0_0_8px_#34d399]" />
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Boss Intro Warning Banner */}
-      {bossIntroTitle && (
+      {/* Wave 14: Cinematic Boss Warning Cut-In Overlay */}
+      {hud.bossWarningTitle ? (
+        <div className="mt-4 flex justify-center px-3 pointer-events-none">
+          <div className="w14-boss-warning-cutin relative w-full max-w-2xl overflow-hidden rounded-2xl border-y-2 border-amber-300/90 bg-gradient-to-r from-[#1a040c]/95 via-[#4c071b]/95 to-[#1a040c]/95 px-5 py-3 shadow-[0_0_38px_rgba(244,63,94,0.65)]">
+            <div className="flex items-center justify-center gap-3.5 text-center sm:text-left">
+              <div className="w-11 h-11 rounded-xl bg-rose-500/25 border border-amber-300/80 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-300" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
+                  CẢNH BÁO ĐỎ · THỦ LĨNH XUẤT TRẬN
+                </div>
+                <div className="font-display text-lg sm:text-2xl font-black text-white tracking-wide truncate">
+                  {hud.bossWarningTitle}
+                </div>
+                {hud.bossWarningSubtitle && (
+                  <div className="text-xs font-bold text-rose-200/95 truncate mt-0.5">
+                    {hud.bossWarningSubtitle}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : bossIntroTitle ? (
         <div className="mt-4 flex justify-center px-4">
           <div className="a2-boss-intro w-full max-w-md rounded-2xl bg-gradient-to-r from-[#240814]/95 via-[#3f0b20]/95 to-[#240814]/95 border border-amber-300/75 px-5 py-3 shadow-[0_0_28px_rgba(244,63,94,0.5)] flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-xl bg-rose-500/25 border border-amber-300/70 flex items-center justify-center shrink-0">
@@ -951,10 +1029,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Stage / Room Clear Banner */}
-      {!bossIntroTitle && hud.stageBannerText && (
+      {!hud.bossWarningTitle && !bossIntroTitle && hud.stageBannerText && (
         <div className="mt-4 flex justify-center px-4">
           <div
             className={`px-5 py-2 rounded-2xl border font-display text-xs sm:text-sm font-black shadow-2xl tracking-wide ${

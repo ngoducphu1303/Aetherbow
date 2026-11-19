@@ -8,8 +8,10 @@ import {
   ChevronUp,
   Compass,
   Crown,
+  Dice5,
   Download,
   EyeOff,
+  Feather,
   Flag,
   Flame,
   Gavel,
@@ -24,6 +26,7 @@ import {
   Map,
   Megaphone,
   Moon,
+  RotateCcw,
   ScrollText,
   Send,
   Settings,
@@ -41,12 +44,15 @@ import {
   VolumeX,
   X,
   Zap,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import abyssalGauntletArt from '../assets/images/abyssal_gauntlet_arena_1795010358870.jpg';
 import ancientDragonLairArt from '../assets/images/ancient_dragon_lair_1795056419369.jpg';
 import bloodMoonArt from '../assets/images/blood_moon_nightmare_1795007597791.jpg';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
 import celestialFestivalArt from '../assets/images/celestial_festival_lanterns_1795051178335.jpg';
+import celestialWingsArenaArt from '../assets/images/celestial_wings_arena_1795058112061.jpg';
 import championshipTrophyArt from '../assets/images/championship_trophy_arena_1795051178175.jpg';
 import coopRaidArt from '../assets/images/coop_raid_portal_1795004418576.jpg';
 import crystalDefenseArt from '../assets/images/crystal_defense_sanctum_1795005958099.jpg';
@@ -188,6 +194,17 @@ import {
   normalizeDragonLair,
 } from '../data/wave13Data';
 import {
+  ROYAL_3D_TITLE_MAP,
+  SANCTUARY_FLOOR_DEFS,
+  SKY_CITADEL_MAX_DAILY_RUNS,
+  SKY_CITADEL_MILESTONES,
+  countClaimableAstralBoardRewards,
+  countClaimableGuildSanctuaryRewards,
+  countClaimableSkyCitadelMilestones,
+  normalizeAstralBoard,
+  normalizeSkyCitadel,
+} from '../data/wave14Data';
+import {
   ArtifactId,
   AuraStyleId,
   AvatarFrameId,
@@ -207,6 +224,7 @@ import {
   MountId,
   PantheonBlessingId,
   PetId,
+  SanctuaryFloorId,
   SaveData,
   WeaponAuraId,
   WingId,
@@ -232,6 +250,7 @@ import {
 } from './LobbyPanels';
 import { Wave12SanctumTab } from './Wave12SanctumModal';
 import { Wave13Tab } from './Wave13TreasuryModal';
+import { Wave14Tab } from './Wave14AscensionModal';
 
 export type LobbyTab = 'battle' | 'gear' | 'heroes' | 'runes' | 'shop';
 export type LobbyGameMode =
@@ -249,7 +268,8 @@ export type LobbyGameMode =
   | 'pantheon_expedition'
   | 'championship_3round'
   | 'crystal_vault'
-  | 'dragon_lair';
+  | 'dragon_lair'
+  | 'sky_citadel';
 
 interface TitleScreenProps {
   save: SaveData;
@@ -410,6 +430,15 @@ interface TitleScreenProps {
   onClaimCrystalVaultMilestone?: (pillarsTarget: number) => void;
   onActivateSupremeMonthly?: () => void;
   onClaimSupremeMonthlyDaily?: () => void;
+  onOpenWave14Ascension?: (tab: Wave14Tab) => void;
+  onOpenWave14EventCenter?: () => void;
+  onStartSkyCitadel?: () => void;
+  onClaimSkyCitadelMilestone?: (scoreTarget: number) => void;
+  onSelectSanctuaryFloor?: (floorId: SanctuaryFloorId) => void;
+  onResetLobbyOrbit?: () => void;
+  onAdjustLobbyZoom?: (delta: number) => void;
+  onReplayEntranceVfx?: () => void;
+  lobbyHeadPos?: { x: number; y: number; visible: boolean };
 }
 
 const NAV_TABS: Array<{
@@ -595,6 +624,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onClaimCrystalVaultMilestone,
   onActivateSupremeMonthly,
   onClaimSupremeMonthlyDaily,
+  onOpenWave14Ascension,
+  onOpenWave14EventCenter,
+  onStartSkyCitadel,
+  onClaimSkyCitadelMilestone,
+  onSelectSanctuaryFloor,
+  onResetLobbyOrbit,
+  onAdjustLobbyZoom,
+  onReplayEntranceVfx,
+  lobbyHeadPos,
 }) => {
   const [chapterPickerOpen, setChapterPickerOpen] = useState(false);
   const [featureDockOpen, setFeatureDockOpen] = useState(false);
@@ -615,6 +653,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [championshipImgFailed, setChampionshipImgFailed] = useState(false);
   const [crystalVaultImgFailed, setCrystalVaultImgFailed] = useState(false);
   const [dragonLairImgFailed, setDragonLairImgFailed] = useState(false);
+  const [skyCitadelImgFailed, setSkyCitadelImgFailed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -719,6 +758,16 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const starlightRaceClaimCount = countClaimableStarlightMilestones(save);
   const wave13Badges = dragonLairClaimCount + carnivalClaimCount + starlightRaceClaimCount;
   const activeWeatherId: LobbyWeatherId = save.lobbyWeather ?? 'meteor_shower';
+  const activeSanctuaryFloorId: SanctuaryFloorId = save.sanctuaryFloorTheme ?? 'marble_gold';
+  const equippedRoyalTitleDef = save.equippedRoyal3DTitleId
+    ? ROYAL_3D_TITLE_MAP[save.equippedRoyal3DTitleId] ?? null
+    : null;
+  const skyCitadelState = normalizeSkyCitadel(save.skyCitadel);
+  const skyCitadelClaimCount = countClaimableSkyCitadelMilestones(save);
+  const astralBoardState = normalizeAstralBoard(save.astralBoard);
+  const astralBoardClaimCount = countClaimableAstralBoardRewards(save);
+  const guildSanctuaryClaimCount = countClaimableGuildSanctuaryRewards(save);
+  const wave14Badges = skyCitadelClaimCount + astralBoardClaimCount + guildSanctuaryClaimCount;
   const equippedVipFrameDef = save.equippedVipFrameId
     ? VIP_AVATAR_FRAME_MAP[save.equippedVipFrameId]
     : null;
@@ -728,7 +777,34 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     'golden_galaxy',
     'dawn_sanctum',
   ];
-  const honorMarqueeItems = [...(save.honorFeed ?? []), ...DEFAULT_HONOR_FEED].slice(0, 10);
+  const wave14Announcements = [
+    {
+      id: 'w14_live_1',
+      badge: 'MÙA IV',
+      playerName: 'Không Chiến Tinh Giới 3D',
+      message: 'đã mở cửa · Săn Lông Vũ Thần Quang nâng Cánh 3D 1★→5★!',
+      accent: 'amber' as const,
+    },
+    {
+      id: 'w14_live_2',
+      badge: 'BÀN CỜ',
+      playerName: 'Xúc Xắc Tinh Tú 16 Ô',
+      message: 'nhận miễn phí mỗi ngày · Quay ô Đại Cát rinh Mảnh Thần Thoại!',
+      accent: 'purple' as const,
+    },
+    {
+      id: 'w14_live_3',
+      badge: 'BANG 3D',
+      playerName: 'Lãnh Địa Bang Hội 3D',
+      message: 'mở 4 công trình kiến trúc & 4 Rương Boss Hàng Ngày!',
+      accent: 'emerald' as const,
+    },
+  ];
+  const honorMarqueeItems = [
+    ...(save.honorFeed ?? []),
+    ...wave14Announcements,
+    ...DEFAULT_HONOR_FEED,
+  ].slice(0, 12);
 
   const dockTotalBadges =
     claimableCount +
@@ -746,7 +822,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     wave10Badges +
     wave11Badges +
     crystalVaultClaimCount +
-    wave13Badges;
+    wave13Badges +
+    wave14Badges;
 
   const handleStepChapter = (delta: number) => {
     soundEngine.playUiClick();
@@ -862,8 +939,36 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
           )}
 
+          {onSelectSanctuaryFloor && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-amber-400/15">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 mr-1">
+                Sàn Thần Điện 3D:
+              </span>
+              {SANCTUARY_FLOOR_DEFS.map((fl) => {
+                const active = activeSanctuaryFloorId === fl.id;
+                return (
+                  <button
+                    key={fl.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.06);
+                      onSelectSanctuaryFloor(fl.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer transition-colors ${
+                      active
+                        ? 'a2-yellow-btn'
+                        : 'bg-[#090f24] border border-slate-700 text-slate-300 hover:border-amber-300'
+                    }`}
+                  >
+                    {fl.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-400/20">
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => onRotateHero?.(-0.45)}
@@ -878,13 +983,48 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               >
                 ↻ Xoay Phải
               </button>
+              {onAdjustLobbyZoom && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onAdjustLobbyZoom(-0.7)}
+                    aria-label="Phóng to 3D"
+                    className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5 text-sky-300" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAdjustLobbyZoom(0.7)}
+                    aria-label="Thu nhỏ 3D"
+                    className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5 text-sky-300" />
+                  </button>
+                </>
+              )}
               <button
                 type="button"
-                onClick={() => onResetHeroRotation?.()}
+                onClick={() => {
+                  onResetHeroRotation?.();
+                  onResetLobbyOrbit?.();
+                }}
                 className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
               >
-                Chính Diện
+                Reset 360°
               </button>
+              {onReplayEntranceVfx && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playAchievement();
+                    onReplayEntranceVfx();
+                  }}
+                  className="a2-purple-btn px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+                >
+                  ✨ Hiệu Ứng Xuất Hiện
+                </button>
+              )}
             </div>
 
             <button
@@ -1162,15 +1302,23 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </header>
 
-      {/* HALL OF HONOR MARQUEE STRIP (Collapsible, Non-Intrusive) */}
+      {/* HALL OF HONOR & LIVE EVENT MARQUEE TICKER (Wave 14) */}
       {activeTab === 'battle' && honorTickerVisible && (
         <div className="pointer-events-auto z-20 bg-[#070b1a]/95 border-b border-amber-400/25 px-3 sm:px-6 py-1 flex items-center gap-2 shrink-0 overflow-hidden">
-          <span className="px-1.5 py-0.5 rounded bg-amber-400/15 border border-amber-300/45 text-[9px] font-black text-amber-300 flex items-center gap-1 shrink-0 whitespace-nowrap">
-            <Megaphone className="w-3 h-3" />
-            <span>VINH DANH</span>
-          </span>
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick(1.06);
+              onOpenWave14EventCenter?.();
+            }}
+            className="px-2 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 hover:border-amber-200 text-[9px] font-black text-amber-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+            title="Mở Trung Tâm Sự Kiện Live Wave 14"
+          >
+            <Megaphone className="w-3 h-3 text-amber-300" />
+            <span>SỰ KIỆN LIVE</span>
+          </button>
           <div className="flex-1 overflow-hidden">
-            <div className="a2-honor-marquee flex items-center gap-6 whitespace-nowrap text-[11px]">
+            <div className="w14-marquee-track gap-7 whitespace-nowrap text-[11px]">
               {honorMarqueeItems.concat(honorMarqueeItems).map((item, idx) => (
                 <span key={`${item.id}-${idx}`} className="inline-flex items-center gap-1.5">
                   <span
@@ -1199,7 +1347,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 soundEngine.playUiClick();
                 onToggleHonorTicker();
               }}
-              title="Ẩn thanh thông báo vinh danh"
+              title="Ẩn thanh thông báo chạy chữ"
               className="text-slate-400 hover:text-amber-300 p-0.5 cursor-pointer shrink-0"
             >
               <EyeOff className="w-3.5 h-3.5" />
@@ -1212,6 +1360,31 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       <main key={activeTab} className="flex-1 min-h-0 flex flex-col a2-tab-enter">
         {activeTab === 'battle' && (
           <div className="flex-1 flex flex-col justify-end px-3 sm:px-6 py-2 min-h-0 relative overflow-hidden">
+            {/* Wave 14: 3D-Projected Floating Royal Title directly over Hero Head */}
+            {equippedRoyalTitleDef && lobbyHeadPos?.visible && (
+              <div
+                aria-hidden="true"
+                style={{
+                  left: `${lobbyHeadPos.x}px`,
+                  top: `${Math.max(115, lobbyHeadPos.y - 12)}px`,
+                }}
+                className="fixed z-[12] pointer-events-none w14-title-float"
+              >
+                <div
+                  className={`px-3.5 py-1 rounded-full bg-[#070b1a]/92 border ${equippedRoyalTitleDef.borderClass} shadow-[0_0_20px_rgba(251,191,36,0.35)] text-center whitespace-nowrap`}
+                >
+                  <div className="text-[8px] font-black uppercase tracking-[0.22em] text-amber-300/90 leading-none">
+                    {equippedRoyalTitleDef.subLabel}
+                  </div>
+                  <div
+                    className={`font-display text-xs sm:text-sm font-black bg-gradient-to-r ${equippedRoyalTitleDef.gradientClass} bg-clip-text text-transparent leading-tight mt-0.5`}
+                  >
+                    ✦ {equippedRoyalTitleDef.label} ✦
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Upper Perimeter: Left Journey & Arena | Center Quiet Title | Right Expandable Feature Dock + Event Banner */}
             <div className="absolute inset-x-3 sm:inset-x-6 top-2.5 flex items-start justify-between gap-2 pointer-events-none z-10">
               {/* Left-Edge High-Signal Pillars: 7-Day Journey & Ranked PvP Arena */}
@@ -1455,11 +1628,113 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                               </div>
                             </div>
                           )}
+                          {/* Wave 14: 3D Sanctuary Floor Theme Switcher & 360° Orbit Reset */}
+                          {onSelectSanctuaryFloor && (
+                            <div className="mt-2.5 pt-2 border-t border-amber-400/20">
+                              <div className="text-[10px] font-black uppercase tracking-wider text-amber-300 mb-1.5">
+                                Đổi Sàn Thần Điện 3D (Real-Time PBR)
+                              </div>
+                              <div className="grid grid-cols-2 gap-1">
+                                {SANCTUARY_FLOOR_DEFS.map((fl) => {
+                                  const active = activeSanctuaryFloorId === fl.id;
+                                  return (
+                                    <button
+                                      key={fl.id}
+                                      type="button"
+                                      onClick={() => {
+                                        soundEngine.playUiClick(1.08);
+                                        onSelectSanctuaryFloor(fl.id);
+                                      }}
+                                      className={`px-2 py-1 rounded-lg text-[10px] font-black text-left flex items-center gap-1.5 cursor-pointer border transition-colors ${
+                                        active
+                                          ? 'bg-amber-500/20 border-amber-300 text-amber-100'
+                                          : 'bg-[#070b1a] border-slate-800 text-slate-300 hover:border-amber-400/50'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-2.5 h-2.5 rounded-full shrink-0 bg-gradient-to-br ${fl.swatchClass}`}
+                                      />
+                                      <span className="truncate">{fl.name}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="mt-2.5 pt-2 border-t border-amber-400/20 flex flex-wrap items-center gap-1.5">
+                            {onResetLobbyOrbit && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playUiClick();
+                                  onResetLobbyOrbit();
+                                }}
+                                className="a2-slate-btn px-2 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                              >
+                                <RotateCcw className="w-3 h-3 text-sky-300" />
+                                <span>Reset 360°</span>
+                              </button>
+                            )}
+                            {onAdjustLobbyZoom && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => onAdjustLobbyZoom(-0.75)}
+                                  className="a2-slate-btn px-2 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer"
+                                  title="Zoom cận cảnh"
+                                >
+                                  <ZoomIn className="w-3 h-3 text-sky-300" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onAdjustLobbyZoom(0.75)}
+                                  className="a2-slate-btn px-2 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer"
+                                  title="Zoom toàn cảnh"
+                                >
+                                  <ZoomOut className="w-3 h-3 text-sky-300" />
+                                </button>
+                              </>
+                            )}
+                            {onReplayEntranceVfx && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playAchievement();
+                                  onReplayEntranceVfx();
+                                }}
+                                className="a2-purple-btn px-2 py-1 rounded-lg text-[10px] font-black cursor-pointer whitespace-nowrap ml-auto"
+                              >
+                                ✨ Xuất Hiện Hoàng Gia
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
                   )}
                 </div>
+
+                {onOpenWave14EventCenter && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.1);
+                      setFeatureDockOpen(false);
+                      onOpenWave14EventCenter();
+                    }}
+                    className="a2-yellow-btn flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap shadow-lg"
+                    title="Trung Tâm Sự Kiện Live Wave 14 · 8 Sự Kiện Đang Diễn Ra"
+                  >
+                    <Megaphone className="w-4 h-4 shrink-0" />
+                    <span className="hidden sm:inline">Sự Kiện Live</span>
+                    {wave14Badges > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 font-mono-nums text-[9px] font-black">
+                        +{wave14Badges}
+                      </span>
+                    )}
+                  </button>
+                )}
 
                 {onOpenFestivalModal && (
                   <button
@@ -1489,13 +1764,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       setFeatureDockOpen(false);
                       onOpenWave13Carnival();
                     }}
-                    className="a2-yellow-btn flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap shadow-lg"
+                    className="cel-panel-ornate flex items-center gap-2 px-3 py-2 rounded-xl border-amber-400/60 hover:border-amber-200 text-xs font-black text-amber-100 cursor-pointer whitespace-nowrap"
                     title="Lộ Trình Quà 7 Ngày & Gói Nạp Đầu 3 Mốc Tiến Hóa x18"
                   >
-                    <Crown className="w-4 h-4 shrink-0" />
+                    <Crown className="w-4 h-4 text-amber-300 shrink-0" />
                     <span className="hidden sm:inline">Quà 7 Ngày &amp; Nạp Đầu</span>
                     {carnivalClaimCount > 0 && (
-                      <span className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 font-mono-nums text-[9px] font-black">
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black">
                         +{carnivalClaimCount}
                       </span>
                     )}
@@ -1536,6 +1811,25 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               {/* Right-Edge Expandable Feature Dock + Featured Event Banner */}
               <div className="pointer-events-auto flex flex-col items-end gap-2 z-20 shrink-0 relative">
                 <div className="flex items-center gap-1.5">
+                  {onOpenWave14Ascension && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.1);
+                        onOpenWave14Ascension('wings');
+                      }}
+                      className="a2-yellow-btn flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap shadow-lg"
+                      title="Cánh Thần Quang 3D Tiến Hóa · Bàn Cờ Xúc Xắc Tinh Tú 16 Ô · Kho Cổ Vật Hoàng Đạo"
+                    >
+                      <Feather className="w-3.5 h-3.5 shrink-0" />
+                      <span className="hidden sm:inline">Cánh 3D &amp; Bàn Cờ</span>
+                      {astralBoardClaimCount + skyCitadelClaimCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-slate-950 text-amber-300 font-mono-nums text-[9px] font-black">
+                          +{astralBoardClaimCount + skyCitadelClaimCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
                   {onOpenWave13Treasury && (
                     <button
                       type="button"
@@ -1547,7 +1841,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       title="Thú Cưỡi 3D · Đường Đua Ánh Sao · Hồn Hoàn 3D · Đấu Giá & Hộp Mù"
                     >
                       <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                      <span className="hidden sm:inline">Thú Cưỡi &amp; Hồn Hoàn</span>
+                      <span className="hidden lg:inline">Thú Cưỡi &amp; Hồn Hoàn</span>
                       {starlightRaceClaimCount > 0 && (
                         <span className="px-1.5 py-0.5 rounded bg-slate-950 text-emerald-300 font-mono-nums text-[9px] font-black">
                           +{starlightRaceClaimCount}
@@ -1566,7 +1860,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       title="Thần Binh Thức Tỉnh 3D · Vòng Quay Kho Báu · Tế Đàn & Cờ Hiệu 3D"
                     >
                       <Sword className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                      <span className="hidden md:inline">Thần Binh &amp; Cờ 3D</span>
+                      <span className="hidden xl:inline">Thần Binh &amp; Cờ 3D</span>
                     </button>
                   )}
 
@@ -2146,6 +2440,82 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         </>
                       )}
 
+                      {onOpenWave14Ascension && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave14Ascension('wings');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-sky-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-sky-200 truncate">
+                              <Feather className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                              <span className="truncate">Cánh Thần 3D</span>
+                            </span>
+                            {skyCitadelClaimCount > 0 && (
+                              <span className="px-1 py-0.5 rounded bg-emerald-400 text-slate-950 text-[9px] font-black font-mono-nums">
+                                +{skyCitadelClaimCount}
+                              </span>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave14Ascension('board');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                              <Dice5 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                              <span className="truncate">Bàn Cờ Tinh Tú</span>
+                            </span>
+                            {astralBoardClaimCount > 0 && (
+                              <span className="px-1 py-0.5 rounded bg-emerald-400 text-slate-950 text-[9px] font-black font-mono-nums">
+                                +{astralBoardClaimCount}
+                              </span>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFeatureDockOpen(false);
+                              onOpenWave14Ascension('relics');
+                            }}
+                            className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-violet-300 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-violet-200 truncate">
+                              <Crown className="w-3.5 h-3.5 text-violet-300 shrink-0" />
+                              <span className="truncate">Cổ Vật &amp; Danh Hiệu</span>
+                            </span>
+                          </button>
+                        </>
+                      )}
+
+                      {onOpenWave14EventCenter && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFeatureDockOpen(false);
+                            onOpenWave14EventCenter();
+                          }}
+                          className="cel-panel px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-1.5 hover:border-amber-300 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 truncate">
+                            <Megaphone className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                            <span className="truncate">Sự Kiện Live</span>
+                          </span>
+                        </button>
+                      )}
+
                       {onOpenWave13Carnival && (
                         <button
                           type="button"
@@ -2697,6 +3067,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   >
                     <Flame className="w-3 h-3 shrink-0" />
                     <span>Rồng Cổ 3D</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterPickerOpen(false);
+                      onGameModeChange('sky_citadel');
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] sm:text-[11px] font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+                      gameMode === 'sky_citadel'
+                        ? 'bg-gradient-to-b from-sky-200 via-cyan-300 to-amber-300 text-slate-950 shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Feather className="w-3 h-3 shrink-0" />
+                    <span>Không Chiến 3D</span>
                   </button>
                 </div>
 
@@ -4029,6 +4414,115 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                             : 'Đã Hết Lượt Hôm Nay'}
                         </span>
                         {dragonLairState.dailyRunsRemaining > 0 && (
+                          <ChevronRight className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                  </>
+                ) : gameMode === 'sky_citadel' ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-14 rounded-xl overflow-hidden border border-sky-400/80 bg-[#07152a] shrink-0">
+                        {!skyCitadelImgFailed ? (
+                          <img
+                            src={celestialWingsArenaArt}
+                            alt="Không Chiến Tinh Giới 3D"
+                            referrerPolicy="no-referrer"
+                            onError={() => setSkyCitadelImgFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Feather className="w-6 h-6 text-sky-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h2 className="font-display text-sm sm:text-base font-black text-sky-200 truncate">
+                            Không Chiến Tinh Giới 3D · 3 Đợt Thần Cánh (75s)
+                          </h2>
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            {skyCitadelState.dailyRunsRemaining}/{SKY_CITADEL_MAX_DAILY_RUNS} lượt
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5 line-clamp-1">
+                          Tung Cánh Thần Quang 3D hạ Thiên Sứ Thủ Vệ, săn Lông Vũ Thần Quang, Mảnh Thần Thoại &amp; Xúc Xắc Tinh Tú!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums border-y border-sky-400/25 py-1.5 px-1">
+                      <span className="text-amber-300 font-bold">
+                        Kỷ lục: {skyCitadelState.bestScore.toLocaleString('vi-VN')} đ · Tổng:{' '}
+                        {skyCitadelState.totalScore.toLocaleString('vi-VN')} đ
+                      </span>
+                      <span className="text-sky-300 font-bold">
+                        Lông Vũ Thần Quang: {save.celestialFeathers ?? 0} · Xúc Xắc: {astralBoardState.normalDice}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {SKY_CITADEL_MILESTONES.map((ms) => {
+                        const met = skyCitadelState.totalScore >= ms.scoreTarget;
+                        const claimed = skyCitadelState.claimedMilestones.includes(ms.scoreTarget);
+                        return (
+                          <button
+                            key={ms.scoreTarget}
+                            type="button"
+                            disabled={!met || claimed}
+                            onClick={() => {
+                              soundEngine.playVictory();
+                              onClaimSkyCitadelMilestone?.(ms.scoreTarget);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-mono-nums font-black border cursor-pointer whitespace-nowrap ${
+                              claimed
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : met
+                                ? 'a2-yellow-btn'
+                                : 'bg-[#070b1a] border-slate-800 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {claimed
+                              ? `✓ ${ms.scoreTarget.toLocaleString('vi-VN')}đ`
+                              : met
+                              ? `Nhận ${ms.scoreTarget.toLocaleString('vi-VN')}đ (+${ms.rewardFeathers} Lông)`
+                              : `${ms.scoreTarget.toLocaleString('vi-VN')}đ (+${ms.rewardMythicShards} Mảnh)`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onOpenWave14Ascension?.('wings');
+                        }}
+                        className="a2-slate-btn px-3.5 py-3 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        <Feather className="w-4 h-4 text-sky-300 shrink-0" />
+                        <span>Nâng Cánh 3D</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-start="true"
+                        disabled={skyCitadelState.dailyRunsRemaining <= 0}
+                        onClick={onStartSkyCitadel}
+                        className={`flex-1 py-3 px-5 rounded-xl font-display font-black text-sm sm:text-base tracking-wider flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                          skyCitadelState.dailyRunsRemaining > 0
+                            ? 'a2-yellow-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span>
+                          {skyCitadelState.dailyRunsRemaining > 0
+                            ? 'KHAI CHIẾN KHÔNG CHIẾN 3D'
+                            : 'Đã Hết Lượt Hôm Nay'}
+                        </span>
+                        {skyCitadelState.dailyRunsRemaining > 0 && (
                           <ChevronRight className="w-5 h-5" />
                         )}
                       </button>

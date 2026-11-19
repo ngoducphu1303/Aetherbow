@@ -891,7 +891,8 @@ export interface RunHistoryEntry {
     | 'pantheon_expedition'
     | 'championship_3round'
     | 'crystal_vault'
-    | 'dragon_lair';
+    | 'dragon_lair'
+    | 'sky_citadel';
   label: string;
   stageReached: number;
   kills: number;
@@ -1038,6 +1039,19 @@ export interface SaveData {
   equippedVipFrameId?: VipAvatarFrameId | null;
   carnival7Day?: Carnival7DayState;
   evolvingFirstTopUp?: EvolvingFirstTopUpState;
+  // Wave 14 fields
+  celestialFeathers?: number;
+  unlockedCelestialWings?: CelestialWingId[];
+  celestialWingStars?: Partial<Record<CelestialWingId, number>>;
+  equippedCelestialWingId?: CelestialWingId | null;
+  skyCitadel?: SkyCitadelState;
+  astralBoard?: AstralBoardState;
+  zodiacRelics?: ZodiacRelicState;
+  guildSanctuary?: GuildSanctuaryState;
+  mythicShardShop?: MythicShardShopState;
+  sanctuaryFloorTheme?: SanctuaryFloorId;
+  unlockedRoyal3DTitles?: Royal3DTitleId[];
+  equippedRoyal3DTitleId?: Royal3DTitleId | null;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm';
@@ -1335,6 +1349,7 @@ export interface HudRadarSnapshot {
   playerYaw: number;
   portalOpen: boolean;
   enemies: Array<{ x: number; z: number; isBoss: boolean; isElite: boolean }>;
+  drops?: Array<{ x: number; z: number; kind: 'gold' | 'gem' | 'heal' }>;
 }
 
 export interface HudSnapshot {
@@ -1436,6 +1451,14 @@ export interface HudSnapshot {
   dragonBreathWarning?: boolean;
   dragonScalesLooted?: number;
   dragonDamageDealt?: number;
+  isSkyCitadelMode?: boolean;
+  skyCitadelTimeLeft?: number;
+  skyCitadelWave?: number;
+  skyCitadelScore?: number;
+  skyCitadelFeathersLooted?: number;
+  bossWarningTitle?: string | null;
+  bossWarningSubtitle?: string | null;
+  bossWarningTimer?: number;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;
@@ -2169,6 +2192,211 @@ export interface TopPlayerBuildProfile {
   soulRingTotalLv: number;
   signatureQuote: string;
 }
+
+// ============================================================================
+// WAVE 14 TYPES: CELESTIAL WINGS 3D & SKY CITADEL ARENA, GUILD 3D SANCTUARY,
+// SEASON IV MYTHIC SHARD EXCHANGE, ASTRAL DICE BOARD & ZODIAC RELICS,
+// 3D SANCTUARY FLOORS & ROYAL 3D FLOATING TITLES
+// ============================================================================
+
+export type CelestialWingId =
+  | 'seraph_azure'
+  | 'phoenix_solar'
+  | 'nebula_void'
+  | 'sovereign_aurora';
+
+export interface CelestialWingDef {
+  id: CelestialWingId;
+  name: string;
+  badge: string;
+  rarity: 'Sử Thi' | 'Huyền Thoại' | 'Thần Thoại' | 'Chí Tôn';
+  desc: string;
+  featherHex: number;
+  tipHex: number;
+  frameHex: number;
+  emissiveHex: number;
+  baseAtkPct: number;
+  baseHpPct: number;
+  baseAspd: number;
+  baseCrit: number;
+  atkPctPerStar: number;
+  hpPctPerStar: number;
+  unlockFeathers: number;
+  unlockGems: number;
+}
+
+export interface SkyCitadelMilestone {
+  scoreTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardFeathers: number;
+  rewardMythicShards: number;
+  rewardDice: number;
+}
+
+export interface SkyCitadelState {
+  date: string;
+  dailyRunsRemaining: number;
+  bestScore: number;
+  totalScore: number;
+  totalClears: number;
+  claimedMilestones: number[];
+}
+
+export interface AstralBoardTileDef {
+  index: number; // 0..15
+  label: string;
+  shortLabel: string;
+  kind: 'start' | 'gems' | 'feathers' | 'mythic_shards' | 'relic_essence' | 'gold' | 'double_next' | 'jackpot';
+  amount: number;
+  accentClass: string;
+}
+
+export interface AstralBoardLapMilestone {
+  lapsTarget: number;
+  title: string;
+  rewardGems: number;
+  rewardMythicShards: number;
+  rewardFeathers: number;
+  rewardGoldenDice: number;
+}
+
+export interface AstralBoardState {
+  date: string;
+  position: number; // 0..15
+  lapsCompleted: number;
+  normalDice: number;
+  goldenDice: number;
+  doubleNext: boolean;
+  totalRolls: number;
+  dailyFreeClaimed: boolean;
+  claimedLapMilestones: number[];
+  lastLog: string;
+}
+
+export type ZodiacRelicId =
+  | 'relic_aries_horn'
+  | 'relic_leo_suncrest'
+  | 'relic_libra_scale'
+  | 'relic_scorpio_sting'
+  | 'relic_sagittarius_bow'
+  | 'relic_aquarius_chalice';
+
+export interface ZodiacRelicDef {
+  id: ZodiacRelicId;
+  name: string;
+  zodiacLabel: string;
+  rarity: 'Sử Thi' | 'Huyền Thoại' | 'Thần Thoại';
+  desc: string;
+  accentHex: string;
+  baseAtkPct: number;
+  baseHpPct: number;
+  baseCrit: number;
+  baseBossDmg: number;
+  baseGoldPct: number;
+  atkPctPerLv: number;
+  hpPctPerLv: number;
+  unlockEssence: number;
+}
+
+export interface ZodiacRelicState {
+  essence: number;
+  levels: Partial<Record<ZodiacRelicId, number>>; // 0 = locked, 1..5 = stars
+}
+
+export type GuildMonumentId = 'citadel_hall' | 'astral_forge' | 'star_spire' | 'guild_vault';
+
+export interface GuildMonumentDef {
+  id: GuildMonumentId;
+  name: string;
+  subtitle: string;
+  maxLevel: number;
+  atkPctPerLv: number;
+  hpPctPerLv: number;
+  bossDmgPerLv: number;
+  goldPctPerLv: number;
+  baseGuildCoins: number;
+}
+
+export interface GuildDailyBossChest {
+  id: string;
+  damageTarget: number;
+  title: string;
+  rewardGuildCoins: number;
+  rewardGems: number;
+  rewardMythicShards: number;
+  rewardFeathers: number;
+}
+
+export interface GuildSanctuaryState {
+  date: string;
+  monumentLevels: Record<GuildMonumentId, number>;
+  dailyBossDamage: number;
+  claimedDailyBossChestIds: string[];
+  dailySanctuaryBlessingClaimed: boolean;
+}
+
+export interface MythicShardOfferDef {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  costShards: number;
+  maxPurchases: number;
+  rewardKind:
+    | 'celestial_wing'
+    | 'zodiac_relic_essence'
+    | 'royal_title'
+    | 'golden_dice'
+    | 's_tier_chest'
+    | 'celestial_feathers';
+  amount: number;
+  targetWingId?: CelestialWingId;
+  targetTitleId?: Royal3DTitleId;
+}
+
+export interface MythicShardShopState {
+  purchasedCounts: Record<string, number>;
+}
+
+export type SanctuaryFloorId =
+  | 'marble_gold'
+  | 'star_glass'
+  | 'magma_dragon'
+  | 'frost_sanctum';
+
+export interface SanctuaryFloorDef {
+  id: SanctuaryFloorId;
+  name: string;
+  shortDesc: string;
+  swatchClass: string;
+  floorHex: number;
+  ringHex: number;
+  pillarGlowHex: number;
+  roughness: number;
+  metalness: number;
+}
+
+export type Royal3DTitleId =
+  | 'title_sky_sovereign'
+  | 'title_star_emperor'
+  | 'title_guild_marshal'
+  | 'title_zodiac_oracle'
+  | 'title_aurora_seraph';
+
+export interface Royal3DTitleDef {
+  id: Royal3DTitleId;
+  label: string;
+  subLabel: string;
+  gradientClass: string;
+  borderClass: string;
+  atkBonus: number;
+  hpBonus: number;
+  critBonus: number;
+  unlockMethodLabel: string;
+  unlockGems: number;
+}
+
 
 
 

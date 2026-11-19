@@ -36,6 +36,13 @@ import {
   countClaimableDragonLairMilestones,
   countClaimableStarlightMilestones,
 } from './wave13Data';
+import {
+  computeGuildSanctuaryBonuses,
+  computeZodiacRelicBonuses,
+  countClaimableAstralBoardRewards,
+  countClaimableGuildSanctuaryRewards,
+  countClaimableSkyCitadelMilestones,
+} from './wave14Data';
 
 // ============================================================================
 // 1. MYTHIC WEAPON TRANSCENDENCE 3D & GOLDEN STAT REFORGE (THẦN BINH 3D)
@@ -678,18 +685,34 @@ export function analyzeCombatPower(save: SaveData, totalPower: number): CombatPo
   const mountLv = save.equippedMountId ? save.mountLevels?.[save.equippedMountId] ?? 1 : 0;
   const haloLv = save.equippedHaloId ? save.haloLevels?.[save.equippedHaloId] ?? 1 : 0;
   const steedStar = save.equippedAstralSteedId ? save.astralSteedStars?.[save.equippedAstralSteedId] ?? 1 : 0;
+  const celWingStar = save.equippedCelestialWingId
+    ? save.celestialWingStars?.[save.equippedCelestialWingId] ?? 1
+    : 0;
   const cosmeticScore = Math.max(
     45,
-    wingLv * 90 + mountLv * 95 + haloLv * 120 + steedStar * 150 + (save.equippedArtifactId ? 150 : 0)
+    wingLv * 90 +
+      mountLv * 95 +
+      haloLv * 120 +
+      steedStar * 150 +
+      celWingStar * 170 +
+      (save.equippedArtifactId ? 150 : 0)
   );
 
   const altar = computeAltarBonuses(save.blessingAltar);
   const soulRings = computeSoulRingBonuses(save.soulRings);
+  const guildSanct = computeGuildSanctuaryBonuses(save.guildSanctuary);
   const bannerLv = save.equippedWarBannerId ? save.warBannerLevels?.[save.equippedWarBannerId] ?? 1 : 0;
-  const altarBannerScore = Math.max(35, altar.totalLevel * 55 + bannerLv * 140 + soulRings.totalLevel * 65);
+  const altarBannerScore = Math.max(
+    35,
+    altar.totalLevel * 55 + bannerLv * 140 + soulRings.totalLevel * 65 + guildSanct.totalLevel * 48
+  );
 
   const codex = computeCodexSummary(save);
-  const codexScore = Math.max(50, codex.totalPoints * 1.4 + codex.currentRank.rank * 95);
+  const relics = computeZodiacRelicBonuses(save.zodiacRelics);
+  const codexScore = Math.max(
+    50,
+    codex.totalPoints * 1.4 + codex.currentRank.rank * 95 + relics.totalStars * 95
+  );
 
   const rawItems: Array<Omit<CombatPowerCategoryItem, 'sharePct' | 'statusLabel'>> = [
     {
@@ -922,6 +945,36 @@ export function previewLobbyClaimAll(save: SaveData): ClaimAllPreview {
       label: 'Mốc Lãnh Địa Rồng Cổ 3D',
       detail: `${dragonCount} mốc Vảy Rồng Cổ chưa nhận`,
       count: dragonCount,
+    });
+  }
+
+  const skyCitadelCount = countClaimableSkyCitadelMilestones(save);
+  if (skyCitadelCount > 0) {
+    sources.push({
+      id: 'sky_citadel',
+      label: 'Mốc Không Chiến Tinh Giới 3D',
+      detail: `${skyCitadelCount} mốc Lông Vũ & Mảnh Thần sẵn sàng`,
+      count: skyCitadelCount,
+    });
+  }
+
+  const astralBoardCount = countClaimableAstralBoardRewards(save);
+  if (astralBoardCount > 0) {
+    sources.push({
+      id: 'astral_board',
+      label: 'Bàn Cờ Xúc Xắc Tinh Tú',
+      detail: `${astralBoardCount} quà Xúc Xắc ngày & mốc hoàn vòng`,
+      count: astralBoardCount,
+    });
+  }
+
+  const guildSanctuaryCount = countClaimableGuildSanctuaryRewards(save);
+  if (guildSanctuaryCount > 0) {
+    sources.push({
+      id: 'guild_sanctuary',
+      label: 'Lãnh Địa & Boss Bang Hội 3D',
+      detail: `${guildSanctuaryCount} rương Boss ngày & chúc phúc Lãnh Địa`,
+      count: guildSanctuaryCount,
     });
   }
 

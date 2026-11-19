@@ -871,6 +871,48 @@
   pointer-events: none;
 }
 
+@keyframes w14MarqueeScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes w14BossCutIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes w14TitleFloat {
+  0%, 100% { transform: translate(-50%, -100%) translateY(0px); }
+  50% { transform: translate(-50%, -100%) translateY(-4px); }
+}
+
+.w14-marquee-track {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  animation: w14MarqueeScroll 32s linear infinite;
+  will-change: transform;
+}
+
+.w14-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+.w14-boss-warning-cutin {
+  animation: w14BossCutIn 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.w14-title-float {
+  animation: w14TitleFloat 3.2s ease-in-out infinite;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .a2-title-shimmer-gold,
   .a2-title-shimmer-crimson,
@@ -881,7 +923,10 @@
   .w13-vip-frame-nebula::before,
   .w13-vip-frame-diamond::before,
   .w13-vip-frame-dragon::before,
-  .w13-skill-ready-glow::after {
+  .w13-skill-ready-glow::after,
+  .w14-marquee-track,
+  .w14-boss-warning-cutin,
+  .w14-title-float {
     animation: none;
   }
   .a2-flip-card {

@@ -42,6 +42,8 @@ import { WardrobeModal } from './components/WardrobeModal';
 import { Wave12SanctumModal, Wave12SanctumTab } from './components/Wave12SanctumModal';
 import { Wave13CarnivalModal } from './components/Wave13CarnivalModal';
 import { Wave13Tab, Wave13TreasuryModal } from './components/Wave13TreasuryModal';
+import { Wave14AscensionModal, Wave14Tab } from './components/Wave14AscensionModal';
+import { LiveEventActionTarget, Wave14EventCenterModal } from './components/Wave14EventCenterModal';
 import { ZodiacGuildModal } from './components/ZodiacGuildModal';
 import { CHAPTERS } from './data/chaptersData';
 import {
@@ -298,6 +300,30 @@ import {
   resolveBlindBoxOpen,
   simulateStarlightSprint,
 } from './data/wave13Data';
+import {
+  ASTRAL_BOARD_LAP_MILESTONES,
+  ASTRAL_DICE_BUY_COST_GEMS,
+  ASTRAL_GOLDEN_DICE_COST_GEMS,
+  CELESTIAL_WING_MAP,
+  CELESTIAL_WING_MAX_STAR,
+  GUILD_DAILY_BOSS_CHESTS,
+  GUILD_MONUMENT_DEFS,
+  MYTHIC_SHARD_OFFERS,
+  ROYAL_3D_TITLE_MAP,
+  SANCTUARY_FLOOR_MAP,
+  SKY_CITADEL_MILESTONES,
+  ZODIAC_RELIC_DEFS,
+  ZODIAC_RELIC_MAX_STAR,
+  getCelestialWingUpgradeCost,
+  getGuildMonumentUpgradeCost,
+  getZodiacRelicUpgradeCost,
+  normalizeAstralBoard,
+  normalizeGuildSanctuary,
+  normalizeMythicShardShop,
+  normalizeSkyCitadel,
+  normalizeZodiacRelics,
+  resolveAstralBoardRoll,
+} from './data/wave14Data';
 import { GameEngine } from './engine/GameEngine';
 import { HeroVisualConfig } from './engine/models';
 import {
@@ -310,6 +336,7 @@ import {
   AuraStyleId,
   AvatarFrameId,
   BundlePreviewPayload,
+  CelestialWingId,
   ChampionshipTacticId,
   CombatPowerCategoryItem,
   ConstellationId,
@@ -326,6 +353,7 @@ import {
   GameSettings,
   GearInstance,
   GearSlot,
+  GuildMonumentId,
   GuildTechId,
   HaloId,
   HeroId,
@@ -344,6 +372,8 @@ import {
   NightMarketOffer,
   PantheonBlessingId,
   PetId,
+  Royal3DTitleId,
+  SanctuaryFloorId,
   SoulRingSlotId,
   TopPlayerBuildProfile,
   VipAvatarFrameId,
@@ -358,6 +388,7 @@ import {
   TalentId,
   TreasureWheelSlotDef,
   WarBannerId,
+  ZodiacRelicId,
   WardrobePreviewOverrides,
   WeaponAuraId,
   WheelOutcome,
@@ -529,12 +560,20 @@ export default function App() {
     isChampionshipMode?: boolean;
     isCrystalVaultMode?: boolean;
     isDragonLairMode?: boolean;
+    isSkyCitadelMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
   const [wave12SanctumTab, setWave12SanctumTab] = useState<Wave12SanctumTab | null>(null);
   const [wave13TreasuryTab, setWave13TreasuryTab] = useState<Wave13Tab | null>(null);
   const [wave13CarnivalOpen, setWave13CarnivalOpen] = useState<boolean>(false);
+  const [wave14AscensionTab, setWave14AscensionTab] = useState<Wave14Tab | null>(null);
+  const [wave14EventCenterOpen, setWave14EventCenterOpen] = useState<boolean>(false);
+  const [lobbyHeadPos, setLobbyHeadPos] = useState<{ x: number; y: number; visible: boolean }>({
+    x: 0,
+    y: 0,
+    visible: false,
+  });
   const [cpBreakdownOpen, setCpBreakdownOpen] = useState<boolean>(false);
   const [claimAllModalOpen, setClaimAllModalOpen] = useState<boolean>(false);
   const [photoMode, setPhotoMode] = useState<boolean>(false);
@@ -657,6 +696,11 @@ export default function App() {
     dragonDamageDealt?: number;
     dragonScalesLooted?: number;
     dragonPhase?: number;
+    isSkyCitadelMode?: boolean;
+    skyCitadelWave?: number;
+    skyCitadelScore?: number;
+    celestialFeathers?: number;
+    mythicShards?: number;
     warCrests?: number;
     maxCombo?: number;
     damageBreakdown?: DamageBreakdown;
@@ -758,6 +802,14 @@ export default function App() {
       ? Math.max(1, save.astralSteedStars?.[effectiveAstralSteedId] ?? 1)
       : 1;
     const soulRingLevels = normalizeSoulRings(save.soulRings).levels;
+    const effectiveCelestialWingId: CelestialWingId | null =
+      save.equippedCelestialWingId &&
+      (save.unlockedCelestialWings ?? []).includes(save.equippedCelestialWingId)
+        ? save.equippedCelestialWingId
+        : null;
+    const celestialWingStar = effectiveCelestialWingId
+      ? Math.max(1, save.celestialWingStars?.[effectiveCelestialWingId] ?? 1)
+      : 1;
 
     return {
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
@@ -787,6 +839,8 @@ export default function App() {
       astralSteedId: effectiveAstralSteedId,
       astralSteedStar,
       soulRingLevels,
+      celestialWingId: effectiveCelestialWingId,
+      celestialWingStar,
     };
   }, [
     save,
@@ -818,6 +872,8 @@ export default function App() {
       setWave12SanctumTab(null);
       setWave13TreasuryTab(null);
       setWave13CarnivalOpen(false);
+      setWave14AscensionTab(null);
+      setWave14EventCenterOpen(false);
       setCpBreakdownOpen(false);
       setClaimAllModalOpen(false);
       setPhotoMode(false);
@@ -1105,6 +1161,13 @@ export default function App() {
           const dragonDamageDealt = summary.dragonDamageDealt ?? 0;
           const dragonScalesLooted = summary.dragonScalesLooted ?? 0;
           const dragonPhase = summary.dragonPhase ?? 1;
+          const isSkyCitadel = Boolean(summary.isSkyCitadelMode);
+          const skyCitadelScore = summary.skyCitadelScore ?? 0;
+          const skyCitadelWave = summary.skyCitadelWave ?? 1;
+          const celestialFeathersLooted = summary.celestialFeathers ?? 0;
+          const skyCitadelMythicShards = isSkyCitadel
+            ? Math.max(2, Math.floor(skyCitadelScore / 1100) + (victory ? 4 : 0))
+            : 0;
           const warCrestsGain = summary.warCrests ?? (isCrystalVault ? 4 + Math.floor(vaultPillarsBroken / 2) : 0);
           const opp = activeArenaOpponentRef.current;
           const towerFloor = summary.towerFloor ?? 0;
@@ -1292,6 +1355,11 @@ export default function App() {
             dragonDamageDealt: isDragonLair ? dragonDamageDealt : undefined,
             dragonScalesLooted: isDragonLair ? dragonScalesLooted : undefined,
             dragonPhase: isDragonLair ? dragonPhase : undefined,
+            isSkyCitadelMode: isSkyCitadel || undefined,
+            skyCitadelWave: isSkyCitadel ? skyCitadelWave : undefined,
+            skyCitadelScore: isSkyCitadel ? skyCitadelScore : undefined,
+            celestialFeathers: isSkyCitadel ? celestialFeathersLooted : undefined,
+            mythicShards: isSkyCitadel ? skyCitadelMythicShards : undefined,
             warCrests: warCrestsGain > 0 ? warCrestsGain : undefined,
             guildCoins: isGuildWar ? guildWarCoinsGain : undefined,
             worldBossLiveRank: isWorldBoss ? worldBossLiveRank : undefined,
@@ -1322,7 +1390,9 @@ export default function App() {
 
             const historyEntry: RunHistoryEntry = {
               id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-              mode: isDragonLair
+              mode: isSkyCitadel
+                ? 'sky_citadel'
+                : isDragonLair
                 ? 'dragon_lair'
                 : isCrystalVault
                 ? 'crystal_vault'
@@ -1355,7 +1425,9 @@ export default function App() {
                 : isTower
                 ? 'tower'
                 : 'chapter',
-              label: isDragonLair
+              label: isSkyCitadel
+                ? `Không Chiến Tinh Giới 3D · Đợt ${skyCitadelWave}/3 (${skyCitadelScore.toLocaleString('vi-VN')}đ)`
+                : isDragonLair
                 ? `Lãnh Địa Rồng Cổ 3D · Pha ${dragonPhase}/3 (+${dragonScalesLooted} Vảy)`
                 : isCrystalVault
                 ? `Hầm Mỏ Pha Lê 3D · ${vaultPillarsBroken} Trụ`
@@ -1390,6 +1462,8 @@ export default function App() {
                 : `Chương ${summary.chapterId} · ${chName}`,
               stageReached: isArena || isGuildBoss || isWorldBoss
                 ? 1
+                : isSkyCitadel
+                ? skyCitadelWave
                 : isDragonLair
                 ? dragonPhase
                 : isCrystalVault
@@ -1422,6 +1496,43 @@ export default function App() {
               timestamp: Date.now(),
             };
             const nextHistory = [historyEntry, ...(prev.runHistory ?? [])].slice(0, 15);
+
+            if (isSkyCitadel) {
+              const sc = normalizeSkyCitadel(prev.skyCitadel);
+              const ab = normalizeAstralBoard(prev.astralBoard);
+              const nextHonor =
+                victory || skyCitadelScore >= 1800
+                  ? appendHonorEntry(
+                      prev.honorFeed,
+                      'KHÔNG CHIẾN TINH GIỚI 3D',
+                      `vừa đạt ${skyCitadelScore.toLocaleString('vi-VN')} điểm Không Chiến (+${celestialFeathersLooted} Lông Vũ Thần Quang)!`,
+                      'gold'
+                    )
+                  : prev.honorFeed;
+              return {
+                ...prev,
+                gold: prev.gold + totalGold,
+                gems: prev.gems + totalGems,
+                celestialFeathers: (prev.celestialFeathers ?? 0) + celestialFeathersLooted,
+                mythicShards: (prev.mythicShards ?? 0) + skyCitadelMythicShards,
+                astralBoard: {
+                  ...ab,
+                  normalDice: ab.normalDice + 1,
+                },
+                festivalState: nextFest,
+                skyCitadel: {
+                  ...sc,
+                  bestScore: Math.max(sc.bestScore, skyCitadelScore),
+                  totalScore: sc.totalScore + skyCitadelScore,
+                  totalClears: sc.totalClears + (victory ? 1 : 0),
+                },
+                honorFeed: nextHonor,
+                gemRebateVault: nextGemVault,
+                battlePass: nextBp,
+                career: nextCareer,
+                runHistory: nextHistory,
+              };
+            }
 
             if (isDragonLair) {
               const dl = normalizeDragonLair(prev.dragonLair);
@@ -1765,6 +1876,7 @@ export default function App() {
 
             if (isGuildBoss) {
               const g = normalizeGuild(prev.guild);
+              const gs = normalizeGuildSanctuary(prev.guildSanctuary);
               return {
                 ...prev,
                 gold: prev.gold + totalGold,
@@ -1776,6 +1888,10 @@ export default function App() {
                   guildCoins: g.guildCoins + guildCoinGain,
                   bestGuildBossDamage: Math.max(g.bestGuildBossDamage, guildBossDamage),
                   totalGuildBossDamage: g.totalGuildBossDamage + guildBossDamage,
+                },
+                guildSanctuary: {
+                  ...gs,
+                  dailyBossDamage: gs.dailyBossDamage + guildBossDamage,
                 },
                 battlePass: nextBp,
                 career: nextCareer,
@@ -1878,6 +1994,15 @@ export default function App() {
             };
           });
         },
+        onLobbyHeadPos: (pos) => {
+          setLobbyHeadPos((prev) =>
+            prev.visible === pos.visible &&
+            Math.abs(prev.x - pos.x) < 1 &&
+            Math.abs(prev.y - pos.y) < 1
+              ? prev
+              : pos
+          );
+        },
       },
       playerStats,
       heroVisualCfg
@@ -1913,6 +2038,11 @@ export default function App() {
   useEffect(() => {
     engineRef.current?.setLobbyWeather(save.lobbyWeather ?? 'meteor_shower');
   }, [save.lobbyWeather]);
+
+  // Sync Wave 14 Real-Time 3D Sanctuary Floor Theme
+  useEffect(() => {
+    engineRef.current?.setSanctuaryFloorTheme(save.sanctuaryFloorTheme ?? 'marble_gold');
+  }, [save.sanctuaryFloorTheme]);
 
   // Sync 3D camera lobby framing with active lobby tab
   useEffect(() => {
@@ -3288,6 +3418,104 @@ export default function App() {
         next.soulRings = { ...srForDl, spiritJades: nextJadesForDl };
       }
 
+      // 15. Wave 14: Sky Citadel Milestones
+      const sc = normalizeSkyCitadel(next.skyCitadel);
+      const nextScMs = [...sc.claimedMilestones];
+      const abForSc = normalizeAstralBoard(next.astralBoard);
+      let scDiceGain = 0;
+      let scChanged = false;
+      for (const ms of SKY_CITADEL_MILESTONES) {
+        if (sc.totalScore >= ms.scoreTarget && !nextScMs.includes(ms.scoreTarget)) {
+          nextScMs.push(ms.scoreTarget);
+          next.gems += ms.rewardGems;
+          next.celestialFeathers = (next.celestialFeathers ?? 0) + ms.rewardFeathers;
+          next.mythicShards = (next.mythicShards ?? 0) + ms.rewardMythicShards;
+          scDiceGain += ms.rewardDice;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+          scChanged = true;
+        }
+      }
+      if (scChanged) {
+        next.skyCitadel = { ...sc, claimedMilestones: nextScMs };
+        next.astralBoard = { ...abForSc, normalDice: abForSc.normalDice + scDiceGain };
+      }
+
+      // 16. Wave 14: Astral Dice Board Free Dice & Lap Milestones
+      const ab = normalizeAstralBoard(next.astralBoard);
+      const nextAbLaps = [...ab.claimedLapMilestones];
+      let abNormalDice = ab.normalDice;
+      let abGoldenDice = ab.goldenDice;
+      let abDailyFree = ab.dailyFreeClaimed;
+      let abChanged = false;
+      if (!abDailyFree) {
+        abDailyFree = true;
+        abNormalDice += 3;
+        abGoldenDice += 1;
+        claimedBundles += 1;
+        abChanged = true;
+      }
+      for (const ms of ASTRAL_BOARD_LAP_MILESTONES) {
+        if (ab.lapsCompleted >= ms.lapsTarget && !nextAbLaps.includes(ms.lapsTarget)) {
+          nextAbLaps.push(ms.lapsTarget);
+          next.gems += ms.rewardGems;
+          next.mythicShards = (next.mythicShards ?? 0) + ms.rewardMythicShards;
+          next.celestialFeathers = (next.celestialFeathers ?? 0) + ms.rewardFeathers;
+          abGoldenDice += ms.rewardGoldenDice;
+          totalGemsGained += ms.rewardGems;
+          claimedBundles += 1;
+          abChanged = true;
+        }
+      }
+      if (abChanged) {
+        next.astralBoard = {
+          ...ab,
+          normalDice: abNormalDice,
+          goldenDice: abGoldenDice,
+          dailyFreeClaimed: abDailyFree,
+          claimedLapMilestones: nextAbLaps,
+        };
+      }
+
+      // 17. Wave 14: Guild 3D Sanctuary Daily Blessing & Daily Boss Chests
+      const gs = normalizeGuildSanctuary(next.guildSanctuary);
+      const guildForGs = normalizeGuild(next.guild);
+      let gsCoinsGain = 0;
+      let gsBlessing = gs.dailySanctuaryBlessingClaimed;
+      const nextGsChests = [...gs.claimedDailyBossChestIds];
+      let gsChanged = false;
+      if (!gsBlessing) {
+        gsBlessing = true;
+        gsCoinsGain += 55;
+        next.gems += 30;
+        totalGemsGained += 30;
+        claimedBundles += 1;
+        gsChanged = true;
+      }
+      for (const chest of GUILD_DAILY_BOSS_CHESTS) {
+        if (gs.dailyBossDamage >= chest.damageTarget && !nextGsChests.includes(chest.id)) {
+          nextGsChests.push(chest.id);
+          gsCoinsGain += chest.rewardGuildCoins;
+          next.gems += chest.rewardGems;
+          next.mythicShards = (next.mythicShards ?? 0) + chest.rewardMythicShards;
+          next.celestialFeathers = (next.celestialFeathers ?? 0) + chest.rewardFeathers;
+          totalGemsGained += chest.rewardGems;
+          claimedBundles += 1;
+          gsChanged = true;
+        }
+      }
+      if (gsChanged) {
+        next.guildSanctuary = {
+          ...gs,
+          dailySanctuaryBlessingClaimed: gsBlessing,
+          claimedDailyBossChestIds: nextGsChests,
+        };
+        next.guild = {
+          ...guildForGs,
+          guildCoins: guildForGs.guildCoins + gsCoinsGain,
+        };
+      }
+
       return next;
     });
 
@@ -3396,6 +3624,512 @@ export default function App() {
     },
     [triggerUpgradeCelebration]
   );
+
+  // =========================================================================
+  // WAVE 14 HANDLERS: Celestial Wings 3D & Sky Citadel, Astral Dice Board 16-Tile,
+  // Zodiac Relics Vault, Guild 3D Sanctuary & Daily Boss Chests, Season IV Mythic
+  // Shard Exchange, 3D Sanctuary Floors & Floating 3D Royal Titles, Event Center
+  // =========================================================================
+
+  const handleStartSkyCitadel = useCallback(() => {
+    const sc = normalizeSkyCitadel(save.skyCitadel);
+    if (sc.dailyRunsRemaining <= 0) return;
+
+    soundEngine.unlock();
+    setSave((prev) => {
+      const cur = normalizeSkyCitadel(prev.skyCitadel);
+      if (cur.dailyRunsRemaining <= 0) return prev;
+      return {
+        ...prev,
+        skyCitadel: { ...cur, dailyRunsRemaining: cur.dailyRunsRemaining - 1 },
+      };
+    });
+
+    setEnteredGame(true);
+    setPhotoMode(false);
+    setWave12SanctumTab(null);
+    setWave13TreasuryTab(null);
+    setWave13CarnivalOpen(false);
+    setWave14AscensionTab(null);
+    setWave14EventCenterOpen(false);
+    setCpBreakdownOpen(false);
+    setClaimAllModalOpen(false);
+    setWardrobeOpen(false);
+    setWardrobePreview({});
+    setDispatchOpen(false);
+    setFestivalModalOpen(false);
+    setBundlePreview(null);
+    setRewardsModalTab(null);
+    setTalentsModalOpen(false);
+    setConstellationModalOpen(false);
+    setMailModalOpen(false);
+    setVipModalOpen(false);
+    setForgeConfig((prev) => ({ ...prev, open: false }));
+    setGuildModalOpen(false);
+    setDestinyWheelOpen(false);
+    setNightMarketOpen(false);
+    setArenaModalOpen(false);
+    setAuctionModalOpen(false);
+    setHonorBoardOpen(false);
+    setGachaReveal(null);
+    setPreviewHeroId(null);
+    setRunSummary(null);
+    setDamages([]);
+    setTransitionState({
+      chapterId: 16,
+      isTowerMode: false,
+      isBossRushMode: false,
+      isSkyCitadelMode: true,
+    });
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current);
+    }
+    transitionTimerRef.current = window.setTimeout(() => {
+      setTransitionState(null);
+    }, 560);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startSkyCitadel(playerStats);
+  }, [save.skyCitadel, playerStats]);
+
+  const handleClaimSkyCitadelMilestone = useCallback(
+    (scoreTarget: number) => {
+      const ms = SKY_CITADEL_MILESTONES.find((m) => m.scoreTarget === scoreTarget);
+      if (!ms) return;
+      let claimedNow = false;
+      setSave((prev) => {
+        const sc = normalizeSkyCitadel(prev.skyCitadel);
+        if (sc.totalScore < ms.scoreTarget || sc.claimedMilestones.includes(ms.scoreTarget)) {
+          return prev;
+        }
+        claimedNow = true;
+        const ab = normalizeAstralBoard(prev.astralBoard);
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          celestialFeathers: (prev.celestialFeathers ?? 0) + ms.rewardFeathers,
+          mythicShards: (prev.mythicShards ?? 0) + ms.rewardMythicShards,
+          astralBoard: { ...ab, normalDice: ab.normalDice + ms.rewardDice },
+          skyCitadel: { ...sc, claimedMilestones: [...sc.claimedMilestones, ms.scoreTarget] },
+        };
+      });
+      if (claimedNow) {
+        triggerUpgradeCelebration(
+          ms.title,
+          `+${ms.rewardGems} Ngọc · +${ms.rewardFeathers} Lông Vũ · +${ms.rewardMythicShards} Mảnh Thần`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUnlockOrUpgradeCelestialWing = useCallback(
+    (wingId: CelestialWingId) => {
+      const def = CELESTIAL_WING_MAP[wingId];
+      if (!def) return;
+      let bannerTitle = '';
+      let bannerDetail = '';
+      setSave((prev) => {
+        const owned = prev.unlockedCelestialWings ?? [];
+        const isOwned = owned.includes(wingId);
+        const feathers = prev.celestialFeathers ?? 0;
+
+        if (!isOwned) {
+          if (feathers < def.unlockFeathers || prev.gems < def.unlockGems) return prev;
+          bannerTitle = `Mở Khóa ${def.name} 3D!`;
+          bannerDetail = 'Đã tự động trang bị lên lưng Anh Hùng 3D!';
+          return {
+            ...prev,
+            celestialFeathers: feathers - def.unlockFeathers,
+            gems: prev.gems - def.unlockGems,
+            unlockedCelestialWings: [...owned, wingId],
+            celestialWingStars: { ...(prev.celestialWingStars ?? {}), [wingId]: 1 },
+            equippedCelestialWingId: wingId,
+            honorFeed: appendHonorEntry(
+              prev.honorFeed,
+              'CÁNH THẦN QUANG 3D',
+              `vừa thức tỉnh thành công ${def.name} (1★) tại Sảnh 3D!`,
+              'gold'
+            ),
+          };
+        }
+
+        const curStar = prev.celestialWingStars?.[wingId] ?? 1;
+        if (curStar >= CELESTIAL_WING_MAX_STAR) return prev;
+        const cost = getCelestialWingUpgradeCost(curStar);
+        if (feathers < cost.feathers || prev.gold < cost.gold) return prev;
+        const nextStar = curStar + 1;
+        bannerTitle = `${def.name} → ${nextStar}★!`;
+        bannerDetail = 'Đôi cánh 3D tỏa sáng mạnh hơn & tăng vĩnh viễn chỉ số Công/Máu!';
+        return {
+          ...prev,
+          celestialFeathers: feathers - cost.feathers,
+          gold: prev.gold - cost.gold,
+          celestialWingStars: { ...(prev.celestialWingStars ?? {}), [wingId]: nextStar },
+        };
+      });
+      if (bannerTitle) {
+        engineRef.current?.triggerRoyalEntranceVfx();
+        triggerUpgradeCelebration(bannerTitle, bannerDetail);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleEquipCelestialWing = useCallback((wingId: CelestialWingId) => {
+    setSave((prev) => {
+      if (!(prev.unlockedCelestialWings ?? []).includes(wingId)) return prev;
+      return { ...prev, equippedCelestialWingId: wingId };
+    });
+    engineRef.current?.triggerRoyalEntranceVfx();
+  }, []);
+
+  const handleClaimDailyFreeDice = useCallback(() => {
+    let claimed = false;
+    setSave((prev) => {
+      const ab = normalizeAstralBoard(prev.astralBoard);
+      if (ab.dailyFreeClaimed) return prev;
+      claimed = true;
+      return {
+        ...prev,
+        astralBoard: {
+          ...ab,
+          normalDice: ab.normalDice + 3,
+          goldenDice: ab.goldenDice + 1,
+          dailyFreeClaimed: true,
+          lastLog: 'Đã nhận quà Xúc Xắc miễn phí hôm nay: +3 Xúc Xắc Thường & +1 Xúc Xắc Vàng!',
+        },
+      };
+    });
+    if (claimed) {
+      triggerUpgradeCelebration('Nhận Xúc Xắc Tinh Tú Hôm Nay!', '+3 Xúc Xắc Thường · +1 Xúc Xắc Vàng Chọn Số');
+    }
+  }, [triggerUpgradeCelebration]);
+
+  const handleRollAstralDice = useCallback(
+    (chosenSteps?: number) => {
+      const isGolden = typeof chosenSteps === 'number' && chosenSteps >= 1 && chosenSteps <= 6;
+      const steps = isGolden ? chosenSteps : 1 + Math.floor(Math.random() * 6);
+      let logBanner = '';
+      setSave((prev) => {
+        const ab = normalizeAstralBoard(prev.astralBoard);
+        if (isGolden && ab.goldenDice <= 0) return prev;
+        if (!isGolden && ab.normalDice <= 0) return prev;
+        const res = resolveAstralBoardRoll(ab, steps);
+        const relics = normalizeZodiacRelics(prev.zodiacRelics);
+        logBanner = res.nextState.lastLog;
+        return {
+          ...prev,
+          gold: prev.gold + res.rewardGold,
+          gems: prev.gems + res.rewardGems,
+          celestialFeathers: (prev.celestialFeathers ?? 0) + res.rewardFeathers,
+          mythicShards: (prev.mythicShards ?? 0) + res.rewardMythicShards,
+          zodiacRelics: {
+            ...relics,
+            essence: relics.essence + res.rewardRelicEssence,
+          },
+          astralBoard: {
+            ...res.nextState,
+            normalDice: isGolden ? ab.normalDice : Math.max(0, ab.normalDice - 1),
+            goldenDice: isGolden ? Math.max(0, ab.goldenDice - 1) : ab.goldenDice,
+          },
+        };
+      });
+      if (logBanner && isGolden) {
+        triggerUpgradeCelebration('Xúc Xắc Vàng Hoàng Đạo!', logBanner);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleBuyAstralDice = useCallback((kind: 'normal' | 'golden') => {
+    const cost = kind === 'golden' ? ASTRAL_GOLDEN_DICE_COST_GEMS : ASTRAL_DICE_BUY_COST_GEMS;
+    setSave((prev) => {
+      if (prev.gems < cost) return prev;
+      const ab = normalizeAstralBoard(prev.astralBoard);
+      return {
+        ...prev,
+        gems: prev.gems - cost,
+        astralBoard: {
+          ...ab,
+          normalDice: kind === 'normal' ? ab.normalDice + 1 : ab.normalDice,
+          goldenDice: kind === 'golden' ? ab.goldenDice + 1 : ab.goldenDice,
+        },
+      };
+    });
+  }, []);
+
+  const handleClaimAstralLapMilestone = useCallback(
+    (lapsTarget: number) => {
+      const ms = ASTRAL_BOARD_LAP_MILESTONES.find((m) => m.lapsTarget === lapsTarget);
+      if (!ms) return;
+      let claimed = false;
+      setSave((prev) => {
+        const ab = normalizeAstralBoard(prev.astralBoard);
+        if (ab.lapsCompleted < ms.lapsTarget || ab.claimedLapMilestones.includes(ms.lapsTarget)) {
+          return prev;
+        }
+        claimed = true;
+        return {
+          ...prev,
+          gems: prev.gems + ms.rewardGems,
+          mythicShards: (prev.mythicShards ?? 0) + ms.rewardMythicShards,
+          celestialFeathers: (prev.celestialFeathers ?? 0) + ms.rewardFeathers,
+          astralBoard: {
+            ...ab,
+            goldenDice: ab.goldenDice + ms.rewardGoldenDice,
+            claimedLapMilestones: [...ab.claimedLapMilestones, ms.lapsTarget],
+          },
+        };
+      });
+      if (claimed) {
+        triggerUpgradeCelebration(
+          ms.title,
+          `+${ms.rewardGems} Ngọc · +${ms.rewardMythicShards} Mảnh Thần · +${ms.rewardGoldenDice} Xúc Xắc Vàng`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUpgradeZodiacRelic = useCallback(
+    (relicId: ZodiacRelicId) => {
+      const def = ZODIAC_RELIC_DEFS.find((r) => r.id === relicId);
+      if (!def) return;
+      let nextLv = 0;
+      setSave((prev) => {
+        const relics = normalizeZodiacRelics(prev.zodiacRelics);
+        const curLv = relics.levels[relicId] ?? 0;
+        if (curLv >= ZODIAC_RELIC_MAX_STAR) return prev;
+        const cost = getZodiacRelicUpgradeCost(curLv, def);
+        if (relics.essence < cost.essence || prev.gold < cost.gold) return prev;
+        nextLv = curLv + 1;
+        return {
+          ...prev,
+          gold: prev.gold - cost.gold,
+          zodiacRelics: {
+            essence: relics.essence - cost.essence,
+            levels: { ...relics.levels, [relicId]: nextLv },
+          },
+        };
+      });
+      if (nextLv > 0) {
+        triggerUpgradeCelebration(
+          `${def.name} (${nextLv}★)!`,
+          'Tăng vĩnh viễn chỉ số toàn đội Anh Hùng!'
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleUnlockOrEquipRoyalTitle = useCallback(
+    (titleId: Royal3DTitleId) => {
+      const def = ROYAL_3D_TITLE_MAP[titleId];
+      if (!def) return;
+      let unlockedNow = false;
+      setSave((prev) => {
+        const owned = prev.unlockedRoyal3DTitles ?? ['title_sky_sovereign'];
+        if (owned.includes(titleId)) {
+          return { ...prev, equippedRoyal3DTitleId: titleId };
+        }
+        if (prev.gems < def.unlockGems) return prev;
+        unlockedNow = true;
+        return {
+          ...prev,
+          gems: prev.gems - def.unlockGems,
+          unlockedRoyal3DTitles: [...owned, titleId],
+          equippedRoyal3DTitleId: titleId,
+        };
+      });
+      engineRef.current?.triggerRoyalEntranceVfx();
+      if (unlockedNow) {
+        triggerUpgradeCelebration(`Danh Hiệu 3D: ${def.label}!`, 'Đã hiển thị trên đầu Anh Hùng tại Sảnh 3D!');
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleSelectSanctuaryFloor = useCallback((floorId: SanctuaryFloorId) => {
+    if (!SANCTUARY_FLOOR_MAP[floorId]) return;
+    setSave((prev) => ({ ...prev, sanctuaryFloorTheme: floorId }));
+  }, []);
+
+  const handleUpgradeGuildMonument = useCallback(
+    (monumentId: GuildMonumentId) => {
+      const def = GUILD_MONUMENT_DEFS.find((m) => m.id === monumentId);
+      if (!def) return;
+      let upgradedLv = 0;
+      setSave((prev) => {
+        const g = normalizeGuild(prev.guild);
+        const gs = normalizeGuildSanctuary(prev.guildSanctuary);
+        const curLv = gs.monumentLevels[monumentId] ?? 0;
+        if (curLv >= def.maxLevel) return prev;
+        const cost = getGuildMonumentUpgradeCost(curLv, def);
+        if (g.guildCoins < cost.guildCoins || prev.gold < cost.gold) return prev;
+        upgradedLv = curLv + 1;
+        return {
+          ...prev,
+          gold: prev.gold - cost.gold,
+          guild: { ...g, guildCoins: g.guildCoins - cost.guildCoins },
+          guildSanctuary: {
+            ...gs,
+            monumentLevels: { ...gs.monumentLevels, [monumentId]: upgradedLv },
+          },
+        };
+      });
+      if (upgradedLv > 0) {
+        triggerUpgradeCelebration(`${def.name} Lv.${upgradedLv}!`, def.subtitle);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimDailySanctuaryBlessing = useCallback(() => {
+    let claimed = false;
+    setSave((prev) => {
+      const gs = normalizeGuildSanctuary(prev.guildSanctuary);
+      if (gs.dailySanctuaryBlessingClaimed) return prev;
+      claimed = true;
+      const g = normalizeGuild(prev.guild);
+      return {
+        ...prev,
+        gems: prev.gems + 30,
+        guild: { ...g, guildCoins: g.guildCoins + 55 },
+        guildSanctuary: { ...gs, dailySanctuaryBlessingClaimed: true },
+      };
+    });
+    if (claimed) {
+      triggerUpgradeCelebration('Lộc Lãnh Địa Bang Hội 3D!', '+55 Xu Bang · +30 Ngọc Hồn');
+    }
+  }, [triggerUpgradeCelebration]);
+
+  const handleClaimDailyGuildBossChest = useCallback(
+    (chestId: string) => {
+      const chest = GUILD_DAILY_BOSS_CHESTS.find((c) => c.id === chestId);
+      if (!chest) return;
+      let claimed = false;
+      setSave((prev) => {
+        const gs = normalizeGuildSanctuary(prev.guildSanctuary);
+        if (
+          gs.dailyBossDamage < chest.damageTarget ||
+          gs.claimedDailyBossChestIds.includes(chest.id)
+        ) {
+          return prev;
+        }
+        claimed = true;
+        const g = normalizeGuild(prev.guild);
+        return {
+          ...prev,
+          gems: prev.gems + chest.rewardGems,
+          mythicShards: (prev.mythicShards ?? 0) + chest.rewardMythicShards,
+          celestialFeathers: (prev.celestialFeathers ?? 0) + chest.rewardFeathers,
+          guild: { ...g, guildCoins: g.guildCoins + chest.rewardGuildCoins },
+          guildSanctuary: {
+            ...gs,
+            claimedDailyBossChestIds: [...gs.claimedDailyBossChestIds, chest.id],
+          },
+        };
+      });
+      if (claimed) {
+        triggerUpgradeCelebration(
+          chest.title,
+          `+${chest.rewardGuildCoins} Xu · +${chest.rewardGems} Ngọc · +${chest.rewardMythicShards} Mảnh Thần`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleRedeemMythicShardOffer = useCallback(
+    (offerId: string) => {
+      const offer = MYTHIC_SHARD_OFFERS.find((o) => o.id === offerId);
+      if (!offer) return;
+      let redeemedTitle = '';
+      setSave((prev) => {
+        const shards = prev.mythicShards ?? 0;
+        const shop = normalizeMythicShardShop(prev.mythicShardShop);
+        const bought = shop.purchasedCounts[offer.id] ?? 0;
+        if (bought >= offer.maxPurchases || shards < offer.costShards) return prev;
+
+        const nextShop = {
+          purchasedCounts: { ...shop.purchasedCounts, [offer.id]: bought + 1 },
+        };
+        let next: SaveData = {
+          ...prev,
+          mythicShards: shards - offer.costShards,
+          mythicShardShop: nextShop,
+        };
+
+        if (offer.rewardKind === 'celestial_wing' && offer.targetWingId) {
+          const owned = prev.unlockedCelestialWings ?? [];
+          if (owned.includes(offer.targetWingId)) return prev;
+          next.unlockedCelestialWings = [...owned, offer.targetWingId];
+          next.celestialWingStars = { ...(prev.celestialWingStars ?? {}), [offer.targetWingId]: 1 };
+          next.equippedCelestialWingId = offer.targetWingId;
+        } else if (offer.rewardKind === 'royal_title' && offer.targetTitleId) {
+          const owned = prev.unlockedRoyal3DTitles ?? ['title_sky_sovereign'];
+          if (owned.includes(offer.targetTitleId)) return prev;
+          next.unlockedRoyal3DTitles = [...owned, offer.targetTitleId];
+          next.equippedRoyal3DTitleId = offer.targetTitleId;
+        } else if (offer.rewardKind === 's_tier_chest') {
+          const rolled = rollChestGear(true, Rarity.EPIC, true);
+          next.inventory = [...prev.inventory, rolled];
+        } else if (offer.rewardKind === 'zodiac_relic_essence') {
+          const relics = normalizeZodiacRelics(prev.zodiacRelics);
+          next.zodiacRelics = { ...relics, essence: relics.essence + offer.amount };
+        } else if (offer.rewardKind === 'celestial_feathers') {
+          next.celestialFeathers = (prev.celestialFeathers ?? 0) + offer.amount;
+        } else if (offer.rewardKind === 'golden_dice') {
+          const ab = normalizeAstralBoard(prev.astralBoard);
+          next.astralBoard = { ...ab, goldenDice: ab.goldenDice + offer.amount };
+        }
+
+        redeemedTitle = offer.title;
+        return next;
+      });
+      if (redeemedTitle) {
+        engineRef.current?.triggerRoyalEntranceVfx();
+        triggerUpgradeCelebration('Đổi Mảnh Thần Thoại Thành Công!', redeemedTitle);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleNavigateFromEventCenter = useCallback((target: LiveEventActionTarget) => {
+    setWave14EventCenterOpen(false);
+    switch (target) {
+      case 'wave14_wings':
+        setWave14AscensionTab('wings');
+        break;
+      case 'wave14_board':
+        setWave14AscensionTab('board');
+        break;
+      case 'wave14_relics':
+        setWave14AscensionTab('relics');
+        break;
+      case 'battle_pass':
+        setBattlePassOpen(true);
+        break;
+      case 'guild_sanctuary':
+        setGuildModalOpen(true);
+        break;
+      case 'carnival_7day':
+        setWave13CarnivalOpen(true);
+        break;
+      case 'royal_vault':
+        setWave13TreasuryTab('royal_vault');
+        break;
+      case 'festival':
+        setFestivalModalOpen(true);
+        break;
+      case 'treasure_wheel':
+        setWave12SanctumTab('wheel');
+        break;
+      case 'claim_all':
+        setClaimAllModalOpen(true);
+        break;
+    }
+  }, []);
 
   const handleUnlockSteed = useCallback(
     (steedId: AstralSteedId) => {
@@ -8052,6 +8786,15 @@ export default function App() {
           onClaimCrystalVaultMilestone={handleClaimCrystalVaultMilestone}
           onActivateSupremeMonthly={handleActivateSupremeMonthly}
           onClaimSupremeMonthlyDaily={handleClaimSupremeMonthlyDaily}
+          onOpenWave14Ascension={(tab) => setWave14AscensionTab(tab)}
+          onOpenWave14EventCenter={() => setWave14EventCenterOpen(true)}
+          onStartSkyCitadel={handleStartSkyCitadel}
+          onClaimSkyCitadelMilestone={handleClaimSkyCitadelMilestone}
+          onSelectSanctuaryFloor={handleSelectSanctuaryFloor}
+          onResetLobbyOrbit={() => engineRef.current?.resetLobbyOrbit()}
+          onAdjustLobbyZoom={(delta) => engineRef.current?.adjustLobbyZoom(delta)}
+          onReplayEntranceVfx={() => engineRef.current?.triggerRoyalEntranceVfx()}
+          lobbyHeadPos={lobbyHeadPos}
         />
       )}
 
@@ -8192,6 +8935,11 @@ export default function App() {
           dragonDamageDealt={runSummary?.dragonDamageDealt ?? hud.dragonDamageDealt ?? 0}
           dragonScalesLooted={runSummary?.dragonScalesLooted ?? hud.dragonScalesLooted ?? 0}
           dragonPhase={runSummary?.dragonPhase ?? hud.dragonPhase ?? 1}
+          isSkyCitadelMode={runSummary?.isSkyCitadelMode ?? hud.isSkyCitadelMode}
+          skyCitadelWave={runSummary?.skyCitadelWave ?? hud.skyCitadelWave ?? 1}
+          skyCitadelScore={runSummary?.skyCitadelScore ?? hud.skyCitadelScore ?? 0}
+          celestialFeathersEarned={runSummary?.celestialFeathers ?? 0}
+          mythicShardsEarned={runSummary?.mythicShards ?? 0}
           warCrestsEarned={runSummary?.warCrests ?? 0}
           wingFeathersEarned={runSummary?.wingFeathers ?? 0}
           mountShardsEarned={runSummary?.mountShards ?? 0}
@@ -8209,7 +8957,15 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isDragonLairMode ?? hud.isDragonLairMode)
+            (runSummary?.isSkyCitadelMode ?? hud.isSkyCitadelMode)
+              ? () => {
+                  if (normalizeSkyCitadel(save.skyCitadel).dailyRunsRemaining > 0) {
+                    handleStartSkyCitadel();
+                  } else {
+                    handleReturnTitle();
+                  }
+                }
+              : (runSummary?.isDragonLairMode ?? hud.isDragonLairMode)
               ? () => {
                   if (normalizeDragonLair(save.dragonLair).dailyRunsRemaining > 0) {
                     handleStartDragonLair();
@@ -8386,6 +9142,7 @@ export default function App() {
           onUnlockPremium={handleUnlockBattlePassPremium}
           onClaimTier={handleClaimBattlePassTier}
           onClaimAll={handleClaimAllBattlePass}
+          onRedeemMythicShardOffer={handleRedeemMythicShardOffer}
         />
       )}
 
@@ -8427,6 +9184,9 @@ export default function App() {
           onStartGuildBoss={handleStartGuildBoss}
           onStartGuildWar={handleStartGuildWar}
           onClaimGuildWarBox={handleClaimGuildWarBox}
+          onUpgradeMonument={handleUpgradeGuildMonument}
+          onClaimDailySanctuaryBlessing={handleClaimDailySanctuaryBlessing}
+          onClaimDailyGuildBossChest={handleClaimDailyGuildBossChest}
           onClose={() => setGuildModalOpen(false)}
         />
       )}
@@ -8692,6 +9452,33 @@ export default function App() {
         />
       )}
 
+      {phase === GamePhase.TITLE && enteredGame && wave14AscensionTab && (
+        <Wave14AscensionModal
+          save={save}
+          initialTab={wave14AscensionTab}
+          onUnlockOrUpgradeWing={handleUnlockOrUpgradeCelestialWing}
+          onEquipWing={handleEquipCelestialWing}
+          onStartSkyCitadel={handleStartSkyCitadel}
+          onClaimSkyCitadelMilestone={handleClaimSkyCitadelMilestone}
+          onClaimDailyFreeDice={handleClaimDailyFreeDice}
+          onRollAstralDice={handleRollAstralDice}
+          onBuyAstralDice={handleBuyAstralDice}
+          onClaimAstralLapMilestone={handleClaimAstralLapMilestone}
+          onUpgradeZodiacRelic={handleUpgradeZodiacRelic}
+          onUnlockOrEquipRoyalTitle={handleUnlockOrEquipRoyalTitle}
+          onReplayEntranceVfx={() => engineRef.current?.triggerRoyalEntranceVfx()}
+          onClose={() => setWave14AscensionTab(null)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && wave14EventCenterOpen && (
+        <Wave14EventCenterModal
+          save={save}
+          onNavigate={handleNavigateFromEventCenter}
+          onClose={() => setWave14EventCenterOpen(false)}
+        />
+      )}
+
       {phase === GamePhase.TITLE && enteredGame && cpBreakdownOpen && (
         <CombatPowerBreakdownModal
           save={save}
@@ -8743,6 +9530,7 @@ export default function App() {
           isChampionshipMode={transitionState.isChampionshipMode}
           isCrystalVaultMode={transitionState.isCrystalVaultMode}
           isDragonLairMode={transitionState.isDragonLairMode}
+          isSkyCitadelMode={transitionState.isSkyCitadelMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

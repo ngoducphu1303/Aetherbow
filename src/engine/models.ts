@@ -5,9 +5,11 @@ import { ARTIFACT_MAP } from '../data/wave9Data';
 import { DIVINE_HALO_MAP } from '../data/wave10Data';
 import { MYTHIC_WEAPON_TIERS, WAR_BANNER_MAP } from '../data/wave12Data';
 import { ASTRAL_STEED_MAP, SOUL_RING_DEFS } from '../data/wave13Data';
+import { CELESTIAL_WING_MAP } from '../data/wave14Data';
 import {
   ArtifactId,
   AstralSteedId,
+  CelestialWingId,
   CrownStyle,
   EnemyKind,
   HaloId,
@@ -55,6 +57,8 @@ export interface HeroVisualConfig {
   astralSteedId?: AstralSteedId | null;
   astralSteedStar?: number;
   soulRingLevels?: Partial<Record<SoulRingSlotId, number>>;
+  celestialWingId?: CelestialWingId | null;
+  celestialWingStar?: number;
 }
 
 export interface HeroModelRefs {
@@ -72,6 +76,9 @@ export interface HeroModelRefs {
   wingGroup?: THREE.Group;
   leftWingPivot?: THREE.Group;
   rightWingPivot?: THREE.Group;
+  celestialWingGroup?: THREE.Group;
+  celestialWingLeft?: THREE.Group;
+  celestialWingRight?: THREE.Group;
   mountGroup?: THREE.Group;
   mountLegs?: THREE.Group[];
   weaponAuraGroup?: THREE.Group;
@@ -673,6 +680,22 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     }
   }
 
+  // 10e. Wave 14: Articulated Multi-Tier 3D Celestial Wings
+  let celestialWingGroup: THREE.Group | undefined;
+  let celestialWingLeft: THREE.Group | undefined;
+  let celestialWingRight: THREE.Group | undefined;
+  if (cfg.celestialWingId && CELESTIAL_WING_MAP[cfg.celestialWingId]) {
+    const builtCelWings = createCelestialWings3DGroup(
+      cfg.celestialWingId,
+      cfg.celestialWingStar ?? 1
+    );
+    celestialWingGroup = builtCelWings.group;
+    celestialWingLeft = builtCelWings.leftPivot;
+    celestialWingRight = builtCelWings.rightPivot;
+    celestialWingGroup.position.set(0, 1.18, -0.34);
+    bodyGroup.add(celestialWingGroup);
+  }
+
   // 11. Composite 3D Astral Steed (Wave 13) or Legacy Zodiac Mount under Hero
   let mountGroup: THREE.Group | undefined;
   let mountLegs: THREE.Group[] | undefined;
@@ -709,6 +732,9 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     wingGroup,
     leftWingPivot,
     rightWingPivot,
+    celestialWingGroup,
+    celestialWingLeft,
+    celestialWingRight,
     mountGroup,
     mountLegs,
     weaponAuraGroup,
@@ -2588,6 +2614,188 @@ export function createAncientDragonBossModel(): EnemyModelRefs {
   bodyGroup.add(torso, chestCore, neck, head, fieryJaw, tail, dragonRing);
   return { root, bodyGroup, headOrCore: head, weaponOrRing: dragonRing, hitMeshes };
 }
+
+// ============================================================================
+// WAVE 14: ARTICULATED MULTI-TIER 3D CELESTIAL WINGS & SKY SERAPH WARDEN BOSS
+// ============================================================================
+
+export function createCelestialWings3DGroup(
+  wingId: CelestialWingId,
+  star: number
+): { group: THREE.Group; leftPivot: THREE.Group; rightPivot: THREE.Group } {
+  const def = CELESTIAL_WING_MAP[wingId] ?? CELESTIAL_WING_MAP.seraph_azure;
+  const s = Math.max(1, Math.min(5, Math.floor(star || 1)));
+  const spanScale = 0.94 + (s - 1) * 0.1;
+
+  const group = new THREE.Group();
+
+  // Brushed metallic dorsal clasp (roughness 0.22 vs luminous feathers 0.48)
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: def.frameHex,
+    metalness: 0.9,
+    roughness: 0.2,
+    emissive: def.emissiveHex,
+    emissiveIntensity: 0.22 + s * 0.08,
+  });
+  const featherMat = new THREE.MeshStandardMaterial({
+    color: def.featherHex,
+    metalness: 0.28,
+    roughness: 0.48,
+    emissive: def.emissiveHex,
+    emissiveIntensity: 0.45 + s * 0.14,
+  });
+  const tipMat = new THREE.MeshStandardMaterial({
+    color: def.tipHex,
+    metalness: 0.4,
+    roughness: 0.26,
+    emissive: def.tipHex,
+    emissiveIntensity: 0.65 + s * 0.15,
+  });
+
+  // Central ornate crest
+  const clasp = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 1), frameMat);
+  clasp.scale.set(0.9, 1.35, 0.55);
+  group.add(clasp);
+
+  const upperGeo = makeBeveledWingGeo(1.08 * spanScale, 0.72 * spanScale, 0.04);
+  const midGeo = makeBeveledWingGeo(0.86 * spanScale, 0.52 * spanScale, 0.036);
+  const lowerGeo = makeBeveledWingGeo(0.62 * spanScale, 0.36 * spanScale, 0.03);
+  const strutGeo = new THREE.CylinderGeometry(0.025, 0.04, 0.92 * spanScale, 6);
+  const gemGeo = new THREE.OctahedronGeometry(0.085, 0);
+
+  const buildHalf = (side: -1 | 1): THREE.Group => {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.14, 0.05, -0.02);
+
+    const strut = new THREE.Mesh(strutGeo, frameMat);
+    strut.position.set(side * 0.42 * spanScale, 0.22 * spanScale, 0.02);
+    strut.rotation.z = -side * 1.08;
+    pivot.add(strut);
+
+    const upperBlade = new THREE.Mesh(upperGeo, featherMat);
+    upperBlade.position.set(side * 0.62 * spanScale, 0.32 * spanScale, -0.02);
+    if (side < 0) upperBlade.scale.x = -1;
+    upperBlade.rotation.z = side * 0.16;
+    upperBlade.castShadow = true;
+    pivot.add(upperBlade);
+
+    const midBlade = new THREE.Mesh(midGeo, tipMat);
+    midBlade.position.set(side * 0.54 * spanScale, 0.02 * spanScale, -0.04);
+    if (side < 0) midBlade.scale.x = -1;
+    midBlade.rotation.z = -side * 0.1;
+    pivot.add(midBlade);
+
+    const lowerBlade = new THREE.Mesh(lowerGeo, featherMat);
+    lowerBlade.position.set(side * 0.38 * spanScale, -0.24 * spanScale, -0.05);
+    if (side < 0) lowerBlade.scale.x = -1;
+    lowerBlade.rotation.z = -side * 0.38;
+    pivot.add(lowerBlade);
+
+    // High-star celestial feathers unlock luminous wing jewels
+    if (s >= 2) {
+      const crystal = new THREE.Mesh(gemGeo, tipMat);
+      crystal.position.set(side * 0.88 * spanScale, 0.46 * spanScale, 0.04);
+      pivot.add(crystal);
+    }
+    if (s >= 4) {
+      const upperCrownPinion = new THREE.Mesh(lowerGeo, tipMat);
+      upperCrownPinion.position.set(side * 0.78 * spanScale, 0.56 * spanScale, 0.01);
+      if (side < 0) upperCrownPinion.scale.x = -1;
+      upperCrownPinion.rotation.z = side * 0.42;
+      pivot.add(upperCrownPinion);
+    }
+
+    return pivot;
+  };
+
+  const leftPivot = buildHalf(-1);
+  const rightPivot = buildHalf(1);
+  group.add(leftPivot, rightPivot);
+
+  return { group, leftPivot, rightPivot };
+}
+
+export function createSkySeraphBossModel(): EnemyModelRefs {
+  const root = new THREE.Group();
+  const bodyGroup = new THREE.Group();
+  root.add(bodyGroup);
+  const hitMeshes: THREE.Mesh[] = [];
+
+  const armorMat = new THREE.MeshStandardMaterial({
+    color: 0xf8fafc,
+    metalness: 0.78,
+    roughness: 0.24,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    metalness: 0.92,
+    roughness: 0.16,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.45,
+  });
+  const azureMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    metalness: 0.35,
+    roughness: 0.32,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.85,
+  });
+
+  // 1. Armored Celestial Torso & Mantle
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.95, 1.95, 8), armorMat);
+  torso.position.set(0, 1.45, 0);
+  torso.castShadow = true;
+  hitMeshes.push(torso);
+
+  const chestCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.42, 1), azureMat);
+  chestCore.position.set(0, 1.7, 0.52);
+  hitMeshes.push(chestCore);
+
+  // 2. Crowned Visor Head & Radiant Halo
+  const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.46, 0), armorMat);
+  head.position.set(0, 2.72, 0);
+  head.castShadow = true;
+  hitMeshes.push(head);
+
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.06, 8, 24), goldMat);
+  crown.rotation.x = Math.PI / 2.4;
+  crown.position.set(0, 3.05, -0.05);
+
+  // 3. Quad Articulated Sky Seraph Wings
+  const wingGeo = makeBeveledWingGeo(2.15, 1.35, 0.07);
+  for (const side of [-1, 1] as const) {
+    const upperWing = new THREE.Mesh(wingGeo, azureMat);
+    upperWing.position.set(side * 1.48, 2.25, -0.35);
+    if (side < 0) upperWing.scale.x = -1;
+    upperWing.rotation.z = side * 0.22;
+    upperWing.castShadow = true;
+    hitMeshes.push(upperWing);
+    bodyGroup.add(upperWing);
+
+    const lowerWing = new THREE.Mesh(wingGeo, goldMat);
+    lowerWing.scale.set(side * 0.72, 0.68, 0.8);
+    lowerWing.position.set(side * 1.12, 1.42, -0.45);
+    lowerWing.rotation.z = -side * 0.28;
+    bodyGroup.add(lowerWing);
+  }
+
+  // 4. Twin Celestial Lances
+  for (const side of [-1, 1] as const) {
+    const lance = new THREE.Mesh(new THREE.ConeGeometry(0.14, 2.4, 6), goldMat);
+    lance.position.set(side * 1.15, 1.65, 0.55);
+    lance.rotation.x = Math.PI / 2.6;
+    bodyGroup.add(lance);
+  }
+
+  // 5. Orbiting Wind Cyclone Ring
+  const windRing = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.06, 10, 36), azureMat);
+  windRing.rotation.x = Math.PI / 2;
+  windRing.position.set(0, 0.24, 0);
+
+  bodyGroup.add(torso, chestCore, head, crown, windRing);
+  return { root, bodyGroup, headOrCore: head, weaponOrRing: windRing, hitMeshes };
+}
+
 
 
 

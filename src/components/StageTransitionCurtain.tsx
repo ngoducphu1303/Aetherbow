@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Crown, Flame, Gem, Moon, Shield, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
+import { Compass, Crown, Feather, Flame, Gem, Moon, Shield, Skull, Snowflake, Sparkles, Swords, Trophy, Users, Zap } from 'lucide-react';
 import { CHAPTERS } from '../data/chaptersData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { CoopRaidDifficulty, ElementalTowerId } from '../types/game';
@@ -24,6 +24,7 @@ interface StageTransitionCurtainProps {
   isChampionshipMode?: boolean;
   isCrystalVaultMode?: boolean;
   isDragonLairMode?: boolean;
+  isSkyCitadelMode?: boolean;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -48,6 +49,7 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   isChampionshipMode = false,
   isCrystalVaultMode = false,
   isDragonLairMode = false,
+  isSkyCitadelMode = false,
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
@@ -59,7 +61,9 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
     <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-[#040611]/95 a2-curtain">
       <div className="text-center px-6 py-8 max-w-md w-full">
         <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
-          {isDragonLairMode ? (
+          {isSkyCitadelMode ? (
+            <Feather className="w-12 h-12 text-sky-300" />
+          ) : isDragonLairMode ? (
             <Flame className="w-12 h-12 text-rose-400" />
           ) : isCrystalVaultMode ? (
             <Gem className="w-12 h-12 text-yellow-300" />
@@ -102,7 +106,9 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
           )}
         </div>
         <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
-          {isDragonLairMode
+          {isSkyCitadelMode
+            ? 'Không Chiến Tinh Giới 3D · 75 Giây · 3 Đợt Thần Cánh'
+            : isDragonLairMode
             ? 'Phó Bản Đồ Long 3D · 75 Giây · 3 Pha Cuồng Nộ'
             : isCrystalVaultMode
             ? 'Hầm Mỏ Kho Báu Hoàng Kim 3D · 60 Giây'
@@ -137,7 +143,9 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
             : `Chương ${ch.id} · ${ch.zodiacName}`}
         </div>
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
-          {isDragonLairMode
+          {isSkyCitadelMode
+            ? 'Không Chiến Tinh Giới 3D'
+            : isDragonLairMode
             ? 'Lãnh Địa Rồng Cổ Tinh Giới 3D'
             : isCrystalVaultMode
             ? 'Khai Phá Hầm Mỏ Pha Lê 3D'
@@ -173,7 +181,9 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
         </h2>
         <div className="cel-divider-gold max-w-[180px] mx-auto my-2.5" />
         <div className="text-xs text-slate-300 font-semibold">
-          {isDragonLairMode
+          {isSkyCitadelMode
+            ? 'Tung Cánh Thần Quang 3D vượt 3 đợt Không Chiến và đánh bại Thiên Sứ Thủ Vệ để thu thập Lông Vũ Thần Quang & Mảnh Thần Thoại!'
+            : isDragonLairMode
             ? 'Chạm trán Cổ Long 3D qua 3 pha cuồng nộ! Quan sát vùng đỏ Hơi Thở Rồng để lướt né và thu hoạch Vảy Rồng Cổ, Cỏ Tinh Tú & Linh Ngọc!'
             : isCrystalVaultMode
             ? 'Phá hủy liên tiếp các Trụ Pha Lê Vàng & Hộ Vệ Kho Báu trong 60 giây để thu hoạch Ngọc Hồn, Đá Đúc Hoàng Kim & Mảnh Thần Binh!'

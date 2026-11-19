@@ -115,6 +115,17 @@ import {
   normalizeSoulRings,
   normalizeStarlightRace,
 } from './wave13Data';
+import {
+  computeGuildSanctuaryBonuses,
+  computeRoyal3DTitleBonuses,
+  computeZodiacRelicBonuses,
+  getCelestialWingStats,
+  normalizeAstralBoard,
+  normalizeGuildSanctuary,
+  normalizeMythicShardShop,
+  normalizeSkyCitadel,
+  normalizeZodiacRelics,
+} from './wave14Data';
 
 export const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,
@@ -843,16 +854,32 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const soulRingBonuses = computeSoulRingBonuses(save.soulRings);
   const vipFrameBonuses = computeVipFrameBonuses(save);
 
-  attack += vipFrameBonuses.atk;
-  maxHp += vipFrameBonuses.hp;
+  // Wave 14: Celestial Wings 3D Evolution, Zodiac Relics, Guild 3D Sanctuary & Royal 3D Titles
+  const equippedCelestialWingId =
+    save.equippedCelestialWingId &&
+    (save.unlockedCelestialWings ?? []).includes(save.equippedCelestialWingId)
+      ? save.equippedCelestialWingId
+      : null;
+  const celestialWingStar = equippedCelestialWingId
+    ? Math.max(1, save.celestialWingStars?.[equippedCelestialWingId] ?? 1)
+    : 0;
+  const celWingStats = getCelestialWingStats(equippedCelestialWingId, celestialWingStar);
+  const zodiacRelicBonuses = computeZodiacRelicBonuses(save.zodiacRelics);
+  const guildSanctuaryBonuses = computeGuildSanctuaryBonuses(save.guildSanctuary);
+  const royal3DTitleBonuses = computeRoyal3DTitleBonuses(save);
+
+  attack += vipFrameBonuses.atk + royal3DTitleBonuses.atk;
+  maxHp += vipFrameBonuses.hp + royal3DTitleBonuses.hp;
   critDamage += mythicBonuses.critDmgBonus + soulRingBonuses.critDmg;
   bossDamageBonus +=
     mythicBonuses.bossDmgBonus +
     altarBonuses.bossDmgBonus +
     warBannerStats.bossDmg +
-    soulRingBonuses.bossDmg;
+    soulRingBonuses.bossDmg +
+    zodiacRelicBonuses.bossDmg +
+    guildSanctuaryBonuses.bossDmg;
 
-  // Apply Zodiac Guild Tech + 12 Constellations + Talents + Wave 11 Codex + Wave 12-13 Systems
+  // Apply Zodiac Guild Tech + 12 Constellations + Talents + Wave 11 Codex + Wave 12-14 Systems
   const guildTech = computeGuildTechBonuses(save.guild);
   const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
@@ -872,7 +899,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
         altarBonuses.atkPct +
         warBannerStats.atkPct +
         steedStats.atkPct +
-        soulRingBonuses.atkPct)
+        soulRingBonuses.atkPct +
+        celWingStats.atkPct +
+        zodiacRelicBonuses.atkPct +
+        guildSanctuaryBonuses.atkPct)
   );
   maxHp = Math.round(
     (maxHp + tal.hp + constellation.hpFlat) *
@@ -886,7 +916,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
         altarBonuses.hpPct +
         warBannerStats.hpPct +
         steedStats.hpPct +
-        soulRingBonuses.hpPct)
+        soulRingBonuses.hpPct +
+        celWingStats.hpPct +
+        zodiacRelicBonuses.hpPct +
+        guildSanctuaryBonuses.hpPct)
   );
   critChance = Math.min(
     0.94,
@@ -898,9 +931,12 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       mythicBonuses.critBonus +
       altarBonuses.critBonus +
       steedStats.crit +
-      soulRingBonuses.crit
+      soulRingBonuses.crit +
+      celWingStats.crit +
+      zodiacRelicBonuses.crit +
+      royal3DTitleBonuses.crit
   );
-  attackSpeedMult += tal.aspdMult + constellation.aspdBonus + wingAspd + mythicBonuses.aspdBonus;
+  attackSpeedMult += tal.aspdMult + constellation.aspdBonus + wingAspd + mythicBonuses.aspdBonus + celWingStats.aspd;
   moveSpeedMult += tal.moveSpeedMult + steedStats.moveSpeed;
   damageReduction = Math.min(
     0.72,
@@ -913,7 +949,9 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     constellation.goldBonus +
     cardGoldBonus +
     codexSummary.totalGoldPct +
-    altarBonuses.goldPct;
+    altarBonuses.goldPct +
+    zodiacRelicBonuses.goldPct +
+    guildSanctuaryBonuses.goldPct;
 
   const powerRating = Math.round(
     attack * attackSpeedMult * (1 + critChance * 0.85) * 3.1 +
@@ -935,7 +973,11 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       (equippedWarBannerId ? warBannerLevel * 68 : 0) +
       (equippedAstralSteedId ? astralSteedStar * 115 : 0) +
       soulRingBonuses.totalLevel * 48 +
-      (save.unlockedVipFrames?.length ?? 0) * 65
+      (save.unlockedVipFrames?.length ?? 0) * 65 +
+      (equippedCelestialWingId ? celestialWingStar * 130 : 0) +
+      zodiacRelicBonuses.totalStars * 75 +
+      guildSanctuaryBonuses.totalLevel * 36 +
+      (save.unlockedRoyal3DTitles?.length ?? 1) * 55
   );
 
   return {
@@ -1212,6 +1254,19 @@ export function createInitialSaveData(): SaveData {
     equippedVipFrameId: null,
     carnival7Day: normalizeCarnival7Day(),
     evolvingFirstTopUp: normalizeEvolvingFirstTopUp(),
+    // Wave 14 initial defaults
+    celestialFeathers: 24,
+    unlockedCelestialWings: ['seraph_azure'],
+    celestialWingStars: { seraph_azure: 1 },
+    equippedCelestialWingId: 'seraph_azure',
+    skyCitadel: normalizeSkyCitadel(),
+    astralBoard: normalizeAstralBoard(),
+    zodiacRelics: normalizeZodiacRelics(),
+    guildSanctuary: normalizeGuildSanctuary(),
+    mythicShardShop: normalizeMythicShardShop(),
+    sanctuaryFloorTheme: 'marble_gold',
+    unlockedRoyal3DTitles: ['title_sky_sovereign'],
+    equippedRoyal3DTitleId: 'title_sky_sovereign',
   };
 }
 

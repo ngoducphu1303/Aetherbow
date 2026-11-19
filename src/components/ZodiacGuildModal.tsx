@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Check, Crown, Flame, Shield, Skull, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
+import { Building2, Check, Crown, Flame, Gift, Shield, Skull, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
 import guildSanctuaryArt from '../assets/images/guild_zodiac_sanctuary_1794982055649.jpg';
 import guildWarCitadelArt from '../assets/images/guild_war_citadel_1795010358440.jpg';
+import guildCitadelBossArt from '../assets/images/guild_citadel_boss_1795058109598.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import {
   GUILD_BOSS_DAMAGE_TIERS,
@@ -18,8 +19,16 @@ import {
   GUILD_WAR_WEEKLY_BOXES,
   normalizeGuildWar,
 } from '../data/wave9Data';
+import {
+  GUILD_DAILY_BOSS_CHESTS,
+  GUILD_MONUMENT_DEFS,
+  computeGuildSanctuaryBonuses,
+  countClaimableGuildSanctuaryRewards,
+  getGuildMonumentUpgradeCost,
+  normalizeGuildSanctuary,
+} from '../data/wave14Data';
 import { HERO_MAP } from '../data/heroesData';
-import { GuildTechId, SaveData } from '../types/game';
+import { GuildMonumentId, GuildTechId, SaveData } from '../types/game';
 import { ArtifactRelicIcon, GoldCoinIcon, MysticTokenIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
 
 interface ZodiacGuildModalProps {
@@ -31,6 +40,9 @@ interface ZodiacGuildModalProps {
   onStartGuildBoss: () => void;
   onStartGuildWar?: () => void;
   onClaimGuildWarBox?: (score: number) => void;
+  onUpgradeMonument?: (monumentId: GuildMonumentId) => void;
+  onClaimDailySanctuaryBlessing?: () => void;
+  onClaimDailyGuildBossChest?: (chestId: string) => void;
   onClose: () => void;
 }
 
@@ -43,14 +55,21 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
   onStartGuildBoss,
   onStartGuildWar,
   onClaimGuildWarBox,
+  onUpgradeMonument,
+  onClaimDailySanctuaryBlessing,
+  onClaimDailyGuildBossChest,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<'boss' | 'war' | 'tech' | 'members'>('boss');
+  const [subTab, setSubTab] = useState<'boss' | 'sanctuary' | 'war' | 'tech' | 'members'>('boss');
   const [imgErr, setImgErr] = useState(false);
   const [warImgErr, setWarImgErr] = useState(false);
+  const [sanctuaryImgErr, setSanctuaryImgErr] = useState(false);
 
   const guild = normalizeGuild(save.guild);
   const gw = normalizeGuildWar(save.guildWar);
+  const sanctuary = normalizeGuildSanctuary(save.guildSanctuary);
+  const sanctuaryBonus = computeGuildSanctuaryBonuses(sanctuary);
+  const sanctuaryClaimable = countClaimableGuildSanctuaryRewards(save);
   const expReq = getGuildLevelExpReq(guild.level);
   const expPct = Math.min(100, Math.round((guild.exp / Math.max(1, expReq)) * 100));
   const tributesLeft = Math.max(0, MAX_DAILY_GUILD_TRIBUTES - guild.tributeCountToday);
@@ -172,19 +191,37 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
         </div>
 
         {/* Sub-Tabs */}
-        <div className="px-4 sm:px-6 pt-3 pb-2 bg-[#060916] border-b border-amber-400/20 grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+        <div className="px-4 sm:px-6 pt-3 pb-2 bg-[#060916] border-b border-amber-400/20 grid grid-cols-2 sm:grid-cols-5 gap-2 shrink-0">
           <button
             type="button"
             onClick={() => {
               soundEngine.playUiClick();
               setSubTab('boss');
             }}
-            className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
               subTab === 'boss' ? 'a2-yellow-btn' : 'a2-slate-btn text-slate-300'
             }`}
           >
             <Skull className="w-4 h-4 shrink-0" />
-            <span>Boss Bang ({guild.bossRunsRemaining}/{MAX_DAILY_GUILD_BOSS_RUNS})</span>
+            <span>Boss ({guild.bossRunsRemaining}/{MAX_DAILY_GUILD_BOSS_RUNS})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              setSubTab('sanctuary');
+            }}
+            className={`relative py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+              subTab === 'sanctuary' ? 'a2-yellow-btn' : 'a2-slate-btn text-slate-300'
+            }`}
+          >
+            <Building2 className="w-4 h-4 shrink-0" />
+            <span>Lãnh Địa 3D</span>
+            {sanctuaryClaimable > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-mono-nums leading-none">
+                {sanctuaryClaimable}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -192,7 +229,7 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
               soundEngine.playUiClick();
               setSubTab('war');
             }}
-            className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
               subTab === 'war' ? 'a2-emerald-btn' : 'a2-slate-btn text-slate-300'
             }`}
           >
@@ -205,12 +242,12 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
               soundEngine.playUiClick();
               setSubTab('tech');
             }}
-            className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
               subTab === 'tech' ? 'a2-emerald-btn' : 'a2-slate-btn text-slate-300'
             }`}
           >
             <Shield className="w-4 h-4 shrink-0" />
-            <span>Khoa Kỹ Bang</span>
+            <span>Khoa Kỹ</span>
           </button>
           <button
             type="button"
@@ -218,7 +255,7 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
               soundEngine.playUiClick();
               setSubTab('members');
             }}
-            className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
               subTab === 'members' ? 'a2-purple-btn' : 'a2-slate-btn text-slate-300'
             }`}
           >
@@ -329,6 +366,201 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
                           <span className="text-[11px] font-bold text-slate-500">
                             Cần thêm {(tier.minDamage - guild.bestGuildBossDamage).toLocaleString('vi-VN')} ST
                           </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {subTab === 'sanctuary' && (
+            <div className="space-y-4">
+              {/* Hero Banner for 3D Guild Sanctuary */}
+              <div className="relative rounded-2xl overflow-hidden border border-amber-400/45 bg-[#080e20]">
+                {!sanctuaryImgErr && (
+                  <img
+                    src={guildCitadelBossArt}
+                    alt="Lãnh Địa Bang Hội 3D & Boss Hàng Ngày"
+                    referrerPolicy="no-referrer"
+                    onError={() => setSanctuaryImgErr(true)}
+                    className="w-full h-36 sm:h-44 object-cover opacity-55"
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#060916]/95 via-[#0b132b]/82 to-transparent" />
+                <div className="relative z-[1] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-wider text-amber-300">
+                      Lãnh Địa Bang Hội 3D · Tổng Cấp Kiến Trúc {sanctuaryBonus.totalLevel}/40
+                    </div>
+                    <h3 className="font-display text-base sm:text-lg font-black text-white mt-0.5">
+                      Xây Dựng Kỳ Quan &amp; Nhận Rương Boss Hàng Ngày
+                    </h3>
+                    <div className="flex flex-wrap gap-3 mt-2 text-[11px] font-mono-nums font-bold">
+                      <span className="text-amber-300">+{Math.round(sanctuaryBonus.atkPct * 100)}% Công</span>
+                      <span className="text-emerald-300">+{Math.round(sanctuaryBonus.hpPct * 100)}% Máu</span>
+                      <span className="text-rose-300">+{Math.round(sanctuaryBonus.bossDmg * 100)}% ST Boss</span>
+                      <span className="text-yellow-200">+{Math.round(sanctuaryBonus.goldPct * 100)}% Vàng</span>
+                    </div>
+                  </div>
+
+                  {onClaimDailySanctuaryBlessing && (
+                    <button
+                      type="button"
+                      disabled={sanctuary.dailySanctuaryBlessingClaimed}
+                      onClick={() => {
+                        soundEngine.playAchievement();
+                        onClaimDailySanctuaryBlessing();
+                      }}
+                      className={`py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+                        sanctuary.dailySanctuaryBlessingClaimed
+                          ? 'bg-slate-900 border border-slate-700 text-emerald-400 cursor-default'
+                          : 'a2-emerald-btn'
+                      }`}
+                    >
+                      {sanctuary.dailySanctuaryBlessingClaimed ? (
+                        <>
+                          <Check className="w-4 h-4 shrink-0" />
+                          <span>Đã Nhận Lộc Lãnh Địa</span>
+                        </>
+                      ) : (
+                        <>
+                          <Gift className="w-4 h-4 shrink-0" />
+                          <span>Nhận Lộc Hàng Ngày (+55 Xu · +30 Ngọc)</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 4 Upgradeable 3D Guild Monuments */}
+              <div>
+                <h4 className="font-display text-xs font-black uppercase tracking-wider text-amber-200 mb-2.5">
+                  4 Công Trình Kiến Trúc Lãnh Địa 3D (Buff Vĩnh Viễn)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {GUILD_MONUMENT_DEFS.map((m) => {
+                    const lv = sanctuary.monumentLevels[m.id] ?? 0;
+                    const isMax = lv >= m.maxLevel;
+                    const cost = getGuildMonumentUpgradeCost(lv, m);
+                    const canAfford = !isMax && guild.guildCoins >= cost.guildCoins && save.gold >= cost.gold;
+
+                    return (
+                      <div key={m.id} className="cel-panel rounded-2xl p-4 flex flex-col justify-between gap-3">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <h5 className="font-display text-sm font-black text-white">{m.name}</h5>
+                            <span className="font-mono-nums text-xs font-black text-amber-300">
+                              Lv.{lv}/{m.maxLevel}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 mt-1">{m.subtitle}</p>
+                          <div className="flex flex-wrap gap-2.5 mt-2 text-[11px] font-mono-nums font-bold text-emerald-300">
+                            {m.atkPctPerLv > 0 && <span>+{Math.round(lv * m.atkPctPerLv * 100)}% Công</span>}
+                            {m.hpPctPerLv > 0 && <span>+{Math.round(lv * m.hpPctPerLv * 100)}% Máu</span>}
+                            {m.bossDmgPerLv > 0 && <span>+{Math.round(lv * m.bossDmgPerLv * 100)}% ST Boss</span>}
+                            {m.goldPctPerLv > 0 && <span>+{Math.round(lv * m.goldPctPerLv * 100)}% Vàng</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-amber-400/15">
+                          <div className="flex items-center gap-3 text-xs font-mono-nums font-black">
+                            <span className={guild.guildCoins >= cost.guildCoins ? 'text-amber-300' : 'text-rose-400'}>
+                              {cost.guildCoins} Xu
+                            </span>
+                            <span className={`flex items-center gap-1 ${save.gold >= cost.gold ? 'text-amber-200' : 'text-rose-400'}`}>
+                              <GoldCoinIcon className="w-3.5 h-3.5" />
+                              {cost.gold}
+                            </span>
+                          </div>
+                          {onUpgradeMonument && (
+                            <button
+                              type="button"
+                              disabled={isMax || !canAfford}
+                              onClick={() => {
+                                soundEngine.playLevelUp();
+                                onUpgradeMonument(m.id);
+                              }}
+                              className="a2-yellow-btn px-3.5 py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {isMax ? 'Tối Đa' : 'Nâng Kiến Trúc'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Daily Guild Boss Damage Chests */}
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                  <h4 className="font-display text-xs font-black uppercase tracking-wider text-rose-200">
+                    Rương Sát Thương Boss Bang Hội Hôm Nay
+                  </h4>
+                  <span className="font-mono-nums text-xs font-black text-amber-300">
+                    Tổng Sát Thương Hôm Nay: {sanctuary.dailyBossDamage.toLocaleString('vi-VN')} ST
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {GUILD_DAILY_BOSS_CHESTS.map((chest) => {
+                    const reached = sanctuary.dailyBossDamage >= chest.damageTarget;
+                    const claimed = sanctuary.claimedDailyBossChestIds.includes(chest.id);
+                    return (
+                      <div
+                        key={chest.id}
+                        className={`rounded-2xl p-3.5 border flex flex-col justify-between gap-2.5 ${
+                          claimed
+                            ? 'bg-[#070b18]/75 border-slate-800'
+                            : reached
+                            ? 'cel-panel-ornate'
+                            : 'cel-panel'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-display text-xs font-black text-amber-300">
+                            {chest.title}
+                          </div>
+                          <div className="font-mono-nums text-[10px] font-bold text-slate-400 mt-0.5">
+                            Mục tiêu ≥ {chest.damageTarget.toLocaleString('vi-VN')} ST
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-2 text-[11px] font-mono-nums font-bold">
+                            <span className="text-amber-300">+{chest.rewardGuildCoins} Xu</span>
+                            <span className="text-purple-300">+{chest.rewardGems} Ngọc</span>
+                            <span className="text-fuchsia-300">+{chest.rewardMythicShards} Mảnh</span>
+                            <span className="text-sky-300">+{chest.rewardFeathers} Lông Vũ</span>
+                          </div>
+                        </div>
+
+                        {claimed ? (
+                          <span className="text-xs font-black text-emerald-400 flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" /> Đã Nhận Hôm Nay
+                          </span>
+                        ) : reached && onClaimDailyGuildBossChest ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playAchievement();
+                              onClaimDailyGuildBossChest(chest.id);
+                            }}
+                            className="a2-emerald-btn w-full py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                          >
+                            Mở Rương Ngày
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setSubTab('boss');
+                            }}
+                            className="a2-slate-btn w-full py-1.5 rounded-xl text-[11px] font-bold text-slate-300 cursor-pointer whitespace-nowrap"
+                          >
+                            Săn Boss Bang
+                          </button>
                         )}
                       </div>
                     );
