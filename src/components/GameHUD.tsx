@@ -264,7 +264,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <button
               type="button"
-              onClick={onPause}
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onPause();
+              }}
+              title="Tạm dừng [P / Esc]"
               aria-label="Tạm dừng"
               className="pointer-events-auto hv2-panel w-10 h-10 rounded-xl flex items-center justify-center text-slate-100 hover:border-amber-300 transition-colors cursor-pointer shrink-0"
             >
@@ -382,7 +387,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 : `${
                     hud.isTowerMode || hud.isBossRushMode || hud.isDailyRiftMode
                       ? ''
-                      : `${hud.stageName} · `
+                      : `${hud.stageName.replace(/\s*·\s*Phòng\s+\d+$/i, '')} · `
                   }Còn ${hud.enemiesRemaining} mục tiêu`}
             </div>
             {!hud.isTowerMode && !hud.isTrainingMode && hud.totalStages > 1 && hud.totalStages <= 15 && (
@@ -429,7 +434,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
             <button
               type="button"
-              onClick={onToggleMute}
+              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onToggleMute();
+              }}
+              title={muted ? 'Bật âm thanh [M]' : 'Tắt âm thanh [M]'}
               aria-label={muted ? 'Bật âm thanh' : 'Tắt âm thanh'}
               className="pointer-events-auto hv2-panel w-10 h-10 rounded-xl flex items-center justify-center text-slate-100 hover:border-amber-300 transition-colors cursor-pointer shrink-0"
             >
@@ -1493,9 +1503,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       {ultReady ? 'CHIÊU Q' : `${ultPct}%`}
                     </span>
                   </button>
-                  <span className="mt-1 text-[9px] font-mono-nums font-black tracking-wider text-amber-200/85">
+                  <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
                     Q
-                  </span>
+                  </kbd>
                 </div>
 
                 {onActiveSkillClick && (
@@ -1538,9 +1548,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         {activeSkillReady ? 'CHIÊU E' : `${activeSkillCdSec.toFixed(1)}s`}
                       </span>
                     </button>
-                    <span className="mt-1 text-[9px] font-mono-nums font-black tracking-wider text-sky-200/85">
+                    <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-sky-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-sky-200">
                       E
-                    </span>
+                    </kbd>
                   </div>
                 )}
 
@@ -1581,9 +1591,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       {dashReady ? 'LƯỚT' : `${Math.ceil(hud.dashCooldownRatio * 100)}%`}
                     </span>
                   </button>
-                  <span className="mt-1 text-[9px] font-mono-nums font-black tracking-wider text-emerald-200/85">
+                  <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-emerald-300/60 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-emerald-200">
                     SPACE
-                  </span>
+                  </kbd>
                 </div>
               </>
             );

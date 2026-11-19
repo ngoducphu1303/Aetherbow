@@ -1853,6 +1853,7 @@ export function createPortalModel(trimHex: number): {
   group: THREE.Group;
   vortex: THREE.Mesh;
   ringMat: THREE.MeshStandardMaterial;
+  guideChevrons: THREE.Mesh[];
 } {
   const group = new THREE.Group();
   const stoneMat = new THREE.MeshStandardMaterial({
@@ -1908,19 +1909,55 @@ export function createPortalModel(trimHex: number): {
   const outerGoldRing = new THREE.Mesh(new THREE.TorusGeometry(1.26, 0.036, 8, 32), goldMat);
   outerGoldRing.position.set(0, 1.52, 0);
 
+  const portalTex = createCelestialPortalTexture();
   const vortex = new THREE.Mesh(
-    new THREE.CircleGeometry(1.04, 32),
+    new THREE.CircleGeometry(1.06, 32),
     new THREE.MeshBasicMaterial({
-      color: trimHex,
+      map: portalTex,
+      color: 0xffffff,
       transparent: true,
       opacity: 0.0,
       side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     })
   );
   vortex.position.set(0, 1.52, 0);
 
+  // 3D Floor Guidance Beacons leading north to the open gate
+  const chevronShape = new THREE.Shape();
+  chevronShape.moveTo(0, 0.56);
+  chevronShape.lineTo(0.82, -0.14);
+  chevronShape.lineTo(0.58, -0.34);
+  chevronShape.lineTo(0, 0.16);
+  chevronShape.lineTo(-0.58, -0.34);
+  chevronShape.lineTo(-0.82, -0.14);
+  chevronShape.closePath();
+  const chevronGeo = new THREE.ShapeGeometry(chevronShape);
+  const guideChevrons: THREE.Mesh[] = [];
+  const chevronOffsetsZ = [2.4, 4.6, 6.8];
+  for (let i = 0; i < chevronOffsetsZ.length; i++) {
+    const chevMat = new THREE.MeshBasicMaterial({
+      color: i === 0 ? 0x34d399 : 0xfde047,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const chev = new THREE.Mesh(chevronGeo, chevMat);
+    chev.rotation.x = -Math.PI / 2;
+    chev.position.set(0, 0.045, chevronOffsetsZ[i]);
+    chev.visible = false;
+    group.add(chev);
+    guideChevrons.push(chev);
+  }
+
   group.add(lintel, lintelTrim, apexCrystal, archRing, outerGoldRing, vortex);
-  return { group, vortex, ringMat };
+  return { group, vortex, ringMat, guideChevrons };
 }
 
 export function createShrineModel(kind: StageEventAfter = 'valkyrie'): THREE.Group {

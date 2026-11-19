@@ -119,6 +119,7 @@ import {
   createStoneTileTexture,
   createTargetReticleTexture,
 } from './textures';
+import { computeKoPose } from './koTransition';
 
 // Pre-allocated math & color helpers for zero GC in tick
 const _v1 = new THREE.Vector3();
@@ -487,6 +488,7 @@ export class GameEngine {
     scale: number;
   }> = [];
   private arenaDustMesh: THREE.InstancedMesh | null = null;
+  private arenaBrazierGems: THREE.Mesh[] = [];
   private arenaDustSeeds: Array<{
     x: number;
     y: number;
@@ -496,6 +498,7 @@ export class GameEngine {
     scale: number;
   }> = [];
   private combatAuraGroup: THREE.Group | null = null;
+  private heroLightPulse = 0;
   private petModel: THREE.Group | null = null;
   private builtPetId: PetId | null = null;
   private builtPetEvolved = false;
@@ -511,11 +514,21 @@ export class GameEngine {
     group: THREE.Group;
     vortex: THREE.Mesh;
     ringMat: THREE.MeshStandardMaterial;
+    guideChevrons: THREE.Mesh[];
   };
 
   private obstacles: ObstacleBox[] = [];
   private urns: BreakableUrn[] = [];
   private enemies: EnemyEntity[] = [];
+  private dyingCorpses: Array<{
+    root: THREE.Group;
+    hitMeshes: THREE.Mesh[];
+    vx: number;
+    vz: number;
+    timer: number;
+    maxTimer: number;
+    baseScale: number;
+  }> = [];
   private arrowPool: Projectile[] = [];
   private enemyOrbPool: Projectile[] = [];
   private meteorPool: MeteorStrike[] = [];
@@ -1766,6 +1779,7 @@ export class GameEngine {
   }
 
   private buildArena(chapter: ChapterDefinition): void {
+    this.arenaBrazierGems = [];
     while (this.arenaGroup.children.length > 0) {
       this.releaseObject(this.arenaGroup.children[0]);
     }
@@ -1929,26 +1943,32 @@ export class GameEngine {
     plinthInst.receiveShadow = true;
 
     postPositions.forEach(([px, pz], idx) => {
-      const hScale = 0.94 + (idx % 3) * 0.07;
+      const isSouthCutaway = pz > ARENA_HALF_D;
+      const hScale = isSouthCutaway ? 0.24 : 0.94 + (idx % 3) * 0.07;
       _dummy.rotation.set(0, idx * 0.35, 0);
 
       _dummy.position.set(px, 0.17, pz);
-      _dummy.scale.set(1, 1, 1);
+      _dummy.scale.set(1, isSouthCutaway ? 0.65 : 1, 1);
       _dummy.updateMatrix();
       plinthInst.setMatrixAt(idx, _dummy.matrix);
 
-      _dummy.position.set(px, 0.34 + 0.775 * hScale, pz);
+      _dummy.position.set(px, (isSouthCutaway ? 0.22 : 0.34) + 0.775 * hScale, pz);
       _dummy.scale.set(1, hScale, 1);
       _dummy.updateMatrix();
       shaftInst.setMatrixAt(idx, _dummy.matrix);
 
-      _dummy.position.set(px, 0.34 + 1.56 * hScale, pz);
-      _dummy.scale.set(1, 1, 1);
+      _dummy.position.set(px, (isSouthCutaway ? 0.22 : 0.34) + 1.56 * hScale, pz);
+      _dummy.scale.set(1, isSouthCutaway ? 0.75 : 1, 1);
       _dummy.updateMatrix();
       collarInst.setMatrixAt(idx, _dummy.matrix);
 
-      _dummy.position.set(px, 0.62 + 1.56 * hScale, pz);
-      _dummy.scale.set(0.85, 1.35, 0.85);
+      if (isSouthCutaway) {
+        _dummy.position.set(px, -5, pz);
+        _dummy.scale.set(0.001, 0.001, 0.001);
+      } else {
+        _dummy.position.set(px, 0.62 + 1.56 * hScale, pz);
+        _dummy.scale.set(0.85, 1.35, 0.85);
+      }
       _dummy.updateMatrix();
       finialInst.setMatrixAt(idx, _dummy.matrix);
     });
@@ -1977,6 +1997,7 @@ export class GameEngine {
       const bGem = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
       bGem.scale.set(0.85, 1.45, 0.85);
       bGem.position.set(cx, 1.45, cz);
+      this.arenaBrazierGems.push(bGem);
       this.arenaGroup.add(bBase, bRing, bGem);
     }
 
@@ -4376,6 +4397,8 @@ export class GameEngine {
       this.releaseObject(e.laserLine);
     });
     this.enemies = [];
+    this.dyingCorpses?.forEach((c) => this.releaseObject(c.root));
+    this.dyingCorpses = [];
 
     this.volatileBlasts?.forEach((vb) => {
       this.releaseObject(vb.ring);
@@ -4817,9 +4840,10 @@ export class GameEngine {
   private loadStage(idx: number): void {
     this.stageIndex = idx;
     const stage = this.currentChapter.stages[idx];
+    const cleanStageLabel = stage.name.replace(/\s*·\s*Phòng\s+\d+$/i, '');
     const banner = stage.isBossStage
-      ? `CẢNH BÁO BOSS · ${stage.bossTitle || stage.name}`
-      : `Phòng ${stage.stageNumber}/${this.currentChapter.stages.length} · ${stage.name}`;
+      ? `CẢNH BÁO BOSS · ${stage.bossTitle || cleanStageLabel}`
+      : `Phòng ${stage.stageNumber}/${this.currentChapter.stages.length} · ${cleanStageLabel}`;
     this.setupStageArena(stage.obstaclePreset, stage.isBossStage, banner);
     this.spawnWave(0);
     this.syncHudImmediate();
@@ -4859,9 +4883,9 @@ export class GameEngine {
   ): void {
     const spawnPoints: Array<[number, number]> = [];
     for (let x = -7.5; x <= 7.5; x += 3) {
-      spawnPoints.push([x, -8.5]);
-      spawnPoints.push([x, -4.5]);
-      if (Math.abs(x) > 3) spawnPoints.push([x, 0.5]);
+      spawnPoints.push([x, -6.8]);
+      spawnPoints.push([x, -3.2]);
+      if (Math.abs(x) > 3) spawnPoints.push([x, 0.4]);
     }
     let spIdx = 0;
     let bossSpawnIndex = 0;
@@ -6629,6 +6653,7 @@ export class GameEngine {
     this.updateOrbitOrbs(simDt);
     this.updateCompanions(simDt);
     this.updateEnemies(simDt);
+    this.updateDyingCorpses(simDt);
     this.updateProjectiles(simDt);
     this.updateMeteors(simDt);
     this.updateLootOrbs(simDt);
@@ -6637,6 +6662,11 @@ export class GameEngine {
     this.updateUltColumns(simDt);
     this.updateLightning(simDt);
     this.updatePortalAndShrine(simDt);
+    for (let bi = 0; bi < this.arenaBrazierGems.length; bi++) {
+      const gem = this.arenaBrazierGems[bi];
+      gem.rotation.y += simDt * 1.4;
+      gem.position.y = 1.45 + Math.sin(this.elapsed * 2.6 + bi * 1.57) * 0.14;
+    }
     this.updateCamera(dt);
 
     this.hudSyncTimer += dt;
@@ -7098,6 +7128,12 @@ export class GameEngine {
     this.hero.root.rotation.y = this.pFacing;
     this.heroShadow.position.set(this.px, 0.02, this.pz);
     this.heroLight.position.set(this.px, 2.2, this.pz);
+    if (this.heroLightPulse > 0) {
+      this.heroLightPulse = Math.max(0, this.heroLightPulse - dt);
+      this.heroLight.intensity = 1.2 + this.heroLightPulse * 3.2;
+    } else if (this.heroLight.intensity !== 1.2) {
+      this.heroLight.intensity = 1.2;
+    }
 
     this.heroShieldMesh.visible = this.shield > 0;
     if (this.shield > 0) {
@@ -7301,6 +7337,11 @@ export class GameEngine {
     proj.mesh.position.set(proj.x, proj.y, proj.z);
     proj.mesh.rotation.set(0, yaw, 0);
     proj.mesh.visible = true;
+
+    if (dmgSource === 'basic' && Math.abs(lateralOffset) < 0.05) {
+      this.spawnParticles(proj.x, proj.y, proj.z, color, 3);
+      this.heroLightPulse = Math.max(this.heroLightPulse, 0.18);
+    }
 
     soundEngine.playBowShoot(0.95 + Math.random() * 0.12);
   }
@@ -7876,9 +7917,11 @@ export class GameEngine {
     proj.damage = damage;
     proj.life = 4.2;
     proj.mesh.position.set(x, 0.98, z);
-    const mat = proj.mesh.material as THREE.MeshStandardMaterial;
-    mat.color.setHex(colorHex);
-    mat.emissive.setHex(colorHex);
+    const haloMesh = proj.mesh.children[0] as THREE.Mesh | undefined;
+    if (haloMesh) {
+      const haloMat = haloMesh.material as THREE.MeshBasicMaterial;
+      haloMat.color.setHex(colorHex);
+    }
     proj.mesh.visible = true;
   }
 
@@ -9347,7 +9390,20 @@ export class GameEngine {
       }
     }
 
-    this.releaseObject(e.model.root);
+    // Hand off defeated model to 3D KO topple + starlight dissolve transition
+    const kbDx = e.x - this.px;
+    const kbDz = e.z - this.pz;
+    const kbDist = Math.hypot(kbDx, kbDz) || 1;
+    const kbSpeed = e.isBoss ? 2.4 : e.isElite ? 4.2 : 5.4;
+    this.dyingCorpses.push({
+      root: e.model.root,
+      hitMeshes: e.model.hitMeshes,
+      vx: (kbDx / kbDist) * kbSpeed,
+      vz: (kbDz / kbDist) * kbSpeed,
+      timer: 0,
+      maxTimer: e.isBoss ? 0.56 : 0.36,
+      baseScale: e.baseScale ?? 1,
+    });
     this.releaseObject(e.shadow);
     this.releaseObject(e.telegraphGroup);
     if (e.punishRingMesh) this.releaseObject(e.punishRingMesh);
@@ -10160,12 +10216,55 @@ export class GameEngine {
     }
   }
 
+  private updateDyingCorpses(dt: number): void {
+    for (let i = this.dyingCorpses.length - 1; i >= 0; i--) {
+      const c = this.dyingCorpses[i];
+      c.timer += dt;
+      if (c.timer >= c.maxTimer) {
+        this.releaseObject(c.root);
+        this.dyingCorpses.splice(i, 1);
+        continue;
+      }
+      const pose = computeKoPose(c.timer / c.maxTimer, c.baseScale);
+      c.root.position.x = THREE.MathUtils.clamp(
+        c.root.position.x + c.vx * pose.velocityFactor * dt,
+        -ARENA_HALF_W + 0.4,
+        ARENA_HALF_W - 0.4
+      );
+      c.root.position.z = THREE.MathUtils.clamp(
+        c.root.position.z + c.vz * pose.velocityFactor * dt,
+        -ARENA_HALF_D + 0.4,
+        ARENA_HALF_D - 0.4
+      );
+      c.root.position.y = pose.offsetY;
+      c.root.rotation.x = pose.pitchX;
+      c.root.scale.setScalar(pose.scale);
+      for (const m of c.hitMeshes) {
+        const mat = m.material as THREE.MeshStandardMaterial;
+        if (mat && 'emissive' in mat) {
+          mat.emissive.setHex(0xfef08a);
+          mat.emissiveIntensity = pose.emissiveFlash;
+        }
+      }
+    }
+  }
+
   private updatePortalAndShrine(dt: number): void {
     const vortexMat = this.portal.vortex.material as THREE.MeshBasicMaterial;
     if (this.portalOpen) {
-      vortexMat.opacity = THREE.MathUtils.damp(vortexMat.opacity, 0.78, 6, dt);
-      this.portal.ringMat.emissiveIntensity = 1.6 + Math.sin(this.elapsed * 5) * 0.4;
-      this.portal.vortex.rotation.z += dt * 2.8;
+      vortexMat.opacity = THREE.MathUtils.damp(vortexMat.opacity, 0.92, 6, dt);
+      this.portal.ringMat.emissiveIntensity = 1.65 + Math.sin(this.elapsed * 5) * 0.4;
+      this.portal.vortex.rotation.z += dt * 1.45;
+      for (let ci = 0; ci < this.portal.guideChevrons.length; ci++) {
+        const chev = this.portal.guideChevrons[ci];
+        chev.visible = true;
+        // Traveling wave flowing south -> north toward the open gate
+        const wave = Math.sin(this.elapsed * 5.2 + ci * 1.35) * 0.5 + 0.5;
+        const chevMat = chev.material as THREE.MeshBasicMaterial;
+        chevMat.opacity = 0.24 + wave * 0.64;
+        const s = 0.92 + wave * 0.14;
+        chev.scale.set(s, s, 1);
+      }
 
       if (this.pz < -ARENA_HALF_D + 1.4 && Math.abs(this.px) < 1.85) {
         if (this.isElementalTowerMode) {
@@ -10183,6 +10282,9 @@ export class GameEngine {
     } else {
       vortexMat.opacity = 0.08;
       this.portal.ringMat.emissiveIntensity = 0.25;
+      for (let ci = 0; ci < this.portal.guideChevrons.length; ci++) {
+        this.portal.guideChevrons[ci].visible = false;
+      }
     }
 
     if (this.shrineGroup && !this.shrineUsed) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, ArrowUpRight, BarChart3, Crown, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Trophy, Users } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, BarChart3, Crown, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Swords, Trophy, Users } from 'lucide-react';
 import { getNextTargetGoal } from '../data/earlyProgressionData';
 import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
@@ -715,7 +715,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
               {vaultReforgeLooted > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-orange-200 font-bold">
-                    <span>🔥</span>
+                    <Flame className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                     <span>Đá Đúc Hoàng Kim</span>
                   </span>
                   <span className="font-mono-nums font-black text-orange-300">
@@ -726,7 +726,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
               {vaultShardsLooted > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-amber-200 font-bold">
-                    <span>⚔</span>
+                    <Swords className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     <span>Mảnh Thần Binh</span>
                   </span>
                   <span className="font-mono-nums font-black text-yellow-300">
@@ -737,7 +737,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
               {warCrestsEarned > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-rose-200 font-bold">
-                    <span>⚑</span>
+                    <Flag className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                     <span>Huy Hiệu Chiến Trận</span>
                   </span>
                   <span className="font-mono-nums font-black text-rose-300">
@@ -770,7 +770,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
               {festivalLanternsEarned > 0 && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-amber-400/15 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-rose-200 font-bold">
-                    <span>🏮</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                     <span>Đèn Lồng Lễ Hội</span>
                   </span>
                   <span className="font-mono-nums font-black text-amber-300">
@@ -1075,6 +1075,9 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
             >
               <Play className="w-4 h-4" />
               <span>Tiếp Tục Chiến Đấu</span>
+              <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 rounded bg-amber-950/35 border border-amber-950/30 font-mono-nums text-[10px] font-black text-amber-950">
+                P / ESC
+              </kbd>
             </button>
           )}
 
@@ -1091,6 +1094,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
 
           <button
             type="button"
+            data-start={!isPause ? 'true' : undefined}
             onClick={onRetry}
             className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-black text-sm whitespace-nowrap cursor-pointer ${
               isPause ? 'a2-emerald-btn' : 'a2-yellow-btn'

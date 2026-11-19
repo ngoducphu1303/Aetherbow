@@ -5068,10 +5068,18 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'Escape') {
+      const targetTag = (e.target as HTMLElement | null)?.tagName;
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
+        return;
+      }
+      if (e.code === 'Escape' || (e.code === 'KeyP' && (phase === GamePhase.PLAYING || phase === GamePhase.PAUSED))) {
         if (phase === GamePhase.PLAYING || phase === GamePhase.PAUSED) {
+          e.preventDefault();
           handlePause();
         }
+      } else if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleToggleMute();
       } else if (
         (e.code === 'Enter' || e.code === 'Space') &&
         phase === GamePhase.TITLE &&
@@ -5162,6 +5170,7 @@ export default function App() {
     selectedCoopDifficulty,
     selectedElementalTower,
     handlePause,
+    handleToggleMute,
     handleStartTrial,
     handleStartTower,
     handleStartBossRush,
