@@ -21,7 +21,7 @@ function findJoint(model: THREE.Group, name: string): Joint | undefined {
   };
 }
 
-export function createArtemisMotion(model: THREE.Group) {
+export function createArtemisMotion(model: THREE.Group, weapon: 'bow' | 'staff' = 'bow') {
   const leftArm = findJoint(model, 'UpperArmL');
   const rightArm = findJoint(model, 'UpperArmR');
   const leftForearm = findJoint(model, 'ForearmL');
@@ -30,7 +30,7 @@ export function createArtemisMotion(model: THREE.Group) {
   const rightThigh = findJoint(model, 'ThighR');
   const leftShin = findJoint(model, 'ShinL');
   const rightShin = findJoint(model, 'ShinR');
-  const grip = model.getObjectByName('GripL');
+  const grip = model.getObjectByName(weapon === 'staff' ? 'PalmL' : 'GripL');
   if (!leftArm || !rightArm || !leftForearm || !rightForearm ||
       !leftThigh || !rightThigh || !leftShin || !rightShin || !grip) return undefined;
 
@@ -39,6 +39,8 @@ export function createArtemisMotion(model: THREE.Group) {
   let moving = 0;
   let aiming = 0;
   let pull = 0;
+  let castTimer = 0;
+  let castDuration = 0;
 
   function pose(joint: Joint, pitch: number, yaw = 0, roll = 0) {
     joint.bone.quaternion.copy(joint.rest)
@@ -48,27 +50,43 @@ export function createArtemisMotion(model: THREE.Group) {
   }
 
   return {
+    cast(duration: number) {
+      castDuration = duration;
+      castTimer = duration;
+    },
     update(dt: number, elapsed: number, stride: number, aimingBow: boolean, draw: number, bow: THREE.Group, mounted = false) {
       moving = THREE.MathUtils.damp(moving, stride, 14, dt);
       aiming = THREE.MathUtils.damp(aiming, aimingBow ? 1 : 0, 20, dt);
       pull = THREE.MathUtils.damp(pull, draw, 28, dt);
       const step = Math.sin(elapsed * 16) * moving;
       const breathing = Math.sin(elapsed * 2.5) * 0.025;
-      pose(leftThigh, mounted ? -0.75 : step * 0.44, 0, mounted ? -0.76 : 0);
-      pose(rightThigh, mounted ? -0.75 : -step * 0.44, 0, mounted ? 0.76 : 0);
-      pose(leftShin, mounted ? 0.86 : Math.max(0, step) * 0.62);
-      pose(rightShin, mounted ? 0.86 : Math.max(0, -step) * 0.62);
-      pose(leftArm, breathing - step * 0.22 - aiming * 0.97, aiming * 0.24);
-      pose(leftForearm, -Math.abs(step) * 0.12 - aiming * 0.14);
-      pose(rightArm, -breathing + step * 0.22 - aiming * (0.77 - pull * 0.33), -aiming * (0.39 + pull * 0.18));
-      pose(rightForearm, -Math.abs(step) * 0.12 - aiming * (0.26 + pull * 0.36), -aiming * 0.12);
+      const saddlePitch = weapon === 'staff' ? -0.94 : -0.75;
+      const saddleSpread = weapon === 'staff' ? 0.44 : 0.76;
+      const saddleKnee = weapon === 'staff' ? 1.22 : 0.86;
+      pose(leftThigh, mounted ? saddlePitch : step * 0.44, 0, mounted ? -saddleSpread : 0);
+      pose(rightThigh, mounted ? saddlePitch : -step * 0.44, 0, mounted ? saddleSpread : 0);
+      pose(leftShin, mounted ? saddleKnee : Math.max(0, step) * 0.62);
+      pose(rightShin, mounted ? saddleKnee : Math.max(0, -step) * 0.62);
+      if (weapon === 'staff') {
+        const gesture = castTimer > 0 ? Math.sin(Math.PI * (1 - castTimer / castDuration)) : 0;
+        castTimer = Math.max(0, castTimer - dt);
+        pose(leftArm, breathing - step * 0.14 - 0.28 - aiming * .42 - gesture * .48, 0, -.10);
+        pose(leftForearm, -.35 - aiming * .26 - gesture * .32);
+        pose(rightArm, -breathing + step * .24 - gesture * 1.08, 0, gesture * .30);
+        pose(rightForearm, -Math.abs(step) * .18 - gesture * .55);
+      } else {
+        pose(leftArm, breathing - step * 0.22 - aiming * 0.97, aiming * 0.24);
+        pose(leftForearm, -Math.abs(step) * 0.12 - aiming * 0.14);
+        pose(rightArm, -breathing + step * 0.22 - aiming * (0.77 - pull * 0.33), -aiming * (0.39 + pull * 0.18));
+        pose(rightForearm, -Math.abs(step) * 0.12 - aiming * (0.26 + pull * 0.36), -aiming * 0.12);
+      }
 
       if (bow.visible && bow.parent) {
         grip.getWorldPosition(gripPosition);
         bow.parent.worldToLocal(gripPosition);
         // The procedural bow's grip is 0.19 units ahead of its pivot.
         bow.position.copy(gripPosition);
-        bow.position.z -= 0.19;
+        if (weapon === 'bow') bow.position.z -= 0.19;
       }
     },
   };

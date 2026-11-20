@@ -1,8 +1,8 @@
 import { HeroDefinition, HeroId } from '../types/game';
 
 /**
- * Normalized 8-Hero Balance Envelope (0-star baseline):
- * - All 8 heroes sit within a deliberate early-game envelope (ATK 48–56, HP 195–225)
+ * Normalized Hero Balance Envelope (0-star baseline):
+ * - All heroes sit within a deliberate early-game envelope (ATK 48–56, HP 195–225)
  *   so no hero breaks Chapter 1–3 pacing at 0★ while preserving distinct mechanical kits.
  * - Unlock costs align cleanly with the rebalanced Ch.1–3 Gold/Gem economy.
  */
@@ -231,6 +231,29 @@ export const HEROES: HeroDefinition[] = [
     eyeColor: '#22c55e',
     cheekColor: '#f472b6',
     crownStyle: 'witch_hat',
+  },
+  {
+    id: 'van_tich',
+    name: 'Vân Tịch',
+    rarity: 'Epic',
+    title: 'Pháp Sư Bản Đồ Bão',
+    skillName: 'Tia Dẫn',
+    ultName: 'Bản Đồ Giông',
+    ultDesc: 'Vẽ trận đồ tại mục tiêu gần nhất. Ba nhịp sét đánh địch mang dấu trong bán kính 4.2m.',
+    role: 'Đánh Dấu & Sét Lan',
+    roleTag: 'aoe',
+    unlockChapterReq: 0,
+    passiveDesc: 'Đòn thường trúng địch gây Dấu Dẫn trong 6 giây.',
+    bonusAtk: 52,
+    bonusHp: 205,
+    unlockGold: 0,
+    unlockGems: 0,
+    accentHex: 0x5eead4,
+    cloakHex: 0x145e62,
+    hairHex: 0x141f38,
+    eyeColor: '#65b8ab',
+    cheekColor: '#a05b4c',
+    crownStyle: 'ranger_band',
   },
 ];
 

@@ -58,6 +58,7 @@ function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
     atreus: 'Cung Thanh Vân Sơ Khởi +17',
     dracoola: 'Huyết Nguyệt Ma Trảo +21',
     lisa: 'Đèn Hoa Lôi Vi Tử Đằng +20',
+    van_tich: 'La Bàn Lôi Vũ',
   };
   const mountPool = [
     'Thanh Long Thiên Giới',

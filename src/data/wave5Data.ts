@@ -399,7 +399,7 @@ export function generateArenaOpponents(playerRating: number, playerPower: number
   return tiers.map((tier, idx) => {
     const hero = HEROES[(Math.floor(playerRating / 25) + idx * 2) % HEROES.length] ?? HERO_MAP.artemis;
     const weaponArchetype: ArenaOpponent['weaponArchetype'] =
-      hero.id === 'cleo' || hero.id === 'rolla'
+      hero.id === 'cleo' || hero.id === 'rolla' || hero.id === 'van_tich'
         ? 'staff'
         : hero.id === 'wukong' || hero.id === 'dracoola'
         ? 'claw'

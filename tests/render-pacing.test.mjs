@@ -104,6 +104,7 @@ test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và t
     assert.deepEqual(events, ['update', 'arena']);
 
     engine.artemisModel = {parent: body};
+    engine.artemisLoadedAsset = 'heroes/golden-dress-girl.glb';
     engine.refreshAppearanceGate();
     engine.phase = GamePhase.PLAYING;
     next();

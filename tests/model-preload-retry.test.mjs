@@ -24,7 +24,7 @@ test('ModelAssets: tracks per-file progress and retries a single failed GLB with
     const href = String(url);
     fetchCounts.set(href, (fetchCounts.get(href) ?? 0) + 1);
 
-    if (href.includes('dragon.glb') && dragonShouldFail) {
+    if (new URL(href).pathname.endsWith('/mounts/dragon.glb') && dragonShouldFail) {
       return new Response('server error', { status: 500 });
     }
 
@@ -55,13 +55,14 @@ test('ModelAssets: tracks per-file progress and retries a single failed GLB with
 
     mod.preloadGameModels();
 
-    // Wait for initial batch (hero succeeds, dragon fails with HTTP 500)
+    // Wait for the initial batch with only the mount download failing.
     await new Promise((r) => setTimeout(r, 90));
 
     const snapAfterFail = mod.getModelDownloadProgress();
     assert.equal(snapAfterFail.status, 'error');
-    assert.equal(snapAfterFail.completed, 1);
-    assert.equal(snapAfterFail.total, 2);
+    const modelCount = Object.keys(mod.MODEL_LABELS).length;
+    assert.equal(snapAfterFail.completed, modelCount - 1);
+    assert.equal(snapAfterFail.total, modelCount);
 
     const heroFile = snapAfterFail.files.find((f) => f.path === 'heroes/golden-dress-girl.glb');
     const dragonFile = snapAfterFail.files.find((f) => f.path === 'mounts/dragon.glb');
@@ -78,12 +79,12 @@ test('ModelAssets: tracks per-file progress and retries a single failed GLB with
     const snapReady = mod.getModelDownloadProgress();
     assert.equal(snapReady.status, 'ready');
     assert.equal(snapReady.percent, 100);
-    assert.equal(snapReady.completed, 2);
+    assert.equal(snapReady.completed, modelCount);
     assert.ok(snapReady.files.every((f) => f.status === 'ready' && f.percent === 100));
 
     // Confirm hero GLB was fetched strictly ONCE (never re-downloaded during single-file retry)
     const heroEntry = [...fetchCounts.entries()].find(([u]) => u.includes('golden-dress-girl.glb'));
-    const dragonEntry = [...fetchCounts.entries()].find(([u]) => u.includes('dragon.glb'));
+    const dragonEntry = [...fetchCounts.entries()].find(([u]) => new URL(u).pathname.endsWith('/mounts/dragon.glb'));
     assert.equal(heroEntry?.[1], 1, 'Healthy hero model must not be re-downloaded on dragon retry');
     assert.equal(dragonEntry?.[1], 2, 'Failed dragon model should be fetched twice (initial + retry)');
     assert.ok(seenSnapshots.length >= 2, 'Progress snapshots should stream incrementally');

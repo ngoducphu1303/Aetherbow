@@ -405,6 +405,7 @@ interface BreakableUrn {
 }
 
 interface EnemyEntity {
+  stormMarkUntil?: number;
   id: number;
   kind: EnemyKind;
   isElite: boolean;
@@ -792,7 +793,8 @@ export class GameEngine {
   private artemisModel?: THREE.Group;
   private artemisMotion?: ReturnType<typeof createArtemisMotion>;
   private artemisModelLoading = false;
-  private artemisModelFailed = false;
+  private artemisLoadedAsset?: string;
+  private artemisFailedAsset?: string;
   private dragonMount?: THREE.Group;
   private dragonMotion?: ReturnType<typeof createDragonMountMotion>;
   private readonly dragonSeat = new THREE.Vector3();
@@ -1328,6 +1330,7 @@ export class GameEngine {
 
   // Hero Passive & Skill Periodic Timers
   private markedEnemyIds = new Set<number>();
+  private stormChart: { x: number; z: number; damage: number; pulses: number; nextPulse: number } | null = null;
   private artemisMarkTimer = 0;
   private cleoHitCount = 0;
   private atreusShotCount = 0;
@@ -2641,9 +2644,9 @@ export class GameEngine {
     this.callbacks.onAppearanceStatusChange?.(status);
   }
 
-  private wantsAliceModel(): boolean {
+  private wantsRiggedHeroModel(): boolean {
     const visualHeroId = this.heroVisualCfg?.heroId ?? this.baseStats.heroId;
-    return visualHeroId === 'artemis';
+    return visualHeroId === 'artemis' || visualHeroId === 'van_tich';
   }
 
   private wantsDragonMount(): boolean {
@@ -2652,8 +2655,9 @@ export class GameEngine {
 
   private refreshAppearanceGate(): void {
     if (!this.hero) return;
-    const artemisPending = this.wantsAliceModel() &&
-      this.artemisModel?.parent !== this.hero.bodyGroup;
+    const asset = this.getRiggedHeroAsset();
+    const artemisPending = this.wantsRiggedHeroModel() &&
+      (this.artemisLoadedAsset !== asset || this.artemisModel?.parent !== this.hero.bodyGroup);
     const dragonPending = this.wantsDragonMount() &&
       (!this.dragonMount || this.dragonMount.parent !== this.hero.mountGroup);
 
@@ -2661,7 +2665,7 @@ export class GameEngine {
     this.hero.root.visible = !this.appearanceBlocked;
     if (this.heroShadow) this.heroShadow.visible = !this.appearanceBlocked;
     if (this.appearanceBlocked) {
-      const failed = (artemisPending && this.artemisModelFailed) ||
+      const failed = (artemisPending && this.artemisFailedAsset === asset) ||
         (dragonPending && this.dragonMountFailed);
       this.setAppearanceStatus(failed ? 'error' : 'loading');
     } else if (this.appearanceStatus === 'error') {
@@ -2670,9 +2674,9 @@ export class GameEngine {
   }
 
   public retryAppearance(): void {
-    this.artemisModelFailed = false;
+    this.artemisFailedAsset = undefined;
     this.dragonMountFailed = false;
-    if (this.wantsAliceModel()) this.useArtemisModel();
+    if (this.wantsRiggedHeroModel()) this.useArtemisModel();
     this.useDragonMount();
     this.refreshAppearanceGate();
   }
@@ -2688,7 +2692,20 @@ export class GameEngine {
     }
   }
 
+  private getRiggedHeroAsset(): ModelAsset {
+    if ((this.heroVisualCfg.heroId ?? this.baseStats.heroId) === 'van_tich') return 'heroes/van-tich.glb';
+    return 'heroes/golden-dress-girl.glb';
+  }
+
   private useArtemisModel(): void {
+    const asset = this.getRiggedHeroAsset();
+    if (this.artemisModel && this.artemisLoadedAsset !== asset) {
+      this.releaseObject(this.artemisModel);
+      this.artemisModel = undefined;
+      this.artemisMotion = undefined;
+      this.artemisLoadedAsset = undefined;
+    }
+
     if (this.artemisModel) {
       const meshes: THREE.Mesh[] = [];
       this.artemisModel.traverse((object) => {
@@ -2702,11 +2719,11 @@ export class GameEngine {
       return;
     }
 
-    if (this.artemisModelLoading || this.artemisModelFailed) return;
+    if (this.artemisModelLoading || this.artemisFailedAsset === asset) return;
     this.artemisModelLoading = true;
-    this.loadAppearanceAsset('heroes/golden-dress-girl.glb')
+    this.loadAppearanceAsset(asset)
       .then(({ scene }) => {
-        if (this.disposed) {
+        if (this.disposed || this.getRiggedHeroAsset() !== asset || !this.wantsRiggedHeroModel()) {
           this.releaseObject(scene);
           return;
         }
@@ -2718,17 +2735,22 @@ export class GameEngine {
         scene.traverse((object) => {
           if (object instanceof THREE.Mesh) object.castShadow = true;
         });
-        this.artemisMotion = createArtemisMotion(scene);
+        this.artemisMotion = createArtemisMotion(scene, asset === 'heroes/van-tich.glb' ? 'staff' : 'bow');
+        this.artemisLoadedAsset = asset;
         this.artemisModel = scene;
-        if (this.wantsAliceModel()) this.useArtemisModel();
+        this.useArtemisModel();
       })
       .catch((error) => {
-        this.artemisModelFailed = true;
-        console.warn('Could not load the Alice appearance.', error);
+        this.artemisFailedAsset = asset;
+        console.warn('Could not load the selected hero appearance.', error);
       })
       .finally(() => {
         this.artemisModelLoading = false;
-        if (!this.disposed) this.refreshAppearanceGate();
+        if (this.disposed) return;
+        if (this.wantsRiggedHeroModel() && this.getRiggedHeroAsset() !== asset) {
+          this.useArtemisModel();
+        }
+        this.refreshAppearanceGate();
       });
   }
 
@@ -2813,7 +2835,7 @@ export class GameEngine {
     this.hero = createHeroModel(this.heroVisualCfg);
     this.hero.root.position.set(this.px, 0, this.pz);
     this.entitiesGroup.add(this.hero.root);
-    if (this.wantsAliceModel()) this.useArtemisModel();
+    if (this.wantsRiggedHeroModel()) this.useArtemisModel();
     this.useDragonMount();
 
     this.heroShadow = new THREE.Mesh(
@@ -4831,7 +4853,7 @@ export class GameEngine {
       maxHp: Math.round(stats.maxHp * 2.1 * powerRatio),
       attack: Math.round(stats.attack * 1.15 * powerRatio),
       speedMult: opponent.personality === 'assassin' ? 1.16 : opponent.personality === 'aggressive' ? 1.08 : 1.03,
-      weaponArchetype: opponent.heroId === 'rolla' || opponent.heroId === 'cleo' ? 'staff' : opponent.heroId === 'wukong' || opponent.heroId === 'dracoola' ? 'claw' : 'bow',
+      weaponArchetype: opponent.heroId === 'rolla' || opponent.heroId === 'cleo' || opponent.heroId === 'van_tich' ? 'staff' : opponent.heroId === 'wukong' || opponent.heroId === 'dracoola' ? 'claw' : 'bow',
       accentHex: oppHero.accentHex,
       cloakHex: oppHero.cloakHex,
       hairHex: oppHero.hairHex,
@@ -6493,6 +6515,7 @@ export class GameEngine {
   }
 
   private clearCombatEntities(): void {
+    this.stormChart = null;
     this.obstacles.forEach((o) => this.releaseObject(o.mesh));
     this.obstacles = [];
 
@@ -8506,6 +8529,16 @@ export class GameEngine {
     }
 
     const skillDef = getHeroActiveSkill(this.baseStats.heroId);
+    const convergenceTarget = skillDef.effectKind === 'storm_convergence'
+      ? this.enemies.filter((enemy) => !enemy.dead && enemy.spawnTimer <= 0 &&
+          (enemy.stormMarkUntil ?? 0) > this.elapsed &&
+          Math.hypot(enemy.x - this.px, enemy.z - this.pz) <= skillDef.radius)
+        .sort((a, b) => Math.hypot(a.x - this.px, a.z - this.pz) - Math.hypot(b.x - this.px, b.z - this.pz))[0]
+      : undefined;
+    if (skillDef.effectKind === 'storm_convergence' && !convergenceTarget) {
+      this.emitFloatingNumber(this.px, 2.1, this.pz, 0, false, false, undefined, 'CẦN DẤU DẪN');
+      return;
+    }
     this.activeSkillMaxCooldown = skillDef.cooldownSec;
     this.activeSkillCooldown = skillDef.cooldownSec;
 
@@ -8598,6 +8631,23 @@ export class GameEngine {
             e.burnDps = Math.max(e.burnDps, atkPower * 0.42);
             this.damageEnemy(e, skillDmg, false, true, false, false, false, 'HỎA NGỤC', 'ultimate');
           });
+        break;
+      }
+      case 'storm_convergence': {
+        if (!convergenceTarget) break;
+        this.artemisMotion?.cast(0.46);
+        const center = convergenceTarget;
+        center.stormMarkUntil = 0;
+        const nearby = liveEnemies.filter((enemy) => enemy !== center && !enemy.dead &&
+          Math.hypot(enemy.x - center.x, enemy.z - center.z) <= 3.8)
+          .sort((a, b) => Math.hypot(a.x - center.x, a.z - center.z) - Math.hypot(b.x - center.x, b.z - center.z))
+          .slice(0, 2);
+        this.spawnLightningArc(this.px, 1.4, this.pz, center.x, 0.8, center.z);
+        this.damageEnemy(center, skillDmg, false, false, false, true, false, 'HỘI TỤ!', 'ultimate');
+        for (const enemy of nearby) {
+          this.spawnLightningArc(center.x, 0.8, center.z, enemy.x, 0.8, enemy.z);
+          this.damageEnemy(enemy, skillDmg * 0.70, false, false, false, true, false, 'SÉT LAN!', 'ultimate');
+        }
         break;
       }
       case 'thunder_arc': {
@@ -8748,6 +8798,16 @@ export class GameEngine {
             this.damageEnemy(e, atkPower * 2.1, true, false, false, false, false, undefined, 'ultimate');
           }
         }
+        break;
+      }
+      case 'van_tich': {
+        this.artemisMotion?.cast(0.8);
+        const target = this.findNearestEnemy(this.px, this.pz);
+        const x = target?.x ?? this.px;
+        const z = target?.z ?? this.pz;
+        this.stormChart = { x, z, damage: atkPower * 0.78, pulses: 3, nextPulse: this.elapsed };
+        this.spawnShockwave(x, z, 0x5eead4, 4.2, 0.75);
+        this.spawnUltColumn(x, z, 0x5eead4, 0.28);
         break;
       }
       case 'thor': {
@@ -9172,7 +9232,7 @@ export class GameEngine {
           showWeaponInLobby,
           emotePose.active ? 0.35 + emotePose.drawProgress * 0.65 : 0.35,
           this.hero.bowGroup,
-          onDragon
+          onDragon || (this.artemisLoadedAsset === 'heroes/van-tich.glb' && Boolean(this.hero.mountGroup))
         );
       }
       if (this.lobbyHaloGroup) {
@@ -9469,6 +9529,20 @@ export class GameEngine {
   private stepCombatSimulation(dt: number): void {
     this.elapsed += dt;
     this.runElapsedSeconds += dt;
+
+    const chart = this.stormChart;
+    if (chart && this.elapsed >= chart.nextPulse) {
+      chart.nextPulse += 0.60;
+      chart.pulses--;
+      this.spawnShockwave(chart.x, chart.z, 0x5eead4, 4.2, 0.36);
+      for (const enemy of [...this.enemies]) {
+        if (enemy.dead || enemy.spawnTimer > 0 || (enemy.stormMarkUntil ?? 0) <= this.elapsed ||
+            Math.hypot(enemy.x - chart.x, enemy.z - chart.z) > 4.2) continue;
+        this.spawnLightningArc(enemy.x, 5.0, enemy.z, enemy.x, 0.6, enemy.z);
+        this.damageEnemy(enemy, chart.damage, false, false, false, true, false, 'BẢN ĐỒ GIÔNG!', 'ultimate');
+      }
+      if (chart.pulses === 0) this.stormChart = null;
+    }
 
     if (this.isWeeklyRankedBossMode) {
       this.weeklyBossTimeLeft = Math.max(0, this.weeklyBossTimeLeft - dt);
@@ -11197,8 +11271,10 @@ export class GameEngine {
 
     if (this.artemisModel?.parent === this.hero.bodyGroup) {
       this.hero.nockedArrow.visible = aimingBow;
+      const seated = onDragon ||
+        (this.artemisLoadedAsset === 'heroes/van-tich.glb' && Boolean(this.hero.mountGroup));
       this.artemisMotion?.update(
-        dt, this.elapsed, isMoving && !onDragon ? 1 : 0, aimingBow, drawProgress, this.hero.bowGroup, onDragon
+        dt, this.elapsed, isMoving && !seated ? 1 : 0, aimingBow, drawProgress, this.hero.bowGroup, seated
       );
     }
 
@@ -12428,7 +12504,7 @@ export class GameEngine {
         chillTimer: e.chillTimer,
         burnTimer: e.burnTimer,
         poisonDps: e.poisonDps,
-        isMarked: this.markedEnemyIds.has(e.id),
+        isMarked: this.markedEnemyIds.has(e.id) || (e.stormMarkUntil ?? 0) > this.elapsed,
         elapsed: this.elapsed,
       });
       const bossRagePulse =
@@ -13663,6 +13739,7 @@ export class GameEngine {
             e.breakShield = Math.max(0, e.breakShield - e.maxBreakShield * 0.18);
           }
 
+          const hpBeforeHit = e.hp;
           this.damageEnemy(
             e,
             dmg,
@@ -13688,6 +13765,10 @@ export class GameEngine {
               ),
             }
           );
+
+          if (this.baseStats.heroId === 'van_tich' && p.source === 'basic' && e.hp > 0 && e.hp < hpBeforeHit) {
+            e.stormMarkUntil = this.elapsed + 6;
+          }
 
           // AAA Wave 7: Lodge pooled arrow visibly into Boss / Elite / large enemy armor
           if (!p.isSword && (e.isBoss || e.isElite || e.radius >= 0.72) && e.hp > 0) {

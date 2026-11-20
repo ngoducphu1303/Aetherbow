@@ -38,7 +38,8 @@ export type HeroId =
   | 'rolla'
   | 'atreus'
   | 'dracoola'
-  | 'lisa';
+  | 'lisa'
+  | 'van_tich';
 
 export type CrownStyle =
   | 'crescent'
@@ -1228,7 +1229,7 @@ export interface SaveData {
   selectedHeroId: HeroId;
   aliceDefaultMigrated?: boolean;
   unlockedHeroes: HeroId[];
-  heroStars: Record<HeroId, number>;
+  heroStars: Partial<Record<HeroId, number>>;
   equipped: Partial<Record<GearSlot, string>>;
   inventory: GearInstance[];
   equippedRunes: string[]; // rune instance uids (up to 4)
@@ -3064,7 +3065,8 @@ export type HeroActiveSkillEffectKind =
   | 'thunder_arc'
   | 'abyssal_aegis'
   | 'cudgel_vault'
-  | 'electro_rose_lantern';
+  | 'electro_rose_lantern'
+  | 'storm_convergence';
 
 export interface HeroActiveSkillDef {
   heroId: HeroId;

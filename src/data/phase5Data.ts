@@ -134,6 +134,18 @@ export const HERO_ACTIVE_SKILLS: Record<HeroId, HeroActiveSkillDef> = {
     radius: 5.2,
     durationSec: 0.9,
   },
+  van_tich: {
+    heroId: 'van_tich',
+    name: 'Điểm Hội Tụ',
+    shortLabel: 'Hội Tụ',
+    desc: 'Tiêu Dấu Dẫn của mục tiêu gần nhất trong tầm, gây 135% ATK và truyền sét sang tối đa 2 địch gần đó.',
+    cooldownSec: 8.5,
+    damageMult: 1.35,
+    effectKind: 'storm_convergence',
+    accentHex: 0x5eead4,
+    accentCss: '#5eead4',
+    radius: 7.5,
+  },
 };
 
 export function getHeroActiveSkill(heroId: HeroId): HeroActiveSkillDef {

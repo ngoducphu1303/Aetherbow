@@ -1489,20 +1489,24 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       }`}
                     >
                       <Lock className="w-3.5 h-3.5" />
-                      <span className="font-mono-nums">Mở · {hero.unlockGold} Vàng</span>
+                      <span className="font-mono-nums">
+                        {hero.unlockGold === 0 ? 'Chiêu Mộ Miễn Phí' : `Mở · ${hero.unlockGold} Vàng`}
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      disabled={save.gems < hero.unlockGems}
-                      onClick={() => onUnlockHero(hero.id, 'gems')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                        save.gems >= hero.unlockGems
-                          ? 'a2-purple-btn'
-                          : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                      }`}
-                    >
-                      <span className="font-mono-nums">Mở · {hero.unlockGems} Ngọc</span>
-                    </button>
+                    {hero.unlockGems > 0 && (
+                      <button
+                        type="button"
+                        disabled={save.gems < hero.unlockGems}
+                        onClick={() => onUnlockHero(hero.id, 'gems')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                          save.gems >= hero.unlockGems
+                            ? 'a2-purple-btn'
+                            : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <span className="font-mono-nums">Mở · {hero.unlockGems} Ngọc</span>
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1722,7 +1726,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         <div className="text-[10px] text-amber-100/90 font-mono-nums font-bold mt-0.5 truncate">
                           {isUnlocked
                             ? `★ ${hStar}/5 · ${h.rarity}`
-                            : `${h.unlockGold}V · ${h.unlockGems} Ngọc`}
+                            : h.unlockGold === 0 ? 'Miễn phí' : `${h.unlockGold}V · ${h.unlockGems} Ngọc`}
                         </div>
                         <div className="text-[9px] font-bold truncate mt-0.5">
                           {!isUnlocked ? (

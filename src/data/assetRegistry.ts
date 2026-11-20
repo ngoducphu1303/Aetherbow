@@ -84,6 +84,13 @@ export const HERO_ASSET_PACKS: Record<HeroId, CharacterAssetPack> = {
     skill: '/assets/apiaetherbow/characters/lisa/skill.png',
     burst: '/assets/apiaetherbow/characters/lisa/burst.png',
   },
+  van_tich: {
+    assetKey: 'van-tich',
+    icon: '/assets/apiaetherbow/characters/van-tich/icon.webp',
+    portrait: '/assets/apiaetherbow/characters/van-tich/portrait.webp',
+    skill: '/assets/apiaetherbow/characters/van-tich/skill.webp',
+    burst: '/assets/apiaetherbow/characters/van-tich/burst.webp',
+  },
 };
 
 export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> = {

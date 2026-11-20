@@ -1197,7 +1197,7 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     heroId: hero.id,
     heroName: hero.name,
     heroStar,
-    weaponArchetype,
+    weaponArchetype: hero.id === 'van_tich' ? 'staff' : weaponArchetype,
     attack,
     maxHp,
     critChance,
