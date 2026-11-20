@@ -1162,7 +1162,7 @@ interface HeroesPanelProps {
   onEquipPet: (petId: PetId | null) => void;
   onUpgradePet: (petId: PetId) => void;
   onEvolvePet?: (petId: PetId) => void;
-  onUnlockSkin: (skinId: HeroSkinId, currency: 'gold' | 'gems') => void;
+  onUnlockSkin: (skinId: HeroSkinId, currency: 'gold' | 'gems', heroId: HeroId) => void;
   onEquipSkin: (heroId: HeroId, skinId: HeroSkinId) => void;
   onUnlockAura: (auraId: AuraStyleId, currency: 'gold' | 'gems') => void;
   onEquipAura: (auraId: AuraStyleId) => void;
@@ -2000,7 +2000,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {HERO_SKINS.map((skin) => {
+                  {HERO_SKINS.filter((skin) => !skin.heroId || skin.heroId === hero.id).map((skin) => {
                     const isOwned = unlockedSkins.includes(skin.id);
                     const isEquipped = activeSkinId === skin.id;
                     const cHex = skin.cloakHex
@@ -2073,11 +2073,19 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                             {isEquipped && <Check className="w-3.5 h-3.5" />}
                             <span>{isEquipped ? 'Đang Mặc' : `Mặc Cho ${hero.name}`}</span>
                           </button>
+                        ) : skin.unlockGold === 0 && skin.unlockGems === 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => onUnlockSkin(skin.id, 'gold', hero.id)}
+                            className="a2-emerald-btn w-full py-2 rounded-xl text-xs font-black cursor-pointer"
+                          >
+                            Nhận Miễn Phí
+                          </button>
                         ) : skin.unlockGold > 0 ? (
                           <button
                             type="button"
                             disabled={save.gold < skin.unlockGold}
-                            onClick={() => onUnlockSkin(skin.id, 'gold')}
+                            onClick={() => onUnlockSkin(skin.id, 'gold', hero.id)}
                             className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
                               save.gold >= skin.unlockGold
                                 ? 'a2-yellow-btn'
@@ -2091,7 +2099,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                           <button
                             type="button"
                             disabled={save.gems < skin.unlockGems}
-                            onClick={() => onUnlockSkin(skin.id, 'gems')}
+                            onClick={() => onUnlockSkin(skin.id, 'gems', hero.id)}
                             className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
                               save.gems >= skin.unlockGems
                                 ? 'a2-purple-btn'

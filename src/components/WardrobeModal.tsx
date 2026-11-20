@@ -466,7 +466,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
             })}
 
           {tab === 'skins' &&
-            HERO_SKINS.map((sk) => {
+            HERO_SKINS.filter((sk) => !sk.heroId || sk.heroId === save.selectedHeroId).map((sk) => {
               const owned = unlockedSkins.has(sk.id);
               const equipped = equippedSkin === sk.id;
               const isPreviewing = activeSkinPreview === sk.id;
@@ -533,7 +533,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         onClick={() => onUnlockSkin(sk.id)}
                         className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer"
                       >
-                        {sk.unlockGems > 0 ? `${sk.unlockGems} Ngọc` : `${sk.unlockGold} Vàng`}
+                        {sk.unlockGems > 0 ? `${sk.unlockGems} Ngọc` : sk.unlockGold > 0 ? `${sk.unlockGold} Vàng` : 'Nhận Miễn Phí'}
                       </button>
                     )}
                   </div>

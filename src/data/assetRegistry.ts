@@ -94,6 +94,12 @@ export const HERO_ASSET_PACKS: Record<HeroId, CharacterAssetPack> = {
 };
 
 export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> = {
+  alice_ao_dai: {
+    ...HERO_ASSET_PACKS.artemis,
+    assetKey: 'alice-ao-dai',
+    icon: '/assets/apiaetherbow/skins/alice-ao-dai/icon.webp',
+    portrait: '/assets/apiaetherbow/skins/alice-ao-dai/portrait.webp',
+  },
   celestial_gold: {
     assetKey: 'navia',
     icon: '/assets/apiaetherbow/characters/navia/icon.png',

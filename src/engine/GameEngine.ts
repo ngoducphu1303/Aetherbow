@@ -2693,7 +2693,11 @@ export class GameEngine {
   }
 
   private getRiggedHeroAsset(): ModelAsset {
-    if ((this.heroVisualCfg.heroId ?? this.baseStats.heroId) === 'van_tich') return 'heroes/van-tich.glb';
+    const heroId = this.heroVisualCfg.heroId ?? this.baseStats.heroId;
+    if (heroId === 'van_tich') return 'heroes/van-tich.glb';
+    if (heroId === 'artemis' && this.heroVisualCfg.skinId === 'alice_ao_dai') {
+      return 'heroes/alice-ao-dai-hoa-mai.glb';
+    }
     return 'heroes/golden-dress-girl.glb';
   }
 

@@ -768,10 +768,12 @@ export type HeroSkinId =
   | 'jade_adeptus'
   | 'lunar_sovereign'
   | 'verdant_ranger'
-  | 'twilight_raven';
+  | 'twilight_raven'
+  | 'alice_ao_dai';
 
 export interface HeroSkinDefinition {
   id: HeroSkinId;
+  heroId?: HeroId;
   name: string;
   badge: string;
   desc: string;

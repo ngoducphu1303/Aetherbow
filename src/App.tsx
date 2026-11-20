@@ -1087,11 +1087,14 @@ export default function App() {
     const wTpl = wItem ? GEAR_TEMPLATES[wItem.templateId] : undefined;
     const aTpl = aItem ? GEAR_TEMPLATES[aItem.templateId] : undefined;
     const isWardrobePreviewActive = phase === GamePhase.TITLE && wardrobeOpen;
-    const activeSkinId =
+    const requestedSkinId =
       (isWardrobePreviewActive ? wardrobePreview.skinId : undefined) ??
       save.equippedSkinByHero?.[hero.id] ??
       'default';
-    const skinDef = SKIN_MAP[activeSkinId];
+    const requestedSkin = SKIN_MAP[requestedSkinId];
+    const skinDef = requestedSkin && (!requestedSkin.heroId || requestedSkin.heroId === hero.id)
+      ? requestedSkin
+      : SKIN_MAP.default;
     const auraDef = AURA_MAP[save.equippedAuraId ?? 'zodiac_gold'] ?? AURA_MAP.zodiac_gold;
     const selCh = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
     const equippedWingId =
@@ -1168,7 +1171,7 @@ export default function App() {
 
     return {
       heroId: hero.id,
-      skinId: activeSkinId,
+      skinId: skinDef.id,
       weaponAccentHex: skinDef?.accentHex ?? (hero.id === 'van_tich' ? hero.accentHex : wTpl?.visualAccentHex ?? hero.accentHex),
       cloakColorHex: skinDef?.cloakHex ?? aTpl?.cloakColorHex ?? hero.cloakHex,
       hairColorHex: skinDef?.hairHex ?? hero.hairHex,
@@ -7609,15 +7612,17 @@ export default function App() {
     });
   }, []);
 
-  const handleUnlockSkin = useCallback((skinId: HeroSkinId, currency: 'gold' | 'gems') => {
+  const handleUnlockSkin = useCallback((skinId: HeroSkinId, currency: 'gold' | 'gems', heroId?: HeroId) => {
     const skin = SKIN_MAP[skinId];
     if (!skin) return;
     setSave((prev) => {
       const unlocked = prev.unlockedSkins ?? ['default'];
       if (unlocked.includes(skinId)) return prev;
-      if (currency === 'gold' && (skin.unlockGold <= 0 || prev.gold < skin.unlockGold)) return prev;
+      const targetHero = heroId ?? prev.selectedHeroId;
+      if (skin.heroId && skin.heroId !== targetHero) return prev;
+      const isFree = skin.unlockGold === 0 && skin.unlockGems === 0;
+      if (currency === 'gold' && !isFree && (skin.unlockGold <= 0 || prev.gold < skin.unlockGold)) return prev;
       if (currency === 'gems' && (skin.unlockGems <= 0 || prev.gems < skin.unlockGems)) return prev;
-      const targetHero = prev.selectedHeroId;
       soundEngine.playVictory();
       return {
         ...prev,
@@ -7631,6 +7636,8 @@ export default function App() {
   }, []);
 
   const handleEquipSkin = useCallback((heroId: HeroId, skinId: HeroSkinId) => {
+    const skin = SKIN_MAP[skinId];
+    if (!skin || (skin.heroId && skin.heroId !== heroId)) return;
     soundEngine.playUiClick(1.1);
     setSave((prev) => {
       const unlocked = prev.unlockedSkins ?? ['default'];
@@ -7957,7 +7964,9 @@ export default function App() {
           : null;
 
       const unlockedSkins = prev.unlockedSkins ?? ['default'];
-      const nextSkinId = unlockedSkins.includes(preset.skinId) ? preset.skinId : 'default';
+      const presetSkin = SKIN_MAP[preset.skinId];
+      const nextSkinId = presetSkin && (!presetSkin.heroId || presetSkin.heroId === nextHeroId) &&
+        unlockedSkins.includes(preset.skinId) ? preset.skinId : 'default';
       const unlockedAuras = prev.unlockedAuras ?? ['zodiac_gold'];
       const nextAuraId = unlockedAuras.includes(preset.auraId)
         ? preset.auraId
@@ -9292,6 +9301,7 @@ export default function App() {
 
   const handleOpenWardrobe = useCallback(() => {
     setWardrobeOpen(true);
+    setPreviewHeroId(null);
     setWardrobePreview({});
     setCameraPreset('wardrobe');
     engineRef.current?.setLobbyCameraPreset('wardrobe');
@@ -11711,10 +11721,14 @@ export default function App() {
           onChangeCameraPreset={handleChangeCameraPreset}
           onRotateHero={(deltaRad) => engineRef.current?.rotateLobbyHero(deltaRad)}
           onResetHeroRotation={() => engineRef.current?.resetLobbyHeroRotation()}
-          onSelectSkin={(skinId) => handleEquipSkin(save.selectedHeroId, skinId)}
-          onUnlockSkin={(skinId) =>
-            handleUnlockSkin(skinId, SKIN_MAP[skinId]?.unlockGems > 0 ? 'gems' : 'gold')
-          }
+          onSelectSkin={(skinId) => {
+            handleEquipSkin(save.selectedHeroId, skinId);
+            setWardrobePreview((prev) => ({ ...prev, skinId: undefined }));
+          }}
+          onUnlockSkin={(skinId) => {
+            handleUnlockSkin(skinId, SKIN_MAP[skinId]?.unlockGems > 0 ? 'gems' : 'gold');
+            setWardrobePreview((prev) => ({ ...prev, skinId: undefined }));
+          }}
           onEquipWing={handleEquipWing}
           onUnlockWing={(wingId) =>
             handleUnlockWing(

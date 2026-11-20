@@ -159,6 +159,17 @@ export const HERO_SKINS: HeroSkinDefinition[] = [
     hpBonus: 0,
   },
   {
+    id: 'alice_ao_dai',
+    heroId: 'artemis',
+    name: 'Áo Dài Hoa Mai',
+    badge: 'RIÊNG CHO ALICE',
+    desc: 'Áo dài đỏ thêu hoa mai, phối quần lụa và khăn đóng.',
+    unlockGems: 0,
+    unlockGold: 0,
+    atkBonus: 0,
+    hpBonus: 0,
+  },
+  {
     id: 'celestial_gold',
     name: 'Thánh Quang Hoàng Kim',
     badge: 'SỬ THI',
