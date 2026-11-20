@@ -1,12 +1,12 @@
-import React from 'react';
-import { AlertTriangle, ArrowUpRight, BarChart3, Crown, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Swords, Trophy, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { AlertTriangle, ArrowUpRight, BarChart3, Camera, Check, Crown, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Sun, Swords, Trophy, Users } from 'lucide-react';
 import { getNextTargetGoal } from '../data/earlyProgressionData';
 import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { evaluateMatchMvpReport } from '../data/wave11Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
 import { computePostRunDamageShares } from '../engine/aaaWave3Director';
-import { CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, SaveData } from '../types/game';
+import { CombatCameraPreset, CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, PhotoLightingPreset, SaveData } from '../types/game';
 import {
   ArtifactRelicIcon,
   AwakenCrystalIcon,
@@ -104,6 +104,11 @@ interface PauseResultModalProps {
   onReturnTitle: () => void;
   onOpenSettings?: () => void;
   onQuickAction?: (target: 'gear' | 'pets' | 'halos' | 'festival') => void;
+  combatCameraPreset?: CombatCameraPreset;
+  onChangeCombatCameraPreset?: (preset: CombatCameraPreset) => void;
+  photoLightingPreset?: PhotoLightingPreset;
+  onChangePhotoLighting?: (preset: PhotoLightingPreset) => void;
+  onCaptureVictoryPhoto?: () => void;
 }
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
@@ -191,7 +196,13 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   onReturnTitle,
   onOpenSettings,
   onQuickAction,
+  combatCameraPreset = 'tactical',
+  onChangeCombatCameraPreset,
+  photoLightingPreset = 'golden_hall',
+  onChangePhotoLighting,
+  onCaptureVictoryPhoto,
 }) => {
+  const [snapshotSaved, setSnapshotSaved] = useState(false);
   const isPause = phase === GamePhase.PAUSED;
   const isVictory = phase === GamePhase.VICTORY;
   const isCampaignRun =
@@ -752,6 +763,18 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                         </div>
                       </div>
                       <div>
+                        <div className="text-[10px] text-slate-400 font-bold">Phản Ứng Nguyên Tố</div>
+                        <div className="font-mono-nums text-xs font-black text-cyan-300 mt-0.5">
+                          {damageBreakdown.elementalReactions ?? 0} lần
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400 font-bold">Mũi Tên Phản Tiễn</div>
+                        <div className="font-mono-nums text-xs font-black text-yellow-300 mt-0.5">
+                          {damageBreakdown.counterShots ?? 0} phát
+                        </div>
+                      </div>
+                      <div>
                         <div className="text-[10px] text-slate-400 font-bold">Thời Gian Trận</div>
                         <div className="font-mono-nums text-xs font-black text-sky-300 mt-0.5">
                           {Math.max(1, Math.round(damageBreakdown.elapsedSeconds))}s
@@ -1104,6 +1127,88 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                 P / ESC
               </kbd>
             </button>
+          )}
+
+          {isPause && onChangeCombatCameraPreset && (
+            <div className="rounded-xl bg-[#070b18] border border-amber-400/20 p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                <span>Góc Camera Chiến Đấu 3D</span>
+                <span className="text-[10px] text-amber-300 font-black">Đổi Tức Thì</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  ['action', 'Cận Cảnh'],
+                  ['tactical', 'Chiến Thuật'],
+                  ['wide', 'Toàn Cảnh'],
+                ] as const).map(([presetId, label]) => (
+                  <button
+                    key={presetId}
+                    type="button"
+                    onClick={() => onChangeCombatCameraPreset(presetId)}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-black border cursor-pointer transition-colors whitespace-nowrap ${
+                      combatCameraPreset === presetId
+                        ? 'a2-yellow-btn'
+                        : 'bg-[#0b1228] border-slate-700 text-slate-300 hover:border-amber-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isVictory && onCaptureVictoryPhoto && (
+            <div className="sm:col-span-2 rounded-xl bg-[#070b18] border border-amber-400/25 p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              {onChangePhotoLighting && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1 mr-0.5">
+                    <Sun className="w-3.5 h-3.5 shrink-0" />
+                    <span>Ánh Sáng 3D:</span>
+                  </span>
+                  {([
+                    ['golden_hall', 'Hoàng Kim'],
+                    ['moonlit', 'Nguyệt Quang'],
+                    ['inferno', 'Hỏa Diệm'],
+                  ] as const).map(([moodId, label]) => (
+                    <button
+                      key={moodId}
+                      type="button"
+                      onClick={() => onChangePhotoLighting(moodId)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-black border cursor-pointer whitespace-nowrap transition-colors ${
+                        photoLightingPreset === moodId
+                          ? 'bg-amber-400/20 border-amber-300 text-amber-200'
+                          : 'bg-[#0b1228] border-slate-700 text-slate-300 hover:border-amber-300'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onCaptureVictoryPhoto();
+                  setSnapshotSaved(true);
+                  window.setTimeout(() => setSnapshotSaved(false), 2200);
+                }}
+                className="a2-slate-btn px-3.5 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border border-amber-400/45 text-amber-200 hover:text-white cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {snapshotSaved ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                    <span className="text-emerald-300">Đã Lưu Ảnh PNG 3D</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span>Chụp Ảnh Chiến Thắng 3D</span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
 
           {isPause && onOpenSettings && (

@@ -506,6 +506,12 @@ export interface GpuProfileSummary {
   targetCombatFps: 12 | 30 | 60;
 }
 
+export type HudScaleMode = 'compact' | 'normal' | 'large';
+
+export type CombatCameraPreset = 'action' | 'tactical' | 'wide';
+
+export type PhotoLightingPreset = 'golden_hall' | 'moonlit' | 'inferno';
+
 export interface GameSettings {
   masterVol: number; // 0..1
   bgmVol: number; // 0..1
@@ -515,6 +521,12 @@ export interface GameSettings {
   showDamageNumbers: boolean;
   starfallWeather?: boolean;
   bloomEnabled?: boolean;
+  hapticsEnabled?: boolean;
+  highContrastTelegraphs?: boolean;
+  hudScale?: HudScaleMode;
+  combatCameraPreset?: CombatCameraPreset;
+  liveDpsMeter?: boolean;
+  photoLightingPreset?: PhotoLightingPreset;
 }
 
 export interface BattlePassProgress {
@@ -785,6 +797,8 @@ export interface DamageBreakdown {
   elapsedSeconds: number;
   perfectDodges?: number;
   punishHits?: number;
+  elementalReactions?: number;
+  counterShots?: number;
   coopAllies?: CoopAllySummary[];
 }
 
@@ -1759,6 +1773,14 @@ export interface HudSnapshot {
   bossPhaseShiftLevel?: 2 | 3 | null;
   edgeThreats?: EdgeThreatIndicator[];
   biomeWeatherLabel?: string | null;
+  // AAA Wave 4: Counter-Shot Readiness, Gamepad Detection & Elemental Reactions
+  counterShotReady?: boolean;
+  counterShotTimer?: number;
+  gamepadConnected?: boolean;
+  elementalReactionsCount?: number;
+  // AAA Wave 5: Live Rolling DPS Telemetry
+  liveDps5s?: number;
+  livePeakCrit?: number;
 }
 
 export interface EncounterOffer {

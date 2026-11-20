@@ -1148,6 +1148,19 @@ export default function App() {
         onJoystickUpdate: (joy) => {
           setJoystick(joy);
         },
+        onGamepadPause: () => {
+          setPhase((prev) => {
+            if (prev === GamePhase.PLAYING) {
+              engine.setPhase(GamePhase.PAUSED);
+              return GamePhase.PAUSED;
+            }
+            if (prev === GamePhase.PAUSED) {
+              engine.setPhase(GamePhase.PLAYING);
+              return GamePhase.PLAYING;
+            }
+            return prev;
+          });
+        },
         onRequestSkillDraft: (currentSkills) => {
           const rolled = rollSkillChoices(currentSkills, 3, undefined, {
             chapterId: selectedChapterIdRef.current,
@@ -9205,9 +9218,14 @@ export default function App() {
           onResetHeroRotation={() => engineRef.current?.resetLobbyHeroRotation()}
           photoMode={photoMode}
           photoAngle={photoAngle}
+          photoLightingPreset={currentSettings.photoLightingPreset ?? 'golden_hall'}
           lobbyHeroPose={save.lobbyHeroPose ?? 'heroic'}
           onTogglePhotoMode={(active) => setPhotoMode(active)}
           onChangePhotoAngle={(angle) => setPhotoAngle(angle)}
+          onChangePhotoLighting={(preset) => {
+            handleUpdateSettings({ photoLightingPreset: preset });
+            engineRef.current?.setPhotoLightingPreset(preset);
+          }}
           onSelectHeroPose={(pose: LobbyHeroPoseId) =>
             setSave((prev) => ({ ...prev, lobbyHeroPose: pose }))
           }
@@ -9243,6 +9261,8 @@ export default function App() {
           muted={save.muted}
           damages={damages}
           joystick={joystick}
+          hudScale={currentSettings.hudScale}
+          liveDpsMeter={Boolean(currentSettings.liveDpsMeter)}
           onToggleMute={handleToggleMute}
           onPause={handlePause}
           onDashClick={() => engineRef.current?.triggerDash()}
@@ -9556,6 +9576,27 @@ export default function App() {
               setActiveLobbyTab('battle');
               setFestivalModalOpen(true);
             }
+          }}
+          combatCameraPreset={currentSettings.combatCameraPreset ?? 'tactical'}
+          onChangeCombatCameraPreset={(preset) => {
+            soundEngine.playUiClick(1.05);
+            handleUpdateSettings({ combatCameraPreset: preset });
+          }}
+          photoLightingPreset={currentSettings.photoLightingPreset ?? 'golden_hall'}
+          onChangePhotoLighting={(preset) => {
+            soundEngine.playUiClick(1.06);
+            handleUpdateSettings({ photoLightingPreset: preset });
+            engineRef.current?.setPhotoLightingPreset(preset);
+          }}
+          onCaptureVictoryPhoto={() => {
+            const dataUrl = engineRef.current?.capturePhotoDataUrl();
+            if (!dataUrl) return;
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `aetherbow-victory-${save.selectedHeroId}-${Date.now()}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
           }}
         />
       )}
@@ -9980,7 +10021,10 @@ export default function App() {
         />
       )}
 
-      <UpgradeCelebrationOverlay celebration={upgradeCelebration} />
+      <UpgradeCelebrationOverlay
+        celebration={upgradeCelebration}
+        hapticsEnabled={currentSettings.hapticsEnabled}
+      />
       <CombatPowerToast toast={powerToast} />
       <AchievementToast achievement={activeAchievementToast} />
 

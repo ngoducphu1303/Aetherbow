@@ -7,6 +7,7 @@ import {
   Crown,
   Feather,
   Flame,
+  Gamepad2,
   Gem,
   Heart,
   LogOut,
@@ -26,10 +27,12 @@ import { SKILLS_CATALOG, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
+import { resolveHudScaleFactor } from '../engine/aaaWave4Director';
 import { yawToRadarDegrees } from '../engine/combatFeel';
 import {
   ChampionshipTacticId,
   FloatingDamage,
+  HudScaleMode,
   HudSnapshot,
   JoystickState,
   LoadoutPreset,
@@ -44,6 +47,8 @@ interface GameHUDProps {
   muted: boolean;
   damages: FloatingDamage[];
   joystick: JoystickState;
+  hudScale?: HudScaleMode;
+  liveDpsMeter?: boolean;
   onToggleMute: () => void;
   onPause: () => void;
   onDashClick: () => void;
@@ -63,6 +68,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   muted,
   damages,
   joystick,
+  hudScale = 'normal',
+  liveDpsMeter = false,
   onToggleMute,
   onPause,
   onDashClick,
@@ -76,6 +83,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onTrainingLoadoutSwitch,
   onTrainingExit,
 }) => {
+  const hudScaleFactor = resolveHudScaleFactor(hudScale);
   const hpPct = Math.max(0, Math.min(100, (hud.hp / Math.max(1, hud.maxHp)) * 100));
   const shieldPct = Math.max(
     0,
@@ -422,7 +430,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       )}
 
       {/* TOP HUD BAR (Clean & Breathable) */}
-      <div className="flex flex-col gap-2 px-3 sm:px-5 pt-3">
+      <div
+        className="flex flex-col gap-2 px-3 sm:px-5 pt-3"
+        style={
+          hudScaleFactor !== 1
+            ? { transform: `scale(${hudScaleFactor})`, transformOrigin: 'top center' }
+            : undefined
+        }
+      >
         <div className="flex items-center justify-between gap-2.5 max-w-5xl w-full mx-auto">
           {/* Top-Left: Pause + Level Medallion & XP Bar */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -621,6 +636,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </button>
           </div>
         </div>
+
+        {/* AAA Wave 5: Optional Compact Live 5s Rolling DPS Readout (zero clutter, tabular numerals) */}
+        {liveDpsMeter && !hud.isTrainingMode && (
+          <div className="max-w-5xl w-full mx-auto flex justify-end">
+            <div className="inline-flex items-center gap-2.5 bg-[#060a18]/90 border border-amber-400/25 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
+              <span className="text-amber-300">
+                DPS 5s: {(hud.liveDps5s ?? 0).toLocaleString('vi-VN')}
+              </span>
+              <span className="text-slate-600">·</span>
+              <span className="text-rose-300">
+                Chí Mạng Đỉnh: {(hud.livePeakCrit ?? 0).toLocaleString('vi-VN')}
+              </span>
+              {(hud.elementalReactionsCount ?? 0) > 0 && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-sky-300">Phản Ứng ×{hud.elementalReactionsCount}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Phase 5: Nightmare Ascension Active Mutator Line (clean unboxed text strip) */}
         {(hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode && (
@@ -1574,7 +1610,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       )}
 
       {/* BOTTOM PERIMETER: Interactive Active Skills + Sleek Vitals + Dual Action Medallions */}
-      <div className="fixed bottom-3.5 left-3 right-3 sm:left-6 sm:right-6 flex items-end justify-between gap-2.5">
+      <div
+        className="fixed bottom-3.5 left-3 right-3 sm:left-6 sm:right-6 flex items-end justify-between gap-2.5"
+        style={
+          hudScaleFactor !== 1
+            ? { transform: `scale(${hudScaleFactor})`, transformOrigin: 'bottom center' }
+            : undefined
+        }
+      >
         {/* Interactive Active Skill Chips */}
         <div className="relative flex flex-col items-start gap-1.5 max-w-[140px] sm:max-w-xs">
           {inspectedSkill && (
@@ -1635,14 +1678,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
 
-        {/* Center Player Vitals Bar */}
-        <div className="hv2-panel rounded-2xl px-3.5 py-2 w-full max-w-[265px] mx-auto">
-          <div className="flex items-center justify-between text-[11px] font-black mb-1">
-            <span className="flex items-center gap-1.5 text-rose-200">
-              <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-              <span className="font-mono-nums">
-                {hud.hp} / {hud.maxHp}
-              </span>
+        {/* Center Player Vitals Bar + Counter-Shot Ready Callout + Gamepad Legend */}
+        <div className="flex flex-col items-center gap-1.5 w-full max-w-[265px] mx-auto">
+          {hud.counterShotReady && (
+            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200 drop-shadow-[0_2px_10px_rgba(251,191,36,0.75)]">
+              <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>PHẢN TIỄN SẴN SÀNG</span>
+              {typeof hud.counterShotTimer === 'number' && hud.counterShotTimer > 0 && (
+                <span className="font-mono-nums text-amber-300">
+                  {hud.counterShotTimer.toFixed(1)}s
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="hv2-panel rounded-2xl px-3.5 py-2 w-full">
+            <div className="flex items-center justify-between text-[11px] font-black mb-1">
+              <span className="flex items-center gap-1.5 text-rose-200">
+                <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span className="font-mono-nums">
+                  {hud.hp} / {hud.maxHp}
+                </span>
               {hud.shield > 0 && (
                 <span className="text-sky-300 font-mono-nums">(+{hud.shield})</span>
               )}
@@ -1682,6 +1738,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-slate-950/65 z-[3]" />
             <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-3/4 w-px bg-slate-950/55 z-[3]" />
           </div>
+          </div>
+
+          {hud.gamepadConnected && (
+            <div className="flex items-center gap-1.5 text-[9px] font-bold tracking-wide text-slate-300/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
+              <Gamepad2 className="w-3 h-3 text-emerald-300 shrink-0" />
+              <span>A Lướt · X Chiêu E · Y Chiêu Q</span>
+            </div>
+          )}
         </div>
 
         {/* Action Medallions: Ultimate (Q) + Signature Active Skill (E) + Dash (Space) with Radial Rings */}

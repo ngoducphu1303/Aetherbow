@@ -148,6 +148,7 @@ import {
   MountId,
   PantheonBlessingId,
   PetId,
+  PhotoLightingPreset,
   SanctuaryFloorId,
   SaveData,
   WeaponAuraId,
@@ -339,9 +340,11 @@ interface TitleScreenProps {
   onResetHeroRotation?: () => void;
   photoMode?: boolean;
   photoAngle?: 'full' | 'closeup' | 'hero_wide';
+  photoLightingPreset?: PhotoLightingPreset;
   lobbyHeroPose?: LobbyHeroPoseId;
   onTogglePhotoMode?: (active: boolean) => void;
   onChangePhotoAngle?: (angle: 'full' | 'closeup' | 'hero_wide') => void;
+  onChangePhotoLighting?: (preset: PhotoLightingPreset) => void;
   onSelectHeroPose?: (pose: LobbyHeroPoseId) => void;
   onCapturePhoto?: () => void;
   onOpenWave12Sanctum?: (tab: Wave12SanctumTab) => void;
@@ -539,9 +542,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onResetHeroRotation,
   photoMode = false,
   photoAngle = 'full',
+  photoLightingPreset = 'golden_hall',
   lobbyHeroPose = 'heroic',
   onTogglePhotoMode,
   onChangePhotoAngle,
+  onChangePhotoLighting,
   onSelectHeroPose,
   onCapturePhoto,
   onOpenWave12Sanctum,
@@ -1017,6 +1022,36 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   }`}
                 >
                   {fl.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {onChangePhotoLighting && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-amber-400/15">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200 flex items-center gap-1 mr-1">
+                <Sun className="w-3 h-3 text-amber-300 shrink-0" />
+                <span>Ánh Sáng Studio:</span>
+              </span>
+              {([
+                ['golden_hall', 'Hoàng Kim Điện'],
+                ['moonlit', 'Nguyệt Quang'],
+                ['inferno', 'Hỏa Diệm'],
+              ] as const).map(([moodId, label]) => (
+                <button
+                  key={moodId}
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.06);
+                    onChangePhotoLighting(moodId);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer ${
+                    photoLightingPreset === moodId
+                      ? 'a2-yellow-btn'
+                      : 'bg-[#090f24] border border-slate-700 text-slate-300 hover:border-amber-300'
+                  }`}
+                >
+                  {label}
                 </button>
               ))}
             </div>

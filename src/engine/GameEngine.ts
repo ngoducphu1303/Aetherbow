@@ -96,6 +96,7 @@ import {
   ChampionshipTacticDef,
   ChampionshipTacticId,
   ChapterDefinition,
+  CombatCameraPreset,
   ComputedPlayerStats,
   CoopAllySummary,
   CoopRaidDifficulty,
@@ -121,6 +122,7 @@ import {
   LobbyWeatherId,
   PantheonBlessingDef,
   PetId,
+  PhotoLightingPreset,
   RuneId,
   SanctuaryFloorId,
   SkillId,
@@ -151,7 +153,7 @@ import {
 } from './models';
 import {
   createContactShadowTexture,
-  createStoneBumpTexture,
+  createStoneNormalTexture,
   createStoneRoughnessTexture,
   createStoneTileTexture,
   createTargetReticleTexture,
@@ -175,6 +177,25 @@ import {
   computeImpactDecalState,
   resolveEnemyStatusTint,
 } from './combatFeedback';
+import {
+  computeVictoryOrbitCamera,
+  ElementalHitType,
+  evaluateElementalReaction,
+  GamepadPrevButtons,
+  resolveTelegraphPalette,
+  sampleGamepadInput,
+  triggerHapticPulse,
+} from './aaaWave4Director';
+import {
+  ArmorShardKinematics,
+  computeRollingDpsMetrics,
+  createRollingDpsTracker,
+  recordRollingDpsSample,
+  resetRollingDpsTracker,
+  resolveCombatCameraConfig,
+  resolvePhotoLightingMood,
+  stepArmorShardPhysics,
+} from './aaaWave5Director';
 
 // Pre-allocated math & color helpers for zero GC in tick
 const _v1 = new THREE.Vector3();
@@ -197,6 +218,9 @@ interface ObstacleBox {
   z: number;
   radius: number;
   mesh: THREE.Group;
+  destructible?: boolean;
+  intact?: boolean;
+  crystalCap?: THREE.Mesh;
 }
 
 interface BreakableUrn {
@@ -255,6 +279,7 @@ interface EnemyEntity {
   burnDps: number;
   poisonDps: number;
   chillTimer: number;
+  reactionCd?: number;
   hitFlashTimer: number;
   phaseAngle: number;
   model: EnemyModelRefs;
@@ -322,6 +347,7 @@ interface Projectile {
   frost: boolean;
   storm: boolean;
   poison: boolean;
+  isCounterShot?: boolean;
   mesh: THREE.Mesh;
   trailMesh?: THREE.Mesh;
 }
@@ -502,6 +528,7 @@ export interface EngineCallbacks {
     seenEnemyKind?: EnemyKind;
   }) => void;
   onLobbyHeadPos?: (pos: { x: number; y: number; visible: boolean }) => void;
+  onGamepadPause?: () => void;
 }
 
 export class GameEngine {
@@ -694,6 +721,44 @@ export class GameEngine {
     mesh: THREE.Mesh;
     ring: THREE.Mesh;
   }> = [];
+  // AAA Wave 5: Pooled 3D Summon Portals, Physical Armor-Shatter Shards, Dash Scorch Trails & Ground Mist
+  private summonPortalPool: Array<{
+    active: boolean;
+    life: number;
+    maxLife: number;
+    baseRadius: number;
+    group: THREE.Group;
+    outerRing: THREE.Mesh;
+    innerRing: THREE.Mesh;
+    coreDisc: THREE.Mesh;
+  }> = [];
+  private armorShardPool: Array<{
+    active: boolean;
+    kin: ArmorShardKinematics;
+    mesh: THREE.Mesh;
+  }> = [];
+  private dashScorchPool: Array<{
+    active: boolean;
+    life: number;
+    maxLife: number;
+    mesh: THREE.Mesh;
+  }> = [];
+  private groundMistMesh!: THREE.InstancedMesh;
+  private groundMistSeeds: Array<{
+    x: number;
+    z: number;
+    vx: number;
+    vz: number;
+    scale: number;
+    phase: number;
+  }> = [];
+  private readonly GROUND_MIST_COUNT = 14;
+  private combatCameraPreset: CombatCameraPreset = 'tactical';
+  private photoLightingPreset: PhotoLightingPreset = 'golden_hall';
+  private rollingDps = createRollingDpsTracker(160);
+  private footstepStrideAccum = 0;
+  private bowCreakReady = true;
+  private lastBossAudioPhase: 1 | 2 | 3 = 1;
   private aimLineMesh!: THREE.Mesh;
   private lastHitAngleDeg: number | null = null;
 
@@ -937,11 +1002,28 @@ export class GameEngine {
   private graphicsQuality: GraphicsQuality = 'high';
   private screenShakeEnabled = true;
   private showDamageNumbersEnabled = true;
+  private hapticsEnabled = true;
+  private highContrastTelegraphs = false;
   private particleDensityScale = 1.0;
   private elapsed = 0;
   private hudSyncTimer = 0;
   private nextEntityId = 1;
   private nextDmgId = 1;
+
+  // AAA Wave 4: Counter-Shot, Elemental Reactions, 3D Victory Showcase Orbit & Gamepad
+  private counterShotTimer = 0;
+  private elementalReactionsCount = 0;
+  private counterShotsCount = 0;
+  private victoryOrbitClock = 0;
+  private gamepadConnected = false;
+  private gamepadMoveX = 0;
+  private gamepadMoveZ = 0;
+  private gamepadPrevButtons: GamepadPrevButtons = {
+    dash: false,
+    activeSkill: false,
+    ultimate: false,
+    pause: false,
+  };
 
   // Input state
   private keys: Record<string, boolean> = {};
@@ -1802,6 +1884,163 @@ export class GameEngine {
         mat,
       });
     }
+
+    // AAA Wave 5: Pooled 3D Celestial Summon Portals (8 counter-rotating rune rings)
+    const portalOuterGeo = new THREE.RingGeometry(0.78, 1.0, 24);
+    const portalInnerGeo = new THREE.RingGeometry(0.42, 0.58, 6);
+    const portalCoreGeo = new THREE.CircleGeometry(0.75, 20);
+    for (let i = 0; i < 8; i++) {
+      const grp = new THREE.Group();
+      const outerMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const outerRing = new THREE.Mesh(portalOuterGeo, outerMat);
+      outerRing.rotation.x = -Math.PI / 2;
+      outerRing.renderOrder = 6;
+
+      const innerMat = new THREE.MeshBasicMaterial({
+        color: 0xfde047,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const innerRing = new THREE.Mesh(portalInnerGeo, innerMat);
+      innerRing.rotation.x = -Math.PI / 2;
+      innerRing.position.y = 0.015;
+      innerRing.renderOrder = 7;
+
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.36,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const coreDisc = new THREE.Mesh(portalCoreGeo, coreMat);
+      coreDisc.rotation.x = -Math.PI / 2;
+      coreDisc.position.y = -0.005;
+      coreDisc.renderOrder = 5;
+
+      grp.add(coreDisc, outerRing, innerRing);
+      grp.visible = false;
+      this.particlesGroup.add(grp);
+      this.summonPortalPool.push({
+        active: false,
+        life: 0,
+        maxLife: 0.56,
+        baseRadius: 1.2,
+        group: grp,
+        outerRing,
+        innerRing,
+        coreDisc,
+      });
+    }
+
+    // AAA Wave 5: Pooled 3D Physical Armor-Shatter & Crystal-Pillar Shards (28 bouncing shards)
+    const shardGeo = new THREE.OctahedronGeometry(0.16, 0);
+    shardGeo.scale(1.25, 0.55, 0.85);
+    for (let i = 0; i < 28; i++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 0.85,
+        roughness: 0.22,
+        metalness: 0.82,
+      });
+      const mesh = new THREE.Mesh(shardGeo, mat);
+      mesh.visible = false;
+      this.particlesGroup.add(mesh);
+      this.armorShardPool.push({
+        active: false,
+        kin: {
+          x: 0,
+          y: 0,
+          z: 0,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          rx: 0,
+          ry: 0,
+          rz: 0,
+          vrx: 0,
+          vry: 0,
+          vrz: 0,
+          bounces: 0,
+          life: 0,
+          maxLife: 1.1,
+        },
+        mesh,
+      });
+    }
+
+    // AAA Wave 5: Pooled Glowing Dash Scorch Floor Trails (16 streaks)
+    const scorchGeo = new THREE.PlaneGeometry(0.68, 1.55);
+    scorchGeo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 16; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.65,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
+      const mesh = new THREE.Mesh(scorchGeo, mat);
+      mesh.renderOrder = 5;
+      mesh.visible = false;
+      this.particlesGroup.add(mesh);
+      this.dashScorchPool.push({
+        active: false,
+        life: 0,
+        maxLife: 0.62,
+        mesh,
+      });
+    }
+
+    // AAA Wave 5: Lightweight InstancedMesh Low-Lying Arena Ground Mist (14 drifting planes)
+    const mistGeo = new THREE.CircleGeometry(1.9, 14);
+    mistGeo.rotateX(-Math.PI / 2);
+    const mistMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.065,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.groundMistMesh = new THREE.InstancedMesh(mistGeo, mistMat, this.GROUND_MIST_COUNT);
+    this.groundMistMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.groundMistMesh.frustumCulled = false;
+    this.groundMistMesh.renderOrder = 2;
+    this.groundMistSeeds = [];
+    for (let i = 0; i < this.GROUND_MIST_COUNT; i++) {
+      const s = {
+        x: (Math.random() - 0.5) * (ARENA_HALF_W * 1.9),
+        z: (Math.random() - 0.5) * (ARENA_HALF_D * 1.8),
+        vx: (Math.random() - 0.5) * 0.65,
+        vz: 0.25 + Math.random() * 0.45,
+        scale: 1.05 + Math.random() * 1.15,
+        phase: Math.random() * Math.PI * 2,
+      };
+      this.groundMistSeeds.push(s);
+      _dummy.position.set(s.x, 0.08 + (i % 3) * 0.03, s.z);
+      _dummy.rotation.set(0, s.phase, 0);
+      _dummy.scale.setScalar(s.scale);
+      _dummy.updateMatrix();
+      this.groundMistMesh.setMatrixAt(i, _dummy.matrix);
+    }
+    this.groundMistMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.groundMistMesh);
   }
 
   private setAppearanceStatus(status: AppearanceStatus): void {
@@ -2329,15 +2568,15 @@ export class GameEngine {
       chapter.floorAccent,
       maxAniso
     );
-    const bumpTex = createStoneBumpTexture(maxAniso);
+    const normalTex = createStoneNormalTexture(maxAniso);
     const roughnessTex = createStoneRoughnessTexture(maxAniso);
 
-    // 1. High-Contrast Mythic PBR Marble Temple Arena Floor (Albedo + Roughness + Bump)
+    // 1. High-Contrast Mythic PBR Marble Temple Arena Floor (Albedo + Roughness + Tangent-Space Normal)
     const floorGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.6, 1.4, ARENA_HALF_D * 2 + 1.6);
     const floorMat = new THREE.MeshStandardMaterial({
       map: floorTex,
-      bumpMap: bumpTex,
-      bumpScale: 0.042,
+      normalMap: normalTex,
+      normalScale: new THREE.Vector2(0.85, 0.85),
       roughnessMap: roughnessTex,
       roughness: 0.92,
       metalness: 0.28,
@@ -4719,8 +4958,18 @@ export class GameEngine {
     this.dmgUltimate = 0;
     this.dmgPet = 0;
     this.dmgElemental = 0;
+    resetRollingDpsTracker(this.rollingDps);
+    this.footstepStrideAccum = 0;
+    this.bowCreakReady = true;
+    this.lastBossAudioPhase = 1;
+    soundEngine.setBossIntensity(1);
+    this.restoreDefaultLights();
     this.peakCritDmg = 0;
     this.punishHitsCount = 0;
+    this.counterShotTimer = 0;
+    this.elementalReactionsCount = 0;
+    this.counterShotsCount = 0;
+    this.victoryOrbitClock = 0;
     this.runElapsedSeconds = 0;
     if (this.phase === GamePhase.TITLE) {
       this.beginArenaEntryFly();
@@ -4876,12 +5125,34 @@ export class GameEngine {
       this.lobbyAutoSpinIdleTimer = 999;
     } else {
       this.lobbyAutoSpinIdleTimer = 1.4;
+      this.restoreDefaultLights();
     }
+  }
+
+  private restoreDefaultLights(): void {
+    this.hemiLight?.color.setHex(0x7dd3fc);
+    this.hemiLight?.groundColor.setHex(0x26352e);
+    if (this.keyLight) {
+      this.keyLight.color.setHex(0xffe4b8);
+      this.keyLight.intensity = 1.92;
+    }
+    if (this.rimLight) {
+      this.rimLight.color.setHex(0xfde68a);
+      this.rimLight.intensity = 1.15;
+    }
+    if (this.renderer) {
+      this.renderer.toneMappingExposure = 1.12;
+    }
+  }
+
+  public setPhotoLightingPreset(preset: PhotoLightingPreset): void {
+    this.photoLightingPreset = preset;
   }
 
   public capturePhotoDataUrl(): string | null {
     if (this.disposed || this.contextLost || this.appearanceStatus !== 'ready') return null;
     try {
+      soundEngine.playPhotoShutter();
       this.renderer.render(this.scene, this.camera);
       return this.renderer.domElement.toDataURL('image/png');
     } catch {
@@ -5082,6 +5353,8 @@ export class GameEngine {
     this.arenaEntryFlyTimer = 0;
     this.bossPhaseTwoBannerTimer = 0;
     this.bossPhaseThreeBannerTimer = 0;
+    this.counterShotTimer = 0;
+    this.victoryOrbitClock = 0;
     this.playerFrostSlowTimer = 0;
     this.lastHitAngleDeg = null;
     if (this.aimLineMesh) this.aimLineMesh.visible = false;
@@ -5102,6 +5375,18 @@ export class GameEngine {
     this.impactLightPool?.forEach((slot) => {
       slot.intensity = 0;
       slot.light.intensity = 0;
+    });
+    this.summonPortalPool?.forEach((sp) => {
+      sp.active = false;
+      sp.group.visible = false;
+    });
+    this.armorShardPool?.forEach((sh) => {
+      sh.active = false;
+      sh.mesh.visible = false;
+    });
+    this.dashScorchPool?.forEach((ds) => {
+      ds.active = false;
+      ds.mesh.visible = false;
     });
 
     this.lootOrbs.forEach((o) => this.releaseObject(o.mesh));
@@ -5493,14 +5778,40 @@ export class GameEngine {
       pillarCoords.push([-6.5, -5.5], [6.5, -5.5], [-6.5, 4.5], [6.5, 4.5]);
     }
 
-    pillarCoords.forEach(([ox, oz]) => {
+    pillarCoords.forEach(([ox, oz], pIdx) => {
       const mesh = createPillarModel(
         this.currentChapter.stoneHex,
         this.currentChapter.trimHex
       );
+      const isCrystalCover = pIdx % 2 === 0;
+      let crystalCap: THREE.Mesh | undefined;
+      if (isCrystalCover) {
+        const capGeo = new THREE.OctahedronGeometry(0.42, 0);
+        capGeo.scale(1, 1.55, 1);
+        const capMat = new THREE.MeshStandardMaterial({
+          color: 0x67e8f9,
+          emissive: 0x06b6d4,
+          emissiveIntensity: 1.35,
+          roughness: 0.14,
+          metalness: 0.25,
+          transparent: true,
+          opacity: 0.88,
+        });
+        crystalCap = new THREE.Mesh(capGeo, capMat);
+        crystalCap.position.y = 2.62;
+        mesh.add(crystalCap);
+      }
       mesh.position.set(ox, 0, oz);
       this.entitiesGroup.add(mesh);
-      this.obstacles.push({ x: ox, z: oz, radius: 0.92, mesh });
+      this.obstacles.push({
+        x: ox,
+        z: oz,
+        radius: 0.92,
+        mesh,
+        destructible: isCrystalCover,
+        intact: true,
+        crystalCap,
+      });
     });
 
     const urnSeed =
@@ -6100,6 +6411,19 @@ export class GameEngine {
       hpBarHeight,
     });
 
+    // AAA Wave 5: Rotating Celestial Summon Portal underneath spawning enemies
+    if (!this.isTrainingMode) {
+      const portalColor = isBoss ? 0xfbbf24 : isElite ? 0xc084fc : 0x38bdf8;
+      this.spawnSummonPortal(
+        x,
+        z,
+        isBoss ? radius * 1.65 : radius * 1.35,
+        portalColor,
+        0.56
+      );
+      soundEngine.playSummonPortalHum(computeSpatialPan(x, ARENA_HALF_W));
+    }
+
     // Cinematic 1.55s Boss Entrance Camera Sweep + Imperial Summoning Beam + Fanfare
     if (isBoss && !this.isTrainingMode && !this.isArenaMode) {
       const reducedMotion =
@@ -6168,11 +6492,23 @@ export class GameEngine {
     showDamageNumbers: boolean;
     starfallWeather?: boolean;
     bloomEnabled?: boolean;
+    hapticsEnabled?: boolean;
+    highContrastTelegraphs?: boolean;
+    combatCameraPreset?: CombatCameraPreset;
+    photoLightingPreset?: PhotoLightingPreset;
   }): void {
     const quality = this.isSoftwareGl || this.lowEndGpu ? 'low' : cfg.graphicsQuality;
     this.graphicsQuality = quality;
     this.screenShakeEnabled = cfg.screenShake;
     this.showDamageNumbersEnabled = cfg.showDamageNumbers;
+    this.hapticsEnabled = cfg.hapticsEnabled !== false;
+    this.highContrastTelegraphs = Boolean(cfg.highContrastTelegraphs);
+    if (cfg.combatCameraPreset) {
+      this.combatCameraPreset = cfg.combatCameraPreset;
+    }
+    if (cfg.photoLightingPreset) {
+      this.photoLightingPreset = cfg.photoLightingPreset;
+    }
     this.bloomEnabled = cfg.bloomEnabled !== false;
     this.starfallEnabled = !this.lowEndGpu && !this.isSoftwareGl && cfg.starfallWeather !== false;
     if (this.starfallMesh) {
@@ -6375,6 +6711,7 @@ export class GameEngine {
     this.activeSkillCooldown = res.nextActiveSkillCooldown;
     this.ultCharge = res.nextUltCharge;
     this.perfectDodgeCount += 1;
+    this.counterShotTimer = 3.5;
 
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
@@ -6384,6 +6721,7 @@ export class GameEngine {
     }
 
     soundEngine.playPerfectDodge();
+    triggerHapticPulse('dash', this.hapticsEnabled);
     this.spawnImpactLight(this.px, 1.3, this.pz, 'perfect_dodge');
     this.spawnCritStar(this.px, 1.25, this.pz, 0x34d399, 1.65);
     this.triggerPostFxImpulse('perfect_dodge');
@@ -6821,6 +7159,13 @@ export class GameEngine {
       this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 4.5, dt);
       this.camera.lookAt(lookX, lookY, 4.5);
 
+      if (this.lobbyPhotoMode) {
+        this.applyPhotoStudioLighting(dt);
+      }
+      if (this.groundMistMesh) {
+        this.groundMistMesh.visible = false;
+      }
+
       if (this.lobbyAutoSpinIdleTimer > 0) {
         this.lobbyAutoSpinIdleTimer -= dt;
       } else if (!this.lobbyDragActive) {
@@ -7076,7 +7421,87 @@ export class GameEngine {
     this.hero.bowGroup.visible = true;
     this.hero.magicOrb.visible = false;
 
+    // AAA Wave 4: Poll HTML5 Gamepad across PLAYING and PAUSED phases
+    if (
+      (this.phase === GamePhase.PLAYING || this.phase === GamePhase.PAUSED) &&
+      typeof navigator !== 'undefined' &&
+      typeof navigator.getGamepads === 'function'
+    ) {
+      const pads = navigator.getGamepads();
+      let activePad: Gamepad | null = null;
+      for (let gi = 0; gi < pads.length; gi++) {
+        const gp = pads[gi];
+        if (gp && gp.connected) {
+          activePad = gp;
+          break;
+        }
+      }
+      if (activePad) {
+        const gpSample = sampleGamepadInput(
+          activePad.axes,
+          activePad.buttons,
+          this.gamepadPrevButtons
+        );
+        this.gamepadPrevButtons = gpSample.nextPrev;
+        this.gamepadConnected = true;
+        this.gamepadMoveX = gpSample.moveX;
+        this.gamepadMoveZ = gpSample.moveZ;
+        if (gpSample.pausePressed) {
+          this.callbacks.onGamepadPause?.();
+        } else if (this.phase === GamePhase.PLAYING) {
+          if (gpSample.dashPressed) this.triggerDash();
+          if (gpSample.activeSkillPressed) this.triggerHeroActiveSkill();
+          if (gpSample.ultimatePressed) this.triggerHeroUltimate();
+        }
+      } else {
+        this.gamepadConnected = false;
+        this.gamepadMoveX = 0;
+        this.gamepadMoveZ = 0;
+      }
+    } else {
+      this.gamepadMoveX = 0;
+      this.gamepadMoveZ = 0;
+    }
+
     if (this.phase !== GamePhase.PLAYING) {
+      if (this.phase === GamePhase.VICTORY) {
+        this.victoryOrbitClock += dt;
+        const prefersReducedMotion =
+          typeof window !== 'undefined' &&
+          Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+        const vPose = computeVictoryOrbitCamera(
+          this.px,
+          this.pz,
+          this.victoryOrbitClock,
+          prefersReducedMotion
+        );
+        this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, vPose.camX, 3.6, dt);
+        this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, vPose.camY, 3.6, dt);
+        this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, vPose.camZ, 3.6, dt);
+        this.camera.lookAt(vPose.lookX, vPose.lookY, vPose.lookZ);
+
+        // Heroic victory salute & companion celebration while orbiting
+        this.hero.drawArm.rotation.x = THREE.MathUtils.damp(this.hero.drawArm.rotation.x, -1.05, 5.5, dt);
+        this.hero.capeTail.rotation.x = 0.24 + Math.sin(this.elapsed * 3.4) * 0.08;
+        this.heroLight.intensity = 1.9 + Math.sin(this.elapsed * 4.2) * 0.22;
+        if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
+          const flap = Math.sin(this.elapsed * 3.4) * 0.26;
+          this.hero.leftWingPivot.rotation.y = 0.24 + flap;
+          this.hero.rightWingPivot.rotation.y = -0.24 - flap;
+        }
+        this.applyPhotoStudioLighting(dt);
+        this.updateCompanions(dt);
+        this.updateParticles(dt);
+        this.updateShockwaves(dt);
+        this.updateWave5Effects(dt);
+        this.updateStarfallWeather(dt);
+        for (let si = 0; si < this.arenaLightShafts.length; si++) {
+          const shaft = this.arenaLightShafts[si];
+          const smat = shaft.material as THREE.MeshBasicMaterial;
+          const baseOp = (shaft.userData.baseOpacity as number) ?? 0.055;
+          smat.opacity = baseOp * (1.1 + Math.sin(this.elapsed * 1.1 + si * 1.9) * 0.2);
+        }
+      }
       return;
     }
 
@@ -7610,12 +8035,20 @@ export class GameEngine {
     this.updateParticles(simDt);
     this.updateShockwaves(simDt);
     this.updateImpactDecals(simDt);
+    this.updateWave5Effects(simDt);
     this.updateUltColumns(simDt);
     this.updateDashGhosts(simDt);
     this.updateLightning(simDt);
     this.updateCritStars(dt);
     this.updateImpactLights(dt);
     this.updatePortalAndShrine(simDt);
+    for (let oi = 0; oi < this.obstacles.length; oi++) {
+      const obs = this.obstacles[oi];
+      if (obs.intact !== false && obs.crystalCap) {
+        obs.crystalCap.rotation.y += simDt * 1.45;
+        obs.crystalCap.position.y = 2.62 + Math.sin(this.elapsed * 2.6 + oi * 1.4) * 0.07;
+      }
+    }
     for (let ui = 0; ui < this.urns.length; ui++) {
       const urn = this.urns[ui];
       if (!urn.alive || !urn.sealMesh) continue;
@@ -7862,6 +8295,23 @@ export class GameEngine {
       _starCol.setHex(biome.weatherColorHex);
       starMat.color.lerp(_starCol, alpha);
     }
+    const bossPhase = (boss?.bossPhase ?? 1) as 1 | 2 | 3;
+    if (bossPhase !== this.lastBossAudioPhase) {
+      this.lastBossAudioPhase = bossPhase;
+      soundEngine.setBossIntensity(bossPhase);
+    }
+    for (let si = 0; si < this.arenaLightShafts.length; si++) {
+      const smat = this.arenaLightShafts[si].material as THREE.MeshBasicMaterial;
+      if (smat?.color) {
+        smat.color.lerp(_keyCol, alpha);
+      }
+    }
+    if (this.groundMistMesh) {
+      const mistMat = this.groundMistMesh.material as THREE.MeshBasicMaterial;
+      if (mistMat?.color) {
+        mistMat.color.lerp(_keyCol, alpha);
+      }
+    }
   }
 
   private updateStarfallWeather(dt: number): void {
@@ -7963,8 +8413,8 @@ export class GameEngine {
   }
 
   private updatePlayer(dt: number): void {
-    let moveX = this.joyVecX;
-    let moveZ = this.joyVecZ;
+    let moveX = this.joyVecX + this.gamepadMoveX;
+    let moveZ = this.joyVecZ + this.gamepadMoveZ;
 
     if (this.keys['KeyW'] || this.keys['ArrowUp']) moveZ -= 1;
     if (this.keys['KeyS'] || this.keys['ArrowDown']) moveZ += 1;
@@ -8000,6 +8450,9 @@ export class GameEngine {
     if (this.perfectDodgeBuffTimer > 0) {
       this.perfectDodgeBuffTimer = Math.max(0, this.perfectDodgeBuffTimer - dt);
     }
+    if (this.counterShotTimer > 0) {
+      this.counterShotTimer = Math.max(0, this.counterShotTimer - dt);
+    }
 
     if (this.dashBufferTimer > 0 && this.dashCooldown <= 0 && this.dashTimer <= 0) {
       this.dashBufferTimer = 0;
@@ -8020,6 +8473,7 @@ export class GameEngine {
       this.spawnParticles(this.px, 0.7, this.pz, this.weaponAccentHex, 12);
       this.dashGhostEmitTimer = 0;
       this.spawnDashGhost(this.px, this.pz, this.pFacing, this.weaponAccentHex);
+      this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), this.weaponAccentHex);
     }
 
     const moveMult =
@@ -8037,6 +8491,7 @@ export class GameEngine {
       if (this.dashGhostEmitTimer <= 0) {
         this.dashGhostEmitTimer = 0.045;
         this.spawnDashGhost(this.px, this.pz, this.pFacing, this.weaponAccentHex);
+        this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), this.weaponAccentHex);
       }
       if (Math.random() < 0.65) {
         this.spawnParticles(this.px, 0.6, this.pz, this.weaponAccentHex, 1);
@@ -8066,6 +8521,7 @@ export class GameEngine {
     );
 
     for (const obs of this.obstacles) {
+      if (obs.intact === false) continue;
       const dx = this.px - obs.x;
       const dz = this.pz - obs.z;
       const minD = pRadius + obs.radius;
@@ -8117,6 +8573,13 @@ export class GameEngine {
         this.pFacing = this.lerpAngle(this.pFacing, moveYaw, 1 - Math.exp(-16 * dt));
       }
       this.stridePhase += Math.max(travelDist * 2.55, dt * 1.4);
+      if (this.dashTimer <= 0 && !onDragon && speedMag > 1.8) {
+        this.footstepStrideAccum += travelDist;
+        if (this.footstepStrideAccum >= 1.75) {
+          this.footstepStrideAccum = 0;
+          soundEngine.playFootstep(computeSpatialPan(this.px, ARENA_HALF_W));
+        }
+      }
       const strideAmp = Math.min(0.56, 0.2 + (travelDist / Math.max(0.001, dt)) * 0.055);
       const stride = Math.sin(this.stridePhase) * strideAmp;
       this.hero.leftLeg.rotation.x = stride;
@@ -8133,6 +8596,7 @@ export class GameEngine {
         this.volleyQueue = [];
       }
     } else {
+      this.footstepStrideAccum = 0;
       this.hero.leftLeg.rotation.x = THREE.MathUtils.damp(this.hero.leftLeg.rotation.x, 0, 14, dt);
       this.hero.rightLeg.rotation.x = THREE.MathUtils.damp(this.hero.rightLeg.rotation.x, 0, 14, dt);
       this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset, 14, dt);
@@ -8259,6 +8723,12 @@ export class GameEngine {
         this.queuePlayerVolley();
       }
       drawProgress = Math.max(0, 1 - this.attackCooldown / attackInterval);
+      if (drawProgress > 0.25 && drawProgress < 0.72 && this.bowCreakReady) {
+        this.bowCreakReady = false;
+        soundEngine.playBowDrawCreak(computeSpatialPan(this.px, ARENA_HALF_W));
+      } else if (drawProgress < 0.15) {
+        this.bowCreakReady = true;
+      }
       const livePose = computeBowStringPose(drawProgress);
       this.hero.nockedArrow.position.z = livePose.nockZ;
       this.hero.drawArm.position.z = 0.08 - drawProgress * 0.16;
@@ -8307,6 +8777,7 @@ export class GameEngine {
         }
       }
     } else {
+      this.bowCreakReady = true;
       this.hero.nockedArrow.position.z = 0.1;
       this.hero.drawArm.position.z = 0.06;
       this.hero.bowGroup.position.z = 0.46;
@@ -8406,9 +8877,21 @@ export class GameEngine {
     const isAtreusOrb =
       bonusShadow || (this.baseStats.heroId === 'atreus' && this.atreusShotCount % 4 === 0);
 
+    const isCounterShot = dmgSource === 'basic' && this.counterShotTimer > 0;
+    if (isCounterShot) {
+      this.counterShotTimer = 0;
+      this.counterShotsCount += 1;
+      soundEngine.playCounterShotRelease();
+      triggerHapticPulse('crit', this.hapticsEnabled);
+      this.spawnShockwave(this.px, this.pz, 0xfde047, 2.2, 0.26);
+      this.spawnParticles(this.px, 1.05, this.pz, 0xfde047, 14);
+      this.emitFloatingNumber(this.px, 2.1, this.pz, 0, true, false, undefined, 'PHẢN TIỄN!');
+    }
+
     proj.active = true;
     proj.isEnemy = false;
     proj.isSword = false;
+    proj.isCounterShot = isCounterShot;
     proj.source = dmgSource;
     proj.coopAllyIndex = undefined;
     proj.homing =
@@ -8419,17 +8902,25 @@ export class GameEngine {
     proj.y = 1.02;
     proj.z = this.pz + dirZ * 0.65 + perpZ * lateralOffset;
     const hasPiercingVolley = evaluateActiveSynergies(this.activeSkills).includes('piercing_volley');
-    const finalArrowSpeed = this.baseStats.arrowSpeed * (hasPiercingVolley ? 1.15 : 1.0);
+    const finalArrowSpeed =
+      this.baseStats.arrowSpeed *
+      (hasPiercingVolley ? 1.15 : 1.0) *
+      (isCounterShot ? 1.32 : 1.0);
     proj.vx = dirX * finalArrowSpeed;
     proj.vz = dirZ * finalArrowSpeed;
-    proj.damage = isAtreusOrb ? rawDamage * 1.15 : rawDamage;
-    proj.radius = this.baseStats.weaponArchetype === 'claw' ? 0.45 : 0.3;
+    proj.damage = (isAtreusOrb ? rawDamage * 1.15 : rawDamage) * (isCounterShot ? 1.35 : 1.0);
+    proj.radius = isCounterShot
+      ? 0.44
+      : this.baseStats.weaponArchetype === 'claw'
+      ? 0.45
+      : 0.3;
     proj.life = 2.2;
     proj.pierceLeft =
       (this.activeSkills.pierce ?? 0) * 2 +
       (this.baseStats.innatePierce ? 2 : 0) +
       (this.baseStats.weaponArchetype === 'claw' ? 1 : 0) +
-      (isAtreusOrb ? 3 : 0);
+      (isAtreusOrb ? 3 : 0) +
+      (isCounterShot ? 2 : 0);
     proj.ricochetLeft = (this.activeSkills.ricochet ?? 0) * 2;
     proj.wallBounceLeft = (this.activeSkills.bouncy_wall ?? 0) * 2;
     proj.hitEnemyIds.clear();
@@ -8439,7 +8930,9 @@ export class GameEngine {
     proj.poison = poison;
 
     const mat = proj.mesh.material as THREE.MeshStandardMaterial;
-    const color = isAtreusOrb
+    const color = isCounterShot
+      ? 0xfde047
+      : isAtreusOrb
       ? 0xf43f5e
       : blaze
       ? 0xf97316
@@ -8455,15 +8948,33 @@ export class GameEngine {
     if (proj.trailMesh) {
       const trailMat = proj.trailMesh.material as THREE.MeshBasicMaterial;
       trailMat.color.setHex(color);
-      const isCharged = dmgSource === 'ultimate' || blaze || frost || storm || hasPiercingVolley;
-      trailMat.opacity = dmgSource === 'ultimate' ? 0.86 : isCharged ? 0.72 : 0.58;
-      const trailWidth = dmgSource === 'ultimate' ? 1.48 : isCharged ? 1.24 : 1.04;
-      const trailLen = Math.min(2.1, Math.max(1.05, (finalArrowSpeed / 22) * (isCharged ? 1.38 : 1.12)));
+      const isCharged =
+        isCounterShot || dmgSource === 'ultimate' || blaze || frost || storm || hasPiercingVolley;
+      trailMat.opacity = isCounterShot
+        ? 0.94
+        : dmgSource === 'ultimate'
+        ? 0.88
+        : isCharged
+        ? 0.78
+        : 0.64;
+      const trailWidth = isCounterShot
+        ? 1.65
+        : dmgSource === 'ultimate'
+        ? 1.5
+        : isCharged
+        ? 1.28
+        : 1.08;
+      const trailLen = Math.min(
+        2.45,
+        Math.max(1.15, (finalArrowSpeed / 20) * (isCounterShot ? 1.62 : isCharged ? 1.42 : 1.18))
+      );
       proj.trailMesh.scale.set(trailWidth, trailWidth, trailLen);
       proj.trailMesh.visible = true;
     }
 
-    if (this.baseStats.weaponArchetype === 'claw') {
+    if (isCounterShot) {
+      proj.mesh.scale.set(1.52, 1.52, 1.82);
+    } else if (this.baseStats.weaponArchetype === 'claw') {
       proj.mesh.scale.set(1.85, 0.58, 1.15);
     } else if (this.baseStats.weaponArchetype === 'staff') {
       proj.mesh.scale.set(1.4, 1.4, 1.1);
@@ -9015,6 +9526,7 @@ export class GameEngine {
       ally.z = THREE.MathUtils.clamp(ally.z + ally.vz * dt, -ARENA_HALF_D + 0.7, ARENA_HALF_D - 0.7);
 
       for (const obs of this.obstacles) {
+        if (obs.intact === false) continue;
         const odx = ally.x - obs.x;
         const odz = ally.z - obs.z;
         const minD = 0.55 + obs.radius;
@@ -9211,6 +9723,7 @@ export class GameEngine {
       }
 
       if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
+      if (e.reactionCd && e.reactionCd > 0) e.reactionCd = Math.max(0, e.reactionCd - dt);
       const statusTint = resolveEnemyStatusTint({
         hitFlashTimer: e.hitFlashTimer,
         stunTimer: e.stunTimer,
@@ -9220,10 +9733,19 @@ export class GameEngine {
         isMarked: this.markedEnemyIds.has(e.id),
         elapsed: this.elapsed,
       });
+      const bossRagePulse =
+        e.isBoss && (e.bossPhase ?? 1) >= 2 && e.hitFlashTimer <= 0 && !(e.stunTimer && e.stunTimer > 0)
+          ? (e.bossPhase === 3 ? 0.42 : 0.24) + Math.sin(this.elapsed * 9.5) * 0.14
+          : 0;
       for (const hm of e.model.hitMeshes) {
         const mat = hm.material as THREE.MeshStandardMaterial;
-        mat.emissive.setHex(statusTint.hex);
-        mat.emissiveIntensity = statusTint.intensity;
+        if (bossRagePulse > 0 && statusTint.intensity <= 0.05) {
+          mat.emissive.setHex(e.bossPhase === 3 ? 0xf43f5e : 0xf97316);
+          mat.emissiveIntensity = bossRagePulse;
+        } else {
+          mat.emissive.setHex(statusTint.hex);
+          mat.emissiveIntensity = statusTint.intensity;
+        }
       }
 
       // Burn & Poison DoT
@@ -9268,7 +9790,7 @@ export class GameEngine {
         continue;
       }
 
-      // Wave 12: Boss Break-Shield Stun freezes movement & attacks for 3s
+      // Wave 12 + Wave 5: Boss Break-Shield Stun freezes movement & attacks with dramatic staggered kneel posture
       if (e.stunTimer && e.stunTimer > 0) {
         e.stunTimer = Math.max(0, e.stunTimer - dt);
         e.vx = 0;
@@ -9278,14 +9800,30 @@ export class GameEngine {
         e.laserLine.visible = false;
         e.punishWindowTimer = 0;
         if (e.punishRingMesh) e.punishRingMesh.visible = false;
-        e.model.bodyGroup.rotation.z = Math.sin(this.elapsed * 26) * 0.12;
+        e.model.bodyGroup.position.y = THREE.MathUtils.damp(
+          e.model.bodyGroup.position.y,
+          e.isBoss ? -0.36 : -0.18,
+          12,
+          dt
+        );
+        e.model.bodyGroup.rotation.x = THREE.MathUtils.damp(
+          e.model.bodyGroup.rotation.x,
+          e.isBoss ? 0.28 : 0.14,
+          12,
+          dt
+        );
+        e.model.bodyGroup.rotation.z = Math.sin(this.elapsed * 26) * 0.1;
         if (e.stunTimer <= 0) {
+          e.model.bodyGroup.position.y = 0;
+          e.model.bodyGroup.rotation.x = 0;
           e.model.bodyGroup.rotation.z = 0;
           if (e.maxBreakShield) {
             e.breakShield = e.maxBreakShield;
           }
         }
         continue;
+      } else if (e.isBoss && Math.abs(e.model.bodyGroup.rotation.x) > 0.005) {
+        e.model.bodyGroup.rotation.x = THREE.MathUtils.damp(e.model.bodyGroup.rotation.x, 0, 10, dt);
       }
 
       const superFreeze = (this.activeSkills.super_freeze ?? 0) > 0;
@@ -9372,6 +9910,7 @@ export class GameEngine {
         const pulse = 0.65 + 0.35 * Math.sin(this.elapsed * 20);
         const isImpactFlash = e.telegraphTimer <= 0.12;
 
+        const tp = resolveTelegraphPalette(this.highContrastTelegraphs);
         if (e.telegraphType === 'shot') {
           e.laserLine.visible = true;
           const posAttr = e.laserLine.geometry.getAttribute(
@@ -9381,7 +9920,7 @@ export class GameEngine {
           posAttr.setXYZ(1, e.x + e.aimX * 14, 0.95, e.z + e.aimZ * 14);
           posAttr.needsUpdate = true;
           const lMat = e.laserLine.material as THREE.LineBasicMaterial;
-          lMat.color.setHex(isImpactFlash ? 0xffffff : 0xf43f5e);
+          lMat.color.setHex(isImpactFlash ? tp.imminentHex : tp.laneHex);
           lMat.opacity = isImpactFlash ? 1.0 : 0.78;
         } else if (e.telegraphType === 'slam' || e.telegraphType === 'lunge') {
           e.telegraphGroup.visible = true;
@@ -9391,18 +9930,18 @@ export class GameEngine {
           );
           e.telegraphFill.scale.setScalar(0.15 + progress * 0.85);
           const fillMat = e.telegraphFill.material as THREE.MeshBasicMaterial;
-          fillMat.color.setHex(isImpactFlash ? 0xfef08a : 0xf43f5e);
+          fillMat.color.setHex(isImpactFlash ? tp.ringHex : tp.fillHex);
           fillMat.opacity = isImpactFlash ? 0.68 : 0.28 + progress * 0.28;
           if (e.telegraphOuterRing) {
             const outMat = e.telegraphOuterRing.material as THREE.MeshBasicMaterial;
-            outMat.color.setHex(isImpactFlash ? 0xffffff : 0xfef08a);
+            outMat.color.setHex(isImpactFlash ? tp.imminentHex : tp.ringHex);
             outMat.opacity = isImpactFlash ? 1.0 : 0.92;
           }
           if (e.telegraphCountdownRing) {
             const cd = computeCountdownRingScale(progress);
             e.telegraphCountdownRing.scale.setScalar(cd.scale);
             const cdMat = e.telegraphCountdownRing.material as THREE.MeshBasicMaterial;
-            cdMat.color.setHex(cd.isImminent ? 0xffffff : 0xfef08a);
+            cdMat.color.setHex(cd.isImminent ? tp.imminentHex : tp.ringHex);
             cdMat.opacity = cd.isImminent ? 1.0 : 0.85;
           }
         } else if (e.telegraphType === 'lane') {
@@ -9415,7 +9954,7 @@ export class GameEngine {
             lane.mesh.rotation.y = ang;
             lane.fillMesh.scale.set(0.1 + progress * 0.9, 1, 1);
             const laneMat = lane.fillMesh.material as THREE.MeshBasicMaterial;
-            laneMat.color.setHex(isImpactFlash ? 0xfef08a : 0xf43f5e);
+            laneMat.color.setHex(isImpactFlash ? tp.ringHex : tp.laneHex);
             laneMat.opacity = isImpactFlash ? 0.92 : 0.42 + pulse * 0.34;
           });
         }
@@ -9617,6 +10156,7 @@ export class GameEngine {
       e.z = THREE.MathUtils.clamp(e.z, -ARENA_HALF_D + e.radius, ARENA_HALF_D - e.radius);
 
       for (const obs of this.obstacles) {
+        if (obs.intact === false) continue;
         const odx = e.x - obs.x;
         const odz = e.z - obs.z;
         const minD = e.radius + obs.radius;
@@ -9871,6 +10411,21 @@ export class GameEngine {
             'boss_lane'
           );
         }
+        // AAA Wave 5: Boss danger lanes shatter destructible crystal cover pillars along the corridor
+        const dirX = Math.sin(ang);
+        const dirZ = Math.cos(ang);
+        for (const obs of this.obstacles) {
+          if (!obs.destructible || obs.intact === false) continue;
+          const relX = obs.x - e.x;
+          const relZ = obs.z - e.z;
+          const along = relX * dirX + relZ * dirZ;
+          if (along > 0.5 && along < 15.5) {
+            const perp = Math.abs(relX * dirZ - relZ * dirX);
+            if (perp < 1.45) {
+              this.shatterCrystalObstacle(obs);
+            }
+          }
+        }
       });
     } else if (e.telegraphType === 'slam' || e.telegraphType === 'spiral') {
       if (e.telegraphType === 'slam') {
@@ -9883,6 +10438,12 @@ export class GameEngine {
         soundEngine.playImpactScorchThump(slamPan);
         this.spawnImpactLight(e.slamX, 1.4, e.slamZ, 'boss_slam');
         this.triggerPostFxImpulse('boss_slam');
+        for (const obs of this.obstacles) {
+          if (!obs.destructible || obs.intact === false) continue;
+          if (Math.hypot(obs.x - e.slamX, obs.z - e.slamZ) <= e.slamRadius + 1.35) {
+            this.shatterCrystalObstacle(obs);
+          }
+        }
         if (Math.hypot(this.px - e.slamX, this.pz - e.slamZ) <= e.slamRadius + 0.35) {
           this.damagePlayer(
             e.damage * 1.15,
@@ -9991,6 +10552,7 @@ export class GameEngine {
 
       let hitPillar = false;
       for (const obs of this.obstacles) {
+        if (obs.intact === false) continue;
         const dx = p.x - obs.x;
         const dz = p.z - obs.z;
         const d = Math.hypot(dx, dz);
@@ -10044,7 +10606,7 @@ export class GameEngine {
             critChance = Math.min(0.95, critChance + 0.1);
           }
 
-          let isCrit = Math.random() < critChance;
+          let isCrit = p.isCounterShot ? true : Math.random() < critChance;
           if (this.baseStats.heroId === 'alex' && this.alexGuaranteedCrit) {
             isCrit = true;
             this.alexGuaranteedCrit = false;
@@ -10071,7 +10633,7 @@ export class GameEngine {
             p.frost,
             p.storm,
             p.poison,
-            undefined,
+            p.isCounterShot ? 'PHẢN TIỄN!' : undefined,
             p.source ?? (p.isSword ? 'elemental' : 'basic'),
             p.coopAllyIndex
           );
@@ -10160,8 +10722,9 @@ export class GameEngine {
 
       let blocked = false;
       for (const obs of this.obstacles) {
+        if (obs.intact === false) continue;
         if (Math.hypot(p.x - obs.x, p.z - obs.z) < obs.radius + p.radius) {
-          this.spawnParticles(p.x, p.y, p.z, 0xf43f5e, 5);
+          this.spawnParticles(p.x, p.y, p.z, obs.destructible ? 0x67e8f9 : 0xf43f5e, 5);
           p.active = false;
           p.mesh.visible = false;
           blocked = true;
@@ -10314,7 +10877,10 @@ export class GameEngine {
           this.shakeIntensity = Math.max(this.shakeIntensity, 0.55);
           const breakPan = computeSpatialPan(e.x, ARENA_HALF_W);
           soundEngine.playBossBreakShatter(breakPan);
+          soundEngine.playBossStaggerRoar(breakPan);
           soundEngine.playImpactScorchThump(breakPan);
+          triggerHapticPulse('boss_break', this.hapticsEnabled);
+          this.spawnArmorShards(e.x, 1.35, e.z, 0xfbbf24, 14);
           this.spawnImpactLight(e.x, 1.8, e.z, 'super_crit');
           this.spawnCritStar(e.x, 1.5, e.z, 0xfde047, 2.4);
           this.triggerPostFxImpulse('boss_break');
@@ -10345,6 +10911,10 @@ export class GameEngine {
     else if (dmgSource === 'pet') this.dmgPet += finalDmg;
     else if (dmgSource === 'elemental') this.dmgElemental += finalDmg;
     else this.dmgBasic += finalDmg;
+
+    if (coopAllyIndex === undefined) {
+      recordRollingDpsSample(this.rollingDps, this.runElapsedSeconds, finalDmg, isCrit);
+    }
 
     if (isCrit && finalDmg > this.peakCritDmg && coopAllyIndex === undefined) {
       this.peakCritDmg = finalDmg;
@@ -10462,6 +11032,27 @@ export class GameEngine {
       this.hp = Math.min(this.maxHp, this.hp + leach);
     }
 
+    // AAA Wave 4: 3D Elemental Reactions (Melt, Superconduct, Overload, Venom Detonation)
+    const incomingElement: ElementalHitType | null = blaze
+      ? 'fire'
+      : frost
+      ? 'ice'
+      : storm
+      ? 'storm'
+      : poison
+      ? 'poison'
+      : null;
+    const reaction = evaluateElementalReaction(
+      {
+        burning: e.burnTimer > 0,
+        chilled: e.chillTimer > 0,
+        poisoned: e.poisonDps > 0,
+      },
+      incomingElement,
+      finalDmg,
+      e.reactionCd ?? 0
+    );
+
     const flameRuneMult = this.hasRune('rune_flame') ? 1.6 : 1.0;
     const infernoBurnMult = activeSynergies.includes('inferno_meteor') ? 1.22 : 1.0;
     const venomSynergyMult = activeSynergies.includes('venom_eclipse') ? 1.3 : 1.0;
@@ -10481,6 +11072,83 @@ export class GameEngine {
     }
 
     const hitPan = computeSpatialPan(e.x, ARENA_HALF_W);
+    if (reaction) {
+      e.reactionCd = reaction.cooldownSec;
+      this.elementalReactionsCount += 1;
+      if (!e.isTrainingDummy) {
+        e.hp -= reaction.bonusDamage;
+      }
+      this.dmgElemental += reaction.bonusDamage;
+      if (
+        e.isBoss &&
+        e.maxBreakShield &&
+        e.breakShield &&
+        e.breakShield > 0 &&
+        reaction.breakShieldBonusRatio > 0
+      ) {
+        e.breakShield = Math.max(
+          0,
+          e.breakShield - e.maxBreakShield * reaction.breakShieldBonusRatio
+        );
+      }
+      if (reaction.aoeRadius > 0) {
+        for (let ri = this.enemies.length - 1; ri >= 0; ri--) {
+          const other = this.enemies[ri];
+          if (!other || other.id === e.id || other.spawnTimer > 0) continue;
+          const rdx = other.x - e.x;
+          const rdz = other.z - e.z;
+          const rdist = Math.hypot(rdx, rdz);
+          if (rdist <= reaction.aoeRadius) {
+            const splashDmg = Math.max(1, Math.round(reaction.bonusDamage * 0.65));
+            if (!other.isTrainingDummy) {
+              other.hp -= splashDmg;
+            }
+            this.dmgElemental += splashDmg;
+            other.hitFlashTimer = 0.09;
+            if (
+              reaction.knockbackForce > 0 &&
+              !other.isBoss &&
+              !other.isTrainingDummy &&
+              !other.isVaultPillar &&
+              rdist > 0.01
+            ) {
+              other.knockVx = (other.knockVx ?? 0) + (rdx / rdist) * reaction.knockbackForce * 5.2;
+              other.knockVz = (other.knockVz ?? 0) + (rdz / rdist) * reaction.knockbackForce * 5.2;
+            }
+            if (other.hp <= 0) {
+              this.killEnemy(ri);
+            }
+          }
+        }
+      }
+      soundEngine.playElementalReaction(reaction.id, hitPan);
+      triggerHapticPulse('reaction', this.hapticsEnabled);
+      this.spawnShockwave(e.x, e.z, reaction.primaryHex, Math.max(2.2, reaction.aoeRadius), 0.34);
+      this.spawnCritStar(e.x, 1.32, e.z, reaction.secondaryHex, 1.75);
+      this.spawnImpactLight(
+        e.x,
+        1.4,
+        e.z,
+        reaction.id === 'superconduct' ? 'storm' : reaction.id === 'melt' ? 'crit' : 'super_crit'
+      );
+      this.spawnParticles(e.x, 1.1, e.z, reaction.primaryHex, 14);
+      this.spawnParticles(e.x, 1.15, e.z, reaction.secondaryHex, 10);
+      this.emitFloatingNumber(
+        e.x,
+        2.12,
+        e.z,
+        reaction.bonusDamage,
+        true,
+        false,
+        reaction.id === 'superconduct'
+          ? 'storm'
+          : reaction.id === 'venom_detonation'
+          ? 'poison'
+          : 'fire',
+        reaction.label,
+        true
+      );
+    }
     soundEngine.playHit(isCrit, this.comboCount, hitPan);
     this.spawnParticles(
       e.x,
@@ -10613,8 +11281,10 @@ export class GameEngine {
     if (e.isBoss) {
       soundEngine.playShockwave(killPan);
       soundEngine.playBossFinisherBoom(killPan);
+      triggerHapticPulse('boss_break', this.hapticsEnabled);
       this.spawnImpactLight(e.x, 2.0, e.z, 'ultimate');
       this.spawnCritStar(e.x, 1.6, e.z, 0xfde047, 2.8);
+      this.spawnParticles(e.x, 1.3, e.z, 0xe0f2fe, 24);
       this.triggerPostFxImpulse('boss_break');
       this.hitstopTimer = 0.095;
       this.shakeIntensity = 0.56;
@@ -10631,6 +11301,7 @@ export class GameEngine {
     } else if (e.isElite) {
       soundEngine.playShockwave(killPan);
       this.spawnImpactLight(e.x, 1.4, e.z, 'super_crit');
+      this.spawnParticles(e.x, 1.15, e.z, 0xfde047, 14);
       this.hitstopTimer = Math.max(this.hitstopTimer, 0.036);
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
     } else {
@@ -10956,6 +11627,8 @@ export class GameEngine {
       elapsedSeconds: Math.max(1, Math.round(this.runElapsedSeconds)),
       perfectDodges: this.perfectDodgeCount,
       punishHits: this.punishHitsCount,
+      elementalReactions: this.elementalReactionsCount,
+      counterShots: this.counterShotsCount,
       coopAllies: coopAlliesSummary,
     };
   }
@@ -11347,6 +12020,7 @@ export class GameEngine {
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.28);
     this.triggerPostFxImpulse('player_hurt');
     soundEngine.playPlayerHurt();
+    triggerHapticPulse('dash', this.hapticsEnabled);
 
     if (this.baseStats.heroId === 'alex') {
       this.alexGuaranteedCrit = true;
@@ -11839,6 +12513,200 @@ export class GameEngine {
     }
   }
 
+  private applyPhotoStudioLighting(dt: number): void {
+    const mood = resolvePhotoLightingMood(this.photoLightingPreset);
+    const alpha = 1 - Math.exp(-5.5 * dt);
+    _keyCol.setHex(mood.keyHex);
+    this.keyLight.color.lerp(_keyCol, alpha);
+    this.keyLight.intensity = THREE.MathUtils.damp(this.keyLight.intensity, mood.keyIntensity, 5.5, dt);
+    _starCol.setHex(mood.rimHex);
+    this.rimLight.color.lerp(_starCol, alpha);
+    this.rimLight.intensity = THREE.MathUtils.damp(this.rimLight.intensity, mood.rimIntensity, 5.5, dt);
+    _hemiSkyCol.setHex(mood.hemiSkyHex);
+    _hemiGndCol.setHex(mood.hemiGroundHex);
+    this.hemiLight.color.lerp(_hemiSkyCol, alpha);
+    this.hemiLight.groundColor.lerp(_hemiGndCol, alpha);
+    this.renderer.toneMappingExposure = THREE.MathUtils.damp(
+      this.renderer.toneMappingExposure,
+      mood.exposure,
+      5.5,
+      dt
+    );
+  }
+
+  private spawnSummonPortal(
+    x: number,
+    z: number,
+    radius: number,
+    colorHex: number,
+    duration = 0.56
+  ): void {
+    const slot = this.summonPortalPool?.find((p) => !p.active);
+    if (!slot) return;
+    slot.active = true;
+    slot.maxLife = duration;
+    slot.life = duration;
+    slot.baseRadius = radius;
+    slot.group.position.set(x, 0.055, z);
+    slot.group.scale.setScalar(0.15);
+    (slot.outerRing.material as THREE.MeshBasicMaterial).color.setHex(colorHex);
+    (slot.coreDisc.material as THREE.MeshBasicMaterial).color.setHex(colorHex);
+    slot.group.visible = true;
+  }
+
+  private spawnArmorShards(
+    x: number,
+    y: number,
+    z: number,
+    colorHex: number,
+    count = 10
+  ): void {
+    if (!this.armorShardPool) return;
+    let spawned = 0;
+    for (let i = 0; i < this.armorShardPool.length && spawned < count; i++) {
+      const slot = this.armorShardPool[i];
+      if (slot.active) continue;
+      slot.active = true;
+      const ang = (spawned / Math.max(1, count)) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
+      const spd = 2.8 + Math.random() * 4.4;
+      slot.kin.x = x + (Math.random() - 0.5) * 0.4;
+      slot.kin.y = y + Math.random() * 0.45;
+      slot.kin.z = z + (Math.random() - 0.5) * 0.4;
+      slot.kin.vx = Math.cos(ang) * spd;
+      slot.kin.vy = 4.2 + Math.random() * 4.2;
+      slot.kin.vz = Math.sin(ang) * spd;
+      slot.kin.rx = Math.random() * Math.PI;
+      slot.kin.ry = Math.random() * Math.PI;
+      slot.kin.rz = Math.random() * Math.PI;
+      slot.kin.vrx = (Math.random() - 0.5) * 14;
+      slot.kin.vry = (Math.random() - 0.5) * 14;
+      slot.kin.vrz = (Math.random() - 0.5) * 14;
+      slot.kin.bounces = 0;
+      slot.kin.maxLife = 0.95 + Math.random() * 0.45;
+      slot.kin.life = slot.kin.maxLife;
+      const mat = slot.mesh.material as THREE.MeshStandardMaterial;
+      mat.color.setHex(colorHex);
+      mat.emissive.setHex(colorHex);
+      slot.mesh.position.set(slot.kin.x, slot.kin.y, slot.kin.z);
+      slot.mesh.scale.setScalar(0.85 + Math.random() * 0.55);
+      slot.mesh.visible = true;
+      spawned += 1;
+    }
+  }
+
+  private spawnDashScorch(x: number, z: number, yaw: number, colorHex: number): void {
+    const slot = this.dashScorchPool?.find((d) => !d.active);
+    if (!slot) return;
+    slot.active = true;
+    slot.maxLife = 0.58;
+    slot.life = 0.58;
+    slot.mesh.position.set(x, 0.042, z);
+    slot.mesh.rotation.y = yaw;
+    slot.mesh.scale.set(1, 1, 1);
+    const mat = slot.mesh.material as THREE.MeshBasicMaterial;
+    mat.color.setHex(colorHex);
+    mat.opacity = 0.62;
+    slot.mesh.visible = true;
+  }
+
+  private shatterCrystalObstacle(obs: ObstacleBox): void {
+    if (obs.intact === false) return;
+    obs.intact = false;
+    obs.mesh.visible = false;
+    const pan = computeSpatialPan(obs.x, ARENA_HALF_W);
+    soundEngine.playCrystalPillarShatter(pan);
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
+    this.spawnArmorShards(obs.x, 1.4, obs.z, 0x67e8f9, 10);
+    this.spawnShockwave(obs.x, obs.z, 0x67e8f9, 3.2, 0.36);
+    this.spawnImpactDecal(obs.x, obs.z, 0x38bdf8, 1.55, 1.6);
+    this.spawnParticles(obs.x, 1.2, obs.z, 0x67e8f9, 18);
+    this.spawnLootOrb(obs.x, obs.z, 'heal', Math.max(18, Math.round(this.maxHp * 0.1)));
+    this.ultCharge = Math.min(100, this.ultCharge + 8);
+    this.emitFloatingNumber(obs.x, 1.9, obs.z, 0, true, false, 'ice', 'TRỤ PHA LÊ VỠ!', false);
+  }
+
+  private updateWave5Effects(dt: number): void {
+    // 1. Rotating Celestial Summon Portals
+    if (this.summonPortalPool) {
+      for (let i = 0; i < this.summonPortalPool.length; i++) {
+        const sp = this.summonPortalPool[i];
+        if (!sp.active) continue;
+        sp.life -= dt;
+        if (sp.life <= 0) {
+          sp.active = false;
+          sp.group.visible = false;
+          continue;
+        }
+        const p = 1 - sp.life / sp.maxLife;
+        const grow = p < 0.35 ? p / 0.35 : 1 - ((p - 0.35) / 0.65) * 0.25;
+        const fade = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
+        sp.group.scale.setScalar(Math.max(0.08, sp.baseRadius * grow));
+        sp.outerRing.rotation.z += dt * 4.2;
+        sp.innerRing.rotation.z -= dt * 6.5;
+        (sp.outerRing.material as THREE.MeshBasicMaterial).opacity = 0.85 * fade;
+        (sp.innerRing.material as THREE.MeshBasicMaterial).opacity = 0.9 * fade;
+        (sp.coreDisc.material as THREE.MeshBasicMaterial).opacity = 0.34 * fade;
+      }
+    }
+
+    // 2. Physical Bouncing Armor & Crystal Shards
+    if (this.armorShardPool) {
+      for (let i = 0; i < this.armorShardPool.length; i++) {
+        const sh = this.armorShardPool[i];
+        if (!sh.active) continue;
+        if (!stepArmorShardPhysics(sh.kin, dt)) {
+          sh.active = false;
+          sh.mesh.visible = false;
+          continue;
+        }
+        sh.mesh.position.set(sh.kin.x, sh.kin.y, sh.kin.z);
+        sh.mesh.rotation.set(sh.kin.rx, sh.kin.ry, sh.kin.rz);
+        const fadeScale = sh.kin.life < 0.25 ? Math.max(0.05, sh.kin.life / 0.25) : 1;
+        sh.mesh.scale.setScalar(fadeScale);
+      }
+    }
+
+    // 3. Fading Glowing Dash Scorch Trails
+    if (this.dashScorchPool) {
+      for (let i = 0; i < this.dashScorchPool.length; i++) {
+        const ds = this.dashScorchPool[i];
+        if (!ds.active) continue;
+        ds.life -= dt;
+        if (ds.life <= 0) {
+          ds.active = false;
+          ds.mesh.visible = false;
+          continue;
+        }
+        const ratio = ds.life / ds.maxLife;
+        (ds.mesh.material as THREE.MeshBasicMaterial).opacity = 0.62 * ratio;
+        ds.mesh.scale.set(0.6 + ratio * 0.4, 1, 1 + (1 - ratio) * 0.3);
+      }
+    }
+
+    // 4. Low-Lying Instanced Ground Mist
+    if (this.groundMistMesh) {
+      const showMist = this.phase !== GamePhase.TITLE && !this.isSoftwareGl;
+      this.groundMistMesh.visible = showMist;
+      if (showMist) {
+        for (let i = 0; i < this.GROUND_MIST_COUNT; i++) {
+          const s = this.groundMistSeeds[i];
+          s.x += s.vx * dt;
+          s.z += s.vz * dt;
+          if (s.x > ARENA_HALF_W) s.x = -ARENA_HALF_W;
+          if (s.x < -ARENA_HALF_W) s.x = ARENA_HALF_W;
+          if (s.z > ARENA_HALF_D) s.z = -ARENA_HALF_D;
+          const pulse = s.scale * (0.92 + Math.sin(this.elapsed * 0.9 + s.phase) * 0.08);
+          _dummy.position.set(s.x, 0.08 + (i % 3) * 0.03, s.z);
+          _dummy.rotation.set(0, s.phase + this.elapsed * 0.18, 0);
+          _dummy.scale.setScalar(pulse);
+          _dummy.updateMatrix();
+          this.groundMistMesh.setMatrixAt(i, _dummy.matrix);
+        }
+        this.groundMistMesh.instanceMatrix.needsUpdate = true;
+      }
+    }
+  }
+
   private spawnUltColumn(
     x: number,
     z: number,
@@ -11968,13 +12836,18 @@ export class GameEngine {
       this.bossFinisherTimer,
       this.bossFinisherDuration
     );
+    const camRig = resolveCombatCameraConfig(this.combatCameraPreset);
     const baseCamX = THREE.MathUtils.clamp(
-      this.px * 0.55 + (sightline.lookX - this.px * 0.45) * 0.28,
+      this.px * 0.55 + (sightline.lookX - this.px * 0.45) * camRig.lookLeadMult,
       -5.8,
       5.8
     );
-    const baseCamZ = THREE.MathUtils.clamp(this.pz * 0.7 + 12.2 + sightline.camZBias, 6.2, 22.0);
-    const baseCamY = 16.5;
+    const baseCamZ = THREE.MathUtils.clamp(
+      this.pz * 0.7 + camRig.camZOffset + sightline.camZBias,
+      5.6,
+      23.5
+    );
+    const baseCamY = camRig.camY;
 
     const introCamX = THREE.MathUtils.clamp(this.bossIntroFocusX * 0.75, -5.2, 5.2);
     const introCamY = 12.4;
@@ -12037,9 +12910,9 @@ export class GameEngine {
       if (this.cameraFovOffset < 0.02) this.cameraFovOffset = 0;
     }
     const desiredFov =
-      46 + this.cameraFovOffset - introBlend * 3.5 + finisherKin.fovBoost + ultCutin.fovPunch;
+      camRig.fov + this.cameraFovOffset - introBlend * 3.5 + finisherKin.fovBoost + ultCutin.fovPunch;
     if (Math.abs(this.camera.fov - desiredFov) > 0.015) {
-      this.camera.fov = desiredFov;
+      this.camera.fov = THREE.MathUtils.damp(this.camera.fov, desiredFov, 7.5, dt);
       this.camera.updateProjectionMatrix();
     }
 
@@ -12537,6 +13410,17 @@ export class GameEngine {
         this.currentChapter.zodiacId,
         boss?.bossPhase ?? 1
       ).weatherLabel,
+      counterShotReady: this.counterShotTimer > 0,
+      counterShotTimer: this.counterShotTimer > 0 ? this.counterShotTimer : undefined,
+      gamepadConnected: this.gamepadConnected || undefined,
+      elementalReactionsCount: this.elementalReactionsCount || undefined,
+      ...(() => {
+        const liveDps = computeRollingDpsMetrics(this.rollingDps, this.runElapsedSeconds, 5.0);
+        return {
+          liveDps5s: liveDps.dps5s,
+          livePeakCrit: liveDps.peakCrit,
+        };
+      })(),
       isTrainingMode: this.isTrainingMode || undefined,
       trainingTargetMode: this.isTrainingMode ? this.trainingTargetMode : undefined,
       ...(this.isTrainingMode

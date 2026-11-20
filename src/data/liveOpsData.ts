@@ -29,6 +29,12 @@ export const DEFAULT_SETTINGS: GameSettings = {
   showDamageNumbers: true,
   starfallWeather: true,
   bloomEnabled: true,
+  hapticsEnabled: true,
+  highContrastTelegraphs: false,
+  hudScale: 'normal',
+  combatCameraPreset: 'tactical',
+  liveDpsMeter: false,
+  photoLightingPreset: 'golden_hall',
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
@@ -41,6 +47,13 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     showDamageNumbers: s?.showDamageNumbers ?? DEFAULT_SETTINGS.showDamageNumbers,
     starfallWeather: s?.starfallWeather ?? DEFAULT_SETTINGS.starfallWeather,
     bloomEnabled: s?.bloomEnabled ?? DEFAULT_SETTINGS.bloomEnabled,
+    hapticsEnabled: s?.hapticsEnabled ?? DEFAULT_SETTINGS.hapticsEnabled,
+    highContrastTelegraphs:
+      s?.highContrastTelegraphs ?? DEFAULT_SETTINGS.highContrastTelegraphs,
+    hudScale: s?.hudScale ?? DEFAULT_SETTINGS.hudScale,
+    combatCameraPreset: s?.combatCameraPreset ?? DEFAULT_SETTINGS.combatCameraPreset,
+    liveDpsMeter: s?.liveDpsMeter ?? DEFAULT_SETTINGS.liveDpsMeter,
+    photoLightingPreset: s?.photoLightingPreset ?? DEFAULT_SETTINGS.photoLightingPreset,
   };
 }
 

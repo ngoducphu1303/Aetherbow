@@ -4,6 +4,7 @@ import {
   computeTimeScaleAudioFilter,
 } from './aaaAudioMix';
 import { computeBossBgmStepDuration } from '../engine/zodiacArena';
+import { resolveBossAudioLayers } from '../engine/aaaWave5Director';
 
 export type BgmMode = 'silent' | 'lobby' | 'combat' | 'boss';
 
@@ -30,6 +31,9 @@ class SoundEngine {
   private bgmTimer: number | null = null;
   private bgmStep = 0;
   private bgmNextNoteTime = 0;
+  private lastFootstepAt = 0;
+  private lastBowCreakAt = 0;
+  private lastPortalHumAt = 0;
 
   private ensureContext(): AudioContext | null {
     if (this.muted) return null;
@@ -447,8 +451,9 @@ class SoundEngine {
       return;
     }
 
-    // Boss Encounter: Adaptive 3-phase orchestral minor ostinato + brassy power fifths + war drum
+    // Boss Encounter: Adaptive 3-phase orchestral minor ostinato + brassy power fifths + cathedral choir + war drum
     const intensity = this.bossIntensity;
+    const bossMix = resolveBossAudioLayers(intensity, this.combatCombo, this.combatHpRatio);
     const bossSeq = [
       220, 220, 261.63, 220, 293.66, 220, 329.63, 293.66,
       196, 196, 246.94, 196, 261.63, 246.94, 220, 196,
@@ -460,7 +465,7 @@ class SoundEngine {
     fifth.type = intensity >= 3 ? 'sawtooth' : 'triangle';
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    const filterStart = intensity === 3 ? 1750 : intensity === 2 ? 1320 : 980;
+    const filterStart = bossMix.filterPeakHz;
     filter.frequency.setValueAtTime(filterStart, time);
     filter.frequency.exponentialRampToValueAtTime(Math.round(filterStart * 0.52), time + stepDur * 0.8);
     osc.frequency.setValueAtTime(bossSeq[step], time);
@@ -475,6 +480,29 @@ class SoundEngine {
     fifth.start(time);
     osc.stop(time + stepDur * 0.85);
     fifth.stop(time + stepDur * 0.85);
+
+    // AAA Wave 5: Cathedral Choir harmonic swell on downbeats in Boss Phase II & III (or high combo)
+    if (bossMix.choirGain > 0 && step % 8 === 0) {
+      const choirNotes = step === 0 ? [220, 261.63, 329.63] : [196, 246.94, 293.66];
+      const choirFilter = ctx.createBiquadFilter();
+      choirFilter.type = 'bandpass';
+      choirFilter.frequency.setValueAtTime(intensity === 3 ? 920 : 760, time);
+      choirFilter.Q.setValueAtTime(1.8, time);
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.001, time);
+      cg.gain.linearRampToValueAtTime(bossMix.choirGain, time + stepDur * 1.4);
+      cg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 7.6);
+      choirFilter.connect(cg);
+      cg.connect(dest);
+      for (const cf of choirNotes) {
+        const cOsc = ctx.createOscillator();
+        cOsc.type = 'triangle';
+        cOsc.frequency.setValueAtTime(cf, time);
+        cOsc.connect(choirFilter);
+        cOsc.start(time);
+        cOsc.stop(time + stepDur * 7.8);
+      }
+    }
 
     // Phase III heroic high brass octave counter-line on accent steps
     if (intensity === 3 && (step % 4 === 0 || step === 6 || step === 14)) {
@@ -499,7 +527,7 @@ class SoundEngine {
       sub.type = 'sine';
       sub.frequency.setValueAtTime(isDownbeat ? 114 : 92, time);
       sub.frequency.exponentialRampToValueAtTime(48, time + 0.14);
-      sg.gain.setValueAtTime(isDownbeat ? 0.25 : 0.15, time);
+      sg.gain.setValueAtTime(isDownbeat ? bossMix.subWeight : bossMix.subWeight * 0.62, time);
       sg.gain.exponentialRampToValueAtTime(0.001, time + 0.16);
       sub.connect(sg);
       sg.connect(dest);
@@ -507,7 +535,7 @@ class SoundEngine {
       sub.stop(time + 0.18);
     }
 
-    // Crisp battle snare transient on backbeats in Phase II & III
+    // Crisp battle snare transient on backbeats + driving tension hi-hat in Phase II & III
     if (intensity >= 2 && step % 4 === 2) {
       this.playNoiseBurst(
         ctx,
@@ -518,7 +546,19 @@ class SoundEngine {
         intensity === 3 ? 2100 : 1650,
         920,
         intensity === 3 ? 0.095 : 0.068,
-        1.6
+        1.5
+      );
+    } else if (bossMix.hihatDrive > 0 && step % 2 === 1) {
+      this.playNoiseBurst(
+        ctx,
+        dest,
+        time,
+        0.028,
+        'highpass',
+        4600,
+        2400,
+        bossMix.hihatDrive,
+        1.3
       );
     }
   }
@@ -1683,6 +1723,277 @@ class SoundEngine {
       osc.start(t);
       osc.stop(t + 0.35);
     });
+  }
+
+  /**
+   * AAA Wave 4: Distinct harmonic stings for 3D Elemental Reactions
+   * (Melt, Superconduct, Overload, Venom Detonation).
+   */
+  public playElementalReaction(
+    kind: 'melt' | 'superconduct' | 'overload' | 'venom_detonation',
+    pan = 0
+  ): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    if (kind === 'melt') {
+      // Crystalline steam hiss + warm golden chord
+      this.playNoiseBurst(ctx, dest, now, 0.22, 'bandpass', 2600, 900, 0.12, 1.4);
+      [523.25, 783.99, 1046.5].forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        const t = now + idx * 0.03;
+        osc.frequency.setValueAtTime(f, t);
+        g.gain.setValueAtTime(0.08, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+        osc.connect(g);
+        g.connect(dest);
+        osc.start(t);
+        osc.stop(t + 0.26);
+      });
+      return;
+    }
+
+    if (kind === 'superconduct') {
+      // High-voltage crystalline crackle + descending armor-shred zap
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1680, now);
+      osc.frequency.exponentialRampToValueAtTime(240, now + 0.28);
+      g.gain.setValueAtTime(0.11, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(now);
+      osc.stop(now + 0.32);
+      this.playNoiseBurst(ctx, dest, now, 0.16, 'highpass', 3200, 1400, 0.09, 1.2);
+      return;
+    }
+
+    if (kind === 'overload') {
+      // Punchy sub-bass detonation + bright spark snap
+      const sub = ctx.createOscillator();
+      const sg = ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(160, now);
+      sub.frequency.exponentialRampToValueAtTime(38, now + 0.32);
+      sg.gain.setValueAtTime(0.24, now);
+      sg.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      sub.connect(sg);
+      sg.connect(dest);
+      sub.start(now);
+      sub.stop(now + 0.38);
+      this.playNoiseBurst(ctx, dest, now, 0.24, 'lowpass', 2200, 260, 0.15, 1.0);
+      return;
+    }
+
+    // venom_detonation: acidic bubble pop + resonant burst
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(640, now + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.28);
+    g.gain.setValueAtTime(0.13, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.32);
+    this.playNoiseBurst(ctx, dest, now + 0.04, 0.18, 'bandpass', 1500, 500, 0.1, 1.3);
+  }
+
+  /**
+   * AAA Wave 4: High-velocity golden piercing Counter-Shot release after Perfect Dodge.
+   */
+  public playCounterShotRelease(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const twang = ctx.createOscillator();
+    const tg = ctx.createGain();
+    twang.type = 'sawtooth';
+    twang.frequency.setValueAtTime(520, now);
+    twang.frequency.exponentialRampToValueAtTime(1320, now + 0.09);
+    twang.frequency.exponentialRampToValueAtTime(420, now + 0.26);
+    tg.gain.setValueAtTime(0.12, now);
+    tg.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    twang.connect(tg);
+    tg.connect(dest);
+    twang.start(now);
+    twang.stop(now + 0.3);
+
+    const chime = ctx.createOscillator();
+    const cg = ctx.createGain();
+    chime.type = 'sine';
+    chime.frequency.setValueAtTime(1567.98, now + 0.02);
+    cg.gain.setValueAtTime(0.085, now + 0.02);
+    cg.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    chime.connect(cg);
+    cg.connect(dest);
+    chime.start(now + 0.02);
+    chime.stop(now + 0.32);
+  }
+
+  /**
+   * AAA Wave 4: Metallic anvil strike + shimmering forged gold resonance for gear upgrades.
+   */
+  public playForgeAnvilImpact(): void {
+    const dest = this.getSfxDest(0, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Metallic inharmonic bell partials for authentic hammer-on-anvil ring
+    [880, 1345, 2110, 2980].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.992, now + 0.45);
+      const amp = 0.095 / (idx + 1);
+      g.gain.setValueAtTime(amp, now);
+      g.gain.exponentialRampToValueAtTime(0.0008, now + 0.48 - idx * 0.06);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(now);
+      osc.stop(now + 0.5);
+    });
+    this.playNoiseBurst(ctx, dest, now, 0.08, 'highpass', 3600, 1800, 0.11, 1.5);
+  }
+
+  /**
+   * AAA Wave 5 Foley: Crisp temple-stone footstep transient synced to sprint stride.
+   */
+  public playFootstep(pan = 0): void {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowMs - this.lastFootstepAt < 210) return;
+    this.lastFootstepAt = nowMs;
+    const dest = this.getSfxDest(pan, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const pitchJitter = 0.92 + Math.random() * 0.16;
+    this.playNoiseBurst(ctx, dest, now, 0.042, 'bandpass', 640 * pitchJitter, 240, 0.045, 2.2);
+  }
+
+  /**
+   * AAA Wave 5 Foley: Subtle bowstring tension creak when aiming/charging a volley.
+   */
+  public playBowDrawCreak(pan = 0): void {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowMs - this.lastBowCreakAt < 340) return;
+    this.lastBowCreakAt = nowMs;
+    const dest = this.getSfxDest(pan, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(215, now);
+    osc.frequency.exponentialRampToValueAtTime(340, now + 0.09);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.032, now + 0.025);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.11);
+  }
+
+  /**
+   * AAA Wave 5 Foley: Spatialized rift hum when enemies materialize from 3D summon portals.
+   */
+  public playSummonPortalHum(pan = 0): void {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowMs - this.lastPortalHumAt < 380) return;
+    this.lastPortalHumAt = nowMs;
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(165, now);
+    osc.frequency.exponentialRampToValueAtTime(390, now + 0.22);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.065, now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.27);
+  }
+
+  /**
+   * AAA Wave 5 Foley: Faceted Zodiac crystal cover pillar shatter burst.
+   */
+  public playCrystalPillarShatter(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [1380, 1940, 2680].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.025;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.62, t + 0.22);
+      g.gain.setValueAtTime(0.075 / (idx + 1), t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.26);
+    });
+    this.playNoiseBurst(ctx, dest, now, 0.16, 'bandpass', 2400, 720, 0.13, 1.4);
+  }
+
+  /**
+   * AAA Wave 5 Foley: Heavy resonant metallic armor-crack & Boss stagger roar on Break-Shield shatter.
+   */
+  public playBossStaggerRoar(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const roar = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const rg = ctx.createGain();
+    roar.type = 'sawtooth';
+    roar.frequency.setValueAtTime(142, now);
+    roar.frequency.exponentialRampToValueAtTime(54, now + 0.42);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(780, now);
+    filter.frequency.exponentialRampToValueAtTime(210, now + 0.44);
+    rg.gain.setValueAtTime(0.14, now);
+    rg.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+    roar.connect(filter);
+    filter.connect(rg);
+    rg.connect(dest);
+    roar.start(now);
+    roar.stop(now + 0.48);
+  }
+
+  /**
+   * AAA Wave 5 Foley: Tactile camera shutter click when capturing a 3D Photo Snapshot.
+   */
+  public playPhotoShutter(): void {
+    const dest = this.getSfxDest(0, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    this.playNoiseBurst(ctx, dest, now, 0.032, 'highpass', 3200, 1400, 0.12, 1.6);
+    this.playNoiseBurst(ctx, dest, now + 0.048, 0.026, 'bandpass', 2200, 900, 0.09, 1.8);
   }
 }
 

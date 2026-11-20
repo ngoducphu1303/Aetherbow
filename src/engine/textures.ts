@@ -118,6 +118,94 @@ export function createStoneBumpTexture(maxAnisotropy: number): THREE.CanvasTextu
 }
 
 /**
+ * Procedural Sobel Tangent-Space Normal Map (linear NoColorSpace) aligned 1:1 with
+ * createStoneTileTexture & createStoneRoughnessTexture so Zodiac floor joints, beveled slabs,
+ * and inlaid gold diamonds catch directional key & rim light with true physical PBR relief.
+ */
+export function createStoneNormalTexture(maxAnisotropy: number): THREE.DataTexture {
+  const size = 256;
+  const heightField = new Float32Array(size * size);
+  const step = size / 4; // 64px per stone slab
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const lx = x % step;
+      const ly = y % step;
+      const edgeDist = Math.min(lx, ly, step - 1 - lx, step - 1 - ly);
+
+      // Mortar groove at slab seams -> beveled chamfer -> flat honed slab face
+      let h = 0.68;
+      if (edgeDist < 2.2) {
+        h = 0.08;
+      } else if (edgeDist < 6.0) {
+        h = 0.08 + ((edgeDist - 2.2) / 3.8) * 0.6;
+      } else {
+        // Subtle deterministic stone micro-grain
+        const hash = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+        const grain = hash - Math.floor(hash);
+        h = 0.68 + (grain - 0.5) * 0.06;
+      }
+
+      // Raised gilded diamond inlays at alternating tile corners
+      const gx = Math.round(x / step);
+      const gy = Math.round(y / step);
+      if (gx % 2 === 1 && gy % 2 === 1) {
+        const dx = Math.abs(x - gx * step);
+        const dy = Math.abs(y - gy * step);
+        const manhattan = dx + dy;
+        if (manhattan < 8.5) {
+          h = Math.max(h, 0.96 - (manhattan / 8.5) * 0.22);
+        }
+      }
+
+      heightField[y * size + x] = h;
+    }
+  }
+
+  const data = new Uint8Array(size * size * 4);
+  const strength = 2.6;
+  const sampleH = (sx: number, sy: number) =>
+    heightField[((sy + size) % size) * size + ((sx + size) % size)];
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const tl = sampleH(x - 1, y - 1);
+      const t = sampleH(x, y - 1);
+      const tr = sampleH(x + 1, y - 1);
+      const l = sampleH(x - 1, y);
+      const r = sampleH(x + 1, y);
+      const bl = sampleH(x - 1, y + 1);
+      const b = sampleH(x, y + 1);
+      const br = sampleH(x + 1, y + 1);
+
+      const dX = (tr + 2 * r + br - (tl + 2 * l + bl)) * strength;
+      const dY = (bl + 2 * b + br - (tl + 2 * t + tr)) * strength;
+      const nx = -dX;
+      const ny = -dY;
+      const nz = 1.0;
+      const invLen = 1 / Math.hypot(nx, ny, nz);
+
+      const idx = (y * size + x) * 4;
+      data[idx] = Math.round((nx * invLen * 0.5 + 0.5) * 255);
+      data[idx + 1] = Math.round((ny * invLen * 0.5 + 0.5) * 255);
+      data[idx + 2] = Math.round((nz * invLen * 0.5 + 0.5) * 255);
+      data[idx + 3] = 255;
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 4.5);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = maxAnisotropy;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
  * Procedural PBR roughness map aligned 1:1 with createStoneTileTexture:
  * - Honed obsidian/marble tiles: ~0.64–0.72 roughness
  * - Grout/mortar seams: ~0.92 roughness (matte recesses)

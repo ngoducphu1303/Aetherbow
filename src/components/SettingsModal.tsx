@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   Clock,
   Copy,
   Download,
+  Gamepad2,
   Monitor,
   RotateCcw,
   Sliders,
@@ -18,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
+import { triggerHapticPulse } from '../engine/aaaWave4Director';
 import {
   evaluatePlaytestKpis,
   normalizeHeroMastery,
@@ -28,9 +30,11 @@ import { HERO_MAP } from '../data/heroesData';
 import { decodeSaveTransferCode, encodeSaveTransferCode } from '../data/phase5Data';
 import { SKILL_SYNERGIES, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import {
+  CombatCameraPreset,
   GameSettings,
   GpuProfileSummary,
   GraphicsQuality,
+  HudScaleMode,
   SaveData,
   SaveTransferPreview,
 } from '../types/game';
@@ -99,11 +103,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   } | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [gamepadLabel, setGamepadLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    const readGamepad = () => {
+      if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') {
+        setGamepadLabel(null);
+        return;
+      }
+      const pads = navigator.getGamepads();
+      for (let i = 0; i < pads.length; i++) {
+        const gp = pads[i];
+        if (gp && gp.connected) {
+          setGamepadLabel(gp.id || `Tay cầm #${i + 1}`);
+          return;
+        }
+      }
+      setGamepadLabel(null);
+    };
+
+    readGamepad();
+    window.addEventListener('gamepadconnected', readGamepad);
+    window.addEventListener('gamepaddisconnected', readGamepad);
+    return () => {
+      window.removeEventListener('gamepadconnected', readGamepad);
+      window.removeEventListener('gamepaddisconnected', readGamepad);
+    };
+  }, []);
 
   const qualityOptions: Array<{ id: GraphicsQuality; label: string; hint: string }> = [
     { id: 'low', label: 'Thấp', hint: 'Tối ưu FPS' },
     { id: 'medium', label: 'Trung Bình', hint: 'Cân bằng 3D' },
     { id: 'high', label: 'Cao', hint: 'AAA Bloom & 2K' },
+  ];
+
+  const hudScaleOptions: Array<{ id: HudScaleMode; label: string; hint: string }> = [
+    { id: 'compact', label: 'Gọn', hint: '88%' },
+    { id: 'normal', label: 'Chuẩn', hint: '100%' },
+    { id: 'large', label: 'Lớn', hint: '112%' },
+  ];
+
+  const combatCameraOptions: Array<{ id: CombatCameraPreset; label: string; hint: string }> = [
+    { id: 'action', label: 'Cận Cảnh', hint: 'Kịch tính' },
+    { id: 'tactical', label: 'Chiến Thuật', hint: 'Cân bằng' },
+    { id: 'wide', label: 'Toàn Cảnh', hint: 'Rộng sân' },
   ];
 
   const metrics = save ? normalizePlaytestMetrics(save.playtestMetrics) : null;
@@ -1003,6 +1046,164 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 ? 'Đang bật'
                 : 'Đã tắt'}
             </div>
+          </button>
+        </div>
+
+        {/* AAA Wave 4: Controls, Haptics & Accessibility */}
+        <div className="space-y-2.5 border-t border-amber-400/20 pt-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+              <Gamepad2 className="w-4 h-4 shrink-0" />
+              <span>Điều Khiển &amp; Trợ Năng</span>
+            </span>
+            <span
+              className={`text-[10px] font-bold truncate max-w-[180px] ${
+                gamepadLabel ? 'text-emerald-300' : 'text-slate-400'
+              }`}
+              title={gamepadLabel ?? 'Chưa kết nối tay cầm'}
+            >
+              {gamepadLabel ? `Tay cầm: ${gamepadLabel}` : 'Sẵn sàng Tay Cầm Gamepad'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                const next = settings.hapticsEnabled === false;
+                soundEngine.playUiClick();
+                if (next) triggerHapticPulse('crit', true);
+                onUpdateSettings({ hapticsEnabled: next });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.hapticsEnabled !== false
+                  ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-400'
+              }`}
+            >
+              <div className="text-xs font-black">Rung Phản Hồi</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.hapticsEnabled !== false ? 'Đang bật' : 'Đã tắt'}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onUpdateSettings({
+                  highContrastTelegraphs: !settings.highContrastTelegraphs,
+                });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.highContrastTelegraphs
+                  ? 'bg-sky-500/15 border-sky-400/65 text-sky-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-400'
+              }`}
+            >
+              <div className="text-xs font-black">Báo Đòn Tương Phản</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.highContrastTelegraphs ? 'Xanh Lam / Vàng' : 'Mặc định'}
+              </div>
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+              <span>Tỷ Lệ HUD Trong Trận</span>
+              <span className="text-[10px] text-slate-400">A Lướt · X Kỹ Năng · Y Chiêu Cuối</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {hudScaleOptions.map((opt) => {
+                const currentScale: HudScaleMode = settings.hudScale ?? 'normal';
+                const active = currentScale === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.04);
+                      onUpdateSettings({ hudScale: opt.id });
+                    }}
+                    className={`py-1.5 px-2 rounded-xl text-center border cursor-pointer transition-colors ${
+                      active
+                        ? 'a2-yellow-btn'
+                        : 'bg-[#080d1e] border-amber-400/25 text-slate-200 hover:border-amber-300'
+                    }`}
+                  >
+                    <div className="text-xs font-black">{opt.label}</div>
+                    <div
+                      className={`text-[10px] font-mono-nums ${
+                        active ? 'text-slate-900 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      {opt.hint}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* AAA Wave 5: Combat Camera Rig & Live DPS Meter */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+              <span>Góc Camera Chiến Đấu 3D</span>
+              <span className="text-[10px] text-slate-400">Chuyển mượt trong trận</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {combatCameraOptions.map((opt) => {
+                const currentCam: CombatCameraPreset = settings.combatCameraPreset ?? 'tactical';
+                const active = currentCam === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      onUpdateSettings({ combatCameraPreset: opt.id });
+                    }}
+                    className={`py-1.5 px-2 rounded-xl text-center border cursor-pointer transition-colors ${
+                      active
+                        ? 'a2-yellow-btn'
+                        : 'bg-[#080d1e] border-amber-400/25 text-slate-200 hover:border-amber-300'
+                    }`}
+                  >
+                    <div className="text-xs font-black">{opt.label}</div>
+                    <div
+                      className={`text-[10px] ${
+                        active ? 'text-slate-900 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      {opt.hint}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onUpdateSettings({ liveDpsMeter: !settings.liveDpsMeter });
+            }}
+            className={`w-full p-3 rounded-xl border flex items-center justify-between gap-2 text-left cursor-pointer transition-colors ${
+              settings.liveDpsMeter
+                ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
+                : 'bg-[#080d1e] border-slate-700 text-slate-300'
+            }`}
+          >
+            <div>
+              <div className="text-xs font-black">Bảng Đo DPS Trực Tiếp (5s)</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                Hiện DPS cuộn 5 giây &amp; Chí Mạng Đỉnh nhỏ gọn trên góc phải HUD
+              </div>
+            </div>
+            <span className="text-[11px] font-black shrink-0 whitespace-nowrap">
+              {settings.liveDpsMeter ? 'Đang bật' : 'Đã tắt'}
+            </span>
           </button>
         </div>
 

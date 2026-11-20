@@ -1,12 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, Flame, ShieldAlert, Sparkles, Skull, X } from 'lucide-react';
+import { BookOpen, CheckCircle2, Flame, ShieldAlert, Sparkles, Skull, Trophy, X, Zap } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 import { buildBossCodexEntries, buildSynergyCodexEntries } from '../data/phase5Data';
+import {
+  ELEMENTAL_REACTION_GUIDE,
+  buildPersonalRecordsSummary,
+} from '../engine/aaaWave5Director';
 import { SaveData } from '../types/game';
 
 interface CodexGuideModalProps {
   save: SaveData;
-  initialTab?: 'synergies' | 'bosses';
+  initialTab?: 'synergies' | 'bosses' | 'reactions';
   onClose: () => void;
 }
 
@@ -17,10 +21,11 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
   initialTab = 'synergies',
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'synergies' | 'bosses'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'synergies' | 'bosses' | 'reactions'>(initialTab);
 
   const synergyEntries = useMemo(() => buildSynergyCodexEntries(save), [save]);
   const bossEntries = useMemo(() => buildBossCodexEntries(save), [save]);
+  const personalRecords = useMemo(() => buildPersonalRecordsSummary(save), [save]);
 
   const discoveredCount = useMemo(
     () => synergyEntries.filter((entry) => entry.discovered).length,
@@ -70,7 +75,7 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
         </div>
 
         {/* Segmented Tab Switcher */}
-        <div className="px-5 pt-3 pb-2 bg-[#070b1a] border-b border-amber-400/15 flex items-center gap-2">
+        <div className="px-5 pt-3 pb-2 bg-[#070b1a] border-b border-amber-400/15 flex items-center gap-2 overflow-x-auto">
           <button
             type="button"
             onClick={() => {
@@ -85,7 +90,7 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 shrink-0" />
             <span>
-              Cộng Hưởng Kỹ Năng (<span className="font-mono-nums">{synergyEntries.length}</span>)
+              Cộng Hưởng (<span className="font-mono-nums">{synergyEntries.length}</span>)
             </span>
           </button>
 
@@ -103,8 +108,24 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
           >
             <Skull className="w-3.5 h-3.5 shrink-0" />
             <span>
-              Đại Boss Hoàng Đạo (<span className="font-mono-nums">Ch.1–{bossEntries.length}</span>)
+              Boss Hoàng Đạo (<span className="font-mono-nums">Ch.1–{bossEntries.length}</span>)
             </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick(1.04);
+              setActiveTab('reactions');
+            }}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'reactions'
+                ? 'bg-sky-500/15 border-sky-400 text-sky-200'
+                : 'bg-[#0b1126] border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 shrink-0" />
+            <span>Phản Ứng &amp; Kỷ Lục</span>
           </button>
         </div>
 
@@ -173,7 +194,7 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                 ))}
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'bosses' ? (
             <div className="space-y-3">
               <div className="text-xs text-slate-300 leading-relaxed bg-[#0a1024] border border-rose-400/20 rounded-xl px-3.5 py-2.5">
                 Boss Ch.1–9 mở <strong className="text-amber-200">Pha II (≤50% HP)</strong> kèm cửa
@@ -230,6 +251,109 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                     </p>
                   </div>
                 ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Personal Career Records Grid */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-300">
+                  <Trophy className="w-4 h-4 shrink-0" />
+                  <span>Kỷ Lục Sự Nghiệp Hoàng Đạo</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {[
+                    {
+                      label: 'Chương Cao Nhất',
+                      value: `Ch.${personalRecords.highestChapterCleared}`,
+                      accent: 'text-amber-300',
+                    },
+                    {
+                      label: 'Tháp Vô Tận',
+                      value: `Tầng ${personalRecords.bestTowerFloor}`,
+                      accent: 'text-sky-300',
+                    },
+                    {
+                      label: 'Combo Đỉnh Cao',
+                      value: `${personalRecords.maxComboEver.toLocaleString('vi-VN')}×`,
+                      accent: 'text-emerald-300',
+                    },
+                    {
+                      label: 'Tổng Mục Tiêu Hạ',
+                      value: personalRecords.totalKills.toLocaleString('vi-VN'),
+                      accent: 'text-white',
+                    },
+                    {
+                      label: 'Đại Boss Đã Hạ',
+                      value: personalRecords.totalBossesKilled.toLocaleString('vi-VN'),
+                      accent: 'text-rose-300',
+                    },
+                    {
+                      label: 'Tổng Trận & Rương',
+                      value: `${personalRecords.totalRuns} · ${personalRecords.totalChestsOpened}`,
+                      accent: 'text-purple-300',
+                    },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-xl bg-[#0a1024] border border-amber-400/20 px-3.5 py-2.5"
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        {stat.label}
+                      </div>
+                      <div className={`font-mono-nums text-base sm:text-lg font-black mt-0.5 ${stat.accent}`}>
+                        {stat.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4-Reaction Elemental Matrix */}
+              <div className="space-y-2.5 pt-2 border-t border-amber-400/15">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-300">
+                    <Zap className="w-4 h-4 shrink-0" />
+                    <span>Ma Trận Phản Ứng Nguyên Tố 3D</span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    Bắn xen kẽ 2 nguyên tố trong 3.2s
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {ELEMENTAL_REACTION_GUIDE.map((rx) => (
+                    <div
+                      key={rx.id}
+                      className="rounded-2xl bg-[#0c1329] border border-slate-800/90 p-3.5 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-xs shrink-0"
+                            style={{ backgroundColor: rx.accentColor }}
+                          />
+                          <h3 className="font-display text-sm font-black text-white truncate">
+                            {rx.name}
+                          </h3>
+                        </div>
+                        <span className="text-[11px] font-black text-amber-200 font-mono-nums shrink-0">
+                          {rx.formula}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] font-bold text-slate-300 font-mono-nums flex items-center gap-2">
+                        <span style={{ color: rx.accentColor }}>{rx.bonusPctLabel}</span>
+                        <span className="text-slate-600">·</span>
+                        <span className="text-cyan-300">Phá Giáp Boss +{rx.breakShredPct}%</span>
+                      </div>
+
+                      <p className="text-xs text-slate-200 leading-relaxed border-t border-slate-800/80 pt-2">
+                        {rx.tacticalUse}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

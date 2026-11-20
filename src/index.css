@@ -1101,6 +1101,61 @@
   will-change: transform;
 }
 
+@keyframes aaaForgeSunburst {
+  0% {
+    opacity: 0;
+    transform: scale(0.45) rotate(0deg);
+  }
+  22% {
+    opacity: 0.92;
+    transform: scale(1.06) rotate(24deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.38) rotate(88deg);
+  }
+}
+
+@keyframes aaaForgeAnvilRing {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.15);
+  }
+}
+
+@keyframes aaaForgeSheen {
+  0% {
+    transform: translate3d(-130%, 0, 0) skewX(-18deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.72;
+  }
+  100% {
+    transform: translate3d(230%, 0, 0) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+.aaa-forge-sunburst {
+  animation: aaaForgeSunburst 920ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.aaa-forge-anvil-ring {
+  animation: aaaForgeAnvilRing 680ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.aaa-forge-sheen {
+  animation: aaaForgeSheen 760ms cubic-bezier(0.16, 1, 0.3, 1) 120ms forwards;
+  will-change: transform, opacity;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .a2-title-shimmer-gold,
   .a2-title-shimmer-crimson,
@@ -1122,7 +1177,10 @@
   .aaa-finisher-banner,
   .aaa-rank-pop,
   .aaa-ult-cutin-strip,
-  .aaa-phase-shift-flash {
+  .aaa-phase-shift-flash,
+  .aaa-forge-sunburst,
+  .aaa-forge-anvil-ring,
+  .aaa-forge-sheen {
     animation: none;
   }
   .a2-flip-card,
