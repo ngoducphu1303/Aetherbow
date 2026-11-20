@@ -126,7 +126,7 @@ export const HERO_BONDS: HeroBondDefinition[] = [
   {
     id: 'bond_starlight_hunters',
     name: 'Song Tinh Thợ Săn',
-    subtitle: 'Artemis + Alex đồng tâm hiệp lực giữ tuyến đầu',
+    subtitle: 'Alice + Alex đồng tâm hiệp lực giữ tuyến đầu',
     heroIds: ['artemis', 'alex'],
     minTotalStars: 2,
     bonusAtkPct: 0.06,
@@ -162,7 +162,7 @@ export const HERO_BONDS: HeroBondDefinition[] = [
   {
     id: 'bond_sovereign_trinity',
     name: 'Tam Tôn Đế Vương',
-    subtitle: 'Wukong + Atreus + Artemis chấn nhiếp Tinh Giới',
+    subtitle: 'Wukong + Atreus + Alice chấn nhiếp Tinh Giới',
     heroIds: ['wukong', 'atreus', 'artemis'],
     minTotalStars: 6,
     bonusAtkPct: 0.14,

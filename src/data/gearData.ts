@@ -1276,6 +1276,7 @@ export function createInitialSaveData(): SaveData {
     highestChapterCleared: 0,
     bestStagePerChapter: {},
     selectedHeroId: 'artemis',
+    aliceDefaultMigrated: true,
     unlockedHeroes: ['artemis', 'alex'],
     heroStars: {
       artemis: 0,

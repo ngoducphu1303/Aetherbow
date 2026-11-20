@@ -420,7 +420,7 @@ export const ZODIAC_RELIC_DEFS: ZodiacRelicDef[] = [
     name: 'Tiễn Tinh Tú Nhân Mã',
     zodiacLabel: 'Nhân Mã · Thần Thoại',
     rarity: 'Thần Thoại',
-    desc: 'Mũi tên hoàng đạo bất diệt do chính Artemis chúc phúc, tăng mạnh mọi chỉ số tấn công.',
+    desc: 'Mũi tên hoàng đạo bất diệt do chính Alice chúc phúc, tăng mạnh mọi chỉ số tấn công.',
     accentHex: '#f43f5e',
     baseAtkPct: 0.065,
     baseHpPct: 0.04,

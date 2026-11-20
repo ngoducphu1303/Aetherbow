@@ -13,6 +13,8 @@ import {
   HelpCircle,
   Lock,
   Mail,
+  Orbit,
+  RotateCw,
   Settings,
   Shield,
   SlidersHorizontal,
@@ -368,6 +370,10 @@ interface TitleScreenProps {
   onAdjustLobbyZoom?: (delta: number) => void;
   onReplayEntranceVfx?: () => void;
   onTriggerLobbyEmote?: () => void;
+  lobbyInspectMode?: boolean;
+  lobbyInspectAutoRotate?: boolean;
+  onToggleLobbyInspect?: (active: boolean) => void;
+  onToggleLobbyAutoRotate?: () => void;
   onCraftEarlyTargetGear?: (tier: 'rare' | 'epic' | 's_tier') => void;
   lobbyHeadPos?: { x: number; y: number; visible: boolean };
 }
@@ -570,6 +576,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onAdjustLobbyZoom,
   onReplayEntranceVfx,
   onTriggerLobbyEmote,
+  lobbyInspectMode = false,
+  lobbyInspectAutoRotate = true,
+  onToggleLobbyInspect,
+  onToggleLobbyAutoRotate,
   onCraftEarlyTargetGear,
   lobbyHeadPos,
 }) => {
@@ -584,12 +594,17 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     if (activeTab !== 'battle' && uiHidden) {
       setUiHidden(false);
     }
-  }, [activeTab, uiHidden]);
+    if (activeTab !== 'battle' && lobbyInspectMode) {
+      onToggleLobbyInspect?.(false);
+    }
+  }, [activeTab, uiHidden, lobbyInspectMode, onToggleLobbyInspect]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (guideOpen) {
+      if (lobbyInspectMode) {
+        onToggleLobbyInspect?.(false);
+      } else if (guideOpen) {
         setGuideOpen(false);
       } else if (modeDetailOpen) {
         setModeDetailOpen(false);
@@ -603,7 +618,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [guideOpen, modeDetailOpen, modeDrawerOpen, eventsHubOpen, skyPickerOpen]);
+  }, [guideOpen, modeDetailOpen, modeDrawerOpen, eventsHubOpen, skyPickerOpen, lobbyInspectMode, onToggleLobbyInspect]);
 
   const selectedChapter = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
   const isChapterUnlocked = selectedChapter.id <= save.highestChapterCleared + 1;
@@ -1145,6 +1160,101 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     );
   }
 
+  // AAA Wave 7: Full-Viewport 360° Studio Inspect Mode (Hero & Weapon Turntable)
+  if (lobbyInspectMode && activeTab === 'battle') {
+    return (
+      <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 sm:p-6">
+        {/* Minimal top-left identity + top-right exit */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="pointer-events-auto bg-[#060a18]/90 border border-amber-400/35 rounded-xl px-3.5 py-2 shadow-xl">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300">
+              Soi 360° Anh Hùng &amp; Vũ Khí
+            </div>
+            <div className="text-sm font-black text-white flex items-center gap-2">
+              <span>{activeHero.name}</span>
+              <span className="text-amber-400/70">·</span>
+              <span className="text-xs font-bold text-slate-300">Kéo ngang để xoay · Cuộn để phóng to</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onToggleLobbyInspect?.(false);
+            }}
+            className="pointer-events-auto cel-panel-ornate px-3.5 py-2 rounded-xl text-xs font-black text-amber-200 flex items-center gap-1.5 hover:border-amber-200 cursor-pointer whitespace-nowrap shadow-xl"
+          >
+            <X className="w-4 h-4 text-amber-300 shrink-0" />
+            <span>Thoát Soi 360°</span>
+          </button>
+        </div>
+
+        {/* Sleek single-bar bottom studio dock leaving center 3D hero 100% unobstructed */}
+        <div className="pointer-events-auto mx-auto cel-panel-ornate rounded-2xl px-3 py-2 flex flex-wrap items-center justify-center gap-1.5 shadow-2xl">
+          {onToggleLobbyAutoRotate && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onToggleLobbyAutoRotate();
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                lobbyInspectAutoRotate ? 'a2-yellow-btn' : 'a2-slate-btn text-slate-200'
+              }`}
+            >
+              <RotateCw className="w-3.5 h-3.5 shrink-0" />
+              <span>{lobbyInspectAutoRotate ? 'Tự Xoay: Bật' : 'Tự Xoay: Tắt'}</span>
+            </button>
+          )}
+          {onAdjustLobbyZoom && (
+            <>
+              <button
+                type="button"
+                onClick={() => onAdjustLobbyZoom(-0.7)}
+                aria-label="Phóng to 3D"
+                className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 whitespace-nowrap cursor-pointer"
+              >
+                <ZoomIn className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span>Phóng To</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onAdjustLobbyZoom(0.7)}
+                aria-label="Thu nhỏ 3D"
+                className="a2-slate-btn px-2.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 whitespace-nowrap cursor-pointer"
+              >
+                <ZoomOut className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                <span>Thu Nhỏ</span>
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onResetHeroRotation?.();
+              onResetLobbyOrbit?.();
+            }}
+            className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+          >
+            Góc Chuẩn
+          </button>
+          {onTriggerLobbyEmote && (
+            <button
+              type="button"
+              onClick={() => onTriggerLobbyEmote()}
+              className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 text-amber-200 whitespace-nowrap cursor-pointer"
+            >
+              <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Giương Cung</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Full-Viewport Clean Showcase Mode (1-Tap Hide UI)
   if (uiHidden && activeTab === 'battle') {
     return (
@@ -1430,6 +1540,22 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/35 hover:border-amber-300 flex items-center justify-center text-amber-300 cursor-pointer"
                 >
                   <Flame className="w-4 h-4" />
+                </button>
+              )}
+
+              {onToggleLobbyInspect && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick();
+                    setSkyPickerOpen(false);
+                    onToggleLobbyInspect(true);
+                  }}
+                  title="Soi 360° Vũ Khí & Anh Hùng"
+                  aria-label="Soi 360 độ vũ khí và anh hùng"
+                  className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/40 hover:border-amber-200 flex items-center justify-center text-amber-200 cursor-pointer"
+                >
+                  <Orbit className="w-4 h-4" />
                 </button>
               )}
 
@@ -1901,7 +2027,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           >
             <div className="flex items-center justify-between border-b border-amber-400/25 pb-3">
               <h3 className="font-display text-base sm:text-lg font-black text-amber-300">
-                Cẩm Nang Chiến Đấu Artemis 3D
+                Cẩm Nang Chiến Đấu Aetherbow 3D
               </h3>
               <button
                 type="button"

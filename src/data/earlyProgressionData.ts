@@ -263,9 +263,24 @@ export function migrateSaveData(raw: SaveData): SaveData {
     }
   }
 
+  // Ensure Alice ('artemis') is always unlocked, and perform a one-time reset to Alice
+  // for existing saves that were previously switched away automatically.
+  const normalizedUnlockedHeroes = Array.isArray(raw.unlockedHeroes)
+    ? Array.from(new Set([...raw.unlockedHeroes, 'artemis'])) as SaveData['unlockedHeroes']
+    : (['artemis', 'alex'] as SaveData['unlockedHeroes']);
+  const needsAliceRestore = !raw.aliceDefaultMigrated;
+  const resolvedHeroId: SaveData['selectedHeroId'] = needsAliceRestore
+    ? 'artemis'
+    : normalizedUnlockedHeroes.includes(raw.selectedHeroId)
+    ? raw.selectedHeroId
+    : 'artemis';
+
   // Build synchronized visible inbox (never respawning deleted mails, always reflecting claimedMailIds)
   const migratedBase: SaveData = {
     ...raw,
+    selectedHeroId: resolvedHeroId,
+    aliceDefaultMigrated: true,
+    unlockedHeroes: normalizedUnlockedHeroes,
     progressionSchemaVersion: PROGRESSION_SCHEMA_VERSION,
     claimedMailIds: Array.from(existingClaimed),
     deletedMailIds: Array.from(existingDeleted),
@@ -1506,8 +1521,8 @@ export function applyLoadoutPreset(
   const runeUidSet = new Set((save.runeInventory ?? []).map((r) => r.uid));
   const nextRunes = preset.equippedRunes.filter((uid) => runeUidSet.has(uid)).slice(0, 4);
 
-  const unlockedHeroes = new Set(save.unlockedHeroes ?? ['lyra']);
-  const nextHeroId = unlockedHeroes.has(preset.heroId) ? preset.heroId : save.selectedHeroId;
+  // Never silently switch the player's active hero when swapping equipment/rune/pet loadouts.
+  const nextHeroId = save.selectedHeroId;
 
   const ownedPetIds = new Set((save.pets ?? []).map((p) => p.petId));
   const nextPetId =

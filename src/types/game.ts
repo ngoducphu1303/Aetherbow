@@ -512,6 +512,30 @@ export type CombatCameraPreset = 'action' | 'tactical' | 'wide';
 
 export type PhotoLightingPreset = 'golden_hall' | 'moonlit' | 'inferno';
 
+export type CombatKeybindAction =
+  | 'dash'
+  | 'activeSkill'
+  | 'ultimate'
+  | 'pause'
+  | 'cycleCamera';
+
+export type CombatKeybinds = Record<CombatKeybindAction, string>;
+
+export type RoomBountyKind =
+  | 'no_hit'
+  | 'elemental_reactions'
+  | 'boss_break'
+  | 'fast_clear';
+
+export interface RoomBountySnapshot {
+  id: string;
+  kind: RoomBountyKind;
+  title: string;
+  progressLabel: string;
+  status: 'active' | 'completed' | 'failed';
+  rewardLabel: string;
+}
+
 export interface GameSettings {
   masterVol: number; // 0..1
   bgmVol: number; // 0..1
@@ -527,6 +551,8 @@ export interface GameSettings {
   combatCameraPreset?: CombatCameraPreset;
   liveDpsMeter?: boolean;
   photoLightingPreset?: PhotoLightingPreset;
+  keybinds?: Partial<CombatKeybinds>;
+  showFpsOverlay?: boolean;
 }
 
 export interface BattlePassProgress {
@@ -1164,6 +1190,7 @@ export interface SaveData {
   highestChapterCleared: number;
   bestStagePerChapter: Record<number, number>;
   selectedHeroId: HeroId;
+  aliceDefaultMigrated?: boolean;
   unlockedHeroes: HeroId[];
   heroStars: Record<HeroId, number>;
   equipped: Partial<Record<GearSlot, string>>;
@@ -1781,6 +1808,17 @@ export interface HudSnapshot {
   // AAA Wave 5: Live Rolling DPS Telemetry
   liveDps5s?: number;
   livePeakCrit?: number;
+  // AAA Wave 6: Astral Overcharge, Tactical Room Bounty, Quick Camera Toast & Opt-in FPS
+  astralOverchargeRatio?: number;
+  roomBounty?: RoomBountySnapshot | null;
+  roomBountyBanner?: string | null;
+  cameraPresetToast?: string | null;
+  fps?: number;
+  frameTimeMs?: number;
+  // AAA Wave 7: Boss Weak-Point Window & Arena Resonance Trap Callout
+  bossWeakPointActive?: boolean;
+  bossWeakPointTimer?: number;
+  trapTriggerToast?: string | null;
 }
 
 export interface EncounterOffer {
@@ -2815,6 +2853,30 @@ export interface BossCodexEntry {
   cleared: boolean;
   attempts: number;
   highestNightmareTier: number;
+}
+
+// ============================================================================
+// AAA WAVE 7 TYPES: RESONANCE TRAPS, COMBAT MEDALS & RUN HIGHLIGHTS
+// ============================================================================
+
+export type ResonanceTrapKind = 'storm_pylon' | 'ember_crucible' | 'wind_beacon';
+
+export interface CombatMedalBadge {
+  id: string;
+  title: string;
+  subtitle: string;
+  accentHex: string;
+}
+
+export interface RunCombatHighlights {
+  weakPointHits?: number;
+  trapsTriggered?: number;
+  perfectDodgesCount?: number;
+  bountiesCompleted?: number;
+  bossBreakCount?: number;
+  peakCritDamage?: number;
+  elementalReactionsCount?: number;
+  damageTakenCount?: number;
 }
 
 

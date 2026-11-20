@@ -408,6 +408,7 @@ import {
   TopPlayerBuildProfile,
   VipAvatarFrameId,
   Rarity,
+  RunCombatHighlights,
   RunHistoryEntry,
   RuneInstance,
   SaveData,
@@ -488,7 +489,7 @@ const INITIAL_HUD: HudSnapshot = {
   totalStages: 12,
   stageName: 'Thánh Điện Nhật Luân · Phòng 1',
   chapterName: '🦁 Sư Tử',
-  heroName: 'Artemis',
+  heroName: 'Alice',
   enemiesRemaining: 0,
   portalOpen: false,
   isBossStage: false,
@@ -615,6 +616,8 @@ export default function App() {
   const [claimAllModalOpen, setClaimAllModalOpen] = useState<boolean>(false);
   const [photoMode, setPhotoMode] = useState<boolean>(false);
   const [photoAngle, setPhotoAngle] = useState<'full' | 'closeup' | 'hero_wide'>('full');
+  const [lobbyInspectMode, setLobbyInspectMode] = useState<boolean>(false);
+  const [lobbyInspectAutoRotate, setLobbyInspectAutoRotate] = useState<boolean>(true);
   const [rewardsModalTab, setRewardsModalTab] = useState<
     'checkin' | 'quests' | 'welcome' | 'journey' | null
   >(null);
@@ -751,6 +754,7 @@ export default function App() {
     prevBestStage?: number;
     masteryExpGained?: number;
     masteryLeveledUpTo?: number;
+    runHighlights?: RunCombatHighlights;
   } | null>(null);
 
   const playerStats = useMemo(() => computePlayerStats(save), [save]);
@@ -850,6 +854,7 @@ export default function App() {
       : 1;
 
     return {
+      heroId: hero.id,
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
       cloakColorHex: skinDef?.cloakHex ?? aTpl?.cloakColorHex ?? hero.cloakHex,
       hairColorHex: skinDef?.hairHex ?? hero.hairHex,
@@ -899,6 +904,13 @@ export default function App() {
     engineRef.current?.setLobbyPhotoMode(photoMode && phase === GamePhase.TITLE, photoAngle);
   }, [photoMode, photoAngle, phase]);
 
+  useEffect(() => {
+    engineRef.current?.setLobbyInspectMode(
+      lobbyInspectMode && !photoMode && phase === GamePhase.TITLE,
+      lobbyInspectAutoRotate
+    );
+  }, [lobbyInspectMode, lobbyInspectAutoRotate, photoMode, phase]);
+
   // Reset transient lobby overlays whenever leaving TITLE phase
   useEffect(() => {
     if (phase !== GamePhase.TITLE) {
@@ -915,6 +927,7 @@ export default function App() {
       setCpBreakdownOpen(false);
       setClaimAllModalOpen(false);
       setPhotoMode(false);
+      setLobbyInspectMode(false);
     }
   }, [phase]);
 
@@ -1494,6 +1507,7 @@ export default function App() {
             arenaRatingDelta: isArena ? arenaRatingDelta : undefined,
             defeatCause: summary.defeatCause,
             masteryExpGained: runMasteryExp,
+            runHighlights: engineRef.current?.getRunCombatHighlights(),
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
 
@@ -2231,6 +2245,15 @@ export default function App() {
               ? prev
               : pos
           );
+        },
+        onCombatCameraQuickCycle: (preset) => {
+          setSave((prev) => ({
+            ...prev,
+            settings: {
+              ...normalizeSettings(prev.settings),
+              combatCameraPreset: preset,
+            },
+          }));
         },
       },
       playerStats,
@@ -4911,10 +4934,7 @@ export default function App() {
       const syncedParts: string[] = [];
       setSave((prev) => {
         const next = { ...prev };
-        if (prev.unlockedHeroes.includes(profile.heroId)) {
-          next.selectedHeroId = profile.heroId;
-          syncedParts.push(`Anh Hùng ${HERO_MAP[profile.heroId]?.name ?? profile.heroId}`);
-        }
+        // Never silently switch the player's active hero when copying a Top leaderboard build.
         if ((prev.unlockedAstralSteeds ?? []).includes(profile.astralSteedId)) {
           next.equippedAstralSteedId = profile.astralSteedId;
           next.mountAppearance = 'astral';
@@ -5081,12 +5101,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const customPauseCode = currentSettings.keybinds?.pause || 'Escape';
     const onKey = (e: KeyboardEvent) => {
+      if (settingsOpen) return;
       const targetTag = (e.target as HTMLElement | null)?.tagName;
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
-      if (e.code === 'Escape' || (e.code === 'KeyP' && (phase === GamePhase.PLAYING || phase === GamePhase.PAUSED))) {
+      if (
+        e.code === 'Escape' ||
+        ((e.code === 'KeyP' || e.code === customPauseCode) &&
+          (phase === GamePhase.PLAYING || phase === GamePhase.PAUSED))
+      ) {
         if (phase === GamePhase.PLAYING || phase === GamePhase.PAUSED) {
           e.preventDefault();
           handlePause();
@@ -5198,6 +5224,7 @@ export default function App() {
     handleStartGuildWar,
     handleStartPantheon,
     handleStartChampionship,
+    currentSettings.keybinds?.pause,
   ]);
 
   // Hero Handlers
@@ -5222,7 +5249,6 @@ export default function App() {
         gems: currency === 'gems' ? prev.gems - hero.unlockGems : prev.gems,
         nightMarket: addGemsSpent(prev, currency === 'gems' ? hero.unlockGems : 0),
         unlockedHeroes: [...prev.unlockedHeroes, heroId],
-        selectedHeroId: heroId,
       };
     });
   };
@@ -6370,9 +6396,8 @@ export default function App() {
 
       const invIds = new Set(prev.inventory.map((g) => g.uid));
       const runeIds = new Set(prev.runeInventory.map((r) => r.uid));
-      const nextHeroId = prev.unlockedHeroes.includes(preset.heroId)
-        ? preset.heroId
-        : prev.selectedHeroId;
+      // Only switch heroes when the user explicitly clicks "Chọn Ra Trận".
+      const nextHeroId = prev.selectedHeroId;
 
       const nextEquipped = { ...prev.equipped };
       for (const slot of Object.values(GearSlot)) {
@@ -9251,6 +9276,13 @@ export default function App() {
           onAdjustLobbyZoom={(delta) => engineRef.current?.adjustLobbyZoom(delta)}
           onReplayEntranceVfx={() => engineRef.current?.triggerRoyalEntranceVfx()}
           onTriggerLobbyEmote={() => engineRef.current?.triggerLobbyHeroEmote()}
+          lobbyInspectMode={lobbyInspectMode}
+          lobbyInspectAutoRotate={lobbyInspectAutoRotate}
+          onToggleLobbyInspect={(active) => {
+            if (active) setPhotoMode(false);
+            setLobbyInspectMode(active);
+          }}
+          onToggleLobbyAutoRotate={() => setLobbyInspectAutoRotate((prev) => !prev)}
           lobbyHeadPos={lobbyHeadPos}
         />
       )}
@@ -9263,6 +9295,8 @@ export default function App() {
           joystick={joystick}
           hudScale={currentSettings.hudScale}
           liveDpsMeter={Boolean(currentSettings.liveDpsMeter)}
+          showFpsOverlay={Boolean(currentSettings.showFpsOverlay)}
+          keybinds={currentSettings.keybinds}
           onToggleMute={handleToggleMute}
           onPause={handlePause}
           onDashClick={() => engineRef.current?.triggerDash()}
@@ -9430,6 +9464,8 @@ export default function App() {
           prevBestStage={runSummary?.prevBestStage}
           masteryExpGained={runSummary?.masteryExpGained}
           masteryLeveledUpTo={runSummary?.masteryLeveledUpTo}
+          runHighlights={runSummary?.runHighlights}
+          heroName={HERO_MAP[save.selectedHeroId]?.name ?? 'Alice'}
           onQuickUpgradeWeapon={handleQuickUpgradeWeapon}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={

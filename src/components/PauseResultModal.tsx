@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ArrowUpRight, BarChart3, Camera, Check, Crown, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Sun, Swords, Trophy, Users } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Award, BarChart3, Camera, Check, Crown, Download, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Sun, Swords, Trophy, Users } from 'lucide-react';
+import { soundEngine } from '../audio/soundEngine';
 import { getNextTargetGoal } from '../data/earlyProgressionData';
 import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { evaluateMatchMvpReport } from '../data/wave11Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
 import { computePostRunDamageShares } from '../engine/aaaWave3Director';
-import { CombatCameraPreset, CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, PhotoLightingPreset, SaveData } from '../types/game';
+import { evaluateRunCombatMedals, renderAaaMedalCardPngDataUrl } from '../engine/aaaWave7Director';
+import { CombatCameraPreset, CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, PhotoLightingPreset, RunCombatHighlights, SaveData } from '../types/game';
 import {
   ArtifactRelicIcon,
   AwakenCrystalIcon,
@@ -109,6 +111,8 @@ interface PauseResultModalProps {
   photoLightingPreset?: PhotoLightingPreset;
   onChangePhotoLighting?: (preset: PhotoLightingPreset) => void;
   onCaptureVictoryPhoto?: () => void;
+  runHighlights?: RunCombatHighlights;
+  heroName?: string;
 }
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
@@ -201,10 +205,22 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   photoLightingPreset = 'golden_hall',
   onChangePhotoLighting,
   onCaptureVictoryPhoto,
+  runHighlights,
+  heroName = 'Alice',
 }) => {
   const [snapshotSaved, setSnapshotSaved] = useState(false);
+  const [medalCardSaved, setMedalCardSaved] = useState(false);
   const isPause = phase === GamePhase.PAUSED;
   const isVictory = phase === GamePhase.VICTORY;
+  const medalEvaluation = !isPause
+    ? evaluateRunCombatMedals({
+        isVictory,
+        kills,
+        maxCombo,
+        elapsedSeconds: damageBreakdown?.elapsedSeconds ?? 0,
+        highlights: runHighlights,
+      })
+    : null;
   const isCampaignRun =
     !isTowerMode &&
     !isBossRushMode &&
@@ -1101,6 +1117,94 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   {milestoneNotes && milestoneNotes.length > 0 && (
                     <div className="text-[11px] text-emerald-300 font-semibold">
                       Mốc vừa đạt: {milestoneNotes.join(' · ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* AAA Wave 7: Post-Run Honor Medals & 1200x675 PNG Medal Card Export */}
+              {medalEvaluation && medalEvaluation.medals.length > 0 && (
+                <div className="rounded-xl bg-[#070b18] border border-amber-400/25 p-3 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-amber-300">
+                      <Award className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span>Huy Hiệu Chiến Tích AAA</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const stageLabel = isTowerMode
+                          ? `Tháp Tầng ${towerFloor}`
+                          : isBossRushMode
+                          ? `Boss Rush Vòng ${bossRushRound}`
+                          : isSkyCitadelMode
+                          ? `Thiên Thành Đợt ${skyCitadelWave}`
+                          : isDragonLairMode
+                          ? `Hang Rồng Pha ${dragonPhase}`
+                          : `Ải ${stageReached}/${totalStages}`;
+                        const dataUrl = renderAaaMedalCardPngDataUrl({
+                          isVictory,
+                          chapterName,
+                          stageLabel,
+                          heroName,
+                          kills,
+                          maxCombo,
+                          goldEarned,
+                          gemsEarned,
+                          damageBreakdown,
+                          highlights: runHighlights,
+                          medals: medalEvaluation.medals,
+                        });
+                        if (dataUrl) {
+                          const link = document.createElement('a');
+                          link.href = dataUrl;
+                          link.download = `aetherbow-chien-tich-${Date.now()}.png`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          soundEngine.playMedalCardSaved();
+                          setMedalCardSaved(true);
+                          window.setTimeout(() => setMedalCardSaved(false), 2400);
+                        }
+                      }}
+                      className="a2-yellow-btn px-3 py-1 rounded-lg text-[11px] font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    >
+                      {medalCardSaved ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 shrink-0" />
+                          <span>Đã Lưu Thẻ PNG</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5 shrink-0" />
+                          <span>Lưu Thẻ Chiến Tích (PNG)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {medalEvaluation.medals.map((medal) => (
+                      <div
+                        key={medal.id}
+                        className="rounded-lg bg-[#0b1228] border border-amber-400/20 px-2.5 py-2 space-y-0.5"
+                      >
+                        <div
+                          className="text-xs font-black leading-tight"
+                          style={{ color: medal.accentHex }}
+                        >
+                          {medal.title}
+                        </div>
+                        <div className="text-[11px] text-slate-300 leading-snug">
+                          {medal.subtitle}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {medalEvaluation.highlightSummaryParts.length > 0 && (
+                    <div className="text-[11px] text-slate-300 font-mono-nums pt-0.5 border-t border-slate-800/80">
+                      {medalEvaluation.highlightSummaryParts.join(' · ')}
                     </div>
                   )}
                 </div>

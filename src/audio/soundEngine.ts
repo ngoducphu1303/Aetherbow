@@ -1995,6 +1995,245 @@ class SoundEngine {
     this.playNoiseBurst(ctx, dest, now, 0.032, 'highpass', 3200, 1400, 0.12, 1.6);
     this.playNoiseBurst(ctx, dest, now + 0.048, 0.026, 'bandpass', 2200, 900, 0.09, 1.8);
   }
+
+  /**
+   * AAA Wave 6: Shimmering harmonic chime when Astral Overcharge reaches 100%.
+   */
+  public playOverchargeReady(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [880, 1318.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      const t = now + idx * 0.035;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.06, t + 0.16);
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.055, t + 0.014);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    });
+  }
+
+  /**
+   * AAA Wave 6: Resonant piercing Astral Overcharge bow release.
+   */
+  public playOverchargeRelease(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(640, now);
+    osc.frequency.exponentialRampToValueAtTime(1480, now + 0.075);
+    osc.frequency.exponentialRampToValueAtTime(310, now + 0.24);
+    g.gain.setValueAtTime(0.115, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.28);
+    this.playNoiseBurst(ctx, dest, now, 0.11, 'bandpass', 2800, 1100, 0.08, 1.9);
+  }
+
+  /**
+   * AAA Wave 6: Airy twin-harmonic swoop chord when Companions perform a Synergy Dive.
+   */
+  public playCompanionSynergy(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [523.25, 783.99, 1046.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      const t = now + idx * 0.03;
+      osc.frequency.setValueAtTime(freq * 0.85, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.22, t + 0.22);
+      g.gain.setValueAtTime(0.055, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.26);
+    });
+  }
+
+  /**
+   * AAA Wave 6: Celebratory 3-note astral fanfare on Tactical Room Bounty completion.
+   */
+  public playBountyComplete(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [587.33, 880, 1174.66].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.065;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.095, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    });
+  }
+
+  /**
+   * AAA Wave 6: Crisp tactile click when cycling combat camera presets via [C].
+   */
+  public playCameraCycleClick(): void {
+    const dest = this.getSfxDest(0, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(760, now);
+    osc.frequency.exponentialRampToValueAtTime(1120, now + 0.045);
+    g.gain.setValueAtTime(0.055, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.06);
+  }
+
+  /**
+   * AAA Wave 7: Crystalline high-impact shatter + sub-punch when piercing a Boss Weak-Point.
+   */
+  public playWeakPointShatter(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [1318.51, 1760.0, 2349.32].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.022;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.18, t + 0.14);
+      g.gain.setValueAtTime(0.095, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.24);
+    });
+    this.playNoiseBurst(ctx, dest, now, 0.13, 'highpass', 3200, 1400, 0.09, 1.4);
+  }
+
+  /**
+   * AAA Wave 7: Distinct elemental detonation SFX for interactive 3D Arena Resonance Traps.
+   */
+  public playResonanceTrapDetonate(
+    kind: 'storm_pylon' | 'ember_crucible' | 'wind_beacon',
+    pan = 0
+  ): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    if (kind === 'storm_pylon') {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(980, now);
+      osc.frequency.exponentialRampToValueAtTime(160, now + 0.26);
+      g.gain.setValueAtTime(0.11, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(now);
+      osc.stop(now + 0.3);
+      this.playNoiseBurst(ctx, dest, now, 0.16, 'bandpass', 2400, 900, 0.09, 2.2);
+    } else if (kind === 'ember_crucible') {
+      const sub = ctx.createOscillator();
+      const sg = ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(145, now);
+      sub.frequency.exponentialRampToValueAtTime(42, now + 0.36);
+      sg.gain.setValueAtTime(0.18, now);
+      sg.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+      sub.connect(sg);
+      sg.connect(dest);
+      sub.start(now);
+      sub.stop(now + 0.4);
+      this.playNoiseBurst(ctx, dest, now, 0.24, 'lowpass', 1100, 320, 0.12, 1.2);
+    } else {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(920, now + 0.22);
+      g.gain.setValueAtTime(0.09, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(now);
+      osc.stop(now + 0.28);
+      this.playNoiseBurst(ctx, dest, now, 0.2, 'bandpass', 1600, 3200, 0.08, 1.5);
+    }
+  }
+
+  /**
+   * AAA Wave 7: Subtle airy focus swoosh when entering or exiting 360° Sanctuary Inspect mode.
+   */
+  public playInspectFocusWhoosh(entering: boolean): void {
+    const dest = this.getSfxDest(0, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(entering ? 360 : 620, now);
+    osc.frequency.exponentialRampToValueAtTime(entering ? 680 : 320, now + 0.14);
+    g.gain.setValueAtTime(0.055, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+
+  /**
+   * AAA Wave 7: Crisp royal stamp chord when exporting the AAA Medal Card PNG.
+   */
+  public playMedalCardSaved(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [523.25, 659.25, 1046.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.05;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.08, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.26);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();

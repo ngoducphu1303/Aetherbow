@@ -935,7 +935,7 @@ export const CARNIVAL_7DAY_TASKS: CarnivalDayTaskDef[] = [
     id: 'c7_d1_run',
     day: 1,
     title: 'Xuất Kích Chiến Trường Đầu Tiên',
-    desc: 'Hoàn thành 1 trận chiến bất kỳ trong Artemis 3D',
+    desc: 'Hoàn thành 1 trận chiến bất kỳ trong Aetherbow 3D',
     metric: 'runs',
     target: 1,
     points: 15,

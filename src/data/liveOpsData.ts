@@ -14,6 +14,10 @@ import {
 } from '../types/game';
 import { getTodayKey } from './questsData';
 import {
+  DEFAULT_COMBAT_KEYBINDS,
+  normalizeCombatKeybinds,
+} from '../engine/aaaWave6Director';
+import {
   SYSTEM_MAIL_TEMPLATES,
   countUnclaimedEligibleMail,
 } from './earlyProgressionData';
@@ -35,6 +39,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   combatCameraPreset: 'tactical',
   liveDpsMeter: false,
   photoLightingPreset: 'golden_hall',
+  keybinds: { ...DEFAULT_COMBAT_KEYBINDS },
+  showFpsOverlay: false,
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
@@ -54,6 +60,8 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     combatCameraPreset: s?.combatCameraPreset ?? DEFAULT_SETTINGS.combatCameraPreset,
     liveDpsMeter: s?.liveDpsMeter ?? DEFAULT_SETTINGS.liveDpsMeter,
     photoLightingPreset: s?.photoLightingPreset ?? DEFAULT_SETTINGS.photoLightingPreset,
+    keybinds: normalizeCombatKeybinds(s?.keybinds),
+    showFpsOverlay: s?.showFpsOverlay ?? DEFAULT_SETTINGS.showFpsOverlay,
   };
 }
 
@@ -927,7 +935,7 @@ export const SEASON_HALL_RIVALS: Array<{
   tower: number;
 }> = [
   { name: 'Thiên Lang Vô Song', heroName: 'Wukong', title: 'Chiến Thần Ánh Sáng', score: 9650, chapter: 10, tower: 24 },
-  { name: 'Nguyệt Ảnh Linh Cơ', heroName: 'Artemis', title: 'Chúa Tể Kho Báu', score: 7420, chapter: 8, tower: 18 },
+  { name: 'Nguyệt Ảnh Linh Cơ', heroName: 'Alice', title: 'Chúa Tể Kho Báu', score: 7420, chapter: 8, tower: 18 },
   { name: 'Lôi Đế Bất Bại', heroName: 'Thor', title: 'Thợ Săn Thủ Lĩnh', score: 5280, chapter: 6, tower: 14 },
   { name: 'Băng Hậu Tinh Vân', heroName: 'Rolla', title: 'Hộ Vệ Tinh Tú', score: 3450, chapter: 4, tower: 9 },
   { name: 'Huyết Nguyệt Kỵ Sĩ', heroName: 'Dracoola', title: 'Vũ Điệu Liên Kích', score: 2150, chapter: 2, tower: 5 },

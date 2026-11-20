@@ -946,7 +946,8 @@ test('Phase 4 · 3 Saved Loadout Presets: capture, 1-click apply, and graceful s
 
   const applied = applyLoadoutPreset(mutated, 'preset_1');
   assert.equal(applied.preset?.slotId, 'preset_1');
-  assert.equal(applied.nextSave.selectedHeroId, 'wukong');
+  // Applying an equipment preset must never silently switch the player's active hero.
+  assert.equal(applied.nextSave.selectedHeroId, base.selectedHeroId);
   assert.equal(applied.nextSave.equipped[GearSlot.WEAPON], extraWeapon.uid);
   // Missing extraArmor is skipped without wiping valid starter armor
   assert.equal(applied.skippedGearCount, 1);
@@ -1374,6 +1375,37 @@ test('AAA Ch.1–3 Seeded Economy Simulation: P10/P50/P90 Rare/Epic/S-Tier unloc
   assert.ok(sTierRolls.every((r) => r >= 1 && r <= 30), 'All Ch.3 players must hit S-tier within pity window');
   assert.ok(percentile(sTierRolls, 0.5) <= 15, `S-tier P50 expected <= 15 rolls in Ch.3, got ${percentile(sTierRolls, 0.5)}`);
 });
+
+test('Alice Default Hero: default hero displays as Alice, restores legacy saves once, and respects explicit selection thereafter', () => {
+  const defaultHero = HEROES.find((h) => h.id === 'artemis');
+  assert.ok(defaultHero, 'Default hero definition must exist');
+  assert.equal(defaultHero.name, 'Alice');
+
+  const fresh = createInitialSaveData();
+  assert.equal(fresh.selectedHeroId, 'artemis');
+  assert.equal(fresh.aliceDefaultMigrated, true);
+
+  // Legacy save that was previously auto-switched to another hero (no aliceDefaultMigrated flag)
+  const legacySwitched: SaveData = {
+    ...fresh,
+    selectedHeroId: 'alex',
+    aliceDefaultMigrated: undefined,
+    unlockedHeroes: ['alex', 'thor'],
+  };
+  const restored = migrateSaveData(legacySwitched);
+  assert.equal(restored.selectedHeroId, 'artemis');
+  assert.equal(restored.aliceDefaultMigrated, true);
+  assert.ok(restored.unlockedHeroes.includes('artemis'));
+
+  // Subsequent load after the player deliberately chooses another hero must honor their choice
+  const deliberateChoice: SaveData = {
+    ...restored,
+    selectedHeroId: 'thor',
+  };
+  const afterReload = migrateSaveData(deliberateChoice);
+  assert.equal(afterReload.selectedHeroId, 'thor');
+});
+
 
 
 

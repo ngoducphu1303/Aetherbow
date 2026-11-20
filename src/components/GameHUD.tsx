@@ -28,9 +28,14 @@ import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
 import { resolveHudScaleFactor } from '../engine/aaaWave4Director';
+import {
+  formatKeybindShortLabel,
+  normalizeCombatKeybinds,
+} from '../engine/aaaWave6Director';
 import { yawToRadarDegrees } from '../engine/combatFeel';
 import {
   ChampionshipTacticId,
+  CombatKeybinds,
   FloatingDamage,
   HudScaleMode,
   HudSnapshot,
@@ -49,6 +54,8 @@ interface GameHUDProps {
   joystick: JoystickState;
   hudScale?: HudScaleMode;
   liveDpsMeter?: boolean;
+  showFpsOverlay?: boolean;
+  keybinds?: Partial<CombatKeybinds>;
   onToggleMute: () => void;
   onPause: () => void;
   onDashClick: () => void;
@@ -70,6 +77,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   joystick,
   hudScale = 'normal',
   liveDpsMeter = false,
+  showFpsOverlay = false,
+  keybinds,
   onToggleMute,
   onPause,
   onDashClick,
@@ -84,6 +93,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onTrainingExit,
 }) => {
   const hudScaleFactor = resolveHudScaleFactor(hudScale);
+  const activeKeybinds = normalizeCombatKeybinds(keybinds);
+  const dashKeyLabel = formatKeybindShortLabel(activeKeybinds.dash);
+  const activeSkillKeyLabel = formatKeybindShortLabel(activeKeybinds.activeSkill);
+  const ultKeyLabel = formatKeybindShortLabel(activeKeybinds.ultimate);
+  const pauseKeyLabel = formatKeybindShortLabel(activeKeybinds.pause);
   const hpPct = Math.max(0, Math.min(100, (hud.hp / Math.max(1, hud.maxHp)) * 100));
   const shieldPct = Math.max(
     0,
@@ -448,7 +462,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 e.currentTarget.blur();
                 onPause();
               }}
-              title="Tạm dừng [P / Esc]"
+              title={`Tạm dừng [${pauseKeyLabel}]`}
               aria-label="Tạm dừng"
               className="pointer-events-auto hv2-panel w-10 h-10 rounded-xl flex items-center justify-center text-slate-100 hover:border-amber-300 transition-colors cursor-pointer shrink-0"
             >
@@ -637,24 +651,98 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
 
-        {/* AAA Wave 5: Optional Compact Live 5s Rolling DPS Readout (zero clutter, tabular numerals) */}
-        {liveDpsMeter && !hud.isTrainingMode && (
-          <div className="max-w-5xl w-full mx-auto flex justify-end">
-            <div className="inline-flex items-center gap-2.5 bg-[#060a18]/90 border border-amber-400/25 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
-              <span className="text-amber-300">
-                DPS 5s: {(hud.liveDps5s ?? 0).toLocaleString('vi-VN')}
-              </span>
-              <span className="text-slate-600">·</span>
-              <span className="text-rose-300">
-                Chí Mạng Đỉnh: {(hud.livePeakCrit ?? 0).toLocaleString('vi-VN')}
-              </span>
-              {(hud.elementalReactionsCount ?? 0) > 0 && (
-                <>
-                  <span className="text-slate-600">·</span>
-                  <span className="text-sky-300">Phản Ứng ×{hud.elementalReactionsCount}</span>
-                </>
-              )}
-            </div>
+        {/* AAA Wave 5 & 6: Optional Compact Live 5s DPS + Opt-In FPS/ms Readout */}
+        {((liveDpsMeter && !hud.isTrainingMode) ||
+          (showFpsOverlay && typeof hud.fps === 'number')) && (
+          <div className="max-w-5xl w-full mx-auto flex justify-end items-center gap-2 flex-wrap">
+            {liveDpsMeter && !hud.isTrainingMode && (
+              <div className="inline-flex items-center gap-2.5 bg-[#060a18]/90 border border-amber-400/25 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
+                <span className="text-amber-300">
+                  DPS 5s: {(hud.liveDps5s ?? 0).toLocaleString('vi-VN')}
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="text-rose-300">
+                  Chí Mạng Đỉnh: {(hud.livePeakCrit ?? 0).toLocaleString('vi-VN')}
+                </span>
+                {(hud.elementalReactionsCount ?? 0) > 0 && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-sky-300">Phản Ứng ×{hud.elementalReactionsCount}</span>
+                  </>
+                )}
+              </div>
+            )}
+            {showFpsOverlay && typeof hud.fps === 'number' && (
+              <div className="inline-flex items-center gap-1.5 bg-[#060a18]/90 border border-sky-400/30 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
+                <span
+                  className={
+                    hud.fps >= 55
+                      ? 'text-emerald-300'
+                      : hud.fps >= 40
+                      ? 'text-amber-300'
+                      : 'text-rose-300'
+                  }
+                >
+                  {hud.fps} FPS
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="text-slate-300">
+                  {(hud.frameTimeMs ?? 16.7).toFixed(1)}ms
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AAA Wave 6: 1-Line Optional Tactical Room Bounty Strip & Camera Preset Toast */}
+        {!hud.isTrainingMode && (hud.roomBountyBanner || hud.roomBounty) && (
+          <div className="max-w-3xl w-full mx-auto flex justify-center">
+            {hud.roomBountyBanner ? (
+              <div className="inline-flex items-center gap-2 bg-[#161006]/92 border-b border-amber-300/80 rounded-lg px-3.5 py-1 text-[11px] font-black text-amber-200 whitespace-nowrap shadow-[0_0_18px_rgba(251,191,36,0.35)]">
+                <Trophy className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="font-mono-nums">{hud.roomBountyBanner}</span>
+              </div>
+            ) : hud.roomBounty && hud.roomBounty.status === 'active' ? (
+              <div className="inline-flex items-center gap-2 bg-[#060a18]/88 border border-amber-400/25 rounded-lg px-3 py-0.5 text-[11px] font-semibold text-slate-200 max-w-full overflow-hidden">
+                <span className="text-amber-300 font-black shrink-0">Thử Thách</span>
+                <span className="text-slate-600">·</span>
+                <span className="truncate">{hud.roomBounty.title}</span>
+                <span className="text-slate-600">·</span>
+                <span className="font-mono-nums font-bold text-cyan-300 shrink-0">
+                  {hud.roomBounty.progressLabel}
+                </span>
+                <span className="hidden sm:inline text-slate-600">·</span>
+                <span className="hidden sm:inline font-mono-nums text-amber-200/90 shrink-0">
+                  {hud.roomBounty.rewardLabel}
+                </span>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {hud.cameraPresetToast && (
+          <div className="mx-auto inline-flex items-center gap-1.5 bg-[#060a18]/92 border border-sky-400/45 rounded-lg px-3 py-0.5 text-[11px] font-bold text-sky-200 whitespace-nowrap">
+            <Compass className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+            <span>{hud.cameraPresetToast}</span>
+          </div>
+        )}
+
+        {/* AAA Wave 7: 1-Line Boss Weak-Point Exposure & Resonance Trap Detonation Cues */}
+        {hud.bossWeakPointActive && (
+          <div className="mx-auto inline-flex items-center gap-2 bg-[#1a1204]/95 border border-amber-300/80 rounded-lg px-3.5 py-1 text-[11px] font-black text-amber-200 whitespace-nowrap shadow-[0_0_20px_rgba(251,191,36,0.4)]">
+            <Crosshair className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span>ĐIỂM YẾU THỦ LĨNH LỘ DIỆN</span>
+            <span className="text-amber-500/70">·</span>
+            <span className="font-mono-nums text-cyan-200">
+              {(hud.bossWeakPointTimer ?? 0).toFixed(1)}s
+            </span>
+          </div>
+        )}
+
+        {hud.trapTriggerToast && (
+          <div className="mx-auto inline-flex items-center gap-1.5 bg-[#061420]/94 border border-cyan-300/65 rounded-lg px-3.5 py-0.5 text-[11px] font-bold text-cyan-100 whitespace-nowrap">
+            <Zap className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+            <span>{hud.trapTriggerToast}</span>
           </div>
         )}
 
@@ -1810,11 +1898,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       }`}
                     />
                     <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                      {ultReady ? 'CHIÊU Q' : `${ultPct}%`}
+                      {ultReady ? `CHIÊU ${ultKeyLabel}` : `${ultPct}%`}
                     </span>
                   </button>
                   <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
-                    Q
+                    {ultKeyLabel}
                   </kbd>
                 </div>
 
@@ -1828,7 +1916,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         e.currentTarget.blur();
                         onActiveSkillClick();
                       }}
-                      title={hud.activeSkillName ?? 'Kỹ Năng Chủ Động (E)'}
+                      title={hud.activeSkillName ?? `Kỹ Năng Chủ Động (${activeSkillKeyLabel})`}
                       className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[64px] sm:h-[64px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
                         activeSkillReady
                           ? 'bg-gradient-to-b from-sky-500/95 to-indigo-700/95 border border-cyan-200/80 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)] cursor-pointer hover:scale-105'
@@ -1859,11 +1947,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         }`}
                       />
                       <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                        {activeSkillReady ? 'CHIÊU E' : `${activeSkillCdSec.toFixed(1)}s`}
+                        {activeSkillReady ? `CHIÊU ${activeSkillKeyLabel}` : `${activeSkillCdSec.toFixed(1)}s`}
                       </span>
                     </button>
                     <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-sky-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-sky-200">
-                      E
+                      {activeSkillKeyLabel}
                     </kbd>
                   </div>
                 )}
@@ -1910,7 +1998,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     </span>
                   </button>
                   <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-emerald-300/60 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-emerald-200">
-                    SPACE
+                    {dashKeyLabel}
                   </kbd>
                 </div>
               </>

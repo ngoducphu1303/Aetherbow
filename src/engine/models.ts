@@ -14,6 +14,7 @@ import {
   CrownStyle,
   EnemyKind,
   HaloId,
+  HeroId,
   MountId,
   PetId,
   SoulRingSlotId,
@@ -32,6 +33,7 @@ import {
 } from './textures';
 
 export interface HeroVisualConfig {
+  heroId?: HeroId;
   weaponAccentHex: number;
   cloakColorHex: number;
   hairColorHex: number;

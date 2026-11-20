@@ -869,7 +869,7 @@ export interface ServerLeaderEntry {
 }
 
 const WORLD_BOSS_BENCHMARKS = [
-  { name: 'ThánhQuang_S1', server: 'S1·Bạch Dương', heroName: 'Artemis', frameId: 'seraph_crown' as AvatarFrameId, badgeTitle: 'Chí Tôn Lực Chiến', score: 385000 },
+  { name: 'ThánhQuang_S1', server: 'S1·Bạch Dương', heroName: 'Alice', frameId: 'seraph_crown' as AvatarFrameId, badgeTitle: 'Chí Tôn Lực Chiến', score: 385000 },
   { name: 'LongVương_S3', server: 'S3·Sư Tử', heroName: 'Thor', frameId: 'world_dragon' as AvatarFrameId, badgeTitle: 'Đồ Long Liên Giới', score: 312000 },
   { name: 'NguyệtẢnh_S2', server: 'S2·Thiên Bình', heroName: 'Cleo', frameId: 'royal_vip' as AvatarFrameId, badgeTitle: 'Quân Vương Hoàng Đạo', score: 248000 },
   { name: 'BăngTâm_S5', server: 'S5·Bảo Bình', heroName: 'Rolla', frameId: 'crystal_guardian' as AvatarFrameId, badgeTitle: 'Chúa Tể Thiên Dực', score: 192000 },

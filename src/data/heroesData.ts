@@ -9,7 +9,7 @@ import { HeroDefinition, HeroId } from '../types/game';
 export const HEROES: HeroDefinition[] = [
   {
     id: 'artemis',
-    name: 'Artemis',
+    name: 'Alice',
     rarity: 'Legendary',
     title: 'Nữ Thần Săn Trăng Bạc',
     skillName: 'Silvermoon Hunt',

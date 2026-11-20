@@ -9,6 +9,7 @@ import {
   Copy,
   Download,
   Gamepad2,
+  Keyboard,
   Monitor,
   RotateCcw,
   Sliders,
@@ -21,6 +22,13 @@ import {
 import { soundEngine } from '../audio/soundEngine';
 import { triggerHapticPulse } from '../engine/aaaWave4Director';
 import {
+  COMBAT_KEYBIND_META,
+  DEFAULT_COMBAT_KEYBINDS,
+  formatKeybindShortLabel,
+  normalizeCombatKeybinds,
+  remapCombatKeybind,
+} from '../engine/aaaWave6Director';
+import {
   evaluatePlaytestKpis,
   normalizeHeroMastery,
   normalizePlaytestMetrics,
@@ -31,6 +39,7 @@ import { decodeSaveTransferCode, encodeSaveTransferCode } from '../data/phase5Da
 import { SKILL_SYNERGIES, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import {
   CombatCameraPreset,
+  CombatKeybindAction,
   GameSettings,
   GpuProfileSummary,
   GraphicsQuality,
@@ -104,6 +113,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [importSuccess, setImportSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [gamepadLabel, setGamepadLabel] = useState<string | null>(null);
+  const [capturingKeyAction, setCapturingKeyAction] = useState<CombatKeybindAction | null>(null);
+  const [keybindNotice, setKeybindNotice] = useState<string | null>(null);
+
+  const activeKeybinds = normalizeCombatKeybinds(settings.keybinds);
+
+  useEffect(() => {
+    if (!capturingKeyAction) return undefined;
+    const onCaptureKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === 'Escape') {
+        soundEngine.playUiClick(0.88);
+        setCapturingKeyAction(null);
+        setKeybindNotice(null);
+        return;
+      }
+      const next = remapCombatKeybind(activeKeybinds, capturingKeyAction, e.code);
+      if (next[capturingKeyAction] !== e.code) {
+        soundEngine.playUiClick(0.75);
+        setKeybindNotice('Phím di chuyển (WASD/Mũi tên) hoặc phím hệ thống không thể gán.');
+        return;
+      }
+      soundEngine.playUiClick(1.12);
+      onUpdateSettings({ keybinds: next });
+      setCapturingKeyAction(null);
+      setKeybindNotice(null);
+    };
+    window.addEventListener('keydown', onCaptureKey, true);
+    return () => window.removeEventListener('keydown', onCaptureKey, true);
+  }, [capturingKeyAction, activeKeybinds, onUpdateSettings]);
 
   useEffect(() => {
     const readGamepad = () => {
@@ -816,8 +855,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#040611]/90">
-      <div className="cel-panel-ornate w-full max-w-md rounded-3xl p-5 sm:p-6 space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#040611]/90">
+      <div className="cel-panel-ornate w-full max-w-md rounded-3xl p-5 sm:p-6 space-y-5 max-h-[90vh] overflow-y-auto a2-scroll">
         <div className="flex items-center justify-between border-b border-amber-400/25 pb-3">
           <div className="flex items-center gap-2">
             <Sliders className="w-5 h-5 text-amber-300" />
@@ -1183,28 +1222,109 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              soundEngine.playUiClick();
-              onUpdateSettings({ liveDpsMeter: !settings.liveDpsMeter });
-            }}
-            className={`w-full p-3 rounded-xl border flex items-center justify-between gap-2 text-left cursor-pointer transition-colors ${
-              settings.liveDpsMeter
-                ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
-                : 'bg-[#080d1e] border-slate-700 text-slate-300'
-            }`}
-          >
-            <div>
-              <div className="text-xs font-black">Bảng Đo DPS Trực Tiếp (5s)</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">
-                Hiện DPS cuộn 5 giây &amp; Chí Mạng Đỉnh nhỏ gọn trên góc phải HUD
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onUpdateSettings({ liveDpsMeter: !settings.liveDpsMeter });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.liveDpsMeter
+                  ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-300'
+              }`}
+            >
+              <div className="text-xs font-black">Bảng Đo DPS (5s)</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.liveDpsMeter ? 'Đang bật' : 'Đã tắt'}
               </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onUpdateSettings({ showFpsOverlay: !settings.showFpsOverlay });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.showFpsOverlay
+                  ? 'bg-sky-500/15 border-sky-400/55 text-sky-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-300'
+              }`}
+            >
+              <div className="text-xs font-black">Hiển Thị FPS &amp; ms</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.showFpsOverlay ? 'Đang hiện góc HUD' : 'Đã tắt'}
+              </div>
+            </button>
+          </div>
+
+          {/* AAA Wave 6: Customizable PC Combat Keybinds */}
+          <div className="space-y-2 pt-2 border-t border-amber-400/15">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                <Keyboard className="w-3.5 h-3.5 shrink-0" />
+                <span>Phím Tắt Chiến Đấu (PC)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick(0.96);
+                  setCapturingKeyAction(null);
+                  setKeybindNotice(null);
+                  onUpdateSettings({ keybinds: { ...DEFAULT_COMBAT_KEYBINDS } });
+                }}
+                className="text-[10px] font-bold text-amber-300 hover:text-amber-200 underline underline-offset-2 cursor-pointer whitespace-nowrap"
+              >
+                Khôi phục mặc định
+              </button>
             </div>
-            <span className="text-[11px] font-black shrink-0 whitespace-nowrap">
-              {settings.liveDpsMeter ? 'Đang bật' : 'Đã tắt'}
-            </span>
-          </button>
+
+            <div className="divide-y divide-slate-800/80 border border-slate-800 rounded-xl bg-[#070b18]">
+              {COMBAT_KEYBIND_META.map((item) => {
+                const isCapturing = capturingKeyAction === item.action;
+                const keyLabel = formatKeybindShortLabel(activeKeybinds[item.action]);
+                return (
+                  <div
+                    key={item.action}
+                    className="px-3 py-2 flex items-center justify-between gap-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-100 truncate">
+                        {item.label}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">{item.hint}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.05);
+                        setKeybindNotice(null);
+                        setCapturingKeyAction(isCapturing ? null : item.action);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg border font-mono-nums text-[11px] font-black whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                        isCapturing
+                          ? 'bg-amber-400/20 border-amber-300 text-amber-200'
+                          : 'bg-[#0b1124] border-slate-700 hover:border-amber-300/70 text-slate-100'
+                      }`}
+                    >
+                      {isCapturing ? 'Nhấn phím…' : keyLabel}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {capturingKeyAction && (
+              <div className="text-[10px] font-semibold text-amber-200/90">
+                Nhấn phím mới để gán · Trùng phím sẽ tự động hoán đổi · Nhấn ESC để hủy.
+              </div>
+            )}
+            {keybindNotice && (
+              <div className="text-[10px] font-semibold text-rose-300">{keybindNotice}</div>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 pt-1">
