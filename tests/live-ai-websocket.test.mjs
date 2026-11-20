@@ -206,6 +206,33 @@ test('Real WebSocket /ws/live-ai serves 18 AI Live players, 1v1 duels with idemp
     assert.equal(rankPush.payload.rank, 1);
     assert.equal(rankPush.payload.verifiedScore, submitted.verifiedScore);
     assert.equal(rankPush.payload.leaderboard.length, 1);
+
+    // 7. Real-time Auction House competition over WebSocket (auction:sync_lots -> auction:bid_event)
+    const auctionBidPromise = waitForMessage(client, (m) => m.type === 'auction:bid_event');
+    client.send(
+      JSON.stringify({
+        type: 'auction:sync_lots',
+        payload: {
+          requestImmediateEvaluation: true,
+          focusLotId: 'lot_ws_test_1',
+          lots: [
+            {
+              id: 'lot_ws_test_1',
+              label: 'Cung Tinh Tú Thần Thoại',
+              currentBid: 200,
+              buyoutPrice: 600,
+              isPlayerListing: false,
+              highestBidderIsPlayer: true,
+              endsAt: Date.now() + 600_000,
+            },
+          ],
+        },
+      })
+    );
+    const auctionBid = await auctionBidPromise;
+    assert.equal(auctionBid.payload.lotId, 'lot_ws_test_1');
+    assert.equal(auctionBid.payload.bidderTag, '[AI Live]');
+    assert.ok(auctionBid.payload.amount > 200);
   } finally {
     client.close();
     wsHub.close();

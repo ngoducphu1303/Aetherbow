@@ -3,14 +3,20 @@ import fs from 'fs';
 import path from 'path';
 import {
   computeWeeklyBossScore,
+  computeWeeklySeasonPointsForRank,
   getCurrentWeeklyBossSchedule,
+  getWeeklyBossSeasonInfo,
   WEEKLY_BOSS_LOANER_STATS,
   WEEKLY_BOSS_MAX_FREE_ATTEMPTS,
 } from '../data/weeklyBossData.ts';
 import type {
   WeeklyBossClaimReceipt,
   WeeklyBossLeaderboardEntry,
+  WeeklyBossRunHistoryEntry,
   WeeklyBossSchedule,
+  WeeklyBossSeasonClaimReceipt,
+  WeeklyBossSeasonEntry,
+  WeeklyBossSeasonStateResponse,
   WeeklyBossStateResponse,
 } from '../data/weeklyBossData.ts';
 
@@ -53,6 +59,8 @@ export interface WeeklyBossWeekLedger {
 export interface WeeklyBossStoreData {
   version: 1;
   weeks: Record<string, WeeklyBossWeekLedger>;
+  seasonClaims?: Record<string, WeeklyBossSeasonClaimReceipt>;
+  seasonIdempotencyIndex?: Record<string, string>;
 }
 
 export interface SubmitAttemptPayload {
@@ -95,7 +103,7 @@ export class WeeklyBossServiceError extends Error {
 }
 
 function createEmptyStore(): WeeklyBossStoreData {
-  return { version: 1, weeks: {} };
+  return { version: 1, weeks: {}, seasonClaims: {}, seasonIdempotencyIndex: {} };
 }
 
 function createEmptyWeekLedger(weekId: string): WeeklyBossWeekLedger {
@@ -602,6 +610,205 @@ export class WeeklyBossService {
       alreadyClaimed: false,
       receipt,
       claimedTierIds,
+    };
+  }
+
+  /**
+   * Computes authoritative 4-Week Season Championship standings + verified personal
+   * run history across all weeks belonging to the active season.
+   */
+  public getSeasonState(
+    user: { uid: string; displayName: string } | null,
+    nowMs = Date.now()
+  ): WeeklyBossSeasonStateResponse {
+    const season = getWeeklyBossSeasonInfo(nowMs);
+    const aggMap = new Map<string, WeeklyBossSeasonEntry>();
+    const playerHistory: WeeklyBossRunHistoryEntry[] = [];
+
+    for (const wkId of season.weekIds) {
+      const ledger = this.store.weeks[wkId];
+      if (!ledger) continue;
+      const sorted = this.getSortedLeaderboard(ledger);
+
+      sorted.forEach((entry, idx) => {
+        const rank = idx + 1;
+        const cp = computeWeeklySeasonPointsForRank(rank, entry.cleared);
+        const existing = aggMap.get(entry.uid);
+        if (!existing) {
+          aggMap.set(entry.uid, {
+            uid: entry.uid,
+            displayName: entry.displayName,
+            seasonPoints: cp,
+            weeksParticipated: 1,
+            bestWeeklyScore: entry.bestScore,
+            highestRank: rank,
+            totalClears: entry.cleared ? 1 : 0,
+            updatedAt: entry.updatedAt,
+          });
+        } else {
+          existing.displayName = entry.displayName;
+          existing.seasonPoints += cp;
+          existing.weeksParticipated += 1;
+          existing.bestWeeklyScore = Math.max(existing.bestWeeklyScore, entry.bestScore);
+          existing.highestRank = Math.min(existing.highestRank, rank);
+          existing.totalClears += entry.cleared ? 1 : 0;
+          existing.updatedAt = Math.max(existing.updatedAt, entry.updatedAt);
+        }
+
+        if (user && entry.uid === user.uid) {
+          const userAttemptIds = ledger.attemptsByUser[user.uid] ?? [];
+          const submittedAttempts = userAttemptIds
+            .map((id) => ledger.attempts[id])
+            .filter((a): a is WeeklyBossAttemptRecord => Boolean(a && a.status === 'submitted'));
+          const bestAttempt = submittedAttempts.sort(
+            (a, b) => (b.verifiedScore ?? 0) - (a.verifiedScore ?? 0)
+          )[0];
+
+          playerHistory.push({
+            weekId: wkId,
+            bossName: bestAttempt?.seed ?? wkId,
+            attemptId: bestAttempt?.attemptId ?? `best_${wkId}`,
+            verifiedScore: entry.bestScore,
+            damageDealt: entry.bestDamage,
+            clearTimeMs: entry.bestClearTimeMs,
+            cleared: entry.cleared,
+            weekRank: rank,
+            seasonPointsAwarded: cp,
+            submittedAt: entry.updatedAt,
+          });
+        }
+      });
+    }
+
+    const standings = Array.from(aggMap.values()).sort((a, b) => {
+      if (b.seasonPoints !== a.seasonPoints) return b.seasonPoints - a.seasonPoints;
+      if (b.bestWeeklyScore !== a.bestWeeklyScore) return b.bestWeeklyScore - a.bestWeeklyScore;
+      return a.highestRank - b.highestRank;
+    });
+
+    if (!user) {
+      return {
+        season,
+        serverNow: nowMs,
+        authenticated: false,
+        player: null,
+        standings,
+      };
+    }
+
+    const seasonClaims = this.store.seasonClaims ?? {};
+    const myReceipts = Object.values(seasonClaims).filter(
+      (c) => c.uid === user.uid && c.seasonId === season.seasonId
+    );
+    const myStandingIndex = standings.findIndex((s) => s.uid === user.uid);
+    const myStanding = myStandingIndex >= 0 ? standings[myStandingIndex] : null;
+
+    return {
+      season,
+      serverNow: nowMs,
+      authenticated: true,
+      player: {
+        uid: user.uid,
+        displayName: user.displayName,
+        seasonPoints: myStanding?.seasonPoints ?? 0,
+        seasonRank: myStandingIndex >= 0 ? myStandingIndex + 1 : null,
+        weeksParticipated: myStanding?.weeksParticipated ?? 0,
+        claimedSeasonTierIds: myReceipts.map((r) => r.tierId),
+        receipts: myReceipts,
+        history: playerHistory.sort((a, b) => b.submittedAt - a.submittedAt),
+      },
+      standings,
+    };
+  }
+
+  /**
+   * Idempotent Season Championship milestone claim (strictly verified human Season CP).
+   */
+  public claimSeasonReward(
+    user: { uid: string; displayName: string },
+    tierId: string,
+    idempotencyKey?: string,
+    nowMs = Date.now()
+  ): {
+    ok: true;
+    alreadyClaimed: boolean;
+    receipt: WeeklyBossSeasonClaimReceipt;
+    claimedSeasonTierIds: string[];
+  } {
+    const seasonState = this.getSeasonState(user, nowMs);
+    const { season } = seasonState;
+    const tier = season.milestones.find((m) => m.tierId === tierId);
+    if (!tier) {
+      throw new WeeklyBossServiceError(
+        404,
+        'SEASON_TIER_NOT_FOUND',
+        'Không tìm thấy mốc thưởng Mùa Giải.'
+      );
+    }
+
+    if (!this.store.seasonClaims) this.store.seasonClaims = {};
+    if (!this.store.seasonIdempotencyIndex) this.store.seasonIdempotencyIndex = {};
+
+    const claimKey = `${season.seasonId}:${user.uid}:${tierId}`;
+    const idemLookupKey = idempotencyKey
+      ? `${season.seasonId}:${user.uid}:${idempotencyKey}`
+      : null;
+
+    const existingByIdem =
+      idemLookupKey && this.store.seasonIdempotencyIndex[idemLookupKey]
+        ? this.store.seasonClaims[this.store.seasonIdempotencyIndex[idemLookupKey]]
+        : undefined;
+    const existingClaim = existingByIdem ?? this.store.seasonClaims[claimKey];
+
+    if (existingClaim) {
+      const claimedSeasonTierIds = Object.values(this.store.seasonClaims)
+        .filter((c) => c.uid === user.uid && c.seasonId === season.seasonId)
+        .map((c) => c.tierId);
+      return {
+        ok: true,
+        alreadyClaimed: true,
+        receipt: existingClaim,
+        claimedSeasonTierIds,
+      };
+    }
+
+    const earnedCp = seasonState.player?.seasonPoints ?? 0;
+    if (earnedCp < tier.minSeasonPoints) {
+      throw new WeeklyBossServiceError(
+        403,
+        'SEASON_POINTS_NOT_MET',
+        `Cần tối thiểu ${tier.minSeasonPoints} Điểm Mùa Giải (CP) để nhận mốc này (hiện có ${earnedCp} CP).`
+      );
+    }
+
+    const receipt: WeeklyBossSeasonClaimReceipt = {
+      claimKey,
+      seasonId: season.seasonId,
+      uid: user.uid,
+      tierId: tier.tierId,
+      claimedAt: nowMs,
+      rewardTitleLabel: tier.rewardTitleLabel,
+      rewardDynamicTitleId: tier.rewardDynamicTitleId,
+      rewardFrameId: tier.rewardFrameId,
+      rewardFrameName: tier.rewardFrameName,
+      idempotencyKey,
+    };
+
+    this.store.seasonClaims[claimKey] = receipt;
+    if (idemLookupKey) {
+      this.store.seasonIdempotencyIndex[idemLookupKey] = claimKey;
+    }
+    this.persistStore();
+
+    const claimedSeasonTierIds = Object.values(this.store.seasonClaims)
+      .filter((c) => c.uid === user.uid && c.seasonId === season.seasonId)
+      .map((c) => c.tierId);
+
+    return {
+      ok: true,
+      alreadyClaimed: false,
+      receipt,
+      claimedSeasonTierIds,
     };
   }
 }

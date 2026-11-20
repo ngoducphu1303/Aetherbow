@@ -288,3 +288,153 @@ export function computeWeeklyBossScore(params: {
 
   return damagePoints + clearBonus + speedBonus + hpBonus + skillBonus;
 }
+
+export interface WeeklyBossSeasonMilestone {
+  tierId: string;
+  minSeasonPoints: number;
+  title: string;
+  subtitle: string;
+  rewardTitleLabel: string;
+  rewardDynamicTitleId?: DynamicTitleId;
+  rewardFrameId?: AvatarFrameId;
+  rewardFrameName?: string;
+}
+
+export interface WeeklyBossSeasonInfo {
+  seasonId: string;
+  seasonIndex: number;
+  seasonName: string;
+  weekIds: string[];
+  currentWeekId: string;
+  currentWeekNumberInSeason: number;
+  startsAt: number;
+  endsAt: number;
+  milestones: WeeklyBossSeasonMilestone[];
+}
+
+export interface WeeklyBossSeasonEntry {
+  uid: string;
+  displayName: string;
+  seasonPoints: number;
+  weeksParticipated: number;
+  bestWeeklyScore: number;
+  highestRank: number;
+  totalClears: number;
+  updatedAt: number;
+}
+
+export interface WeeklyBossRunHistoryEntry {
+  weekId: string;
+  bossName: string;
+  attemptId: string;
+  verifiedScore: number;
+  damageDealt: number;
+  clearTimeMs: number | null;
+  cleared: boolean;
+  weekRank: number;
+  seasonPointsAwarded: number;
+  submittedAt: number;
+}
+
+export interface WeeklyBossSeasonClaimReceipt {
+  claimKey: string;
+  seasonId: string;
+  uid: string;
+  tierId: string;
+  claimedAt: number;
+  rewardTitleLabel: string;
+  rewardDynamicTitleId?: DynamicTitleId;
+  rewardFrameId?: AvatarFrameId;
+  rewardFrameName?: string;
+  idempotencyKey?: string;
+}
+
+export interface WeeklyBossSeasonStateResponse {
+  season: WeeklyBossSeasonInfo;
+  serverNow: number;
+  authenticated: boolean;
+  player: {
+    uid: string;
+    displayName: string;
+    seasonPoints: number;
+    seasonRank: number | null;
+    weeksParticipated: number;
+    claimedSeasonTierIds: string[];
+    receipts: WeeklyBossSeasonClaimReceipt[];
+    history: WeeklyBossRunHistoryEntry[];
+  } | null;
+  standings: WeeklyBossSeasonEntry[];
+}
+
+export const WEEKLY_BOSS_SEASON_MILESTONES: WeeklyBossSeasonMilestone[] = [
+  {
+    tierId: 'season_contender',
+    minSeasonPoints: 50,
+    title: 'Huy Chương Mùa Giải · Tân Tinh',
+    subtitle: 'Tích lũy ≥ 50 Điểm Mùa Giải (CP) qua các tuần xác minh',
+    rewardTitleLabel: 'Đấu Sĩ Mùa Giải Tinh Giới',
+    rewardDynamicTitleId: 'star_challenger',
+  },
+  {
+    tierId: 'season_master',
+    minSeasonPoints: 150,
+    title: 'Cúp Bạc Mùa Giải · Cao Thủ',
+    subtitle: 'Tích lũy ≥ 150 Điểm Mùa Giải (CP) qua các tuần xác minh',
+    rewardTitleLabel: 'Cao Thủ Mùa Giải Công Bằng',
+    rewardFrameId: 'crystal_guardian',
+    rewardFrameName: 'Khung Pha Lê Hộ Vệ Mùa Giải',
+  },
+  {
+    tierId: 'season_champion',
+    minSeasonPoints: 280,
+    title: 'Cúp Vàng Mùa Giải · Quán Quân',
+    subtitle: 'Tích lũy ≥ 280 Điểm Mùa Giải (CP) — Đỉnh cao kỹ năng 4 tuần',
+    rewardTitleLabel: 'Quán Quân Mùa Giải Hoàng Đạo',
+    rewardDynamicTitleId: 'mythic_sovereign',
+    rewardFrameId: 'world_dragon',
+    rewardFrameName: 'Khung Thần Long Quán Quân Mùa',
+  },
+];
+
+/**
+ * Deterministic Season Championship Points (CP) awarded per verified weekly placement.
+ * Only human verified runs earn official Season CP.
+ */
+export function computeWeeklySeasonPointsForRank(rank: number, cleared: boolean): number {
+  const rankPts =
+    rank === 1 ? 100 : rank <= 3 ? 75 : rank <= 10 ? 50 : rank <= 25 ? 30 : 15;
+  const clearBonus = cleared ? 20 : 0;
+  return rankPts + clearBonus;
+}
+
+const SEASON_WEEKS = 4;
+
+export function getWeeklyBossSeasonInfo(nowMs = Date.now()): WeeklyBossSeasonInfo {
+  const current = getCurrentWeeklyBossSchedule(nowMs);
+  const seasonIndex = Math.floor(current.weekIndex / SEASON_WEEKS);
+  const firstWeekIndex = seasonIndex * SEASON_WEEKS;
+  const startsAt = WEEKLY_EPOCH_UTC + firstWeekIndex * WEEK_MS;
+  const endsAt = startsAt + SEASON_WEEKS * WEEK_MS;
+
+  const weekIds: string[] = [];
+  for (let offset = 0; offset < SEASON_WEEKS; offset++) {
+    const wkSchedule = getCurrentWeeklyBossSchedule(startsAt + offset * WEEK_MS + 1000);
+    weekIds.push(wkSchedule.weekId);
+  }
+
+  const seasonYear = new Date(startsAt).getUTCFullYear();
+  const seasonNumberInYear = (seasonIndex % 13) + 1;
+  const seasonId = `${seasonYear}-S${String(seasonNumberInYear).padStart(2, '0')}`;
+
+  return {
+    seasonId,
+    seasonIndex,
+    seasonName: `Mùa Giải Tinh Giới #${seasonNumberInYear} (${seasonYear})`,
+    weekIds,
+    currentWeekId: current.weekId,
+    currentWeekNumberInSeason: (current.weekIndex % SEASON_WEEKS) + 1,
+    startsAt,
+    endsAt,
+    milestones: WEEKLY_BOSS_SEASON_MILESTONES,
+  };
+}

@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
-import { Building2, Check, Crown, Flame, Gift, Shield, Skull, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Building2, Check, Cloud, Crown, Flame, Gift, MessageSquare, Shield, Skull, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
 import guildSanctuaryArt from '../assets/images/guild_zodiac_sanctuary_1794982055649.jpg';
 import guildWarCitadelArt from '../assets/images/guild_war_citadel_1795010358440.jpg';
 import guildCitadelBossArt from '../assets/images/guild_citadel_boss_1795058109598.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import {
   GUILD_BOSS_DAMAGE_TIERS,
-  GUILD_RIVAL_MEMBERS,
   GUILD_TECH_DEFS,
   MAX_DAILY_GUILD_BOSS_RUNS,
   MAX_DAILY_GUILD_TRIBUTES,
@@ -14,6 +13,11 @@ import {
   getGuildLevelExpReq,
   normalizeGuild,
 } from '../data/wave4Data';
+import {
+  buildMergedGuildMemberBoard,
+  LeaderboardFilterMode,
+} from '../data/liveAiLeaderboards';
+import { liveAiSocket } from '../services/liveAiSocket';
 import {
   GUILD_WAR_MAX_DAILY_RUNS,
   GUILD_WAR_WEEKLY_BOXES,
@@ -28,12 +32,19 @@ import {
   normalizeGuildSanctuary,
 } from '../data/wave14Data';
 import { HERO_MAP } from '../data/heroesData';
-import { GuildMonumentId, GuildTechId, SaveData } from '../types/game';
+import {
+  AiLiveActivityEvent,
+  AiLivePlayerProfile,
+  GuildMonumentId,
+  GuildTechId,
+  SaveData,
+} from '../types/game';
 import { ArtifactRelicIcon, GoldCoinIcon, MysticTokenIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
 
 interface ZodiacGuildModalProps {
   save: SaveData;
   powerRating: number;
+  playerDisplayName?: string;
   onTribute: (currency: 'gold' | 'gems') => void;
   onUpgradeTech: (techId: GuildTechId) => void;
   onClaimDamageTier: (tierId: string) => void;
@@ -43,12 +54,15 @@ interface ZodiacGuildModalProps {
   onUpgradeMonument?: (monumentId: GuildMonumentId) => void;
   onClaimDailySanctuaryBlessing?: () => void;
   onClaimDailyGuildBossChest?: (chestId: string) => void;
+  onOpenGuildChat?: () => void;
+  onInspectAiPlayer?: (aiPlayerId: string) => void;
   onClose: () => void;
 }
 
 export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
   save,
   powerRating,
+  playerDisplayName,
   onTribute,
   onUpgradeTech,
   onClaimDamageTier,
@@ -58,9 +72,21 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
   onUpgradeMonument,
   onClaimDailySanctuaryBlessing,
   onClaimDailyGuildBossChest,
+  onOpenGuildChat,
+  onInspectAiPlayer,
   onClose,
 }) => {
   const [subTab, setSubTab] = useState<'boss' | 'sanctuary' | 'war' | 'tech' | 'members'>('boss');
+  const [memberFilter, setMemberFilter] = useState<LeaderboardFilterMode>('all');
+  const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
+    () => liveAiSocket.getSnapshot()?.players ?? []
+  );
+  const [guildFeed, setGuildFeed] = useState<AiLiveActivityEvent[]>(
+    () =>
+      (liveAiSocket.getSnapshot()?.activities ?? []).filter(
+        (a) => a.kind === 'guild' || a.kind === 'world_boss'
+      )
+  );
   const [imgErr, setImgErr] = useState(false);
   const [warImgErr, setWarImgErr] = useState(false);
   const [sanctuaryImgErr, setSanctuaryImgErr] = useState(false);
@@ -75,17 +101,28 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
   const tributesLeft = Math.max(0, MAX_DAILY_GUILD_TRIBUTES - guild.tributeCountToday);
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const rankTier = getGuildBossRankTier(guild.bestGuildBossDamage);
+  const playerLabel = playerDisplayName || activeHero.name;
 
-  const memberBoard = [
-    ...GUILD_RIVAL_MEMBERS.map((m) => ({ ...m, isPlayer: false })),
-    {
-      name: `${activeHero.name} (Bạn)`,
-      role: 'Tinh Vệ',
-      contribution: guild.tributeCountToday * 120 + guild.guildCoins * 10,
-      bossDmg: guild.bestGuildBossDamage,
-      isPlayer: true,
-    },
-  ].sort((a, b) => b.bossDmg - a.bossDmg);
+  useEffect(() => {
+    liveAiSocket.ensureConnected(playerLabel);
+    return liveAiSocket.subscribeSnapshot((snap) => {
+      setAiPlayers(snap.players);
+      setGuildFeed(snap.activities.filter((a) => a.kind === 'guild' || a.kind === 'world_boss'));
+    });
+  }, [playerLabel]);
+
+  const memberBoard = useMemo(
+    () =>
+      buildMergedGuildMemberBoard({
+        filter: memberFilter,
+        aiPlayers,
+        playerName: `${playerLabel} (Bạn)`,
+        playerHeroId: activeHero.id,
+        playerContribution: guild.tributeCountToday * 120 + guild.guildCoins * 10,
+        playerBossDmg: guild.bestGuildBossDamage,
+      }),
+    [activeHero.id, aiPlayers, guild.bestGuildBossDamage, guild.guildCoins, guild.tributeCountToday, memberFilter, playerLabel]
+  );
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/90 overflow-y-auto">
@@ -122,6 +159,19 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                {onOpenGuildChat && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.06);
+                      onOpenGuildChat();
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-[#070b1a]/95 border border-sky-400/50 hover:border-amber-300 flex items-center gap-1.5 text-xs font-black text-sky-200 hover:text-amber-200 cursor-pointer whitespace-nowrap"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                    <span>Chat Bang</span>
+                  </button>
+                )}
                 <div className="px-3 py-1.5 rounded-xl bg-[#070b1a]/95 border border-amber-400/45 flex items-center gap-1.5 text-xs font-mono-nums font-black text-amber-300">
                   <Crown className="w-3.5 h-3.5 shrink-0" />
                   <span>{guild.guildCoins} Xu Bang</span>
@@ -268,6 +318,13 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
         <div className="flex-1 overflow-y-auto a2-scroll p-4 sm:p-6">
           {subTab === 'boss' && (
             <div className="space-y-4">
+              {guildFeed.length > 0 && (
+                <div className="rounded-xl border border-sky-400/30 bg-[#061124]/90 px-3.5 py-2 flex items-center gap-2 text-xs text-sky-100">
+                  <span className="size-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="font-black text-sky-300 shrink-0">{guildFeed[0].actorName}</span>
+                  <span className="truncate text-slate-200">{guildFeed[0].summary}</span>
+                </div>
+              )}
               <div className="cel-panel rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-rose-400/40">
                 <div>
                   <div className="flex items-center gap-2 text-[11px] font-black text-rose-300 uppercase tracking-wider">
@@ -754,48 +811,109 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
           )}
 
           {subTab === 'members' && (
-            <div className="space-y-2.5">
-              {memberBoard.map((m, idx) => (
-                <div
-                  key={m.name}
-                  className={`rounded-2xl px-4 py-3 border flex items-center justify-between gap-3 ${
-                    m.isPlayer
-                      ? 'bg-amber-500/15 border-amber-300/70'
-                      : 'cel-panel'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`w-7 h-7 rounded-xl font-mono-nums text-xs font-black flex items-center justify-center shrink-0 ${
-                        idx === 0
-                          ? 'bg-amber-400 text-slate-950'
-                          : idx === 1
-                          ? 'bg-slate-300 text-slate-950'
-                          : idx === 2
-                          ? 'bg-orange-400 text-slate-950'
-                          : 'bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="font-display text-sm font-black text-white truncate">
-                        {m.name}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-semibold">
-                        {m.role} · Cống hiến {m.contribution.toLocaleString('vi-VN')}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right font-mono-nums shrink-0">
-                    <div className="text-[10px] text-slate-400">Kỷ Lục Boss Bang</div>
-                    <div className="text-sm font-black text-amber-300 flex items-center justify-end gap-1">
-                      <Trophy className="w-3.5 h-3.5" />
-                      <span>{m.bossDmg.toLocaleString('vi-VN')}</span>
-                    </div>
-                  </div>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-[#070b1a] p-2">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setMemberFilter('all')}
+                    className={`px-3 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      memberFilter === 'all'
+                        ? 'bg-sky-500/20 text-sky-200 border border-sky-400/50'
+                        : 'text-slate-300 hover:text-white border border-transparent'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Tất Cả (Bạn + {Math.min(12, aiPlayers.length)} AI Live)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMemberFilter('real')}
+                    className={`px-3 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      memberFilter === 'real'
+                        ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                        : 'text-slate-300 hover:text-white border border-transparent'
+                    }`}
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>Chỉ Người Thật (1)</span>
+                  </button>
                 </div>
-              ))}
+                <span className="text-[11px] text-slate-400">
+                  Sát thương Boss Bang &amp; Cống Hiến cập nhật trực tiếp
+                </span>
+              </div>
+
+              {memberBoard.map((m) => {
+                const idx = m.rank - 1;
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded-2xl px-4 py-3 border flex items-center justify-between gap-3 ${
+                      m.isPlayer
+                        ? 'bg-amber-500/15 border-amber-300/70'
+                        : 'cel-panel'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`w-7 h-7 rounded-xl font-mono-nums text-xs font-black flex items-center justify-center shrink-0 ${
+                          idx === 0
+                            ? 'bg-amber-400 text-slate-950'
+                            : idx === 1
+                            ? 'bg-slate-300 text-slate-950'
+                            : idx === 2
+                            ? 'bg-orange-400 text-slate-950'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        {m.rank}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-display text-sm font-black text-white truncate flex items-center gap-1.5">
+                          {m.isAiLive && (
+                            <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                          )}
+                          {m.isAiLive && m.aiPlayerId && onInspectAiPlayer ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.05);
+                                onInspectAiPlayer(m.aiPlayerId!);
+                              }}
+                              className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                            >
+                              {m.name}
+                            </button>
+                          ) : (
+                            <span className="truncate">{m.name}</span>
+                          )}
+                          {m.isAiLive ? (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-sky-500/20 border border-sky-400/45 text-sky-300 shrink-0">
+                              [AI Live]
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/45 text-emerald-300 shrink-0">
+                              Người Thật
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-semibold truncate">
+                          {m.role} · Cống hiến {m.contribution.toLocaleString('vi-VN')}
+                          {m.statusDetail ? ` · ${m.statusDetail}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right font-mono-nums shrink-0">
+                      <div className="text-[10px] text-slate-400">Kỷ Lục Boss Bang</div>
+                      <div className="text-sm font-black text-amber-300 flex items-center justify-end gap-1">
+                        <Trophy className="w-3.5 h-3.5" />
+                        <span>{m.bossDmg.toLocaleString('vi-VN')}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -3,7 +3,11 @@ import { AlertTriangle, ArrowUpRight, Award, BarChart3, Camera, Check, Compass, 
 import { soundEngine } from '../audio/soundEngine';
 import { getNextTargetGoal } from '../data/earlyProgressionData';
 import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
-import { computeNextUpgradeRecommendation, UpgradeActionTarget } from '../data/progressionAdvisor';
+import {
+  computeDropProtectionSnapshot,
+  computeNextUpgradeRecommendation,
+  UpgradeActionTarget,
+} from '../data/progressionAdvisor';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { evaluateMatchMvpReport } from '../data/wave11Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
@@ -269,6 +273,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   const upgradeGuide =
     !isPause && save && !isWeeklyRankedBossMode
       ? computeNextUpgradeRecommendation(save)
+      : null;
+  const dropProtection =
+    !isPause && save && !isWeeklyRankedBossMode
+      ? computeDropProtectionSnapshot(save)
       : null;
   const equippedWeapon =
     save && save.equipped[GearSlot.WEAPON]
@@ -1260,6 +1268,96 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                       >
                         <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
                         <span>{upgradeGuide.actionLabel}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Wave 4 Pillar 3: Transparent Drop-Protection & Mythic Pity Meter */}
+              {dropProtection && (
+                <div
+                  data-drop-protection="true"
+                  className="rounded-xl bg-[#070d1d] border border-sky-400/30 p-3.5 space-y-2.5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-sky-300">
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                      <span>Bảo Hiểm Rơi Đồ &amp; Chế Tạo Công Bằng</span>
+                    </div>
+                    {dropProtection.badLuckProtectionActive && (
+                      <span className="text-[10px] font-black text-emerald-300">
+                        Bảo Hiểm Bù Xui Đang Bật
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5 text-[11px]">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between font-bold text-slate-200">
+                        <span>Pity Sử Thi</span>
+                        <span className="font-mono-nums tabular-nums text-purple-300">
+                          {dropProtection.mythicEpicPityCurrent}/{dropProtection.mythicEpicPityMax}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-900 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-400"
+                          style={{
+                            width: `${Math.max(
+                              6,
+                              Math.round(
+                                (dropProtection.mythicEpicPityCurrent / dropProtection.mythicEpicPityMax) * 100
+                              )
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between font-bold text-slate-200">
+                        <span>Pity Thần Thoại</span>
+                        <span className="font-mono-nums tabular-nums text-amber-300">
+                          {dropProtection.mythicLegendPityCurrent}/{dropProtection.mythicLegendPityMax}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-900 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-300"
+                          style={{
+                            width: `${Math.max(
+                              6,
+                              Math.round(
+                                (dropProtection.mythicLegendPityCurrent / dropProtection.mythicLegendPityMax) * 100
+                              )
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums tabular-nums text-slate-300 pt-1 border-t border-slate-800/80">
+                    <span>
+                      Mảnh Rèn Hiếm: <strong className="text-sky-300">{dropProtection.rareShards}/{dropProtection.rareShardsTarget}</strong>
+                    </span>
+                    <span>
+                      Mảnh Sử Thi: <strong className="text-purple-300">{dropProtection.epicShards}/{dropProtection.epicShardsTarget}</strong>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      {dropProtection.f2pMilestoneSummary}
+                    </p>
+                    {onUpgradeGuideAction && (
+                      <button
+                        type="button"
+                        onClick={() => onUpgradeGuideAction(dropProtection.primaryActionTarget)}
+                        className="a2-slate-btn px-3 py-1.5 rounded-lg text-[11px] font-black text-sky-200 border border-sky-400/35 hover:border-amber-300/60 cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        {dropProtection.primaryActionLabel}
                       </button>
                     )}
                   </div>

@@ -1,23 +1,33 @@
-import React, { useMemo, useState } from 'react';
-import { Award, Check, Crown, Shield, Swords, Ticket, Trophy, X, Zap } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Award, Check, Cloud, Crown, Shield, Swords, Ticket, Trophy, Users, X, Zap } from 'lucide-react';
 import arenaBannerArt from '../assets/images/arena_colosseum_pvp_1794983175991.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { HERO_MAP } from '../data/heroesData';
 import {
-  ARENA_LADDER_RIVALS,
   ARENA_RANK_TIERS,
   MAX_DAILY_ARENA_TICKETS,
   generateArenaOpponents,
   getArenaRankInfo,
   normalizeArena,
 } from '../data/wave5Data';
-import { ArenaOpponent, SaveData } from '../types/game';
+import {
+  buildLiveArenaOpponents,
+  buildMergedArenaLeaderboard,
+  LeaderboardFilterMode,
+} from '../data/liveAiLeaderboards';
+import { liveAiSocket } from '../services/liveAiSocket';
+import { CloudLeaderboardRow, fetchRealLeaderboard } from '../services/playerCloudService';
+import { AiLivePlayerProfile, ArenaOpponent, SaveData } from '../types/game';
 import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon } from './GameIcons';
 
 interface ArenaModalProps {
   save: SaveData;
   powerRating: number;
+  playerDisplayName?: string;
+  currentUid?: string | null;
   onStartDuel: (opponent: ArenaOpponent) => void;
+  onChallengeLiveAi?: (aiPlayerId: string) => void;
+  onInspectAiPlayer?: (aiPlayerId: string) => void;
   onBuyTicket: () => void;
   onClaimRankTier: (tierId: string) => void;
   onOpenArenaShop?: () => void;
@@ -27,37 +37,65 @@ interface ArenaModalProps {
 export const ArenaModal: React.FC<ArenaModalProps> = ({
   save,
   powerRating,
+  playerDisplayName,
+  currentUid = null,
   onStartDuel,
+  onChallengeLiveAi,
+  onInspectAiPlayer,
   onBuyTicket,
   onClaimRankTier,
   onOpenArenaShop,
   onClose,
 }) => {
   const [subTab, setSubTab] = useState<'duel' | 'ranks' | 'ladder'>('duel');
+  const [ladderFilter, setLadderFilter] = useState<LeaderboardFilterMode>('all');
   const [imgErr, setImgErr] = useState(false);
+  const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
+    () => liveAiSocket.getSnapshot()?.players ?? []
+  );
+  const [cloudPlayers, setCloudPlayers] = useState<CloudLeaderboardRow[]>([]);
 
   const arena = normalizeArena(save.arena);
   const rankInfo = getArenaRankInfo(arena.rating);
-  const opponents = useMemo(
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const displayName = playerDisplayName || `Bạn (${activeHero.name})`;
+
+  useEffect(() => {
+    liveAiSocket.ensureConnected(displayName);
+    const unsub = liveAiSocket.subscribeSnapshot((snap) => {
+      setAiPlayers(snap.players);
+    });
+    void fetchRealLeaderboard(40)
+      .then((rows) => setCloudPlayers(rows))
+      .catch(() => {});
+    return unsub;
+  }, [displayName]);
+
+  const liveOpponents = useMemo(
+    () => buildLiveArenaOpponents(aiPlayers, arena.rating, powerRating),
+    [aiPlayers, arena.rating, powerRating]
+  );
+
+  const fallbackOpponents = useMemo(
     () => generateArenaOpponents(arena.rating, powerRating),
     [arena.rating, powerRating]
   );
 
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
-  const ladderRows = useMemo(() => {
-    const rows = [
-      ...ARENA_LADDER_RIVALS.map((r) => ({ ...r, isPlayer: false })),
-      {
-        name: `Bạn (${activeHero.name})`,
-        title: save.equippedTitle ?? 'Chiến Binh Tinh Giới',
-        heroId: activeHero.id,
-        rating: arena.rating,
-        powerRating,
-        isPlayer: true,
-      },
-    ];
-    return rows.sort((a, b) => b.rating - a.rating);
-  }, [activeHero.id, activeHero.name, arena.rating, powerRating, save.equippedTitle]);
+  const ladderRows = useMemo(
+    () =>
+      buildMergedArenaLeaderboard({
+        filter: ladderFilter,
+        aiPlayers,
+        cloudPlayers,
+        playerName: displayName,
+        playerTitle: save.equippedTitle ?? 'Chiến Binh Tinh Giới',
+        playerHeroId: activeHero.id,
+        playerRating: arena.rating,
+        playerPower: powerRating,
+        currentUid,
+      }),
+    [activeHero.id, aiPlayers, arena.rating, cloudPlayers, currentUid, displayName, ladderFilter, powerRating, save.equippedTitle]
+  );
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/90 overflow-y-auto">
@@ -206,81 +244,111 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
         </div>
 
         {subTab === 'duel' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {opponents.map((opp) => {
-              const hero = HERO_MAP[opp.heroId] ?? HERO_MAP.artemis;
-              const disabled = arena.ticketsRemaining <= 0;
-              return (
-                <div
-                  key={opp.id}
-                  className="cel-panel rounded-2xl p-4 flex flex-col justify-between gap-3 border border-amber-400/30 hover:border-amber-300/75 transition-colors"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <span className="px-2 py-0.5 rounded-md bg-rose-500/20 border border-rose-400/40 text-[10px] font-black text-rose-200">
-                        {opp.title}
-                      </span>
-                      <span className="font-mono-nums text-xs font-black text-amber-300">
-                        {opp.rating} Điểm
-                      </span>
+          <div className="space-y-3">
+            {liveOpponents.length > 0 && (
+              <div className="text-[11px] text-sky-200/90 flex items-center gap-2 px-1">
+                <span className="size-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span>
+                  Đối thủ <strong className="text-sky-300">[AI Live]</strong> trực tuyến thời gian thực · Tự né mũi tên &amp; đồng bộ điểm hạng 1v1 lên máy chủ!
+                </span>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {(liveOpponents.length > 0
+                ? liveOpponents
+                : fallbackOpponents.map((opp) => ({ opponent: opp, aiProfile: null }))
+              ).map(({ opponent: opp, aiProfile }) => {
+                const hero = HERO_MAP[opp.heroId] ?? HERO_MAP.artemis;
+                const disabled = !aiProfile && arena.ticketsRemaining <= 0;
+                return (
+                  <div
+                    key={opp.id}
+                    className="cel-panel rounded-2xl p-4 flex flex-col justify-between gap-3 border border-amber-400/30 hover:border-amber-300/75 transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2.5">
+                        <span className="px-2 py-0.5 rounded-md bg-sky-500/20 border border-sky-400/45 text-[10px] font-black text-sky-200 flex items-center gap-1">
+                          {aiProfile && <span className="size-1.5 rounded-full bg-emerald-400" />}
+                          <span>{opp.title}</span>
+                        </span>
+                        <span className="font-mono-nums text-xs font-black text-amber-300">
+                          {opp.rating} Điểm
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 mb-3">
+                        <HeroCrestSvg
+                          heroId={hero.id}
+                          accentHex={hero.accentHex}
+                          cloakHex={hero.cloakHex}
+                          hairHex={hero.hairHex}
+                          className="w-12 h-12 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="font-display text-sm font-black text-white truncate">
+                            {opp.name}
+                          </div>
+                          <div className="text-[11px] font-semibold text-sky-300 truncate">
+                            {hero.name} · {opp.powerRating.toLocaleString('vi-VN')} LC
+                          </div>
+                          {aiProfile && (
+                            <div className="text-[10px] text-slate-400 font-mono-nums truncate">
+                              {aiProfile.duelWins}T-{aiProfile.duelLosses}B · Chuỗi ×{aiProfile.winStreak}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[11px] font-mono-nums bg-[#060916] border border-slate-800 rounded-xl p-2.5">
+                        <div className="flex items-center gap-1 text-emerald-300 font-bold">
+                          <Shield className="w-3.5 h-3.5 shrink-0" />
+                          <span>HP {opp.maxHp}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-amber-300 font-bold">
+                          <Zap className="w-3.5 h-3.5 shrink-0" />
+                          <span>ATK {opp.attack}</span>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 mb-3">
-                      <HeroCrestSvg
-                        heroId={hero.id}
-                        accentHex={hero.accentHex}
-                        cloakHex={hero.cloakHex}
-                        hairHex={hero.hairHex}
-                        className="w-12 h-12 shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <div className="font-display text-sm font-black text-white truncate">
-                          {opp.name}
-                        </div>
-                        <div className="text-[11px] font-semibold text-sky-300">
-                          {hero.name} · {opp.powerRating.toLocaleString('vi-VN')} LC
-                        </div>
+                    <div className="pt-2 border-t border-slate-800/80 space-y-2.5">
+                      <div className="flex items-center justify-between text-[11px] font-mono-nums font-bold">
+                        <span className="text-emerald-300">Thắng: +{opp.rewardPoints} Điểm</span>
+                        <span className="text-amber-300">+{opp.rewardArenaCoins} Xu</span>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-[11px] font-mono-nums bg-[#060916] border border-slate-800 rounded-xl p-2.5">
-                      <div className="flex items-center gap-1 text-emerald-300 font-bold">
-                        <Shield className="w-3.5 h-3.5 shrink-0" />
-                        <span>HP {opp.maxHp}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-amber-300 font-bold">
-                        <Zap className="w-3.5 h-3.5 shrink-0" />
-                        <span>ATK {opp.attack}</span>
-                      </div>
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          soundEngine.playUiClick(1.08);
+                          if (aiProfile && onChallengeLiveAi) {
+                            onClose();
+                            onChallengeLiveAi(aiProfile.id);
+                          } else {
+                            onStartDuel(opp);
+                          }
+                        }}
+                        className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                          disabled
+                            ? 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                            : 'a2-yellow-btn'
+                        }`}
+                      >
+                        <Swords className="w-4 h-4" />
+                        <span>
+                          {disabled
+                            ? 'Hết Vé Hôm Nay'
+                            : aiProfile
+                            ? 'Thách Đấu 1v1 Live'
+                            : 'Khiêu Chiến 3D'}
+                        </span>
+                      </button>
                     </div>
                   </div>
-
-                  <div className="pt-2 border-t border-slate-800/80 space-y-2.5">
-                    <div className="flex items-center justify-between text-[11px] font-mono-nums font-bold">
-                      <span className="text-emerald-300">Thắng: +{opp.rewardPoints} Điểm</span>
-                      <span className="text-amber-300">+{opp.rewardArenaCoins} Xu</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => {
-                        soundEngine.playUiClick(1.08);
-                        onStartDuel(opp);
-                      }}
-                      className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
-                        disabled
-                          ? 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                          : 'a2-yellow-btn'
-                      }`}
-                    >
-                      <Swords className="w-4 h-4" />
-                      <span>{disabled ? 'Hết Vé Hôm Nay' : 'Khiêu Chiến 3D'}</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -353,59 +421,138 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
         )}
 
         {subTab === 'ladder' && (
-          <div className="space-y-2">
-            {ladderRows.map((row, idx) => {
-              const hero = HERO_MAP[row.heroId] ?? HERO_MAP.artemis;
-              const tier = getArenaRankInfo(row.rating);
-              return (
-                <div
-                  key={`${row.name}_${idx}`}
-                  className={`rounded-2xl px-4 py-3 border flex items-center justify-between gap-3 ${
-                    row.isPlayer
-                      ? 'bg-gradient-to-r from-amber-500/20 via-[#101836] to-[#101836] border-amber-300'
-                      : 'bg-[#070b1a] border-slate-800'
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-[#070b1a] p-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setLadderFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    ladderFilter === 'all'
+                      ? 'bg-sky-500/20 text-sky-200 border border-sky-400/50'
+                      : 'text-slate-300 hover:text-white border border-transparent'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono-nums text-xs font-black shrink-0 ${
-                        idx === 0
-                          ? 'bg-amber-400 text-slate-950'
-                          : idx === 1
-                          ? 'bg-slate-300 text-slate-950'
-                          : idx === 2
-                          ? 'bg-amber-700 text-white'
-                          : 'bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      #{idx + 1}
-                    </span>
-                    <HeroCrestSvg
-                      heroId={hero.id}
-                      accentHex={hero.accentHex}
-                      cloakHex={hero.cloakHex}
-                      hairHex={hero.hairHex}
-                      className="w-9 h-9 shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-xs sm:text-sm font-black text-white truncate">
-                        {row.name}
-                      </div>
-                      <div className="text-[11px] text-slate-400 truncate">
-                        {row.title} · {row.powerRating.toLocaleString('vi-VN')} LC
-                      </div>
-                    </div>
-                  </div>
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Tất Cả (Thật + {aiPlayers.length} AI Live)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLadderFilter('real')}
+                  className={`px-3 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    ladderFilter === 'real'
+                      ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                      : 'text-slate-300 hover:text-white border border-transparent'
+                  }`}
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>Chỉ Người Thật ({Math.max(1, cloudPlayers.length)})</span>
+                </button>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Cập nhật điểm hạng Arena theo thời gian thực
+              </span>
+            </div>
 
-                  <div className="text-right shrink-0">
-                    <div className={`text-xs font-black ${tier.colorClass}`}>{tier.name}</div>
-                    <div className="font-mono-nums text-sm font-black text-amber-300">
-                      {row.rating} Điểm
+            <div className="space-y-2">
+              {ladderRows.map((row) => {
+                const idx = row.rank - 1;
+                const hero = HERO_MAP[row.heroId] ?? HERO_MAP.artemis;
+                const tier = getArenaRankInfo(row.rating);
+                return (
+                  <div
+                    key={row.id}
+                    className={`rounded-2xl px-4 py-3 border flex items-center justify-between gap-3 ${
+                      row.isPlayer
+                        ? 'bg-gradient-to-r from-amber-500/20 via-[#101836] to-[#101836] border-amber-300'
+                        : 'bg-[#070b1a] border-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono-nums text-xs font-black shrink-0 ${
+                          idx === 0
+                            ? 'bg-amber-400 text-slate-950'
+                            : idx === 1
+                            ? 'bg-slate-300 text-slate-950'
+                            : idx === 2
+                            ? 'bg-amber-700 text-white'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        #{row.rank}
+                      </span>
+                      <HeroCrestSvg
+                        heroId={hero.id}
+                        accentHex={hero.accentHex}
+                        cloakHex={hero.cloakHex}
+                        hairHex={hero.hairHex}
+                        className="w-9 h-9 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-black text-white truncate flex items-center gap-1.5">
+                          {row.isAiLive && (
+                            <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                          )}
+                          {row.isAiLive && row.aiPlayer && onInspectAiPlayer ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.05);
+                                onInspectAiPlayer(row.aiPlayer!.id);
+                              }}
+                              className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                            >
+                              {row.name}
+                            </button>
+                          ) : (
+                            <span className="truncate">
+                              {row.name}
+                              {row.isPlayer ? ' (Bạn)' : ''}
+                            </span>
+                          )}
+                          {row.isAiLive ? (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-sky-500/20 border border-sky-400/45 text-sky-300 shrink-0">
+                              [AI Live]
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/45 text-emerald-300 shrink-0">
+                              Người Thật
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {row.title} · {row.powerRating.toLocaleString('vi-VN')} LC
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="text-right">
+                        <div className={`text-xs font-black ${tier.colorClass}`}>{tier.name}</div>
+                        <div className="font-mono-nums text-sm font-black text-amber-300">
+                          {row.rating} Điểm
+                        </div>
+                      </div>
+                      {row.isAiLive && row.aiPlayer && onChallengeLiveAi && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick(1.08);
+                            onClose();
+                            onChallengeLiveAi(row.aiPlayer!.id);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/35 border border-sky-400/45 text-[11px] font-black text-sky-200 cursor-pointer whitespace-nowrap flex items-center gap-1"
+                        >
+                          <Swords className="w-3.5 h-3.5" />
+                          <span>Đấu 1v1</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

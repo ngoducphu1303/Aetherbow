@@ -180,6 +180,37 @@ export function createWeeklyBossRouter(service: WeeklyBossService): express.Rout
     }
   });
 
+  router.get('/season', async (req, res) => {
+    try {
+      const user = await resolveBearerUser(req);
+      res.json(service.getSeasonState(user));
+    } catch (err) {
+      handleApiError(res, err);
+    }
+  });
+
+  router.post('/season/claim', async (req, res) => {
+    try {
+      const user = await resolveBearerUser(req);
+      if (!user) {
+        throw new WeeklyBossServiceError(
+          401,
+          'AUTH_REQUIRED',
+          'Bạn cần đăng nhập tài khoản đám mây để nhận thưởng Mùa Giải.'
+        );
+      }
+      const tierId = String(req.body?.tierId ?? '').trim();
+      const idempotencyKey =
+        typeof req.body?.idempotencyKey === 'string' && req.body.idempotencyKey.trim()
+          ? req.body.idempotencyKey.trim().slice(0, 80)
+          : undefined;
+      const result = service.claimSeasonReward(user, tierId, idempotencyKey);
+      res.json(result);
+    } catch (err) {
+      handleApiError(res, err);
+    }
+  });
+
   return router;
 }
 
@@ -204,10 +235,23 @@ export interface LiveAiWsHubHandle {
 export function attachLiveAiWebSocketServer(
   server: http.Server,
   liveAiService: LiveAiPlayersService,
-  options?: { tickIntervalMs?: number }
+  options?: { tickIntervalMs?: number; chatReplyDelayMs?: number }
 ): LiveAiWsHubHandle {
   const wss = new WebSocketServer({ server, path: '/ws/live-ai' });
   const clientNames = new Map<WebSocket, string>();
+  const clientLastChatAt = new Map<WebSocket, number>();
+  const clientAuctionLots = new Map<
+    WebSocket,
+    Array<{
+      id: string;
+      label: string;
+      currentBid: number;
+      buyoutPrice: number;
+      highestBidderIsPlayer: boolean;
+      isPlayerListing: boolean;
+      endsAt: number;
+    }>
+  >();
 
   const sendJson = (ws: WebSocket, msg: unknown) => {
     if (ws.readyState === WebSocket.OPEN) {
@@ -228,6 +272,37 @@ export function attachLiveAiWebSocketServer(
     sendJson(ws, {
       type: 'hub:snapshot',
       payload: liveAiService.getSnapshot(wss.clients.size),
+    });
+  };
+
+  const triggerAuctionForClient = (ws: WebSocket, forceLotId?: string) => {
+    const lots = clientAuctionLots.get(ws);
+    if (!lots || lots.length === 0) return;
+    const result = liveAiService.evaluateAuctionCompetition(lots, Date.now(), forceLotId);
+    if (!result) return;
+    // Update cached server copy of that lot so repeated ticks escalate realistically
+    const matched = lots.find((l) => l.id === result.bidEvent.lotId);
+    if (matched) {
+      matched.currentBid = result.bidEvent.amount;
+      matched.highestBidderIsPlayer = false;
+      if (result.bidEvent.action === 'buyout') {
+        clientAuctionLots.set(
+          ws,
+          lots.filter((l) => l.id !== result.bidEvent.lotId)
+        );
+      }
+    }
+    sendJson(ws, {
+      type: 'auction:bid_event',
+      payload: result.bidEvent,
+    });
+    broadcast({
+      type: 'hub:activity',
+      payload: {
+        event: result.activity,
+        updatedPlayer: result.bidder,
+        onlineHumanCount: Math.max(1, wss.clients.size),
+      },
     });
   };
 
@@ -253,6 +328,32 @@ export function attachLiveAiWebSocketServer(
 
         if (type === 'hub:ping') {
           sendJson(ws, { type: 'hub:pong', serverNow: Date.now() });
+          return;
+        }
+
+        if (type === 'auction:sync_lots') {
+          const rawLots = Array.isArray(payload.lots) ? payload.lots : [];
+          const cleanLots = rawLots
+            .slice(0, 16)
+            .map((item) => {
+              const obj = item as Record<string, unknown>;
+              return {
+                id: String(obj.id ?? '').slice(0, 64),
+                label: String(obj.label ?? 'Vật phẩm Tinh Giới').slice(0, 64),
+                currentBid: Math.max(1, Math.floor(Number(obj.currentBid ?? 1))),
+                buyoutPrice: Math.max(2, Math.floor(Number(obj.buyoutPrice ?? 2))),
+                highestBidderIsPlayer: Boolean(obj.highestBidderIsPlayer),
+                isPlayerListing: Boolean(obj.isPlayerListing),
+                endsAt: Number(obj.endsAt ?? 0),
+              };
+            })
+            .filter((l) => l.id.length > 0 && l.endsAt > Date.now());
+          clientAuctionLots.set(ws, cleanLots);
+          if (payload.requestImmediateEvaluation && cleanLots.length > 0) {
+            const focusId =
+              typeof payload.focusLotId === 'string' ? payload.focusLotId : undefined;
+            triggerAuctionForClient(ws, focusId);
+          }
           return;
         }
 
@@ -284,6 +385,45 @@ export function attachLiveAiWebSocketServer(
               onlineHumanCount: Math.max(1, wss.clients.size),
             },
           });
+          return;
+        }
+
+        if (type === 'chat:send') {
+          const channel = payload.channel === 'guild' ? 'guild' : 'lobby';
+          const text = String(payload.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 180);
+          if (text.length === 0) return;
+          const now = Date.now();
+          const lastAt = clientLastChatAt.get(ws) ?? 0;
+          if (now - lastAt < 700) return;
+          clientLastChatAt.set(ws, now);
+
+          const senderName = sanitizeServerDisplayName(
+            payload.senderName ?? clientNames.get(ws)
+          );
+          const msg = liveAiService.addPlayerChatMessage({
+            channel,
+            senderName,
+            text,
+            nowMs: now,
+          });
+          broadcast({
+            type: 'chat:message',
+            payload: msg,
+          });
+
+          const replyDelay = Math.max(20, options?.chatReplyDelayMs ?? 850);
+          const replyTimer = setTimeout(() => {
+            const reply = liveAiService.generateContextualAiChatReply({
+              channel,
+              senderName,
+              userText: text,
+            });
+            broadcast({
+              type: 'chat:message',
+              payload: reply,
+            });
+          }, replyDelay);
+          replyTimer.unref?.();
           return;
         }
 
@@ -331,11 +471,15 @@ export function attachLiveAiWebSocketServer(
 
     ws.on('close', () => {
       clientNames.delete(ws);
+      clientAuctionLots.delete(ws);
+      clientLastChatAt.delete(ws);
     });
   });
 
+  let wsTickCount = 0;
   const tickIntervalMs = options?.tickIntervalMs ?? 4500;
   const timer = setInterval(() => {
+    wsTickCount += 1;
     const tick = liveAiService.simulateServerTick();
     if (wss.clients.size > 0) {
       broadcast({
@@ -346,6 +490,22 @@ export function attachLiveAiWebSocketServer(
           onlineHumanCount: Math.max(1, wss.clients.size),
         },
       });
+      // Every 2nd server tick (~9s), let [AI Live] players actively compete on open auction lots
+      if (wsTickCount % 2 === 0) {
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN && clientAuctionLots.has(client)) {
+            triggerAuctionForClient(client);
+          }
+        }
+      }
+      // Every 5th server tick (~22s), an [AI Live] player posts an organic Lobby/Guild chat note
+      if (wsTickCount % 5 === 0) {
+        const aiChat = liveAiService.generatePeriodicAiChat();
+        broadcast({
+          type: 'chat:message',
+          payload: aiChat,
+        });
+      }
     }
   }, tickIntervalMs);
   timer.unref?.();

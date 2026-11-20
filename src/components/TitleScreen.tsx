@@ -16,6 +16,7 @@ import {
   HelpCircle,
   Lock,
   Mail,
+  MessageSquare,
   Orbit,
   RefreshCw,
   RotateCw,
@@ -137,6 +138,8 @@ import {
 import {
   ArtifactId,
   AuraStyleId,
+  AiLiveActivityEvent,
+  AiLivePlayerProfile,
   AvatarFrameId,
   BundlePreviewPayload,
   ComputedPlayerStats,
@@ -281,7 +284,10 @@ interface TitleScreenProps {
   onOpenHonorBoard: () => void;
   onOpenWeeklyBoss?: () => void;
   onOpenLiveAiHub?: () => void;
+  onOpenLiveChat?: (channel?: 'lobby' | 'guild') => void;
   liveAiOnlineCount?: number;
+  latestAiActivity?: AiLiveActivityEvent | null;
+  onlineAiTeammates?: AiLivePlayerProfile[];
   onOpenWardrobe?: () => void;
   onOpenDispatch?: () => void;
   onOpenProfileModal: (tab?: ProfileModalTab) => void;
@@ -497,7 +503,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenHonorBoard,
   onOpenWeeklyBoss,
   onOpenLiveAiHub,
+  onOpenLiveChat,
   liveAiOnlineCount,
+  latestAiActivity,
+  onlineAiTeammates,
   onOpenWardrobe,
   onOpenDispatch,
   onOpenProfileModal,
@@ -812,10 +821,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       const coop = normalizeCoopRaid(save.coopRaid);
       const diff = COOP_DIFFICULTY_MAP[selectedCoopDifficulty] ?? COOP_RAID_DIFFICULTIES[0];
       const diffName = diff.id === 'normal' ? 'Thường' : diff.id === 'heroic' ? 'Anh Hùng' : 'Thần Thoại';
+      const liveNames = (onlineAiTeammates ?? []).slice(0, 2).map((p) => p.displayName);
+      const squadSuffix =
+        liveNames.length > 0 ? ` · Đồng đội [AI Live]: ${liveNames.join(' & ')}` : '';
       return {
         shortLabel: 'Co-op AI',
         title: `Co-op AI · ${diffName}`,
-        subtitle: `Thưởng chính ${coop.dailyRewardsLeft}/${COOP_RAID_MAX_DAILY_REWARDS} · Đề xuất ${diff.recommendedPower} LC`,
+        subtitle: `Thưởng ${coop.dailyRewardsLeft}/${COOP_RAID_MAX_DAILY_REWARDS} · Đề xuất ${diff.recommendedPower} LC${squadSuffix}`,
         ctaLabel: 'VÀO CO-OP',
         canStart: true,
         onStart: () => onStartCoopRaid(diff.id),
@@ -1696,7 +1708,49 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
 
             {/* SLIM SINGLE-BAR BOTTOM COMMAND DOCK (Leaves >75% center completely clear) */}
-            <div className="pointer-events-auto w-full max-w-4xl mx-auto z-20">
+            <div className="pointer-events-auto w-full max-w-4xl mx-auto z-20 space-y-1.5">
+              {(latestAiActivity && onOpenLiveAiHub) || onOpenLiveChat ? (
+                <div className="flex items-stretch gap-1.5">
+                  {latestAiActivity && onOpenLiveAiHub && (
+                    <button
+                      type="button"
+                      data-live-ai-ticker="true"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.06);
+                        setSkyPickerOpen(false);
+                        onOpenLiveAiHub();
+                      }}
+                      className="flex-1 min-w-0 px-3 py-1.5 rounded-xl bg-[#070d20]/94 border border-sky-400/35 hover:border-sky-300 text-left flex items-center gap-2 transition-colors cursor-pointer shadow-lg"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      <span className="text-[10px] font-black text-sky-300 uppercase shrink-0">
+                        AI Live · {liveAiOnlineCount ?? 18}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-200 truncate flex-1">
+                        {latestAiActivity.actorName}: {latestAiActivity.summary}
+                      </span>
+                      <span className="text-[10px] font-black text-amber-300 shrink-0 hidden sm:inline">
+                        Sảnh AI →
+                      </span>
+                    </button>
+                  )}
+                  {onOpenLiveChat && (
+                    <button
+                      type="button"
+                      data-live-chat-btn="true"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.05);
+                        setSkyPickerOpen(false);
+                        onOpenLiveChat('lobby');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-[#070d20]/94 border border-amber-400/40 hover:border-amber-200 text-amber-200 text-[11px] font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-lg transition-colors"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span>Chat Sảnh</span>
+                    </button>
+                  )}
+                </div>
+              ) : null}
               <div className="cel-panel-ornate rounded-2xl px-2.5 sm:px-3.5 py-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shadow-2xl">
                 {/* Left Pair: Consolidated Modes + Events Buttons */}
                 <div className="flex items-center gap-1.5 shrink-0">

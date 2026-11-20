@@ -3,6 +3,8 @@ import type {
   WeeklyBossClaimReceipt,
   WeeklyBossLeaderboardEntry,
   WeeklyBossSchedule,
+  WeeklyBossSeasonClaimReceipt,
+  WeeklyBossSeasonStateResponse,
   WeeklyBossStateResponse,
 } from '../data/weeklyBossData';
 
@@ -89,6 +91,30 @@ export async function claimWeeklyBossReward(payload: {
 }> {
   const headers = await getAuthHeaders();
   const res = await fetch('/api/weekly-boss/claim', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseApiResponse(res);
+}
+
+export async function fetchWeeklyBossSeasonState(): Promise<WeeklyBossSeasonStateResponse> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/weekly-boss/season', { method: 'GET', headers });
+  return parseApiResponse<WeeklyBossSeasonStateResponse>(res);
+}
+
+export async function claimWeeklyBossSeasonReward(payload: {
+  tierId: string;
+  idempotencyKey: string;
+}): Promise<{
+  ok: true;
+  alreadyClaimed: boolean;
+  receipt: WeeklyBossSeasonClaimReceipt;
+  claimedSeasonTierIds: string[];
+}> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/weekly-boss/season/claim', {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),

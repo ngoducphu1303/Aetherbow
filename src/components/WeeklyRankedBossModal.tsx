@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Calendar,
   Award,
   CheckCircle2,
   Clock,
   Crown,
+  History,
   Lock,
   Play,
   RefreshCw,
@@ -15,14 +17,24 @@ import {
 import {
   WeeklyBossClaimReceipt,
   WeeklyBossSchedule,
+  WeeklyBossSeasonClaimReceipt,
+  WeeklyBossSeasonStateResponse,
   WeeklyBossStateResponse,
 } from '../data/weeklyBossData';
 import {
   claimWeeklyBossReward,
+  claimWeeklyBossSeasonReward,
+  fetchWeeklyBossSeasonState,
   fetchWeeklyBossState,
   startWeeklyBossAttempt,
 } from '../services/weeklyBossApi';
 import { liveAiSocket } from '../services/liveAiSocket';
+import {
+  buildMergedWeeklyBossLeaderboard,
+  buildMergedWeeklySeasonLeaderboard,
+  LeaderboardFilterMode,
+} from '../data/liveAiLeaderboards';
+import type { AiLivePlayerProfile } from '../types/game';
 
 interface WeeklyRankedBossModalProps {
   isAuthenticated: boolean;
@@ -34,6 +46,8 @@ interface WeeklyRankedBossModalProps {
   }) => void;
   onStartPracticeRun?: (schedule: WeeklyBossSchedule) => void;
   onRewardClaimed: (receipt: WeeklyBossClaimReceipt) => void;
+  onSeasonRewardClaimed?: (receipt: WeeklyBossSeasonClaimReceipt) => void;
+  onInspectAiPlayer?: (aiPlayerId: string) => void;
   onOpenAuthModal?: () => void;
   onClose: () => void;
 }
@@ -58,23 +72,35 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
   onStartVerifiedRun,
   onStartPracticeRun,
   onRewardClaimed,
+  onSeasonRewardClaimed,
+  onInspectAiPlayer,
   onOpenAuthModal,
   onClose,
 }) => {
   const [state, setState] = useState<WeeklyBossStateResponse | null>(null);
+  const [seasonState, setSeasonState] = useState<WeeklyBossSeasonStateResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [claimingTierId, setClaimingTierId] = useState<string | null>(null);
+  const [claimingSeasonTierId, setClaimingSeasonTierId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'leaderboard' | 'rewards'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'leaderboard' | 'season' | 'history' | 'rewards'>('overview');
+  const [boardFilter, setBoardFilter] = useState<LeaderboardFilterMode>('all');
+  const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
+    () => liveAiSocket.getSnapshot()?.players ?? []
+  );
 
   const loadState = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const next = await fetchWeeklyBossState();
+      const [next, nextSeason] = await Promise.all([
+        fetchWeeklyBossState(),
+        fetchWeeklyBossSeasonState().catch(() => null),
+      ]);
       setState(next);
+      if (nextSeason) setSeasonState(nextSeason);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tải dữ liệu Boss Tuần.');
     } finally {
@@ -86,10 +112,13 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     void loadState();
   }, [loadState, isAuthenticated]);
 
-  // Real-time WebSocket leaderboard rank updates when any player posts a verified score
+  // Real-time WebSocket leaderboard rank updates + live [AI Live] practice benchmarks
   useEffect(() => {
     liveAiSocket.ensureConnected(playerDisplayName);
-    const unsub = liveAiSocket.subscribeWeeklyRankUpdates((update) => {
+    const unsubSnap = liveAiSocket.subscribeSnapshot((snap) => {
+      setAiPlayers(snap.players);
+    });
+    const unsubRank = liveAiSocket.subscribeWeeklyRankUpdates((update) => {
       setState((prev) => {
         if (!prev || prev.schedule.weekId !== update.weekId) return prev;
         return {
@@ -101,7 +130,10 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
         `Cập nhật trực tiếp: ${update.displayName} vừa đạt hạng #${update.rank} (${update.verifiedScore.toLocaleString('vi-VN')} điểm xác minh)!`
       );
     });
-    return unsub;
+    return () => {
+      unsubSnap();
+      unsubRank();
+    };
   }, [playerDisplayName]);
 
   const handleStart = async () => {
@@ -149,9 +181,61 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     }
   };
 
+  const handleClaimSeason = async (tierId: string) => {
+    if (!seasonState || claimingSeasonTierId) return;
+    setClaimingSeasonTierId(tierId);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const idempotencyKey = `season-claim-${seasonState.season.seasonId}-${tierId}`;
+      const res = await claimWeeklyBossSeasonReward({ tierId, idempotencyKey });
+      if (!res.alreadyClaimed) {
+        onSeasonRewardClaimed?.(res.receipt);
+        setStatusMessage(
+          `Đã nhận thưởng Mùa Giải: ${res.receipt.rewardTitleLabel}${res.receipt.rewardFrameName ? ` · ${res.receipt.rewardFrameName}` : ''}`
+        );
+      } else {
+        setStatusMessage('Mốc thưởng Mùa Giải này đã được cấp trước đó (bảo vệ chống nhận trùng).');
+      }
+      await loadState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể nhận thưởng Mùa Giải.');
+    } finally {
+      setClaimingSeasonTierId(null);
+    }
+  };
+
   const claimedSet = useMemo(
     () => new Set(state?.player?.claimedTierIds ?? []),
     [state?.player?.claimedTierIds]
+  );
+
+  const seasonClaimedSet = useMemo(
+    () => new Set(seasonState?.player?.claimedSeasonTierIds ?? []),
+    [seasonState?.player?.claimedSeasonTierIds]
+  );
+
+  const mergedLeaderboard = useMemo(
+    () =>
+      buildMergedWeeklyBossLeaderboard({
+        verifiedEntries: state?.leaderboard ?? [],
+        aiPlayers,
+        filter: boardFilter,
+        currentUid,
+      }),
+    [aiPlayers, boardFilter, currentUid, state?.leaderboard]
+  );
+
+  const mergedSeasonLeaderboard = useMemo(
+    () =>
+      buildMergedWeeklySeasonLeaderboard({
+        verifiedStandings: seasonState?.standings ?? [],
+        aiPlayers,
+        filter: boardFilter,
+        currentWeekNumberInSeason: seasonState?.season.currentWeekNumberInSeason ?? 1,
+        currentUid,
+      }),
+    [aiPlayers, boardFilter, currentUid, seasonState?.season.currentWeekNumberInSeason, seasonState?.standings]
   );
 
   return (
@@ -201,39 +285,63 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1.5 bg-[#060a18] border border-amber-400/20 rounded-xl p-1 w-fit">
+        <div className="flex flex-wrap items-center gap-1.5 bg-[#060a18] border border-amber-400/20 rounded-xl p-1 w-fit">
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
               activeTab === 'overview'
                 ? 'bg-amber-400/20 text-amber-200'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
-            Luật &amp; Bộ Đồ Cho Mượn
+            Tuần Hiện Tại
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('leaderboard')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
               activeTab === 'leaderboard'
                 ? 'bg-amber-400/20 text-amber-200'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
-            Bảng Hạng Đã Xác Minh ({state?.leaderboard.length ?? 0})
+            BXH Tuần ({(state?.leaderboard.length ?? 0) + aiPlayers.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('season')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 ${
+              activeTab === 'season'
+                ? 'bg-amber-400/20 text-amber-200'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Mùa Giải (4 Tuần)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 ${
+              activeTab === 'history'
+                ? 'bg-amber-400/20 text-amber-200'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Lịch Sử Của Tôi</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('rewards')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
               activeTab === 'rewards'
                 ? 'bg-amber-400/20 text-amber-200'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
-            Thưởng Danh Hiệu &amp; Khung
+            Thưởng Tuần
           </button>
         </div>
 
@@ -396,49 +504,100 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
 
             {activeTab === 'leaderboard' && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs text-slate-300">
-                  <span>Xếp hạng ưu tiên Điểm Xác Minh cao nhất, hòa điểm xét Thời Gian Hạ Boss nhanh hơn.</span>
-                  <span className="font-mono-nums text-amber-200">
-                    {state.leaderboard.length} chiến binh đã xác minh
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-[#060a18] p-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setBoardFilter('all')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap transition-colors ${
+                        boardFilter === 'all'
+                          ? 'bg-sky-500/20 text-sky-200 border border-sky-400/50'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      Tất Cả (Thật + {aiPlayers.length} AI Live)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBoardFilter('real')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap transition-colors ${
+                        boardFilter === 'real'
+                          ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      Chỉ Người Thật ({state.leaderboard.length})
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-emerald-300/90 font-semibold">
+                    Thưởng Danh Hiệu &amp; Khung chỉ tính theo hạng Người Thật đã xác minh
                   </span>
                 </div>
 
-                {state.leaderboard.length === 0 ? (
+                {mergedLeaderboard.length === 0 ? (
                   <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
-                    Chưa có lượt chơi nào được xác minh trong tuần {state.schedule.weekId}. Hãy là người đầu tiên lập kỷ lục!
+                    Chưa có lượt chơi người thật nào được xác minh trong tuần {state.schedule.weekId}. Hãy là người đầu tiên lập kỷ lục!
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-800/80 border-y border-slate-800/80">
-                    {state.leaderboard.map((entry, index) => {
-                      const isMe = Boolean(currentUid && entry.uid === currentUid);
+                    {mergedLeaderboard.map((entry) => {
+                      const rankIdx = entry.displayRank - 1;
                       return (
                         <div
-                          key={entry.uid}
+                          key={entry.id}
                           className={`py-2.5 px-3 flex items-center justify-between gap-3 text-xs ${
-                            isMe ? 'bg-amber-400/10' : ''
+                            entry.isMe ? 'bg-amber-400/10' : ''
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <span
                               className={`font-mono-nums w-7 font-black shrink-0 ${
-                                index === 0
+                                rankIdx === 0
                                   ? 'text-amber-300'
-                                  : index === 1
+                                  : rankIdx === 1
                                   ? 'text-slate-200'
-                                  : index === 2
+                                  : rankIdx === 2
                                   ? 'text-orange-300'
                                   : 'text-slate-400'
                               }`}
                             >
-                              #{index + 1}
+                              #{entry.displayRank}
                             </span>
                             <div className="min-w-0">
-                              <div className="font-bold text-white truncate">
-                                {entry.displayName}
-                                {isMe ? ' (Bạn)' : ''}
+                              <div className="font-bold text-white truncate flex items-center gap-1.5">
+                                {entry.isAiLive && (
+                                  <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                )}
+                                {entry.isAiLive && entry.aiPlayerId && onInspectAiPlayer ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onInspectAiPlayer(entry.aiPlayerId!)}
+                                    className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                                  >
+                                    {entry.displayName}
+                                  </button>
+                                ) : (
+                                  <span className="truncate">
+                                    {entry.displayName}
+                                    {entry.isMe ? ' (Bạn)' : ''}
+                                  </span>
+                                )}
+                                <span aria-hidden="true" className="text-slate-600">·</span>
+                                {entry.isAiLive ? (
+                                  <span className="text-[10px] font-bold text-sky-300 shrink-0">
+                                    [AI Live · Đối Chiếu]
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-emerald-300 shrink-0">
+                                    Xác Minh · Hạng Thật #{entry.humanRank}
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[11px] text-slate-400 font-mono-nums">
-                                Sát thương {entry.bestDamage.toLocaleString('vi-VN')} · {entry.attemptsUsed}/3 lượt
+                                Sát thương {entry.bestDamage.toLocaleString('vi-VN')} ·{' '}
+                                {entry.isAiLive
+                                  ? 'Tập luyện cùng seed tuần'
+                                  : `${entry.attemptsUsed}/3 lượt xác minh`}
                               </div>
                             </div>
                           </div>
@@ -453,6 +612,257 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'season' && (
+              <div className="space-y-4">
+                {/* Season Header & Personal CP Summary */}
+                <div className="rounded-2xl border border-amber-400/25 bg-[#060a18] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Crown className="w-4 h-4 shrink-0" />
+                      <span>{seasonState?.season.seasonName ?? 'Giải Đấu Boss Liên Tuần (4 Tuần)'}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-1">
+                      Tích lũy Điểm Giải Đấu (CP) từ hạng Người Thật mỗi tuần trong chu kỳ 4 tuần để nhận Danh Hiệu &amp; Khung Mùa Giải.
+                    </div>
+                  </div>
+                  <div className="text-left sm:text-right shrink-0">
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                      Điểm Mùa Của Bạn
+                    </div>
+                    <div className="font-mono-nums tabular-nums text-lg font-black text-amber-300">
+                      {(seasonState?.player?.seasonPoints ?? 0).toLocaleString('vi-VN')} CP
+                      {seasonState?.player?.seasonRank ? ` · Hạng Thật #${seasonState.player.seasonRank}` : ''}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Season Milestones (Idempotent Cosmetic Claims) */}
+                {seasonState && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-black uppercase tracking-wider text-amber-200">
+                      Mốc Thưởng Mùa Giải (Danh Hiệu &amp; Khung · Chống Nhận Trùng)
+                    </div>
+                    <div className="divide-y divide-slate-800/80 border-y border-slate-800/80">
+                      {seasonState.season.milestones.map((ms) => {
+                        const myCp = seasonState.player?.seasonPoints ?? 0;
+                        const eligible = isAuthenticated && myCp >= ms.minSeasonPoints;
+                        const claimed = seasonClaimedSet.has(ms.tierId);
+                        const busy = claimingSeasonTierId === ms.tierId;
+                        return (
+                          <div
+                            key={ms.tierId}
+                            className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold text-white flex items-center gap-2">
+                                <span>{ms.title}</span>
+                                <span aria-hidden="true" className="text-slate-600">·</span>
+                                <span className="font-mono-nums text-amber-300">
+                                  ≥ {ms.minSeasonPoints.toLocaleString('vi-VN')} CP
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-300">
+                                Danh hiệu <strong className="text-amber-200">{ms.rewardTitleLabel}</strong>
+                                {ms.rewardFrameName ? (
+                                  <> · Khung <strong className="text-sky-200">{ms.rewardFrameName}</strong></>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="shrink-0">
+                              {claimed ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-300">
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>Đã nhận</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={!eligible || busy}
+                                  onClick={() => void handleClaimSeason(ms.tierId)}
+                                  className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap"
+                                >
+                                  {busy
+                                    ? 'Đang xác minh…'
+                                    : eligible
+                                    ? 'Nhận Thưởng Mùa'
+                                    : `Cần ${ms.minSeasonPoints} CP`}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Season Merged Leaderboard with Real/All Toggle */}
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-[#060a18] p-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setBoardFilter('all')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap transition-colors ${
+                        boardFilter === 'all'
+                          ? 'bg-sky-500/20 text-sky-200 border border-sky-400/50'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      Tất Cả (Thật + {aiPlayers.length} AI Live)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBoardFilter('real')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap transition-colors ${
+                        boardFilter === 'real'
+                          ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      Chỉ Người Thật ({seasonState?.standings.length ?? 0})
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-emerald-300/90 font-semibold">
+                    Điểm CP Mùa Giải chỉ trao cho lượt xác minh thủ công
+                  </span>
+                </div>
+
+                {mergedSeasonLeaderboard.length === 0 ? (
+                  <div className="py-8 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
+                    Chưa có chiến binh người thật nào ghi Điểm Mùa Giải trong chu kỳ 4 tuần này.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800/80 border-y border-slate-800/80">
+                    {mergedSeasonLeaderboard.map((row) => (
+                      <div
+                        key={row.id}
+                        className={`py-2.5 px-3 flex items-center justify-between gap-3 text-xs ${
+                          row.isMe ? 'bg-amber-400/10' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span
+                            className={`font-mono-nums w-7 font-black shrink-0 ${
+                              row.displayRank === 1
+                                ? 'text-amber-300'
+                                : row.displayRank === 2
+                                ? 'text-slate-200'
+                                : row.displayRank === 3
+                                ? 'text-orange-300'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            #{row.displayRank}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-bold text-white truncate flex items-center gap-1.5">
+                              {row.isAiLive && (
+                                <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                              )}
+                              {row.isAiLive && row.aiPlayerId && onInspectAiPlayer ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onInspectAiPlayer(row.aiPlayerId!)}
+                                  className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                                >
+                                  {row.displayName}
+                                </button>
+                              ) : (
+                                <span className="truncate">
+                                  {row.displayName}
+                                  {row.isMe ? ' (Bạn)' : ''}
+                                </span>
+                              )}
+                              <span aria-hidden="true" className="text-slate-600">·</span>
+                              {row.isAiLive ? (
+                                <span className="text-[10px] font-bold text-sky-300 shrink-0">
+                                  [AI Live · Đối Chiếu]
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-emerald-300 shrink-0">
+                                  Hạng Thật #{row.humanRank}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono-nums">
+                              Tham gia {row.weeksParticipated}/4 tuần · Tuần đỉnh {row.bestWeeklyScore.toLocaleString('vi-VN')}đ
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-mono-nums text-sm font-black text-amber-300">
+                            {row.seasonPoints.toLocaleString('vi-VN')} CP
+                          </div>
+                          <div className="font-mono-nums text-[11px] text-sky-300">
+                            Đỉnh {row.bestWeeklyScore.toLocaleString('vi-VN')}đ
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'history' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-amber-200">
+                    Nhật Ký Lượt Chơi Xác Minh Của Bạn ({seasonState?.player?.history.length ?? 0} lượt)
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Lưu trữ điểm xác minh &amp; CP theo từng tuần
+                  </span>
+                </div>
+                {!isAuthenticated ? (
+                  <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400 space-y-2">
+                    <div>Đăng nhập tài khoản để xem lịch sử lượt Boss Tuần và Điểm Mùa Giải của bạn.</div>
+                    {onOpenAuthModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenAuthModal}
+                        className="a2-yellow-btn px-4 py-2 rounded-xl text-xs font-black cursor-pointer"
+                      >
+                        Đăng Nhập Ngay
+                      </button>
+                    )}
+                  </div>
+                ) : !seasonState?.player || seasonState.player.history.length === 0 ? (
+                  <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
+                    Bạn chưa hoàn thành lượt Boss Tuần xác minh nào. Hãy bấm &ldquo;Bắt Đầu Lượt Tính Hạng&rdquo; ở tab Tuần Hiện Tại!
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800/80 border-y border-slate-800/80">
+                    {seasonState.player.history.map((h) => (
+                      <div
+                        key={h.attemptId}
+                        className="py-3 px-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-white flex items-center gap-2">
+                            <span className="font-mono-nums text-amber-300">{h.weekId}</span>
+                            <span aria-hidden="true" className="text-slate-600">·</span>
+                            <span className="truncate">{h.bossName}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-mono-nums mt-0.5">
+                            Hạng Người Thật #{h.weekRank} · Sát thương {h.damageDealt.toLocaleString('vi-VN')} · {h.cleared ? `Hạ Boss ${formatClearTime(h.clearTimeMs)}` : 'Chưa hạ Boss'}
+                          </div>
+                        </div>
+                        <div className="text-left sm:text-right shrink-0">
+                          <div className="font-mono-nums text-sm font-black text-amber-300">
+                            {h.verifiedScore.toLocaleString('vi-VN')} điểm
+                          </div>
+                          <div className="font-mono-nums text-[11px] font-bold text-emerald-300">
+                            +{h.seasonPointsAwarded} CP Mùa Giải
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

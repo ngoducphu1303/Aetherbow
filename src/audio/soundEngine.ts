@@ -2234,6 +2234,82 @@ class SoundEngine {
       osc.stop(t + 0.26);
     });
   }
+
+  /**
+   * AAA Wave 4: Directional spatial Boss Telegraph windup cue so players can read
+   * incoming slams, charges, and barrages even during dense visual effects.
+   */
+  public playBossTelegraphWarning(
+    kind: 'sweep' | 'charge' | 'slam' | 'barrage',
+    panX = 0
+  ): void {
+    const dest = this.getSfxDest(panX, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const baseFreq =
+      kind === 'slam' ? 190 : kind === 'charge' ? 280 : kind === 'barrage' ? 360 : 240;
+    const peakFreq = kind === 'slam' ? 420 : kind === 'charge' ? 680 : 540;
+
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = kind === 'slam' ? 'sawtooth' : 'triangle';
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(peakFreq, now + 0.24);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.085, now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(g);
+    g.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  /**
+   * AAA Wave 4: Crisp crystalline lock chime when Overcharge (Tụ Lực) hits 100%.
+   */
+  public playOverchargeFullLock(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [880, 1318.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      const t = now + idx * 0.045;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.065, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    });
+  }
+
+  /**
+   * AAA Wave 4: Triumphant harmony chord when Co-op Ult Resonance (+25% Boss DMG) triggers.
+   */
+  public playCoopResonanceChord(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.035;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.085, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.45);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();

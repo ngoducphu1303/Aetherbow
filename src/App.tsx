@@ -21,7 +21,11 @@ import type { Wave13Tab } from './components/Wave13TreasuryModal';
 import type { Wave14Tab } from './components/Wave14AscensionModal';
 import type { LiveEventActionTarget } from './components/Wave14EventCenterModal';
 import type { UpgradeActionTarget } from './data/progressionAdvisor';
-import type { WeeklyBossClaimReceipt, WeeklyBossSchedule } from './data/weeklyBossData';
+import type {
+  WeeklyBossClaimReceipt,
+  WeeklyBossSchedule,
+  WeeklyBossSeasonClaimReceipt,
+} from './data/weeklyBossData';
 import { auth } from './firebase';
 import {
   CloudSyncStatus,
@@ -39,6 +43,7 @@ import {
 } from './services/playerCloudService';
 import { submitWeeklyBossAttempt } from './services/weeklyBossApi';
 import { liveAiSocket } from './services/liveAiSocket';
+import { applyLiveAiAuctionBidEvent } from './data/liveAiLeaderboards';
 import { computeWeeklyBossScore } from './data/weeklyBossData';
 import { getNextTargetGoal, normalizeAiPreferences } from './data/earlyProgressionData';
 import { computeNextUpgradeRecommendation } from './data/progressionAdvisor';
@@ -154,6 +159,16 @@ const WeeklyRankedBossModal = lazy(() =>
 const LiveAiHubModal = lazy(() =>
   import('./components/LiveAiHubModal').then((m) => ({
     default: m.LiveAiHubModal,
+  }))
+);
+const LiveChatDrawer = lazy(() =>
+  import('./components/LiveChatDrawer').then((m) => ({
+    default: m.LiveChatDrawer,
+  }))
+);
+const AiPlayerProfileModal = lazy(() =>
+  import('./components/AiPlayerProfileModal').then((m) => ({
+    default: m.AiPlayerProfileModal,
   }))
 );
 import { CHAPTERS } from './data/chaptersData';
@@ -535,6 +550,8 @@ import {
   WheelOutcome,
   WingId,
   AiAutoPilotTactic,
+  AiLiveActivityEvent,
+  AiLiveChatChannel,
   AiLivePlayerProfile,
   AiPreferencesState,
 } from './types/game';
@@ -750,7 +767,15 @@ export default function App() {
   const [honorBoardOpen, setHonorBoardOpen] = useState<boolean>(false);
   const [weeklyBossModalOpen, setWeeklyBossModalOpen] = useState<boolean>(false);
   const [liveAiHubOpen, setLiveAiHubOpen] = useState<boolean>(false);
+  const [liveChatOpen, setLiveChatOpen] = useState<boolean>(false);
+  const [liveChatChannel, setLiveChatChannel] = useState<AiLiveChatChannel>('lobby');
+  const [inspectedAiPlayerId, setInspectedAiPlayerId] = useState<string | null>(null);
+  const [pinnedCoopAiIds, setPinnedCoopAiIds] = useState<string[]>([]);
   const [liveAiOnlineCount, setLiveAiOnlineCount] = useState<number>(18);
+  const [liveAiLatestActivity, setLiveAiLatestActivity] = useState<AiLiveActivityEvent | null>(null);
+  const [liveAiOnlineTeammates, setLiveAiOnlineTeammates] = useState<AiLivePlayerProfile[]>([]);
+  const processedAuctionEventIdsRef = useRef<Set<string>>(new Set());
+  const pendingDirectChallengeIdRef = useRef<string | null>(null);
   const [weeklyBossResult, setWeeklyBossResult] = useState<{
     submitting: boolean;
     verifiedScore: number | null;
@@ -911,11 +936,55 @@ export default function App() {
 
   useEffect(() => {
     liveAiSocket.ensureConnected(playerDisplayName);
-    const unsub = liveAiSocket.subscribeSnapshot((snap) => {
+    const unsubSnap = liveAiSocket.subscribeSnapshot((snap) => {
       setLiveAiOnlineCount(snap.onlineAiCount);
+      if (snap.activities.length > 0) {
+        setLiveAiLatestActivity(snap.activities[0]);
+      }
+      const onlineSquad = [...snap.players]
+        .sort((a, b) => b.powerRating - a.powerRating)
+        .slice(0, 4);
+      setLiveAiOnlineTeammates(onlineSquad);
     });
-    return unsub;
-  }, [playerDisplayName]);
+    const unsubAuction = liveAiSocket.subscribeAuctionEvents((evt) => {
+      if (processedAuctionEventIdsRef.current.has(evt.eventId)) return;
+      const curSave = saveRef.current;
+      const curAuction = normalizeAuctionHouse(curSave.auctionHouse);
+      const preview = applyLiveAiAuctionBidEvent({
+        auctionHouse: curAuction,
+        currentGems: curSave.gems,
+        event: evt,
+        processedEventIds: new Set<string>(),
+      });
+      if (!preview.changed) return;
+      processedAuctionEventIdsRef.current.add(evt.eventId);
+      if (processedAuctionEventIdsRef.current.size > 120) {
+        const firstKey = processedAuctionEventIdsRef.current.values().next().value;
+        if (firstKey) processedAuctionEventIdsRef.current.delete(firstKey);
+      }
+      setSave((prev) => {
+        const applied = applyLiveAiAuctionBidEvent({
+          auctionHouse: normalizeAuctionHouse(prev.auctionHouse),
+          currentGems: prev.gems,
+          event: evt,
+          processedEventIds: new Set<string>(),
+        });
+        if (!applied.changed) return prev;
+        return {
+          ...prev,
+          gems: applied.nextGems,
+          auctionHouse: applied.nextAuctionHouse,
+        };
+      });
+      if (preview.toastMessage) {
+        triggerUpgradeCelebration('Sàn Đấu Giá Real-Time', preview.toastMessage);
+      }
+    });
+    return () => {
+      unsubSnap();
+      unsubAuction();
+    };
+  }, [playerDisplayName, triggerUpgradeCelebration]);
 
   useEffect(() => {
     engineRef.current?.setAutoPilot(currentAiPrefs.autoPilotEnabled, currentAiPrefs.tactic);
@@ -3152,9 +3221,33 @@ export default function App() {
         setTransitionState(null);
       }, 560);
       setPhase(GamePhase.PLAYING);
-      engineRef.current?.startCoopRaid(playerStats, difficulty);
+      const snapPlayers = liveAiSocket.getSnapshot()?.players ?? liveAiOnlineTeammates;
+      const pinnedSet = new Set(pinnedCoopAiIds);
+      const onlineCandidates = [...snapPlayers].sort((a, b) => {
+        const aPin = pinnedSet.has(a.id) ? 0 : 1;
+        const bPin = pinnedSet.has(b.id) ? 0 : 1;
+        if (aPin !== bPin) return aPin - bPin;
+        const aBusy = a.status === 'in_duel' ? 1 : 0;
+        const bBusy = b.status === 'in_duel' ? 1 : 0;
+        if (aBusy !== bBusy) return aBusy - bBusy;
+        return b.powerRating - a.powerRating;
+      });
+      const liveTeammates: AiLivePlayerProfile[] = [];
+      for (const candidate of onlineCandidates) {
+        if (liveTeammates.length >= 2) break;
+        if (!pinnedSet.has(candidate.id) && candidate.heroId === playerStats.heroId && onlineCandidates.length > 2) continue;
+        if (
+          !pinnedSet.has(candidate.id) &&
+          liveTeammates.some((t) => t.heroId === candidate.heroId) &&
+          onlineCandidates.length > 3
+        ) {
+          continue;
+        }
+        liveTeammates.push(candidate);
+      }
+      engineRef.current?.startCoopRaid(playerStats, difficulty, liveTeammates);
     },
-    [playerStats]
+    [playerStats, liveAiOnlineTeammates, pinnedCoopAiIds]
   );
 
   const handleStartElementalTower = useCallback(
@@ -3326,8 +3419,11 @@ export default function App() {
 
   const handleChallengeLiveAiPlayer = useCallback(
     (opponent: AiLivePlayerProfile, duelId: string) => {
+      pendingDirectChallengeIdRef.current = null;
       setLiveAiHubOpen(false);
       setWeeklyBossModalOpen(false);
+      setHonorBoardOpen(false);
+      setArenaModalOpen(false);
       setRunSummary(null);
       setDamages([]);
       setPhase(GamePhase.PLAYING);
@@ -3335,6 +3431,28 @@ export default function App() {
     },
     [playerStats]
   );
+
+  const handleChallengeLiveAiById = useCallback(
+    (aiPlayerId: string) => {
+      const players = liveAiSocket.getSnapshot()?.players ?? liveAiOnlineTeammates;
+      const target = players.find((p) => p.id === aiPlayerId);
+      pendingDirectChallengeIdRef.current = aiPlayerId;
+      const sent = liveAiSocket.challengeAiPlayer(aiPlayerId, displayNameRef.current);
+      if (!sent && target) {
+        handleChallengeLiveAiPlayer(target, `local_duel_${Date.now()}`);
+      }
+    },
+    [handleChallengeLiveAiPlayer, liveAiOnlineTeammates]
+  );
+
+  useEffect(() => {
+    const unsub = liveAiSocket.subscribeDuelAccepted((accepted) => {
+      if (pendingDirectChallengeIdRef.current === accepted.opponent.id) {
+        handleChallengeLiveAiPlayer(accepted.opponent, accepted.duelId);
+      }
+    });
+    return unsub;
+  }, [handleChallengeLiveAiPlayer]);
 
   const handleExecutePostRunQuickUpgrade = useCallback((): string | null => {
     const rec = computeNextUpgradeRecommendation(saveRef.current);
@@ -3412,6 +3530,53 @@ export default function App() {
       );
     },
     [triggerUpgradeCelebration]
+  );
+
+  const handleWeeklyBossSeasonRewardClaimed = useCallback(
+    (receipt: WeeklyBossSeasonClaimReceipt) => {
+      soundEngine.playAchievement();
+      setSave((prev) => {
+        const nextFrames = new Set<AvatarFrameId>(prev.unlockedAvatarFrames ?? ['default_gold']);
+        if (receipt.rewardFrameId) {
+          nextFrames.add(receipt.rewardFrameId);
+        }
+        const nextDynTitles = new Set<DynamicTitleId>(prev.unlockedDynamicTitles ?? []);
+        if (receipt.rewardDynamicTitleId) {
+          nextDynTitles.add(receipt.rewardDynamicTitleId);
+        }
+        return {
+          ...prev,
+          unlockedAvatarFrames: Array.from(nextFrames),
+          equippedAvatarFrameId: receipt.rewardFrameId ?? prev.equippedAvatarFrameId,
+          equippedTitle: receipt.rewardTitleLabel || prev.equippedTitle,
+          unlockedDynamicTitles: Array.from(nextDynTitles),
+          equippedDynamicTitleId: receipt.rewardDynamicTitleId ?? prev.equippedDynamicTitleId,
+        };
+      });
+      triggerUpgradeCelebration(
+        'Nhận Thưởng Mùa Giải Boss Tuần!',
+        `Danh hiệu "${receipt.rewardTitleLabel}"${receipt.rewardFrameName ? ` & Khung ${receipt.rewardFrameName}` : ''} đã mở khóa.`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleOpenLiveChat = useCallback((channel: AiLiveChatChannel = 'lobby') => {
+    setLiveChatChannel(channel);
+    setLiveChatOpen(true);
+  }, []);
+
+  const handleTogglePinCoopAi = useCallback(
+    (aiPlayerId: string) => {
+      setPinnedCoopAiIds((prev) => {
+        if (prev.includes(aiPlayerId)) {
+          return prev.filter((id) => id !== aiPlayerId);
+        }
+        return [aiPlayerId, ...prev].slice(0, 2);
+      });
+      soundEngine.playUiClick(1.1);
+    },
+    []
   );
 
   const handleStartWorldBoss = useCallback(() => {
@@ -9870,7 +10035,10 @@ export default function App() {
           onOpenHonorBoard={() => setHonorBoardOpen(true)}
           onOpenWeeklyBoss={() => setWeeklyBossModalOpen(true)}
           onOpenLiveAiHub={() => setLiveAiHubOpen(true)}
+          onOpenLiveChat={handleOpenLiveChat}
           liveAiOnlineCount={liveAiOnlineCount}
+          latestAiActivity={liveAiLatestActivity}
+          onlineAiTeammates={liveAiOnlineTeammates}
           onOpenWardrobe={handleOpenWardrobe}
           onOpenDispatch={() => setDispatchOpen(true)}
           onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
@@ -10469,6 +10637,7 @@ export default function App() {
         <ZodiacGuildModal
           save={save}
           powerRating={playerStats.powerRating}
+          playerDisplayName={playerDisplayName}
           onTribute={handleGuildTribute}
           onUpgradeTech={handleUpgradeGuildTech}
           onClaimDamageTier={handleClaimGuildDamageTier}
@@ -10478,6 +10647,8 @@ export default function App() {
           onUpgradeMonument={handleUpgradeGuildMonument}
           onClaimDailySanctuaryBlessing={handleClaimDailySanctuaryBlessing}
           onClaimDailyGuildBossChest={handleClaimDailyGuildBossChest}
+          onOpenGuildChat={() => handleOpenLiveChat('guild')}
+          onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onClose={() => setGuildModalOpen(false)}
         />
       )}
@@ -10504,7 +10675,11 @@ export default function App() {
         <ArenaModal
           save={save}
           powerRating={playerStats.powerRating}
+          playerDisplayName={playerDisplayName}
+          currentUid={currentUser?.uid ?? null}
           onStartDuel={handleStartArenaDuel}
+          onChallengeLiveAi={handleChallengeLiveAiById}
+          onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onBuyTicket={handleBuyArenaTicket}
           onClaimRankTier={handleClaimArenaRankTier}
           onOpenArenaShop={() => {
@@ -10655,6 +10830,8 @@ export default function App() {
             setHonorBoardOpen(false);
             setWeeklyBossModalOpen(true);
           }}
+          onChallengeAiPlayer={handleChallengeLiveAiById}
+          onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onClose={() => setHonorBoardOpen(false)}
         />
       )}
@@ -10667,6 +10844,8 @@ export default function App() {
           onStartVerifiedRun={handleStartWeeklyRankedBoss}
           onStartPracticeRun={handleStartWeeklyBossPractice}
           onRewardClaimed={handleWeeklyBossRewardClaimed}
+          onSeasonRewardClaimed={handleWeeklyBossSeasonRewardClaimed}
+          onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onOpenAuthModal={() => {
             setWeeklyBossModalOpen(false);
             setAuthLinkModalOpen(true);
@@ -10681,9 +10860,45 @@ export default function App() {
           aiPreferences={currentAiPrefs}
           onUpdateAiPreferences={handleUpdateAiPreferences}
           onChallengeAiPlayer={handleChallengeLiveAiPlayer}
+          onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onClose={() => setLiveAiHubOpen(false)}
         />
       )}
+
+      {phase === GamePhase.TITLE && enteredGame && liveChatOpen && (
+        <LiveChatDrawer
+          isOpen={liveChatOpen}
+          initialChannel={liveChatChannel}
+          playerDisplayName={playerDisplayName}
+          guildName={save.guild?.name ?? null}
+          onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
+          onClose={() => setLiveChatOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && inspectedAiPlayerId && (() => {
+        const allAi = liveAiSocket.getSnapshot()?.players ?? liveAiOnlineTeammates;
+        const inspected = allAi.find((p) => p.id === inspectedAiPlayerId) ?? null;
+        if (!inspected) return null;
+        return (
+          <AiPlayerProfileModal
+            player={inspected}
+            isPinnedForCoop={pinnedCoopAiIds.includes(inspected.id)}
+            onChallengeDuel={(aiId) => {
+              setInspectedAiPlayerId(null);
+              setLiveChatOpen(false);
+              setLiveAiHubOpen(false);
+              setHonorBoardOpen(false);
+              setArenaModalOpen(false);
+              setGuildModalOpen(false);
+              setWeeklyBossModalOpen(false);
+              handleChallengeLiveAiById(aiId);
+            }}
+            onTogglePinCoop={handleTogglePinCoopAi}
+            onClose={() => setInspectedAiPlayerId(null)}
+          />
+        );
+      })()}
 
       {authLinkModalOpen && (
         <div className="fixed inset-0 z-[65] flex items-center justify-center bg-[#040611]/92 p-4">

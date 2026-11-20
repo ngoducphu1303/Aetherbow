@@ -1106,6 +1106,8 @@ export interface AuctionLotItem {
   currentBid: number;
   buyoutPrice: number;
   highestBidderIsPlayer: boolean;
+  highestBidderName?: string;
+  highestBidderIsAiLive?: boolean;
   playerBidAmount: number;
   endsAt: number;
   status: 'active' | 'sold' | 'ended';
@@ -1370,30 +1372,94 @@ export interface AiPreferencesState {
   liveDuelRating: number;
 }
 
+export interface AiLiveBuildSnapshot {
+  weaponName: string;
+  armorName: string;
+  mountName: string;
+  wingName: string;
+  tacticSummary: string;
+  favoriteSkills: string[];
+}
+
 export interface AiLivePlayerProfile {
   id: string;
   displayName: string;
   tag: '[AI Live]';
   heroId: HeroId;
   powerRating: number;
+  highestChapterCleared: number;
+  worldBossBestDamage: number;
+  bestTowerFloor: number;
+  weeklyPracticeBest: number;
+  weeklyPracticeClearTimeMs: number | null;
+  guildRole: string;
+  guildContribution: number;
+  guildBossDamage: number;
+  titleBadge: string;
+  frameId: AvatarFrameId;
   personality: AiLivePlayerPersonality;
   status: AiLivePlayerStatus;
   statusDetail: string;
-  weeklyPracticeBest: number;
   duelRating: number;
   duelWins: number;
   duelLosses: number;
   winStreak: number;
   lastActiveAt: number;
+  buildSnapshot?: AiLiveBuildSnapshot;
+}
+
+export type AiLiveChatChannel = 'lobby' | 'guild';
+
+export interface AiLiveChatMessage {
+  id: string;
+  channel: AiLiveChatChannel;
+  senderName: string;
+  senderTag: '[AI Live]' | 'Người Thật';
+  aiPlayerId?: string;
+  heroId?: HeroId;
+  text: string;
+  timestamp: number;
 }
 
 export interface AiLiveActivityEvent {
   id: string;
   timestamp: number;
-  kind: 'status' | 'campaign' | 'weekly_practice' | 'duel_result' | 'weekly_rank';
+  kind:
+    | 'status'
+    | 'campaign'
+    | 'weekly_practice'
+    | 'duel_result'
+    | 'weekly_rank'
+    | 'world_boss'
+    | 'tower'
+    | 'guild'
+    | 'auction';
   actorName: string;
   summary: string;
   accent: 'amber' | 'sky' | 'emerald' | 'rose';
+}
+
+export interface AiLiveAuctionSyncLot {
+  id: string;
+  label: string;
+  currentBid: number;
+  buyoutPrice: number;
+  highestBidderIsPlayer: boolean;
+  isPlayerListing: boolean;
+  endsAt: number;
+}
+
+export interface AiLiveAuctionBidEvent {
+  eventId: string;
+  lotId: string;
+  lotLabel: string;
+  bidderId: string;
+  bidderName: string;
+  bidderTag: '[AI Live]';
+  action: 'bid' | 'buyout';
+  amount: number;
+  isPlayerListing: boolean;
+  timestamp: number;
 }
 
 export interface AiLiveHubSnapshot {
@@ -1402,6 +1468,10 @@ export interface AiLiveHubSnapshot {
   onlineAiCount: number;
   players: AiLivePlayerProfile[];
   activities: AiLiveActivityEvent[];
+  chatHistory?: {
+    lobby: AiLiveChatMessage[];
+    guild: AiLiveChatMessage[];
+  };
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm' | 'azure_dragon';
@@ -1741,6 +1811,22 @@ export interface HudSnapshot {
   bossPunishBonusPct?: number;
   bossPhaseTwoBannerTimer?: number;
   bossPhaseThreeBannerTimer?: number;
+  activeBossTelegraph?: {
+    kind: 'sweep' | 'charge' | 'slam' | 'barrage';
+    label: string;
+    actionHint: string;
+    remainingSec: number;
+    durationSec: number;
+    dangerLevel: 'high' | 'critical';
+  } | null;
+  coopSynergy?: {
+    resonanceRemainingSec: number;
+    resonanceBonusPct: number;
+    windowRemainingSec: number;
+    windowAllyName: string | null;
+    calloutText: string | null;
+    alliesUltReady: string[];
+  } | null;
   activeEliteAffixLabel?: string;
   activeArenaHazardLabel?: string;
   activeSynergies?: SkillSynergyId[];

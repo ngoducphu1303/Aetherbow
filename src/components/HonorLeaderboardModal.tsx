@@ -38,7 +38,13 @@ import {
   CloudLeaderboardRow,
   fetchRealLeaderboard,
 } from '../services/playerCloudService';
+import { liveAiSocket } from '../services/liveAiSocket';
 import {
+  buildMergedHonorLeaderboard,
+  LeaderboardFilterMode,
+} from '../data/liveAiLeaderboards';
+import {
+  AiLivePlayerProfile,
   AvatarFrameId,
   MythicBadgeId,
   SaveData,
@@ -69,6 +75,8 @@ interface HonorLeaderboardModalProps {
   onClaimWorldBossMilestone: (milestoneId: string) => void;
   onStartWorldBoss?: () => void;
   onOpenWeeklyBoss?: () => void;
+  onChallengeAiPlayer?: (aiPlayerId: string) => void;
+  onInspectAiPlayer?: (aiPlayerId: string) => void;
   onClose: () => void;
 }
 
@@ -89,12 +97,17 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   onClaimWorldBossMilestone,
   onStartWorldBoss,
   onOpenWeeklyBoss,
+  onChallengeAiPlayer,
+  onInspectAiPlayer,
   onClose,
 }) => {
   const [section, setSection] = useState<'rankings' | 'badges' | 'frames'>('rankings');
   const [rankTab, setRankTab] = useState<HonorBoardTab>('power');
-  const [boardSource, setBoardSource] = useState<'real' | 'combined'>('real');
+  const [boardSource, setBoardSource] = useState<LeaderboardFilterMode>('all');
   const [cloudPlayers, setCloudPlayers] = useState<CloudLeaderboardRow[]>([]);
+  const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
+    () => liveAiSocket.getSnapshot()?.players ?? []
+  );
   const [cloudLoading, setCloudLoading] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [wbImgErr, setWbImgErr] = useState(false);
@@ -122,50 +135,33 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
     void loadCloudBoard();
   }, [loadCloudBoard]);
 
+  useEffect(() => {
+    liveAiSocket.ensureConnected(playerDisplayName || heroName);
+    return liveAiSocket.subscribeSnapshot((snap) => {
+      setAiPlayers(snap.players);
+    });
+  }, [heroName, playerDisplayName]);
+
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const displayHeroLabel = playerDisplayName ? `${playerDisplayName}` : heroName;
-  const serverRows = useMemo(
-    () => buildHonorLeaderboard(rankTab, save, powerRating, displayHeroLabel),
-    [rankTab, save, powerRating, displayHeroLabel]
+
+  const rows = useMemo(
+    () =>
+      buildMergedHonorLeaderboard({
+        tab: rankTab,
+        filter: boardSource,
+        cloudPlayers,
+        aiPlayers,
+        save,
+        powerRating,
+        playerDisplayName: displayHeroLabel,
+        currentUid,
+      }),
+    [aiPlayers, boardSource, cloudPlayers, currentUid, displayHeroLabel, powerRating, rankTab, save]
   );
 
-  const realPlayerRows = useMemo(() => {
-    const scoreOf = (r: CloudLeaderboardRow) => {
-      if (rankTab === 'power') return r.powerRating;
-      if (rankTab === 'world_boss') return r.worldBossBestDamage;
-      if (rankTab === 'arena') return r.arenaRating;
-      return r.bestTowerFloor;
-    };
-    return [...cloudPlayers]
-      .sort((a, b) => scoreOf(b) - scoreOf(a))
-      .map((r, idx) => ({
-        id: `cloud_${r.uid}`,
-        rank: idx + 1,
-        name: r.displayName,
-        heroId: r.heroId,
-        heroName: r.heroName,
-        server: `Chương ${r.highestChapterCleared}`,
-        badgeTitle: r.title,
-        frameId: r.equippedAvatarFrameId,
-        score: scoreOf(r),
-        isPlayer: Boolean(currentUid && r.uid === currentUid),
-        isRealPlayer: true,
-      }));
-  }, [cloudPlayers, currentUid, rankTab]);
-
-  const rows = useMemo(() => {
-    if (boardSource === 'real') return realPlayerRows;
-    const filteredServer = serverRows
-      .filter((r) => !(currentUid && r.isPlayer && realPlayerRows.some((rp) => rp.isPlayer)))
-      .map((r) => ({
-        ...r,
-        heroId: r.isPlayer ? activeHero.id : ('thor' as const),
-        isRealPlayer: r.isPlayer,
-      }));
-    return [...realPlayerRows, ...filteredServer]
-      .sort((a, b) => b.score - a.score)
-      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-  }, [activeHero.id, boardSource, currentUid, realPlayerRows, serverRows]);
+  // Keep reference to legacy builder import unused-free if needed
+  void buildHonorLeaderboard;
 
   const wb = normalizeWorldBoss(save.worldBoss);
   const unlockedFrames = new Set<AvatarFrameId>(save.unlockedAvatarFrames ?? ['default_gold']);
@@ -360,9 +356,21 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
               </div>
             </div>
 
-            {/* Real Player vs Combined Server Switch + Refresh */}
+            {/* All (Real + AI Live) vs Real Only Filter + Refresh */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-400/25 bg-[#070b1a] p-2">
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBoardSource('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors ${
+                    boardSource === 'all'
+                      ? 'bg-sky-500/20 text-sky-200 border border-sky-400/55'
+                      : 'text-slate-300 hover:text-white border border-transparent'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 shrink-0" />
+                  <span>Tất Cả (Thật + {aiPlayers.length} AI Live)</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setBoardSource('real')}
@@ -373,19 +381,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                   }`}
                 >
                   <Cloud className="w-3.5 h-3.5 shrink-0" />
-                  <span>Người Chơi Thật ({cloudPlayers.length})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBoardSource('combined')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors ${
-                    boardSource === 'combined'
-                      ? 'bg-amber-400/20 text-amber-200 border border-amber-300/50'
-                      : 'text-slate-300 hover:text-white border border-transparent'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5 shrink-0" />
-                  <span>Liên Server (Tổng Hợp)</span>
+                  <span>Chỉ Người Thật ({Math.max(1, cloudPlayers.length)})</span>
                 </button>
               </div>
               <button
@@ -455,14 +451,43 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                         frameId={entry.frameId}
                         sizeClass="w-12 h-12"
                       />
-                      <div className="font-display text-sm font-black text-white truncate max-w-full">
-                        {entry.name}
-                        {entry.isPlayer ? ' (Bạn)' : ''}
+                      <div className="font-display text-sm font-black text-white truncate max-w-full flex items-center justify-center gap-1">
+                        {entry.isAiLive && (
+                          <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        )}
+                        {entry.isAiLive && entry.aiPlayerId && onInspectAiPlayer ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick(1.05);
+                              onInspectAiPlayer(entry.aiPlayerId!);
+                            }}
+                            className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                          >
+                            {entry.name}
+                          </button>
+                        ) : (
+                          <span className="truncate">
+                            {entry.name}
+                            {entry.isPlayer ? ' (Bạn)' : ''}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[10px] font-bold text-amber-200 truncate max-w-full">
-                        {entry.badgeTitle}
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        {entry.isAiLive ? (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-sky-500/20 border border-sky-400/45 text-sky-300">
+                            [AI Live]
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/45 text-emerald-300">
+                            Người Thật
+                          </span>
+                        )}
+                        <span className="text-[10px] font-bold text-amber-200 truncate max-w-full">
+                          {entry.badgeTitle}
+                        </span>
                       </div>
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-[10px] text-slate-400 truncate max-w-full">
                         {entry.server} · {entry.heroName}
                       </div>
                       <div className="font-mono-nums text-sm font-black text-emerald-300 mt-0.5">
@@ -516,21 +541,63 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                           sizeClass="w-8 h-8"
                         />
                         <div className="min-w-0">
-                          <div className="text-xs font-black text-white truncate">
-                            {entry.name}
-                            {entry.isPlayer ? ' (Bạn)' : ''}{' '}
-                            <span className="text-[10px] font-bold text-amber-300">
+                          <div className="text-xs font-black text-white truncate flex items-center gap-1.5">
+                            {entry.isAiLive && (
+                              <span className="size-1.5 rounded-full bg-emerald-400 shrink-0" />
+                            )}
+                            {entry.isAiLive && entry.aiPlayerId && onInspectAiPlayer ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playUiClick(1.05);
+                                  onInspectAiPlayer(entry.aiPlayerId!);
+                                }}
+                                className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                              >
+                                {entry.name}
+                              </button>
+                            ) : (
+                              <span className="truncate">
+                                {entry.name}
+                                {entry.isPlayer ? ' (Bạn)' : ''}
+                              </span>
+                            )}
+                            {entry.isAiLive ? (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-sky-500/20 border border-sky-400/45 text-sky-300 shrink-0">
+                                [AI Live]
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/45 text-emerald-300 shrink-0">
+                                Người Thật
+                              </span>
+                            )}
+                            <span className="text-[10px] font-bold text-amber-300 truncate hidden sm:inline">
                               · {entry.badgeTitle}
                             </span>
                           </div>
                           <div className="text-[10px] text-slate-400 truncate">
                             {entry.server} · Tướng {entry.heroName}
-                            {entry.isRealPlayer ? ' · Tài khoản thật' : ''}
                           </div>
                         </div>
                       </div>
-                      <div className="font-mono-nums text-xs font-black text-amber-200 shrink-0">
-                        {entry.score.toLocaleString('vi-VN')} {scoreSuffix}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="font-mono-nums text-xs font-black text-amber-200">
+                          {entry.score.toLocaleString('vi-VN')} {scoreSuffix}
+                        </div>
+                        {entry.isAiLive && entry.aiPlayerId && onChallengeAiPlayer && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick(1.08);
+                              onClose();
+                              onChallengeAiPlayer(entry.aiPlayerId!);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/35 border border-sky-400/45 text-[10px] font-black text-sky-200 cursor-pointer whitespace-nowrap flex items-center gap-1"
+                          >
+                            <Swords className="w-3 h-3" />
+                            <span>1v1</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

@@ -1402,6 +1402,44 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   </div>
                 </div>
               )}
+              {/* Wave 4 Pillar 2: High-Clarity Boss Telegraph Windup Countdown Bar */}
+              {hud.activeBossTelegraph && (hud.bossStunTimer ?? 0) <= 0.05 && (() => {
+                const tg = hud.activeBossTelegraph;
+                const ratio = Math.max(0, Math.min(1, tg.remainingSec / Math.max(0.25, tg.durationSec)));
+                const isCritical = tg.dangerLevel === 'critical';
+                return (
+                  <div
+                    className={`mt-1.5 rounded-lg px-2.5 py-1.5 bg-[#230712]/95 border ${
+                      isCritical ? 'border-rose-400/80' : 'border-amber-400/75'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-black mb-1">
+                      <span className="flex items-center gap-1.5 text-rose-200 truncate">
+                        <AlertTriangle
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isCritical ? 'text-rose-400' : 'text-amber-300'
+                          }`}
+                        />
+                        <span className="truncate">{tg.label}</span>
+                        <span className="text-amber-300 font-bold">· {tg.actionHint}</span>
+                      </span>
+                      <span className="font-mono-nums tabular-nums text-rose-100 shrink-0">
+                        {tg.remainingSec.toFixed(1)}s
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-950/95 border border-rose-500/35 overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-75 ${
+                          isCritical
+                            ? 'bg-gradient-to-r from-rose-500 via-orange-400 to-amber-300'
+                            : 'bg-gradient-to-r from-amber-500 to-yellow-300'
+                        }`}
+                        style={{ width: `${Math.max(5, Math.round(ratio * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
@@ -1542,9 +1580,39 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               );
             })}
             {hud.isCoopRaidMode && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#070b1a]/90 border border-amber-400/30 text-[10px] font-black text-amber-200">
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#070b1a]/94 border border-amber-400/30 text-[10px] font-black text-amber-200">
                 <span>{COOP_DIFFICULTY_MAP[hud.coopDifficulty ?? 'normal']?.badge}</span>
               </div>
+            )}
+            {hud.isCoopRaidMode && hud.coopSynergy && (
+              (hud.coopSynergy.resonanceRemainingSec > 0 ||
+                hud.coopSynergy.windowRemainingSec > 0 ||
+                hud.coopSynergy.alliesUltReady.length > 0) && (
+                <div
+                  className={`rounded-xl px-3 py-1.5 border text-[10px] font-black flex items-center gap-2 ${
+                    hud.coopSynergy.resonanceRemainingSec > 0
+                      ? 'bg-[#251806]/95 border-amber-300/80 text-amber-200'
+                      : hud.coopSynergy.windowRemainingSec > 0
+                      ? 'bg-[#081a30]/95 border-sky-400/80 text-sky-200'
+                      : 'bg-[#070d20]/94 border-amber-400/45 text-amber-100'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  {hud.coopSynergy.resonanceRemainingSec > 0 ? (
+                    <span className="font-mono-nums tabular-nums">
+                      Cộng Hưởng Liên Kích · +{hud.coopSynergy.resonanceBonusPct}% ST Boss ({hud.coopSynergy.resonanceRemainingSec.toFixed(1)}s)
+                    </span>
+                  ) : hud.coopSynergy.windowRemainingSec > 0 ? (
+                    <span className="font-mono-nums tabular-nums">
+                      {hud.coopSynergy.windowAllyName} tung Tuyệt Kỹ · Bấm Q Liên Kích ({hud.coopSynergy.windowRemainingSec.toFixed(1)}s)
+                    </span>
+                  ) : (
+                    <span>
+                      {hud.coopSynergy.alliesUltReady[0]} sẵn sàng Tuyệt Kỹ · Chuẩn bị Liên Kích!
+                    </span>
+                  )}
+                </div>
+              )
             )}
           </div>
         )}

@@ -101,6 +101,16 @@ import {
   stepLobbyInspectRig,
 } from './aaaWave7Director';
 import { computeSpatialPan } from '../audio/aaaAudioMix';
+import {
+  CoopSynergyClock,
+  createCoopSynergyClock,
+  getCoopResonanceDamageMult,
+  mapBossTelegraphToHud,
+  onCoopAllyUltimateCast,
+  onPlayerUltimateCastInCoop,
+  stepCoopSynergyClock,
+  toHudCoopSynergy,
+} from './coopSynergy';
 import { createArtemisMotion } from './artemisMotion';
 import { createDragonMountMotion } from './dragonMountMotion';
 import { discardModelDownload, downloadModel, getModelAssetUrl, type ModelAsset } from './modelAssets';
@@ -997,6 +1007,8 @@ export class GameEngine {
   private isCoopRaidMode = false;
   private coopDifficulty: CoopRaidDifficulty = 'normal';
   private coopAllies: CoopAllyEntity[] = [];
+  private coopSynergyClock: CoopSynergyClock = createCoopSynergyClock();
+  private lastBossTelegraphKey = '';
   private isElementalTowerMode = false;
   private elementalTowerId: ElementalTowerId = 'fire';
   private elementalTowerFloor = 0;
@@ -3954,7 +3966,11 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  public startCoopRaid(stats: ComputedPlayerStats, difficulty: CoopRaidDifficulty): void {
+  public startCoopRaid(
+    stats: ComputedPlayerStats,
+    difficulty: CoopRaidDifficulty,
+    liveTeammates?: AiLivePlayerProfile[]
+  ): void {
     const diffCfg = COOP_DIFFICULTY_MAP[difficulty];
     this.isTowerMode = false;
     this.towerFloor = 0;
@@ -3981,15 +3997,36 @@ export class GameEngine {
     this.resetRunState(stats);
     this.ultCharge = 80;
     this.rebuildCompanions();
-    this.setupStageArena(
-      'sanctum',
-      true,
-      `PHÓ BẢN HỢP TÁC AI 3D · ${diffCfg.name.toUpperCase()}`
-    );
 
-    // Spawn 2 autonomous AI Hero Allies flanking player
-    const allies = selectCoopAiAllies(stats.heroId);
-    allies.forEach((allyDef, idx) => {
+    const activeLiveSquad = (liveTeammates ?? []).slice(0, 2);
+    const bannerSubtitle =
+      activeLiveSquad.length > 0
+        ? `CO-OP 3D · ${diffCfg.name.toUpperCase()} · ĐỘI [AI LIVE]: ${activeLiveSquad
+            .map((p) => p.displayName)
+            .join(' & ')}`
+        : `PHÓ BẢN HỢP TÁC AI 3D · ${diffCfg.name.toUpperCase()}`;
+
+    this.setupStageArena('sanctum', true, bannerSubtitle);
+
+    // Spawn 2 autonomous AI Hero Allies flanking player (prefer live online [AI Live] players)
+    const fallbackAllies = selectCoopAiAllies(stats.heroId);
+    const resolvedAllies = [0, 1].map((idx) => {
+      const liveAi = activeLiveSquad[idx];
+      if (liveAi) {
+        const heroDef = HERO_MAP[liveAi.heroId] ?? fallbackAllies[idx] ?? HERO_MAP.artemis;
+        return {
+          heroDef,
+          displayName: `${liveAi.displayName} [AI Live]`,
+        };
+      }
+      const fallback = fallbackAllies[idx] ?? HERO_MAP.artemis;
+      return {
+        heroDef: fallback,
+        displayName: fallback.name,
+      };
+    });
+
+    resolvedAllies.forEach(({ heroDef: allyDef, displayName }, idx) => {
       const ax = idx === 0 ? -4.2 : 4.2;
       const az = 5.4;
       const allyWeaponArchetype =
@@ -4028,7 +4065,7 @@ export class GameEngine {
 
       this.coopAllies.push({
         heroId: allyDef.id,
-        name: allyDef.name,
+        name: displayName,
         accentHex: allyDef.accentHex,
         x: ax,
         z: az,
@@ -5775,6 +5812,8 @@ export class GameEngine {
     this.maxRunCombo = 0;
     this.lastPlayerHitAt = 0;
     this.ultCharge = 55;
+    this.coopSynergyClock = createCoopSynergyClock();
+    this.lastBossTelegraphKey = '';
     this.kinestheticsClock = createDeterministicKinestheticsClock();
     this.autoPilotUsedInRun =
       this.autoPilotEnabled &&
@@ -7936,6 +7975,23 @@ export class GameEngine {
     this.spawnShockwave(this.px, this.pz, 0xfde047, 3.8, 0.36);
     this.spawnParticles(this.px, 1.1, this.pz, this.weaponAccentHex, 30);
     this.triggerCompanionSynergyStrike();
+    if (this.isCoopRaidMode) {
+      const resonance = onPlayerUltimateCastInCoop(this.coopSynergyClock);
+      if (resonance.triggeredResonance) {
+        soundEngine.playCoopResonanceChord();
+        this.spawnShockwave(this.px, this.pz, 0xfde047, 7.6, 0.56);
+        this.emitFloatingNumber(
+          this.px,
+          2.8,
+          this.pz,
+          0,
+          true,
+          false,
+          undefined,
+          'CỘNG HƯỞNG LIÊN KÍCH +25% ST!'
+        );
+      }
+    }
     this.emitFloatingNumber(
       this.px,
       2.3,
@@ -10157,6 +10213,7 @@ export class GameEngine {
     this.astralOvercharge = ocStep.charge;
     if (ocStep.justCharged) {
       soundEngine.playOverchargeReady();
+      soundEngine.playOverchargeFullLock();
       this.spawnParticles(this.px, 1.15, this.pz, 0xfde047, 8);
     }
     if (this.overchargeRingGroup && this.overchargeRingOuter && this.overchargeRingInner) {
@@ -10937,6 +10994,9 @@ export class GameEngine {
   }
 
   private updateCoopAllies(dt: number): void {
+    if (this.isCoopRaidMode) {
+      stepCoopSynergyClock(this.coopSynergyClock, dt);
+    }
     if (this.coopAllies.length === 0) return;
     if (!this.isCoopRaidMode && !this.aiSquadAssistEnabled) return;
     const nearest = this.findNearestEnemy(this.px, this.pz);
@@ -11069,6 +11129,15 @@ export class GameEngine {
         if (ally.attackTimer <= 0) {
           ally.attackTimer = 0.52 + (idx % 2) * 0.08;
           ally.ultCharge = Math.min(100, ally.ultCharge + 12);
+          if (
+            this.isCoopRaidMode &&
+            ally.ultCharge >= 88 &&
+            ally.ultCharge < 100 &&
+            (!ally.calloutTimer || ally.calloutTimer <= 0)
+          ) {
+            ally.calloutText = 'Tuyệt Kỹ sẵn sàng · Bấm Q Liên Kích!';
+            ally.calloutTimer = 2.2;
+          }
           const yaw = Math.atan2(target.x - ally.x, target.z - ally.z);
           const dmg = this.baseStats.attack * (0.78 + idx * 0.08);
           const isFire = ally.heroId === 'cleo';
@@ -11078,6 +11147,26 @@ export class GameEngine {
           // Trigger Ally Ultimate when ready
           if (ally.ultCharge >= 100) {
             ally.ultCharge = 0;
+            if (this.isCoopRaidMode) {
+              const allyRes = onCoopAllyUltimateCast(this.coopSynergyClock, ally.name);
+              if (allyRes.triggeredResonance) {
+                soundEngine.playCoopResonanceChord();
+                this.spawnShockwave(this.px, this.pz, 0xfde047, 7.2, 0.52);
+                this.emitFloatingNumber(
+                  this.px,
+                  2.8,
+                  this.pz,
+                  0,
+                  true,
+                  false,
+                  undefined,
+                  'CỘNG HƯỞNG LIÊN KÍCH +25% ST!'
+                );
+              } else {
+                ally.calloutText = 'Đã tung Tuyệt Kỹ! Bấm Q Liên Kích!';
+                ally.calloutTimer = 3.2;
+              }
+            }
             this.spawnShockwave(ally.x, ally.z, ally.accentHex, 4.4, 0.42);
             this.spawnParticles(ally.x, 1.0, ally.z, ally.accentHex, 18);
             this.emitFloatingNumber(
@@ -12335,6 +12424,9 @@ export class GameEngine {
     if (this.markedEnemyIds.has(e.id)) mult += 0.2;
     if (e.isBoss && (this.baseStats.bossDamageBonus ?? 0) > 0) {
       mult += this.baseStats.bossDamageBonus;
+    }
+    if (this.isCoopRaidMode && e.isBoss) {
+      mult *= getCoopResonanceDamageMult(this.coopSynergyClock);
     }
     if ((e.isBoss || e.isElite) && activeSynergies.includes('boss_barrage')) {
       mult += 0.14;
@@ -14999,6 +15091,26 @@ export class GameEngine {
       ? this.towerFloor % 3 === 0
       : stage.isBossStage;
 
+    const activeBossTelegraph =
+      boss && boss.spawnTimer <= 0 && (!boss.stunTimer || boss.stunTimer <= 0)
+        ? mapBossTelegraphToHud({
+            telegraphType: boss.telegraphType,
+            telegraphTimer: boss.telegraphTimer,
+            telegraphDuration: boss.telegraphDuration,
+            bossPhase: boss.bossPhase ?? 1,
+          })
+        : null;
+    if (boss && activeBossTelegraph) {
+      const telegraphKey = `${boss.id}:${boss.telegraphType}:${Math.round(boss.telegraphDuration * 10)}`;
+      if (telegraphKey !== this.lastBossTelegraphKey) {
+        this.lastBossTelegraphKey = telegraphKey;
+        const pan = computeSpatialPan(boss.x, this.px);
+        soundEngine.playBossTelegraphWarning(activeBossTelegraph.kind, pan);
+      }
+    } else if (this.lastBossTelegraphKey !== '') {
+      this.lastBossTelegraphKey = '';
+    }
+
     this.callbacks.onHudUpdate({
       hp: this.hp,
       maxHp: this.maxHp,
@@ -15188,6 +15300,7 @@ export class GameEngine {
       bossPhaseTwoBannerTimer: this.bossPhaseTwoBannerTimer > 0 ? this.bossPhaseTwoBannerTimer : undefined,
       bossPhaseThreeBannerTimer:
         this.bossPhaseThreeBannerTimer > 0 ? this.bossPhaseThreeBannerTimer : undefined,
+      activeBossTelegraph,
       activeEliteAffixLabel: (() => {
         const eliteWithAffix = this.enemies.find(
           (en) => en.isElite && !en.isBoss && (en.eliteAffix || (en.eliteAffixes && en.eliteAffixes.length > 0))
@@ -15230,6 +15343,12 @@ export class GameEngine {
             ultCharge: Math.round(a.ultCharge),
           }))
         : undefined,
+      coopSynergy: this.isCoopRaidMode
+        ? toHudCoopSynergy(
+            this.coopSynergyClock,
+            this.coopAllies.filter((a) => a.ultCharge >= 88).map((a) => a.name)
+          )
+        : null,
       isElementalTowerMode: this.isElementalTowerMode,
       elementalTowerId: this.isElementalTowerMode ? this.elementalTowerId : undefined,
       elementalTowerFloor: this.isElementalTowerMode ? this.elementalTowerFloor : undefined,

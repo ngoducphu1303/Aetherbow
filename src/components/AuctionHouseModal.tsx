@@ -10,7 +10,10 @@ import {
   normalizeSocketGems,
 } from '../data/wave5Data';
 import { normalizeAuctionHouse } from '../data/wave7Data';
+import { liveAiSocket } from '../services/liveAiSocket';
 import {
+  AiLiveAuctionBidEvent,
+  AiLivePlayerProfile,
   AuctionLotItem,
   GearInstance,
   Rarity,
@@ -77,6 +80,12 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
   const [selectedConsignKey, setSelectedConsignKey] = useState<string>('');
   const [customStartBid, setCustomStartBid] = useState<number>(25);
   const [customBuyout, setCustomBuyout] = useState<number>(45);
+  const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
+    () => liveAiSocket.getSnapshot()?.players ?? []
+  );
+  const [liveBidEvents, setLiveBidEvents] = useState<AiLiveAuctionBidEvent[]>(
+    () => liveAiSocket.getRecentAuctionEvents()
+  );
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -87,6 +96,33 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
   const activeLots = ah.lots.filter((l) => l.status === 'active');
   const marketLots = activeLots.filter((l) => !l.isPlayerListing);
   const playerListings = activeLots.filter((l) => l.isPlayerListing);
+
+  useEffect(() => {
+    liveAiSocket.ensureConnected();
+    const unsubSnap = liveAiSocket.subscribeSnapshot((snap) => {
+      setAiPlayers(snap.players);
+    });
+    const unsubAuc = liveAiSocket.subscribeAuctionEvents((evt) => {
+      setLiveBidEvents((prev) => [evt, ...prev.filter((e) => e.eventId !== evt.eventId)].slice(0, 6));
+    });
+    return () => {
+      unsubSnap();
+      unsubAuc();
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncPayload = activeLots.map((lot) => ({
+      id: lot.id,
+      label: lot.label,
+      currentBid: lot.currentBid,
+      buyoutPrice: lot.buyoutPrice,
+      highestBidderIsPlayer: lot.highestBidderIsPlayer,
+      isPlayerListing: Boolean(lot.isPlayerListing),
+      endsAt: lot.endsAt,
+    }));
+    liveAiSocket.syncAuctionLots(syncPayload);
+  }, [activeLots]);
 
   const equippedUids = useMemo(() => new Set(Object.values(save.equipped)), [save.equipped]);
   const socketedGemUids = useMemo(() => {
@@ -213,10 +249,24 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
                 Phiên ký gửi hết hạn tự động thanh toán Ngọc Hồn hoặc hoàn đồ về Hòm Nhận Đồ.
               </div>
             </div>
-            <div className="px-3 py-1.5 rounded-xl bg-[#091128] border border-amber-400/40 text-xs font-mono-nums font-black text-amber-200">
-              Giao Dịch Hoàn Tất: {ah.totalTrades}
+            <div className="px-3 py-1.5 rounded-xl bg-[#091128] border border-amber-400/40 text-xs font-mono-nums font-black text-amber-200 flex items-center gap-2">
+              <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>{aiPlayers.length} AI Live đang săn đồ · {ah.totalTrades} giao dịch</span>
             </div>
           </div>
+          {liveBidEvents.length > 0 && (
+            <div className="px-3.5 py-2 border-t border-sky-400/25 bg-[#061124]/95 flex items-center gap-2 text-[11px] text-sky-100">
+              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="font-black text-sky-300 shrink-0">
+                {liveBidEvents[0].bidderName} {liveBidEvents[0].bidderTag}
+              </span>
+              <span className="truncate">
+                {liveBidEvents[0].action === 'buyout'
+                  ? `vừa mua đứt "${liveBidEvents[0].lotLabel}" (${liveBidEvents[0].amount} Ngọc)!`
+                  : `vừa nâng giá "${liveBidEvents[0].lotLabel}" lên ${liveBidEvents[0].amount} Ngọc!`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Sub-Tabs */}
@@ -298,13 +348,21 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
                           {lot.label}
                         </div>
                         <div className="text-[11px] text-slate-300 truncate mt-0.5">
-                          {gemDesc ?? tplDesc ?? 'Vật phẩm Tinh Giới'} · Người bán: {lot.sellerName}
+                          {gemDesc ?? tplDesc ?? 'Vật phẩm Tinh Giới'} · Người bán:{' '}
+                          <span className="text-sky-200 font-semibold">
+                            {lot.sellerName} [AI Live]
+                          </span>
                         </div>
-                        {lot.highestBidderIsPlayer && (
+                        {lot.highestBidderIsPlayer ? (
                           <span className="inline-block mt-1 px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[10px] font-black text-emerald-200">
                             Bạn Đang Dẫn Đầu ({lot.playerBidAmount} Ngọc)
                           </span>
-                        )}
+                        ) : lot.highestBidderName ? (
+                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/45 text-[10px] font-black text-sky-200">
+                            <span className="size-1.5 rounded-full bg-emerald-400" />
+                            <span>Đang dẫn giá: {lot.highestBidderName}</span>
+                          </span>
+                        ) : null}
                       </div>
                     </div>
 
@@ -373,8 +431,14 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
                       <div className="min-w-0">
                         <div className="text-xs font-black text-white truncate">{lot.label}</div>
                         <div className="text-[10px] font-mono-nums text-amber-300">
-                          Giá bán: {lot.buyoutPrice} Ngọc · Còn {formatCountdown(Math.max(0, lot.endsAt - now))}
+                          Hiện tại: {lot.currentBid} · Mua đứt: {lot.buyoutPrice} Ngọc · Còn{' '}
+                          {formatCountdown(Math.max(0, lot.endsAt - now))}
                         </div>
+                        {lot.highestBidderName && (
+                          <div className="text-[10px] text-sky-300 font-bold truncate mt-0.5">
+                            Đang trả giá: {lot.highestBidderName}
+                          </div>
+                        )}
                       </div>
                       <button
                         type="button"

@@ -412,3 +412,112 @@ export function simulateSeededF2pProgression(
     runSnapshots,
   };
 }
+
+export interface DropProtectionSnapshot {
+  mythicEpicPityCurrent: number;
+  mythicEpicPityMax: number;
+  mythicEpicRemaining: number;
+  mythicLegendPityCurrent: number;
+  mythicLegendPityMax: number;
+  mythicLegendRemaining: number;
+  rareShards: number;
+  rareShardsTarget: number;
+  rareCraftReady: boolean;
+  epicShards: number;
+  epicShardsTarget: number;
+  epicCraftReady: boolean;
+  hasRare: boolean;
+  hasEpic: boolean;
+  totalRunsCompleted: number;
+  badLuckProtectionActive: boolean;
+  f2pMilestoneSummary: string;
+  primaryActionTarget: UpgradeActionTarget;
+  primaryActionLabel: string;
+}
+
+/**
+ * Pure, transparent Drop-Protection & Pity calculator surfaced in Post-Run Summary,
+ * Forge, and Shop so F2P players always see exact guaranteed progression thresholds.
+ */
+export function computeDropProtectionSnapshot(save: SaveData): DropProtectionSnapshot {
+  const forge = normalizeEarlyForgeProgress(save.earlyForgeProgress);
+  const mythicEpicPityMax = 10;
+  const mythicLegendPityMax = 50;
+  const mythicEpicPityCurrent = Math.max(
+    0,
+    Math.min(mythicEpicPityMax, save.pity?.mythicRollsSinceEpic ?? 0)
+  );
+  const mythicLegendPityCurrent = Math.max(
+    0,
+    Math.min(mythicLegendPityMax, save.pity?.mythicRollsSinceSTier ?? 0)
+  );
+  const mythicEpicRemaining = Math.max(1, mythicEpicPityMax - mythicEpicPityCurrent);
+  const mythicLegendRemaining = Math.max(1, mythicLegendPityMax - mythicLegendPityCurrent);
+
+  const rareShards = forge.rareShards;
+  const rareShardsTarget = EARLY_FORGE_COSTS.rareShards;
+  const epicShards = forge.epicShards;
+  const epicShardsTarget = EARLY_FORGE_COSTS.epicShards;
+
+  const hasRare = save.inventory.some((g) => RARITY_RANK[g.rarity] >= RARITY_RANK[Rarity.RARE]);
+  const hasEpic = save.inventory.some((g) => RARITY_RANK[g.rarity] >= RARITY_RANK[Rarity.EPIC]);
+  const targetGoal = getNextTargetGoal(save);
+
+  const rareCraftReady = !hasRare && targetGoal.tier === 'rare' && targetGoal.canCraftNow;
+  const epicCraftReady = !hasEpic && targetGoal.tier === 'epic' && targetGoal.canCraftNow;
+  const totalRunsCompleted = save.runHistory?.length ?? 0;
+
+  // Highlight active Bad-Luck Protection if player has run 2+ times without Rare or 4+ times without Epic
+  const badLuckProtectionActive =
+    (!hasRare && totalRunsCompleted >= 2) ||
+    (!hasEpic && totalRunsCompleted >= 4) ||
+    mythicEpicPityCurrent >= 7;
+
+  let f2pMilestoneSummary: string;
+  let primaryActionTarget: UpgradeActionTarget;
+  let primaryActionLabel: string;
+
+  if (rareCraftReady) {
+    f2pMilestoneSummary = 'Đủ Mảnh Hiếm — Có thể rèn ngay Vũ Khí Hiếm (Rare) bảo đảm 100%!';
+    primaryActionTarget = 'forge';
+    primaryActionLabel = 'Rèn Đồ Hiếm Ngay';
+  } else if (epicCraftReady) {
+    f2pMilestoneSummary = 'Đủ Mảnh Sử Thi — Có thể rèn ngay Trang Bị Sử Thi (Epic) bảo đảm 100%!';
+    primaryActionTarget = 'forge';
+    primaryActionLabel = 'Rèn Đồ Sử Thi Ngay';
+  } else if (!hasRare) {
+    f2pMilestoneSummary = `Mốc Lượt 1–3 (Đồ Hiếm): ${rareShards}/${rareShardsTarget} mảnh rèn bù xui · Đánh tới Ải 4 Ch.1 mở bảo hiểm.`;
+    primaryActionTarget = 'battle';
+    primaryActionLabel = 'Đánh Chương 1';
+  } else if (!hasEpic) {
+    f2pMilestoneSummary = `Mốc Lượt 2–6 (Đồ Sử Thi): ${epicShards}/${epicShardsTarget} mảnh rèn · Còn ${mythicEpicRemaining} lượt Pity Rương Thần Thoại.`;
+    primaryActionTarget = mythicEpicRemaining <= 3 ? 'shop' : 'battle';
+    primaryActionLabel = mythicEpicRemaining <= 3 ? 'Mở Rương Thần Thoại' : 'Săn Mảnh Sử Thi';
+  } else {
+    f2pMilestoneSummary = `Đã đạt mốc F2P Hiếm & Sử Thi · Còn ${mythicLegendRemaining} lượt Pity Thần Thoại / S-Tier.`;
+    primaryActionTarget = 'shop';
+    primaryActionLabel = 'Xem Rương & Bảo Hiểm';
+  }
+
+  return {
+    mythicEpicPityCurrent,
+    mythicEpicPityMax,
+    mythicEpicRemaining,
+    mythicLegendPityCurrent,
+    mythicLegendPityMax,
+    mythicLegendRemaining,
+    rareShards,
+    rareShardsTarget,
+    rareCraftReady,
+    epicShards,
+    epicShardsTarget,
+    epicCraftReady,
+    hasRare,
+    hasEpic,
+    totalRunsCompleted,
+    badLuckProtectionActive,
+    f2pMilestoneSummary,
+    primaryActionTarget,
+    primaryActionLabel,
+  };
+}

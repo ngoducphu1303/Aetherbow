@@ -37,6 +37,12 @@ export default defineConfig(() => {
       rollupOptions: {
         output: {
           manualChunks(id: string) {
+            if (id.includes('/src/engine/') || id.includes('\\src\\engine\\')) {
+              return 'game-engine';
+            }
+            if (id.includes('/src/data/') || id.includes('\\src\\data\\')) {
+              return 'game-data';
+            }
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('/three/') || id.includes('\\three\\')) return 'vendor-three';
             if (id.includes('/firebase/') || id.includes('/@firebase/') || id.includes('\\firebase\\') || id.includes('\\@firebase\\')) {

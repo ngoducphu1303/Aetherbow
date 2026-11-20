@@ -1,5 +1,9 @@
 import type {
   AiLiveActivityEvent,
+  AiLiveAuctionBidEvent,
+  AiLiveAuctionSyncLot,
+  AiLiveChatChannel,
+  AiLiveChatMessage,
   AiLiveHubSnapshot,
   AiLivePlayerProfile,
 } from '../types/game';
@@ -33,6 +37,8 @@ type SnapshotListener = (snapshot: AiLiveHubSnapshot, status: LiveSocketStatus) 
 type WeeklyRankListener = (update: WeeklyBossLiveRankUpdate) => void;
 type DuelAcceptedListener = (payload: LiveDuelAcceptedPayload) => void;
 type DuelResultAckListener = (payload: LiveDuelResultAckPayload) => void;
+type AuctionBidListener = (event: AiLiveAuctionBidEvent) => void;
+type ChatListener = (channels: { lobby: AiLiveChatMessage[]; guild: AiLiveChatMessage[] }) => void;
 
 class LiveAiSocketClient {
   private ws: WebSocket | null = null;
@@ -42,11 +48,18 @@ class LiveAiSocketClient {
   private reconnectTimer: number | null = null;
   private announcedDisplayName = 'Chiến Binh Tinh Giới';
   private started = false;
+  private recentAuctionEvents: AiLiveAuctionBidEvent[] = [];
+  private chatChannels: { lobby: AiLiveChatMessage[]; guild: AiLiveChatMessage[] } = {
+    lobby: [],
+    guild: [],
+  };
 
   private snapshotListeners = new Set<SnapshotListener>();
   private weeklyRankListeners = new Set<WeeklyRankListener>();
   private duelAcceptedListeners = new Set<DuelAcceptedListener>();
   private duelResultAckListeners = new Set<DuelResultAckListener>();
+  private auctionBidListeners = new Set<AuctionBidListener>();
+  private chatListeners = new Set<ChatListener>();
 
   public getStatus(): LiveSocketStatus {
     return this.status;
@@ -80,6 +93,7 @@ class LiveAiSocketClient {
       const data = (await res.json()) as AiLiveHubSnapshot;
       if (!this.snapshot && data && Array.isArray(data.players)) {
         this.snapshot = data;
+        this.mergeChatHistory(data.chatHistory);
         this.emitSnapshot();
       }
     } catch {
@@ -120,6 +134,7 @@ class LiveAiSocketClient {
           };
           if (msg.type === 'hub:snapshot' && msg.payload) {
             this.snapshot = msg.payload as AiLiveHubSnapshot;
+            this.mergeChatHistory(this.snapshot.chatHistory);
             this.emitSnapshot();
             return;
           }
@@ -171,6 +186,20 @@ class LiveAiSocketClient {
           if (msg.type === 'duel:result_ack' && msg.payload) {
             const ack = msg.payload as LiveDuelResultAckPayload;
             for (const cb of this.duelResultAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'auction:bid_event' && msg.payload) {
+            const evt = msg.payload as AiLiveAuctionBidEvent;
+            this.recentAuctionEvents = [
+              evt,
+              ...this.recentAuctionEvents.filter((e) => e.eventId !== evt.eventId),
+            ].slice(0, 12);
+            for (const cb of this.auctionBidListeners) cb(evt);
+            return;
+          }
+          if (msg.type === 'chat:message' && msg.payload) {
+            const chatMsg = msg.payload as AiLiveChatMessage;
+            this.appendChatMessage(chatMsg);
           }
         } catch {
           // Ignore invalid JSON message
@@ -252,6 +281,103 @@ class LiveAiSocketClient {
     return () => {
       this.duelResultAckListeners.delete(cb);
     };
+  }
+
+  public subscribeAuctionEvents(cb: AuctionBidListener): () => void {
+    this.auctionBidListeners.add(cb);
+    return () => {
+      this.auctionBidListeners.delete(cb);
+    };
+  }
+
+  private mergeChatHistory(history?: {
+    lobby: AiLiveChatMessage[];
+    guild: AiLiveChatMessage[];
+  }): void {
+    if (!history) return;
+    let changed = false;
+    for (const channel of ['lobby', 'guild'] as const) {
+      const incoming = history[channel] ?? [];
+      if (incoming.length === 0) continue;
+      const byId = new Map<string, AiLiveChatMessage>();
+      for (const m of this.chatChannels[channel]) byId.set(m.id, m);
+      for (const m of incoming) {
+        if (!byId.has(m.id)) {
+          byId.set(m.id, m);
+          changed = true;
+        }
+      }
+      this.chatChannels[channel] = Array.from(byId.values())
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .slice(-40);
+    }
+    if (changed) this.emitChat();
+  }
+
+  private appendChatMessage(msg: AiLiveChatMessage): void {
+    const channel: AiLiveChatChannel = msg.channel === 'guild' ? 'guild' : 'lobby';
+    if (this.chatChannels[channel].some((m) => m.id === msg.id)) return;
+    this.chatChannels[channel] = [...this.chatChannels[channel], msg].slice(-40);
+    this.emitChat();
+  }
+
+  private emitChat(): void {
+    const payload = {
+      lobby: this.chatChannels.lobby,
+      guild: this.chatChannels.guild,
+    };
+    for (const cb of this.chatListeners) cb(payload);
+  }
+
+  public getChatMessages(): { lobby: AiLiveChatMessage[]; guild: AiLiveChatMessage[] } {
+    return {
+      lobby: this.chatChannels.lobby,
+      guild: this.chatChannels.guild,
+    };
+  }
+
+  public subscribeChat(cb: ChatListener): () => void {
+    this.chatListeners.add(cb);
+    cb(this.getChatMessages());
+    return () => {
+      this.chatListeners.delete(cb);
+    };
+  }
+
+  public sendChatMessage(
+    channel: AiLiveChatChannel,
+    text: string,
+    senderName?: string
+  ): boolean {
+    const clean = text.replace(/\s+/g, ' ').trim().slice(0, 180);
+    if (!clean) return false;
+    this.ensureConnected(senderName);
+    return this.send({
+      type: 'chat:send',
+      payload: {
+        channel,
+        text: clean,
+        senderName: senderName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public getRecentAuctionEvents(): AiLiveAuctionBidEvent[] {
+    return this.recentAuctionEvents;
+  }
+
+  public syncAuctionLots(
+    lots: AiLiveAuctionSyncLot[],
+    options?: { requestImmediateEvaluation?: boolean; focusLotId?: string }
+  ): boolean {
+    return this.send({
+      type: 'auction:sync_lots',
+      payload: {
+        lots,
+        requestImmediateEvaluation: Boolean(options?.requestImmediateEvaluation),
+        focusLotId: options?.focusLotId,
+      },
+    });
   }
 
   public challengeAiPlayer(aiPlayerId: string, challengerName: string): boolean {

@@ -30,6 +30,7 @@ interface LiveAiHubModalProps {
   aiPreferences: AiPreferencesState;
   onUpdateAiPreferences: (next: AiPreferencesState) => void;
   onChallengeAiPlayer: (opponent: AiLivePlayerProfile, duelId: string) => void;
+  onInspectAiPlayer?: (aiPlayerId: string) => void;
   onClose: () => void;
 }
 
@@ -59,6 +60,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   aiPreferences,
   onUpdateAiPreferences,
   onChallengeAiPlayer,
+  onInspectAiPlayer,
   onClose,
 }) => {
   const [snapshot, setSnapshot] = useState<AiLiveHubSnapshot | null>(() =>
@@ -281,7 +283,17 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex items-center gap-2 text-sm font-bold text-white">
                       <Bot className="w-4 h-4 text-sky-300 shrink-0" />
-                      <span className="truncate">{p.displayName}</span>
+                      {onInspectAiPlayer ? (
+                        <button
+                          type="button"
+                          onClick={() => onInspectAiPlayer(p.id)}
+                          className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                        >
+                          {p.displayName}
+                        </button>
+                      ) : (
+                        <span className="truncate">{p.displayName}</span>
+                      )}
                       <span className="text-[11px] font-mono-nums font-bold text-sky-300 shrink-0">
                         {p.tag}
                       </span>
@@ -306,7 +318,16 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                     <div className="text-[11px] text-slate-400">{p.statusDetail}</div>
                   </div>
 
-                  <div className="shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
+                    {onInspectAiPlayer && (
+                      <button
+                        type="button"
+                        onClick={() => onInspectAiPlayer(p.id)}
+                        className="a2-slate-btn px-3 py-2 rounded-xl text-xs font-bold text-sky-200 border border-sky-400/35 hover:border-amber-300/60 cursor-pointer whitespace-nowrap"
+                      >
+                        Hồ Sơ
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={busy}
