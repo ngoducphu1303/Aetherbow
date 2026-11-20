@@ -1,0 +1,241 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1 / Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Shared hardened primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Validation Blueprint: PlayerAccount (/players/{uid})
+    function isValidPlayerAccount(data, uid) {
+      return data.keys().hasAll([
+        'uid',
+        'displayName',
+        'username',
+        'authProvider',
+        'saveVersion',
+        'powerRating',
+        'highestChapterCleared',
+        'saveData',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid',
+        'displayName',
+        'username',
+        'authProvider',
+        'saveVersion',
+        'powerRating',
+        'highestChapterCleared',
+        'saveData',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.uid is string
+      && data.uid == request.auth.uid
+      && data.uid == uid
+      && isValidId(data.uid)
+      && data.displayName is string
+      && data.displayName.size() >= 2
+      && data.displayName.size() <= 24
+      && data.username is string
+      && data.username.size() <= 64
+      && data.authProvider is string
+      && data.authProvider in ['password', 'google']
+      && data.saveVersion is int
+      && data.saveVersion >= 1
+      && data.saveVersion <= 100
+      && data.powerRating is number
+      && data.powerRating >= 0
+      && data.powerRating <= 1000000000
+      && data.highestChapterCleared is int
+      && data.highestChapterCleared >= 0
+      && data.highestChapterCleared <= 100
+      && data.saveData is map
+      && data.saveData.keys().size() >= 1
+      && data.saveData.keys().size() <= 240
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: LeaderboardEntry (/leaderboard/{uid})
+    function isValidLeaderboardEntry(data, uid) {
+      return data.keys().hasAll([
+        'uid',
+        'displayName',
+        'heroId',
+        'heroName',
+        'title',
+        'equippedAvatarFrameId',
+        'powerRating',
+        'highestChapterCleared',
+        'bestTowerFloor',
+        'arenaRating',
+        'worldBossBestDamage',
+        'vipLevel',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid',
+        'displayName',
+        'heroId',
+        'heroName',
+        'title',
+        'equippedAvatarFrameId',
+        'powerRating',
+        'highestChapterCleared',
+        'bestTowerFloor',
+        'arenaRating',
+        'worldBossBestDamage',
+        'vipLevel',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.uid is string
+      && data.uid == request.auth.uid
+      && data.uid == uid
+      && isValidId(data.uid)
+      && data.displayName is string
+      && data.displayName.size() >= 2
+      && data.displayName.size() <= 24
+      && data.heroId is string
+      && data.heroId.size() >= 1
+      && data.heroId.size() <= 32
+      && data.heroId.matches('^[a-zA-Z0-9_\\-]+$')
+      && data.heroName is string
+      && data.heroName.size() >= 1
+      && data.heroName.size() <= 32
+      && data.title is string
+      && data.title.size() >= 1
+      && data.title.size() <= 48
+      && data.equippedAvatarFrameId is string
+      && data.equippedAvatarFrameId.size() >= 1
+      && data.equippedAvatarFrameId.size() <= 48
+      && data.equippedAvatarFrameId.matches('^[a-zA-Z0-9_\\-]+$')
+      && data.powerRating is number
+      && data.powerRating >= 0
+      && data.powerRating <= 1000000000
+      && data.highestChapterCleared is int
+      && data.highestChapterCleared >= 0
+      && data.highestChapterCleared <= 100
+      && data.bestTowerFloor is int
+      && data.bestTowerFloor >= 0
+      && data.bestTowerFloor <= 10000
+      && data.arenaRating is number
+      && data.arenaRating >= 0
+      && data.arenaRating <= 1000000
+      && data.worldBossBestDamage is number
+      && data.worldBossBestDamage >= 0
+      && data.worldBossBestDamage <= 10000000000
+      && data.vipLevel is int
+      && data.vipLevel >= 0
+      && data.vipLevel <= 30
+      && data.isPublic is bool
+      && data.isPublic == true
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Collection 1: Private Player Accounts & Full Progression Saves (PII Isolated)
+    match /players/{uid} {
+      allow get: if isOwner(uid) && isValidId(uid);
+      allow list: if false;
+      allow create: if isOwner(uid)
+        && isValidId(uid)
+        && isValidPlayerAccount(incoming(), uid)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(uid)
+        && isValidId(uid)
+        && isValidPlayerAccount(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Full cloud save synchronization
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'username',
+            'authProvider',
+            'saveVersion',
+            'powerRating',
+            'highestChapterCleared',
+            'saveData',
+            'updatedAt'
+          ])
+          // Action 2: Display name update only
+          || incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'updatedAt'
+          ])
+        );
+      allow delete: if false;
+    }
+
+    // Collection 2: Public PII-Free Leaderboard Entries
+    match /leaderboard/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || (resource != null && existing().isPublic == true));
+      allow list: if resource.data.isPublic == true;
+      allow create: if isOwner(uid)
+        && isValidId(uid)
+        && isValidLeaderboardEntry(incoming(), uid)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(uid)
+        && isValidId(uid)
+        && isValidLeaderboardEntry(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Sync leaderboard stats
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'heroId',
+            'heroName',
+            'title',
+            'equippedAvatarFrameId',
+            'powerRating',
+            'highestChapterCleared',
+            'bestTowerFloor',
+            'arenaRating',
+            'worldBossBestDamage',
+            'vipLevel',
+            'isPublic',
+            'updatedAt'
+          ])
+          // Action 2: Display name update only
+          || incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'updatedAt'
+          ])
+        );
+      allow delete: if false;
+    }
+  }
+}

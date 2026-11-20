@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementToast } from './components/AchievementToast';
 import { ArenaModal } from './components/ArenaModal';
 import { AuctionHouseModal } from './components/AuctionHouseModal';
+import { AuthGatePanel } from './components/AuthGatePanel';
 import { BattlePassModal } from './components/BattlePassModal';
 import { BundlePreviewModal } from './components/BundlePreviewModal';
 import { CelestialFestivalModal } from './components/CelestialFestivalModal';
@@ -23,12 +25,13 @@ import { MailModal } from './components/MailModal';
 import { NightMarketModal } from './components/NightMarketModal';
 import { OnboardingTour } from './components/OnboardingTour';
 import { PauseResultModal } from './components/PauseResultModal';
-import { ProfileCodexModal } from './components/ProfileCodexModal';
+import { ProfileCodexModal, ProfileModalTab } from './components/ProfileCodexModal';
 import {
   QuickSweepResultModal,
   SweepResultState,
 } from './components/QuickSweepResultModal';
 import { RelicForgeModal } from './components/RelicForgeModal';
+import { SaveConflictModal } from './components/SaveConflictModal';
 import { SettingsModal } from './components/SettingsModal';
 import { SkillDraftModal } from './components/SkillDraftModal';
 import { SplashGate } from './components/SplashGate';
@@ -43,6 +46,21 @@ import { VipPrivilegeModal } from './components/VipPrivilegeModal';
 import { WardrobeModal } from './components/WardrobeModal';
 import { Wave12SanctumModal, Wave12SanctumTab } from './components/Wave12SanctumModal';
 import { Wave13CarnivalModal } from './components/Wave13CarnivalModal';
+import { auth } from './firebase';
+import {
+  CloudSyncStatus,
+  fetchPlayerCloudDoc,
+  formatAccountHandle,
+  hasMeaningfulLocalProgress,
+  logoutPlayer,
+  mapAuthError,
+  PlayerCloudSummary,
+  sanitizeDisplayName,
+  SaveConflictSnapshot,
+  savePlayerCloudState,
+  updatePlayerDisplayName,
+  updatePlayerPassword,
+} from './services/playerCloudService';
 import { Wave13Tab, Wave13TreasuryModal } from './components/Wave13TreasuryModal';
 import { Wave14AscensionModal, Wave14Tab } from './components/Wave14AscensionModal';
 import { LiveEventActionTarget, Wave14EventCenterModal } from './components/Wave14EventCenterModal';
@@ -637,9 +655,25 @@ export default function App() {
   const [auctionModalOpen, setAuctionModalOpen] = useState<boolean>(false);
   const [honorBoardOpen, setHonorBoardOpen] = useState<boolean>(false);
   const [activeArenaOpponent, setActiveArenaOpponent] = useState<ArenaOpponent | null>(null);
-  const [profileModalTab, setProfileModalTab] = useState<
-    'profile' | 'achievements' | 'history' | 'codex' | null
-  >(null);
+  const [profileModalTab, setProfileModalTab] = useState<ProfileModalTab | null>(null);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [playerDisplayName, setPlayerDisplayName] = useState<string>('Chiến Binh Khách');
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>('guest');
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+  const [cloudErrorMessage, setCloudErrorMessage] = useState<string | null>(null);
+  const [guestModeSelected, setGuestModeSelected] = useState<boolean>(false);
+  const [authLinkModalOpen, setAuthLinkModalOpen] = useState<boolean>(false);
+  const [saveConflict, setSaveConflict] = useState<SaveConflictSnapshot | null>(null);
+  const [conflictBusy, setConflictBusy] = useState<boolean>(false);
+  const cloudHydratedUidRef = useRef<string | null>(null);
+  const authFlowInProgressRef = useRef<boolean>(false);
+  const skipNextAutoSyncRef = useRef<boolean>(false);
+  const cloudSaveTimerRef = useRef<number | null>(null);
+  const saveRef = useRef<SaveData>(save);
+  saveRef.current = save;
+  const displayNameRef = useRef<string>(playerDisplayName);
+  displayNameRef.current = playerDisplayName;
   const [mailModalOpen, setMailModalOpen] = useState<boolean>(false);
   const [sweepResult, setSweepResult] = useState<SweepResultState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
@@ -1071,6 +1105,273 @@ export default function App() {
       // ignore quota errors
     }
   }, [save, currentSettings]);
+
+  const buildCloudSummary = useCallback((targetSave: SaveData): PlayerCloudSummary => {
+    const computed = computePlayerStats(targetSave);
+    const heroDef = HERO_MAP[targetSave.selectedHeroId] ?? HERO_MAP.artemis;
+    const wb = normalizeWorldBoss(targetSave.worldBoss);
+    const arenaState = normalizeArena(targetSave.arena);
+    const vipLevel = Math.min(
+      8,
+      Math.floor((normalizeTopUpEvolution(targetSave.topUpEvolution).points ?? 0) / 150) +
+        (isVipActive(targetSave.vip) ? 1 : 0)
+    );
+    return {
+      heroId: heroDef.id,
+      heroName: heroDef.name,
+      title: targetSave.equippedTitle ?? 'Tân Binh Tinh Giới',
+      equippedAvatarFrameId: targetSave.equippedAvatarFrameId ?? 'default_gold',
+      powerRating: computed.powerRating,
+      highestChapterCleared: targetSave.highestChapterCleared ?? 0,
+      bestTowerFloor: targetSave.bestTowerFloor ?? 0,
+      arenaRating: arenaState.rating ?? 1000,
+      worldBossBestDamage: wb.bestSingleDamage ?? 0,
+      vipLevel,
+    };
+  }, []);
+
+  const performCloudSave = useCallback(
+    async (user: User, targetSave: SaveData, nameOverride?: string) => {
+      setCloudSyncStatus('syncing');
+      setCloudErrorMessage(null);
+      try {
+        const effectiveName = sanitizeDisplayName(
+          nameOverride || displayNameRef.current || user.displayName || formatAccountHandle(user.email),
+          'Chiến Binh'
+        );
+        const ts = await savePlayerCloudState(
+          user,
+          effectiveName,
+          targetSave,
+          buildCloudSummary(targetSave)
+        );
+        setLastSyncedAt(ts);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        setCloudSyncStatus('error');
+        setCloudErrorMessage(mapAuthError(err));
+      }
+    },
+    [buildCloudSummary]
+  );
+
+  const hydrateSignedInUser = useCallback(
+    async (user: User, options?: { displayNameOverride?: string; allowConflictPrompt?: boolean }) => {
+      const uid = user.uid;
+      setCloudSyncStatus('loading');
+      setCloudErrorMessage(null);
+      const fallbackName = sanitizeDisplayName(
+        options?.displayNameOverride || user.displayName || formatAccountHandle(user.email),
+        'Chiến Binh'
+      );
+      setPlayerDisplayName(fallbackName);
+
+      try {
+        const cloudRecord = await fetchPlayerCloudDoc(uid);
+        const localSave = saveRef.current;
+
+        if (!cloudRecord) {
+          // First-time cloud account: upload current local progress seamlessly
+          cloudHydratedUidRef.current = uid;
+          await performCloudSave(user, localSave, fallbackName);
+          return;
+        }
+
+        const resolvedName = sanitizeDisplayName(
+          options?.displayNameOverride || cloudRecord.displayName || fallbackName,
+          'Chiến Binh'
+        );
+        setPlayerDisplayName(resolvedName);
+
+        const localHasProgress = hasMeaningfulLocalProgress(localSave);
+        const cloudIsDifferent =
+          cloudRecord.highestChapterCleared !== localSave.highestChapterCleared ||
+          (cloudRecord.saveData?.gold ?? 0) !== localSave.gold ||
+          (cloudRecord.saveData?.gems ?? 0) !== localSave.gems ||
+          (cloudRecord.saveData?.career?.totalRuns ?? 0) !== (localSave.career?.totalRuns ?? 0);
+
+        if (options?.allowConflictPrompt && localHasProgress && cloudIsDifferent) {
+          setSaveConflict({
+            user,
+            cloudRecord,
+            localSave,
+            localPower: computePlayerStats(localSave).powerRating,
+          });
+          setCloudSyncStatus('pending');
+          return;
+        }
+
+        // Load cloud save seamlessly
+        const migrated = migrateSaveData(cloudRecord.saveData);
+        skipNextAutoSyncRef.current = true;
+        cloudHydratedUidRef.current = uid;
+        setSave(migrated);
+        setLastSyncedAt(cloudRecord.updatedAtMs);
+        setCloudSyncStatus('synced');
+      } catch (err) {
+        cloudHydratedUidRef.current = uid;
+        setCloudSyncStatus('error');
+        setCloudErrorMessage(mapAuthError(err));
+      }
+    },
+    [performCloudSave]
+  );
+
+  // Subscribe to Firebase Auth state on boot
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthReady(true);
+      if (!user) {
+        cloudHydratedUidRef.current = null;
+        setPlayerDisplayName('Chiến Binh Khách');
+        setCloudSyncStatus('guest');
+        setLastSyncedAt(null);
+        setCloudErrorMessage(null);
+        return;
+      }
+      if (authFlowInProgressRef.current) return;
+      if (cloudHydratedUidRef.current !== user.uid) {
+        void hydrateSignedInUser(user, { allowConflictPrompt: false });
+      }
+    });
+    return () => unsub();
+  }, [hydrateSignedInUser]);
+
+  // Debounced auto-sync to Cloud Firestore whenever SaveData changes while authenticated
+  useEffect(() => {
+    if (!currentUser) return;
+    if (cloudHydratedUidRef.current !== currentUser.uid) return;
+    if (saveConflict) return;
+    if (skipNextAutoSyncRef.current) {
+      skipNextAutoSyncRef.current = false;
+      return;
+    }
+
+    setCloudSyncStatus((prev) => (prev === 'syncing' ? prev : 'pending'));
+    if (cloudSaveTimerRef.current) {
+      window.clearTimeout(cloudSaveTimerRef.current);
+    }
+    cloudSaveTimerRef.current = window.setTimeout(() => {
+      cloudSaveTimerRef.current = null;
+      void performCloudSave(currentUser, saveRef.current);
+    }, 2500);
+
+    return () => {
+      if (cloudSaveTimerRef.current) {
+        window.clearTimeout(cloudSaveTimerRef.current);
+        cloudSaveTimerRef.current = null;
+      }
+    };
+  }, [save, currentUser, saveConflict, performCloudSave]);
+
+  // Flush pending cloud save if player switches tabs or minimizes browser
+  useEffect(() => {
+    const onVisChange = () => {
+      if (document.visibilityState !== 'hidden') return;
+      if (!currentUser || cloudHydratedUidRef.current !== currentUser.uid || saveConflict) return;
+      if (cloudSaveTimerRef.current) {
+        window.clearTimeout(cloudSaveTimerRef.current);
+        cloudSaveTimerRef.current = null;
+        void performCloudSave(currentUser, saveRef.current);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+    return () => document.removeEventListener('visibilitychange', onVisChange);
+  }, [currentUser, saveConflict, performCloudSave]);
+
+  const handleAuthSuccess = useCallback(
+    async (user: User, displayNameOverride?: string) => {
+      authFlowInProgressRef.current = true;
+      setCurrentUser(user);
+      setGuestModeSelected(false);
+      setAuthLinkModalOpen(false);
+      try {
+        await hydrateSignedInUser(user, {
+          displayNameOverride,
+          allowConflictPrompt: true,
+        });
+      } finally {
+        authFlowInProgressRef.current = false;
+      }
+    },
+    [hydrateSignedInUser]
+  );
+
+  const handleChooseCloudConflict = useCallback(() => {
+    if (!saveConflict || conflictBusy) return;
+    const { user, cloudRecord } = saveConflict;
+    const migrated = migrateSaveData(cloudRecord.saveData);
+    skipNextAutoSyncRef.current = true;
+    cloudHydratedUidRef.current = user.uid;
+    setPlayerDisplayName(cloudRecord.displayName);
+    setSave(migrated);
+    setLastSyncedAt(cloudRecord.updatedAtMs);
+    setCloudSyncStatus('synced');
+    setSaveConflict(null);
+  }, [conflictBusy, saveConflict]);
+
+  const handleChooseLocalConflict = useCallback(async () => {
+    if (!saveConflict || conflictBusy) return;
+    setConflictBusy(true);
+    try {
+      const { user, localSave, cloudRecord } = saveConflict;
+      cloudHydratedUidRef.current = user.uid;
+      await performCloudSave(user, localSave, cloudRecord.displayName);
+      setSaveConflict(null);
+    } finally {
+      setConflictBusy(false);
+    }
+  }, [conflictBusy, performCloudSave, saveConflict]);
+
+  const handleManualCloudSave = useCallback(async () => {
+    if (!currentUser) return;
+    if (cloudSaveTimerRef.current) {
+      window.clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+    }
+    await performCloudSave(currentUser, saveRef.current);
+  }, [currentUser, performCloudSave]);
+
+  const handleUpdateDisplayName = useCallback(
+    async (newName: string) => {
+      if (!currentUser) return;
+      const updated = await updatePlayerDisplayName(currentUser, newName);
+      setPlayerDisplayName(updated);
+      setLastSyncedAt(Date.now());
+    },
+    [currentUser]
+  );
+
+  const handleUpdatePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      if (!currentUser) return;
+      await updatePlayerPassword(currentUser, currentPassword, newPassword);
+    },
+    [currentUser]
+  );
+
+  const handleLogout = useCallback(async () => {
+    if (cloudSaveTimerRef.current) {
+      window.clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+    }
+    if (currentUser && cloudHydratedUidRef.current === currentUser.uid && !saveConflict) {
+      try {
+        await performCloudSave(currentUser, saveRef.current);
+      } catch {
+        // allow sign-out even if offline
+      }
+    }
+    await logoutPlayer();
+    cloudHydratedUidRef.current = null;
+    setCurrentUser(null);
+    setGuestModeSelected(false);
+    setAuthLinkModalOpen(false);
+    setSaveConflict(null);
+    setEnteredGame(false);
+    setPhase(GamePhase.TITLE);
+  }, [currentUser, performCloudSave, saveConflict]);
 
   // Sync dynamic BGM track & 3-phase Boss symphony intensity to game state
   useEffect(() => {
@@ -9040,7 +9341,24 @@ export default function App() {
       {phase === GamePhase.TITLE && !enteredGame && (
         <SplashGate
           save={save}
+          powerRating={playerStats.powerRating}
           appearanceStatus={appearanceStatus}
+          authReady={authReady}
+          currentUser={currentUser}
+          playerDisplayName={playerDisplayName}
+          cloudSyncStatus={cloudSyncStatus}
+          lastSyncedAt={lastSyncedAt}
+          guestModeSelected={guestModeSelected}
+          onAuthSuccess={handleAuthSuccess}
+          onContinueGuest={() => {
+            setGuestModeSelected(true);
+            if (canEnterGame) {
+              soundEngine.unlock();
+              soundEngine.playVictory();
+              setEnteredGame(true);
+            }
+          }}
+          onSignOut={handleLogout}
           onRetryModels={retryStartupModels}
           onEnterGame={() => {
             if (!canEnterGame) return;
@@ -9163,6 +9481,10 @@ export default function App() {
           onOpenWardrobe={handleOpenWardrobe}
           onOpenDispatch={() => setDispatchOpen(true)}
           onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
+          playerDisplayName={currentUser ? playerDisplayName : undefined}
+          cloudSyncStatus={cloudSyncStatus}
+          onManualCloudSave={() => void handleManualCloudSave()}
+          onOpenLinkAccount={() => setAuthLinkModalOpen(true)}
           onOpenMailModal={() => setMailModalOpen(true)}
           onOpenSettingsModal={() => setSettingsOpen(true)}
           onOpenEarlyRoadmap={() => setEarlyRoadmapOpen(true)}
@@ -9762,6 +10084,19 @@ export default function App() {
           save={save}
           stats={playerStats}
           initialTab={profileModalTab}
+          currentUser={currentUser}
+          playerDisplayName={playerDisplayName}
+          cloudSyncStatus={cloudSyncStatus}
+          lastSyncedAt={lastSyncedAt}
+          cloudErrorMessage={cloudErrorMessage}
+          onManualCloudSave={handleManualCloudSave}
+          onUpdateDisplayName={handleUpdateDisplayName}
+          onUpdatePassword={handleUpdatePassword}
+          onOpenLinkAccount={() => {
+            setProfileModalTab(null);
+            setAuthLinkModalOpen(true);
+          }}
+          onLogout={handleLogout}
           onClose={() => setProfileModalTab(null)}
           onClaimAchievement={handleClaimAchievement}
           onClaimSeasonMedal={handleClaimSeasonMedal}
@@ -9861,6 +10196,8 @@ export default function App() {
           save={save}
           powerRating={playerStats.powerRating}
           heroName={(HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis).name}
+          playerDisplayName={currentUser ? playerDisplayName : undefined}
+          currentUid={currentUser?.uid ?? null}
           vipLevel={Math.min(
             8,
             Math.floor((normalizeTopUpEvolution(save.topUpEvolution).points ?? 0) / 150) +
@@ -9879,6 +10216,27 @@ export default function App() {
             handleStartWorldBoss();
           }}
           onClose={() => setHonorBoardOpen(false)}
+        />
+      )}
+
+      {authLinkModalOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-[#040611]/92 p-4">
+          <AuthGatePanel
+            modeInitial="register"
+            title="Liên Kết Tài Khoản Đám Mây"
+            isGuestLinking
+            onAuthSuccess={handleAuthSuccess}
+            onClose={() => setAuthLinkModalOpen(false)}
+          />
+        </div>
+      )}
+
+      {saveConflict && (
+        <SaveConflictModal
+          conflict={saveConflict}
+          busy={conflictBusy}
+          onChooseCloud={handleChooseCloudConflict}
+          onChooseLocal={() => void handleChooseLocalConflict()}
         />
       )}
 

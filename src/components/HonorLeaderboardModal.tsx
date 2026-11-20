@@ -1,5 +1,19 @@
-import React, { useMemo, useState } from 'react';
-import { Award, Check, Copy, Crown, Eye, Frame, Sparkles, Swords, Trophy, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Award,
+  Check,
+  Cloud,
+  Copy,
+  Crown,
+  Eye,
+  Frame,
+  RefreshCw,
+  Sparkles,
+  Swords,
+  Trophy,
+  Users,
+  X,
+} from 'lucide-react';
 import worldBossArt from '../assets/images/world_boss_abyss_1795005956955.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { HERO_MAP } from '../data/heroesData';
@@ -21,6 +35,10 @@ import {
   VIP_AVATAR_FRAME_MAP,
 } from '../data/wave13Data';
 import {
+  CloudLeaderboardRow,
+  fetchRealLeaderboard,
+} from '../services/playerCloudService';
+import {
   AvatarFrameId,
   MythicBadgeId,
   SaveData,
@@ -38,6 +56,8 @@ interface HonorLeaderboardModalProps {
   save: SaveData;
   powerRating: number;
   heroName: string;
+  playerDisplayName?: string;
+  currentUid?: string | null;
   vipLevel?: number;
   onUnlockAvatarFrame: (frameId: AvatarFrameId) => void;
   onEquipAvatarFrame: (frameId: AvatarFrameId) => void;
@@ -55,6 +75,8 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   save,
   powerRating,
   heroName,
+  playerDisplayName,
+  currentUid = null,
   vipLevel = 0,
   onUnlockAvatarFrame,
   onEquipAvatarFrame,
@@ -69,15 +91,79 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
 }) => {
   const [section, setSection] = useState<'rankings' | 'badges' | 'frames'>('rankings');
   const [rankTab, setRankTab] = useState<HonorBoardTab>('power');
+  const [boardSource, setBoardSource] = useState<'real' | 'combined'>('real');
+  const [cloudPlayers, setCloudPlayers] = useState<CloudLeaderboardRow[]>([]);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
   const [wbImgErr, setWbImgErr] = useState(false);
   const [inspectedProfile, setInspectedProfile] = useState<TopPlayerBuildProfile | null>(null);
   const [copiedRank, setCopiedRank] = useState<number | null>(null);
 
+  const loadCloudBoard = useCallback(async () => {
+    setCloudLoading(true);
+    setCloudError(null);
+    try {
+      const data = await fetchRealLeaderboard(60);
+      setCloudPlayers(data);
+    } catch (err) {
+      setCloudError(
+        err instanceof Error && err.message.includes('Quota exceeded')
+          ? 'Hạn mức đọc dữ liệu hôm nay đã đạt giới hạn.'
+          : 'Không thể tải bảng xếp hạng đám mây lúc này.'
+      );
+    } finally {
+      setCloudLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCloudBoard();
+  }, [loadCloudBoard]);
+
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
-  const rows = useMemo(
-    () => buildHonorLeaderboard(rankTab, save, powerRating, heroName),
-    [rankTab, save, powerRating, heroName]
+  const displayHeroLabel = playerDisplayName ? `${playerDisplayName}` : heroName;
+  const serverRows = useMemo(
+    () => buildHonorLeaderboard(rankTab, save, powerRating, displayHeroLabel),
+    [rankTab, save, powerRating, displayHeroLabel]
   );
+
+  const realPlayerRows = useMemo(() => {
+    const scoreOf = (r: CloudLeaderboardRow) => {
+      if (rankTab === 'power') return r.powerRating;
+      if (rankTab === 'world_boss') return r.worldBossBestDamage;
+      if (rankTab === 'arena') return r.arenaRating;
+      return r.bestTowerFloor;
+    };
+    return [...cloudPlayers]
+      .sort((a, b) => scoreOf(b) - scoreOf(a))
+      .map((r, idx) => ({
+        id: `cloud_${r.uid}`,
+        rank: idx + 1,
+        name: r.displayName,
+        heroId: r.heroId,
+        heroName: r.heroName,
+        server: `Chương ${r.highestChapterCleared}`,
+        badgeTitle: r.title,
+        frameId: r.equippedAvatarFrameId,
+        score: scoreOf(r),
+        isPlayer: Boolean(currentUid && r.uid === currentUid),
+        isRealPlayer: true,
+      }));
+  }, [cloudPlayers, currentUid, rankTab]);
+
+  const rows = useMemo(() => {
+    if (boardSource === 'real') return realPlayerRows;
+    const filteredServer = serverRows
+      .filter((r) => !(currentUid && r.isPlayer && realPlayerRows.some((rp) => rp.isPlayer)))
+      .map((r) => ({
+        ...r,
+        heroId: r.isPlayer ? activeHero.id : ('thor' as const),
+        isRealPlayer: r.isPlayer,
+      }));
+    return [...realPlayerRows, ...filteredServer]
+      .sort((a, b) => b.score - a.score)
+      .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+  }, [activeHero.id, boardSource, currentUid, realPlayerRows, serverRows]);
 
   const wb = normalizeWorldBoss(save.worldBoss);
   const unlockedFrames = new Set<AvatarFrameId>(save.unlockedAvatarFrames ?? ['default_gold']);
@@ -258,6 +344,45 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
               </div>
             </div>
 
+            {/* Real Player vs Combined Server Switch + Refresh */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-400/25 bg-[#070b1a] p-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBoardSource('real')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors ${
+                    boardSource === 'real'
+                      ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                      : 'text-slate-300 hover:text-white border border-transparent'
+                  }`}
+                >
+                  <Cloud className="w-3.5 h-3.5 shrink-0" />
+                  <span>Người Chơi Thật ({cloudPlayers.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBoardSource('combined')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors ${
+                    boardSource === 'combined'
+                      ? 'bg-amber-400/20 text-amber-200 border border-amber-300/50'
+                      : 'text-slate-300 hover:text-white border border-transparent'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 shrink-0" />
+                  <span>Liên Server (Tổng Hợp)</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                disabled={cloudLoading}
+                onClick={() => void loadCloudBoard()}
+                className="a2-slate-btn px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${cloudLoading ? 'animate-spin' : ''}`} />
+                <span>{cloudLoading ? 'Đang tải…' : 'Làm Mới'}</span>
+              </button>
+            </div>
+
             {/* Board Category Tabs */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
@@ -281,91 +406,120 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
               ))}
             </div>
 
+            {cloudError && boardSource === 'real' && (
+              <div className="rounded-xl border border-rose-400/35 bg-rose-950/50 px-3.5 py-2.5 text-xs text-rose-200">
+                {cloudError}
+              </div>
+            )}
+
             {/* Top 3 Podium */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {rows.slice(0, 3).map((entry) => {
-                const heroDef = HERO_MAP[activeHero.id];
-                const medalColors =
-                  entry.rank === 1
-                    ? 'border-amber-300 bg-gradient-to-b from-amber-500/20 to-[#090d22]'
-                    : entry.rank === 2
-                    ? 'border-sky-300/75 bg-gradient-to-b from-sky-500/15 to-[#090d22]'
-                    : 'border-orange-400/70 bg-gradient-to-b from-orange-500/15 to-[#090d22]';
-                return (
-                  <div
-                    key={entry.id}
-                    className={`rounded-2xl border p-3.5 flex flex-col items-center text-center gap-1.5 ${medalColors}`}
-                  >
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-950/90 border border-amber-300/60 font-mono-nums text-[10px] font-black text-amber-300">
-                      HẠNG #{entry.rank}
-                    </span>
-                    <ZodiacAvatar
-                      heroId={entry.isPlayer ? activeHero.id : 'artemis'}
-                      accentHex={entry.isPlayer ? activeHero.accentHex : heroDef.accentHex}
-                      cloakHex={entry.isPlayer ? activeHero.cloakHex : 0x312e81}
-                      hairHex={entry.isPlayer ? activeHero.hairHex : 0xfbbf24}
-                      frameId={entry.frameId}
-                      sizeClass="w-12 h-12"
-                    />
-                    <div className="font-display text-sm font-black text-white truncate max-w-full">
-                      {entry.name}
+            {rows.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {rows.slice(0, 3).map((entry) => {
+                  const heroDef = HERO_MAP[entry.heroId] ?? HERO_MAP.artemis;
+                  const medalColors =
+                    entry.rank === 1
+                      ? 'border-amber-300 bg-gradient-to-b from-amber-500/20 to-[#090d22]'
+                      : entry.rank === 2
+                      ? 'border-sky-300/75 bg-gradient-to-b from-sky-500/15 to-[#090d22]'
+                      : 'border-orange-400/70 bg-gradient-to-b from-orange-500/15 to-[#090d22]';
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`rounded-2xl border p-3.5 flex flex-col items-center text-center gap-1.5 ${medalColors}`}
+                    >
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-950/90 border border-amber-300/60 font-mono-nums text-[10px] font-black text-amber-300">
+                        HẠNG #{entry.rank}
+                      </span>
+                      <ZodiacAvatar
+                        heroId={heroDef.id}
+                        accentHex={heroDef.accentHex}
+                        cloakHex={heroDef.cloakHex}
+                        hairHex={heroDef.hairHex}
+                        frameId={entry.frameId}
+                        sizeClass="w-12 h-12"
+                      />
+                      <div className="font-display text-sm font-black text-white truncate max-w-full">
+                        {entry.name}
+                        {entry.isPlayer ? ' (Bạn)' : ''}
+                      </div>
+                      <div className="text-[10px] font-bold text-amber-200 truncate max-w-full">
+                        {entry.badgeTitle}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {entry.server} · {entry.heroName}
+                      </div>
+                      <div className="font-mono-nums text-sm font-black text-emerald-300 mt-0.5">
+                        {entry.score.toLocaleString('vi-VN')} {scoreSuffix}
+                      </div>
                     </div>
-                    <div className="text-[10px] font-bold text-amber-200 truncate max-w-full">
-                      [{entry.badgeTitle}]
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      {entry.server} · {entry.heroName}
-                    </div>
-                    <div className="font-mono-nums text-sm font-black text-emerald-300 mt-0.5">
-                      {entry.score.toLocaleString('vi-VN')} {scoreSuffix}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Full Leaderboard Table */}
             <div className="rounded-2xl border border-amber-400/25 bg-[#070b1a]/95 divide-y divide-slate-800/80">
-              {rows.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={`px-3.5 py-2.5 flex items-center justify-between gap-3 ${
-                    entry.isPlayer ? 'bg-emerald-500/15' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`w-7 text-center font-mono-nums text-xs font-black shrink-0 ${
-                        entry.rank <= 3 ? 'text-amber-300' : 'text-slate-400'
+              {cloudLoading && boardSource === 'real' && rows.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-300">
+                  Đang tải dữ liệu chiến binh từ đám mây…
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="p-6 text-center space-y-2">
+                  <div className="text-sm font-bold text-white">
+                    Chưa có chiến binh nào ghi danh trên Bảng Đám Mây
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Đăng nhập tài khoản đám mây để trở thành người đầu tiên dẫn đầu Bảng Xếp Hạng Lực Chiến!
+                  </p>
+                </div>
+              ) : (
+                rows.map((entry) => {
+                  const rowHero = HERO_MAP[entry.heroId] ?? HERO_MAP.artemis;
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`px-3.5 py-2.5 flex items-center justify-between gap-3 ${
+                        entry.isPlayer ? 'bg-emerald-500/15' : ''
                       }`}
                     >
-                      #{entry.rank}
-                    </span>
-                    <ZodiacAvatar
-                      heroId={entry.isPlayer ? activeHero.id : 'thor'}
-                      accentHex={entry.isPlayer ? activeHero.accentHex : 0x38bdf8}
-                      cloakHex={entry.isPlayer ? activeHero.cloakHex : 0x1e293b}
-                      hairHex={entry.isPlayer ? activeHero.hairHex : 0xe2e8f0}
-                      frameId={entry.frameId}
-                      sizeClass="w-8 h-8"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-xs font-black text-white truncate">
-                        {entry.name}{' '}
-                        <span className="text-[10px] font-bold text-amber-300">
-                          · {entry.badgeTitle}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span
+                          className={`w-7 text-center font-mono-nums text-xs font-black shrink-0 ${
+                            entry.rank <= 3 ? 'text-amber-300' : 'text-slate-400'
+                          }`}
+                        >
+                          #{entry.rank}
                         </span>
+                        <ZodiacAvatar
+                          heroId={rowHero.id}
+                          accentHex={rowHero.accentHex}
+                          cloakHex={rowHero.cloakHex}
+                          hairHex={rowHero.hairHex}
+                          frameId={entry.frameId}
+                          sizeClass="w-8 h-8"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-white truncate">
+                            {entry.name}
+                            {entry.isPlayer ? ' (Bạn)' : ''}{' '}
+                            <span className="text-[10px] font-bold text-amber-300">
+                              · {entry.badgeTitle}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {entry.server} · Tướng {entry.heroName}
+                            {entry.isRealPlayer ? ' · Tài khoản thật' : ''}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-slate-400 truncate">
-                        {entry.server} · Tướng {entry.heroName}
+                      <div className="font-mono-nums text-xs font-black text-amber-200 shrink-0">
+                        {entry.score.toLocaleString('vi-VN')} {scoreSuffix}
                       </div>
                     </div>
-                  </div>
-                  <div className="font-mono-nums text-xs font-black text-amber-200 shrink-0">
-                    {entry.score.toLocaleString('vi-VN')} {scoreSuffix}
-                  </div>
-                </div>
-              ))}
+                  );
+                })
+              )}
             </div>
 
             {/* World Boss Cross-Server Damage Milestones */}

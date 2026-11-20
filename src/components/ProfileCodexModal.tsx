@@ -1,5 +1,27 @@
-import React, { useState } from 'react';
-import { Award, BookOpen, Check, Crown, History, Shield, Skull, Sword, Trophy, User, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  Award,
+  BookOpen,
+  Check,
+  CheckCircle2,
+  Cloud,
+  CloudOff,
+  Crown,
+  History,
+  KeyRound,
+  LogOut,
+  RefreshCw,
+  Shield,
+  ShieldCheck,
+  Skull,
+  Sword,
+  Trophy,
+  User,
+  UserPlus,
+  X,
+} from 'lucide-react';
+import type { User as FirebaseUser } from 'firebase/auth';
 import bossArenaArt from '../assets/images/boss_rush_arena_emblem_1794973982304.jpg';
 import seasonHonorArt from '../assets/images/season_honor_medals_1794982055715.jpg';
 import { soundEngine } from '../audio/soundEngine';
@@ -27,13 +49,32 @@ import {
   computeCodexSummary,
   countClaimableCodexRanks,
 } from '../data/wave11Data';
+import {
+  CloudSyncStatus,
+  detectAuthProvider,
+  formatAccountHandle,
+  isPasswordAccount,
+  mapAuthError,
+} from '../services/playerCloudService';
 import { ComputedPlayerStats, DynamicTitleId, SaveData } from '../types/game';
 import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon, StarDustIcon } from './GameIcons';
+
+export type ProfileModalTab = 'profile' | 'achievements' | 'history' | 'codex' | 'account';
 
 interface ProfileCodexModalProps {
   save: SaveData;
   stats: ComputedPlayerStats;
-  initialTab?: 'profile' | 'achievements' | 'history' | 'codex';
+  initialTab?: ProfileModalTab;
+  currentUser: FirebaseUser | null;
+  playerDisplayName: string;
+  cloudSyncStatus: CloudSyncStatus;
+  lastSyncedAt: number | null;
+  cloudErrorMessage?: string | null;
+  onManualCloudSave: () => Promise<void>;
+  onUpdateDisplayName: (newName: string) => Promise<void>;
+  onUpdatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  onOpenLinkAccount: () => void;
+  onLogout: () => Promise<void>;
   onClose: () => void;
   onClaimAchievement: (id: string) => void;
   onClaimSeasonMedal: (medalId: string) => void;
@@ -46,6 +87,16 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
   save,
   stats,
   initialTab = 'profile',
+  currentUser,
+  playerDisplayName,
+  cloudSyncStatus,
+  lastSyncedAt,
+  cloudErrorMessage,
+  onManualCloudSave,
+  onUpdateDisplayName,
+  onUpdatePassword,
+  onOpenLinkAccount,
+  onLogout,
   onClose,
   onClaimAchievement,
   onClaimSeasonMedal,
@@ -53,10 +104,95 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
   onSelectDynamicTitle,
   onClaimCodexRank,
 }) => {
-  const [tab, setTab] = useState<'profile' | 'achievements' | 'history' | 'codex'>(initialTab);
+  const [tab, setTab] = useState<ProfileModalTab>(initialTab);
   const [codexSubTab, setCodexSubTab] = useState<'collection' | 'heroes' | 'enemies' | 'skills'>('collection');
   const [arenaImgFailed, setArenaImgFailed] = useState(false);
   const [medalImgFailed, setMedalImgFailed] = useState(false);
+
+  // Account tab state
+  const [nameInput, setNameInput] = useState(playerDisplayName);
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameFeedback, setNameFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const [currPwd, setCurrPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [pwdFeedback, setPwdFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const [manualSaving, setManualSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    setNameInput(playerDisplayName);
+  }, [playerDisplayName]);
+
+  const canChangePassword = isPasswordAccount(currentUser);
+  const formattedSyncTime = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : null;
+
+  const handleSaveName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || nameSaving) return;
+    setNameFeedback(null);
+    setNameSaving(true);
+    try {
+      await onUpdateDisplayName(nameInput);
+      setNameFeedback({ kind: 'ok', text: 'Đã cập nhật tên hiển thị và đồng bộ lên Bảng Xếp Hạng.' });
+    } catch (err) {
+      setNameFeedback({ kind: 'err', text: mapAuthError(err) });
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || pwdSaving) return;
+    setPwdFeedback(null);
+    if (newPwd !== confirmPwd) {
+      setPwdFeedback({ kind: 'err', text: 'Mật khẩu mới và xác nhận không khớp.' });
+      return;
+    }
+    setPwdSaving(true);
+    try {
+      await onUpdatePassword(currPwd, newPwd);
+      setCurrPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
+      setPwdFeedback({ kind: 'ok', text: 'Đã đổi mật khẩu thành công.' });
+    } catch (err) {
+      setPwdFeedback({ kind: 'err', text: mapAuthError(err) });
+    } finally {
+      setPwdSaving(false);
+    }
+  };
+
+  const handleManualSyncClick = async () => {
+    if (!currentUser || manualSaving) return;
+    setManualSaving(true);
+    try {
+      await onManualCloudSave();
+    } finally {
+      setManualSaving(false);
+    }
+  };
+
+  const handleLogoutClick = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await onLogout();
+      onClose();
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   const codexSummary = computeCodexSummary(save);
   const claimableCodexCount = countClaimableCodexRanks(save);
@@ -126,7 +262,7 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                 )}
               </div>
               <h2 className="font-display text-lg sm:text-xl font-black text-white">
-                Hồ Sơ Chiến Binh · {activeHero.name}
+                {playerDisplayName} · {activeHero.name}
               </h2>
             </div>
           </div>
@@ -143,19 +279,32 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
             <X className="w-4 h-4" />
           </button>
 
-          <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-[#050813] border border-amber-400/25 rounded-xl p-1">
+          <div className="w-full grid grid-cols-2 sm:grid-cols-5 gap-1.5 bg-[#050813] border border-amber-400/25 rounded-xl p-1">
             <button
               type="button"
               onClick={() => {
                 soundEngine.playUiClick();
                 setTab('profile');
               }}
-              className={`py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+              className={`py-2 px-2 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
                 tab === 'profile' ? 'a2-yellow-btn' : 'text-slate-300 hover:text-white'
               }`}
             >
               <User className="w-3.5 h-3.5 shrink-0" />
-              <span>Hồ Sơ &amp; Chỉ Số</span>
+              <span>Hồ Sơ</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                setTab('account');
+              }}
+              className={`py-2 px-2 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+                tab === 'account' ? 'a2-yellow-btn' : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>Tài Khoản</span>
             </button>
             <button
               type="button"
@@ -163,7 +312,7 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                 soundEngine.playUiClick();
                 setTab('achievements');
               }}
-              className={`py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+              className={`py-2 px-2 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
                 tab === 'achievements' ? 'a2-yellow-btn' : 'text-slate-300 hover:text-white'
               }`}
             >
@@ -176,12 +325,12 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                 soundEngine.playUiClick();
                 setTab('history');
               }}
-              className={`py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+              className={`py-2 px-2 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
                 tab === 'history' ? 'a2-yellow-btn' : 'text-slate-300 hover:text-white'
               }`}
             >
               <History className="w-3.5 h-3.5 shrink-0" />
-              <span>Nhật Ký &amp; Vinh Danh{claimableMedalsCount > 0 ? ` (${claimableMedalsCount})` : ''}</span>
+              <span>Vinh Danh{claimableMedalsCount > 0 ? ` (${claimableMedalsCount})` : ''}</span>
             </button>
             <button
               type="button"
@@ -189,7 +338,7 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                 soundEngine.playUiClick();
                 setTab('codex');
               }}
-              className={`py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+              className={`py-2 px-2 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
                 tab === 'codex' ? 'a2-yellow-btn' : 'text-slate-300 hover:text-white'
               }`}
             >
@@ -972,6 +1121,242 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'account' && (
+            <div className="space-y-5">
+              {/* Identity & Cloud Sync Status Card */}
+              <div className="cel-panel rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-2 text-xs font-bold">
+                    {currentUser ? (
+                      <>
+                        <Cloud className="w-4 h-4 text-emerald-300 shrink-0" />
+                        <span className="text-emerald-300">
+                          {cloudSyncStatus === 'syncing' || manualSaving
+                            ? 'Đang đồng bộ lên đám mây Firebase…'
+                            : cloudSyncStatus === 'pending'
+                            ? 'Có thay đổi mới chờ tự động lưu…'
+                            : cloudSyncStatus === 'error'
+                            ? 'Đồng bộ đám mây gặp lỗi'
+                            : formattedSyncTime
+                            ? `Đã đồng bộ đám mây · ${formattedSyncTime}`
+                            : 'Đã kết nối đám mây Firebase'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <CloudOff className="w-4 h-4 text-amber-300 shrink-0" />
+                        <span className="text-amber-300">
+                          Chế Độ Khách (Chỉ lưu cục bộ trên trình duyệt này)
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <h3 className="font-display text-lg font-black text-white truncate">
+                    {playerDisplayName}
+                  </h3>
+
+                  {currentUser ? (
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-300">
+                      <span>{formatAccountHandle(currentUser.email)}</span>
+                      <span aria-hidden="true" className="text-slate-600">·</span>
+                      <span>
+                        {detectAuthProvider(currentUser) === 'google'
+                          ? 'Đăng nhập bằng Google'
+                          : 'Tài khoản & Mật khẩu'}
+                      </span>
+                      <span aria-hidden="true" className="text-slate-600">·</span>
+                      <span className="font-mono-nums text-slate-400">
+                        ID: {currentUser.uid.slice(0, 8)}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-300 max-w-xl">
+                      Liên kết tài khoản ngay để lưu toàn bộ Anh Hùng, Trang Bị, Ngọc Khắc, Vàng và Ngọc Hồn lên Firebase Cloud cũng như ghi danh lên Bảng Xếp Hạng người chơi thật.
+                    </p>
+                  )}
+
+                  {cloudErrorMessage && (
+                    <div className="text-[11px] text-rose-300 flex items-center gap-1.5 pt-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{cloudErrorMessage}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap sm:flex-col gap-2 shrink-0">
+                  {currentUser ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={manualSaving || cloudSyncStatus === 'syncing'}
+                        onClick={handleManualSyncClick}
+                        className="a2-yellow-btn px-4 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-60"
+                      >
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${
+                            manualSaving || cloudSyncStatus === 'syncing' ? 'animate-spin' : ''
+                          }`}
+                        />
+                        <span>{manualSaving ? 'Đang lưu…' : 'Lưu Ngay Lên Đám Mây'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={loggingOut}
+                        onClick={handleLogoutClick}
+                        className="a2-slate-btn px-4 py-2 rounded-xl text-xs font-bold text-rose-200 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-60"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>{loggingOut ? 'Đang đăng xuất…' : 'Đăng Xuất'}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick();
+                        onOpenLinkAccount();
+                      }}
+                      className="a2-yellow-btn px-4 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Đăng Nhập / Liên Kết Tài Khoản</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {currentUser && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Change Display Name */}
+                  <form onSubmit={handleSaveName} className="cel-panel rounded-2xl p-4 space-y-3">
+                    <div>
+                      <h4 className="font-display text-sm font-black text-amber-200">
+                        Đổi Tên Hiển Thị
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Hiển thị trên thanh Hồ Sơ sảnh và Bảng Xếp Hạng Liên Server.
+                      </p>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="profile-display-name"
+                        className="block text-[11px] font-semibold text-slate-300 mb-1"
+                      >
+                        Tên chiến binh mới (2–24 ký tự)
+                      </label>
+                      <input
+                        id="profile-display-name"
+                        type="text"
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        minLength={2}
+                        maxLength={24}
+                        required
+                        className="w-full rounded-xl bg-[#050813] border border-amber-400/25 px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-300"
+                      />
+                    </div>
+                    {nameFeedback && (
+                      <div
+                        className={`text-[11px] flex items-center gap-1.5 ${
+                          nameFeedback.kind === 'ok' ? 'text-emerald-300' : 'text-rose-300'
+                        }`}
+                      >
+                        {nameFeedback.kind === 'ok' ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span>{nameFeedback.text}</span>
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={nameSaving || nameInput.trim() === playerDisplayName}
+                      className="a2-yellow-btn w-full py-2.5 px-4 rounded-xl text-xs font-black cursor-pointer disabled:opacity-50"
+                    >
+                      {nameSaving ? 'Đang cập nhật…' : 'Lưu Tên Hiển Thị'}
+                    </button>
+                  </form>
+
+                  {/* Change Password */}
+                  <div className="cel-panel rounded-2xl p-4 space-y-3">
+                    <div>
+                      <h4 className="font-display text-sm font-black text-amber-200 flex items-center gap-1.5">
+                        <KeyRound className="w-4 h-4" />
+                        <span>Bảo Mật &amp; Đổi Mật Khẩu</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Bảo vệ tài khoản và kho trang bị khỏi truy cập trái phép.
+                      </p>
+                    </div>
+
+                    {canChangePassword ? (
+                      <form onSubmit={handleSavePassword} className="space-y-2.5">
+                        <input
+                          type="password"
+                          value={currPwd}
+                          onChange={(e) => setCurrPwd(e.target.value)}
+                          placeholder="Mật khẩu hiện tại"
+                          autoComplete="current-password"
+                          required
+                          className="w-full rounded-xl bg-[#050813] border border-amber-400/25 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-300"
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="password"
+                            value={newPwd}
+                            onChange={(e) => setNewPwd(e.target.value)}
+                            placeholder="Mật khẩu mới (≥ 6 ký tự)"
+                            autoComplete="new-password"
+                            minLength={6}
+                            required
+                            className="w-full rounded-xl bg-[#050813] border border-amber-400/25 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-300"
+                          />
+                          <input
+                            type="password"
+                            value={confirmPwd}
+                            onChange={(e) => setConfirmPwd(e.target.value)}
+                            placeholder="Nhập lại mật khẩu mới"
+                            autoComplete="new-password"
+                            minLength={6}
+                            required
+                            className="w-full rounded-xl bg-[#050813] border border-amber-400/25 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-300"
+                          />
+                        </div>
+                        {pwdFeedback && (
+                          <div
+                            className={`text-[11px] flex items-center gap-1.5 ${
+                              pwdFeedback.kind === 'ok' ? 'text-emerald-300' : 'text-rose-300'
+                            }`}
+                          >
+                            {pwdFeedback.kind === 'ok' ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            ) : (
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            )}
+                            <span>{pwdFeedback.text}</span>
+                          </div>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={pwdSaving}
+                          className="a2-slate-btn w-full py-2.5 px-4 rounded-xl text-xs font-black text-amber-200 cursor-pointer disabled:opacity-50"
+                        >
+                          {pwdSaving ? 'Đang đổi mật khẩu…' : 'Cập Nhật Mật Khẩu'}
+                        </button>
+                      </form>
+                    ) : (
+                      <div className="rounded-xl bg-[#050813] border border-amber-400/20 p-3.5 text-xs text-slate-300 leading-relaxed">
+                        Tài khoản này đăng nhập trực tiếp qua <strong>Google</strong> nên mật khẩu và xác thực 2 lớp được quản lý an toàn bởi tài khoản Google của bạn.
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

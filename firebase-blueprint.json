@@ -1,0 +1,184 @@
+{
+  "entities": {
+    "PlayerAccount": {
+      "title": "PlayerAccount",
+      "description": "Private player account profile and complete native-map game progression save stored per authenticated user UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Authentication UID of the account owner."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "description": "Publicly visible player display name."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 64,
+          "description": "Normalized account handle or login identifier."
+        },
+        "authProvider": {
+          "type": "string",
+          "enum": ["password", "google"],
+          "description": "Primary authentication method used by the account."
+        },
+        "saveVersion": {
+          "type": "integer",
+          "description": "Schema version of the embedded SaveData map."
+        },
+        "powerRating": {
+          "type": "number",
+          "description": "Latest computed combat power rating."
+        },
+        "highestChapterCleared": {
+          "type": "integer",
+          "description": "Highest campaign chapter cleared by the player."
+        },
+        "saveData": {
+          "type": "object",
+          "description": "Complete sanitized SaveData progression map (heroes, gear, runes, currencies, modes, cosmetics, career)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the player document was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the player save was last synchronized."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "username",
+        "authProvider",
+        "saveVersion",
+        "powerRating",
+        "highestChapterCleared",
+        "saveData",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "PII-free public ranking summary for real players in the Honor Leaderboard.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner Firebase Authentication UID."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "description": "Player display name shown on rankings."
+        },
+        "heroId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Currently selected hero identifier."
+        },
+        "heroName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Currently selected hero display name."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48,
+          "description": "Equipped warrior title."
+        },
+        "equippedAvatarFrameId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Equipped avatar frame identifier."
+        },
+        "powerRating": {
+          "type": "number",
+          "description": "Computed combat power rating."
+        },
+        "highestChapterCleared": {
+          "type": "integer",
+          "description": "Highest cleared chapter index."
+        },
+        "bestTowerFloor": {
+          "type": "integer",
+          "description": "Highest Endless Tower floor reached."
+        },
+        "arenaRating": {
+          "type": "number",
+          "description": "PvP Arena rating points."
+        },
+        "worldBossBestDamage": {
+          "type": "number",
+          "description": "Highest World Boss single-run damage."
+        },
+        "vipLevel": {
+          "type": "integer",
+          "description": "Player VIP tier."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Explicit opt-in public visibility flag enforced by security rules."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the leaderboard entry was first created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the leaderboard entry was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "heroId",
+        "heroName",
+        "title",
+        "equippedAvatarFrameId",
+        "powerRating",
+        "highestChapterCleared",
+        "bestTowerFloor",
+        "arenaRating",
+        "worldBossBestDamage",
+        "vipLevel",
+        "isPublic",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/players/{uid}": {
+      "schema": { "$ref": "#/entities/PlayerAccount" },
+      "description": "Private player account and complete game progression save, strictly readable and writable only by its authenticated owner."
+    },
+    "/leaderboard/{uid}": {
+      "schema": { "$ref": "#/entities/LeaderboardEntry" },
+      "description": "Public PII-free player leaderboard metrics readable when isPublic == true and writable only by the authenticated owner."
+    }
+  }
+}

@@ -3,6 +3,8 @@ import {
   Camera,
   ChevronLeft,
   ChevronRight,
+  Cloud,
+  CloudOff,
   Compass,
   Download,
   Eye,
@@ -14,6 +16,7 @@ import {
   Lock,
   Mail,
   Orbit,
+  RefreshCw,
   RotateCw,
   Settings,
   Shield,
@@ -171,6 +174,8 @@ import {
   LobbyShopPanel,
   ShopSectionTab,
 } from './LobbyPanels';
+import { CloudSyncStatus } from '../services/playerCloudService';
+import { ProfileModalTab } from './ProfileCodexModal';
 import { Wave12SanctumTab } from './Wave12SanctumModal';
 import { Wave13Tab } from './Wave13TreasuryModal';
 import { Wave14Tab } from './Wave14AscensionModal';
@@ -262,7 +267,11 @@ interface TitleScreenProps {
   onOpenHonorBoard: () => void;
   onOpenWardrobe?: () => void;
   onOpenDispatch?: () => void;
-  onOpenProfileModal: (tab?: 'profile' | 'achievements' | 'history' | 'codex') => void;
+  onOpenProfileModal: (tab?: ProfileModalTab) => void;
+  playerDisplayName?: string;
+  cloudSyncStatus?: CloudSyncStatus;
+  onManualCloudSave?: () => void;
+  onOpenLinkAccount?: () => void;
   onOpenMailModal: () => void;
   onOpenSettingsModal: () => void;
   onOpenEarlyRoadmap?: () => void;
@@ -573,6 +582,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onClaimSkyCitadelMilestone,
   onSelectSanctuaryFloor,
   onResetLobbyOrbit,
+  playerDisplayName,
+  cloudSyncStatus = 'guest',
+  onManualCloudSave,
+  onOpenLinkAccount,
   onAdjustLobbyZoom,
   onReplayEntranceVfx,
   onTriggerLobbyEmote,
@@ -1284,60 +1297,114 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             : 'bg-gradient-to-b from-[#060914]/94 via-[#090e20]/82 to-transparent'
         }`}
       >
-        {/* Left: Compact Hero Portrait + Name + Power Rating */}
-        <button
-          type="button"
-          onClick={() => {
-            soundEngine.playUiClick();
-            onOpenProfileModal('profile');
-          }}
-          className="relative flex items-center gap-2 pr-3 pl-1 py-0.5 rounded-2xl bg-[#0a1026]/92 border border-amber-400/30 hover:border-amber-300/80 transition-colors cursor-pointer shrink-0"
-          title="Mở Hồ Sơ, Thành Tựu & Thư Viện"
-        >
-          <div
-            className={`rounded-full shrink-0 ${
-              equippedVipFrameDef ? `${equippedVipFrameDef.frameClass} p-[2px]` : ''
+        {/* Left: Compact Hero Portrait + Player Account Name + Cloud Sync + Power Rating */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onOpenProfileModal('profile');
+            }}
+            className="relative flex items-center gap-2 pr-3 pl-1 py-0.5 rounded-2xl bg-[#0a1026]/92 border border-amber-400/30 hover:border-amber-300/80 transition-colors cursor-pointer shrink-0"
+            title="Mở Hồ Sơ, Tài Khoản, Thành Tựu & Thư Viện"
+          >
+            <div
+              className={`rounded-full shrink-0 ${
+                equippedVipFrameDef ? `${equippedVipFrameDef.frameClass} p-[2px]` : ''
+              }`}
+            >
+              <ZodiacAvatar
+                heroId={activeHero.id}
+                accentHex={activeHero.accentHex}
+                cloakHex={activeHero.cloakHex}
+                hairHex={activeHero.hairHex}
+                frameId={save.equippedAvatarFrameId ?? 'default_gold'}
+                sizeClass="w-9 h-9"
+              />
+            </div>
+            <div className="text-left leading-tight">
+              <div className="flex items-center gap-1.5">
+                <span className="font-display text-xs sm:text-sm font-black text-white whitespace-nowrap max-w-[130px] truncate">
+                  {playerDisplayName || activeHero.name}
+                </span>
+                <span className="text-[10px] font-mono-nums font-bold text-amber-300">
+                  ★{heroStar}
+                </span>
+                {hasVip && (
+                  <span className="px-1 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-[8px] font-black text-amber-300">
+                    VIP
+                  </span>
+                )}
+                {equippedBadgeDef && (
+                  <span className="hidden lg:inline text-[9px] font-bold text-purple-200 whitespace-nowrap">
+                    · {equippedBadgeDef.title}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1 text-[11px] font-mono-nums">
+                <span className="text-[10px] font-extrabold text-amber-400/90">LC</span>
+                <span className="font-black text-amber-200">{stats.powerRating}</span>
+              </div>
+            </div>
+            {achClaimable > 0 && (
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-[9px] font-black text-slate-950 font-mono-nums">
+                +{achClaimable}
+              </span>
+            )}
+          </button>
+
+          {/* Compact Cloud Account / Sync Shortcut */}
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              if (cloudSyncStatus === 'guest' && onOpenLinkAccount) {
+                onOpenLinkAccount();
+              } else if (cloudSyncStatus === 'error' && onManualCloudSave) {
+                onManualCloudSave();
+              } else {
+                onOpenProfileModal('account');
+              }
+            }}
+            title={
+              cloudSyncStatus === 'guest'
+                ? 'Chế độ Khách · Bấm để đăng nhập hoặc liên kết tài khoản đám mây'
+                : cloudSyncStatus === 'syncing'
+                ? 'Đang lưu tiến trình lên Firebase Cloud'
+                : cloudSyncStatus === 'error'
+                ? 'Lỗi đồng bộ · Bấm để thử lưu lại'
+                : 'Tài khoản đã đồng bộ đám mây · Bấm để quản lý tài khoản'
+            }
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer whitespace-nowrap transition-colors shrink-0 ${
+              cloudSyncStatus === 'guest'
+                ? 'bg-amber-500/15 border-amber-300/45 text-amber-200 hover:border-amber-200'
+                : cloudSyncStatus === 'error'
+                ? 'bg-rose-950/80 border-rose-400/50 text-rose-200 hover:border-rose-300'
+                : cloudSyncStatus === 'syncing' || cloudSyncStatus === 'pending'
+                ? 'bg-[#080d1f]/92 border-sky-400/40 text-sky-200 hover:border-sky-300'
+                : 'bg-[#080d1f]/92 border-emerald-400/35 text-emerald-200 hover:border-emerald-300'
             }`}
           >
-            <ZodiacAvatar
-              heroId={activeHero.id}
-              accentHex={activeHero.accentHex}
-              cloakHex={activeHero.cloakHex}
-              hairHex={activeHero.hairHex}
-              frameId={save.equippedAvatarFrameId ?? 'default_gold'}
-              sizeClass="w-9 h-9"
-            />
-          </div>
-          <div className="text-left leading-tight">
-            <div className="flex items-center gap-1.5">
-              <span className="font-display text-xs sm:text-sm font-black text-white whitespace-nowrap">
-                {activeHero.name}
-              </span>
-              <span className="text-[10px] font-mono-nums font-bold text-amber-300">
-                ★{heroStar}
-              </span>
-              {hasVip && (
-                <span className="px-1 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-[8px] font-black text-amber-300">
-                  VIP
-                </span>
-              )}
-              {equippedBadgeDef && (
-                <span className="hidden lg:inline text-[9px] font-bold text-purple-200 whitespace-nowrap">
-                  · {equippedBadgeDef.title}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1 text-[11px] font-mono-nums">
-              <span className="text-[10px] font-extrabold text-amber-400/90">LC</span>
-              <span className="font-black text-amber-200">{stats.powerRating}</span>
-            </div>
-          </div>
-          {achClaimable > 0 && (
-            <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-[9px] font-black text-slate-950 font-mono-nums">
-              +{achClaimable}
+            {cloudSyncStatus === 'guest' ? (
+              <CloudOff className="w-3.5 h-3.5 shrink-0" />
+            ) : cloudSyncStatus === 'syncing' ? (
+              <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
+            ) : (
+              <Cloud className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span className="hidden md:inline">
+              {cloudSyncStatus === 'guest'
+                ? 'Khách · Lưu TK'
+                : cloudSyncStatus === 'syncing'
+                ? 'Đang lưu…'
+                : cloudSyncStatus === 'pending'
+                ? 'Chờ lưu'
+                : cloudSyncStatus === 'error'
+                ? 'Lỗi lưu'
+                : 'Đám mây'}
             </span>
-          )}
-        </button>
+          </button>
+        </div>
 
         {/* Right: 2 Core Currencies + Conditional Quick-Claim + Clean Icon Controls */}
         <div className="flex items-center gap-1.5">
