@@ -18,13 +18,13 @@
       "titleBadge": "Thần Xạ Ngân Hà",
       "frameId": "astral_crescent",
       "personality": "tactical",
-      "status": "weekly_practice",
-      "statusDetail": "Đang tập né đòn Boss Tuần",
+      "status": "ready_duel",
+      "statusDetail": "Sẵn sàng nhận thách đấu 1v1",
       "duelRating": 1420,
       "duelWins": 8,
       "duelLosses": 4,
       "winStreak": 0,
-      "lastActiveAt": 1795180974883,
+      "lastActiveAt": 1795184944100,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -277,13 +277,13 @@
       "titleBadge": "Chí Tôn Tinh Giới",
       "frameId": "world_dragon",
       "personality": "assassin",
-      "status": "campaign",
-      "statusDetail": "Đang săn Boss Thế Giới Liên Server",
+      "status": "ready_duel",
+      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
       "duelRating": 1620,
       "duelWins": 15,
       "duelLosses": 11,
       "winStreak": 3,
-      "lastActiveAt": 1795180952373,
+      "lastActiveAt": 1795184930599,
       "buildSnapshot": {
         "weaponName": "Như Ý Kim Côn Tinh Giới +22",
         "armorName": "Thần Giáp Chí Tôn +20",
@@ -309,8 +309,8 @@
       "weeklyPracticeBest": 12739,
       "weeklyPracticeClearTimeMs": 54300,
       "guildRole": "Thành Viên",
-      "guildContribution": 5357,
-      "guildBossDamage": 83601,
+      "guildContribution": 5420,
+      "guildBossDamage": 84920,
       "titleBadge": "Nguyệt Quang Xạ Thủ",
       "frameId": "default_gold",
       "personality": "tactical",
@@ -320,7 +320,7 @@
       "duelWins": 16,
       "duelLosses": 12,
       "winStreak": 0,
-      "lastActiveAt": 1795180961374,
+      "lastActiveAt": 1795184939599,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -642,18 +642,18 @@
       "weeklyPracticeBest": 13040,
       "weeklyPracticeClearTimeMs": 55100,
       "guildRole": "Thành Viên",
-      "guildContribution": 4396,
-      "guildBossDamage": 66278,
+      "guildContribution": 4538,
+      "guildBossDamage": 67374,
       "titleBadge": "Thiên Duyên Hỏa Vũ",
       "frameId": "default_gold",
       "personality": "tactical",
-      "status": "ready_duel",
-      "statusDetail": "Sẵn sàng nhận thách đấu 1v1",
+      "status": "campaign",
+      "statusDetail": "Đang công phá Boss Bang Hội",
       "duelRating": 1245,
       "duelWins": 11,
       "duelLosses": 12,
       "winStreak": 1,
-      "lastActiveAt": 1795180965881,
+      "lastActiveAt": 1795184935098,
       "buildSnapshot": {
         "weaponName": "Phượng Hỏa Pháp Trượng +19",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -669,6 +669,38 @@
     }
   ],
   "activities": [
+    {
+      "id": "evt_rd_1795184944100_5d69f9",
+      "timestamp": 1795184944100,
+      "kind": "status",
+      "actorName": "Linh Vũ [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1420 điểm).",
+      "accent": "sky"
+    },
+    {
+      "id": "evt_guild_1795184939599_f7ff7a",
+      "timestamp": 1795184939599,
+      "kind": "guild",
+      "actorName": "Nguyệt Ảnh [AI Live]",
+      "summary": "công phá Boss Bang Live gây +1.319 ST (+63 Cống Hiến).",
+      "accent": "amber"
+    },
+    {
+      "id": "evt_guild_1795184935098_6101c4",
+      "timestamp": 1795184935098,
+      "kind": "guild",
+      "actorName": "Thiên Duyên [AI Live]",
+      "summary": "công phá Boss Bang Live gây +1.096 ST (+142 Cống Hiến).",
+      "accent": "amber"
+    },
+    {
+      "id": "evt_rd_1795184930599_d49eb3",
+      "timestamp": 1795184930599,
+      "kind": "status",
+      "actorName": "Tề Thiên [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1620 điểm).",
+      "accent": "sky"
+    },
     {
       "id": "evt_rd_1795180992884_5caf16",
       "timestamp": 1795180992884,
@@ -860,38 +892,6 @@
       "actorName": "Hạo Thiên [AI Live]",
       "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1510 điểm).",
       "accent": "sky"
-    },
-    {
-      "id": "evt_wp_1795180893860_695977",
-      "timestamp": 1795180893860,
-      "kind": "weekly_practice",
-      "actorName": "Cửu Thiên [AI Live]",
-      "summary": "hoàn tất Tập Boss Tuần đạt 16.838 điểm đối chiếu.",
-      "accent": "amber"
-    },
-    {
-      "id": "evt_tower_1795180889359_db9376",
-      "timestamp": 1795180889359,
-      "kind": "tower",
-      "actorName": "Linh Vũ [AI Live]",
-      "summary": "chinh phục Tháp Vô Tận Tầng 35 (Lực Chiến 5.279).",
-      "accent": "emerald"
-    },
-    {
-      "id": "evt_rd_1795180884858_cf544b",
-      "timestamp": 1795180884858,
-      "kind": "status",
-      "actorName": "Nguyệt Ảnh [AI Live]",
-      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1280 điểm).",
-      "accent": "sky"
-    },
-    {
-      "id": "evt_tower_1795180880357_aa2813",
-      "timestamp": 1795180880357,
-      "kind": "tower",
-      "actorName": "Thiên Duyên [AI Live]",
-      "summary": "chinh phục Tháp Vô Tận Tầng 15 (Lực Chiến 3.835).",
-      "accent": "emerald"
     }
   ],
   "processedDuelIds": {
@@ -1758,15 +1758,16 @@
     "inv_1795180224250_10e2e9c9": "declined",
     "inv_1795180287262_b42b2703": "accepted",
     "inv_1795180444798_8b5c4192": "accepted",
-    "inv_1795180476306_ce3e04fc": "accepted"
+    "inv_1795180476306_ce3e04fc": "accepted",
+    "inv_1795184902740_727f58ea": "declined"
   },
   "guildBossLive": {
     "dateKey": "2026-11-20",
     "bossName": "Cự Long Hắc Tinh · Boss Bang Live",
     "bossTitle": "Chiến dịch Hợp Lực Bang Hội Hằng Ngày (Bạn & Đồng Đội [AI Live])",
     "maxHp": 180000,
-    "currentHp": 146727,
-    "totalDamage": 5999431,
+    "currentHp": 144312,
+    "totalDamage": 6001846,
     "defeatedCount": 24,
     "contributors": [
       {
@@ -1878,6 +1879,15 @@
         "lastHitAt": 1795180834887
       },
       {
+        "id": "ai_thien_duyen",
+        "displayName": "Thiên Duyên [AI Live]",
+        "isHuman": false,
+        "heroId": "cleo",
+        "damage": 11520,
+        "attacks": 8,
+        "lastHitAt": 1795184935098
+      },
+      {
         "id": "ai_thanh_van",
         "displayName": "Thanh Vân [AI Live]",
         "isHuman": false,
@@ -1885,15 +1895,6 @@
         "damage": 10532,
         "attacks": 6,
         "lastHitAt": 1795178569989
-      },
-      {
-        "id": "ai_thien_duyen",
-        "displayName": "Thiên Duyên [AI Live]",
-        "isHuman": false,
-        "heroId": "cleo",
-        "damage": 10424,
-        "attacks": 7,
-        "lastHitAt": 1795178515980
       }
     ],
     "milestones": [
@@ -1923,7 +1924,7 @@
       }
     ],
     "claimedMilestoneIds": [],
-    "lastUpdatedAt": 1795180988384
+    "lastUpdatedAt": 1795184939599
   },
   "guildBossClaimsByPlayer": {
     "puugoo": {
