@@ -1367,6 +1367,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             >
               <ZodiacAvatar
                 heroId={activeHero.id}
+                skinId={save.equippedSkinByHero?.[activeHero.id] ?? 'default'}
                 accentHex={activeHero.accentHex}
                 cloakHex={activeHero.cloakHex}
                 hairHex={activeHero.hairHex}

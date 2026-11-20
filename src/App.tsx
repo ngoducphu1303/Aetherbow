@@ -1168,6 +1168,7 @@ export default function App() {
 
     return {
       heroId: hero.id,
+      skinId: activeSkinId,
       weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
       cloakColorHex: skinDef?.cloakHex ?? aTpl?.cloakColorHex ?? hero.cloakHex,
       hairColorHex: skinDef?.hairHex ?? hero.hairHex,

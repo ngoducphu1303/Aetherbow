@@ -209,6 +209,7 @@ import {
   WeaponAuraId,
   WingId,
 } from '../types/game';
+import { getSkinAssetPack } from '../data/assetRegistry';
 import {
   ArtifactRelicIcon,
   AwakenCrystalIcon,
@@ -220,6 +221,7 @@ import {
   MysticTokenIcon,
   PetEssenceIcon,
   RARITY_FRAME_CLASS,
+  ResilientAssetImg,
   SLOT_LABELS,
   SoulGemIcon,
   StarDustIcon,
@@ -1699,6 +1701,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       <div className={`shrink-0 ${!isUnlocked ? 'opacity-60 grayscale-[35%]' : ''}`}>
                         <HeroCrestSvg
                           heroId={h.id}
+                          skinId={save.equippedSkinByHero?.[h.id] ?? 'default'}
                           accentHex={h.accentHex}
                           cloakHex={h.cloakHex}
                           hairHex={h.hairHex}
@@ -2003,6 +2006,8 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       ? `#${skin.accentHex.toString(16).padStart(6, '0')}`
                       : `#${hero.accentHex.toString(16).padStart(6, '0')}`;
 
+                    const assetPack = getSkinAssetPack(skin.id, hero.id);
+
                     return (
                       <div
                         key={skin.id}
@@ -2010,34 +2015,44 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                           isEquipped ? 'cel-panel-ornate' : 'cel-panel'
                         }`}
                       >
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <span className="text-[10px] font-black text-purple-300 tracking-wider">
-                              {skin.badge}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <span
-                                className="w-4 h-4 rounded-full border border-white/60"
-                                style={{ backgroundColor: cHex }}
-                              />
-                              <span
-                                className="w-4 h-4 rounded-full border border-white/60"
-                                style={{ backgroundColor: aHex }}
-                              />
-                            </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-16 h-20 rounded-xl overflow-hidden border border-amber-300/40 bg-[#0d152f] shrink-0">
+                            <ResilientAssetImg
+                              src={assetPack.portrait}
+                              alt={skin.name}
+                              className="w-full h-full object-cover object-top"
+                              fallback={<Sparkles className="w-5 h-5 text-amber-300 m-auto" />}
+                            />
                           </div>
-                          <h5 className="font-display text-sm font-black text-white">
-                            {skin.name}
-                          </h5>
-                          <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                            {skin.desc}
-                          </p>
-                          {(skin.atkBonus > 0 || skin.hpBonus > 0) && (
-                            <div className="flex items-center gap-3 text-xs font-mono-nums font-bold text-amber-200 mt-2">
-                              <span>+{skin.atkBonus} ATK</span>
-                              <span>+{skin.hpBonus} HP</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-[10px] font-black text-purple-300 tracking-wider">
+                                {skin.badge}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full border border-white/60"
+                                  style={{ backgroundColor: cHex }}
+                                />
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full border border-white/60"
+                                  style={{ backgroundColor: aHex }}
+                                />
+                              </div>
                             </div>
-                          )}
+                            <h5 className="font-display text-sm font-black text-white truncate">
+                              {skin.name}
+                            </h5>
+                            <p className="text-[11px] text-slate-300 mt-1 leading-relaxed line-clamp-2">
+                              {skin.desc}
+                            </p>
+                            {(skin.atkBonus > 0 || skin.hpBonus > 0) && (
+                              <div className="flex items-center gap-3 text-xs font-mono-nums font-bold text-amber-200 mt-1.5">
+                                <span>+{skin.atkBonus} ATK</span>
+                                <span>+{skin.hpBonus} HP</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {isOwned ? (

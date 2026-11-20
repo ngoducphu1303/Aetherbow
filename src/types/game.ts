@@ -37,7 +37,8 @@ export type HeroId =
   | 'cleo'
   | 'rolla'
   | 'atreus'
-  | 'dracoola';
+  | 'dracoola'
+  | 'lisa';
 
 export type CrownStyle =
   | 'crescent'
@@ -47,7 +48,8 @@ export type CrownStyle =
   | 'cleo_crown'
   | 'rolla_tiara'
   | 'demon_horns'
-  | 'vampire_collar';
+  | 'vampire_collar'
+  | 'witch_hat';
 
 export type TalentId =
   | 'might'
@@ -752,7 +754,20 @@ export interface PetInstance {
   level: number; // 1..30
 }
 
-export type HeroSkinId = 'default' | 'celestial_gold' | 'blood_moon' | 'jade_nebula' | 'arctic_frost';
+export type HeroSkinId =
+  | 'default'
+  | 'celestial_gold'
+  | 'blood_moon'
+  | 'jade_nebula'
+  | 'arctic_frost'
+  | 'thunder_empress'
+  | 'crimson_phoenix'
+  | 'astral_archon'
+  | 'abyss_duelist'
+  | 'jade_adeptus'
+  | 'lunar_sovereign'
+  | 'verdant_ranger'
+  | 'twilight_raven';
 
 export interface HeroSkinDefinition {
   id: HeroSkinId;
@@ -1848,7 +1863,10 @@ export interface HudSnapshot {
   totalStages: number;
   stageName: string;
   chapterName: string;
+  chapterId?: number;
   heroName: string;
+  heroId?: HeroId;
+  skinId?: HeroSkinId;
   enemiesRemaining: number;
   portalOpen: boolean;
   isBossStage: boolean;
@@ -1862,6 +1880,11 @@ export interface HudSnapshot {
   ultName: string;
   revivesLeft: number;
   bossName: string | null;
+  bossEnemyKind?: EnemyKind;
+  weeklyBossId?: string;
+  activeTargetKind?: EnemyKind;
+  activeTargetName?: string;
+  activeTargetHpPct?: number;
   bossHp: number;
   bossMaxHp: number;
   bossPhase: 1 | 2 | 3;
@@ -3040,7 +3063,8 @@ export type HeroActiveSkillEffectKind =
   | 'ember_nova'
   | 'thunder_arc'
   | 'abyssal_aegis'
-  | 'cudgel_vault';
+  | 'cudgel_vault'
+  | 'electro_rose_lantern';
 
 export interface HeroActiveSkillDef {
   heroId: HeroId;

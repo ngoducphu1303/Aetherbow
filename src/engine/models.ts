@@ -15,6 +15,7 @@ import {
   EnemyKind,
   HaloId,
   HeroId,
+  HeroSkinId,
   MountId,
   PetId,
   SoulRingSlotId,
@@ -30,10 +31,13 @@ import {
   createFabricWeaveTexture,
   createGoblinFaceTexture,
   createHeroFaceTexture,
+  createLisaEmbroideryTexture,
+  createLisaUnderbrimTexture,
 } from './textures';
 
 export interface HeroVisualConfig {
   heroId?: HeroId;
+  skinId?: HeroSkinId;
   weaponAccentHex: number;
   cloakColorHex: number;
   hairColorHex: number;
@@ -209,7 +213,973 @@ function makeCapeShapeGeo(topW: number, bottomW: number, height: number): THREE.
   });
 }
 
+function makeSculptedRose(
+  petalMat: THREE.Material,
+  centerMat: THREE.Material,
+  scale = 1
+): THREE.Group {
+  const rose = new THREE.Group();
+  const outerGeo = new THREE.SphereGeometry(0.055 * scale, 10, 8);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const petal = new THREE.Mesh(outerGeo, petalMat);
+    petal.scale.set(1.1, 0.72, 0.36);
+    petal.position.set(Math.cos(a) * 0.058 * scale, 0.008 * scale, Math.sin(a) * 0.058 * scale);
+    petal.rotation.y = -a + Math.PI / 2;
+    petal.rotation.x = 0.52;
+    rose.add(petal);
+  }
+  const innerGeo = new THREE.SphereGeometry(0.04 * scale, 9, 7);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.38;
+    const petal = new THREE.Mesh(innerGeo, petalMat);
+    petal.scale.set(0.95, 0.8, 0.34);
+    petal.position.set(Math.cos(a) * 0.028 * scale, 0.024 * scale, Math.sin(a) * 0.028 * scale);
+    petal.rotation.y = -a + Math.PI / 2;
+    petal.rotation.x = 0.28;
+    rose.add(petal);
+  }
+  const bud = new THREE.Mesh(new THREE.SphereGeometry(0.032 * scale, 10, 8), centerMat);
+  bud.position.y = 0.034 * scale;
+  rose.add(bud);
+  return rose;
+}
+
+function makeWitchBrimGeometry(
+  innerR: number,
+  outerR: number,
+  yOffset = 0,
+  radialSegments = 32,
+  ringSegments = 5
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let r = 0; r <= ringSegments; r++) {
+    const t = r / ringSegments;
+    const baseRadius = THREE.MathUtils.lerp(innerR, outerR, t);
+    for (let s = 0; s <= radialSegments; s++) {
+      const ang = (s / radialSegments) * Math.PI * 2;
+      const cosA = Math.cos(ang);
+      const sinA = Math.sin(ang);
+      // Slight elliptical sweep wider left/right, swept up in back-right & curled outer rim
+      const rx = baseRadius * 1.07;
+      const rz = baseRadius * 0.97;
+      const x = sinA * rx;
+      const z = cosA * rz;
+      const wave =
+        Math.sin(ang * 2 - 0.5) * 0.048 * t +
+        Math.pow(t, 1.65) * (0.095 + 0.045 * Math.cos(ang + 0.55));
+      const y = yOffset + wave - t * 0.035;
+      positions.push(x, y, z);
+      uvs.push(0.5 + (sinA * t) * 0.48, 0.5 + (cosA * t) * 0.48);
+    }
+  }
+
+  const stride = radialSegments + 1;
+  for (let r = 0; r < ringSegments; r++) {
+    for (let s = 0; s < radialSegments; s++) {
+      const a = r * stride + s;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function attachHeroAccessories(
+  cfg: HeroVisualConfig,
+  root: THREE.Group,
+  bodyGroup: THREE.Group,
+  bowGroup: THREE.Group
+) {
+  let wingGroup: THREE.Group | undefined;
+  let leftWingPivot: THREE.Group | undefined;
+  let rightWingPivot: THREE.Group | undefined;
+  if (cfg.wingId) {
+    const builtWings = createZodiacWingsModel(cfg.wingId, cfg.wingLevel ?? 1);
+    wingGroup = builtWings.group;
+    leftWingPivot = builtWings.leftPivot;
+    rightWingPivot = builtWings.rightPivot;
+    wingGroup.position.set(0, 0.96, -0.24);
+    bodyGroup.add(wingGroup);
+  }
+
+  let weaponAuraGroup: THREE.Group | undefined;
+  if (cfg.weaponAuraId && cfg.weaponAuraId !== 'none') {
+    weaponAuraGroup = createWeaponAuraModel(cfg.weaponAuraId, cfg.weaponAuraLevel ?? 1);
+    weaponAuraGroup.position.set(0.28, 0.94, 0.34);
+    bodyGroup.add(weaponAuraGroup);
+  }
+
+  let artifactGroup: THREE.Group | undefined;
+  if (cfg.artifactId) {
+    artifactGroup = createMythicArtifactModel(cfg.artifactId, cfg.artifactLevel ?? 1);
+    artifactGroup.position.set(0.56, 1.38, -0.22);
+    bodyGroup.add(artifactGroup);
+  }
+
+  let haloGroup: THREE.Group | undefined;
+  if (cfg.haloId) {
+    haloGroup = createDivineHaloModel(cfg.haloId, cfg.haloLevel ?? 1);
+    haloGroup.position.set(0, 1.34, -0.34);
+    bodyGroup.add(haloGroup);
+  }
+
+  let mythicCrownGroup: THREE.Group | undefined;
+  const mythicTier = Math.max(0, Math.min(5, Math.floor(cfg.mythicWeaponTier ?? 0)));
+  if (mythicTier >= 1) {
+    mythicCrownGroup = createMythicWeaponCrownFx(mythicTier);
+    mythicCrownGroup.position.set(0, 0.08, 0.16);
+    bowGroup.add(mythicCrownGroup);
+  }
+
+  let warBannerGroup: THREE.Group | undefined;
+  let warBannerCloth: THREE.Mesh | undefined;
+  if (cfg.warBannerId && WAR_BANNER_MAP[cfg.warBannerId]) {
+    const builtBanner = createWarBannerModel(cfg.warBannerId, cfg.warBannerLevel ?? 1);
+    warBannerGroup = builtBanner.group;
+    warBannerCloth = builtBanner.clothMesh;
+    warBannerGroup.position.set(-0.46, 0.42, -0.34);
+    warBannerGroup.rotation.z = 0.12;
+    bodyGroup.add(warBannerGroup);
+  }
+
+  let soulRingsGroup: THREE.Group | undefined;
+  let soulRingNodes: THREE.Object3D[] | undefined;
+  if (cfg.soulRingLevels) {
+    const hasAnyRing = Object.values(cfg.soulRingLevels).some((lv) => (lv ?? 0) > 0);
+    if (hasAnyRing) {
+      const builtRings = createSoulRingsGroup(cfg.soulRingLevels);
+      soulRingsGroup = builtRings.group;
+      soulRingNodes = builtRings.ringNodes;
+      soulRingsGroup.position.set(0, 0.96, 0);
+      bodyGroup.add(soulRingsGroup);
+    }
+  }
+
+  let celestialWingGroup: THREE.Group | undefined;
+  let celestialWingLeft: THREE.Group | undefined;
+  let celestialWingRight: THREE.Group | undefined;
+  if (cfg.celestialWingId && CELESTIAL_WING_MAP[cfg.celestialWingId]) {
+    const builtCelWings = createCelestialWings3DGroup(
+      cfg.celestialWingId,
+      cfg.celestialWingStar ?? 1
+    );
+    celestialWingGroup = builtCelWings.group;
+    celestialWingLeft = builtCelWings.leftPivot;
+    celestialWingRight = builtCelWings.rightPivot;
+    celestialWingGroup.position.set(0, 1.18, -0.34);
+    bodyGroup.add(celestialWingGroup);
+  }
+
+  let mountGroup: THREE.Group | undefined;
+  let mountLegs: THREE.Group[] | undefined;
+  let astralSteedGroup: THREE.Group | undefined;
+  let astralSteedWings: THREE.Group[] | undefined;
+  if (cfg.astralSteedId && ASTRAL_STEED_MAP[cfg.astralSteedId]) {
+    const builtSteed = createAstralSteedModel(cfg.astralSteedId, cfg.astralSteedStar ?? 1);
+    astralSteedGroup = builtSteed.group;
+    astralSteedWings = builtSteed.wingPivots;
+    mountGroup = builtSteed.group;
+    mountLegs = builtSteed.legs;
+    root.add(astralSteedGroup);
+    bodyGroup.position.y = 0.72;
+  } else if (cfg.mountId) {
+    const builtMount = createZodiacMountModel(cfg.mountId, cfg.mountLevel ?? 1);
+    mountGroup = builtMount.group;
+    mountLegs = builtMount.legs;
+    root.add(mountGroup);
+    bodyGroup.position.y = 0.68;
+  }
+
+  return {
+    wingGroup,
+    leftWingPivot,
+    rightWingPivot,
+    celestialWingGroup,
+    celestialWingLeft,
+    celestialWingRight,
+    mountGroup,
+    mountLegs,
+    weaponAuraGroup,
+    artifactGroup,
+    haloGroup,
+    warBannerGroup,
+    warBannerCloth,
+    mythicCrownGroup,
+    astralSteedGroup,
+    astralSteedWings,
+    soulRingsGroup,
+    soulRingNodes,
+  };
+}
+
+function createLisaHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
+  const root = new THREE.Group();
+  const bodyGroup = new THREE.Group();
+  root.add(bodyGroup);
+
+  const hitMeshes: THREE.Mesh[] = [];
+  const isDefaultSkin = !cfg.skinId || cfg.skinId === 'default';
+  const primaryIndigoHex = isDefaultSkin ? 0x2d1e68 : cfg.cloakColorHex;
+  const primaryIndigoStr = `#${primaryIndigoHex.toString(16).padStart(6, '0')}`;
+  const accentPurpleHex = isDefaultSkin ? 0xa855f7 : cfg.weaponAccentHex;
+  const hairHex = isDefaultSkin ? 0xc59f6c : cfg.hairColorHex;
+
+  const dressTex = createLisaEmbroideryTexture(primaryIndigoStr, '#fcd34d');
+  const underbrimTex = createLisaUnderbrimTexture(
+    isDefaultSkin ? '#e2dcf8' : '#e2e8f0',
+    isDefaultSkin ? '#6d28d9' : '#475569'
+  );
+  const whiteSilkTex = createFabricWeaveTexture('#ece9f6', '#d9b44a');
+  const bustierIvoryTex = createFabricWeaveTexture('#faf4ea', '#eab308');
+  const faceTex = createHeroFaceTexture('#22c55e', '#f472b6', false);
+
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: 0xfbe0cc,
+    roughness: 0.5,
+    metalness: 0.02,
+  });
+  const faceMat = new THREE.MeshStandardMaterial({
+    map: faceTex,
+    roughness: 0.46,
+    metalness: 0.02,
+  });
+  const hairMat = new THREE.MeshStandardMaterial({
+    color: hairHex,
+    roughness: 0.46,
+    metalness: 0.1,
+  });
+  const indigoDressMat = new THREE.MeshStandardMaterial({
+    map: dressTex,
+    bumpMap: dressTex,
+    bumpScale: 0.012,
+    roughness: 0.64,
+    metalness: 0.08,
+    side: THREE.DoubleSide,
+  });
+  const deepIndigoMat = new THREE.MeshStandardMaterial({
+    color: isDefaultSkin ? 0x1e1446 : primaryIndigoHex,
+    roughness: 0.56,
+    metalness: 0.14,
+  });
+  const lavenderClothMat = new THREE.MeshStandardMaterial({
+    color: isDefaultSkin ? 0x9b7ee6 : accentPurpleHex,
+    roughness: 0.58,
+    metalness: 0.06,
+    side: THREE.DoubleSide,
+  });
+  const whiteClothMat = new THREE.MeshStandardMaterial({
+    map: whiteSilkTex,
+    roughness: 0.62,
+    metalness: 0.04,
+    side: THREE.DoubleSide,
+  });
+  const ivoryBustierMat = new THREE.MeshStandardMaterial({
+    map: bustierIvoryTex,
+    roughness: 0.56,
+    metalness: 0.04,
+  });
+  const underbrimMat = new THREE.MeshStandardMaterial({
+    map: underbrimTex,
+    roughness: 0.62,
+    metalness: 0.04,
+    side: THREE.DoubleSide,
+  });
+  const sheerPlumMat = new THREE.MeshStandardMaterial({
+    color: 0x2c223e,
+    roughness: 0.52,
+    metalness: 0.08,
+  });
+  const bootLeatherMat = new THREE.MeshStandardMaterial({
+    color: 0x1b152a,
+    roughness: 0.3,
+    metalness: 0.22,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfcd34d,
+    roughness: 0.16,
+    metalness: 0.94,
+    envMapIntensity: 1.55,
+  });
+  const blueRoseMat = new THREE.MeshStandardMaterial({
+    color: isDefaultSkin ? 0x6366f1 : accentPurpleHex,
+    roughness: 0.42,
+    metalness: 0.12,
+  });
+  const champagneRoseMat = new THREE.MeshStandardMaterial({
+    color: 0xe5c99b,
+    roughness: 0.44,
+    metalness: 0.1,
+  });
+  const electroGemMat = new THREE.MeshStandardMaterial({
+    color: accentPurpleHex,
+    emissive: accentPurpleHex,
+    emissiveIntensity: 1.6,
+    roughness: 0.08,
+    metalness: 0.28,
+    envMapIntensity: 1.45,
+  });
+  const electroLanternGlassMat = new THREE.MeshStandardMaterial({
+    color: 0xe9d5ff,
+    emissive: accentPurpleHex,
+    emissiveIntensity: 1.9,
+    roughness: 0.1,
+    metalness: 0.18,
+  });
+
+  // 1. Slim Legs, Sheer Dark-Plum Thigh Stockings & High-Heeled Violet Boots
+  const makeLisaLeg = (side: -1 | 1) => {
+    const legGroup = new THREE.Group();
+    legGroup.position.set(side * 0.135, 0.54, 0);
+
+    const upperThigh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.082, 0.072, 0.12, 14),
+      skinMat
+    );
+    upperThigh.position.y = -0.055;
+    upperThigh.castShadow = true;
+
+    const garterBand = new THREE.Mesh(
+      new THREE.TorusGeometry(0.074, 0.015, 8, 16),
+      deepIndigoMat
+    );
+    garterBand.rotation.x = Math.PI / 2;
+    garterBand.position.y = -0.108;
+
+    const stocking = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.073, 0.056, 0.25, 14),
+      sheerPlumMat
+    );
+    stocking.position.y = -0.23;
+    stocking.castShadow = true;
+
+    const ankleBoot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.054, 0.13, 14),
+      bootLeatherMat
+    );
+    ankleBoot.position.y = -0.41;
+    ankleBoot.castShadow = true;
+
+    const ankleStrap = new THREE.Mesh(
+      new THREE.TorusGeometry(0.062, 0.011, 8, 16),
+      goldMat
+    );
+    ankleStrap.rotation.x = Math.PI / 2;
+    ankleStrap.position.y = -0.355;
+
+    const teardrop = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.022, 0),
+      electroGemMat
+    );
+    teardrop.scale.set(0.75, 1.35, 0.75);
+    teardrop.position.set(side * 0.058, -0.39, 0.02);
+
+    const footFront = new THREE.Mesh(
+      new THREE.SphereGeometry(0.066, 12, 10),
+      bootLeatherMat
+    );
+    footFront.scale.set(0.86, 0.54, 1.58);
+    footFront.position.set(0, -0.502, 0.055);
+    footFront.castShadow = true;
+
+    const stilettoHeel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.013, 0.082, 8),
+      bootLeatherMat
+    );
+    stilettoHeel.position.set(0, -0.498, -0.045);
+
+    const toeEmblem = new THREE.Mesh(
+      new THREE.TorusGeometry(0.022, 0.006, 6, 12),
+      goldMat
+    );
+    toeEmblem.rotation.x = Math.PI / 2 - 0.35;
+    toeEmblem.position.set(0, -0.48, 0.1);
+
+    legGroup.add(
+      upperThigh,
+      garterBand,
+      stocking,
+      ankleBoot,
+      ankleStrap,
+      teardrop,
+      footFront,
+      stilettoHeel,
+      toeEmblem
+    );
+    return legGroup;
+  };
+
+  const leftLeg = makeLisaLeg(-1);
+  const rightLeg = makeLisaLeg(1);
+  bodyGroup.add(leftLeg, rightLeg);
+
+  // 2. Asymmetric Split Skirt (`cloak`), Sheer Hip Lattice & Swallowtail Coat (`capeTail`)
+  const cloak = new THREE.Mesh(
+    makeSculptedShell(
+      [
+        [0.34, 0.25, 0.21, -0.015],
+        [0.44, 0.24, 0.20, -0.01],
+        [0.57, 0.21, 0.175],
+        [0.71, 0.18, 0.145],
+        [0.78, 0.165, 0.135],
+      ],
+      28,
+      0.045
+    ),
+    indigoDressMat
+  );
+  cloak.castShadow = true;
+  cloak.receiveShadow = true;
+  bodyGroup.add(cloak);
+  hitMeshes.push(cloak);
+
+  // Front asymmetric royal-indigo rose apron flap extending down toward left knee
+  const flapShape = new THREE.Shape();
+  flapShape.moveTo(-0.14, 0.36);
+  flapShape.lineTo(0.15, 0.36);
+  flapShape.quadraticCurveTo(0.18, 0.12, 0.12, -0.14);
+  flapShape.lineTo(-0.04, -0.02);
+  flapShape.quadraticCurveTo(-0.15, 0.15, -0.14, 0.36);
+  const frontFlap = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(flapShape, {
+      depth: 0.022,
+      bevelEnabled: true,
+      bevelThickness: 0.008,
+      bevelSize: 0.008,
+      bevelSegments: 2,
+    }),
+    indigoDressMat
+  );
+  frontFlap.position.set(0, 0.41, 0.155);
+  frontFlap.rotation.x = -0.1;
+  frontFlap.castShadow = true;
+  bodyGroup.add(frontFlap);
+
+  // Side dark-plum lattice cutouts at upper hips
+  for (const side of [-1, 1] as const) {
+    const hipPanel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.14, 0.24, 10, 1, false, 0, Math.PI * 0.72),
+      sheerPlumMat
+    );
+    hipPanel.position.set(side * 0.15, 0.56, -0.01);
+    hipPanel.rotation.y = side > 0 ? Math.PI * 0.15 : -Math.PI * 0.85;
+    bodyGroup.add(hipPanel);
+  }
+
+  // Diagonal gold-buckled waist belt & right-hip sculpted champagne-gold Rose
+  const hipBelt = new THREE.Mesh(new THREE.TorusGeometry(0.202, 0.024, 10, 24), deepIndigoMat);
+  hipBelt.rotation.x = Math.PI / 2;
+  hipBelt.rotation.y = -0.16;
+  hipBelt.position.set(0, 0.72, 0.01);
+  const beltBuckle = new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.01, 8, 12), goldMat);
+  beltBuckle.position.set(0.04, 0.71, 0.21);
+  bodyGroup.add(hipBelt, beltBuckle);
+
+  const hipRose = makeSculptedRose(champagneRoseMat, goldMat, 1.15);
+  hipRose.position.set(-0.22, 0.69, 0.14);
+  hipRose.rotation.set(0.68, -0.45, 0.25);
+  bodyGroup.add(hipRose);
+
+  // Flowing cool-lavender-white + royal-indigo swallowtail rear cloak (`capeTail` animated by GameEngine)
+  const capeTail = new THREE.Mesh(makeCapeShapeGeo(0.4, 0.94, 0.58), whiteClothMat);
+  capeTail.position.set(0, 0.2, -0.18);
+  capeTail.rotation.x = 0.22;
+  capeTail.castShadow = true;
+
+  for (const side of [-1, 1] as const) {
+    const tailTip = new THREE.Mesh(makeBeveledWingGeo(0.18, 0.58, 0.022), indigoDressMat);
+    tailTip.position.set(side * 0.23, 0.12, -0.02);
+    tailTip.rotation.z = side * -0.25;
+    tailTip.rotation.y = side > 0 ? 0.24 : Math.PI - 0.24;
+    capeTail.add(tailTip);
+  }
+  bodyGroup.add(capeTail);
+  hitMeshes.push(capeTail);
+
+  // 3. Crisp Ivory Sweetheart Bustier + Royal Indigo Corset + Gold Filigree Crest
+  const corsetLower = new THREE.Mesh(
+    makeSculptedShell([
+      [-0.18, 0.17, 0.135],
+      [-0.08, 0.165, 0.135],
+      [0.03, 0.20, 0.155],
+    ]),
+    indigoDressMat
+  );
+  corsetLower.position.set(0, 0.89, 0.01);
+  corsetLower.castShadow = true;
+
+  const whiteBustier = new THREE.Mesh(
+    makeSculptedShell([
+      [0.02, 0.205, 0.165],
+      [0.10, 0.228, 0.178],
+      [0.16, 0.185, 0.142],
+    ]),
+    ivoryBustierMat
+  );
+  whiteBustier.position.set(0, 0.92, 0.014);
+  whiteBustier.castShadow = true;
+
+  const bustierGoldPiping = new THREE.Mesh(
+    new THREE.TorusGeometry(0.158, 0.009, 8, 20, Math.PI * 0.88),
+    goldMat
+  );
+  bustierGoldPiping.rotation.x = Math.PI / 2 - 0.18;
+  bustierGoldPiping.rotation.z = -Math.PI * 0.44;
+  bustierGoldPiping.position.set(0, 1.075, 0.05);
+
+  const chestSkin = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11, 0.155, 0.14, 14),
+    skinMat
+  );
+  chestSkin.position.set(0, 1.11, 0.015);
+
+  const filigreeCrest = new THREE.Mesh(makeCrestPlate(0.21, 0.21, 0.024), goldMat);
+  filigreeCrest.position.set(0, 0.88, 0.162);
+  bodyGroup.add(corsetLower, whiteBustier, bustierGoldPiping, chestSkin, filigreeCrest);
+  hitMeshes.push(whiteBustier);
+
+  // Open-front lavender scalloped shoulder capelet + indigo choker collar + Electro Vision Pendant
+  const capeletPoints = [
+    new THREE.Vector2(0.35, 0.94),
+    new THREE.Vector2(0.28, 1.055),
+    new THREE.Vector2(0.19, 1.135),
+  ];
+  const capelet = new THREE.Mesh(
+    new THREE.LatheGeometry(capeletPoints, 22, 0.72, Math.PI * 2 - 1.44),
+    lavenderClothMat
+  );
+  capelet.castShadow = true;
+
+  const capeletTrim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.345, 0.013, 8, 22, Math.PI * 2 - 1.44),
+    goldMat
+  );
+  capeletTrim.rotation.x = Math.PI / 2;
+  capeletTrim.rotation.z = -Math.PI / 2 + 0.72;
+  capeletTrim.position.y = 0.945;
+
+  const chokerCollar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.105, 0.12, 0.085, 16),
+    deepIndigoMat
+  );
+  chokerCollar.position.set(0, 1.175, 0);
+  const collarGoldRim = new THREE.Mesh(new THREE.TorusGeometry(0.112, 0.012, 8, 18), goldMat);
+  collarGoldRim.rotation.x = Math.PI / 2;
+  collarGoldRim.position.y = 1.21;
+
+  const visionRing = new THREE.Mesh(new THREE.TorusGeometry(0.048, 0.011, 8, 16), goldMat);
+  visionRing.position.set(0, 1.105, 0.168);
+  const visionGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.038, 0), electroGemMat);
+  visionGem.scale.set(0.9, 1.15, 0.55);
+  visionGem.position.set(0, 1.105, 0.176);
+  bodyGroup.add(capelet, capeletTrim, chokerCollar, collarGoldRim, visionRing, visionGem);
+
+  // 4. Head, Emerald Eyes, Honey-Blonde Hair & Signature Left-Shoulder Braid + Rose
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.095, 0.14, 12), skinMat);
+  neck.position.set(0, 1.18, 0);
+  bodyGroup.add(neck);
+
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 1.54, 0.02);
+  bodyGroup.add(headGroup);
+
+  const headGeometry = new THREE.SphereGeometry(0.41, 32, 24);
+  const facePositions = headGeometry.getAttribute('position');
+  for (let index = 0; index < facePositions.count; index++) {
+    const height = facePositions.getY(index);
+    const jaw = THREE.MathUtils.smoothstep(-height, 0.06, 0.41);
+    facePositions.setX(index, facePositions.getX(index) * (1 - jaw * 0.14));
+    facePositions.setZ(index, facePositions.getZ(index) * (1 - jaw * 0.22));
+  }
+  headGeometry.computeVertexNormals();
+  const head = new THREE.Mesh(headGeometry, faceMat);
+  head.rotation.y = -Math.PI / 2;
+  head.scale.set(1.02, 0.96, 1.0);
+  head.castShadow = true;
+  headGroup.add(head);
+  hitMeshes.push(head);
+
+  const browGeo = new THREE.SphereGeometry(0.052, 10, 8);
+  const lBrow = new THREE.Mesh(browGeo, hairMat);
+  lBrow.scale.set(1.45, 0.55, 0.6);
+  lBrow.position.set(-0.15, 0.135, 0.375);
+  lBrow.rotation.z = 0.16;
+  const rBrow = new THREE.Mesh(browGeo, hairMat);
+  rBrow.scale.set(1.45, 0.55, 0.6);
+  rBrow.position.set(0.15, 0.135, 0.375);
+  rBrow.rotation.z = -0.16;
+  headGroup.add(lBrow, rBrow);
+
+  for (const side of [-1, 1] as const) {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), skinMat);
+    ear.position.set(side * 0.39, -0.02, -0.02);
+    headGroup.add(ear);
+  }
+
+  // Honey-blonde hair cap + parted sweeping front bangs + soft wavy cheek-framing curls
+  const hairCap = new THREE.Mesh(
+    new THREE.SphereGeometry(0.438, 24, 18, 0, Math.PI * 2, 0, Math.PI * 0.62),
+    hairMat
+  );
+  hairCap.position.set(0, 0.04, -0.02);
+  hairCap.rotation.x = -0.12;
+  hairCap.castShadow = true;
+  headGroup.add(hairCap);
+
+  // Parted front bangs arching gently over brows & inward-curling cheek locks
+  for (const side of [-1, 1] as const) {
+    const bangCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0.34, 0.28),
+      new THREE.Vector3(side * 0.13, 0.25, 0.37),
+      new THREE.Vector3(side * 0.24, 0.13, 0.36),
+      new THREE.Vector3(side * 0.30, 0.01, 0.29),
+    ]);
+    const bangMesh = new THREE.Mesh(
+      new THREE.TubeGeometry(bangCurve, 12, 0.068, 9, false),
+      hairMat
+    );
+    bangMesh.scale.set(1.0, 1.0, 0.62);
+    bangMesh.castShadow = true;
+    headGroup.add(bangMesh);
+
+    const sideLock = new THREE.Mesh(
+      new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3([
+          new THREE.Vector3(side * 0.24, 0.26, 0.26),
+          new THREE.Vector3(side * 0.35, 0.04, 0.23),
+          new THREE.Vector3(side * 0.32, -0.18, 0.21),
+          new THREE.Vector3(side * 0.23, -0.32, 0.14),
+        ]),
+        14,
+        0.078,
+        10,
+        false
+      ),
+      hairMat
+    );
+    sideLock.castShadow = true;
+    headGroup.add(sideLock);
+
+    const backCurl = new THREE.Mesh(
+      new THREE.SphereGeometry(0.155, 12, 10),
+      hairMat
+    );
+    backCurl.scale.set(1.0, 1.32, 0.86);
+    backCurl.position.set(side * 0.21, -0.22, -0.23);
+    backCurl.castShadow = true;
+    headGroup.add(backCurl);
+  }
+
+  // Signature over-left-shoulder braid (`+X` side matching portrait.png!) + blue-violet Rose pin
+  const braidCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.24, -0.1, -0.14),
+    new THREE.Vector3(0.29, -0.26, 0.05),
+    new THREE.Vector3(0.22, -0.4, 0.19),
+    new THREE.Vector3(0.16, -0.5, 0.24),
+  ]);
+  for (let i = 0; i < 6; i++) {
+    const t = i / 5;
+    const p = braidCurve.getPoint(t);
+    const puff = new THREE.Mesh(
+      new THREE.SphereGeometry(0.082 - t * 0.02, 10, 8),
+      hairMat
+    );
+    puff.scale.set(1.05, 0.92, 1.0);
+    puff.position.copy(p);
+    puff.castShadow = true;
+    headGroup.add(puff);
+  }
+  const shoulderRose = makeSculptedRose(blueRoseMat, electroGemMat, 0.95);
+  shoulderRose.position.set(0.24, -0.35, 0.2);
+  shoulderRose.rotation.set(0.95, 0.2, -0.25);
+  headGroup.add(shoulderRose);
+
+  // 5. Signature Wide-Brimmed Witch Hat (`crownGroup` + `hoodGem`)
+  const witchHat = new THREE.Group();
+  witchHat.position.set(0, 0.29, 0.01);
+  witchHat.rotation.set(-0.11, 0, -0.06);
+  headGroup.add(witchHat);
+
+  const brimTop = new THREE.Mesh(makeWitchBrimGeometry(0.32, 0.78, 0.004), indigoDressMat);
+  brimTop.castShadow = true;
+  const brimBottom = new THREE.Mesh(makeWitchBrimGeometry(0.32, 0.77, -0.008), underbrimMat);
+  const brimGoldEdge = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.0085, 8, 36), goldMat);
+  brimGoldEdge.rotation.x = Math.PI / 2;
+  brimGoldEdge.scale.set(1.06, 0.96, 1);
+  brimGoldEdge.position.y = 0.032;
+  witchHat.add(brimTop, brimBottom, brimGoldEdge);
+
+  // Bent pointed conical crown curving back-right
+  const spireBase = new THREE.Mesh(
+    new THREE.ConeGeometry(0.34, 0.46, 20),
+    indigoDressMat
+  );
+  spireBase.position.set(0, 0.21, -0.02);
+  spireBase.rotation.set(-0.22, 0, -0.14);
+  spireBase.castShadow = true;
+
+  const spireTipCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.04, 0.34, -0.06),
+    new THREE.Vector3(-0.14, 0.51, -0.18),
+    new THREE.Vector3(-0.26, 0.56, -0.34),
+  ]);
+  const spireTip = new THREE.Mesh(
+    new THREE.TubeGeometry(spireTipCurve, 12, 0.08, 12, false),
+    indigoDressMat
+  );
+  spireTip.castShadow = true;
+  const spireFinial = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.18, 10), indigoDressMat);
+  spireFinial.position.set(-0.29, 0.55, -0.39);
+  spireFinial.rotation.set(-1.35, 0, 0.48);
+
+  // Gold-buckled hatband
+  const hatBand = new THREE.Mesh(new THREE.TorusGeometry(0.335, 0.024, 8, 28), deepIndigoMat);
+  hatBand.rotation.x = Math.PI / 2 - 0.1;
+  hatBand.position.set(0, 0.055, -0.01);
+  const hatBuckle = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 8, 12), goldMat);
+  hatBuckle.position.set(0.02, 0.06, 0.325);
+  witchHat.add(spireBase, spireTip, spireFinial, hatBand, hatBuckle);
+
+  // Required `hoodGem` mesh (Electro brooch set on hatband)
+  const hoodGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.055, 0), electroGemMat);
+  hoodGem.scale.set(0.9, 1.15, 0.55);
+  hoodGem.position.set(-0.08, 0.07, 0.33);
+  witchHat.add(hoodGem);
+
+  // Front-right hat rose + dark raven/indigo feathers (viewer's left matching portrait.png!)
+  const hatRose = makeSculptedRose(blueRoseMat, electroGemMat, 1.25);
+  hatRose.position.set(-0.24, 0.09, 0.29);
+  hatRose.rotation.set(0.82, -0.58, 0.15);
+  witchHat.add(hatRose);
+
+  for (let f = 0; f < 2; f++) {
+    const feather = new THREE.Mesh(makeBeveledWingGeo(0.24, 0.38, 0.02), deepIndigoMat);
+    feather.position.set(-0.34 - f * 0.06, 0.19 + f * 0.06, 0.19 - f * 0.08);
+    feather.rotation.set(0.28, -0.7 + f * 0.25, 0.35 + f * 0.28);
+    witchHat.add(feather);
+  }
+
+  // Miniature dangling lantern charm on rear hat brim (matching splash.png!)
+  const charmCord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.12, 6), goldMat);
+  charmCord.position.set(-0.24, -0.03, -0.34);
+  const miniLantern = new THREE.Mesh(new THREE.OctahedronGeometry(0.045, 0), electroLanternGlassMat);
+  miniLantern.position.set(-0.24, -0.1, -0.34);
+  witchHat.add(charmCord, miniLantern);
+
+  // 6. Bare Upper Arms, Dark Violet Forearm Gloves & Weapon/Lantern Hands
+  const leftArm = new THREE.Group();
+  leftArm.position.set(-0.26, 0.99, 0.03);
+  leftArm.rotation.set(0.14, 0.06, 0.32);
+  const lUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.054, 0.046, 0.2, 10), skinMat);
+  lUpper.position.set(-0.02, -0.09, 0.06);
+  lUpper.rotation.x = Math.PI / 2 - 0.55;
+  const lGloveCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.048, 0.042, 12), lavenderClothMat);
+  lGloveCuff.position.set(-0.04, -0.17, 0.14);
+  lGloveCuff.rotation.x = Math.PI / 2 - 0.55;
+  const lGlove = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.04, 0.18, 10), deepIndigoMat);
+  lGlove.position.set(-0.055, -0.24, 0.21);
+  lGlove.rotation.x = Math.PI / 2 - 0.55;
+  const lHand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), deepIndigoMat);
+  lHand.position.set(-0.065, -0.31, 0.27);
+  leftArm.add(lUpper, lGloveCuff, lGlove, lHand);
+  bodyGroup.add(leftArm);
+
+  // Bow/Catalyst Group (used during combat & weapon inspect)
+  const bowGroup = new THREE.Group();
+  bowGroup.position.set(-0.28, 0.86, 0.38);
+  bowGroup.rotation.z = 0.18;
+  bodyGroup.add(bowGroup);
+
+  const nockedArrow = new THREE.Group();
+  nockedArrow.position.set(0, 0, 0.1);
+  let bowStringTop: THREE.Mesh | undefined;
+  let bowStringBottom: THREE.Mesh | undefined;
+  let nockedArrowTipMat: THREE.MeshStandardMaterial | undefined;
+
+  if (cfg.weaponArchetype === 'staff') {
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.03, 1.45, 10), goldMat);
+    shaft.rotation.x = 0.28;
+    const crownRing = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.026, 8, 20), goldMat);
+    crownRing.position.set(0, 0.72, 0.2);
+    const staffOrb = new THREE.Mesh(new THREE.OctahedronGeometry(0.14, 0), electroLanternGlassMat);
+    staffOrb.position.set(0, 0.72, 0.2);
+    const staffRose = makeSculptedRose(blueRoseMat, electroGemMat, 0.95);
+    staffRose.position.set(0, 0.54, 0.16);
+    bowGroup.add(shaft, crownRing, staffOrb, staffRose);
+
+    const orbHead = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), electroGemMat);
+    orbHead.position.z = 0.35;
+    nockedArrow.add(orbHead);
+    bowGroup.add(nockedArrow);
+  } else if (cfg.weaponArchetype === 'claw') {
+    const gauntlet = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.3), deepIndigoMat);
+    gauntlet.position.z = 0.12;
+    bowGroup.add(gauntlet);
+    for (let c = -1; c <= 1; c++) {
+      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.46, 4), electroGemMat);
+      blade.rotation.x = Math.PI / 2;
+      blade.position.set(c * 0.055, 0.02, 0.4);
+      bowGroup.add(blade);
+    }
+    const wave = new THREE.Mesh(makeCrescentGeo(0.18, 0.11, 0.03), electroGemMat);
+    wave.rotation.x = Math.PI / 2;
+    wave.position.z = 0.36;
+    nockedArrow.add(wave);
+    bowGroup.add(nockedArrow);
+  } else {
+    const bowCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, -0.58, -0.22),
+      new THREE.Vector3(0, -0.32, 0.08),
+      new THREE.Vector3(0, 0, 0.2),
+      new THREE.Vector3(0, 0.32, 0.08),
+      new THREE.Vector3(0, 0.58, -0.22),
+    ]);
+    const bowLimbs = new THREE.Mesh(
+      new THREE.TubeGeometry(bowCurve, 22, 0.034, 10, false),
+      deepIndigoMat
+    );
+    bowLimbs.castShadow = true;
+    const bowGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.2, 10), goldMat);
+    bowGrip.position.set(0, 0, 0.19);
+    const bowRose = makeSculptedRose(blueRoseMat, electroGemMat, 0.9);
+    bowRose.position.set(0, 0, 0.25);
+    bowRose.rotation.x = Math.PI / 2;
+
+    const halfStringGeo = new THREE.CylinderGeometry(0.0095, 0.0095, 0.57, 6);
+    bowStringTop = new THREE.Mesh(halfStringGeo, electroGemMat);
+    bowStringTop.position.set(0, 0.285, -0.21);
+    bowStringBottom = new THREE.Mesh(halfStringGeo, electroGemMat);
+    bowStringBottom.position.set(0, -0.285, -0.21);
+    bowGroup.add(bowLimbs, bowGrip, bowRose, bowStringTop, bowStringBottom);
+
+    nockedArrowTipMat = new THREE.MeshStandardMaterial({
+      color: accentPurpleHex,
+      emissive: accentPurpleHex,
+      emissiveIntensity: 1.0,
+      roughness: 0.2,
+      metalness: 0.45,
+    });
+    const arrowShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.72, 6), goldMat);
+    arrowShaft.rotation.x = Math.PI / 2;
+    const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.068, 0.18, 4), nockedArrowTipMat);
+    arrowHead.rotation.x = Math.PI / 2;
+    arrowHead.position.z = 0.4;
+    const fletchA = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, 0.14), nockedArrowTipMat);
+    fletchA.position.z = -0.3;
+    const fletchB = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.09, 0.14), nockedArrowTipMat);
+    fletchB.position.z = -0.3;
+    nockedArrow.add(arrowShaft, arrowHead, fletchA, fletchB);
+    bowGroup.add(nockedArrow);
+  }
+
+  // Right Draw Arm + Floating 3D Electro Rose Lantern (`magicOrb` core + lantern group)
+  const drawArm = new THREE.Group();
+  drawArm.position.set(0.25, 0.99, 0.04);
+  const rUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.054, 0.046, 0.2, 10), skinMat);
+  rUpper.position.set(0.05, -0.05, 0.08);
+  rUpper.rotation.x = Math.PI / 2 - 0.32;
+  rUpper.rotation.z = -0.26;
+  const rGloveCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.048, 0.042, 12), lavenderClothMat);
+  rGloveCuff.position.set(0.11, -0.10, 0.17);
+  rGloveCuff.rotation.x = Math.PI / 2 - 0.32;
+  rGloveCuff.rotation.z = -0.26;
+  const rGlove = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.04, 0.18, 10), deepIndigoMat);
+  rGlove.position.set(0.15, -0.12, 0.26);
+  rGlove.rotation.x = Math.PI / 2 - 0.32;
+  rGlove.rotation.z = -0.26;
+  const rHand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), deepIndigoMat);
+  rHand.position.set(0.19, -0.14, 0.35);
+
+  // Electro Rose Lantern anchored to `magicOrb` (keeps upright Y-spin via userData.uprightLantern)
+  const magicOrb = new THREE.Mesh(new THREE.OctahedronGeometry(0.088, 1), electroLanternGlassMat);
+  magicOrb.position.set(0.25, 0.08, 0.43);
+  magicOrb.scale.setScalar(1.14);
+  magicOrb.userData.uprightLantern = true;
+
+  const lanternRoof = new THREE.Mesh(new THREE.ConeGeometry(0.115, 0.085, 6), deepIndigoMat);
+  lanternRoof.position.y = 0.105;
+  const lanternCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.044, 0.055, 6), goldMat);
+  lanternCrown.position.y = 0.165;
+  const lanternBase = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.055, 0.045, 6), deepIndigoMat);
+  lanternBase.position.y = -0.095;
+  const lanternHandle = new THREE.Mesh(
+    new THREE.TubeGeometry(
+      new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, -0.13, 0),
+        new THREE.Vector3(-0.13, -0.02, -0.03),
+        new THREE.Vector3(-0.11, 0.21, 0),
+        new THREE.Vector3(0, 0.23, 0),
+      ]),
+      14,
+      0.011,
+      6,
+      false
+    ),
+    deepIndigoMat
+  );
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const rib = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.16, 5), deepIndigoMat);
+    rib.position.set(Math.cos(a) * 0.082, 0, Math.sin(a) * 0.082);
+    magicOrb.add(rib);
+  }
+  const lanternRose = makeSculptedRose(blueRoseMat, electroGemMat, 0.78);
+  lanternRose.position.set(0.06, -0.11, 0.04);
+  lanternRose.rotation.x = 0.5;
+  magicOrb.add(lanternRoof, lanternCrown, lanternBase, lanternHandle, lanternRose);
+
+  drawArm.add(rUpper, rGloveCuff, rGlove, rHand, magicOrb);
+  bodyGroup.add(drawArm);
+
+  const bodyMeshes: THREE.Mesh[] = [];
+  for (const part of bodyGroup.children) {
+    if (part === bowGroup) continue;
+    part.traverse((object) => {
+      if (object instanceof THREE.Mesh && object !== magicOrb && object.parent !== magicOrb) {
+        bodyMeshes.push(object);
+      }
+    });
+  }
+
+  const overlays = attachHeroAccessories(cfg, root, bodyGroup, bowGroup);
+
+  return {
+    root,
+    bodyGroup,
+    bodyMeshes,
+    cloak,
+    capeTail,
+    bowGroup,
+    bowStringTop,
+    bowStringBottom,
+    drawArm,
+    magicOrb,
+    nockedArrow,
+    nockedArrowTipMat,
+    leftLeg,
+    rightLeg,
+    hoodGem,
+    ...overlays,
+    hitMeshes,
+  };
+}
+
 export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
+  if (cfg.heroId === 'lisa' || cfg.crownStyle === 'witch_hat') {
+    return createLisaHeroModel(cfg);
+  }
+
   const root = new THREE.Group();
   const bodyGroup = new THREE.Group();
   root.add(bodyGroup);
@@ -710,114 +1680,7 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     });
   }
 
-  // 7. Composite 3D Zodiac Wings attached to Hero's back
-  let wingGroup: THREE.Group | undefined;
-  let leftWingPivot: THREE.Group | undefined;
-  let rightWingPivot: THREE.Group | undefined;
-  if (cfg.wingId) {
-    const builtWings = createZodiacWingsModel(cfg.wingId, cfg.wingLevel ?? 1);
-    wingGroup = builtWings.group;
-    leftWingPivot = builtWings.leftPivot;
-    rightWingPivot = builtWings.rightPivot;
-    wingGroup.position.set(0, 0.96, -0.24);
-    bodyGroup.add(wingGroup);
-  }
-
-  // 8. Awakened Weapon Aura (attached to bodyGroup near weapon/orb hand so visible in Lobby & Combat)
-  let weaponAuraGroup: THREE.Group | undefined;
-  if (cfg.weaponAuraId && cfg.weaponAuraId !== 'none') {
-    weaponAuraGroup = createWeaponAuraModel(cfg.weaponAuraId, cfg.weaponAuraLevel ?? 1);
-    weaponAuraGroup.position.set(0.28, 0.94, 0.34);
-    bodyGroup.add(weaponAuraGroup);
-  }
-
-  // 9. Mythic 3D Artifact orbiting behind right shoulder
-  let artifactGroup: THREE.Group | undefined;
-  if (cfg.artifactId) {
-    artifactGroup = createMythicArtifactModel(cfg.artifactId, cfg.artifactLevel ?? 1);
-    artifactGroup.position.set(0.56, 1.38, -0.22);
-    bodyGroup.add(artifactGroup);
-  }
-
-  // 10. Wave 10: 3D Divine Zodiac Halo rotating behind Hero's head & shoulders
-  let haloGroup: THREE.Group | undefined;
-  if (cfg.haloId) {
-    haloGroup = createDivineHaloModel(cfg.haloId, cfg.haloLevel ?? 1);
-    haloGroup.position.set(0, 1.34, -0.34);
-    bodyGroup.add(haloGroup);
-  }
-
-  // 10b. Wave 12: Mythic Weapon Transcendence 3D Crown FX (Tier 1..5)
-  let mythicCrownGroup: THREE.Group | undefined;
-  const mythicTier = Math.max(0, Math.min(5, Math.floor(cfg.mythicWeaponTier ?? 0)));
-  if (mythicTier >= 1) {
-    mythicCrownGroup = createMythicWeaponCrownFx(mythicTier);
-    mythicCrownGroup.position.set(0, 0.08, 0.16);
-    bowGroup.add(mythicCrownGroup);
-  }
-
-  // 10c. Wave 12: 3D Royal War Banner planted behind Hero's left shoulder
-  let warBannerGroup: THREE.Group | undefined;
-  let warBannerCloth: THREE.Mesh | undefined;
-  if (cfg.warBannerId && WAR_BANNER_MAP[cfg.warBannerId]) {
-    const builtBanner = createWarBannerModel(cfg.warBannerId, cfg.warBannerLevel ?? 1);
-    warBannerGroup = builtBanner.group;
-    warBannerCloth = builtBanner.clothMesh;
-    warBannerGroup.position.set(-0.46, 0.42, -0.34);
-    warBannerGroup.rotation.z = 0.12;
-    bodyGroup.add(warBannerGroup);
-  }
-
-  // 10d. Wave 13: Multi-Tier Orbiting 3D Soul Rings encircling Hero
-  let soulRingsGroup: THREE.Group | undefined;
-  let soulRingNodes: THREE.Object3D[] | undefined;
-  if (cfg.soulRingLevels) {
-    const hasAnyRing = Object.values(cfg.soulRingLevels).some((lv) => (lv ?? 0) > 0);
-    if (hasAnyRing) {
-      const builtRings = createSoulRingsGroup(cfg.soulRingLevels);
-      soulRingsGroup = builtRings.group;
-      soulRingNodes = builtRings.ringNodes;
-      soulRingsGroup.position.set(0, 0.96, 0);
-      bodyGroup.add(soulRingsGroup);
-    }
-  }
-
-  // 10e. Wave 14: Articulated Multi-Tier 3D Celestial Wings
-  let celestialWingGroup: THREE.Group | undefined;
-  let celestialWingLeft: THREE.Group | undefined;
-  let celestialWingRight: THREE.Group | undefined;
-  if (cfg.celestialWingId && CELESTIAL_WING_MAP[cfg.celestialWingId]) {
-    const builtCelWings = createCelestialWings3DGroup(
-      cfg.celestialWingId,
-      cfg.celestialWingStar ?? 1
-    );
-    celestialWingGroup = builtCelWings.group;
-    celestialWingLeft = builtCelWings.leftPivot;
-    celestialWingRight = builtCelWings.rightPivot;
-    celestialWingGroup.position.set(0, 1.18, -0.34);
-    bodyGroup.add(celestialWingGroup);
-  }
-
-  // 11. Composite 3D Astral Steed (Wave 13) or Legacy Zodiac Mount under Hero
-  let mountGroup: THREE.Group | undefined;
-  let mountLegs: THREE.Group[] | undefined;
-  let astralSteedGroup: THREE.Group | undefined;
-  let astralSteedWings: THREE.Group[] | undefined;
-  if (cfg.astralSteedId && ASTRAL_STEED_MAP[cfg.astralSteedId]) {
-    const builtSteed = createAstralSteedModel(cfg.astralSteedId, cfg.astralSteedStar ?? 1);
-    astralSteedGroup = builtSteed.group;
-    astralSteedWings = builtSteed.wingPivots;
-    mountGroup = builtSteed.group;
-    mountLegs = builtSteed.legs;
-    root.add(astralSteedGroup);
-    bodyGroup.position.y = 0.72;
-  } else if (cfg.mountId) {
-    const builtMount = createZodiacMountModel(cfg.mountId, cfg.mountLevel ?? 1);
-    mountGroup = builtMount.group;
-    mountLegs = builtMount.legs;
-    root.add(mountGroup);
-    bodyGroup.position.y = 0.68;
-  }
+  const overlays = attachHeroAccessories(cfg, root, bodyGroup, bowGroup);
 
   return {
     root,
@@ -835,24 +1698,7 @@ export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
     leftLeg,
     rightLeg,
     hoodGem,
-    wingGroup,
-    leftWingPivot,
-    rightWingPivot,
-    celestialWingGroup,
-    celestialWingLeft,
-    celestialWingRight,
-    mountGroup,
-    mountLegs,
-    weaponAuraGroup,
-    artifactGroup,
-    haloGroup,
-    warBannerGroup,
-    warBannerCloth,
-    mythicCrownGroup,
-    astralSteedGroup,
-    astralSteedWings,
-    soulRingsGroup,
-    soulRingNodes,
+    ...overlays,
     hitMeshes,
   };
 }

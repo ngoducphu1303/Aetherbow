@@ -1,5 +1,6 @@
 import React from 'react';
 import { Cloud, HardDrive, ShieldAlert } from 'lucide-react';
+import { HEROES } from '../data/heroesData';
 import { SaveConflictSnapshot } from '../services/playerCloudService';
 
 interface SaveConflictModalProps {
@@ -133,7 +134,7 @@ export const SaveConflictModal: React.FC<SaveConflictModalProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-400">Anh hùng đã mở</span>
                   <span className="font-mono-nums text-[11px] text-slate-300">
-                    {localSave.unlockedHeroes.length}/8
+                    {localSave.unlockedHeroes.length}/{HEROES.length}
                   </span>
                 </div>
               </div>

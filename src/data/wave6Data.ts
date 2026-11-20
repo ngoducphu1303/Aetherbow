@@ -726,7 +726,7 @@ export const COOP_DIFFICULTY_MAP: Record<CoopRaidDifficulty, CoopRaidDifficultyD
   }, {} as Record<CoopRaidDifficulty, CoopRaidDifficultyDef>);
 
 export function selectCoopAiAllies(playerHeroId: HeroId): [HeroDefinition, HeroDefinition] {
-  const preferredOrder: HeroId[] = ['thor', 'cleo', 'rolla', 'artemis', 'wukong', 'alex', 'atreus', 'dracoola'];
+  const preferredOrder: HeroId[] = ['thor', 'cleo', 'lisa', 'rolla', 'artemis', 'wukong', 'alex', 'atreus', 'dracoola'];
   const pool = preferredOrder
     .filter((id) => id !== playerHeroId)
     .map((id) => HEROES.find((h) => h.id === id))

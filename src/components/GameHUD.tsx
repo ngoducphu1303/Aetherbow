@@ -27,6 +27,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { SKILLS_CATALOG, SKILL_SYNERGY_MAP } from '../data/skillsData';
+import { HERO_MAP } from '../data/heroesData';
+import { ENEMY_LABEL_VI, getHeroAssetPack } from '../data/assetRegistry';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { getComboTierMeta } from '../data/wave12Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
@@ -52,7 +54,14 @@ import {
 } from '../types/game';
 import { COOP_TACTICAL_ORDERS } from '../engine/wave5CombatSystems';
 import { getStyleRewardBonusPct } from '../engine/wave7CombatSystems';
-import { GoldCoinIcon, SoulGemIcon } from './GameIcons';
+import {
+  BossPortraitBadge,
+  EnemyPortraitBadge,
+  GoldCoinIcon,
+  HeroCrestSvg,
+  ResilientAssetImg,
+  SoulGemIcon,
+} from './GameIcons';
 
 interface GameHUDProps {
   hud: HudSnapshot;
@@ -113,6 +122,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const activeSkillKeyLabel = formatKeybindShortLabel(activeKeybinds.activeSkill);
   const ultKeyLabel = formatKeybindShortLabel(activeKeybinds.ultimate);
   const pauseKeyLabel = formatKeybindShortLabel(activeKeybinds.pause);
+  const activeHeroId = hud.heroId ?? 'artemis';
+  const heroDef = HERO_MAP[activeHeroId] ?? HERO_MAP.artemis;
+  const heroAssets = getHeroAssetPack(activeHeroId, hud.skinId);
   const hpPct = Math.max(0, Math.min(100, (hud.hp / Math.max(1, hud.maxHp)) * 100));
   const shieldPct = Math.max(
     0,
@@ -241,13 +253,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {(hud.ultCutinTimer ?? 0) > 0 && hud.ultCutinTitle && (
         <div className="fixed inset-x-0 top-[15%] z-[19] flex justify-center px-4 pointer-events-none">
           <div
-            className="aaa-ult-cutin-strip px-6 py-2.5 rounded-xl border-y-2 bg-[#070b1a]/92 shadow-[0_0_36px_rgba(251,191,36,0.45)] flex items-center gap-3.5"
+            className="aaa-ult-cutin-strip px-4 sm:px-6 py-2 rounded-xl border-y-2 bg-[#070b1a]/94 shadow-[0_0_36px_rgba(251,191,36,0.45)] flex items-center gap-3.5"
             style={{ borderColor: hud.ultCutinAccentHex || '#fbbf24' }}
           >
-            <Zap
-              className="w-5 h-5 shrink-0"
-              style={{ color: hud.ultCutinAccentHex || '#fde047' }}
-            />
+            <div className="w-11 h-11 rounded-xl overflow-hidden border border-amber-300/75 bg-slate-950/90 flex items-center justify-center shrink-0">
+              <ResilientAssetImg
+                src={heroAssets.portrait || heroAssets.icon}
+                alt={hud.ultCutinHeroName || hud.heroName}
+                className="w-full h-full object-cover object-top"
+                fallback={
+                  <Zap
+                    className="w-5 h-5 shrink-0"
+                    style={{ color: hud.ultCutinAccentHex || '#fde047' }}
+                  />
+                }
+              />
+            </div>
             <div className="text-left">
               <div className="text-[10px] font-black uppercase tracking-[0.26em] text-amber-300">
                 TUYỆT KỸ · {hud.ultCutinHeroName || hud.heroName}
@@ -498,9 +519,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <Pause className="w-4 h-4" />
             </button>
 
-            <div className="hv2-panel rounded-2xl py-1.5 pr-3 pl-1.5 flex items-center gap-2 flex-1 max-w-[235px] min-w-0">
-              <div className="hv2-lv w-8 h-8 rounded-xl flex items-center justify-center font-mono-nums font-black text-xs shrink-0">
-                {hud.level}
+            <div className="hv2-panel rounded-2xl py-1.5 pr-3 pl-1.5 flex items-center gap-2 flex-1 max-w-[252px] min-w-0">
+              <div className="relative shrink-0">
+                <HeroCrestSvg
+                  heroId={activeHeroId}
+                  skinId={hud.skinId}
+                  accentHex={heroDef.accentHex}
+                  cloakHex={heroDef.cloakHex}
+                  hairHex={heroDef.hairHex}
+                  className="w-9 h-9"
+                />
+                <div className="hv2-lv absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-md flex items-center justify-center font-mono-nums font-black text-[9px] border border-amber-200/70">
+                  {hud.level}
+                </div>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between text-[10px] font-bold mb-1">
@@ -1359,6 +1390,36 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
+        {/* Active Non-Boss Target Mini-Frame */}
+        {!hud.bossName && !hud.isArenaMode && hud.activeTargetKind && (
+          <div className="w-full max-w-[270px] mx-auto rounded-xl px-2.5 py-1.5 bg-[#0a0d1d]/90 border border-rose-400/40 shadow-lg flex items-center gap-2.5">
+            <EnemyPortraitBadge
+              kind={hud.activeTargetKind}
+              variant="icon"
+              alt={hud.activeTargetName || ENEMY_LABEL_VI[hud.activeTargetKind]}
+              className="w-7 h-7 rounded-lg"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 text-[10px] font-bold mb-0.5">
+                <span className="text-rose-100 truncate">
+                  {hud.activeTargetName || ENEMY_LABEL_VI[hud.activeTargetKind]}
+                </span>
+                <span className="font-mono-nums text-rose-300 shrink-0">
+                  {Math.max(0, Math.min(100, Math.round(hud.activeTargetHpPct ?? 100)))}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-slate-950/90 border border-rose-500/25 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-rose-500 to-amber-400 transition-all duration-100"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, hud.activeTargetHpPct ?? 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Cinematic Multi-Layer Boss HP Bar */}
         {hud.bossName && !hud.isArenaMode && (() => {
           const totalLayers = Math.max(1, hud.bossLayers ?? 1);
@@ -1401,41 +1462,55 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   : 'bg-[#120816]/96 border-amber-300/45 shadow-[0_8px_28px_rgba(0,0,0,0.65)]'
               }`}
             >
-              <div className="flex items-center justify-between gap-2 text-xs font-black mb-1.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span className="font-display text-amber-50 tracking-wide truncate">
-                    {hud.bossName}
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <BossPortraitBadge
+                  chapterId={hud.chapterId}
+                  weeklyBossId={hud.weeklyBossId}
+                  bossName={hud.bossName}
+                  bossKind={hud.bossEnemyKind}
+                  isDragonLair={hud.isDragonLairMode}
+                  isSkyCitadel={hud.isSkyCitadelMode}
+                  isWorldBoss={hud.isWorldBossMode}
+                  isGuildBoss={hud.isGuildBossMode}
+                  variant="icon"
+                  className="w-8 h-8 rounded-xl"
+                />
+                <div className="flex-1 min-w-0 flex items-center justify-between gap-2 text-xs font-black">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span className="font-display text-amber-50 tracking-wide truncate">
+                      {hud.bossName}
+                    </span>
+                    {totalLayers > 1 && (
+                      <span className="font-mono-nums text-[10px] font-black text-amber-300 whitespace-nowrap">
+                        ×{curLayer}
+                      </span>
+                    )}
+                    <span aria-hidden="true" className="text-slate-600">·</span>
+                    {hud.bossPhase === 3 ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-200 whitespace-nowrap">
+                        <Crown className="w-3 h-3 text-amber-300 shrink-0" />
+                        <span>Pha III · Tối Thượng</span>
+                      </span>
+                    ) : hud.bossPhase === 2 ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-rose-300 whitespace-nowrap">
+                        <Flame className="w-3 h-3 text-rose-400 shrink-0" />
+                        <span>Pha II · Cuồng Nộ</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 whitespace-nowrap">
+                        Pha I
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-mono-nums text-amber-100/95 shrink-0">
+                    {hud.isWorldBossMode
+                      ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
+                      : hud.isGuildBossMode
+                      ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
+                      : `${Math.max(0, hud.bossHp).toLocaleString('vi-VN')} / ${hud.bossMaxHp.toLocaleString('vi-VN')}`}
                   </span>
-                  {totalLayers > 1 && (
-                    <span className="font-mono-nums text-[10px] font-black text-amber-300 whitespace-nowrap">
-                      ×{curLayer}
-                    </span>
-                  )}
-                  <span aria-hidden="true" className="text-slate-600">·</span>
-                  {hud.bossPhase === 3 ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-200 whitespace-nowrap">
-                      <Crown className="w-3 h-3 text-amber-300 shrink-0" />
-                      <span>Pha III · Tối Thượng</span>
-                    </span>
-                  ) : hud.bossPhase === 2 ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-rose-300 whitespace-nowrap">
-                      <Flame className="w-3 h-3 text-rose-400 shrink-0" />
-                      <span>Pha II · Cuồng Nộ</span>
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 whitespace-nowrap">
-                      Pha I
-                    </span>
-                  )}
                 </div>
-                <span className="font-mono-nums text-amber-100/95 shrink-0">
-                  {hud.isWorldBossMode
-                    ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
-                    : hud.isGuildBossMode
-                    ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
-                    : `${Math.max(0, hud.bossHp).toLocaleString('vi-VN')} / ${hud.bossMaxHp.toLocaleString('vi-VN')}`}
-                </span>
               </div>
               <div className={`hv2-boss-track relative ${underBg}`}>
                 <div
@@ -2052,12 +2127,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         <div className="mt-4 flex justify-center px-3 pointer-events-none">
           <div className="w14-boss-warning-cutin relative w-full max-w-2xl overflow-hidden rounded-2xl border-y-2 border-amber-300/90 bg-gradient-to-r from-[#1a040c]/95 via-[#4c071b]/95 to-[#1a040c]/95 px-5 py-3 shadow-[0_0_38px_rgba(244,63,94,0.65)]">
             <div className="flex items-center justify-center gap-3.5 text-center sm:text-left">
-              <div className="w-11 h-11 rounded-xl bg-rose-500/25 border border-amber-300/80 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-6 h-6 text-amber-300" />
-              </div>
+              <BossPortraitBadge
+                chapterId={hud.chapterId}
+                weeklyBossId={hud.weeklyBossId}
+                bossName={hud.bossWarningTitle}
+                bossKind={hud.bossEnemyKind}
+                isDragonLair={hud.isDragonLairMode}
+                isSkyCitadel={hud.isSkyCitadelMode}
+                isWorldBoss={hud.isWorldBossMode}
+                isGuildBoss={hud.isGuildBossMode}
+                variant="portrait"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 border-amber-300/85"
+              />
               <div className="min-w-0">
-                <div className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
-                  CẢNH BÁO ĐỎ · THỦ LĨNH XUẤT TRẬN
+                <div className="flex items-center justify-center sm:justify-start gap-1.5 text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>CẢNH BÁO ĐỎ · THỦ LĨNH XUẤT TRẬN</span>
                 </div>
                 <div className="font-display text-lg sm:text-2xl font-black text-white tracking-wide truncate">
                   {hud.bossWarningTitle}
@@ -2074,9 +2159,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       ) : bossIntroTitle ? (
         <div className="mt-4 flex justify-center px-4">
           <div className="a2-boss-intro w-full max-w-md rounded-2xl bg-[#180710]/96 border border-amber-300/80 px-5 py-3 shadow-[0_12px_36px_rgba(0,0,0,0.72)] flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-300/70 flex items-center justify-center shrink-0">
-              <Crown className="w-5 h-5 text-amber-300" />
-            </div>
+            <BossPortraitBadge
+              chapterId={hud.chapterId}
+              weeklyBossId={hud.weeklyBossId}
+              bossName={bossIntroTitle}
+              bossKind={hud.bossEnemyKind}
+              isDragonLair={hud.isDragonLairMode}
+              isSkyCitadel={hud.isSkyCitadelMode}
+              isWorldBoss={hud.isWorldBossMode}
+              isGuildBoss={hud.isGuildBossMode}
+              variant="portrait"
+              className="w-12 h-12 rounded-xl border-amber-300/80"
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
                 <span>Đại Boss Hoàng Đạo</span>
@@ -2320,12 +2414,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           : 'hv2-panel text-slate-300 cursor-not-allowed'
                       }`}
                     >
+                      <ResilientAssetImg
+                        src={heroAssets.burst}
+                        alt={hud.ultName}
+                        className={`pointer-events-none absolute inset-1.5 w-[calc(100%-0.75rem)] h-[calc(100%-0.75rem)] rounded-full object-cover ${
+                          ultReady ? 'opacity-85' : 'opacity-45 grayscale'
+                        }`}
+                        fallback={
+                          <Flame
+                            className={`w-5 h-5 relative z-[2] ${
+                              ultReady ? 'text-amber-200' : 'text-purple-300'
+                            }`}
+                          />
+                        }
+                      />
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-1.5 rounded-full bg-gradient-to-t from-[#050814]/85 via-[#050814]/35 to-transparent z-[1]"
+                      />
                       <svg
                         viewBox="0 0 64 64"
                         aria-hidden="true"
-                        className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                        className="pointer-events-none absolute inset-0 w-full h-full -rotate-90 z-[2]"
                       >
-                        <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                        <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
                         <circle
                           cx="32"
                           cy="32"
@@ -2338,12 +2450,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           strokeDashoffset={ultOffset}
                         />
                       </svg>
-                      <Flame
-                        className={`w-5 h-5 relative z-[1] ${
-                          ultReady ? 'text-amber-200' : 'text-purple-300'
-                        }`}
-                      />
-                      <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                      <span className="font-mono-nums text-[10px] leading-tight mt-4 relative z-[3] drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)] text-white">
                         {ultReady ? `CHIÊU ${ultKeyLabel}` : `${ultPct}%`}
                       </span>
                     </button>
@@ -2369,12 +2476,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                             : 'hv2-panel text-slate-400 cursor-not-allowed'
                         }`}
                       >
+                        <ResilientAssetImg
+                          src={heroAssets.skill}
+                          alt={hud.activeSkillName ?? 'Kỹ Năng Chủ Động'}
+                          className={`pointer-events-none absolute inset-1.5 w-[calc(100%-0.75rem)] h-[calc(100%-0.75rem)] rounded-full object-cover ${
+                            activeSkillReady ? 'opacity-85' : 'opacity-40 grayscale'
+                          }`}
+                          fallback={
+                            <Sparkles
+                              className={`w-4 h-4 relative z-[2] ${
+                                activeSkillReady ? 'text-cyan-100' : 'text-slate-400'
+                              }`}
+                            />
+                          }
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-1.5 rounded-full bg-gradient-to-t from-[#050814]/85 via-[#050814]/35 to-transparent z-[1]"
+                        />
                         <svg
                           viewBox="0 0 64 64"
                           aria-hidden="true"
-                          className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                          className="pointer-events-none absolute inset-0 w-full h-full -rotate-90 z-[2]"
                         >
-                          <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                          <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
                           <circle
                             cx="32"
                             cy="32"
@@ -2387,12 +2512,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                             strokeDashoffset={activeOffset}
                           />
                         </svg>
-                        <Sparkles
-                          className={`w-4 h-4 relative z-[1] ${
-                            activeSkillReady ? 'text-cyan-100' : 'text-slate-400'
-                          }`}
-                        />
-                        <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                        <span className="font-mono-nums text-[10px] leading-tight mt-4 relative z-[3] drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)] text-white">
                           {activeSkillReady ? `CHIÊU ${activeSkillKeyLabel}` : `${activeSkillCdSec.toFixed(1)}s`}
                         </span>
                       </button>

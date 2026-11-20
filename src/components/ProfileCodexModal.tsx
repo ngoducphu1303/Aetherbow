@@ -57,7 +57,7 @@ import {
   mapAuthError,
 } from '../services/playerCloudService';
 import { ComputedPlayerStats, DynamicTitleId, SaveData } from '../types/game';
-import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon, StarDustIcon } from './GameIcons';
+import { EnemyPortraitBadge, GoldCoinIcon, HeroCrestSvg, SoulGemIcon, StarDustIcon } from './GameIcons';
 
 export type ProfileModalTab = 'profile' | 'achievements' | 'history' | 'codex' | 'account';
 
@@ -1038,6 +1038,7 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                       <div key={h.id} className="cel-panel rounded-2xl p-4 flex gap-3">
                         <HeroCrestSvg
                           heroId={h.id}
+                          skinId={save.equippedSkinByHero?.[h.id] ?? 'default'}
                           accentHex={h.accentHex}
                           cloakHex={h.cloakHex}
                           hairHex={h.hairHex}
@@ -1072,16 +1073,23 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                   {ENEMY_CODEX_LIST.map((en) => {
                     const seen = career.seenEnemies.includes(en.kind);
                     return (
-                      <div key={en.kind} className="cel-panel rounded-2xl p-4 space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-rose-300">
-                            {en.tier} · {en.role}
-                          </span>
-                          <Skull className="w-4 h-4 text-rose-400 shrink-0" />
+                      <div key={en.kind} className="cel-panel rounded-2xl p-4 space-y-2">
+                        <div className="flex items-start gap-3">
+                          <EnemyPortraitBadge
+                            kind={en.kind}
+                            variant="portrait"
+                            alt={en.name}
+                            className="w-14 h-14 rounded-xl"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-rose-300 block truncate">
+                              {en.tier} · {en.role}
+                            </span>
+                            <h4 className="font-display text-sm font-black text-white mt-0.5 truncate">
+                              {en.name}
+                            </h4>
+                          </div>
                         </div>
-                        <h4 className="font-display text-sm font-black text-white">
-                          {en.name}
-                        </h4>
                         <p className="text-xs text-slate-300 leading-relaxed">{en.desc}</p>
                         <div className="pt-1 flex items-center justify-between text-[11px] font-mono-nums">
                           <span className="text-amber-300">

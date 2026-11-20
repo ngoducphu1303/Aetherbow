@@ -1141,6 +1141,7 @@ export class GameEngine {
   private isWeeklyRankedBossMode = false;
   private isWeeklyBossPracticeMode = false;
   private weeklyBossAttemptId: string | null = null;
+  private weeklyBossId: string | null = null;
   private weeklyBossSeed: string | null = null;
   private weeklyBossTimeLeft = 90;
   private weeklyBossTotalDamage = 0;
@@ -4893,6 +4894,7 @@ export class GameEngine {
     this.isWeeklyBossPracticeMode = isPractice;
     this.weeklyBossIsWeekendBlitz = Boolean(options?.isWeekendBlitz);
     this.weeklyBossAttemptId = isPractice ? null : attemptId;
+    this.weeklyBossId = schedule.bossId;
     this.weeklyBossSeed = schedule.seed;
     this.weeklyBossTimeLeft = schedule.timeLimitSec;
     this.weeklyBossTotalDamage = 0;
@@ -5556,7 +5558,7 @@ export class GameEngine {
     this.spawnShockwave(hx, hz, 0xfbbf24, 3.2, 0.42);
     this.spawnParticles(hx, 1.25, hz, heroDef.accentHex, 34);
     this.spawnParticles(hx, 1.85, hz, 0xfde047, 16);
-    if (heroId === 'artemis' || heroId === 'thor' || heroId === 'atreus') {
+    if (heroId === 'artemis' || heroId === 'thor' || heroId === 'atreus' || heroId === 'lisa') {
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * Math.PI * 2 + 0.4;
         const tx = hx + Math.cos(a) * 2.1;
@@ -8636,6 +8638,25 @@ export class GameEngine {
           });
         break;
       }
+      case 'electro_rose_lantern': {
+        const cx = nearest ? nearest.x : this.px;
+        const cz = nearest ? nearest.z : this.pz - 2.6;
+        this.spawnUltColumn(cx, cz, 0xa855f7, 0.4);
+        this.spawnShockwave(cx, cz, 0xa855f7, skillDef.radius, 0.4);
+        const targets = liveEnemies
+          .filter((e) => Math.hypot(e.x - cx, e.z - cz) <= skillDef.radius)
+          .slice(0, 5);
+        let prevX = this.px;
+        let prevZ = this.pz;
+        targets.forEach((e) => {
+          this.spawnLightningArc(prevX, 1.35, prevZ, e.x, 1.1, e.z);
+          this.spawnParticles(e.x, 1.05, e.z, 0xc084fc, 8);
+          prevX = e.x;
+          prevZ = e.z;
+          this.damageEnemy(e, skillDmg, true, false, false, true, false, 'TỬ LÔI!', 'ultimate');
+        });
+        break;
+      }
     }
 
     this.syncHudImmediate();
@@ -8798,6 +8819,18 @@ export class GameEngine {
         const healAmt = Math.round(this.maxHp * Math.min(0.35, 0.14 + hitCount * 0.04));
         this.hp = Math.min(this.maxHp, this.hp + healAmt);
         this.emitFloatingNumber(this.px, 2.0, this.pz, healAmt, false, true);
+        break;
+      }
+      case 'lisa': {
+        this.spawnShockwave(this.px, this.pz, 0xa855f7, 8.0, 0.54);
+        const stormTargets = liveEnemies.slice(0, 6);
+        for (let i = 0; i < 6; i++) {
+          const target = stormTargets[i % Math.max(1, stormTargets.length)];
+          if (!target || target.dead) continue;
+          this.spawnLightningArc(target.x, 9.2, target.z, target.x, 0.3, target.z);
+          this.spawnShockwave(target.x, target.z, 0xc084fc, 2.5, 0.36);
+          this.damageEnemy(target, atkPower * 2.55, true, false, false, true, false, 'LÔI NGỤC!', 'ultimate');
+        }
         break;
       }
     }
@@ -9124,7 +9157,11 @@ export class GameEngine {
       }
       const hasRealisticArtemis = this.artemisModel?.parent === this.hero.bodyGroup;
       this.hero.magicOrb.visible = !showWeaponInLobby && !hasRealisticArtemis;
-      this.hero.magicOrb.rotation.z += dt * 2.8;
+      if (this.hero.magicOrb.userData?.uprightLantern) {
+        this.hero.magicOrb.rotation.y += dt * 1.45;
+      } else {
+        this.hero.magicOrb.rotation.z += dt * 2.8;
+      }
       this.hero.bowGroup.visible = showWeaponInLobby;
       if (hasRealisticArtemis) {
         this.hero.nockedArrow.visible = showWeaponInLobby;
@@ -11225,7 +11262,8 @@ export class GameEngine {
       this.baseStats.heroId === 'rolla';
     const storm =
       (this.activeSkills.lightning_arrow ?? 0) > 0 ||
-      (this.activeSkills.super_bolt ?? 0) > 0;
+      (this.activeSkills.super_bolt ?? 0) > 0 ||
+      (this.baseStats.heroId === 'lisa' && this.atreusShotCount % 3 === 0);
     const poison = (this.activeSkills.venom_arrow ?? 0) > 0;
 
     const isAtreusOrb =
@@ -14236,13 +14274,17 @@ export class GameEngine {
 
     const hitPan = computeSpatialPan(e.x, ARENA_HALF_W);
     if (reaction) {
+      const reactionDmg =
+        this.baseStats.heroId === 'lisa'
+          ? Math.round(reaction.bonusDamage * 1.14)
+          : reaction.bonusDamage;
       e.reactionCd = reaction.cooldownSec;
       this.elementalReactionsCount += 1;
       this.advanceRoomBounty({ type: 'elemental_reaction' });
       if (!e.isTrainingDummy) {
-        e.hp -= reaction.bonusDamage;
+        e.hp -= reactionDmg;
       }
-      this.dmgElemental += reaction.bonusDamage;
+      this.dmgElemental += reactionDmg;
       if (
         e.isBoss &&
         e.maxBreakShield &&
@@ -16932,7 +16974,10 @@ export class GameEngine {
         : this.nightmareTier > 0
         ? `${this.currentChapter.zodiacName} · ${this.nightmareConfig.label}`
         : this.currentChapter.zodiacName,
+      chapterId: this.currentChapter.id,
       heroName: this.baseStats.heroName,
+      heroId: this.baseStats.heroId,
+      skinId: this.heroVisualCfg?.skinId ?? 'default',
       enemiesRemaining: this.enemies.length,
       portalOpen: this.portalOpen,
       isBossStage: isBossFloor || this.isPantheonMode || this.isChampionshipMode,
@@ -16961,6 +17006,21 @@ export class GameEngine {
         : this.isChampionshipMode && rival
         ? rival.bossTitle || this.championshipRivalName
         : null,
+      bossEnemyKind: boss?.kind,
+      weeklyBossId:
+        this.isWeeklyRankedBossMode || this.isWeeklyBossPracticeMode
+          ? this.weeklyBossId ?? undefined
+          : undefined,
+      activeTargetKind: (() => {
+        const nearest = this.findNearestEnemy(this.px, this.pz, undefined, 18);
+        return nearest && !nearest.isBoss ? nearest.kind : undefined;
+      })(),
+      activeTargetHpPct: (() => {
+        const nearest = this.findNearestEnemy(this.px, this.pz, undefined, 18);
+        return nearest && !nearest.isBoss
+          ? Math.max(0, Math.min(100, Math.round((nearest.hp / Math.max(1, nearest.maxHp)) * 100)))
+          : undefined;
+      })(),
       bossHp: boss ? boss.hp : this.isChampionshipMode && rival ? rival.hp : 0,
       bossMaxHp: boss ? boss.maxHp : this.isChampionshipMode && rival ? rival.maxHp : 0,
       bossPhase: boss ? boss.bossPhase : 1,

@@ -7,6 +7,7 @@ import {
   buildPersonalRecordsSummary,
 } from '../engine/aaaWave5Director';
 import { SaveData } from '../types/game';
+import { BossPortraitBadge } from './GameIcons';
 
 interface CodexGuideModalProps {
   save: SaveData;
@@ -213,14 +214,22 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                         : 'bg-[#080d1c] border-slate-800/90'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-bold text-amber-300 font-mono-nums">
-                          Chương {boss.chapterId} · {boss.chapterName}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <BossPortraitBadge
+                          chapterId={boss.chapterId}
+                          bossName={boss.bossName}
+                          variant="portrait"
+                          className="w-12 h-12 rounded-xl"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-amber-300 font-mono-nums truncate">
+                            Chương {boss.chapterId} · {boss.chapterName}
+                          </div>
+                          <h3 className="font-display text-sm font-black text-white truncate mt-0.5">
+                            {boss.bossName}
+                          </h3>
                         </div>
-                        <h3 className="font-display text-sm font-black text-white truncate mt-0.5">
-                          {boss.bossName}
-                        </h3>
                       </div>
                       {boss.cleared ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />

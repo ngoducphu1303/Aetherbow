@@ -207,6 +207,31 @@ export const HEROES: HeroDefinition[] = [
     cheekColor: '#f97316',
     crownStyle: 'wukong_circlet',
   },
+  {
+    id: 'lisa',
+    name: 'Lisa',
+    rarity: 'Legendary',
+    title: 'Tử Đằng Ma Đạo Sư',
+    skillName: 'Violet Arc',
+    ultName: 'Tường Vi Lôi Ngục',
+    ultDesc:
+      'Triệu hồi Đèn Hoa Lôi Vi tỏa 6 tia Tử Lôi giáng xuống chiến trường gây sát thương diện rộng và làm choáng kẻ địch.',
+    role: 'Tử Lôi Diện Rộng & Đèn Hoa Lôi Vi',
+    roleTag: 'aoe',
+    unlockChapterReq: 0,
+    passiveDesc:
+      'Mỗi 3 lần bắn phóng Tia Tử Lôi đánh lan 3 mục tiêu (+100% hiệu ứng Lôi Đình) và khuếch đại +14% Sát Thương Phản Ứng Nguyên Tố.',
+    bonusAtk: 53,
+    bonusHp: 210,
+    unlockGold: 380,
+    unlockGems: 18,
+    accentHex: 0xa855f7,
+    cloakHex: 0x2d1e68,
+    hairHex: 0xc59f6c,
+    eyeColor: '#22c55e',
+    cheekColor: '#f472b6',
+    crownStyle: 'witch_hat',
+  },
 ];
 
 export const HERO_MAP: Record<HeroId, HeroDefinition> = Object.fromEntries(

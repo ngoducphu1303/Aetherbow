@@ -13,6 +13,7 @@ import {
 import type { User } from 'firebase/auth';
 import splashArtSrc from '../assets/images/celestial_sanctuary_backdrop_1794971371758.jpg';
 import { CHAPTERS } from '../data/chaptersData';
+import { HEROES } from '../data/heroesData';
 import type { AppearanceStatus } from '../engine/GameEngine';
 import {
   getModelDownloadProgress,
@@ -222,7 +223,9 @@ export const SplashGate: React.FC<SplashGateProps> = ({
 
           <div className="flex items-center gap-2 text-xs text-slate-200 font-medium tracking-wide mt-4">
             <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            <span>8 Anh Hùng Chibi · 12 Chương Hoàng Đạo · Điện Thần 3D</span>
+            <span>
+              {HEROES.length} Anh Hùng Chibi · {CHAPTERS.length} Chương Hoàng Đạo · Điện Thần 3D
+            </span>
           </div>
 
           {/* 3D Model Readiness Progress with Per-File Status & Individual Retry */}
@@ -396,7 +399,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                 <div>
                   <div className="text-[10px] text-slate-400 font-semibold">Anh Hùng</div>
                   <div className="font-mono-nums text-sm font-black text-emerald-300 mt-0.5">
-                    {save.unlockedHeroes.length}/8
+                    {save.unlockedHeroes.length}/{HEROES.length}
                   </div>
                 </div>
               </div>

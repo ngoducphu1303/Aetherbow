@@ -23,7 +23,8 @@ import {
   WeaponAuraId,
   WingId,
 } from '../types/game';
-import { AwakenCrystalIcon, MountShardIcon, SoulGemIcon, WingFeatherIcon } from './GameIcons';
+import { getSkinAssetPack } from '../data/assetRegistry';
+import { AwakenCrystalIcon, MountShardIcon, ResilientAssetImg, SoulGemIcon, WingFeatherIcon } from './GameIcons';
 
 interface WardrobeModalProps {
   save: SaveData;
@@ -470,6 +471,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
               const equipped = equippedSkin === sk.id;
               const isPreviewing = activeSkinPreview === sk.id;
               const canUnlock = save.gems >= sk.unlockGems && save.gold >= sk.unlockGold;
+              const assetPack = getSkinAssetPack(sk.id, save.selectedHeroId);
               return (
                 <div
                   key={sk.id}
@@ -479,14 +481,24 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                       : 'bg-[#080d1e] border-slate-800'
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                      <span className="text-purple-300">{sk.badge}</span>
-                      {equipped && <span className="text-emerald-300">ĐANG MẶC</span>}
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-purple-300/45 bg-[#101833] shrink-0">
+                      <ResilientAssetImg
+                        src={assetPack.icon}
+                        alt={sk.name}
+                        className="w-full h-full object-cover object-top"
+                        fallback={<Sparkles className="w-4 h-4 text-purple-300 m-auto" />}
+                      />
                     </div>
-                    <div className="text-xs font-black text-white">{sk.name}</div>
-                    <div className="text-[10px] text-slate-300 mt-1">
-                      +{sk.atkBonus} ATK · +{sk.hpBonus} HP
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-0.5">
+                        <span className="text-purple-300">{sk.badge}</span>
+                        {equipped && <span className="text-emerald-300">ĐANG MẶC</span>}
+                      </div>
+                      <div className="text-xs font-black text-white truncate">{sk.name}</div>
+                      <div className="text-[10px] text-slate-300 mt-0.5 font-mono-nums">
+                        +{sk.atkBonus} ATK · +{sk.hpBonus} HP
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">

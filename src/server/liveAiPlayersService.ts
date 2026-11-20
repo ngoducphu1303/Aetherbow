@@ -57,6 +57,7 @@ function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
     rolla: 'Hàn Sương Thánh Trượng +18',
     atreus: 'Cung Thanh Vân Sơ Khởi +17',
     dracoola: 'Huyết Nguyệt Ma Trảo +21',
+    lisa: 'Đèn Hoa Lôi Vi Tử Đằng +20',
   };
   const mountPool = [
     'Thanh Long Thiên Giới',
@@ -220,7 +221,7 @@ function normalizeAiPlayerProfile(
   nowMs: number
 ): AiLivePlayerProfile {
   const seed = SEED_BY_ID.get(raw.id) ?? INITIAL_AI_ROSTER[fallbackIndex % INITIAL_AI_ROSTER.length];
-  const validHeroes: HeroId[] = ['artemis', 'alex', 'thor', 'wukong', 'cleo', 'rolla', 'atreus', 'dracoola'];
+  const validHeroes: HeroId[] = ['artemis', 'alex', 'thor', 'wukong', 'cleo', 'rolla', 'atreus', 'dracoola', 'lisa'];
   const heroId: HeroId = validHeroes.includes(raw.heroId as HeroId) ? (raw.heroId as HeroId) : seed.heroId;
   return {
     id: raw.id || seed.id,

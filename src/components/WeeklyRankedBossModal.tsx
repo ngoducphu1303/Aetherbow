@@ -52,6 +52,7 @@ import {
   LeaderboardFilterMode,
 } from '../data/liveAiLeaderboards';
 import type { AiLivePlayerProfile } from '../types/game';
+import { BossPortraitBadge } from './GameIcons';
 
 interface WeeklyRankedBossModalProps {
   isAuthenticated: boolean;
@@ -449,25 +450,32 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
       <div className="cel-panel-ornate w-full max-w-4xl rounded-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto text-left space-y-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 pb-4 border-b border-amber-400/20">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
-              <ShieldCheck className="w-4 h-4 shrink-0" />
-              <span>Boss Tuần Tính Hạng Công Bằng</span>
+          <div className="flex items-start gap-3.5 min-w-0">
+            <BossPortraitBadge
+              weeklyBossId={state?.schedule.bossId}
+              bossName={state?.schedule.bossName}
+              variant="portrait"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl"
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>Boss Tuần Tính Hạng Công Bằng</span>
+                {state && (
+                  <>
+                    <span aria-hidden="true" className="text-amber-400/50">·</span>
+                    <span className="font-mono-nums text-slate-200">{state.schedule.weekId}</span>
+                  </>
+                )}
+              </div>
+              <h2 className="font-display text-2xl sm:text-[28px] font-black text-white mt-1 leading-tight">
+                {state ? state.schedule.bossName : 'Đang kết nối Đấu Trường Tuần…'}
+              </h2>
               {state && (
-                <>
-                  <span aria-hidden="true" className="text-amber-400/50">·</span>
-                  <span className="font-mono-nums text-slate-200">{state.schedule.weekId}</span>
-                </>
+                <p className="text-xs text-slate-300 mt-1">
+                  {state.schedule.bossSubtitle}
+                </p>
               )}
-            </div>
-            <h2 className="font-display text-2xl sm:text-[28px] font-black text-white mt-1 leading-tight">
-              {state ? state.schedule.bossName : 'Đang kết nối Đấu Trường Tuần…'}
-            </h2>
-            {state && (
-              <p className="text-xs text-slate-300 mt-1">
-                {state.schedule.bossSubtitle}
-              </p>
-            )}
             <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px]">
               <span
                 className={`font-semibold ${
@@ -480,6 +488,7 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                   ? '● Cloud Firestore Trực Tuyến: Đua Boss Tuần & Bảng Mùa Giải đã đồng bộ bảo mật'
                   : '● Đồng bộ Đua Boss Tuần & Bảng Mùa Giải (Kết hợp Cloud Firestore + Máy chủ dự phòng tự động)'}
               </span>
+            </div>
             </div>
           </div>
 

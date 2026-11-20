@@ -121,6 +121,19 @@ export const HERO_ACTIVE_SKILLS: Record<HeroId, HeroActiveSkillDef> = {
     radius: 4.8,
     durationSec: 3.5,
   },
+  lisa: {
+    heroId: 'lisa',
+    name: 'Đèn Hoa Lôi Vi',
+    shortLabel: 'Lôi Vi',
+    desc: 'Kích nổ Đèn Hoa Lôi Vi gây 165% ATK diện rộng 5.2m, giật chuỗi Tử Lôi và làm choáng 0.9s.',
+    cooldownSec: 9.0,
+    damageMult: 1.65,
+    effectKind: 'electro_rose_lantern',
+    accentHex: 0xa855f7,
+    accentCss: '#a855f7',
+    radius: 5.2,
+    durationSec: 0.9,
+  },
 };
 
 export function getHeroActiveSkill(heroId: HeroId): HeroActiveSkillDef {

@@ -287,7 +287,8 @@ export function createStoneRoughnessTexture(maxAnisotropy: number): THREE.Canvas
 
 export function createHeroFaceTexture(
   eyeColor = '#c026d3',
-  cheekColor = '#9333ea'
+  cheekColor = '#9333ea',
+  showCheekMarkings = true
 ): THREE.CanvasTexture {
   const w = 512;
   const h = 512;
@@ -320,17 +321,19 @@ export function createHeroFaceTexture(
     ctx.fill();
   }
 
-  // Stylized triangle cheek markings
-  ctx.fillStyle = cheekColor;
-  for (const side of [-1, 1]) {
-    const mx = cx + side * 56;
-    const my = cy + 24;
-    ctx.beginPath();
-    ctx.moveTo(mx - 8, my);
-    ctx.lineTo(mx + 8, my);
-    ctx.lineTo(mx, my + 24);
-    ctx.closePath();
-    ctx.fill();
+  // Stylized triangle cheek markings (omitted on clean-face heroes like Lisa)
+  if (showCheekMarkings) {
+    ctx.fillStyle = cheekColor;
+    for (const side of [-1, 1]) {
+      const mx = cx + side * 56;
+      const my = cy + 24;
+      ctx.beginPath();
+      ctx.moveTo(mx - 8, my);
+      ctx.lineTo(mx + 8, my);
+      ctx.lineTo(mx, my + 24);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   // Large luminous stylized anime/chibi eyes
@@ -344,19 +347,19 @@ export function createHeroFaceTexture(
     ctx.fill();
 
     const irisGrad = ctx.createRadialGradient(ex, ey + 2, 3, ex, ey, 22);
-    irisGrad.addColorStop(0, '#ffffff');
+    irisGrad.addColorStop(0, showCheekMarkings ? '#ffffff' : '#86efac');
     irisGrad.addColorStop(0.32, eyeColor);
-    irisGrad.addColorStop(0.85, eyeColor);
+    irisGrad.addColorStop(0.85, showCheekMarkings ? eyeColor : '#15803d');
     irisGrad.addColorStop(1, '#1e1b4b');
     ctx.fillStyle = irisGrad;
     ctx.beginPath();
     ctx.ellipse(ex, ey + 1, 20, 18, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = showCheekMarkings ? '#ffffff' : '#052e16';
+    ctx.globalAlpha = showCheekMarkings ? 0.72 : 0.88;
     ctx.beginPath();
-    ctx.ellipse(ex, ey + 2, 7, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(ex, ey + 2, showCheekMarkings ? 7 : 6.5, showCheekMarkings ? 8 : 7.5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
 
@@ -690,3 +693,97 @@ export function createCelestialPortalTexture(
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+export function createLisaEmbroideryTexture(
+  primaryHex = '#2d1e68',
+  trimHex = '#fcd34d'
+): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = primaryHex;
+  ctx.fillRect(0, 0, size, size);
+
+  // Subtle woven diagonal silk sheen
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.045)';
+  ctx.lineWidth = 1.5;
+  for (let i = -size; i < size * 2; i += 8) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i - size, size);
+    ctx.stroke();
+  }
+
+  // Delicate starlight speckles along the dark indigo skirt fabric
+  for (let i = 0; i < 64; i++) {
+    const sx = (i * 53.7) % size;
+    const sy = (i * 97.3) % size;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(253, 224, 71, 0.32)' : 'rgba(196, 181, 253, 0.25)';
+    ctx.beginPath();
+    ctx.arc(sx, sy, i % 4 === 0 ? 1.6 : 1.0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Golden baroque rose-vine scrolls along front/hem edge
+  ctx.strokeStyle = trimHex;
+  ctx.lineWidth = 2.6;
+  ctx.globalAlpha = 0.78;
+  for (let gx = 32; gx < size; gx += 64) {
+    ctx.beginPath();
+    ctx.arc(gx, size - 24, 16, Math.PI, 0, false);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(gx, size - 24, 7, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+export function createLisaUnderbrimTexture(
+  baseHex = '#ddd6fe',
+  motifHex = '#7c3aed'
+): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const c = size / 2;
+
+  ctx.fillStyle = baseHex;
+  ctx.fillRect(0, 0, size, size);
+
+  // Scalloped baroque lace border & arcane Mondstadt scroll loops
+  ctx.strokeStyle = motifHex;
+  ctx.globalAlpha = 0.36;
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const mx = c + Math.cos(a) * 94;
+    const my = c + Math.sin(a) * 94;
+    ctx.beginPath();
+    ctx.arc(mx, my, 18, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(c, c, 72, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+

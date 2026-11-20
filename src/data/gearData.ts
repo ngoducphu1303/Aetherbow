@@ -1288,6 +1288,7 @@ export function createInitialSaveData(): SaveData {
       rolla: 0,
       atreus: 0,
       dracoola: 0,
+      lisa: 0,
     },
     equipped: {
       [GearSlot.WEAPON]: starterWeapon.uid,

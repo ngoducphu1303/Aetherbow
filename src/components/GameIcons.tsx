@@ -1,6 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Skull, Crown } from 'lucide-react';
+import {
+  getBossAssetPack,
+  getEnemyAssetPack,
+  getHeroAssetPack,
+} from '../data/assetRegistry';
 import { AVATAR_FRAME_MAP } from '../data/wave7Data';
-import { AvatarFrameId, GearSlot, HeroId, Rarity, WeaponArchetype } from '../types/game';
+import {
+  AvatarFrameId,
+  EnemyKind,
+  GearSlot,
+  HeroId,
+  HeroSkinId,
+  Rarity,
+  WeaponArchetype,
+} from '../types/game';
 
 export const RARITY_FRAME_CLASS: Record<Rarity, string> = {
   [Rarity.COMMON]: 'a2-q-common',
@@ -200,7 +214,29 @@ export const GearSlotSvg: React.FC<{
   );
 };
 
-export const HeroCrestSvg: React.FC<{
+export const ResilientAssetImg: React.FC<{
+  src: string;
+  alt: string;
+  className?: string;
+  fallback: React.ReactNode;
+}> = ({ src, alt, className = 'w-full h-full object-cover', fallback }) => {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (!src || failedSrc === src) {
+    return <>{fallback}</>;
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      onError={() => setFailedSrc(src)}
+      className={className}
+    />
+  );
+};
+
+const HeroCrestFallbackSvg: React.FC<{
   heroId: HeroId;
   accentHex: number;
   cloakHex: number;
@@ -240,10 +276,137 @@ export const HeroCrestSvg: React.FC<{
       {heroId === 'atreus' && (
         <path d="M18 22 L15 10 L24 18 M46 22 L49 10 L40 18" fill="#f43f5e" />
       )}
-      {heroId !== 'artemis' && heroId !== 'thor' && heroId !== 'wukong' && heroId !== 'atreus' && (
+      {heroId === 'lisa' && (
+        <path d="M12 20 Q32 16 52 20 L36 6 L28 14 Z" fill="#2d1e68" stroke="#fcd34d" strokeWidth="1.4" />
+      )}
+      {heroId !== 'artemis' && heroId !== 'thor' && heroId !== 'wukong' && heroId !== 'atreus' && heroId !== 'lisa' && (
         <polygon points="32,10 36,18 28,18" fill={accent} stroke="#fef08a" strokeWidth="1.2" />
       )}
     </svg>
+  );
+};
+
+export const HeroCrestSvg: React.FC<{
+  heroId: HeroId;
+  skinId?: HeroSkinId;
+  variant?: 'icon' | 'portrait';
+  accentHex: number;
+  cloakHex: number;
+  hairHex: number;
+  className?: string;
+}> = ({
+  heroId,
+  skinId,
+  variant = 'icon',
+  accentHex,
+  cloakHex,
+  hairHex,
+  className = 'w-12 h-12',
+}) => {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const pack = getHeroAssetPack(heroId, skinId);
+  const src = variant === 'portrait' ? pack.portrait : pack.icon;
+  const accent = `#${accentHex.toString(16).padStart(6, '0')}`;
+  const cloak = `#${cloakHex.toString(16).padStart(6, '0')}`;
+
+  if (!src || failedSrc === src) {
+    return (
+      <HeroCrestFallbackSvg
+        heroId={heroId}
+        accentHex={accentHex}
+        cloakHex={cloakHex}
+        hairHex={hairHex}
+        className={className}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`relative rounded-full overflow-hidden border border-amber-300/75 shadow-md shrink-0 ${className}`}
+      style={{
+        background: `radial-gradient(circle at 50% 35%, ${accent}55, ${cloak}ee)`,
+      }}
+    >
+      <img
+        src={src}
+        alt={heroId}
+        referrerPolicy="no-referrer"
+        loading="lazy"
+        onError={() => setFailedSrc(src)}
+        className="w-full h-full object-cover object-top scale-105"
+      />
+    </div>
+  );
+};
+
+export const EnemyPortraitBadge: React.FC<{
+  kind: EnemyKind;
+  variant?: 'icon' | 'portrait';
+  alt?: string;
+  className?: string;
+}> = ({ kind, variant = 'icon', alt, className = 'w-12 h-12 rounded-xl' }) => {
+  const pack = getEnemyAssetPack(kind);
+  const src = variant === 'portrait' ? pack.portrait : pack.icon;
+  return (
+    <div
+      className={`relative overflow-hidden bg-gradient-to-br from-[#1b122b] to-[#0b0e1e] border border-rose-400/40 flex items-center justify-center shrink-0 ${className}`}
+    >
+      <ResilientAssetImg
+        src={src}
+        alt={alt ?? pack.assetKey}
+        className="w-full h-full object-cover object-top"
+        fallback={<Skull className="w-5 h-5 text-rose-400" />}
+      />
+    </div>
+  );
+};
+
+export const BossPortraitBadge: React.FC<{
+  chapterId?: number;
+  weeklyBossId?: string;
+  bossName?: string | null;
+  bossKind?: EnemyKind;
+  isDragonLair?: boolean;
+  isSkyCitadel?: boolean;
+  isWorldBoss?: boolean;
+  isGuildBoss?: boolean;
+  variant?: 'icon' | 'portrait';
+  className?: string;
+}> = ({
+  chapterId,
+  weeklyBossId,
+  bossName,
+  bossKind,
+  isDragonLair,
+  isSkyCitadel,
+  isWorldBoss,
+  isGuildBoss,
+  variant = 'icon',
+  className = 'w-12 h-12 rounded-xl',
+}) => {
+  const pack = getBossAssetPack({
+    chapterId,
+    weeklyBossId,
+    bossName,
+    bossKind,
+    isDragonLair,
+    isSkyCitadel,
+    isWorldBoss,
+    isGuildBoss,
+  });
+  const src = variant === 'portrait' ? pack.portrait : pack.icon;
+  return (
+    <div
+      className={`relative overflow-hidden bg-gradient-to-br from-[#2a0c1d] via-[#1a0b24] to-[#0a0d1c] border border-amber-300/65 flex items-center justify-center shrink-0 ${className}`}
+    >
+      <ResilientAssetImg
+        src={src}
+        alt={bossName ?? pack.assetKey}
+        className="w-full h-full object-cover object-top"
+        fallback={<Crown className="w-5 h-5 text-amber-300" />}
+      />
+    </div>
   );
 };
 
@@ -358,6 +521,7 @@ export const AwakenCrystalIcon: React.FC<{ className?: string }> = ({
 
 export const ZodiacAvatar: React.FC<{
   heroId: HeroId;
+  skinId?: HeroSkinId;
   accentHex: number;
   cloakHex: number;
   hairHex: number;
@@ -365,6 +529,7 @@ export const ZodiacAvatar: React.FC<{
   sizeClass?: string;
 }> = ({
   heroId,
+  skinId,
   accentHex,
   cloakHex,
   hairHex,
@@ -379,6 +544,7 @@ export const ZodiacAvatar: React.FC<{
     >
       <HeroCrestSvg
         heroId={heroId}
+        skinId={skinId}
         accentHex={accentHex}
         cloakHex={cloakHex}
         hairHex={hairHex}

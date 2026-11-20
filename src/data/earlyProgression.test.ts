@@ -477,8 +477,8 @@ test('Chapter 1 Build Archetypes: SKILLS_CATALOG exposes distinct AoE and Boss b
   assert.ok(sustainSkills.length >= 2, 'Expected at least 2 Sustain skills');
 });
 
-test('Phase 2 · 8-Hero Balance Envelope: all 8 heroes stay within ±12% standing DPS of Artemis on identical Ch.1 loadout', () => {
-  assert.equal(HEROES.length, 8);
+test('Phase 2 · 9-Hero Balance Envelope: all 9 heroes stay within ±12% standing DPS of Artemis on identical Ch.1 loadout', () => {
+  assert.equal(HEROES.length, 9);
   const fresh = createInitialSaveData();
   const artemisDps = computeExpectedDps(
     computePlayerStats({ ...fresh, selectedHeroId: 'artemis' })
@@ -1079,8 +1079,8 @@ test('Phase 4 · Ch.7–12 Smart Valkyrie Drafting & Boss Phase III Punish Windo
   );
 });
 
-test('Phase 5 · 8 Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
-  assert.equal(HEROES.length, 8);
+test('Phase 5 · 9 Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
+  assert.equal(HEROES.length, 9);
   const effectKinds = new Set<string>();
   for (const hero of HEROES) {
     const skill = getHeroActiveSkill(hero.id);
@@ -1091,7 +1091,7 @@ test('Phase 5 · 8 Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Base
     assert.ok(skill.damageMult >= 1.2 && skill.damageMult <= 2.0);
     effectKinds.add(skill.effectKind);
   }
-  assert.equal(effectKinds.size, 8, 'All 8 heroes must have distinct active skill effect kinds');
+  assert.equal(effectKinds.size, 9, 'All 9 heroes must have distinct active skill effect kinds');
 
   // Fresh Ch.1 static baseline must stay completely untouched
   const fresh = createInitialSaveData();
