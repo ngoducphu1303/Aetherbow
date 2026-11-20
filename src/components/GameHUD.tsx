@@ -435,6 +435,20 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         );
       })}
 
+      {/* Wave 8 Pillar 1 & 2: Low-HP Critical Danger Peripheral Vignette (zero backdrop-filter) */}
+      {hpPct <= 30 && hud.hp > 0 && (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-200"
+          style={{
+            boxShadow:
+              hpPct <= 15
+                ? 'inset 0 0 110px 26px rgba(225, 29, 72, 0.56)'
+                : 'inset 0 0 84px 16px rgba(225, 29, 72, 0.34)',
+          }}
+        />
+      )}
+
       {/* Virtual Joystick Ring */}
       {joystick.active && (
         <div
@@ -1089,17 +1103,41 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               hud.isArenaEqualized ? 'border-emerald-400/70' : 'border-amber-400/65'
             }`}
           >
-            {hud.isArenaEqualized && (
-              <div className="flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300 mb-1">
-                <Shield className="w-3 h-3 shrink-0" />
-                <span>Chế Độ Công Bằng · Cân Bằng Chỉ Số · +35% Xu Đấu Trường</span>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 text-[10px] font-black uppercase tracking-[0.14em] mb-1">
+              {hud.arenaAiTierLabel && (
+                <span className="text-amber-300">
+                  Cấp AI: {hud.arenaAiTierLabel}
+                  {(hud.arenaAiRewardBonusPct ?? 0) > 0
+                    ? ` (+${hud.arenaAiRewardBonusPct}% Thưởng)`
+                    : ''}
+                </span>
+              )}
+              {hud.isArenaEqualized && (
+                <span className="inline-flex items-center gap-1 text-emerald-300">
+                  <Shield className="w-3 h-3 shrink-0" />
+                  <span>Cân Bằng Chỉ Số</span>
+                </span>
+              )}
+              {hud.arenaAiEnraged && (
+                <span className="text-rose-400">· CUỒNG NỘ PHASE 2</span>
+              )}
+              {hud.arenaSuddenDeathLabel && (
+                <span className="text-rose-300 font-mono-nums">
+                  · {hud.arenaSuddenDeathLabel}
+                </span>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-2 text-xs font-black mb-1.5">
               <span className="text-emerald-300 truncate">
                 {hud.heroName} ({Math.round(hpPct)}%)
               </span>
-              <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-400/50 font-mono-nums text-[11px] text-amber-300 shrink-0">
+              <span
+                className={`px-2 py-0.5 rounded border font-mono-nums text-[11px] shrink-0 ${
+                  hud.arenaSuddenDeathLabel
+                    ? 'bg-rose-600/35 border-rose-400 text-rose-100'
+                    : 'bg-rose-500/20 border-rose-400/50 text-amber-300'
+                }`}
+              >
                 VS · {hud.arenaTimeLeft ?? 45}s
               </span>
               <span className="text-rose-300 truncate text-right">
@@ -1107,19 +1145,57 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="h-2.5 rounded-full bg-slate-950 border border-emerald-400/30 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all duration-150"
-                  style={{ width: `${hpPct}%` }}
-                />
+              <div className="space-y-1">
+                <div className="h-2.5 rounded-full bg-slate-950 border border-emerald-400/30 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all duration-150"
+                    style={{ width: `${hpPct}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono-nums text-slate-300">
+                  <span>Tuyệt Kỹ Bạn</span>
+                  <span className="text-amber-300 font-bold">{Math.round(ultPct)}%</span>
+                </div>
               </div>
-              <div className="h-2.5 rounded-full bg-slate-950 border border-rose-400/30 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-l from-rose-500 to-amber-400 transition-all duration-150 ml-auto"
-                  style={{ width: `${arenaOppHpPct}%` }}
-                />
+              <div className="space-y-1">
+                <div className="relative h-2.5 rounded-full bg-slate-950 border border-rose-400/30 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-l from-rose-500 to-amber-400 transition-all duration-150 ml-auto"
+                    style={{ width: `${arenaOppHpPct}%` }}
+                  />
+                  {(hud.arenaOpponentShieldPct ?? 0) > 0 && (
+                    <div
+                      className="absolute inset-y-0 right-0 bg-cyan-300/75 transition-all duration-150"
+                      style={{ width: `${Math.min(100, hud.arenaOpponentShieldPct ?? 0)}%` }}
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[10px] font-mono-nums">
+                  <span
+                    className={`font-bold ${
+                      (hud.arenaOpponentUltPct ?? 0) >= 85 ? 'text-rose-300' : 'text-amber-200'
+                    }`}
+                  >
+                    Tuyệt Kỹ AI: {Math.round(hud.arenaOpponentUltPct ?? 0)}%
+                  </span>
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-950 border border-amber-400/25 overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-150 ${
+                        (hud.arenaOpponentUltPct ?? 0) >= 85
+                          ? 'bg-rose-400'
+                          : 'bg-amber-400'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, hud.arenaOpponentUltPct ?? 0))}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
+            {hud.arenaAiIntentLabel && (
+              <div className="mt-1.5 pt-1 border-t border-rose-500/30 text-center text-[11px] font-black tracking-wide text-amber-200">
+                {hud.arenaAiIntentLabel}
+              </div>
+            )}
           </div>
         )}
 

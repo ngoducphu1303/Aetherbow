@@ -833,6 +833,7 @@ export class LiveAiPlayersService {
     challengerName: string;
     playerWon: boolean;
     durationSec: number;
+    aiDuelTier?: 'challenger' | 'master' | 'sovereign' | 'mythic';
     nowMs?: number;
   }): {
     alreadyProcessed: boolean;
@@ -851,8 +852,20 @@ export class LiveAiPlayersService {
       return { alreadyProcessed: true, opponent, ratingDelta: 0 };
     }
 
+    const tier = params.aiDuelTier ?? 'challenger';
+    const tierMeta: Record<
+      'challenger' | 'master' | 'sovereign' | 'mythic',
+      { label: string; winRating: number; lossRating: number }
+    > = {
+      challenger: { label: 'Thách Đấu', winRating: 24, lossRating: -10 },
+      master: { label: 'Cao Thủ', winRating: 30, lossRating: -10 },
+      sovereign: { label: 'Đế Vương', winRating: 38, lossRating: -8 },
+      mythic: { label: 'Thần Thoại', winRating: 48, lossRating: -6 },
+    };
+    const meta = tierMeta[tier] ?? tierMeta.challenger;
+
     this.store.processedDuelIds[params.duelId] = nowMs;
-    const ratingDelta = params.playerWon ? 24 : -10;
+    const ratingDelta = params.playerWon ? meta.winRating : meta.lossRating;
     if (params.playerWon) {
       opponent.duelLosses += 1;
       opponent.winStreak = 0;
@@ -860,7 +873,7 @@ export class LiveAiPlayersService {
     } else {
       opponent.duelWins += 1;
       opponent.winStreak += 1;
-      opponent.duelRating += 16;
+      opponent.duelRating += 18;
     }
     opponent.status = 'ready_duel';
     opponent.statusDetail = 'Sẵn sàng nhận thách đấu 1v1';
@@ -873,8 +886,8 @@ export class LiveAiPlayersService {
       kind: 'duel_result',
       actorName: params.challengerName,
       summary: params.playerWon
-        ? `đánh bại ${opponent.displayName} ${opponent.tag} trong ${cleanDur}s (+${ratingDelta} điểm 1v1)!`
-        : `thất thủ trước ${opponent.displayName} ${opponent.tag} sau ${cleanDur}s giao tranh căng thẳng.`,
+        ? `hạ gục ${opponent.displayName} ${opponent.tag} [${meta.label}] trong ${cleanDur}s (+${ratingDelta} điểm 1v1)!`
+        : `bị ${opponent.displayName} ${opponent.tag} [${meta.label}] đánh bại sau ${cleanDur}s giao tranh nảy lửa!`,
       accent: params.playerWon ? 'emerald' : 'rose',
     });
 
@@ -882,7 +895,7 @@ export class LiveAiPlayersService {
       playerName: params.challengerName,
       aiPlayerId: opponent.id,
       playerWon: params.playerWon,
-      reason: 'Đấu Trường 1v1',
+      reason: `Đấu Trường 1v1 · ${meta.label}`,
       nowMs,
     });
 

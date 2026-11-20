@@ -112,7 +112,18 @@ import {
   stepStyleMomentum,
   StyleMomentumState,
 } from './wave7CombatSystems';
-import type { CombatStyleGrade } from '../types/game';
+import {
+  AiRivalAttackPattern,
+  AiRivalCombatState,
+  buildLethalDefeatReport,
+  computeArenaSuddenDeath,
+  computeLethalArenaMatchConfig,
+  computePvEIntensityProfile,
+  createAiRivalCombatState,
+  LethalArenaMatchConfig,
+  stepAiRivalCombatBrain,
+} from './wave8LethalAiSystems';
+import type { AiDuelDifficultyTier, CombatStyleGrade } from '../types/game';
 import {
   BossWeakPointState,
   ChapterWeatherProfile,
@@ -687,6 +698,11 @@ export interface EngineCallbacks {
       damageBreakdown?: DamageBreakdown;
       defeatCause?: DefeatCauseInfo;
       activeSynergies?: SkillSynergyId[];
+      aiDuelTier?: AiDuelDifficultyTier;
+      aiRewardBonusPct?: number;
+      arenaRivalRemainingHpPct?: number;
+      consolationStarDust?: number;
+      coachingNote?: string;
     }
   ) => void;
   onProgressEvent?: (ev: {
@@ -1117,6 +1133,16 @@ export class GameEngine {
   private liveAiPlayerId: string | null = null;
   private liveAiPersonality: AiLivePlayerPersonality | null = null;
   private liveAiRivalTag: string | null = null;
+  // Wave 8: Lethal Adaptive AI Duel & PvE Challenge Intensity
+  private aiDuelTier: AiDuelDifficultyTier = 'master';
+  private aiWinStreak = 0;
+  private pveChallengeEnabled = true;
+  private aiRivalBrainState: AiRivalCombatState | null = null;
+  private aiRivalMatchConfig: LethalArenaMatchConfig | null = null;
+  private aiRivalActivePattern: AiRivalAttackPattern | null = null;
+  private aiRivalActiveProjSpeed = 16;
+  private aiRivalActiveDmgMult = 1.0;
+  private aiRivalNextCooldown = 0.85;
   private isBloodMoonMode = false;
   private bloodMoonTimeLeft = BLOOD_MOON_DURATION_SEC;
   private bloodMoonWave = 0;
@@ -4247,14 +4273,39 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
+  public setAiChallengeConfig(
+    tier: AiDuelDifficultyTier,
+    winStreak = 0,
+    pveChallengeEnabled = true
+  ): void {
+    this.aiDuelTier = tier;
+    this.aiWinStreak = Math.max(0, Math.floor(winStreak));
+    this.pveChallengeEnabled = pveChallengeEnabled;
+  }
+
   public startArenaDuel(
     stats: ComputedPlayerStats,
     opponent: ArenaOpponent,
-    equalized = false
+    equalized = false,
+    tierOverride?: AiDuelDifficultyTier
   ): void {
+    const activeTier = tierOverride ?? this.aiDuelTier ?? 'master';
+    this.aiDuelTier = activeTier;
     const eq = equalized ? computeEqualizedArenaStats(stats, opponent) : null;
     const effectiveStats = eq ? eq.playerStats : stats;
     const effectiveOpponent = eq ? eq.opponent : opponent;
+    const matchCfg = computeLethalArenaMatchConfig({
+      playerStats: effectiveStats,
+      opponent: effectiveOpponent,
+      tier: activeTier,
+      playerWinStreak: this.aiWinStreak,
+      equalized,
+    });
+    this.aiRivalMatchConfig = matchCfg;
+    this.aiRivalActivePattern = null;
+    this.aiRivalActiveProjSpeed = 16;
+    this.aiRivalActiveDmgMult = 1.0;
+    this.aiRivalNextCooldown = 0.72;
     this.isTowerMode = false;
     this.towerFloor = 0;
     this.isBossRushMode = false;
@@ -4285,16 +4336,33 @@ export class GameEngine {
     this.buildArena(this.currentChapter);
     this.resetRunState(effectiveStats);
     clearCombatInputBuffer(this.combatInputBuffer);
-    this.ultCharge = 75;
-    this.rebuildCompanions();
+    // Wave 8 Fair Lethality: No free campaign revives or pet ganks in 1v1 duels
+    if (matchCfg.disableFreeRevives) {
+      this.revivesLeft = 0;
+    }
+    this.ultCharge = matchCfg.startingPlayerUltCharge;
+    if (!matchCfg.disableCompanionsInDuel) {
+      this.rebuildCompanions();
+    }
+    this.aiRivalBrainState = createAiRivalCombatState(
+      activeTier,
+      this.liveAiPersonality ?? 'tactical',
+      matchCfg.startingRivalUltCharge,
+      matchCfg.rivalShieldHp
+    );
     this.setupStageArena(
       'sanctum',
       true,
       equalized
-        ? `ĐẤU TRƯỜNG CÂN BẰNG 1V1 · ${effectiveOpponent.name}`
-        : `ĐẤU TRƯỜNG 1V1 · ${effectiveOpponent.name}`
+        ? `ĐẤU CÂN BẰNG 1V1 (${matchCfg.tierLabel.toUpperCase()}) · ${effectiveOpponent.name}`
+        : `ĐẤU TRƯỜNG 1V1 (${matchCfg.tierLabel.toUpperCase()}) · ${effectiveOpponent.name}`
     );
-    opponent = effectiveOpponent;
+    opponent = {
+      ...effectiveOpponent,
+      maxHp: matchCfg.rivalMaxHp,
+      attack: matchCfg.rivalAttack,
+      speedMult: matchCfg.rivalSpeedMult,
+    };
 
     // Place player & spawn AI 3D Rival Hero across the arena
     this.px = 0;
@@ -4703,10 +4771,12 @@ export class GameEngine {
     stats: ComputedPlayerStats,
     opponent: AiLivePlayerProfile,
     duelId: string,
-    equalized = false
+    equalized = false,
+    tierOverride?: AiDuelDifficultyTier
   ): void {
+    const activeTier = tierOverride ?? this.aiDuelTier ?? 'master';
     const oppHero = HERO_MAP[opponent.heroId] ?? HERO_MAP.artemis;
-    const powerRatio = Math.max(0.75, Math.min(1.45, opponent.powerRating / Math.max(1200, stats.powerRating)));
+    const powerRatio = Math.max(0.85, Math.min(1.45, opponent.powerRating / Math.max(1200, stats.powerRating)));
     const syntheticOpponent: ArenaOpponent = {
       id: opponent.id,
       name: `${opponent.displayName} ${opponent.tag}`,
@@ -4714,9 +4784,9 @@ export class GameEngine {
       heroId: opponent.heroId,
       rating: opponent.duelRating,
       powerRating: opponent.powerRating,
-      maxHp: Math.round(stats.maxHp * 2.4 * powerRatio),
-      attack: Math.round(stats.attack * 0.44 * powerRatio),
-      speedMult: opponent.personality === 'assassin' ? 1.15 : opponent.personality === 'aggressive' ? 1.05 : 1.0,
+      maxHp: Math.round(stats.maxHp * 2.1 * powerRatio),
+      attack: Math.round(stats.attack * 1.15 * powerRatio),
+      speedMult: opponent.personality === 'assassin' ? 1.16 : opponent.personality === 'aggressive' ? 1.08 : 1.03,
       weaponArchetype: opponent.heroId === 'rolla' || opponent.heroId === 'cleo' ? 'staff' : opponent.heroId === 'wukong' || opponent.heroId === 'dracoola' ? 'claw' : 'bow',
       accentHex: oppHero.accentHex,
       cloakHex: oppHero.cloakHex,
@@ -4724,14 +4794,18 @@ export class GameEngine {
       rewardPoints: 24,
       rewardArenaCoins: 85,
     };
-    this.startArenaDuel(stats, syntheticOpponent, equalized);
+    this.startArenaDuel(stats, syntheticOpponent, equalized, activeTier);
     this.liveAiDuelId = duelId;
     this.liveAiPlayerId = opponent.id;
     this.liveAiPersonality = opponent.personality;
     this.liveAiRivalTag = opponent.tag;
+    if (this.aiRivalBrainState) {
+      this.aiRivalBrainState.personality = opponent.personality;
+    }
+    const tierLbl = (this.aiRivalMatchConfig?.tierLabel ?? 'Cao Thủ').toUpperCase();
     this.stageBannerText = equalized
-      ? `ĐẤU CÂN BẰNG 1V1 · ${opponent.displayName.toUpperCase()} [AI LIVE]`
-      : `THÁCH ĐẤU 1V1 LIVE · ${opponent.displayName.toUpperCase()} [AI LIVE]`;
+      ? `ĐẤU CÂN BẰNG 1V1 (${tierLbl}) · ${opponent.displayName.toUpperCase()} [AI LIVE]`
+      : `THÁCH ĐẤU 1V1 LIVE (${tierLbl}) · ${opponent.displayName.toUpperCase()} [AI LIVE]`;
     this.stageBannerTimer = 2.6;
     this.syncHudImmediate();
   }
@@ -7570,12 +7644,24 @@ export class GameEngine {
       hp: finalHp,
       maxHp: finalHp,
       speed: speed * speedScale * (hasHasteAffix ? 1.25 : 1.0),
-      damage: Math.round(damage * dmgMult * (isElite ? 1.25 : 1.0)),
+      damage: Math.round(
+        damage *
+          dmgMult *
+          (isElite ? 1.25 : 1.0) *
+          (!this.isTrainingMode && !this.isArenaMode && !this.isWeeklyRankedBossMode
+            ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled).enemyDamageMult
+            : 1.0)
+      ),
       xpValue: Math.round(xpValue * (isElite ? 1.5 : 1.0)),
       goldValue: Math.round(goldValue * this.currentChapter.goldBonusMult * (isElite ? 1.6 : 1.0)),
       isBoss,
       spawnTimer: 0.48,
-      attackTimer: (0.7 + Math.random() * 0.9) * (hasHasteAffix ? 0.8 : 1.0),
+      attackTimer:
+        (0.7 + Math.random() * 0.9) *
+        (hasHasteAffix ? 0.8 : 1.0) *
+        (!this.isTrainingMode && !this.isArenaMode && !this.isWeeklyRankedBossMode
+          ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled).enemyCooldownMult
+          : 1.0),
       telegraphTimer: 0,
       telegraphDuration: 0.65,
       telegraphType: 'none',
@@ -9036,6 +9122,19 @@ export class GameEngine {
         const rivalPct = rival ? rival.hp / Math.max(1, rival.maxHp) : 0;
         const playerPct = this.hp / Math.max(1, this.maxHp);
         const victory = playerPct >= rivalPct;
+        const bonusPct = this.aiRivalMatchConfig?.rewardBonusPct ?? 0;
+        const bonusMult = 1 + bonusPct / 100;
+        const defeatReport = !victory
+          ? buildLethalDefeatReport({
+              rivalName: this.arenaOpponentName || 'Đối Thủ AI',
+              rivalRemainingHpPct: Math.round(rivalPct * 100),
+              tier: this.aiDuelTier,
+              lastPattern: this.aiRivalActivePattern,
+              suddenDeathActive: true,
+              perfectDodges: this.perfectDodgeCount,
+              durationSec: this.runElapsedSeconds,
+            })
+          : null;
         if (victory) soundEngine.playVictory();
         else soundEngine.playPlayerHurt();
         this.phase = victory ? GamePhase.VICTORY : GamePhase.GAME_OVER;
@@ -9044,13 +9143,22 @@ export class GameEngine {
           chapterId: this.currentChapter.id,
           stageReached: 1,
           kills: victory ? 1 : 0,
-          gold: this.runGold + (victory ? 160 : 50),
-          gems: this.runGems + (victory ? 12 : 2),
+          gold: victory
+            ? Math.round((this.runGold + 160) * bonusMult)
+            : this.runGold + (defeatReport?.consolationGold ?? 60),
+          gems: this.runGems + (victory ? Math.round(12 * bonusMult) : 2),
+          starDust: victory ? Math.round(10 * bonusMult) : defeatReport?.consolationStarDust ?? 3,
           isArenaMode: true,
           arenaOpponentName: this.arenaOpponentName,
           liveAiDuelId: this.liveAiDuelId ?? undefined,
           liveAiPlayerId: this.liveAiPlayerId ?? undefined,
           liveAiDurationSec: Math.max(1, Math.round(this.runElapsedSeconds)),
+          aiDuelTier: this.aiDuelTier,
+          aiRewardBonusPct: bonusPct,
+          arenaRivalRemainingHpPct: Math.round(rivalPct * 100),
+          consolationStarDust: defeatReport?.consolationStarDust,
+          coachingNote: defeatReport?.coachingNote,
+          defeatCause: defeatReport?.cause,
           maxCombo: this.maxRunCombo,
           damageBreakdown: this.getDamageBreakdownSnapshot(),
         });
@@ -12028,22 +12136,59 @@ export class GameEngine {
           }
           this.executeEnemyAttack(e, isEnraged);
           e.telegraphType = 'none';
-          // Deliberate punish recovery windows per boss archetype so players can dodge then counterattack cleanly
-          e.attackTimer = e.isBoss
-            ? e.bossPhase === 3
-              ? 1.0
-              : isEnraged
-              ? 1.15
-              : e.kind === EnemyKind.WARDEN_BOSS
-              ? 1.55
-              : e.kind === EnemyKind.TITAN_BOSS
-              ? 1.5
-              : 1.45
-            : 1.85 + Math.random() * 0.8;
-          if (e.isBoss) {
-            e.punishWindowMax = e.attackTimer;
-            e.punishWindowTimer = e.attackTimer;
+          // Deliberate punish recovery windows per boss archetype; Arena AI Rival uses lethal adaptive cadence
+          if (e.isArenaRival) {
+            e.attackTimer = this.aiRivalNextCooldown;
+          } else {
+            const pveProfile =
+              !this.isTrainingMode && !this.isWeeklyRankedBossMode
+                ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled)
+                : null;
+            const pveCdMult = pveProfile ? pveProfile.enemyCooldownMult : 1.0;
+            e.attackTimer =
+              (e.isBoss
+                ? e.bossPhase === 3
+                  ? 1.0
+                  : isEnraged
+                  ? 1.15
+                  : e.kind === EnemyKind.WARDEN_BOSS
+                  ? 1.55
+                  : e.kind === EnemyKind.TITAN_BOSS
+                  ? 1.5
+                  : 1.45
+                : 1.85 + Math.random() * 0.8) * pveCdMult;
+            if (e.isBoss) {
+              e.punishWindowMax = e.attackTimer;
+              e.punishWindowTimer = e.attackTimer;
+            }
           }
+        }
+        // Wave 8: Lethal AI Rival stays mobile & agile even while telegraphing!
+        if (e.isArenaRival && this.aiRivalBrainState) {
+          const playerArrows = this.arrowPool
+            .filter((a) => a.active)
+            .map((a) => ({ x: a.x, z: a.z, vx: a.vx, vz: a.vz, radius: 0.42 }));
+          const step = stepAiRivalCombatBrain(this.aiRivalBrainState, {
+            dt,
+            simTimeSec: this.simClock.totalSimTime,
+            rivalX: e.x,
+            rivalZ: e.z,
+            rivalHpRatio: e.hp / Math.max(1, e.maxHp),
+            playerX: this.px,
+            playerZ: this.pz,
+            playerVx: this.pvx,
+            playerVz: this.pvz,
+            arenaHalfW: ARENA_HALF_W,
+            arenaHalfD: ARENA_HALF_D,
+            incomingArrows: playerArrows,
+            attackReady: false,
+            isTelegraphing: true,
+            escalation: this.aiRivalMatchConfig?.escalation,
+          });
+          e.vx = step.moveX * e.speed * step.speedMult * slowMult;
+          e.vz = step.moveZ * e.speed * step.speedMult * slowMult;
+          e.x += e.vx * dt;
+          e.z += e.vz * dt;
         }
       } else {
         e.attackTimer -= dt * slowMult;
@@ -12114,55 +12259,78 @@ export class GameEngine {
             e.aimZ = dirZ;
           }
         } else if (e.isArenaRival) {
+          if (!this.aiRivalBrainState) {
+            this.aiRivalBrainState = createAiRivalCombatState(
+              this.aiDuelTier,
+              this.liveAiPersonality ?? 'tactical',
+              15,
+              0
+            );
+          }
           const playerArrows = this.arrowPool
             .filter((a) => a.active)
             .map((a) => ({ x: a.x, z: a.z, vx: a.vx, vz: a.vz, radius: 0.42 }));
-          const rivalDecision = computeAiRivalDuelDecision({
-            personality: this.liveAiPersonality ?? 'tactical',
+          const brainStep = stepAiRivalCombatBrain(this.aiRivalBrainState, {
+            dt,
             simTimeSec: this.simClock.totalSimTime,
             rivalX: e.x,
             rivalZ: e.z,
+            rivalHpRatio: e.hp / Math.max(1, e.maxHp),
             playerX: this.px,
             playerZ: this.pz,
             playerVx: this.pvx,
             playerVz: this.pvz,
-            playerStandingStill: Math.hypot(this.pvx, this.pvz) < 0.25,
-            rivalHpRatio: e.hp / Math.max(1, e.maxHp),
             arenaHalfW: ARENA_HALF_W,
             arenaHalfD: ARENA_HALF_D,
-            playerBullets: playerArrows,
-            obstacles: this.obstacles
-              .filter((o) => o.intact !== false)
-              .map((o) => ({ x: o.x, z: o.z, radius: o.radius })),
+            incomingArrows: playerArrows,
+            attackReady: e.attackTimer <= 0,
+            isTelegraphing: false,
+            escalation: this.aiRivalMatchConfig?.escalation,
           });
-          const dashBoost = rivalDecision.wantDashBurst ? 1.85 : 1.0;
-          e.vx = rivalDecision.moveX * e.speed * 1.15 * dashBoost * slowMult;
-          e.vz = rivalDecision.moveZ * e.speed * 1.15 * dashBoost * slowMult;
-          if (e.attackTimer <= 0 && (rivalDecision.wantFire || !rivalDecision.evadingArrow)) {
-            const leadDx = rivalDecision.aimTargetX - e.x;
-            const leadDz = rivalDecision.aimTargetZ - e.z;
-            const leadLen = Math.hypot(leadDx, leadDz) || 1;
-            const leadDirX = leadDx / leadLen;
-            const leadDirZ = leadDz / leadLen;
-            const roll = this.combatRng();
-            const baseYaw = Math.atan2(leadDirX, leadDirZ);
-            if (roll < 0.45) {
-              e.telegraphType = 'shot';
-              e.telegraphDuration = 0.4;
-              e.telegraphTimer = 0.4;
-              e.aimX = leadDirX;
-              e.aimZ = leadDirZ;
-            } else if (roll < 0.78) {
-              e.telegraphType = 'lane';
-              e.telegraphDuration = 0.54;
-              e.telegraphTimer = 0.54;
-              e.laneAngles = [baseYaw - 0.16, baseYaw + 0.16];
-            } else {
-              e.telegraphType = 'spiral';
-              e.telegraphDuration = 0.48;
-              e.telegraphTimer = 0.48;
-              e.aimX = leadDirX;
-              e.aimZ = leadDirZ;
+          if (brainStep.triggeredDash) {
+            this.spawnParticles(e.x, 0.9, e.z, 0x38bdf8, 12);
+            this.emitFloatingNumber(e.x, 2.25, e.z, 0, false, false, 'ice', 'AI LƯỚT NÉ!');
+            soundEngine.playDash();
+          }
+          if (brainStep.triggeredPhase2Enrage) {
+            e.bossPhase = 2;
+            this.spawnShockwave(e.x, e.z, 0xf43f5e, 4.8, 0.46);
+            this.spawnImpactLight(e.x, 1.5, e.z, 'boss_slam');
+            this.emitFloatingNumber(e.x, 2.5, e.z, 0, true, false, 'fire', 'CUỒNG NỘ PHASE 2!');
+            soundEngine.playBossAlarm();
+            this.shakeIntensity = Math.max(this.shakeIntensity, 0.3);
+          }
+          e.vx = brainStep.moveX * e.speed * brainStep.speedMult * slowMult;
+          e.vz = brainStep.moveZ * e.speed * brainStep.speedMult * slowMult;
+          if (brainStep.patternPlan) {
+            const plan = brainStep.patternPlan;
+            this.aiRivalActivePattern = plan.pattern;
+            this.aiRivalActiveProjSpeed = plan.projectileSpeed;
+            this.aiRivalActiveDmgMult = plan.damageMult;
+            this.aiRivalNextCooldown = plan.nextCooldown;
+            e.telegraphType = plan.telegraphType;
+            e.telegraphDuration = plan.telegraphDuration;
+            e.telegraphTimer = plan.telegraphDuration;
+            e.aimX = plan.aimDirX;
+            e.aimZ = plan.aimDirZ;
+            const baseYaw = Math.atan2(plan.aimDirX, plan.aimDirZ);
+            if (plan.telegraphType === 'lane') {
+              e.laneAngles = [baseYaw - 0.24, baseYaw, baseYaw + 0.24];
+            } else if (plan.telegraphType === 'slam') {
+              e.slamX = plan.targetX;
+              e.slamZ = plan.targetZ;
+              e.slamRadius = 3.15;
+            }
+            if (
+              plan.pattern === 'crimson_snipe' ||
+              plan.pattern === 'ai_ultimate' ||
+              plan.pattern === 'hazard_zone'
+            ) {
+              soundEngine.playBossTelegraph();
+            }
+            if (plan.pattern === 'ai_ultimate') {
+              this.spawnShockwave(e.x, e.z, 0xfbbf24, 3.6, 0.42);
+              this.emitFloatingNumber(e.x, 2.5, e.z, 0, true, false, 'fire', 'AI TUYỆT KỸ!');
             }
           }
         } else if (e.isBoss) {
@@ -12406,6 +12574,153 @@ export class GameEngine {
   }
 
   private executeEnemyAttack(e: EnemyEntity, isEnraged: boolean): void {
+    // Wave 8: Dedicated Lethal 1v1 AI Rival 5-Pattern Arsenal
+    if (e.isArenaRival && this.aiRivalActivePattern) {
+      const sd = computeArenaSuddenDeath(this.arenaTimeLeft);
+      const pattern = this.aiRivalActivePattern;
+      const baseSpd = Math.max(12.5, this.aiRivalActiveProjSpeed);
+      const hitDmg = Math.max(20, Math.round(e.damage * this.aiRivalActiveDmgMult * sd.damageMult));
+      const baseYaw = Math.atan2(e.aimX, e.aimZ);
+
+      if (pattern === 'crimson_snipe') {
+        // High-velocity lead-aimed Crimson Sniper Lance + 2 close tracers
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
+        soundEngine.playMeteorImpact(computeSpatialPan(e.x, ARENA_HALF_W));
+        this.fireEnemyOrb(
+          e.x + e.aimX * 0.5,
+          e.z + e.aimZ * 0.5,
+          e.aimX * (baseSpd * 1.15),
+          e.aimZ * (baseSpd * 1.15),
+          hitDmg,
+          0xf43f5e,
+          'boss_lane'
+        );
+        for (const offset of [-0.12, 0.12]) {
+          const a = baseYaw + offset;
+          this.fireEnemyOrb(
+            e.x,
+            e.z,
+            Math.sin(a) * (baseSpd * 0.92),
+            Math.cos(a) * (baseSpd * 0.92),
+            Math.round(hitDmg * 0.72),
+            0xfb7185,
+            'boss_lane'
+          );
+        }
+        return;
+      }
+
+      if (pattern === 'rapid_burst') {
+        for (const offset of [-0.1, 0, 0.1]) {
+          const a = baseYaw + offset;
+          this.fireEnemyOrb(
+            e.x,
+            e.z,
+            Math.sin(a) * baseSpd,
+            Math.cos(a) * baseSpd,
+            hitDmg,
+            0x38bdf8,
+            'boss_projectile'
+          );
+        }
+        return;
+      }
+
+      if (pattern === 'flank_fan') {
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
+        const count = this.aiRivalBrainState?.enraged ? 7 : 5;
+        const spread = 0.18;
+        for (let k = 0; k < count; k++) {
+          const a = baseYaw + (k - (count - 1) / 2) * spread;
+          this.fireEnemyOrb(
+            e.x,
+            e.z,
+            Math.sin(a) * baseSpd,
+            Math.cos(a) * baseSpd,
+            hitDmg,
+            0xf97316,
+            'boss_projectile'
+          );
+        }
+        return;
+      }
+
+      if (pattern === 'hazard_zone') {
+        this.spawnShockwave(e.slamX, e.slamZ, 0xf97316, e.slamRadius + 0.5, 0.42);
+        this.spawnImpactDecal(e.slamX, e.slamZ, 0xf97316, e.slamRadius * 0.92, 1.8);
+        this.spawnParticles(e.slamX, 0.45, e.slamZ, 0xf97316, 20);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.3);
+        soundEngine.playMeteorImpact(computeSpatialPan(e.slamX, ARENA_HALF_W));
+        if (Math.hypot(this.px - e.slamX, this.pz - e.slamZ) <= e.slamRadius + 0.38) {
+          this.damagePlayer(
+            hitDmg,
+            {
+              code: 'boss_slam',
+              label: `Thiên Thạch Phong Tỏa của ${this.arenaOpponentName || 'AI Rival'}`,
+              tip: 'AI đặt vòng nổ chặn trước hướng chạy của bạn — hãy bẻ ngoặt ngược lại hoặc Lướt (Space) ngay khi vòng đầy.',
+              killerName: this.arenaOpponentName || 'AI Rival',
+            },
+            e.slamX,
+            e.slamZ
+          );
+        }
+        const ringCount = this.aiRivalBrainState?.enraged ? 10 : 8;
+        for (let r = 0; r < ringCount; r++) {
+          const a = (r / ringCount) * Math.PI * 2 + baseYaw * 0.25;
+          this.fireEnemyOrb(
+            e.slamX,
+            e.slamZ,
+            Math.sin(a) * (baseSpd * 0.72),
+            Math.cos(a) * (baseSpd * 0.72),
+            Math.round(hitDmg * 0.75),
+            0xfb923c,
+            'boss_projectile'
+          );
+        }
+        return;
+      }
+
+      if (pattern === 'ai_ultimate') {
+        this.spawnShockwave(e.x, e.z, 0xfbbf24, 5.4, 0.52);
+        this.spawnImpactLight(e.x, 1.8, e.z, 'boss_slam');
+        this.spawnParticles(e.x, 1.0, e.z, 0xfbbf24, 28);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.38);
+        soundEngine.playMeteorImpact(computeSpatialPan(e.x, ARENA_HALF_W));
+        // 14-orb cosmic spiral + 3 aimed lethal execution lances
+        const spiralCount = this.aiRivalBrainState?.enraged ? 16 : 12;
+        for (let r = 0; r < spiralCount; r++) {
+          const a = (r / spiralCount) * Math.PI * 2 + this.elapsed * 0.7;
+          this.fireEnemyOrb(
+            e.x,
+            e.z,
+            Math.sin(a) * (baseSpd * 0.78),
+            Math.cos(a) * (baseSpd * 0.78),
+            Math.round(hitDmg * 0.82),
+            0xfbbf24,
+            'boss_projectile'
+          );
+        }
+        for (const offset of [-0.14, 0, 0.14]) {
+          const a = baseYaw + offset;
+          this.fireEnemyOrb(
+            e.x,
+            e.z,
+            Math.sin(a) * (baseSpd * 1.18),
+            Math.cos(a) * (baseSpd * 1.18),
+            hitDmg,
+            0xf43f5e,
+            'boss_lane'
+          );
+        }
+        return;
+      }
+    }
+
+    const pveSpdMult =
+      !this.isTrainingMode && !this.isArenaMode && !this.isWeeklyRankedBossMode
+        ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled).enemyProjectileSpeedMult
+        : 1.0;
+
     if (e.telegraphType === 'lunge') {
       e.x += e.aimX * 2.4;
       e.z += e.aimZ * 2.4;
@@ -12440,8 +12755,8 @@ export class GameEngine {
           this.fireEnemyOrb(
             e.x,
             e.z,
-            Math.sin(a) * 11.2,
-            Math.cos(a) * 11.2,
+            Math.sin(a) * 11.2 * pveSpdMult,
+            Math.cos(a) * 11.2 * pveSpdMult,
             e.damage,
             e.kind === EnemyKind.ZODIAC_BOSS ? this.currentChapter.trimHex : 0xa855f7,
             'boss_projectile'
@@ -12453,15 +12768,15 @@ export class GameEngine {
           this.fireEnemyOrb(
             e.x,
             e.z,
-            Math.sin(a) * 10.2,
-            Math.cos(a) * 10.2,
+            Math.sin(a) * 10.2 * pveSpdMult,
+            Math.cos(a) * 10.2 * pveSpdMult,
             e.damage,
             0xf97316,
             'ranged_barrage'
           );
         }
       } else {
-        const speed = e.kind === EnemyKind.WISP ? 11.5 : 9.6;
+        const speed = (e.kind === EnemyKind.WISP ? 11.5 : 9.6) * pveSpdMult;
         this.fireEnemyOrb(
           e.x,
           e.z,
@@ -12481,7 +12796,7 @@ export class GameEngine {
       soundEngine.playMeteorImpact();
       e.laneAngles.forEach((ang) => {
         for (let b = 0; b < (isEnraged ? 3 : 2); b++) {
-          const speed = 13.5 + b * 2.2;
+          const speed = (13.5 + b * 2.2) * pveSpdMult;
           this.fireEnemyOrb(
             e.x + Math.sin(ang) * 0.6,
             e.z + Math.cos(ang) * 0.6,
@@ -12895,16 +13210,25 @@ export class GameEngine {
     dmgSource: 'basic' | 'ultimate' | 'pet' | 'elemental' = 'basic',
     coopAllyIndex?: number
   ): void {
+    // Wave 8: Lethal AI Rival Dash I-Frames, PvP Resilience & Opening Aegis Shield
+    if (e.isArenaRival && this.aiRivalBrainState) {
+      if (this.aiRivalBrainState.dashIFrameTimer > 0) {
+        this.spawnParticles(e.x, 1.05, e.z, 0x38bdf8, 8);
+        this.emitFloatingNumber(e.x, 2.2, e.z, 0, false, false, 'ice', 'AI NÉ!');
+        return;
+      }
+    }
+
     const activeSynergies = evaluateActiveSynergies(this.activeSkills);
     let mult = 1.0;
     if (this.markedEnemyIds.has(e.id)) mult += 0.2;
-    if (e.isBoss && (this.baseStats.bossDamageBonus ?? 0) > 0) {
+    if (e.isBoss && !e.isArenaRival && (this.baseStats.bossDamageBonus ?? 0) > 0) {
       mult += this.baseStats.bossDamageBonus;
     }
     if (this.isCoopRaidMode && e.isBoss) {
       mult *= getCoopResonanceDamageMult(this.coopSynergyClock);
     }
-    if ((e.isBoss || e.isElite) && activeSynergies.includes('boss_barrage')) {
+    if ((e.isBoss || e.isElite) && !e.isArenaRival && activeSynergies.includes('boss_barrage')) {
       mult += 0.14;
     }
     if (e.chillTimer > 0 && ((this.activeSkills.super_freeze ?? 0) > 0 || this.hasRune('rune_frost'))) {
@@ -12936,9 +13260,9 @@ export class GameEngine {
       mult *= 1 + comboMeta.dmgBonusPct;
     }
     let resolvedLabel = label;
-    if (e.isBoss && e.stunTimer && e.stunTimer > 0) {
+    if (e.isBoss && !e.isArenaRival && e.stunTimer && e.stunTimer > 0) {
       mult *= 1.45;
-    } else if (e.isBoss && e.punishWindowTimer && e.punishWindowTimer > 0) {
+    } else if (e.isBoss && !e.isArenaRival && e.punishWindowTimer && e.punishWindowTimer > 0) {
       const basePunish =
         e.bossPhase === 3 ? PUNISH_WINDOW_PHASE3_BONUS : PUNISH_WINDOW_DAMAGE_BONUS;
       const punishBonus =
@@ -12957,10 +13281,27 @@ export class GameEngine {
       mult *= 1 + this.coopRoleSynergy.bossDamageBonus;
     }
 
+    // Wave 8: Arena 1v1 PvP Resilience + Sudden Death Escalation
+    if (e.isArenaRival && this.aiRivalMatchConfig) {
+      const sd = computeArenaSuddenDeath(this.arenaTimeLeft);
+      mult *= (1 - this.aiRivalMatchConfig.rivalPvpResilience) * sd.damageMult;
+    }
+
     const finalDmg = Math.max(1, Math.round(amount * mult));
     if (e.isTrainingDummy) {
       recordTrainingHit(this.trainingDpsState, this.trainingClockSec, finalDmg, isCrit);
       e.hp = e.maxHp;
+      e.hitFlashTimer = 0.1;
+    } else if (e.isArenaRival && this.aiRivalBrainState && this.aiRivalBrainState.shieldHp > 0) {
+      const absorbed = Math.min(this.aiRivalBrainState.shieldHp, finalDmg);
+      this.aiRivalBrainState.shieldHp -= absorbed;
+      const overflow = finalDmg - absorbed;
+      if (overflow > 0) e.hp -= overflow;
+      if (this.aiRivalBrainState.shieldHp <= 0) {
+        soundEngine.playEliteAffixTrigger('aegis');
+        this.spawnShockwave(e.x, e.z, 0x38bdf8, 2.8, 0.3);
+        this.emitFloatingNumber(e.x, 2.25, e.z, 0, true, false, 'ice', 'VỠ HỘ THUẪN AI!');
+      }
       e.hitFlashTimer = 0.1;
     } else {
       const hasAegisAffix = e.eliteAffix === 'aegis' || Boolean(e.eliteAffixes?.includes('aegis'));
@@ -13863,6 +14204,8 @@ export class GameEngine {
     }
 
     if (this.isArenaMode) {
+      const bonusPct = this.aiRivalMatchConfig?.rewardBonusPct ?? 0;
+      const bonusMult = 1 + bonusPct / 100;
       soundEngine.playVictory();
       this.phase = GamePhase.VICTORY;
       this.syncHudImmediate();
@@ -13870,13 +14213,17 @@ export class GameEngine {
         chapterId: this.currentChapter.id,
         stageReached: 1,
         kills: 1,
-        gold: this.runGold + 160,
-        gems: this.runGems + 12,
+        gold: Math.round((this.runGold + 160) * bonusMult),
+        gems: this.runGems + Math.round(12 * bonusMult),
+        starDust: Math.round(10 * bonusMult),
         isArenaMode: true,
         arenaOpponentName: this.arenaOpponentName,
         liveAiDuelId: this.liveAiDuelId ?? undefined,
         liveAiPlayerId: this.liveAiPlayerId ?? undefined,
         liveAiDurationSec: Math.max(1, Math.round(this.runElapsedSeconds)),
+        aiDuelTier: this.aiDuelTier,
+        aiRewardBonusPct: bonusPct,
+        arenaRivalRemainingHpPct: 0,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
       });
@@ -14269,7 +14616,7 @@ export class GameEngine {
         tip: 'Di chuyển sau mỗi loạt bắn để tránh bị kẹt góc và giữ lượng máu ổn định trước phòng Boss.',
       };
     }
-    this.invulnTimer = 0.55;
+    this.invulnTimer = this.isArenaMode ? 0.34 : 0.55;
     this.hitFlashTimer = 0.22;
     this.lastPlayerHitAt = performance.now();
     this.lastHitAngleDeg =
@@ -14288,8 +14635,11 @@ export class GameEngine {
       this.alexGuaranteedCrit = true;
     }
 
+    const drCap = this.isArenaMode
+      ? this.aiRivalMatchConfig?.playerArenaDrCap ?? 0.32
+      : 0.8;
     const effectiveDr = Math.min(
-      0.8,
+      drCap,
       this.baseStats.damageReduction +
         (this.isChampionshipMode ? this.championshipDrBonus : 0) +
         (this.isCoopRaidMode && this.coopRoleSynergy ? this.coopRoleSynergy.damageReductionBonus : 0)
@@ -14459,7 +14809,20 @@ export class GameEngine {
         awakeningCrystals: this.isBloodMoonMode
           ? Math.max(1, Math.floor(this.bloodMoonScore / 240))
           : undefined,
-        starDust: this.isDailyRiftMode
+        starDust: this.isArenaMode
+          ? buildLethalDefeatReport({
+              rivalName: this.arenaOpponentName || 'AI Rival',
+              rivalRemainingHpPct: (() => {
+                const rv = this.enemies.find((en) => en.isArenaRival);
+                return rv ? Math.round((Math.max(0, rv.hp) / Math.max(1, rv.maxHp)) * 100) : 0;
+              })(),
+              tier: this.aiDuelTier,
+              lastPattern: this.aiRivalActivePattern,
+              suddenDeathActive: computeArenaSuddenDeath(this.arenaTimeLeft).active,
+              perfectDodges: this.perfectDodgeCount,
+              durationSec: this.runElapsedSeconds,
+            }).consolationStarDust
+          : this.isDailyRiftMode
           ? Math.max(15, this.dailyRiftStageIdx * 28)
           : this.isElementalTowerMode
           ? Math.max(0, (this.elementalTowerFloor - 1) * 18)
@@ -14469,9 +14832,58 @@ export class GameEngine {
           : this.isElementalTowerMode
           ? Math.max(0, (this.elementalTowerFloor - 1) * 6)
           : 0,
+        aiDuelTier: this.isArenaMode ? this.aiDuelTier : undefined,
+        aiRewardBonusPct: this.isArenaMode ? this.aiRivalMatchConfig?.rewardBonusPct ?? 0 : undefined,
+        arenaRivalRemainingHpPct: this.isArenaMode
+          ? (() => {
+              const rv = this.enemies.find((en) => en.isArenaRival);
+              return rv ? Math.round((Math.max(0, rv.hp) / Math.max(1, rv.maxHp)) * 100) : 0;
+            })()
+          : undefined,
+        consolationStarDust: this.isArenaMode
+          ? buildLethalDefeatReport({
+              rivalName: this.arenaOpponentName || 'AI Rival',
+              rivalRemainingHpPct: (() => {
+                const rv = this.enemies.find((en) => en.isArenaRival);
+                return rv ? Math.round((Math.max(0, rv.hp) / Math.max(1, rv.maxHp)) * 100) : 0;
+              })(),
+              tier: this.aiDuelTier,
+              lastPattern: this.aiRivalActivePattern,
+              suddenDeathActive: computeArenaSuddenDeath(this.arenaTimeLeft).active,
+              perfectDodges: this.perfectDodgeCount,
+              durationSec: this.runElapsedSeconds,
+            }).consolationStarDust
+          : undefined,
+        coachingNote: this.isArenaMode
+          ? buildLethalDefeatReport({
+              rivalName: this.arenaOpponentName || 'AI Rival',
+              rivalRemainingHpPct: (() => {
+                const rv = this.enemies.find((en) => en.isArenaRival);
+                return rv ? Math.round((Math.max(0, rv.hp) / Math.max(1, rv.maxHp)) * 100) : 0;
+              })(),
+              tier: this.aiDuelTier,
+              lastPattern: this.aiRivalActivePattern,
+              suddenDeathActive: computeArenaSuddenDeath(this.arenaTimeLeft).active,
+              perfectDodges: this.perfectDodgeCount,
+              durationSec: this.runElapsedSeconds,
+            }).coachingNote
+          : undefined,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
-        defeatCause: this.lastDamageSource ?? undefined,
+        defeatCause: this.isArenaMode
+          ? buildLethalDefeatReport({
+              rivalName: this.arenaOpponentName || 'AI Rival',
+              rivalRemainingHpPct: (() => {
+                const rv = this.enemies.find((en) => en.isArenaRival);
+                return rv ? Math.round((Math.max(0, rv.hp) / Math.max(1, rv.maxHp)) * 100) : 0;
+              })(),
+              tier: this.aiDuelTier,
+              lastPattern: this.aiRivalActivePattern,
+              suddenDeathActive: computeArenaSuddenDeath(this.arenaTimeLeft).active,
+              perfectDodges: this.perfectDodgeCount,
+              durationSec: this.runElapsedSeconds,
+            }).cause
+          : this.lastDamageSource ?? undefined,
         activeSynergies: evaluateActiveSynergies(this.activeSkills),
       });
     }
@@ -15916,6 +16328,37 @@ export class GameEngine {
       arenaOpponentName: this.isArenaMode ? this.arenaOpponentName : undefined,
       arenaOpponentHp: this.isArenaMode ? (rival ? Math.max(0, Math.round(rival.hp)) : 0) : undefined,
       arenaOpponentMaxHp: this.isArenaMode ? (rival ? rival.maxHp : 1) : undefined,
+      arenaAiTier: this.isArenaMode ? this.aiDuelTier : undefined,
+      arenaAiTierLabel: this.isArenaMode ? this.aiRivalMatchConfig?.tierLabel : undefined,
+      arenaAiRewardBonusPct: this.isArenaMode ? this.aiRivalMatchConfig?.rewardBonusPct : undefined,
+      arenaOpponentShieldPct:
+        this.isArenaMode && this.aiRivalBrainState && this.aiRivalBrainState.shieldMaxHp > 0
+          ? Math.round((this.aiRivalBrainState.shieldHp / this.aiRivalBrainState.shieldMaxHp) * 100)
+          : 0,
+      arenaOpponentUltPct:
+        this.isArenaMode && this.aiRivalBrainState
+          ? Math.round(this.aiRivalBrainState.ultCharge)
+          : undefined,
+      arenaAiIntentLabel:
+        this.isArenaMode && this.aiRivalBrainState
+          ? this.aiRivalBrainState.activeIntentLabel
+          : null,
+      arenaAiEnraged:
+        this.isArenaMode && this.aiRivalBrainState ? this.aiRivalBrainState.enraged : false,
+      arenaSuddenDeathLabel: this.isArenaMode
+        ? computeArenaSuddenDeath(this.arenaTimeLeft).label
+        : null,
+      arenaSuddenDeathMult: this.isArenaMode
+        ? computeArenaSuddenDeath(this.arenaTimeLeft).damageMult
+        : 1.0,
+      arenaAiDodgesCount:
+        this.isArenaMode && this.aiRivalBrainState
+          ? this.aiRivalBrainState.aiDodgesPerformed
+          : 0,
+      pveChallengeTierLabel:
+        !this.isArenaMode && !this.isTrainingMode && this.pveChallengeEnabled
+          ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled).tierLabel
+          : null,
       isCoopRaidMode: this.isCoopRaidMode,
       coopDifficulty: this.isCoopRaidMode ? this.coopDifficulty : undefined,
       coopAllies: this.isCoopRaidMode

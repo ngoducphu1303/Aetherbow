@@ -58,6 +58,7 @@ import { liveAiSocket } from './services/liveAiSocket';
 import { applyLiveAiAuctionBidEvent } from './data/liveAiLeaderboards';
 import { computeWeeklyBossScore } from './data/weeklyBossData';
 import { getNextTargetGoal, normalizeAiPreferences } from './data/earlyProgressionData';
+import { getAiDifficultyTierConfig, normalizeAiDuelDifficultyTier } from './engine/wave8LethalAiSystems';
 import { computeNextUpgradeRecommendation } from './data/progressionAdvisor';
 import { getStyleRewardBonusPct } from './engine/wave7CombatSystems';
 
@@ -957,6 +958,10 @@ export default function App() {
     weeklyBossRemainingHpPct?: number;
     liveAiDuelId?: string;
     liveAiPlayerId?: string;
+    aiDuelTierLabel?: string;
+    aiRewardBonusPct?: number;
+    arenaRivalRemainingHpPct?: number;
+    coachingNote?: string;
   } | null>(null);
 
   const playerStats = useMemo(() => computePlayerStats(save), [save]);
@@ -1053,11 +1058,19 @@ export default function App() {
   useEffect(() => {
     engineRef.current?.setAutoPilot(currentAiPrefs.autoPilotEnabled, currentAiPrefs.tactic);
     engineRef.current?.setAiSquadConfig(currentAiPrefs.squadAssistEnabled, currentAiPrefs.squadRoles);
+    engineRef.current?.setAiChallengeConfig(
+      normalizeAiDuelDifficultyTier(currentAiPrefs.aiDuelTier),
+      currentAiPrefs.aiWinStreak ?? 0,
+      currentAiPrefs.pveChallengeEnabled ?? true
+    );
   }, [
     currentAiPrefs.autoPilotEnabled,
     currentAiPrefs.tactic,
     currentAiPrefs.squadAssistEnabled,
     currentAiPrefs.squadRoles,
+    currentAiPrefs.aiDuelTier,
+    currentAiPrefs.aiWinStreak,
+    currentAiPrefs.pveChallengeEnabled,
   ]);
 
   const displayHeroId =
@@ -2086,6 +2099,12 @@ export default function App() {
             weeklyBossRemainingHpPct: summary.weeklyBossRemainingHpPct,
             liveAiDuelId: summary.liveAiDuelId,
             liveAiPlayerId: summary.liveAiPlayerId,
+            aiDuelTierLabel: summary.aiDuelTier
+              ? getAiDifficultyTierConfig(summary.aiDuelTier).label
+              : undefined,
+            aiRewardBonusPct: summary.aiRewardBonusPct,
+            arenaRivalRemainingHpPct: summary.arenaRivalRemainingHpPct,
+            coachingNote: summary.coachingNote,
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
 
@@ -2108,22 +2127,41 @@ export default function App() {
           }
 
           if (summary.liveAiDuelId && summary.liveAiPlayerId) {
+            const duelTier = normalizeAiDuelDifficultyTier(
+              summary.aiDuelTier ?? saveRef.current.aiPreferences?.aiDuelTier
+            );
+            const tierCfg = getAiDifficultyTierConfig(duelTier);
             liveAiSocket.reportDuelComplete({
               duelId: summary.liveAiDuelId,
               aiPlayerId: summary.liveAiPlayerId,
               challengerName: displayNameRef.current || 'Chiến Binh Tinh Giới',
               playerWon: victory,
               durationSec: summary.liveAiDurationSec ?? 15,
+              aiDuelTier: duelTier,
             });
             setSave((prev) => {
               const ap = normalizeAiPreferences(prev.aiPreferences);
+              const winGain = 24 + tierCfg.ratingBonus;
+              const lossDrop = duelTier === 'mythic' ? -6 : duelTier === 'sovereign' ? -8 : -10;
               return {
                 ...prev,
                 aiPreferences: {
                   ...ap,
                   liveDuelWins: ap.liveDuelWins + (victory ? 1 : 0),
                   liveDuelLosses: ap.liveDuelLosses + (victory ? 0 : 1),
-                  liveDuelRating: Math.max(800, ap.liveDuelRating + (victory ? 24 : -10)),
+                  liveDuelRating: Math.max(800, ap.liveDuelRating + (victory ? winGain : lossDrop)),
+                  aiWinStreak: victory ? (ap.aiWinStreak ?? 0) + 1 : 0,
+                },
+              };
+            });
+          } else if (summary.isArenaMode) {
+            setSave((prev) => {
+              const ap = normalizeAiPreferences(prev.aiPreferences);
+              return {
+                ...prev,
+                aiPreferences: {
+                  ...ap,
+                  aiWinStreak: victory ? (ap.aiWinStreak ?? 0) + 1 : 0,
                 },
               };
             });
@@ -3679,6 +3717,11 @@ export default function App() {
     setSave((prev) => ({ ...prev, aiPreferences: next }));
     engineRef.current?.setAutoPilot(next.autoPilotEnabled, next.tactic);
     engineRef.current?.setAiSquadConfig(next.squadAssistEnabled, next.squadRoles);
+    engineRef.current?.setAiChallengeConfig(
+      normalizeAiDuelDifficultyTier(next.aiDuelTier),
+      next.aiWinStreak ?? 0,
+      next.pveChallengeEnabled ?? true
+    );
   }, []);
 
   const handleToggleAutoPilotInCombat = useCallback(() => {
@@ -3728,8 +3771,14 @@ export default function App() {
       transitionTimerRef.current = window.setTimeout(() => {
         setTransitionState(null);
       }, 560);
+      const activeTier = normalizeAiDuelDifficultyTier(saveRef.current.aiPreferences?.aiDuelTier);
+      engineRef.current?.setAiChallengeConfig(
+        activeTier,
+        saveRef.current.aiPreferences?.aiWinStreak ?? 0,
+        saveRef.current.aiPreferences?.pveChallengeEnabled ?? true
+      );
       setPhase(GamePhase.PLAYING);
-      engineRef.current?.startLiveAiDuel(playerStats, opponent, duelId, isEqualized);
+      engineRef.current?.startLiveAiDuel(playerStats, opponent, duelId, isEqualized, activeTier);
     },
     [playerStats]
   );
@@ -10988,6 +11037,10 @@ export default function App() {
           seasonXpEarned={runSummary?.seasonXp ?? 0}
           save={save}
           defeatCause={runSummary?.defeatCause}
+          aiDuelTierLabel={runSummary?.aiDuelTierLabel}
+          aiRewardBonusPct={runSummary?.aiRewardBonusPct}
+          arenaRivalRemainingHpPct={runSummary?.arenaRivalRemainingHpPct}
+          coachingNote={runSummary?.coachingNote}
           milestoneNotes={runSummary?.milestoneNotes}
           prevBestStage={runSummary?.prevBestStage}
           masteryExpGained={runSummary?.masteryExpGained}

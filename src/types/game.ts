@@ -1385,6 +1385,8 @@ export type AiLivePlayerStatus =
   | 'ready_duel'
   | 'in_duel';
 
+export type AiDuelDifficultyTier = 'challenger' | 'master' | 'sovereign' | 'mythic';
+
 export interface AiPreferencesState {
   autoPilotEnabled: boolean;
   tactic: AiAutoPilotTactic;
@@ -1394,6 +1396,9 @@ export interface AiPreferencesState {
   liveDuelWins: number;
   liveDuelLosses: number;
   liveDuelRating: number;
+  aiDuelTier?: AiDuelDifficultyTier;
+  aiWinStreak?: number;
+  pveChallengeEnabled?: boolean;
 }
 
 export interface AiLiveBuildSnapshot {
@@ -2065,6 +2070,18 @@ export interface HudSnapshot {
   styleScore?: number;
   styleFillRatio?: number;
   coopPingToast?: string | null;
+  // Wave 8: Lethal AI Duel Telemetry (AI Tier, Shield, Ult Charge, Intent & Sudden Death)
+  arenaAiTier?: AiDuelDifficultyTier;
+  arenaAiTierLabel?: string;
+  arenaAiRewardBonusPct?: number;
+  arenaOpponentShieldPct?: number;
+  arenaOpponentUltPct?: number;
+  arenaAiIntentLabel?: string | null;
+  arenaAiEnraged?: boolean;
+  arenaSuddenDeathLabel?: string | null;
+  arenaSuddenDeathMult?: number;
+  arenaAiDodgesCount?: number;
+  pveChallengeTierLabel?: string | null;
 }
 
 export interface EncounterOffer {

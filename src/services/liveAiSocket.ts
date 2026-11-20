@@ -568,6 +568,7 @@ class LiveAiSocketClient {
     challengerName: string;
     playerWon: boolean;
     durationSec: number;
+    aiDuelTier?: 'challenger' | 'master' | 'sovereign' | 'mythic';
   }): boolean {
     return this.send({
       type: 'duel:complete',

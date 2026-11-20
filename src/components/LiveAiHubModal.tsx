@@ -18,11 +18,18 @@ import {
 } from 'lucide-react';
 import { AI_COMPANION_ROLES, AI_TACTIC_CONFIGS } from '../engine/aiCombatBrain';
 import { COOP_AI_ROLE_LIST, computeCoopRoleSynergy } from '../engine/wave6CombatSystems';
+import {
+  AI_DIFFICULTY_TIER_ORDER,
+  AI_DIFFICULTY_TIERS,
+  computeAdaptiveAiEscalation,
+  normalizeAiDuelDifficultyTier,
+} from '../engine/wave8LethalAiSystems';
 import { HERO_MAP } from '../data/heroesData';
 import { liveAiSocket, LiveSocketStatus } from '../services/liveAiSocket';
 import type {
   AiAutoPilotTactic,
   AiCompanionRole,
+  AiDuelDifficultyTier,
   AiLiveHubSnapshot,
   AiLivePlayerProfile,
   AiPreferencesState,
@@ -104,6 +111,15 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const coopSynergy = useMemo(() => computeCoopRoleSynergy(coopPartyRoles), [coopPartyRoles]);
+  const activeAiTier: AiDuelDifficultyTier = normalizeAiDuelDifficultyTier(
+    aiPreferences.aiDuelTier
+  );
+  const activeTierCfg = AI_DIFFICULTY_TIERS[activeAiTier];
+  const aiEscalation = useMemo(
+    () => computeAdaptiveAiEscalation(aiPreferences.aiWinStreak ?? 0),
+    [aiPreferences.aiWinStreak]
+  );
+  const pveChallengeOn = aiPreferences.pveChallengeEnabled ?? true;
 
   useEffect(() => {
     liveAiSocket.ensureConnected(playerDisplayName);
@@ -368,9 +384,77 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
           </div>
         )}
 
+        {/* Wave 8: Lethal AI Difficulty Tier Selector & Adaptive Escalation Strip */}
+        {activeTab === 'players' && (
+          <div className="rounded-2xl border border-rose-400/30 bg-[#080d20] p-3.5 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-black text-white">
+                <Swords className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>Cấp Độ AI Thực Chiến (Đấu 1v1 &amp; Thử Thách)</span>
+              </div>
+              <div className="text-[11px] font-mono-nums text-amber-300">
+                Thích nghi AI: <strong className="text-rose-300">{aiEscalation.threatLabel}</strong>
+                {aiEscalation.winStreak > 0 ? ` (Chuỗi ${aiEscalation.winStreak}T)` : ''}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {AI_DIFFICULTY_TIER_ORDER.map((tierId) => {
+                const cfg = AI_DIFFICULTY_TIERS[tierId];
+                const selected = activeAiTier === tierId;
+                return (
+                  <button
+                    key={tierId}
+                    type="button"
+                    onClick={() =>
+                      onUpdateAiPreferences({
+                        ...aiPreferences,
+                        aiDuelTier: tierId,
+                      })
+                    }
+                    className={`text-left px-3 py-2 rounded-xl border transition-colors cursor-pointer ${
+                      selected
+                        ? 'border-rose-400/80 bg-rose-500/18 text-white'
+                        : 'border-slate-800 bg-slate-950/75 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 text-xs font-black">
+                      <span className={selected ? 'text-white' : cfg.accentClass}>{cfg.label}</span>
+                      {cfg.rewardBonusPct > 0 && (
+                        <span className="font-mono-nums text-[10px] text-emerald-300">
+                          +{cfg.rewardBonusPct}%
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 font-mono-nums">
+                      ST {Math.round(cfg.baseHitMaxHpPct * 100)}% HP · Né {cfg.dashCooldownSec}s
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-[11px]">
+              <span className="text-slate-300">{activeTierCfg.tagline}</span>
+              <label className="inline-flex items-center gap-2 text-slate-200 font-semibold cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={pveChallengeOn}
+                  onChange={(e) =>
+                    onUpdateAiPreferences({
+                      ...aiPreferences,
+                      pveChallengeEnabled: e.target.checked,
+                    })
+                  }
+                  className="w-3.5 h-3.5 accent-rose-400 cursor-pointer"
+                />
+                <span>Áp dụng AI khó cho Chiến Dịch &amp; Boss PvE</span>
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* TAB 1: Live AI Players Directory & 1v1 Challenges */}
         {activeTab === 'players' && (
-          <div className="divide-y divide-slate-800/80 border-y border-slate-800/80 max-h-[46vh] overflow-y-auto">
+          <div className="divide-y divide-slate-800/80 border-y border-slate-800/80 max-h-[40vh] overflow-y-auto">
             {filteredPlayers.map((p) => {
               const st = STATUS_LABEL[p.status];
               const heroName = HERO_MAP[p.heroId]?.name ?? 'Alice';

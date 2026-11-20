@@ -297,6 +297,7 @@ export function normalizeAiPreferences(
 ): NonNullable<SaveData['aiPreferences']> {
   const validTactics = new Set(['aggressive', 'balanced', 'evasive']);
   const validRoles = new Set(['vanguard', 'ranger', 'mystic']);
+  const validTiers = new Set(['challenger', 'master', 'sovereign', 'mythic']);
   const roles = Array.isArray(raw?.squadRoles)
     ? raw.squadRoles.filter((r): r is 'vanguard' | 'ranger' | 'mystic' => validRoles.has(r)).slice(0, 2)
     : [];
@@ -309,6 +310,11 @@ export function normalizeAiPreferences(
     liveDuelWins: Math.max(0, Math.floor(Number(raw?.liveDuelWins ?? 0))),
     liveDuelLosses: Math.max(0, Math.floor(Number(raw?.liveDuelLosses ?? 0))),
     liveDuelRating: Math.max(800, Math.floor(Number(raw?.liveDuelRating ?? 1200))),
+    aiDuelTier:
+      raw?.aiDuelTier && validTiers.has(raw.aiDuelTier) ? raw.aiDuelTier : 'master',
+    aiWinStreak: Math.max(0, Math.floor(Number(raw?.aiWinStreak ?? 0))),
+    pveChallengeEnabled:
+      raw?.pveChallengeEnabled !== undefined ? Boolean(raw.pveChallengeEnabled) : true,
   };
 }
 

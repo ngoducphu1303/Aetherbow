@@ -101,6 +101,10 @@ interface PauseResultModalProps {
   seasonXpEarned?: number;
   save?: SaveData;
   defeatCause?: DefeatCauseInfo;
+  aiDuelTierLabel?: string;
+  aiRewardBonusPct?: number;
+  arenaRivalRemainingHpPct?: number;
+  coachingNote?: string;
   milestoneNotes?: string[];
   prevBestStage?: number;
   masteryExpGained?: number;
@@ -206,6 +210,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   seasonXpEarned = 0,
   save,
   defeatCause,
+  aiDuelTierLabel,
+  aiRewardBonusPct = 0,
+  arenaRivalRemainingHpPct,
+  coachingNote,
   milestoneNotes,
   prevBestStage,
   masteryExpGained = 0,
@@ -916,17 +924,34 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                 );
               })()}
 
-              {/* Defeat Cause Diagnostic */}
+              {/* Defeat Cause Diagnostic & Wave 8 Fair Coaching Note */}
               {!isVictory && defeatCause && (
-                <div className="pt-3 border-t border-rose-400/25">
-                  <div className="flex items-center gap-2 text-xs font-bold text-rose-300">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>
-                      Nguyên nhân thất bại: {defeatCause.label}
-                      {defeatCause.killerName ? ` · ${defeatCause.killerName}` : ''}
+                <div className="pt-3 border-t border-rose-400/25 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 text-xs font-bold text-rose-300">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>
+                        Nguyên nhân thất bại: {defeatCause.label}
+                        {defeatCause.killerName ? ` · ${defeatCause.killerName}` : ''}
+                      </span>
                     </span>
+                    {arenaRivalRemainingHpPct !== undefined && (
+                      <span className="font-mono-nums text-amber-300 shrink-0">
+                        AI còn {arenaRivalRemainingHpPct}% HP
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">{defeatCause.tip}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">{defeatCause.tip}</p>
+                  {coachingNote && (
+                    <p className="text-[11px] text-amber-200/95 leading-relaxed">
+                      Phân tích phản công: {coachingNote}
+                    </p>
+                  )}
+                </div>
+              )}
+              {isVictory && isArenaMode && aiDuelTierLabel && aiRewardBonusPct > 0 && (
+                <div className="pt-3 border-t border-emerald-400/25 text-xs text-emerald-300 font-bold">
+                  Thưởng Độ Khó AI {aiDuelTierLabel}: +{aiRewardBonusPct}% Vàng, Ngọc &amp; Bụi Sao!
                 </div>
               )}
             </div>

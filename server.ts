@@ -532,6 +532,14 @@ export function attachLiveAiWebSocketServer(
           );
           const playerWon = Boolean(payload.playerWon);
           const durationSec = Math.max(1, Number(payload.durationSec ?? 15));
+          const rawTier = String(payload.aiDuelTier ?? 'challenger');
+          const aiDuelTier: 'challenger' | 'master' | 'sovereign' | 'mythic' =
+            rawTier === 'challenger' ||
+            rawTier === 'master' ||
+            rawTier === 'sovereign' ||
+            rawTier === 'mythic'
+              ? rawTier
+              : 'challenger';
           if (!duelId || !aiPlayerId) return;
 
           const res = liveAiService.completeDuel({
@@ -540,6 +548,7 @@ export function attachLiveAiWebSocketServer(
             challengerName,
             playerWon,
             durationSec,
+            aiDuelTier,
           });
           sendJson(ws, {
             type: 'duel:result_ack',
