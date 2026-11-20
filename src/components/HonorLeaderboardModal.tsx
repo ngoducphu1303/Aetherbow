@@ -68,6 +68,7 @@ interface HonorLeaderboardModalProps {
   onEquipMythicBadge: (badgeId: MythicBadgeId | null) => void;
   onClaimWorldBossMilestone: (milestoneId: string) => void;
   onStartWorldBoss?: () => void;
+  onOpenWeeklyBoss?: () => void;
   onClose: () => void;
 }
 
@@ -87,6 +88,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   onEquipMythicBadge,
   onClaimWorldBossMilestone,
   onStartWorldBoss,
+  onOpenWeeklyBoss,
   onClose,
 }) => {
   const [section, setSection] = useState<'rankings' | 'badges' | 'frames'>('rankings');
@@ -245,6 +247,20 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
             <Frame className="w-3.5 h-3.5" />
             <span>Khung Avatar Hoàng Đạo ({unlockedFrames.size}/{AVATAR_FRAMES.length})</span>
           </button>
+          {onOpenWeeklyBoss && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick(1.06);
+                onClose();
+                onOpenWeeklyBoss();
+              }}
+              className="a2-slate-btn border border-emerald-400/45 text-emerald-200 hover:border-emerald-300 px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Trophy className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Boss Tuần Công Bằng</span>
+            </button>
+          )}
         </div>
 
         {/* SECTION 1: LEADERBOARDS & WORLD BOSS MILESTONES */}

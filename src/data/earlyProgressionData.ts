@@ -263,17 +263,15 @@ export function migrateSaveData(raw: SaveData): SaveData {
     }
   }
 
-  // Ensure Alice ('artemis') is always unlocked, and perform a one-time reset to Alice
-  // for existing saves that were previously switched away automatically.
+  // Ensure Alice ('artemis') is always unlocked, while preserving any valid unlocked hero
+  // selected in legacy saves across version updates.
   const normalizedUnlockedHeroes = Array.isArray(raw.unlockedHeroes)
     ? Array.from(new Set([...raw.unlockedHeroes, 'artemis'])) as SaveData['unlockedHeroes']
     : (['artemis', 'alex'] as SaveData['unlockedHeroes']);
-  const needsAliceRestore = !raw.aliceDefaultMigrated;
-  const resolvedHeroId: SaveData['selectedHeroId'] = needsAliceRestore
-    ? 'artemis'
-    : normalizedUnlockedHeroes.includes(raw.selectedHeroId)
-    ? raw.selectedHeroId
-    : 'artemis';
+  const resolvedHeroId: SaveData['selectedHeroId'] =
+    raw.selectedHeroId && normalizedUnlockedHeroes.includes(raw.selectedHeroId)
+      ? raw.selectedHeroId
+      : 'artemis';
 
   // Build synchronized visible inbox (never respawning deleted mails, always reflecting claimedMailIds)
   const migratedBase: SaveData = {
@@ -287,10 +285,31 @@ export function migrateSaveData(raw: SaveData): SaveData {
     earlyMilestonesClaimed: Array.isArray(raw.earlyMilestonesClaimed) ? [...raw.earlyMilestonesClaimed] : [],
     earlyForgeProgress: normalizeEarlyForgeProgress(raw.earlyForgeProgress),
     playtestMetrics: normalizePlaytestMetrics(raw.playtestMetrics),
+    aiPreferences: normalizeAiPreferences(raw.aiPreferences),
   };
 
   migratedBase.mailInbox = getVisibleMailInbox(migratedBase);
   return migratedBase;
+}
+
+export function normalizeAiPreferences(
+  raw?: SaveData['aiPreferences']
+): NonNullable<SaveData['aiPreferences']> {
+  const validTactics = new Set(['aggressive', 'balanced', 'evasive']);
+  const validRoles = new Set(['vanguard', 'ranger', 'mystic']);
+  const roles = Array.isArray(raw?.squadRoles)
+    ? raw.squadRoles.filter((r): r is 'vanguard' | 'ranger' | 'mystic' => validRoles.has(r)).slice(0, 2)
+    : [];
+  return {
+    autoPilotEnabled: Boolean(raw?.autoPilotEnabled ?? false),
+    tactic: raw?.tactic && validTactics.has(raw.tactic) ? raw.tactic : 'balanced',
+    autoSkillPick: raw?.autoSkillPick !== undefined ? Boolean(raw.autoSkillPick) : true,
+    squadAssistEnabled: Boolean(raw?.squadAssistEnabled ?? false),
+    squadRoles: roles.length > 0 ? roles : ['vanguard', 'ranger'],
+    liveDuelWins: Math.max(0, Math.floor(Number(raw?.liveDuelWins ?? 0))),
+    liveDuelLosses: Math.max(0, Math.floor(Number(raw?.liveDuelLosses ?? 0))),
+    liveDuelRating: Math.max(800, Math.floor(Number(raw?.liveDuelRating ?? 1200))),
+  };
 }
 
 export function getVisibleMailInbox(save: SaveData): MailItem[] {

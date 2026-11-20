@@ -1,51 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementToast } from './components/AchievementToast';
-import { ArenaModal } from './components/ArenaModal';
-import { AuctionHouseModal } from './components/AuctionHouseModal';
 import { AuthGatePanel } from './components/AuthGatePanel';
-import { BattlePassModal } from './components/BattlePassModal';
-import { BundlePreviewModal } from './components/BundlePreviewModal';
-import { CelestialFestivalModal } from './components/CelestialFestivalModal';
-import { ChestGachaModal, GachaRevealState } from './components/ChestGachaModal';
-import { ClaimAllSummaryModal } from './components/ClaimAllSummaryModal';
-import { CodexGuideModal } from './components/CodexGuideModal';
-import { CombatPowerBreakdownModal } from './components/CombatPowerBreakdownModal';
+import type { GachaRevealState } from './components/ChestGachaModal';
 import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
-import { ConstellationModal } from './components/ConstellationModal';
-import { DailyRewardsModal } from './components/DailyRewardsModal';
-import { DestinyWheelModal } from './components/DestinyWheelModal';
-import { DispatchModal } from './components/DispatchModal';
-import { EarlyRoadmapModal } from './components/EarlyRoadmapModal';
 import { GameHUD } from './components/GameHUD';
-import { HonorLeaderboardModal } from './components/HonorLeaderboardModal';
-import { ShopSectionTab } from './components/LobbyPanels';
-import { MailModal } from './components/MailModal';
-import { NightMarketModal } from './components/NightMarketModal';
-import { OnboardingTour } from './components/OnboardingTour';
+import type { ShopSectionTab } from './components/LobbyPanels';
 import { PauseResultModal } from './components/PauseResultModal';
-import { ProfileCodexModal, ProfileModalTab } from './components/ProfileCodexModal';
-import {
-  QuickSweepResultModal,
-  SweepResultState,
-} from './components/QuickSweepResultModal';
-import { RelicForgeModal } from './components/RelicForgeModal';
+import type { ProfileModalTab } from './components/ProfileCodexModal';
+import type { SweepResultState } from './components/QuickSweepResultModal';
 import { SaveConflictModal } from './components/SaveConflictModal';
-import { SettingsModal } from './components/SettingsModal';
 import { SkillDraftModal } from './components/SkillDraftModal';
 import { SplashGate } from './components/SplashGate';
 import { StageTransitionCurtain } from './components/StageTransitionCurtain';
-import { TalentsModal } from './components/TalentsModal';
 import { LobbyGameMode, LobbyTab, TitleScreen } from './components/TitleScreen';
-import {
-  UpgradeCelebrationOverlay,
-  UpgradeCelebrationState,
-} from './components/UpgradeCelebrationOverlay';
-import { VipPrivilegeModal } from './components/VipPrivilegeModal';
-import { WardrobeModal } from './components/WardrobeModal';
-import { Wave12SanctumModal, Wave12SanctumTab } from './components/Wave12SanctumModal';
-import { Wave13CarnivalModal } from './components/Wave13CarnivalModal';
+import type { UpgradeCelebrationState } from './components/UpgradeCelebrationOverlay';
+import type { Wave12SanctumTab } from './components/Wave12SanctumModal';
+import type { Wave13Tab } from './components/Wave13TreasuryModal';
+import type { Wave14Tab } from './components/Wave14AscensionModal';
+import type { LiveEventActionTarget } from './components/Wave14EventCenterModal';
+import type { UpgradeActionTarget } from './data/progressionAdvisor';
+import type { WeeklyBossClaimReceipt, WeeklyBossSchedule } from './data/weeklyBossData';
 import { auth } from './firebase';
 import {
   CloudSyncStatus,
@@ -61,10 +37,125 @@ import {
   updatePlayerDisplayName,
   updatePlayerPassword,
 } from './services/playerCloudService';
-import { Wave13Tab, Wave13TreasuryModal } from './components/Wave13TreasuryModal';
-import { Wave14AscensionModal, Wave14Tab } from './components/Wave14AscensionModal';
-import { LiveEventActionTarget, Wave14EventCenterModal } from './components/Wave14EventCenterModal';
-import { ZodiacGuildModal } from './components/ZodiacGuildModal';
+import { submitWeeklyBossAttempt } from './services/weeklyBossApi';
+import { liveAiSocket } from './services/liveAiSocket';
+import { computeWeeklyBossScore } from './data/weeklyBossData';
+import { getNextTargetGoal, normalizeAiPreferences } from './data/earlyProgressionData';
+import { computeNextUpgradeRecommendation } from './data/progressionAdvisor';
+
+// Lazy-loaded non-startup event, shop, and progression modals to minimize initial JS payload
+const ArenaModal = lazy(() =>
+  import('./components/ArenaModal').then((m) => ({ default: m.ArenaModal }))
+);
+const AuctionHouseModal = lazy(() =>
+  import('./components/AuctionHouseModal').then((m) => ({ default: m.AuctionHouseModal }))
+);
+const BattlePassModal = lazy(() =>
+  import('./components/BattlePassModal').then((m) => ({ default: m.BattlePassModal }))
+);
+const BundlePreviewModal = lazy(() =>
+  import('./components/BundlePreviewModal').then((m) => ({ default: m.BundlePreviewModal }))
+);
+const CelestialFestivalModal = lazy(() =>
+  import('./components/CelestialFestivalModal').then((m) => ({ default: m.CelestialFestivalModal }))
+);
+const ChestGachaModal = lazy(() =>
+  import('./components/ChestGachaModal').then((m) => ({ default: m.ChestGachaModal }))
+);
+const ClaimAllSummaryModal = lazy(() =>
+  import('./components/ClaimAllSummaryModal').then((m) => ({ default: m.ClaimAllSummaryModal }))
+);
+const CodexGuideModal = lazy(() =>
+  import('./components/CodexGuideModal').then((m) => ({ default: m.CodexGuideModal }))
+);
+const CombatPowerBreakdownModal = lazy(() =>
+  import('./components/CombatPowerBreakdownModal').then((m) => ({
+    default: m.CombatPowerBreakdownModal,
+  }))
+);
+const ConstellationModal = lazy(() =>
+  import('./components/ConstellationModal').then((m) => ({ default: m.ConstellationModal }))
+);
+const DailyRewardsModal = lazy(() =>
+  import('./components/DailyRewardsModal').then((m) => ({ default: m.DailyRewardsModal }))
+);
+const DestinyWheelModal = lazy(() =>
+  import('./components/DestinyWheelModal').then((m) => ({ default: m.DestinyWheelModal }))
+);
+const DispatchModal = lazy(() =>
+  import('./components/DispatchModal').then((m) => ({ default: m.DispatchModal }))
+);
+const EarlyRoadmapModal = lazy(() =>
+  import('./components/EarlyRoadmapModal').then((m) => ({ default: m.EarlyRoadmapModal }))
+);
+const HonorLeaderboardModal = lazy(() =>
+  import('./components/HonorLeaderboardModal').then((m) => ({ default: m.HonorLeaderboardModal }))
+);
+const MailModal = lazy(() =>
+  import('./components/MailModal').then((m) => ({ default: m.MailModal }))
+);
+const NightMarketModal = lazy(() =>
+  import('./components/NightMarketModal').then((m) => ({ default: m.NightMarketModal }))
+);
+const OnboardingTour = lazy(() =>
+  import('./components/OnboardingTour').then((m) => ({ default: m.OnboardingTour }))
+);
+const ProfileCodexModal = lazy(() =>
+  import('./components/ProfileCodexModal').then((m) => ({ default: m.ProfileCodexModal }))
+);
+const QuickSweepResultModal = lazy(() =>
+  import('./components/QuickSweepResultModal').then((m) => ({ default: m.QuickSweepResultModal }))
+);
+const RelicForgeModal = lazy(() =>
+  import('./components/RelicForgeModal').then((m) => ({ default: m.RelicForgeModal }))
+);
+const SettingsModal = lazy(() =>
+  import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
+const TalentsModal = lazy(() =>
+  import('./components/TalentsModal').then((m) => ({ default: m.TalentsModal }))
+);
+const UpgradeCelebrationOverlay = lazy(() =>
+  import('./components/UpgradeCelebrationOverlay').then((m) => ({
+    default: m.UpgradeCelebrationOverlay,
+  }))
+);
+const VipPrivilegeModal = lazy(() =>
+  import('./components/VipPrivilegeModal').then((m) => ({ default: m.VipPrivilegeModal }))
+);
+const WardrobeModal = lazy(() =>
+  import('./components/WardrobeModal').then((m) => ({ default: m.WardrobeModal }))
+);
+const Wave12SanctumModal = lazy(() =>
+  import('./components/Wave12SanctumModal').then((m) => ({ default: m.Wave12SanctumModal }))
+);
+const Wave13CarnivalModal = lazy(() =>
+  import('./components/Wave13CarnivalModal').then((m) => ({ default: m.Wave13CarnivalModal }))
+);
+const Wave13TreasuryModal = lazy(() =>
+  import('./components/Wave13TreasuryModal').then((m) => ({ default: m.Wave13TreasuryModal }))
+);
+const Wave14AscensionModal = lazy(() =>
+  import('./components/Wave14AscensionModal').then((m) => ({ default: m.Wave14AscensionModal }))
+);
+const Wave14EventCenterModal = lazy(() =>
+  import('./components/Wave14EventCenterModal').then((m) => ({
+    default: m.Wave14EventCenterModal,
+  }))
+);
+const ZodiacGuildModal = lazy(() =>
+  import('./components/ZodiacGuildModal').then((m) => ({ default: m.ZodiacGuildModal }))
+);
+const WeeklyRankedBossModal = lazy(() =>
+  import('./components/WeeklyRankedBossModal').then((m) => ({
+    default: m.WeeklyRankedBossModal,
+  }))
+);
+const LiveAiHubModal = lazy(() =>
+  import('./components/LiveAiHubModal').then((m) => ({
+    default: m.LiveAiHubModal,
+  }))
+);
 import { CHAPTERS } from './data/chaptersData';
 import {
   ALL_TEMPLATE_LIST,
@@ -443,6 +534,9 @@ import {
   WeaponAuraId,
   WheelOutcome,
   WingId,
+  AiAutoPilotTactic,
+  AiLivePlayerProfile,
+  AiPreferencesState,
 } from './types/game';
 
 const STORAGE_KEY = 'artemis_3d_save_v1';
@@ -654,6 +748,15 @@ export default function App() {
   const [arenaModalOpen, setArenaModalOpen] = useState<boolean>(false);
   const [auctionModalOpen, setAuctionModalOpen] = useState<boolean>(false);
   const [honorBoardOpen, setHonorBoardOpen] = useState<boolean>(false);
+  const [weeklyBossModalOpen, setWeeklyBossModalOpen] = useState<boolean>(false);
+  const [liveAiHubOpen, setLiveAiHubOpen] = useState<boolean>(false);
+  const [liveAiOnlineCount, setLiveAiOnlineCount] = useState<number>(18);
+  const [weeklyBossResult, setWeeklyBossResult] = useState<{
+    submitting: boolean;
+    verifiedScore: number | null;
+    rank: number | null;
+    error: string | null;
+  }>({ submitting: false, verifiedScore: null, rank: null, error: null });
   const [activeArenaOpponent, setActiveArenaOpponent] = useState<ArenaOpponent | null>(null);
   const [profileModalTab, setProfileModalTab] = useState<ProfileModalTab | null>(null);
   const [authReady, setAuthReady] = useState<boolean>(false);
@@ -789,10 +892,40 @@ export default function App() {
     masteryExpGained?: number;
     masteryLeveledUpTo?: number;
     runHighlights?: RunCombatHighlights;
+    isWeeklyRankedBossMode?: boolean;
+    weeklyBossIsPractice?: boolean;
+    weeklyBossAttemptId?: string;
+    weeklyBossSeed?: string;
+    weeklyBossDamage?: number;
+    weeklyBossCleared?: boolean;
+    weeklyBossSimTicks?: number;
+    weeklyBossClearTimeMs?: number;
+    weeklyBossRemainingHpPct?: number;
+    liveAiDuelId?: string;
+    liveAiPlayerId?: string;
   } | null>(null);
 
   const playerStats = useMemo(() => computePlayerStats(save), [save]);
   const currentSettings = useMemo(() => normalizeSettings(save.settings), [save.settings]);
+  const currentAiPrefs = useMemo(() => normalizeAiPreferences(save.aiPreferences), [save.aiPreferences]);
+
+  useEffect(() => {
+    liveAiSocket.ensureConnected(playerDisplayName);
+    const unsub = liveAiSocket.subscribeSnapshot((snap) => {
+      setLiveAiOnlineCount(snap.onlineAiCount);
+    });
+    return unsub;
+  }, [playerDisplayName]);
+
+  useEffect(() => {
+    engineRef.current?.setAutoPilot(currentAiPrefs.autoPilotEnabled, currentAiPrefs.tactic);
+    engineRef.current?.setAiSquadConfig(currentAiPrefs.squadAssistEnabled, currentAiPrefs.squadRoles);
+  }, [
+    currentAiPrefs.autoPilotEnabled,
+    currentAiPrefs.tactic,
+    currentAiPrefs.squadAssistEnabled,
+    currentAiPrefs.squadRoles,
+  ]);
 
   const displayHeroId =
     phase === GamePhase.TITLE && activeLobbyTab === 'heroes' && previewHeroId
@@ -1809,8 +1942,93 @@ export default function App() {
             defeatCause: summary.defeatCause,
             masteryExpGained: runMasteryExp,
             runHighlights: engineRef.current?.getRunCombatHighlights(),
+            isWeeklyRankedBossMode: summary.isWeeklyRankedBossMode || undefined,
+            weeklyBossIsPractice: summary.weeklyBossIsPractice || undefined,
+            weeklyBossAttemptId: summary.weeklyBossAttemptId,
+            weeklyBossSeed: summary.weeklyBossSeed,
+            weeklyBossDamage: summary.weeklyBossDamage,
+            weeklyBossCleared: summary.weeklyBossCleared,
+            weeklyBossSimTicks: summary.weeklyBossSimTicks,
+            weeklyBossClearTimeMs: summary.weeklyBossClearTimeMs,
+            weeklyBossRemainingHpPct: summary.weeklyBossRemainingHpPct,
+            liveAiDuelId: summary.liveAiDuelId,
+            liveAiPlayerId: summary.liveAiPlayerId,
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
+
+          if (summary.liveAiDuelId && summary.liveAiPlayerId) {
+            liveAiSocket.reportDuelComplete({
+              duelId: summary.liveAiDuelId,
+              aiPlayerId: summary.liveAiPlayerId,
+              challengerName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+              playerWon: victory,
+              durationSec: summary.liveAiDurationSec ?? 15,
+            });
+            setSave((prev) => {
+              const ap = normalizeAiPreferences(prev.aiPreferences);
+              return {
+                ...prev,
+                aiPreferences: {
+                  ...ap,
+                  liveDuelWins: ap.liveDuelWins + (victory ? 1 : 0),
+                  liveDuelLosses: ap.liveDuelLosses + (victory ? 0 : 1),
+                  liveDuelRating: Math.max(800, ap.liveDuelRating + (victory ? 24 : -10)),
+                },
+              };
+            });
+          }
+
+          if (summary.isWeeklyRankedBossMode && summary.weeklyBossIsPractice) {
+            const highlights = engineRef.current?.getRunCombatHighlights();
+            const estScore = computeWeeklyBossScore({
+              cleared: Boolean(summary.weeklyBossCleared ?? victory),
+              damageDealt: Math.max(0, Math.round(summary.weeklyBossDamage ?? 0)),
+              bossMaxHp: 18500,
+              clearTimeMs: Math.max(100, Math.round(summary.weeklyBossClearTimeMs ?? 1000)),
+              timeLimitSec: 90,
+              remainingHpPct: Math.max(0, Math.min(1, Number(summary.weeklyBossRemainingHpPct ?? 0))),
+              perfectDodges: Math.max(0, Math.round(highlights?.perfectDodgesCount ?? 0)),
+            });
+            setWeeklyBossResult({
+              submitting: false,
+              verifiedScore: estScore,
+              rank: null,
+              error: null,
+            });
+          } else if (summary.isWeeklyRankedBossMode && summary.weeklyBossAttemptId && summary.weeklyBossSeed) {
+            setWeeklyBossResult({ submitting: true, verifiedScore: null, rank: null, error: null });
+            const highlights = engineRef.current?.getRunCombatHighlights();
+            void submitWeeklyBossAttempt({
+              attemptId: summary.weeklyBossAttemptId,
+              seed: summary.weeklyBossSeed,
+              displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+              cleared: Boolean(summary.weeklyBossCleared ?? victory),
+              damageDealt: Math.max(0, Math.round(summary.weeklyBossDamage ?? 0)),
+              simTicks: Math.max(1, Math.round(summary.weeklyBossSimTicks ?? 60)),
+              clearTimeMs: Math.max(100, Math.round(summary.weeklyBossClearTimeMs ?? 1000)),
+              remainingHpPct: Math.max(0, Math.min(100, Math.round(summary.weeklyBossRemainingHpPct ?? 0))),
+              perfectDodges: Math.max(0, Math.round(highlights?.perfectDodgesCount ?? 0)),
+              autoPilotUsed: Boolean(summary.autoPilotUsed),
+            })
+              .then((res) => {
+                setWeeklyBossResult({
+                  submitting: false,
+                  verifiedScore: res.verifiedScore,
+                  rank: res.rank,
+                  error: null,
+                });
+              })
+              .catch((err) => {
+                setWeeklyBossResult({
+                  submitting: false,
+                  verifiedScore: null,
+                  rank: null,
+                  error: err instanceof Error ? err.message : 'Không thể xác minh điểm Boss Tuần.',
+                });
+              });
+          } else {
+            setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
+          }
 
           setSave((prev) => {
             const bp = normalizeBattlePass(prev.battlePass);
@@ -3024,6 +3242,177 @@ export default function App() {
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startCrystalDefense(playerStats);
   }, [save.crystalDefense, playerStats]);
+
+  const handleStartWeeklyRankedBoss = useCallback(
+    (params: { attemptId: string; schedule: WeeklyBossSchedule }) => {
+      soundEngine.unlock();
+      setWeeklyBossModalOpen(false);
+      setHonorBoardOpen(false);
+      setEnteredGame(true);
+      setRewardsModalTab(null);
+      setTalentsModalOpen(false);
+      setConstellationModalOpen(false);
+      setMailModalOpen(false);
+      setVipModalOpen(false);
+      setForgeConfig((prev) => ({ ...prev, open: false }));
+      setGuildModalOpen(false);
+      setDestinyWheelOpen(false);
+      setNightMarketOpen(false);
+      setArenaModalOpen(false);
+      setAuctionModalOpen(false);
+      setGachaReveal(null);
+      setPreviewHeroId(null);
+      setRunSummary(null);
+      setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
+      setDamages([]);
+      setTransitionState({
+        chapterId: params.schedule.chapterVisualIndex + 1,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isWorldBossMode: true,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startWeeklyRankedBoss(params.schedule, params.attemptId, {
+        practice: false,
+      });
+    },
+    []
+  );
+
+  const handleStartWeeklyBossPractice = useCallback((schedule: WeeklyBossSchedule) => {
+    setWeeklyBossModalOpen(false);
+    setLiveAiHubOpen(false);
+    setRunSummary(null);
+    setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
+    setDamages([]);
+    setPhase(GamePhase.PLAYING);
+    engineRef.current?.startWeeklyRankedBoss(schedule, 'practice', { practice: true });
+  }, []);
+
+  const handleUpdateAiPreferences = useCallback((next: AiPreferencesState) => {
+    setSave((prev) => ({ ...prev, aiPreferences: next }));
+    engineRef.current?.setAutoPilot(next.autoPilotEnabled, next.tactic);
+    engineRef.current?.setAiSquadConfig(next.squadAssistEnabled, next.squadRoles);
+  }, []);
+
+  const handleToggleAutoPilotInCombat = useCallback(() => {
+    setSave((prev) => {
+      const cur = normalizeAiPreferences(prev.aiPreferences);
+      const nextEnabled = !cur.autoPilotEnabled;
+      engineRef.current?.setAutoPilot(nextEnabled, cur.tactic);
+      return {
+        ...prev,
+        aiPreferences: { ...cur, autoPilotEnabled: nextEnabled },
+      };
+    });
+  }, []);
+
+  const handleSelectAutoPilotTactic = useCallback((tactic: AiAutoPilotTactic) => {
+    setSave((prev) => {
+      const cur = normalizeAiPreferences(prev.aiPreferences);
+      engineRef.current?.setAutoPilotTactic(tactic);
+      return {
+        ...prev,
+        aiPreferences: { ...cur, tactic },
+      };
+    });
+  }, []);
+
+  const handleChallengeLiveAiPlayer = useCallback(
+    (opponent: AiLivePlayerProfile, duelId: string) => {
+      setLiveAiHubOpen(false);
+      setWeeklyBossModalOpen(false);
+      setRunSummary(null);
+      setDamages([]);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startLiveAiDuel(playerStats, opponent, duelId);
+    },
+    [playerStats]
+  );
+
+  const handleExecutePostRunQuickUpgrade = useCallback((): string | null => {
+    const rec = computeNextUpgradeRecommendation(saveRef.current);
+    if (!rec.canActNow) return null;
+
+    if (rec.kind === 'upgrade_gear') {
+      const slots: GearSlot[] = [
+        GearSlot.WEAPON,
+        GearSlot.ARMOR,
+        GearSlot.RING,
+        GearSlot.NECKLACE,
+        GearSlot.HELMET,
+        GearSlot.BOOTS,
+      ];
+      for (const slot of slots) {
+        const uid = saveRef.current.equipped[slot];
+        if (!uid) continue;
+        const item = saveRef.current.inventory.find((g) => g.uid === uid);
+        if (!item) continue;
+        const cost = getUpgradeCost(item);
+        if (saveRef.current.gold >= cost) {
+          const tpl = GEAR_TEMPLATES[item.templateId];
+          setSave((prev) => ({
+            ...prev,
+            gold: Math.max(0, prev.gold - cost),
+            inventory: prev.inventory.map((g) =>
+              g.uid === item.uid ? { ...g, level: g.level + 1 } : g
+            ),
+          }));
+          soundEngine.playLevelUp();
+          return `Đã cường hóa ${tpl?.name ?? 'Trang bị'} lên +${item.level + 1}!`;
+        }
+      }
+    }
+
+    if (rec.kind === 'craft_target') {
+      const goal = getNextTargetGoal(saveRef.current);
+      if (goal.canCraftNow && (goal.tier === 'rare' || goal.tier === 'epic')) {
+        const forged = craftEarlyTargetGear(saveRef.current, goal.tier);
+        if (forged.ok && forged.nextSave) {
+          setSave(forged.nextSave);
+          soundEngine.playAchievement();
+          return `Đã rèn thành công ${goal.title}!`;
+        }
+      }
+    }
+
+    return null;
+  }, []);
+
+  const handleWeeklyBossRewardClaimed = useCallback(
+    (receipt: WeeklyBossClaimReceipt) => {
+      soundEngine.playAchievement();
+      setSave((prev) => {
+        const nextFrames = new Set<AvatarFrameId>(prev.unlockedAvatarFrames ?? ['default_gold']);
+        if (receipt.rewardFrameId) {
+          nextFrames.add(receipt.rewardFrameId);
+        }
+        const nextDynTitles = new Set<DynamicTitleId>(prev.unlockedDynamicTitles ?? []);
+        if (receipt.rewardDynamicTitleId) {
+          nextDynTitles.add(receipt.rewardDynamicTitleId);
+        }
+        return {
+          ...prev,
+          unlockedAvatarFrames: Array.from(nextFrames),
+          equippedAvatarFrameId: receipt.rewardFrameId ?? prev.equippedAvatarFrameId,
+          equippedTitle: receipt.rewardTitleLabel || prev.equippedTitle,
+          unlockedDynamicTitles: Array.from(nextDynTitles),
+          equippedDynamicTitleId: receipt.rewardDynamicTitleId ?? prev.equippedDynamicTitleId,
+        };
+      });
+      triggerUpgradeCelebration(
+        'Nhận Thưởng Hạng Boss Tuần!',
+        `Danh hiệu "${receipt.rewardTitleLabel}" & Khung ngoại hình đã mở khóa.`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
 
   const handleStartWorldBoss = useCallback(() => {
     const wb = normalizeWorldBoss(save.worldBoss);
@@ -9360,6 +9749,7 @@ export default function App() {
           }}
           onSignOut={handleLogout}
           onRetryModels={retryStartupModels}
+          onRetryModelFile={() => engineRef.current?.retryAppearance()}
           onEnterGame={() => {
             if (!canEnterGame) return;
             soundEngine.unlock();
@@ -9478,6 +9868,9 @@ export default function App() {
           onOpenArenaModal={() => setArenaModalOpen(true)}
           onOpenAuctionModal={() => setAuctionModalOpen(true)}
           onOpenHonorBoard={() => setHonorBoardOpen(true)}
+          onOpenWeeklyBoss={() => setWeeklyBossModalOpen(true)}
+          onOpenLiveAiHub={() => setLiveAiHubOpen(true)}
+          liveAiOnlineCount={liveAiOnlineCount}
           onOpenWardrobe={handleOpenWardrobe}
           onOpenDispatch={() => setDispatchOpen(true)}
           onOpenProfileModal={(tab = 'profile') => setProfileModalTab(tab)}
@@ -9624,6 +10017,8 @@ export default function App() {
           onDashClick={() => engineRef.current?.triggerDash()}
           onActiveSkillClick={() => engineRef.current?.triggerHeroActiveSkill()}
           onUltimateClick={() => engineRef.current?.triggerHeroUltimate()}
+          onToggleAutoPilot={handleToggleAutoPilotInCombat}
+          onSelectAutoPilotTactic={handleSelectAutoPilotTactic}
           onSelectChampionshipTactic={handleSelectChampionshipTactic}
           loadoutPresets={normalizeLoadoutPresets(save.loadoutPresets)}
           activeLoadoutPresetId={save.activeLoadoutPresetId ?? null}
@@ -9642,6 +10037,9 @@ export default function App() {
           currentStacks={draftStacks}
           rerollUsed={rerollUsed}
           encounterOffer={encounterOffer}
+          autoPilotEnabled={Boolean(hud.autoPilotEnabled)}
+          autoPilotTactic={currentAiPrefs.tactic}
+          autoSkillPick={currentAiPrefs.autoSkillPick}
           onPickSkill={(skillId) => {
             setPhase(GamePhase.PLAYING);
             engineRef.current?.applySkillChoice(skillId);
@@ -9791,7 +10189,12 @@ export default function App() {
           onQuickUpgradeWeapon={handleQuickUpgradeWeapon}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
-            (runSummary?.isSkyCitadelMode ?? hud.isSkyCitadelMode)
+            runSummary?.isWeeklyRankedBossMode
+              ? () => {
+                  handleReturnTitle();
+                  setWeeklyBossModalOpen(true);
+                }
+              : (runSummary?.isSkyCitadelMode ?? hud.isSkyCitadelMode)
               ? () => {
                   if (normalizeSkyCitadel(save.skyCitadel).dailyRunsRemaining > 0) {
                     handleStartSkyCitadel();
@@ -9946,6 +10349,37 @@ export default function App() {
             handleUpdateSettings({ photoLightingPreset: preset });
             engineRef.current?.setPhotoLightingPreset(preset);
           }}
+          isWeeklyRankedBossMode={runSummary?.isWeeklyRankedBossMode ?? false}
+          weeklyBossIsPractice={runSummary?.weeklyBossIsPractice ?? false}
+          weeklyBossDamage={runSummary?.weeklyBossDamage ?? 0}
+          weeklyBossClearTimeMs={runSummary?.weeklyBossClearTimeMs ?? 0}
+          weeklyBossVerifiedScore={weeklyBossResult.verifiedScore}
+          weeklyBossVerifiedRank={weeklyBossResult.rank}
+          weeklyBossSubmitting={weeklyBossResult.submitting}
+          weeklyBossError={weeklyBossResult.error}
+          onExecuteQuickUpgrade={handleExecutePostRunQuickUpgrade}
+          onOpenWeeklyBoss={() => {
+            handleReturnTitle();
+            setWeeklyBossModalOpen(true);
+          }}
+          onUpgradeGuideAction={(target: UpgradeActionTarget) => {
+            if (target === 'battle') {
+              handleStartTrial();
+              return;
+            }
+            handleReturnTitle();
+            if (target === 'gear') {
+              setActiveLobbyTab('gear');
+            } else if (target === 'forge') {
+              setForgeConfig({ open: true, subTab: 'forge' });
+            } else if (target === 'talents') {
+              setTalentsModalOpen(true);
+            } else if (target === 'mail') {
+              setMailModalOpen(true);
+            } else if (target === 'shop') {
+              setActiveLobbyTab('shop');
+            }
+          }}
           onCaptureVictoryPhoto={() => {
             const dataUrl = engineRef.current?.capturePhotoDataUrl();
             if (!dataUrl) return;
@@ -9958,6 +10392,8 @@ export default function App() {
           }}
         />
       )}
+
+      <Suspense fallback={null}>
 
       {phase === GamePhase.TITLE && enteredGame && rewardsModalTab && (
         <DailyRewardsModal
@@ -10215,7 +10651,37 @@ export default function App() {
             setHonorBoardOpen(false);
             handleStartWorldBoss();
           }}
+          onOpenWeeklyBoss={() => {
+            setHonorBoardOpen(false);
+            setWeeklyBossModalOpen(true);
+          }}
           onClose={() => setHonorBoardOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && weeklyBossModalOpen && (
+        <WeeklyRankedBossModal
+          isAuthenticated={Boolean(currentUser)}
+          playerDisplayName={playerDisplayName}
+          currentUid={currentUser?.uid}
+          onStartVerifiedRun={handleStartWeeklyRankedBoss}
+          onStartPracticeRun={handleStartWeeklyBossPractice}
+          onRewardClaimed={handleWeeklyBossRewardClaimed}
+          onOpenAuthModal={() => {
+            setWeeklyBossModalOpen(false);
+            setAuthLinkModalOpen(true);
+          }}
+          onClose={() => setWeeklyBossModalOpen(false)}
+        />
+      )}
+
+      {phase === GamePhase.TITLE && enteredGame && liveAiHubOpen && (
+        <LiveAiHubModal
+          playerDisplayName={playerDisplayName}
+          aiPreferences={currentAiPrefs}
+          onUpdateAiPreferences={handleUpdateAiPreferences}
+          onChallengeAiPlayer={handleChallengeLiveAiPlayer}
+          onClose={() => setLiveAiHubOpen(false)}
         />
       )}
 
@@ -10303,7 +10769,7 @@ export default function App() {
         />
       )}
 
-      {phase === GamePhase.TITLE && enteredGame && (
+      {phase === GamePhase.TITLE && enteredGame && festivalModalOpen && (
         <CelestialFestivalModal
           open={festivalModalOpen}
           save={save}
@@ -10415,10 +10881,13 @@ export default function App() {
         />
       )}
 
-      <UpgradeCelebrationOverlay
-        celebration={upgradeCelebration}
-        hapticsEnabled={currentSettings.hapticsEnabled}
-      />
+      {upgradeCelebration && (
+        <UpgradeCelebrationOverlay
+          celebration={upgradeCelebration}
+          hapticsEnabled={currentSettings.hapticsEnabled}
+        />
+      )}
+      </Suspense>
       <CombatPowerToast toast={powerToast} />
       <AchievementToast achievement={activeAchievementToast} />
 

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ArrowUpRight, Award, BarChart3, Camera, Check, Crown, Download, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, Skull, Sparkles, Sun, Swords, Trophy, Users } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Award, BarChart3, Camera, Check, Compass, Crown, Download, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, ShieldCheck, Skull, Sparkles, Sun, Swords, Trophy, Users } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 import { getNextTargetGoal } from '../data/earlyProgressionData';
 import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
+import { computeNextUpgradeRecommendation, UpgradeActionTarget } from '../data/progressionAdvisor';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { evaluateMatchMvpReport } from '../data/wave11Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
@@ -113,6 +114,17 @@ interface PauseResultModalProps {
   onCaptureVictoryPhoto?: () => void;
   runHighlights?: RunCombatHighlights;
   heroName?: string;
+  isWeeklyRankedBossMode?: boolean;
+  weeklyBossIsPractice?: boolean;
+  weeklyBossDamage?: number;
+  weeklyBossClearTimeMs?: number;
+  weeklyBossVerifiedScore?: number | null;
+  weeklyBossVerifiedRank?: number | null;
+  weeklyBossSubmitting?: boolean;
+  weeklyBossError?: string | null;
+  onUpgradeGuideAction?: (target: UpgradeActionTarget) => void;
+  onExecuteQuickUpgrade?: () => string | null;
+  onOpenWeeklyBoss?: () => void;
 }
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
@@ -207,9 +219,21 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   onCaptureVictoryPhoto,
   runHighlights,
   heroName = 'Alice',
+  isWeeklyRankedBossMode = false,
+  weeklyBossIsPractice = false,
+  weeklyBossDamage = 0,
+  weeklyBossClearTimeMs = 0,
+  weeklyBossVerifiedScore = null,
+  weeklyBossVerifiedRank = null,
+  weeklyBossSubmitting = false,
+  weeklyBossError = null,
+  onUpgradeGuideAction,
+  onExecuteQuickUpgrade,
+  onOpenWeeklyBoss,
 }) => {
   const [snapshotSaved, setSnapshotSaved] = useState(false);
   const [medalCardSaved, setMedalCardSaved] = useState(false);
+  const [quickUpgradeFeedback, setQuickUpgradeFeedback] = useState<string | null>(null);
   const isPause = phase === GamePhase.PAUSED;
   const isVictory = phase === GamePhase.VICTORY;
   const medalEvaluation = !isPause
@@ -238,9 +262,14 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
     !isChampionshipMode &&
     !isCrystalVaultMode &&
     !isDragonLairMode &&
-    !isSkyCitadelMode;
+    !isSkyCitadelMode &&
+    !isWeeklyRankedBossMode;
 
   const targetGoal = !isPause && save ? getNextTargetGoal(save) : null;
+  const upgradeGuide =
+    !isPause && save && !isWeeklyRankedBossMode
+      ? computeNextUpgradeRecommendation(save)
+      : null;
   const equippedWeapon =
     save && save.equipped[GearSlot.WEAPON]
       ? save.inventory.find((g) => g.uid === save.equipped[GearSlot.WEAPON])
@@ -359,7 +388,9 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
 
             <div className="min-w-0">
               <div className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-amber-300/95 mb-0.5 truncate">
-                {isSkyCitadelMode
+                {isWeeklyRankedBossMode
+                  ? 'Boss Tuần Tính Hạng · Chuẩn Hóa Sử Thi'
+                  : isSkyCitadelMode
                   ? `Không Chiến Tinh Giới 3D · Đợt ${skyCitadelWave}/3`
                   : isDragonLairMode
                   ? `Lãnh Địa Rồng Cổ 3D · Pha ${dragonPhase}/3`
@@ -398,6 +429,10 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
               <h2 className="font-display text-2xl sm:text-[26px] font-black text-white leading-tight">
                 {isPause
                   ? 'Tạm Dừng Trận Đấu'
+                  : isWeeklyRankedBossMode
+                  ? isVictory
+                    ? 'Hạ Gục Boss Tuần Thành Công!'
+                    : 'Hoàn Tất Lượt Boss Tuần!'
                   : isSkyCitadelMode
                   ? isVictory
                     ? 'Chinh Phục Không Chiến Tinh Giới!'
@@ -461,6 +496,8 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
               <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
                 {isPause
                   ? 'Nghỉ ngơi đôi chút hoặc tùy chỉnh âm thanh & đồ họa 3D.'
+                  : isWeeklyRankedBossMode
+                  ? `Kết quả được xác minh máy chủ theo nhịp 60 tick/giây · Sát thương: ${weeklyBossDamage.toLocaleString('vi-VN')} · Thời gian: ${(weeklyBossClearTimeMs / 1000).toFixed(2)}s.`
                   : isSkyCitadelMode
                   ? `Bạn vượt qua Đợt ${skyCitadelWave}/3 Không Chiến Tinh Giới với ${skyCitadelScore.toLocaleString('vi-VN')} điểm! Lông Vũ Thần Quang & Mảnh Thần Thoại đã chuyển vào Kho.`
                   : isDragonLairMode
@@ -1086,6 +1123,148 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Pillar 4: Server-Verified Weekly Ranked Boss Result */}
+              {isWeeklyRankedBossMode && (
+                <div
+                  data-weekly-boss-result="true"
+                  className="rounded-xl bg-[#070d1d] border border-emerald-400/35 p-3.5 space-y-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-300">
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                      <span>
+                        {weeklyBossIsPractice
+                          ? 'Lượt Tập Luyện Boss Tuần (Không Tốn Lượt)'
+                          : 'Xác Minh Bảng Hạng Boss Tuần'}
+                      </span>
+                    </div>
+                    {!weeklyBossIsPractice && weeklyBossVerifiedRank !== null && (
+                      <span className="font-mono-nums text-xs font-black text-amber-300">
+                        Hạng #{weeklyBossVerifiedRank}
+                      </span>
+                    )}
+                  </div>
+                  {weeklyBossSubmitting ? (
+                    <div className="text-xs text-slate-300">
+                      Đang gửi nhật ký nhịp mô phỏng lên máy chủ để tính điểm...
+                    </div>
+                  ) : weeklyBossError ? (
+                    <div className="text-xs text-rose-300 font-semibold">
+                      {weeklyBossError}
+                    </div>
+                  ) : weeklyBossVerifiedScore !== null ? (
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="rounded-lg bg-[#0b132b] border border-slate-700/80 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                          {weeklyBossIsPractice ? 'Điểm Ước Lượng Tập' : 'Điểm Xác Minh'}
+                        </div>
+                        <div className="font-mono-nums text-base font-black text-amber-300">
+                          {weeklyBossVerifiedScore.toLocaleString('vi-VN')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-[#0b132b] border border-slate-700/80 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                          Thời Gian Chuẩn
+                        </div>
+                        <div className="font-mono-nums text-base font-black text-sky-300">
+                          {(weeklyBossClearTimeMs / 1000).toFixed(2)}s
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-300">
+                      Sát thương ghi nhận: {weeklyBossDamage.toLocaleString('vi-VN')} · Mở bảng hạng để xem chi tiết.
+                    </div>
+                  )}
+                  {onOpenWeeklyBoss && (
+                    <button
+                      type="button"
+                      onClick={onOpenWeeklyBoss}
+                      className="a2-yellow-btn w-full py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Trophy className="w-3.5 h-3.5 shrink-0" />
+                      <span>Mở Bảng Hạng &amp; Nhận Danh Hiệu Tuần</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Pillar 3: Fair Progression — Always-Visible Next Upgrade Path */}
+              {upgradeGuide && (
+                <div
+                  data-upgrade-advisor="true"
+                  className="rounded-xl bg-[#070d1d] border border-amber-400/35 p-3.5 space-y-2.5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-amber-300">
+                      <Compass className="w-4 h-4 shrink-0" />
+                      <span>Đường Nâng Cấp Tiếp Theo</span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-wider ${
+                        upgradeGuide.canActNow ? 'text-emerald-300' : 'text-sky-300'
+                      }`}
+                    >
+                      {upgradeGuide.canActNow ? 'Nâng Được Ngay' : 'Mục Tiêu Tiếp Theo'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-xs sm:text-sm font-black text-white leading-snug">
+                      {upgradeGuide.title}
+                    </div>
+                    <div className="text-[11px] text-slate-300 leading-relaxed">
+                      <span className="text-amber-200 font-bold">Mục tiêu:</span> {upgradeGuide.whatToUpgrade} ({upgradeGuide.targetItemName})
+                    </div>
+                    <div className="text-[11px] text-slate-300 leading-relaxed">
+                      <span className="text-rose-300 font-bold">Tình trạng / Thiếu:</span> {upgradeGuide.missingText}
+                    </div>
+                    <div className="text-[11px] text-slate-300 leading-relaxed">
+                      <span className="text-emerald-300 font-bold">Kiếm ở đâu:</span> {upgradeGuide.farmWhereText}
+                    </div>
+                  </div>
+
+                  {quickUpgradeFeedback && (
+                    <div className="rounded-lg border border-emerald-400/40 bg-emerald-950/50 px-3 py-1.5 text-[11px] font-bold text-emerald-200 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                      <span>{quickUpgradeFeedback}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    {upgradeGuide.canActNow && onExecuteQuickUpgrade && (
+                      <button
+                        type="button"
+                        data-upgrade-advisor-quick="true"
+                        onClick={() => {
+                          const msg = onExecuteQuickUpgrade();
+                          if (msg) setQuickUpgradeFeedback(msg);
+                        }}
+                        className="a2-emerald-btn flex-1 py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                      >
+                        <Hammer className="w-3.5 h-3.5 shrink-0" />
+                        <span>Thực Hiện Ngay (1 Chạm)</span>
+                      </button>
+                    )}
+                    {onUpgradeGuideAction && (
+                      <button
+                        type="button"
+                        data-upgrade-advisor-cta="true"
+                        onClick={() => onUpgradeGuideAction(upgradeGuide.actionTarget)}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                          upgradeGuide.canActNow && !onExecuteQuickUpgrade
+                            ? 'a2-emerald-btn'
+                            : 'a2-slate-btn border border-amber-400/35 text-amber-200'
+                        }`}
+                      >
+                        <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                        <span>{upgradeGuide.actionLabel}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Next Target Gear Progress (Campaign only) */}
               {isCampaignRun && targetGoal && (

@@ -33,6 +33,36 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('/three/') || id.includes('\\three\\')) return 'vendor-three';
+            if (id.includes('/firebase/') || id.includes('/@firebase/') || id.includes('\\firebase\\') || id.includes('\\@firebase\\')) {
+              return 'vendor-firebase';
+            }
+            if (
+              id.includes('/react/') ||
+              id.includes('/react-dom/') ||
+              id.includes('/scheduler/') ||
+              id.includes('\\react\\') ||
+              id.includes('\\react-dom\\')
+            ) {
+              return 'vendor-react';
+            }
+            if (
+              id.includes('/lucide-react/') ||
+              id.includes('/motion/') ||
+              id.includes('/framer-motion/')
+            ) {
+              return 'vendor-ui';
+            }
+            return undefined;
+          },
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.

@@ -21,7 +21,9 @@ import {
   getSynergyHintsForSkill,
 } from '../data/skillsData';
 import { computeSkillSynergyProgress } from '../engine/aaaWave3Director';
+import { selectBestSkillChoice } from '../engine/aiCombatBrain';
 import {
+  AiAutoPilotTactic,
   EncounterOffer,
   SkillBuildTag,
   SkillCategory,
@@ -37,6 +39,9 @@ interface SkillDraftModalProps {
   currentStacks: Partial<Record<SkillId, number>>;
   rerollUsed: boolean;
   encounterOffer: EncounterOffer | null;
+  autoPilotEnabled?: boolean;
+  autoPilotTactic?: AiAutoPilotTactic;
+  autoSkillPick?: boolean;
   onPickSkill: (skillId: SkillId) => void;
   onRerollSkills: () => void;
   onAngelChoice: (choice: 'max_hp' | 'heal') => void;
@@ -159,6 +164,9 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   currentStacks,
   rerollUsed,
   encounterOffer,
+  autoPilotEnabled = false,
+  autoPilotTactic = 'balanced',
+  autoSkillPick = true,
   onPickSkill,
   onRerollSkills,
   onAngelChoice,
@@ -170,6 +178,8 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   const [wheelResult, setWheelResult] = useState<WheelOutcome | null>(null);
   const [tarotArtFailed, setTarotArtFailed] = useState(false);
   const [tiltCard, setTiltCard] = useState<{ id: string; rx: number; ry: number } | null>(null);
+  const [autoCancelled, setAutoCancelled] = useState(false);
+  const [autoCountdownMs, setAutoCountdownMs] = useState(2500);
 
   const handleSpinWheel = () => {
     if (wheelSpinning || wheelResult) return;
@@ -189,6 +199,25 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
 
   const isSkillMode = mode === 'skill' || mode === 'valkyrie';
   const activeSynergyIds = evaluateActiveSynergies(currentStacks);
+  const recommendedAutoSkill =
+    isSkillMode && autoPilotEnabled && autoSkillPick && !autoCancelled
+      ? selectBestSkillChoice(skillChoices, currentStacks, autoPilotTactic)
+      : null;
+
+  useEffect(() => {
+    if (!recommendedAutoSkill) return;
+    setAutoCountdownMs(2500);
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      const left = Math.max(0, 2500 - (Date.now() - startedAt));
+      setAutoCountdownMs(left);
+      if (left <= 0) {
+        window.clearInterval(interval);
+        onPickSkill(recommendedAutoSkill.id);
+      }
+    }, 100);
+    return () => window.clearInterval(interval);
+  }, [recommendedAutoSkill, onPickSkill]);
 
   useEffect(() => {
     if (!isSkillMode) return;
@@ -218,6 +247,24 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
       <div className="cel-panel-ornate w-full max-w-3xl rounded-3xl p-5 sm:p-7 max-h-[92vh] overflow-y-auto a2-scroll">
         {/* Header Banner */}
         <div className="text-center mb-5">
+          {recommendedAutoSkill && (
+            <div className="mb-3 mx-auto max-w-xl rounded-xl border border-sky-400/45 bg-sky-950/60 px-3.5 py-2 flex items-center justify-between gap-3 text-left text-xs">
+              <div className="min-w-0">
+                <span className="font-bold text-sky-300">AI Tự Chơi gợi ý: </span>
+                <span className="font-black text-white">{recommendedAutoSkill.name}</span>
+                <span className="font-mono-nums text-amber-300 ml-1.5">
+                  ({(autoCountdownMs / 1000).toFixed(1)}s)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoCancelled(true)}
+                className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-[11px] font-bold text-slate-200 hover:text-white cursor-pointer whitespace-nowrap"
+              >
+                Tự chọn tay
+              </button>
+            </div>
+          )}
           <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
             {mode === 'skill'
               ? `Thăng Cấp ${level} · Tinh Tú Ban Phước`

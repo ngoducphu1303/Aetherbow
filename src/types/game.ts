@@ -1345,6 +1345,63 @@ export interface SaveData {
   nightmareClears?: Record<number, number>;
   selectedNightmareTier?: number;
   discoveredSynergies?: SkillSynergyId[];
+  // Wave 2 AAA + Real-Time AI Preferences & Duel Record
+  aiPreferences?: AiPreferencesState;
+}
+
+export type AiAutoPilotTactic = 'aggressive' | 'balanced' | 'evasive';
+export type AiCompanionRole = 'vanguard' | 'ranger' | 'mystic';
+export type AiLivePlayerPersonality = 'aggressive' | 'tactical' | 'assassin';
+export type AiLivePlayerStatus =
+  | 'lobby'
+  | 'campaign'
+  | 'weekly_practice'
+  | 'ready_duel'
+  | 'in_duel';
+
+export interface AiPreferencesState {
+  autoPilotEnabled: boolean;
+  tactic: AiAutoPilotTactic;
+  autoSkillPick: boolean;
+  squadAssistEnabled: boolean;
+  squadRoles: AiCompanionRole[];
+  liveDuelWins: number;
+  liveDuelLosses: number;
+  liveDuelRating: number;
+}
+
+export interface AiLivePlayerProfile {
+  id: string;
+  displayName: string;
+  tag: '[AI Live]';
+  heroId: HeroId;
+  powerRating: number;
+  personality: AiLivePlayerPersonality;
+  status: AiLivePlayerStatus;
+  statusDetail: string;
+  weeklyPracticeBest: number;
+  duelRating: number;
+  duelWins: number;
+  duelLosses: number;
+  winStreak: number;
+  lastActiveAt: number;
+}
+
+export interface AiLiveActivityEvent {
+  id: string;
+  timestamp: number;
+  kind: 'status' | 'campaign' | 'weekly_practice' | 'duel_result' | 'weekly_rank';
+  actorName: string;
+  summary: string;
+  accent: 'amber' | 'sky' | 'emerald' | 'rose';
+}
+
+export interface AiLiveHubSnapshot {
+  serverNow: number;
+  onlineHumanCount: number;
+  onlineAiCount: number;
+  players: AiLivePlayerProfile[];
+  activities: AiLiveActivityEvent[];
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm' | 'azure_dragon';
@@ -1819,6 +1876,30 @@ export interface HudSnapshot {
   bossWeakPointActive?: boolean;
   bossWeakPointTimer?: number;
   trapTriggerToast?: string | null;
+  // AAA Wave 2 + Pillar 5 Real-Time AI & Diagnostics
+  autoPilotEnabled?: boolean;
+  autoPilotTactic?: AiAutoPilotTactic;
+  autoPilotLockedReason?: string | null;
+  autoPilotStatusText?: string | null;
+  autoPilotManualOverride?: boolean;
+  aiSquadAllies?: Array<{
+    role: AiCompanionRole;
+    roleLabel: string;
+    name: string;
+    hpPct: number;
+    damage: number;
+    ultCharge: number;
+    callout?: string | null;
+  }>;
+  isWeeklyRankedBossMode?: boolean;
+  isWeeklyBossPracticeMode?: boolean;
+  weeklyBossTimeLeft?: number;
+  weeklyBossTotalDamage?: number;
+  bossStaggerRatio?: number;
+  bossStaggerBroken?: boolean;
+  liveAiRivalTag?: string | null;
+  perfDrawCalls?: number;
+  perfSimHz?: number;
 }
 
 export interface EncounterOffer {

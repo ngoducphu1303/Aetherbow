@@ -14,7 +14,12 @@ import type { User } from 'firebase/auth';
 import splashArtSrc from '../assets/images/celestial_sanctuary_backdrop_1794971371758.jpg';
 import { CHAPTERS } from '../data/chaptersData';
 import type { AppearanceStatus } from '../engine/GameEngine';
-import { getModelDownloadProgress, subscribeToModelDownloads } from '../engine/modelAssets';
+import {
+  getModelDownloadProgress,
+  ModelAsset,
+  retryModelDownload,
+  subscribeToModelDownloads,
+} from '../engine/modelAssets';
 import {
   CloudSyncStatus,
   formatAccountHandle,
@@ -36,6 +41,7 @@ interface SplashGateProps {
   onContinueGuest: () => void;
   onSignOut: () => Promise<void>;
   onRetryModels: () => void;
+  onRetryModelFile?: (path: ModelAsset) => void;
   onEnterGame: () => void;
   onToggleMute: () => void;
 }
@@ -68,6 +74,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   onContinueGuest,
   onSignOut,
   onRetryModels,
+  onRetryModelFile,
   onEnterGame,
   onToggleMute,
 }) => {
@@ -218,16 +225,16 @@ export const SplashGate: React.FC<SplashGateProps> = ({
             <span>8 Anh Hùng Chibi · 12 Chương Hoàng Đạo · Điện Thần 3D</span>
           </div>
 
-          {/* 3D Model Readiness Progress */}
+          {/* 3D Model Readiness Progress with Per-File Status & Individual Retry */}
           <div className="w-full max-w-md mt-4">
             {!ready || failed ? (
-              <div className="rounded-2xl border border-amber-200/30 bg-[#090d1b]/92 p-3 shadow-xl">
-                <div className="mb-1.5 flex items-center justify-between gap-3 text-xs font-bold text-amber-100">
+              <div className="rounded-2xl border border-amber-200/30 bg-[#090d1b]/95 p-3.5 shadow-xl space-y-2.5">
+                <div className="flex items-center justify-between gap-3 text-xs font-bold text-amber-100">
                   <span role={failed ? 'alert' : 'status'}>
                     {failed
-                      ? 'Không tải được mô hình 3D'
+                      ? 'Một số tệp mô hình 3D tải lỗi'
                       : progress.status === 'ready'
-                      ? 'Đang chuẩn bị ngoại hình đã trang bị…'
+                      ? 'Đang dựng ngoại hình đã trang bị…'
                       : 'Đang tải mô hình 3D…'}
                   </span>
                   <span className="font-mono-nums">{progress.percent}%</span>
@@ -245,20 +252,78 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                     style={{ width: `${progress.percent}%` }}
                   />
                 </div>
-                <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-300">
-                  <span>Tài nguyên 3D đang nạp sẵn cho sảnh</span>
+
+                {/* Per-file model download list */}
+                <div className="divide-y divide-amber-200/10 pt-0.5">
+                  {progress.files.map((file) => {
+                    const kbReceived = Math.round(file.received / 1024);
+                    const kbTotal = file.length > 0 ? Math.round(file.length / 1024) : 0;
+                    const sizeText =
+                      kbTotal > 0
+                        ? `${kbReceived.toLocaleString('vi-VN')}/${kbTotal.toLocaleString('vi-VN')} KB`
+                        : kbReceived > 0
+                        ? `${kbReceived.toLocaleString('vi-VN')} KB`
+                        : '';
+                    return (
+                      <div
+                        key={file.path}
+                        data-model-file={file.path}
+                        data-model-status={file.status}
+                        className="py-1.5 flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-slate-100 font-semibold truncate">{file.label}</div>
+                          <div className="text-[10px] text-slate-400 font-mono-nums">
+                            {file.status === 'ready'
+                              ? `Hoàn tất${sizeText ? ` · ${sizeText}` : ''}`
+                              : file.status === 'error'
+                              ? `Lỗi: ${file.error || 'Tải thất bại'}`
+                              : `${file.percent}%${sizeText ? ` · ${sizeText}` : ''}`}
+                          </div>
+                        </div>
+                        {file.status === 'error' ? (
+                          <button
+                            type="button"
+                            data-retry-file={file.path}
+                            onClick={() => {
+                              void retryModelDownload(file.path).catch(() => {});
+                              onRetryModelFile?.(file.path);
+                              onRetryModels();
+                            }}
+                            className="a2-slate-btn px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Thử lại</span>
+                          </button>
+                        ) : (
+                          <span
+                            className={`font-mono-nums text-[11px] font-bold shrink-0 ${
+                              file.status === 'ready' ? 'text-emerald-300' : 'text-amber-200'
+                            }`}
+                          >
+                            {file.status === 'ready' ? '100%' : `${file.percent}%`}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-slate-300 pt-0.5">
+                  <span>Tải đủ tài nguyên 3D trước khi vào sảnh</span>
                   <span className="font-mono-nums">
-                    {progress.completed}/{progress.total} mô hình
+                    {progress.completed}/{progress.total} tệp
                   </span>
                 </div>
+
                 {failed && (
                   <button
                     type="button"
                     onClick={onRetryModels}
-                    className="mt-2.5 a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Thử tải lại mô hình 3D</span>
+                    <span>Thử lại tất cả tệp lỗi</span>
                   </button>
                 )}
               </div>

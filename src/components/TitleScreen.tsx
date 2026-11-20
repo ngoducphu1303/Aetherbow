@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import {
+  Bot,
   Camera,
   ChevronLeft,
   ChevronRight,
@@ -161,24 +162,37 @@ import {
 } from '../types/game';
 import { ArenaShopOffer, CommercialPackItem } from '../data/wave6Data';
 import { GoldCoinIcon, SoulGemIcon, ZodiacAvatar } from './GameIcons';
-import {
-  LobbyEventsHubDrawer,
-  LobbyModeDetailModal,
-  LobbyModeDrawer,
-  LobbySkyPopover,
-} from './LobbyDrawers';
-import {
-  LobbyGearPanel,
-  LobbyHeroesPanel,
-  LobbyRunesPanel,
-  LobbyShopPanel,
-  ShopSectionTab,
-} from './LobbyPanels';
+import type { ShopSectionTab } from './LobbyPanels';
 import { CloudSyncStatus } from '../services/playerCloudService';
-import { ProfileModalTab } from './ProfileCodexModal';
-import { Wave12SanctumTab } from './Wave12SanctumModal';
-import { Wave13Tab } from './Wave13TreasuryModal';
-import { Wave14Tab } from './Wave14AscensionModal';
+import type { ProfileModalTab } from './ProfileCodexModal';
+import type { Wave12SanctumTab } from './Wave12SanctumModal';
+import type { Wave13Tab } from './Wave13TreasuryModal';
+import type { Wave14Tab } from './Wave14AscensionModal';
+
+const LobbyEventsHubDrawer = lazy(() =>
+  import('./LobbyDrawers').then((m) => ({ default: m.LobbyEventsHubDrawer }))
+);
+const LobbyModeDetailModal = lazy(() =>
+  import('./LobbyDrawers').then((m) => ({ default: m.LobbyModeDetailModal }))
+);
+const LobbyModeDrawer = lazy(() =>
+  import('./LobbyDrawers').then((m) => ({ default: m.LobbyModeDrawer }))
+);
+const LobbySkyPopover = lazy(() =>
+  import('./LobbyDrawers').then((m) => ({ default: m.LobbySkyPopover }))
+);
+const LobbyGearPanel = lazy(() =>
+  import('./LobbyPanels').then((m) => ({ default: m.LobbyGearPanel }))
+);
+const LobbyHeroesPanel = lazy(() =>
+  import('./LobbyPanels').then((m) => ({ default: m.LobbyHeroesPanel }))
+);
+const LobbyRunesPanel = lazy(() =>
+  import('./LobbyPanels').then((m) => ({ default: m.LobbyRunesPanel }))
+);
+const LobbyShopPanel = lazy(() =>
+  import('./LobbyPanels').then((m) => ({ default: m.LobbyShopPanel }))
+);
 
 export type LobbyTab = 'battle' | 'gear' | 'heroes' | 'runes' | 'shop';
 export type LobbyGameMode =
@@ -265,6 +279,9 @@ interface TitleScreenProps {
   onOpenArenaModal: () => void;
   onOpenAuctionModal: () => void;
   onOpenHonorBoard: () => void;
+  onOpenWeeklyBoss?: () => void;
+  onOpenLiveAiHub?: () => void;
+  liveAiOnlineCount?: number;
   onOpenWardrobe?: () => void;
   onOpenDispatch?: () => void;
   onOpenProfileModal: (tab?: ProfileModalTab) => void;
@@ -478,6 +495,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenArenaModal,
   onOpenAuctionModal,
   onOpenHonorBoard,
+  onOpenWeeklyBoss,
+  onOpenLiveAiHub,
+  liveAiOnlineCount,
   onOpenWardrobe,
   onOpenDispatch,
   onOpenProfileModal,
@@ -1580,17 +1600,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   </button>
 
                   {skyPickerOpen && (
-                    <LobbySkyPopover
-                      save={save}
-                      onClose={() => setSkyPickerOpen(false)}
-                      onSelectSkyTheme={onSelectSkyTheme}
-                      onUnlockSkyTheme={onUnlockSkyTheme}
-                      onSelectLobbyWeather={onSelectLobbyWeather}
-                      onSelectSanctuaryFloor={onSelectSanctuaryFloor}
-                      onResetLobbyOrbit={onResetLobbyOrbit}
-                      onAdjustLobbyZoom={onAdjustLobbyZoom}
-                      onReplayEntranceVfx={onReplayEntranceVfx}
-                    />
+                    <Suspense fallback={null}>
+                      <LobbySkyPopover
+                        save={save}
+                        onClose={() => setSkyPickerOpen(false)}
+                        onSelectSkyTheme={onSelectSkyTheme}
+                        onUnlockSkyTheme={onUnlockSkyTheme}
+                        onSelectLobbyWeather={onSelectLobbyWeather}
+                        onSelectSanctuaryFloor={onSelectSanctuaryFloor}
+                        onResetLobbyOrbit={onResetLobbyOrbit}
+                        onAdjustLobbyZoom={onAdjustLobbyZoom}
+                        onReplayEntranceVfx={onReplayEntranceVfx}
+                      />
+                    </Suspense>
                   )}
                 </div>
               )}
@@ -1708,6 +1730,43 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </span>
                     )}
                   </button>
+                  {onOpenWeeklyBoss && (
+                    <button
+                      type="button"
+                      data-weekly-boss-btn="true"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.06);
+                        setSkyPickerOpen(false);
+                        onOpenWeeklyBoss();
+                      }}
+                      title="Boss Tuần Tính Hạng Công Bằng (3 lượt/tuần)"
+                      className="flex-1 sm:flex-initial a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-amber-400/45 hover:border-amber-200 text-amber-200"
+                    >
+                      <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span>Boss Tuần</span>
+                    </button>
+                  )}
+                  {onOpenLiveAiHub && (
+                    <button
+                      type="button"
+                      data-live-ai-hub-btn="true"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.08);
+                        setSkyPickerOpen(false);
+                        onOpenLiveAiHub();
+                      }}
+                      title="Trung Tâm Người Chơi AI Real-Time · Tự Chơi & Thách Đấu 1v1"
+                      className="flex-1 sm:flex-initial a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-sky-400/45 hover:border-sky-200 text-sky-200"
+                    >
+                      <Bot className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                      <span>AI Live</span>
+                      {typeof liveAiOnlineCount === 'number' && liveAiOnlineCount > 0 && (
+                        <span className="font-mono-nums text-[10px] font-black text-emerald-300">
+                          {liveAiOnlineCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {/* Center: Compact Active Chapter / Active Mode Bar */}
@@ -1824,120 +1883,122 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </div>
         )}
 
-        {activeTab === 'gear' && (
-          <LobbyGearPanel
-            save={save}
-            stats={stats}
-            onEquip={onEquipGear}
-            onUpgrade={onUpgradeGear}
-            onFuse={onFuseGear}
-            onAutoEquipBest={onAutoEquipBest}
-            onBulkFuseGear={onBulkFuseGear}
-            onOpenForge={onOpenForgeModal}
-            onOpenForgeSubTab={onOpenForgeSubTab}
-            onSaveBuildPreset={onSaveBuildPreset}
-            onApplyBuildPreset={onApplyBuildPreset}
-            onSaveLoadoutPreset={onSaveLoadoutPreset}
-            onApplyLoadoutPreset={onApplyLoadoutPreset}
-            onStartTrainingGrounds={onStartTrainingGrounds}
-            onOpenWardrobe={onOpenWardrobe}
-            onRotateHero={onRotateHero}
-            onResetHeroRotation={onResetHeroRotation}
-            onGoShop={() => onTabChange('shop')}
-          />
-        )}
+        <Suspense fallback={null}>
+          {activeTab === 'gear' && (
+            <LobbyGearPanel
+              save={save}
+              stats={stats}
+              onEquip={onEquipGear}
+              onUpgrade={onUpgradeGear}
+              onFuse={onFuseGear}
+              onAutoEquipBest={onAutoEquipBest}
+              onBulkFuseGear={onBulkFuseGear}
+              onOpenForge={onOpenForgeModal}
+              onOpenForgeSubTab={onOpenForgeSubTab}
+              onSaveBuildPreset={onSaveBuildPreset}
+              onApplyBuildPreset={onApplyBuildPreset}
+              onSaveLoadoutPreset={onSaveLoadoutPreset}
+              onApplyLoadoutPreset={onApplyLoadoutPreset}
+              onStartTrainingGrounds={onStartTrainingGrounds}
+              onOpenWardrobe={onOpenWardrobe}
+              onRotateHero={onRotateHero}
+              onResetHeroRotation={onResetHeroRotation}
+              onGoShop={() => onTabChange('shop')}
+            />
+          )}
 
-        {activeTab === 'heroes' && (
-          <LobbyHeroesPanel
-            key={heroSubTabInitial}
-            save={save}
-            previewHeroId={previewHeroId}
-            initialSubTab={heroSubTabInitial}
-            onPreviewHero={onPreviewHero}
-            onSelectHero={onSelectHero}
-            onUnlockHero={onUnlockHero}
-            onUpgradeHeroStar={onUpgradeHeroStar}
-            onUnlockPet={onUnlockPet}
-            onEquipPet={onEquipPet}
-            onUpgradePet={onUpgradePet}
-            onEvolvePet={onEvolvePet}
-            onUnlockSkin={onUnlockSkin}
-            onEquipSkin={onEquipSkin}
-            onUnlockAura={onUnlockAura}
-            onEquipAura={onEquipAura}
-            onUnlockWing={onUnlockWing}
-            onEquipWing={onEquipWing}
-            onUpgradeWing={onUpgradeWing}
-            onUnlockAvatarFrame={onUnlockAvatarFrame}
-            onEquipAvatarFrame={onEquipAvatarFrame}
-            onUnlockMount={onUnlockMount}
-            onEquipMount={onEquipMount}
-            onUpgradeMount={onUpgradeMount}
-            onUnlockWeaponAura={onUnlockWeaponAura}
-            onEquipWeaponAura={onEquipWeaponAura}
-            onUpgradeWeaponAura={onUpgradeWeaponAura}
-            onUnlockArtifact={onUnlockArtifact}
-            onEquipArtifact={onEquipArtifact}
-            onUpgradeArtifact={onUpgradeArtifact}
-            onUnlockHalo={onUnlockHalo}
-            onEquipHalo={onEquipHalo}
-            onUpgradeHalo={onUpgradeHalo}
-            onOpenWardrobe={onOpenWardrobe}
-            onPreviewUltimate={onPreviewUltimate}
-            onRotateHero={onRotateHero}
-            onResetHeroRotation={onResetHeroRotation}
-          />
-        )}
+          {activeTab === 'heroes' && (
+            <LobbyHeroesPanel
+              key={heroSubTabInitial}
+              save={save}
+              previewHeroId={previewHeroId}
+              initialSubTab={heroSubTabInitial}
+              onPreviewHero={onPreviewHero}
+              onSelectHero={onSelectHero}
+              onUnlockHero={onUnlockHero}
+              onUpgradeHeroStar={onUpgradeHeroStar}
+              onUnlockPet={onUnlockPet}
+              onEquipPet={onEquipPet}
+              onUpgradePet={onUpgradePet}
+              onEvolvePet={onEvolvePet}
+              onUnlockSkin={onUnlockSkin}
+              onEquipSkin={onEquipSkin}
+              onUnlockAura={onUnlockAura}
+              onEquipAura={onEquipAura}
+              onUnlockWing={onUnlockWing}
+              onEquipWing={onEquipWing}
+              onUpgradeWing={onUpgradeWing}
+              onUnlockAvatarFrame={onUnlockAvatarFrame}
+              onEquipAvatarFrame={onEquipAvatarFrame}
+              onUnlockMount={onUnlockMount}
+              onEquipMount={onEquipMount}
+              onUpgradeMount={onUpgradeMount}
+              onUnlockWeaponAura={onUnlockWeaponAura}
+              onEquipWeaponAura={onEquipWeaponAura}
+              onUpgradeWeaponAura={onUpgradeWeaponAura}
+              onUnlockArtifact={onUnlockArtifact}
+              onEquipArtifact={onEquipArtifact}
+              onUpgradeArtifact={onUpgradeArtifact}
+              onUnlockHalo={onUnlockHalo}
+              onEquipHalo={onEquipHalo}
+              onUpgradeHalo={onUpgradeHalo}
+              onOpenWardrobe={onOpenWardrobe}
+              onPreviewUltimate={onPreviewUltimate}
+              onRotateHero={onRotateHero}
+              onResetHeroRotation={onResetHeroRotation}
+            />
+          )}
 
-        {activeTab === 'runes' && (
-          <LobbyRunesPanel
-            save={save}
-            onEquipRune={onEquipRune}
-            onUnequipRune={onUnequipRune}
-            onFuseRune={onFuseRune}
-            onBulkFuseRunes={onBulkFuseRunes}
-            onRotateHero={onRotateHero}
-            onResetHeroRotation={onResetHeroRotation}
-            onGoShop={() => onOpenShopSection('gacha')}
-          />
-        )}
+          {activeTab === 'runes' && (
+            <LobbyRunesPanel
+              save={save}
+              onEquipRune={onEquipRune}
+              onUnequipRune={onUnequipRune}
+              onFuseRune={onFuseRune}
+              onBulkFuseRunes={onBulkFuseRunes}
+              onRotateHero={onRotateHero}
+              onResetHeroRotation={onResetHeroRotation}
+              onGoShop={() => onOpenShopSection('gacha')}
+            />
+          )}
 
-        {activeTab === 'shop' && (
-          <LobbyShopPanel
-            key={shopSection}
-            save={save}
-            powerRating={stats.powerRating}
-            initialSection={shopSection}
-            wishLastOutcomes={wishLastOutcomes}
-            onOpenChestWithGacha={onOpenChestWithGacha}
-            onBuyFlashDeal={onBuyFlashDeal}
-            onUnlockGrowthFundPremium={onUnlockGrowthFundPremium}
-            onClaimGrowthFundReward={onClaimGrowthFundReward}
-            onClaimAllGrowthFund={onClaimAllGrowthFund}
-            onBuyArenaShopOffer={onBuyArenaShopOffer}
-            onBuyCommercialPack={onBuyCommercialPack}
-            onBuyMonthlyCard={onBuyMonthlyCard}
-            onClaimMonthlyCardDaily={onClaimMonthlyCardDaily}
-            onClaimTopUpEvolutionTier={onClaimTopUpEvolutionTier}
-            onSelectWishTarget={onSelectWishTarget}
-            onWishPoolRoll={onWishPoolRoll}
-            onClaimWishMilestone={onClaimWishMilestone}
-            onClaimFirstTopUp={onClaimFirstTopUp}
-            onBuyHotBundle={onBuyHotBundle}
-            onMysticExchange={onMysticExchange}
-            onClaimChainStep={onClaimChainStep}
-            onResetChainCycle={onResetChainCycle}
-            onBreakGemVault={onBreakGemVault}
-            onClaimGemVaultMilestone={onClaimGemVaultMilestone}
-            onBuyWeekendPack={onBuyWeekendPack}
-            onClaimWeekendPassDaily={onClaimWeekendPassDaily}
-            onActivateSupremeMonthly={onActivateSupremeMonthly}
-            onClaimSupremeMonthlyDaily={onClaimSupremeMonthlyDaily}
-            onOpenBundlePreview={onOpenBundlePreview}
-            onOpenVipModal={onOpenVipModal}
-            onOpenArenaModal={onOpenArenaModal}
-          />
-        )}
+          {activeTab === 'shop' && (
+            <LobbyShopPanel
+              key={shopSection}
+              save={save}
+              powerRating={stats.powerRating}
+              initialSection={shopSection}
+              wishLastOutcomes={wishLastOutcomes}
+              onOpenChestWithGacha={onOpenChestWithGacha}
+              onBuyFlashDeal={onBuyFlashDeal}
+              onUnlockGrowthFundPremium={onUnlockGrowthFundPremium}
+              onClaimGrowthFundReward={onClaimGrowthFundReward}
+              onClaimAllGrowthFund={onClaimAllGrowthFund}
+              onBuyArenaShopOffer={onBuyArenaShopOffer}
+              onBuyCommercialPack={onBuyCommercialPack}
+              onBuyMonthlyCard={onBuyMonthlyCard}
+              onClaimMonthlyCardDaily={onClaimMonthlyCardDaily}
+              onClaimTopUpEvolutionTier={onClaimTopUpEvolutionTier}
+              onSelectWishTarget={onSelectWishTarget}
+              onWishPoolRoll={onWishPoolRoll}
+              onClaimWishMilestone={onClaimWishMilestone}
+              onClaimFirstTopUp={onClaimFirstTopUp}
+              onBuyHotBundle={onBuyHotBundle}
+              onMysticExchange={onMysticExchange}
+              onClaimChainStep={onClaimChainStep}
+              onResetChainCycle={onResetChainCycle}
+              onBreakGemVault={onBreakGemVault}
+              onClaimGemVaultMilestone={onClaimGemVaultMilestone}
+              onBuyWeekendPack={onBuyWeekendPack}
+              onClaimWeekendPassDaily={onClaimWeekendPassDaily}
+              onActivateSupremeMonthly={onActivateSupremeMonthly}
+              onClaimSupremeMonthlyDaily={onClaimSupremeMonthlyDaily}
+              onOpenBundlePreview={onOpenBundlePreview}
+              onOpenVipModal={onOpenVipModal}
+              onOpenArenaModal={onOpenArenaModal}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* SLEEK BOTTOM TAB BAR */}
@@ -1972,115 +2033,117 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </nav>
 
-      {/* CONSOLIDATED DRAWERS */}
-      {modeDrawerOpen && (
-        <LobbyModeDrawer
-          save={save}
-          gameMode={gameMode}
-          selectedChapterId={selectedChapterId}
-          onClose={() => setModeDrawerOpen(false)}
-          onSelectMode={(mode, openDetail) => {
-            onGameModeChange(mode);
-            if (openDetail) setModeDetailOpen(true);
-          }}
-          onStartTrainingGrounds={onStartTrainingGrounds}
-          onOpenArenaModal={onOpenArenaModal}
-          onOpenCodexGuide={onOpenCodexGuide}
-        />
-      )}
+      {/* CONSOLIDATED DRAWERS (Lazy-loaded on open) */}
+      <Suspense fallback={null}>
+        {modeDrawerOpen && (
+          <LobbyModeDrawer
+            save={save}
+            gameMode={gameMode}
+            selectedChapterId={selectedChapterId}
+            onClose={() => setModeDrawerOpen(false)}
+            onSelectMode={(mode, openDetail) => {
+              onGameModeChange(mode);
+              if (openDetail) setModeDetailOpen(true);
+            }}
+            onStartTrainingGrounds={onStartTrainingGrounds}
+            onOpenArenaModal={onOpenArenaModal}
+            onOpenCodexGuide={onOpenCodexGuide}
+          />
+        )}
 
-      {modeDetailOpen && (
-        <LobbyModeDetailModal
-          save={save}
-          stats={stats}
-          gameMode={gameMode}
-          selectedChapterId={selectedChapterId}
-          selectedCoopDifficulty={selectedCoopDifficulty}
-          selectedElementalTower={selectedElementalTower}
-          onClose={() => setModeDetailOpen(false)}
-          onSelectChapter={onSelectChapter}
-          onSelectCoopDifficulty={onSelectCoopDifficulty}
-          onSelectElementalTower={onSelectElementalTower}
-          onSelectNightmareTier={onSelectNightmareTier}
-          onApplyLoadoutPreset={onApplyLoadoutPreset}
-          onQuickSweepChapter={onQuickSweepChapter}
-          onOpenEarlyRoadmap={onOpenEarlyRoadmap}
-          onCraftEarlyTargetGear={onCraftEarlyTargetGear}
-          onStartTrial={onStartTrial}
-          onStartTower={onStartTower}
-          onStartBossRush={onStartBossRush}
-          onStartDailyRift={onStartDailyRift}
-          onStartCoopRaid={onStartCoopRaid}
-          onStartElementalTower={onStartElementalTower}
-          onStartCrystalDefense={onStartCrystalDefense}
-          onStartWorldBoss={onStartWorldBoss}
-          onStartBloodMoon={onStartBloodMoon}
-          onClaimBloodMoonMilestone={onClaimBloodMoonMilestone}
-          onStartAbyssalGauntlet={onStartAbyssalGauntlet}
-          onClaimAbyssalMilestone={onClaimAbyssalMilestone}
-          onStartGuildWar={onStartGuildWar}
-          onClaimGuildWarBox={onClaimGuildWarBox}
-          onStartPantheon={onStartPantheon}
-          onSelectPantheonBlessing={onSelectPantheonBlessing}
-          onClaimPantheonMilestone={onClaimPantheonMilestone}
-          onStartChampionship={onStartChampionship}
-          onClaimChampionshipMilestone={onClaimChampionshipMilestone}
-          onStartCrystalVault={onStartCrystalVault}
-          onClaimCrystalVaultMilestone={onClaimCrystalVaultMilestone}
-          onStartDragonLair={onStartDragonLair}
-          onClaimDragonLairMilestone={onClaimDragonLairMilestone}
-          onStartSkyCitadel={onStartSkyCitadel}
-          onClaimSkyCitadelMilestone={onClaimSkyCitadelMilestone}
-          onOpenTalentsModal={onOpenTalentsModal}
-          onOpenConstellationModal={onOpenConstellationModal}
-          onOpenForgeModal={onOpenForgeModal}
-          onOpenForgeSubTab={onOpenForgeSubTab}
-          onOpenGuildModal={onOpenGuildModal}
-          onOpenHonorBoard={onOpenHonorBoard}
-          onOpenProfileModal={onOpenProfileModal}
-          onTabChange={onTabChange}
-          onOpenHeroSubTab={onOpenHeroSubTab}
-          onOpenWave12Sanctum={onOpenWave12Sanctum}
-          onOpenWave13Treasury={onOpenWave13Treasury}
-          onOpenWave14Ascension={onOpenWave14Ascension}
-        />
-      )}
+        {modeDetailOpen && (
+          <LobbyModeDetailModal
+            save={save}
+            stats={stats}
+            gameMode={gameMode}
+            selectedChapterId={selectedChapterId}
+            selectedCoopDifficulty={selectedCoopDifficulty}
+            selectedElementalTower={selectedElementalTower}
+            onClose={() => setModeDetailOpen(false)}
+            onSelectChapter={onSelectChapter}
+            onSelectCoopDifficulty={onSelectCoopDifficulty}
+            onSelectElementalTower={onSelectElementalTower}
+            onSelectNightmareTier={onSelectNightmareTier}
+            onApplyLoadoutPreset={onApplyLoadoutPreset}
+            onQuickSweepChapter={onQuickSweepChapter}
+            onOpenEarlyRoadmap={onOpenEarlyRoadmap}
+            onCraftEarlyTargetGear={onCraftEarlyTargetGear}
+            onStartTrial={onStartTrial}
+            onStartTower={onStartTower}
+            onStartBossRush={onStartBossRush}
+            onStartDailyRift={onStartDailyRift}
+            onStartCoopRaid={onStartCoopRaid}
+            onStartElementalTower={onStartElementalTower}
+            onStartCrystalDefense={onStartCrystalDefense}
+            onStartWorldBoss={onStartWorldBoss}
+            onStartBloodMoon={onStartBloodMoon}
+            onClaimBloodMoonMilestone={onClaimBloodMoonMilestone}
+            onStartAbyssalGauntlet={onStartAbyssalGauntlet}
+            onClaimAbyssalMilestone={onClaimAbyssalMilestone}
+            onStartGuildWar={onStartGuildWar}
+            onClaimGuildWarBox={onClaimGuildWarBox}
+            onStartPantheon={onStartPantheon}
+            onSelectPantheonBlessing={onSelectPantheonBlessing}
+            onClaimPantheonMilestone={onClaimPantheonMilestone}
+            onStartChampionship={onStartChampionship}
+            onClaimChampionshipMilestone={onClaimChampionshipMilestone}
+            onStartCrystalVault={onStartCrystalVault}
+            onClaimCrystalVaultMilestone={onClaimCrystalVaultMilestone}
+            onStartDragonLair={onStartDragonLair}
+            onClaimDragonLairMilestone={onClaimDragonLairMilestone}
+            onStartSkyCitadel={onStartSkyCitadel}
+            onClaimSkyCitadelMilestone={onClaimSkyCitadelMilestone}
+            onOpenTalentsModal={onOpenTalentsModal}
+            onOpenConstellationModal={onOpenConstellationModal}
+            onOpenForgeModal={onOpenForgeModal}
+            onOpenForgeSubTab={onOpenForgeSubTab}
+            onOpenGuildModal={onOpenGuildModal}
+            onOpenHonorBoard={onOpenHonorBoard}
+            onOpenProfileModal={onOpenProfileModal}
+            onTabChange={onTabChange}
+            onOpenHeroSubTab={onOpenHeroSubTab}
+            onOpenWave12Sanctum={onOpenWave12Sanctum}
+            onOpenWave13Treasury={onOpenWave13Treasury}
+            onOpenWave14Ascension={onOpenWave14Ascension}
+          />
+        )}
 
-      {eventsHubOpen && (
-        <LobbyEventsHubDrawer
-          save={save}
-          stats={stats}
-          onClose={() => setEventsHubOpen(false)}
-          onOpenRewardsModal={onOpenRewardsModal}
-          onOpenTalentsModal={onOpenTalentsModal}
-          onOpenConstellationModal={onOpenConstellationModal}
-          onOpenBattlePassModal={onOpenBattlePassModal}
-          onOpenVipModal={onOpenVipModal}
-          onOpenForgeSubTab={onOpenForgeSubTab}
-          onOpenGuildModal={onOpenGuildModal}
-          onOpenDestinyWheelModal={onOpenDestinyWheelModal}
-          onOpenNightMarketModal={onOpenNightMarketModal}
-          onOpenArenaModal={onOpenArenaModal}
-          onOpenAuctionModal={onOpenAuctionModal}
-          onOpenHonorBoard={onOpenHonorBoard}
-          onOpenWardrobe={onOpenWardrobe}
-          onOpenDispatch={onOpenDispatch}
-          onOpenProfileModal={onOpenProfileModal}
-          onOpenEarlyRoadmap={onOpenEarlyRoadmap}
-          onOpenFestivalModal={onOpenFestivalModal}
-          onOpenShopSection={onOpenShopSection}
-          onTabChange={onTabChange}
-          onOpenHeroSubTab={onOpenHeroSubTab}
-          onOpenWave12Sanctum={onOpenWave12Sanctum}
-          onOpenWave13Treasury={onOpenWave13Treasury}
-          onOpenWave13Carnival={onOpenWave13Carnival}
-          onOpenWave14Ascension={onOpenWave14Ascension}
-          onOpenWave14EventCenter={onOpenWave14EventCenter}
-          onOpenCpBreakdown={onOpenCpBreakdown}
-          onOpenClaimAllModal={onOpenClaimAllModal}
-          onPowerAdvisorAction={onPowerAdvisorAction}
-        />
-      )}
+        {eventsHubOpen && (
+          <LobbyEventsHubDrawer
+            save={save}
+            stats={stats}
+            onClose={() => setEventsHubOpen(false)}
+            onOpenRewardsModal={onOpenRewardsModal}
+            onOpenTalentsModal={onOpenTalentsModal}
+            onOpenConstellationModal={onOpenConstellationModal}
+            onOpenBattlePassModal={onOpenBattlePassModal}
+            onOpenVipModal={onOpenVipModal}
+            onOpenForgeSubTab={onOpenForgeSubTab}
+            onOpenGuildModal={onOpenGuildModal}
+            onOpenDestinyWheelModal={onOpenDestinyWheelModal}
+            onOpenNightMarketModal={onOpenNightMarketModal}
+            onOpenArenaModal={onOpenArenaModal}
+            onOpenAuctionModal={onOpenAuctionModal}
+            onOpenHonorBoard={onOpenHonorBoard}
+            onOpenWardrobe={onOpenWardrobe}
+            onOpenDispatch={onOpenDispatch}
+            onOpenProfileModal={onOpenProfileModal}
+            onOpenEarlyRoadmap={onOpenEarlyRoadmap}
+            onOpenFestivalModal={onOpenFestivalModal}
+            onOpenShopSection={onOpenShopSection}
+            onTabChange={onTabChange}
+            onOpenHeroSubTab={onOpenHeroSubTab}
+            onOpenWave12Sanctum={onOpenWave12Sanctum}
+            onOpenWave13Treasury={onOpenWave13Treasury}
+            onOpenWave13Carnival={onOpenWave13Carnival}
+            onOpenWave14Ascension={onOpenWave14Ascension}
+            onOpenWave14EventCenter={onOpenWave14EventCenter}
+            onOpenCpBreakdown={onOpenCpBreakdown}
+            onOpenClaimAllModal={onOpenClaimAllModal}
+            onPowerAdvisorAction={onPowerAdvisorAction}
+          />
+        )}
+      </Suspense>
 
       {/* GUIDE MODAL */}
       {guideOpen && (

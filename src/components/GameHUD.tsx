@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUp,
+  Bot,
   Compass,
   Crosshair,
   Crown,
@@ -10,6 +11,7 @@ import {
   Gamepad2,
   Gem,
   Heart,
+  Lock,
   LogOut,
   Moon,
   Pause,
@@ -34,6 +36,7 @@ import {
 } from '../engine/aaaWave6Director';
 import { yawToRadarDegrees } from '../engine/combatFeel';
 import {
+  AiAutoPilotTactic,
   ChampionshipTacticId,
   CombatKeybinds,
   FloatingDamage,
@@ -61,6 +64,8 @@ interface GameHUDProps {
   onDashClick: () => void;
   onActiveSkillClick?: () => void;
   onUltimateClick: () => void;
+  onToggleAutoPilot?: () => void;
+  onSelectAutoPilotTactic?: (tactic: AiAutoPilotTactic) => void;
   onSelectChampionshipTactic?: (tacticId: ChampionshipTacticId) => void;
   loadoutPresets?: LoadoutPreset[];
   activeLoadoutPresetId?: LoadoutPresetSlotId | null;
@@ -84,6 +89,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onDashClick,
   onActiveSkillClick,
   onUltimateClick,
+  onToggleAutoPilot,
+  onSelectAutoPilotTactic,
   onSelectChampionshipTactic,
   loadoutPresets,
   activeLoadoutPresetId,
@@ -651,48 +658,127 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
 
-        {/* AAA Wave 5 & 6: Optional Compact Live 5s DPS + Opt-In FPS/ms Readout */}
-        {((liveDpsMeter && !hud.isTrainingMode) ||
-          (showFpsOverlay && typeof hud.fps === 'number')) && (
-          <div className="max-w-5xl w-full mx-auto flex justify-end items-center gap-2 flex-wrap">
-            {liveDpsMeter && !hud.isTrainingMode && (
-              <div className="inline-flex items-center gap-2.5 bg-[#060a18]/90 border border-amber-400/25 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
-                <span className="text-amber-300">
-                  DPS 5s: {(hud.liveDps5s ?? 0).toLocaleString('vi-VN')}
-                </span>
-                <span className="text-slate-600">·</span>
-                <span className="text-rose-300">
-                  Chí Mạng Đỉnh: {(hud.livePeakCrit ?? 0).toLocaleString('vi-VN')}
-                </span>
-                {(hud.elementalReactionsCount ?? 0) > 0 && (
-                  <>
-                    <span className="text-slate-600">·</span>
-                    <span className="text-sky-300">Phản Ứng ×{hud.elementalReactionsCount}</span>
-                  </>
+        {/* Pillar 5A: 1-Tap Real-Time AI Auto-Pilot Bar + 3 Tactics + Optional Diagnostics */}
+        <div className="max-w-5xl w-full mx-auto flex justify-end items-center gap-2 flex-wrap pointer-events-auto">
+          {!hud.isTrainingMode && onToggleAutoPilot && (
+            <div className="inline-flex items-center gap-1.5 bg-[#060a18]/92 border border-sky-400/35 rounded-xl px-2 py-1">
+              <button
+                type="button"
+                data-autopilot-toggle="true"
+                disabled={Boolean(hud.autoPilotLockedReason)}
+                onClick={onToggleAutoPilot}
+                title={hud.autoPilotLockedReason || 'Bật/Tắt AI Tự Chơi né đòn Boss 1 chạm'}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer transition-colors disabled:opacity-55 disabled:cursor-not-allowed ${
+                  hud.autoPilotLockedReason
+                    ? 'bg-slate-900 text-slate-400 border border-slate-700'
+                    : hud.autoPilotEnabled
+                    ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/60'
+                    : 'bg-slate-900 text-slate-200 border border-slate-700 hover:border-sky-400/50'
+                }`}
+              >
+                {hud.autoPilotLockedReason ? (
+                  <Lock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                ) : (
+                  <Bot className="w-3.5 h-3.5 text-sky-300 shrink-0" />
                 )}
-              </div>
-            )}
-            {showFpsOverlay && typeof hud.fps === 'number' && (
-              <div className="inline-flex items-center gap-1.5 bg-[#060a18]/90 border border-sky-400/30 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
-                <span
-                  className={
-                    hud.fps >= 55
-                      ? 'text-emerald-300'
-                      : hud.fps >= 40
-                      ? 'text-amber-300'
-                      : 'text-rose-300'
-                  }
-                >
-                  {hud.fps} FPS
+                <span>
+                  {hud.autoPilotLockedReason
+                    ? 'Khóa AI (Tính Hạng)'
+                    : hud.autoPilotEnabled
+                    ? 'AI Tự Chơi: BẬT'
+                    : 'AI Tự Chơi'}
                 </span>
-                <span className="text-slate-600">·</span>
-                <span className="text-slate-300">
-                  {(hud.frameTimeMs ?? 16.7).toFixed(1)}ms
+              </button>
+
+              {hud.autoPilotEnabled && !hud.autoPilotLockedReason && onSelectAutoPilotTactic && (
+                <div className="inline-flex items-center gap-1 pl-1 border-l border-slate-700/80">
+                  {(
+                    [
+                      { id: 'aggressive', label: 'Công' },
+                      { id: 'balanced', label: 'Cân Bằng' },
+                      { id: 'evasive', label: 'Né' },
+                    ] as Array<{ id: AiAutoPilotTactic; label: string }>
+                  ).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => onSelectAutoPilotTactic(t.id)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-black whitespace-nowrap cursor-pointer ${
+                        (hud.autoPilotTactic ?? 'balanced') === t.id
+                          ? 'bg-amber-400/25 text-amber-200 border border-amber-300/60'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {hud.autoPilotEnabled && hud.autoPilotStatusText && (
+                <span className="hidden md:inline text-[10px] font-semibold text-sky-200 pl-1.5 border-l border-slate-700/80 whitespace-nowrap">
+                  {hud.autoPilotStatusText}
                 </span>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+
+          {hud.isWeeklyBossPracticeMode && (
+            <div className="inline-flex items-center gap-1.5 bg-[#060a18]/92 border border-sky-400/40 rounded-lg px-2.5 py-1 text-[11px] font-bold text-sky-200 whitespace-nowrap">
+              <span>Tập Boss Tuần · Không Tốn Lượt</span>
+            </div>
+          )}
+
+          {liveDpsMeter && !hud.isTrainingMode && (
+            <div className="inline-flex items-center gap-2.5 bg-[#060a18]/90 border border-amber-400/25 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
+              <span className="text-amber-300">
+                DPS 5s: {(hud.liveDps5s ?? 0).toLocaleString('vi-VN')}
+              </span>
+              <span className="text-slate-600">·</span>
+              <span className="text-rose-300">
+                Chí Mạng Đỉnh: {(hud.livePeakCrit ?? 0).toLocaleString('vi-VN')}
+              </span>
+              {(hud.elementalReactionsCount ?? 0) > 0 && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-sky-300">Phản Ứng ×{hud.elementalReactionsCount}</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {showFpsOverlay && typeof hud.fps === 'number' && (
+            <div className="inline-flex items-center gap-1.5 bg-[#060a18]/90 border border-sky-400/30 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
+              <span
+                className={
+                  hud.fps >= 55
+                    ? 'text-emerald-300'
+                    : hud.fps >= 40
+                    ? 'text-amber-300'
+                    : 'text-rose-300'
+                }
+              >
+                {hud.fps} FPS
+              </span>
+              <span className="text-slate-600">·</span>
+              <span className="text-slate-300">
+                {(hud.frameTimeMs ?? 16.7).toFixed(1)}ms
+              </span>
+              {typeof hud.perfSimHz === 'number' && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-sky-300">{hud.perfSimHz}Hz</span>
+                </>
+              )}
+              {typeof hud.perfDrawCalls === 'number' && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-amber-200">{hud.perfDrawCalls} DC</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* AAA Wave 6: 1-Line Optional Tactical Room Bounty Strip & Camera Preset Toast */}
         {!hud.isTrainingMode && (hud.roomBountyBanner || hud.roomBounty) && (
@@ -1415,20 +1501,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </span>
           </div>
         )}
-        {/* Co-op AI Allies Live Strip & Elemental Tower Affinity Banner */}
-        {hud.isCoopRaidMode && hud.coopAllies && hud.coopAllies.length > 0 && (
+        {/* Co-op & Pillar 5B 3D AI Squad Companion Live Strip */}
+        {((hud.isCoopRaidMode && hud.coopAllies && hud.coopAllies.length > 0) ||
+          (!hud.isCoopRaidMode && hud.aiSquadAllies && hud.aiSquadAllies.length > 0)) && (
           <div className="max-w-5xl w-full mx-auto flex flex-wrap items-center justify-start gap-2 pointer-events-none">
-            {hud.coopAllies.map((ally) => {
+            {(hud.aiSquadAllies ?? []).map((ally, idx) => {
               const allyUlt = Math.max(0, Math.min(100, Math.round(ally.ultCharge)));
               return (
                 <div
-                  key={ally.heroId}
-                  className="hv2-panel rounded-xl px-2.5 py-1.5 border border-sky-400/40 min-w-[155px]"
+                  key={`${ally.role}-${idx}`}
+                  className="hv2-panel rounded-xl px-2.5 py-1.5 border border-sky-400/40 min-w-[165px]"
                 >
                   <div className="flex items-center justify-between gap-2 text-[10px] font-black">
                     <span className="flex items-center gap-1 text-sky-200 truncate">
                       <Users className="w-3 h-3 text-sky-300 shrink-0" />
                       <span>{ally.name}</span>
+                      <span className="text-slate-400 font-semibold">· {ally.roleLabel}</span>
                     </span>
                     <span className="font-mono-nums text-amber-300 shrink-0">
                       {ally.damage.toLocaleString('vi-VN')} ST
@@ -1445,12 +1533,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       {allyUlt}%
                     </span>
                   </div>
+                  {ally.callout && (
+                    <div className="mt-0.5 text-[9px] font-bold text-emerald-300 truncate">
+                      {ally.callout}
+                    </div>
+                  )}
                 </div>
               );
             })}
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#070b1a]/90 border border-amber-400/30 text-[10px] font-black text-amber-200">
-              <span>{COOP_DIFFICULTY_MAP[hud.coopDifficulty ?? 'normal']?.badge}</span>
-            </div>
+            {hud.isCoopRaidMode && (
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#070b1a]/90 border border-amber-400/30 text-[10px] font-black text-amber-200">
+                <span>{COOP_DIFFICULTY_MAP[hud.coopDifficulty ?? 'normal']?.badge}</span>
+              </div>
+            )}
           </div>
         )}
 
