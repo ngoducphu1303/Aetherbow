@@ -10871,6 +10871,7 @@ export default function App() {
           onToggleMute={handleToggleMute}
           onPause={handlePause}
           onDashClick={() => engineRef.current?.triggerDash()}
+          onHeavyBreakClick={() => engineRef.current?.triggerHeavyBreakStrike()}
           onActiveSkillClick={() => engineRef.current?.triggerHeroActiveSkill()}
           onUltimateClick={() => engineRef.current?.triggerHeroUltimate()}
           onToggleAutoPilot={handleToggleAutoPilotInCombat}

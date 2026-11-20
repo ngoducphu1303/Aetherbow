@@ -633,6 +633,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [modeDrawerOpen, setModeDrawerOpen] = useState(false);
   const [modeDetailOpen, setModeDetailOpen] = useState(false);
   const [eventsHubOpen, setEventsHubOpen] = useState(false);
+  const [utilityDrawerOpen, setUtilityDrawerOpen] = useState(false);
   const [skyPickerOpen, setSkyPickerOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [uiHidden, setUiHidden] = useState(false);
@@ -641,10 +642,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     if (activeTab !== 'battle' && uiHidden) {
       setUiHidden(false);
     }
+    if (activeTab !== 'battle' && utilityDrawerOpen) {
+      setUtilityDrawerOpen(false);
+    }
     if (activeTab !== 'battle' && lobbyInspectMode) {
       onToggleLobbyInspect?.(false);
     }
-  }, [activeTab, uiHidden, lobbyInspectMode, onToggleLobbyInspect]);
+  }, [activeTab, uiHidden, utilityDrawerOpen, lobbyInspectMode, onToggleLobbyInspect]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -659,13 +663,24 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         setModeDrawerOpen(false);
       } else if (eventsHubOpen) {
         setEventsHubOpen(false);
+      } else if (utilityDrawerOpen) {
+        setUtilityDrawerOpen(false);
       } else if (skyPickerOpen) {
         setSkyPickerOpen(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [guideOpen, modeDetailOpen, modeDrawerOpen, eventsHubOpen, skyPickerOpen, lobbyInspectMode, onToggleLobbyInspect]);
+  }, [
+    guideOpen,
+    modeDetailOpen,
+    modeDrawerOpen,
+    eventsHubOpen,
+    utilityDrawerOpen,
+    skyPickerOpen,
+    lobbyInspectMode,
+    onToggleLobbyInspect,
+  ]);
 
   const selectedChapter = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
   const isChapterUnlocked = selectedChapter.id <= save.highestChapterCleared + 1;
@@ -772,7 +787,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           ? `Mở C.${selectedChapter.id - 1}`
           : nmTier > 0
           ? `ÁC MỘNG ${roman}`
-          : 'CHIẾN ĐẤU',
+          : 'VÀO TRẬN NGAY',
         canStart: isChapterUnlocked,
         onStart: onStartTrial,
         detailBadge: targetGoal.canCraftNow ? 'Rèn' : undefined,
@@ -1487,6 +1502,32 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <span>{save.gems}</span>
           </button>
 
+          {activeTab === 'battle' && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                setSkyPickerOpen(false);
+                setUtilityDrawerOpen((v) => !v);
+              }}
+              aria-expanded={utilityDrawerOpen}
+              aria-label="Kho và Tiện ích Sảnh 3D"
+              title="Kho & Tiện Ích Sảnh 3D (Góc nhìn, Boss Tuần, AI Live, Chat)"
+              className={`relative h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-[11px] font-black cursor-pointer whitespace-nowrap shrink-0 transition-colors ${
+                utilityDrawerOpen
+                  ? 'bg-amber-400/20 border-amber-300 text-amber-100'
+                  : 'cel-panel text-amber-200 hover:border-amber-300'
+              }`}
+            >
+              {utilityDrawerOpen ? (
+                <X className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span className="hidden md:inline">Kho &amp; Tiện Ích</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
@@ -1572,198 +1613,281 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
             )}
 
-            {/* Discreet Right-Edge 3D View Controls (Tiny Square Icons, Zero Clutter) */}
-            <div className="pointer-events-auto absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-20">
-              {onChangeCameraPreset && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    onChangeCameraPreset(cameraPreset === 'closeup' ? 'overview' : 'closeup');
-                  }}
-                  title={cameraPreset === 'closeup' ? 'Góc Toàn Thân' : 'Góc Cận Cảnh'}
-                  aria-label="Chuyển góc máy 3D"
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center border cursor-pointer transition-colors ${
-                    cameraPreset === 'closeup'
-                      ? 'bg-amber-400/25 border-amber-300 text-amber-200'
-                      : 'bg-[#080d20]/88 border-amber-400/30 text-sky-200 hover:border-amber-300'
-                  }`}
-                >
-                  {cameraPreset === 'closeup' ? (
-                    <ZoomOut className="w-4 h-4" />
-                  ) : (
-                    <ZoomIn className="w-4 h-4" />
-                  )}
-                </button>
-              )}
+            {/* Collapsible Sky / Weather Popover Anchor */}
+            {skyPickerOpen && onSelectSkyTheme && (
+              <div className="pointer-events-auto fixed top-14 right-0 z-30">
+                <Suspense fallback={null}>
+                  <LobbySkyPopover
+                    save={save}
+                    onClose={() => setSkyPickerOpen(false)}
+                    onSelectSkyTheme={onSelectSkyTheme}
+                    onUnlockSkyTheme={onUnlockSkyTheme}
+                    onSelectLobbyWeather={onSelectLobbyWeather}
+                    onSelectSanctuaryFloor={onSelectSanctuaryFloor}
+                    onResetLobbyOrbit={onResetLobbyOrbit}
+                    onAdjustLobbyZoom={onAdjustLobbyZoom}
+                    onReplayEntranceVfx={onReplayEntranceVfx}
+                  />
+                </Suspense>
+              </div>
+            )}
 
-              {onSelectSkyTheme && (
-                <div className="relative">
+            {/* Collapsible Kho & Tiện Ích Drawer (Keeps >80% 3D Sanctuary Clear) */}
+            {utilityDrawerOpen && (
+              <aside
+                aria-label="Kho và Tiện ích Sảnh 3D"
+                className="pointer-events-auto fixed top-14 right-3 sm:right-5 z-30 w-[min(21.5rem,calc(100vw-1.5rem))] max-h-[75vh] overflow-y-auto a2-scroll cel-panel-ornate rounded-2xl p-3.5 shadow-2xl space-y-3"
+              >
+                <div className="flex items-center justify-between border-b border-amber-400/20 pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-4 h-4 text-amber-300" />
+                    <span className="font-display text-xs font-black tracking-wide text-amber-200 uppercase">
+                      Kho &amp; Tiện Ích
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      soundEngine.playUiClick();
-                      setSkyPickerOpen((v) => !v);
-                    }}
-                    title="Đổi Bầu Trời, Thời Tiết & Sàn 3D"
-                    aria-label="Không gian 3D"
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center border cursor-pointer transition-colors ${
-                      skyPickerOpen
-                        ? 'bg-amber-400/25 border-amber-300 text-amber-200'
-                        : 'bg-[#080d20]/88 border-amber-400/30 text-amber-300 hover:border-amber-300'
-                    }`}
+                    onClick={() => setUtilityDrawerOpen(false)}
+                    aria-label="Đóng Kho và Tiện ích"
+                    className="w-7 h-7 rounded-lg bg-[#0c1430] border border-amber-400/25 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer"
                   >
-                    <Sun className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
-
-                  {skyPickerOpen && (
-                    <Suspense fallback={null}>
-                      <LobbySkyPopover
-                        save={save}
-                        onClose={() => setSkyPickerOpen(false)}
-                        onSelectSkyTheme={onSelectSkyTheme}
-                        onUnlockSkyTheme={onUnlockSkyTheme}
-                        onSelectLobbyWeather={onSelectLobbyWeather}
-                        onSelectSanctuaryFloor={onSelectSanctuaryFloor}
-                        onResetLobbyOrbit={onResetLobbyOrbit}
-                        onAdjustLobbyZoom={onAdjustLobbyZoom}
-                        onReplayEntranceVfx={onReplayEntranceVfx}
-                      />
-                    </Suspense>
-                  )}
                 </div>
-              )}
 
-              {onTriggerLobbyEmote && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSkyPickerOpen(false);
-                    onTriggerLobbyEmote();
-                  }}
-                  title="Giương Cung Biểu Cảm 3D"
-                  aria-label="Giương cung biểu cảm 3D"
-                  className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/35 hover:border-amber-300 flex items-center justify-center text-amber-300 cursor-pointer"
-                >
-                  <Flame className="w-4 h-4" />
-                </button>
-              )}
+                {/* Section 1: LiveOps, Weekly Boss & AI Community */}
+                <div className="space-y-2">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Đấu Trường &amp; Cộng Đồng Live
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {onOpenWeeklyBoss && (
+                      <button
+                        type="button"
+                        data-weekly-boss-btn="true"
+                        onClick={() => {
+                          soundEngine.playUiClick(1.06);
+                          setUtilityDrawerOpen(false);
+                          onOpenWeeklyBoss();
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/40 hover:border-amber-200 text-amber-200"
+                      >
+                        <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span className="truncate">Boss Tuần</span>
+                      </button>
+                    )}
 
-              {onToggleLobbyInspect && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    setSkyPickerOpen(false);
-                    onToggleLobbyInspect(true);
-                  }}
-                  title="Soi 360° Vũ Khí & Anh Hùng"
-                  aria-label="Soi 360 độ vũ khí và anh hùng"
-                  className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/40 hover:border-amber-200 flex items-center justify-center text-amber-200 cursor-pointer"
-                >
-                  <Orbit className="w-4 h-4" />
-                </button>
-              )}
+                    {onOpenLiveAiHub && (
+                      <button
+                        type="button"
+                        data-live-ai-hub-btn="true"
+                        onClick={() => {
+                          soundEngine.playUiClick(1.08);
+                          setUtilityDrawerOpen(false);
+                          onOpenLiveAiHub();
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center justify-between gap-1 cursor-pointer border border-sky-400/40 hover:border-sky-200 text-sky-200"
+                      >
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <Bot className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                          <span className="truncate">AI Live</span>
+                        </span>
+                        {typeof liveAiOnlineCount === 'number' && liveAiOnlineCount > 0 && (
+                          <span className="font-mono-nums text-[10px] font-black text-emerald-300 shrink-0">
+                            {liveAiOnlineCount}
+                          </span>
+                        )}
+                      </button>
+                    )}
 
-              {onOpenWardrobe && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    setSkyPickerOpen(false);
-                    onOpenWardrobe();
-                  }}
-                  title="Phòng Thử Đồ 360°"
-                  aria-label="Phòng thử đồ 360 độ"
-                  className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/30 hover:border-amber-300 flex items-center justify-center text-amber-200 cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4" />
-                </button>
-              )}
+                    {onOpenLiveChat && (
+                      <button
+                        type="button"
+                        data-live-chat-btn="true"
+                        onClick={() => {
+                          soundEngine.playUiClick(1.05);
+                          setUtilityDrawerOpen(false);
+                          onOpenLiveChat('lobby');
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/35 hover:border-amber-200 text-amber-100"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span className="truncate">Chat Sảnh</span>
+                      </button>
+                    )}
 
-              {onTogglePhotoMode && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playUiClick();
-                    setSkyPickerOpen(false);
-                    onTogglePhotoMode(true);
-                  }}
-                  title="Studio Chụp Ảnh 3D"
-                  aria-label="Studio chụp ảnh 3D"
-                  className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/30 hover:border-amber-300 flex items-center justify-center text-sky-200 cursor-pointer"
-                >
-                  <Camera className="w-4 h-4" />
-                </button>
-              )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick();
+                        setUtilityDrawerOpen(false);
+                        setEventsHubOpen(true);
+                      }}
+                      className="a2-slate-btn px-2.5 py-2 rounded-xl text-xs font-black flex items-center justify-between gap-1 cursor-pointer border border-emerald-400/35 hover:border-emerald-200 text-emerald-200"
+                    >
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <Gift className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                        <span className="truncate">Sự Kiện</span>
+                      </span>
+                      {eventsHubTotalBadges > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black leading-none shrink-0">
+                          +{eventsHubTotalBadges}
+                        </span>
+                      )}
+                    </button>
+                  </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  soundEngine.playUiClick();
-                  setSkyPickerOpen(false);
-                  setUiHidden(true);
-                }}
-                title="Ẩn giao diện để ngắm nhân vật 360°"
-                aria-label="Ẩn giao diện"
-                className="w-9 h-9 rounded-xl bg-[#080d20]/88 border border-amber-400/30 hover:border-amber-300 flex items-center justify-center text-slate-300 hover:text-amber-200 cursor-pointer"
-              >
-                <EyeOff className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* SLIM SINGLE-BAR BOTTOM COMMAND DOCK (Leaves >75% center completely clear) */}
-            <div className="pointer-events-auto w-full max-w-4xl mx-auto z-20 space-y-1.5">
-              {(latestAiActivity && onOpenLiveAiHub) || onOpenLiveChat ? (
-                <div className="flex items-stretch gap-1.5">
                   {latestAiActivity && onOpenLiveAiHub && (
                     <button
                       type="button"
                       data-live-ai-ticker="true"
                       onClick={() => {
                         soundEngine.playUiClick(1.06);
-                        setSkyPickerOpen(false);
+                        setUtilityDrawerOpen(false);
                         onOpenLiveAiHub();
                       }}
-                      className="flex-1 min-w-0 px-3 py-1.5 rounded-xl bg-[#070d20]/94 border border-sky-400/35 hover:border-sky-300 text-left flex items-center gap-2 transition-colors cursor-pointer shadow-lg"
+                      className="w-full px-2.5 py-2 rounded-xl bg-[#070d20]/95 border border-sky-400/30 hover:border-sky-300 text-left flex items-center gap-2 transition-colors cursor-pointer"
                     >
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                      <span className="text-[10px] font-black text-sky-300 uppercase shrink-0">
-                        AI Live · {liveAiOnlineCount ?? 18}
-                      </span>
-                      <span className="text-[11px] font-bold text-slate-200 truncate flex-1">
-                        {latestAiActivity.actorName}: {latestAiActivity.summary}
-                      </span>
-                      <span className="text-[10px] font-black text-amber-300 shrink-0 hidden sm:inline">
-                        Sảnh AI →
-                      </span>
-                    </button>
-                  )}
-                  {onOpenLiveChat && (
-                    <button
-                      type="button"
-                      data-live-chat-btn="true"
-                      onClick={() => {
-                        soundEngine.playUiClick(1.05);
-                        setSkyPickerOpen(false);
-                        onOpenLiveChat('lobby');
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-[#070d20]/94 border border-amber-400/40 hover:border-amber-200 text-amber-200 text-[11px] font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-lg transition-colors"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                      <span>Chat Sảnh</span>
+                      <Bot className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-black text-sky-300 uppercase">
+                          Tin Sảnh AI · {liveAiOnlineCount ?? 18} trực tuyến
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-200 truncate">
+                          {latestAiActivity.actorName}: {latestAiActivity.summary}
+                        </div>
+                      </div>
                     </button>
                   )}
                 </div>
-              ) : null}
+
+                {/* Section 2: 3D Sanctuary Camera & Showcase */}
+                <div className="space-y-2 border-t border-amber-400/15 pt-2.5">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Không Gian &amp; Góc Ngắm 3D
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {onChangeCameraPreset && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          onChangeCameraPreset(cameraPreset === 'closeup' ? 'overview' : 'closeup');
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/30 hover:border-amber-300 text-sky-200"
+                      >
+                        {cameraPreset === 'closeup' ? (
+                          <ZoomOut className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <ZoomIn className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="truncate">
+                          {cameraPreset === 'closeup' ? 'Toàn Thân' : 'Cận Cảnh'}
+                        </span>
+                      </button>
+                    )}
+
+                    {onSelectSkyTheme && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setUtilityDrawerOpen(false);
+                          setSkyPickerOpen(true);
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/30 hover:border-amber-300 text-amber-200"
+                      >
+                        <Sun className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span className="truncate">Bầu Trời 3D</span>
+                      </button>
+                    )}
+
+                    {onTriggerLobbyEmote && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTriggerLobbyEmote();
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/30 hover:border-amber-300 text-amber-200"
+                      >
+                        <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span className="truncate">Giương Cung</span>
+                      </button>
+                    )}
+
+                    {onToggleLobbyInspect && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setUtilityDrawerOpen(false);
+                          onToggleLobbyInspect(true);
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/30 hover:border-amber-300 text-amber-100"
+                      >
+                        <Orbit className="w-3.5 h-3.5 text-amber-200 shrink-0" />
+                        <span className="truncate">Soi 360°</span>
+                      </button>
+                    )}
+
+                    {onOpenWardrobe && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setUtilityDrawerOpen(false);
+                          onOpenWardrobe();
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/30 hover:border-amber-300 text-amber-200"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-200 shrink-0" />
+                        <span className="truncate">Thử Đồ 360°</span>
+                      </button>
+                    )}
+
+                    {onTogglePhotoMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setUtilityDrawerOpen(false);
+                          onTogglePhotoMode(true);
+                        }}
+                        className="a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-pointer border border-amber-400/30 hover:border-amber-300 text-sky-200"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-sky-200 shrink-0" />
+                        <span className="truncate">Studio Ảnh</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick();
+                        setUtilityDrawerOpen(false);
+                        setUiHidden(true);
+                      }}
+                      className="col-span-2 a2-slate-btn px-2.5 py-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1.5 cursor-pointer border border-slate-600/50 hover:border-amber-300 text-slate-200"
+                    >
+                      <EyeOff className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                      <span>Ẩn Giao Diện Ngắm Nhân Vật 360°</span>
+                    </button>
+                  </div>
+                </div>
+              </aside>
+            )}
+
+            {/* SLIM SINGLE-BAR BOTTOM LAUNCH DOCK (Leaves >80% center completely clear) */}
+            <div className="pointer-events-auto w-full max-w-3xl mx-auto z-20">
               <div className="cel-panel-ornate rounded-2xl px-2.5 sm:px-3.5 py-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shadow-2xl">
-                {/* Left Pair: Consolidated Modes + Events Buttons */}
+                {/* Left Pair: Compact Mode Picker + Events Hub */}
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
                       soundEngine.playUiClick();
                       setSkyPickerOpen(false);
+                      setUtilityDrawerOpen(false);
                       setModeDrawerOpen(true);
                     }}
                     className="flex-1 sm:flex-initial a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-amber-400/35 hover:border-amber-300"
@@ -1777,6 +1901,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     onClick={() => {
                       soundEngine.playUiClick();
                       setSkyPickerOpen(false);
+                      setUtilityDrawerOpen(false);
                       setEventsHubOpen(true);
                     }}
                     className="flex-1 sm:flex-initial a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-amber-400/35 hover:border-amber-300"
@@ -1789,43 +1914,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </span>
                     )}
                   </button>
-                  {onOpenWeeklyBoss && (
-                    <button
-                      type="button"
-                      data-weekly-boss-btn="true"
-                      onClick={() => {
-                        soundEngine.playUiClick(1.06);
-                        setSkyPickerOpen(false);
-                        onOpenWeeklyBoss();
-                      }}
-                      title="Boss Tuần Tính Hạng Công Bằng (3 lượt/tuần)"
-                      className="flex-1 sm:flex-initial a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-amber-400/45 hover:border-amber-200 text-amber-200"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                      <span>Boss Tuần</span>
-                    </button>
-                  )}
-                  {onOpenLiveAiHub && (
-                    <button
-                      type="button"
-                      data-live-ai-hub-btn="true"
-                      onClick={() => {
-                        soundEngine.playUiClick(1.08);
-                        setSkyPickerOpen(false);
-                        onOpenLiveAiHub();
-                      }}
-                      title="Trung Tâm Người Chơi AI Real-Time · Tự Chơi & Thách Đấu 1v1"
-                      className="flex-1 sm:flex-initial a2-slate-btn px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-sky-400/45 hover:border-sky-200 text-sky-200"
-                    >
-                      <Bot className="w-3.5 h-3.5 text-sky-300 shrink-0" />
-                      <span>AI Live</span>
-                      {typeof liveAiOnlineCount === 'number' && liveAiOnlineCount > 0 && (
-                        <span className="font-mono-nums text-[10px] font-black text-emerald-300">
-                          {liveAiOnlineCount}
-                        </span>
-                      )}
-                    </button>
-                  )}
                 </div>
 
                 {/* Center: Compact Active Chapter / Active Mode Bar */}
@@ -1927,7 +2015,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   data-start="true"
                   disabled={!activeModeMeta.canStart}
                   onClick={activeModeMeta.onStart}
-                  className={`sm:w-44 py-2.5 px-5 rounded-xl font-display font-black text-sm tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`sm:w-48 py-2.5 px-5 rounded-xl font-display font-black text-sm tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
                     activeModeMeta.canStart
                       ? 'a2-yellow-btn'
                       : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-not-allowed'
@@ -2230,25 +2318,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
             <div className="space-y-3 text-xs sm:text-sm text-slate-200 leading-relaxed max-h-[60vh] overflow-y-auto a2-scroll">
               <p>
-                <strong className="text-amber-300">1. Cơ chế Dừng Để Bắn:</strong> Kéo chuột / ngón tay hoặc dùng phím{' '}
+                <strong className="text-amber-300">1. Vừa Di Chuyển Vừa Bắn &amp; Combo 4 Nhịp:</strong> Kéo chuột / ngón tay hoặc dùng{' '}
                 <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">WASD</kbd>{' '}
-                để né đòn. Khi đứng yên, Anh Hùng tự khóa mục tiêu và bắn liên tục.
+                để thả diều linh hoạt trong khi vẫn xả tên liên tục (đứng yên để đạt tốc độ bắn tối đa). Mỗi phát bắn thứ 4 kích hoạt{' '}
+                <strong className="text-amber-200">Đòn Kết Trăng Khuyết (+55% sát thương)</strong> phóng thêm tia kiếm khí bên sườn.
               </p>
               <p>
-                <strong className="text-emerald-300">2. Né Hoàn Hảo, Kỹ Năng (E) &amp; Chiêu Cuối (Q):</strong> Nhấn{' '}
+                <strong className="text-orange-300">2. Phá Giáp Trảm (F / Chuột Phải) &amp; Đòn Quái Chiến Thuật:</strong> Nhấn{' '}
+                <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">F</kbd>{' '}
+                hoặc <strong className="text-orange-200">Chuột Phải</strong> để quét sóng năng lượng hình nón phá khiên{' '}
+                <em>Khiên Vệ Binh</em> và làm choáng quái xung quanh. Nhớ né quái <em>Húc Bò</em> (chúng tự choáng nếu húc trúng tường/cột) và đừng để <em>Quái Nổ</em> áp sát.
+              </p>
+              <p>
+                <strong className="text-emerald-300">3. Né Hoàn Hảo, Kỹ Năng (E) &amp; Chiêu Cuối (Q):</strong> Nhấn{' '}
                 <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">Space</kbd>{' '}
                 để lướt né đạn,{' '}
                 <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">E</kbd>{' '}
                 tung Kỹ Năng Chủ Động 3D, và{' '}
                 <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">Q</kbd>{' '}
-                khi Nộ đầy 100%. Nhấn{' '}
-                <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">P / Esc</kbd>{' '}
-                để tạm dừng và{' '}
-                <kbd className="px-1.5 py-0.5 rounded bg-slate-900 border border-amber-400/40 font-mono-nums">M</kbd>{' '}
-                để bật/tắt âm thanh nhanh.
+                khi Nộ đầy 100%. Khi Boss vào Pha 2 triệu hồi <strong className="text-cyan-300">Trụ Hộ Thuẫn</strong>, hãy ưu tiên bắn vỡ các trụ pha lê để phá giáp Boss!
               </p>
               <p>
-                <strong className="text-sky-300">3. Sảnh Tối Giản 360°:</strong> Kéo trực tiếp giữa màn hình Sảnh để xoay ngắm Anh Hùng, dùng nút Chế Độ và Sự Kiện ở thanh đáy để mở nhanh toàn bộ hoạt động.
+                <strong className="text-sky-300">4. Sảnh Anh Hùng Gọn Nhẹ 360°:</strong> Kéo giữa màn hình Sảnh để xoay ngắm Anh Hùng; mở{' '}
+                <strong className="text-amber-200">Kho &amp; Tiện Ích</strong> ở góc trên bên phải để xem Boss Tuần, Sảnh AI Live, Bầu Trời 3D hoặc Studio Chụp Ảnh.
               </p>
             </div>
             <button

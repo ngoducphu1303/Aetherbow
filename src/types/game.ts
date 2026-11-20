@@ -2082,6 +2082,20 @@ export interface HudSnapshot {
   arenaSuddenDeathMult?: number;
   arenaAiDodgesCount?: number;
   pveChallengeTierLabel?: string | null;
+  // Combat Overhaul: Heavy Break Strike (F), 4-Beat Combo Finisher, Room Chaos Events & Boss Totems
+  heavyBreakCooldownRatio?: number;
+  heavyBreakCooldownSec?: number;
+  heavyBreakReady?: boolean;
+  comboBeat?: 1 | 2 | 3 | 4;
+  comboBeatFinisherReady?: boolean;
+  activeRoomEvent?: {
+    id: string;
+    title: string;
+    subtitle: string;
+    accentHex: string;
+  } | null;
+  bossTotemsAlive?: number;
+  ambushBossActive?: boolean;
 }
 
 export interface EncounterOffer {

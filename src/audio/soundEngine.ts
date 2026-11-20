@@ -2471,6 +2471,133 @@ class SoundEngine {
       osc.stop(t + 0.15);
     });
   }
+
+  /**
+   * Combat Overhaul: Heavy Guard-Break Cleave [F] with deep sub-bass punch, metallic ring & shockwave snap.
+   */
+  public playHeavyBreakStrike(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const sub = ctx.createOscillator();
+    const subG = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(160, now);
+    sub.frequency.exponentialRampToValueAtTime(36, now + 0.28);
+    subG.gain.setValueAtTime(0.24, now);
+    subG.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    sub.connect(subG).connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.32);
+
+    const slash = ctx.createOscillator();
+    const slashG = ctx.createGain();
+    slash.type = 'sawtooth';
+    slash.frequency.setValueAtTime(520, now);
+    slash.frequency.exponentialRampToValueAtTime(140, now + 0.18);
+    slashG.gain.setValueAtTime(0.08, now);
+    slashG.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    slash.connect(slashG).connect(dest);
+    slash.start(now);
+    slash.stop(now + 0.22);
+
+    this.playNoiseBurst(ctx, dest, now, 0.16, 'bandpass', 1400, 380, 0.14, 1.2);
+  }
+
+  /**
+   * Combat Overhaul: 4th-Beat Combo Crescent Finisher release chime + wind snap.
+   */
+  public playComboFinisherShot(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    [587.33, 880, 1174.66].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.018;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.075, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(g).connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    });
+    this.playNoiseBurst(ctx, dest, now, 0.09, 'highpass', 1900, 750, 0.08, 1.5);
+  }
+
+  /**
+   * Combat Overhaul: Explosive Crystal Chain-Detonation burst on enemy kill.
+   */
+  public playChainExplosion(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const thump = ctx.createOscillator();
+    const thumpG = ctx.createGain();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(118, now);
+    thump.frequency.exponentialRampToValueAtTime(38, now + 0.2);
+    thumpG.gain.setValueAtTime(0.16, now);
+    thumpG.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    thump.connect(thumpG).connect(dest);
+    thump.start(now);
+    thump.stop(now + 0.24);
+
+    this.playNoiseBurst(ctx, dest, now, 0.13, 'lowpass', 1650, 240, 0.11, 1.1);
+  }
+
+  /**
+   * Combat Overhaul: Surprise Ambush Bounty Mini-Boss siren drop.
+   */
+  public playAmbushSiren(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    [0, 0.18].forEach((offset) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      const t = now + offset;
+      osc.frequency.setValueAtTime(340, t);
+      osc.frequency.exponentialRampToValueAtTime(680, t + 0.14);
+      g.gain.setValueAtTime(0.075, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      osc.connect(g).connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.17);
+    });
+  }
+
+  /**
+   * Combat Overhaul: Boss Phase 2 Shield Totem shatter chime.
+   */
+  public playBossShieldShatter(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [1318.51, 1567.98, 2093.0].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.024;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.08, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      osc.connect(g).connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.25);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();

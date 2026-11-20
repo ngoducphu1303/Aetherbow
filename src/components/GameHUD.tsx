@@ -19,6 +19,7 @@ import {
   Shield,
   Skull,
   Sparkles,
+  Swords,
   Trophy,
   Users,
   Volume2,
@@ -65,6 +66,7 @@ interface GameHUDProps {
   onToggleMute: () => void;
   onPause: () => void;
   onDashClick: () => void;
+  onHeavyBreakClick?: () => void;
   onActiveSkillClick?: () => void;
   onUltimateClick: () => void;
   onToggleAutoPilot?: () => void;
@@ -91,6 +93,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onToggleMute,
   onPause,
   onDashClick,
+  onHeavyBreakClick,
   onActiveSkillClick,
   onUltimateClick,
   onToggleAutoPilot,
@@ -806,16 +809,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           )}
         </div>
 
-        {/* AAA Wave 6: 1-Line Optional Tactical Room Bounty Strip & Camera Preset Toast */}
-        {!hud.isTrainingMode && (hud.roomBountyBanner || hud.roomBounty) && (
-          <div className="max-w-3xl w-full mx-auto flex justify-center">
-            {hud.roomBountyBanner ? (
-              <div className="inline-flex items-center gap-2 bg-[#161006]/92 border-b border-amber-300/80 rounded-lg px-3.5 py-1 text-[11px] font-black text-amber-200 whitespace-nowrap shadow-[0_0_18px_rgba(251,191,36,0.35)]">
+        {/* AAA Wave 6 + Phase 5: Compact 1-Row Tactical Room Bounty + Nightmare Ascension Strips */}
+        {((!hud.isTrainingMode && (hud.roomBountyBanner || (hud.roomBounty && hud.roomBounty.status === 'active'))) ||
+          ((hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode)) && (
+          <div className="max-w-4xl w-full mx-auto flex flex-wrap items-center justify-center gap-1.5">
+            {!hud.isTrainingMode && hud.roomBountyBanner ? (
+              <div className="inline-flex items-center gap-2 bg-[#161006]/92 border-b border-amber-300/80 rounded-lg px-3 py-0.5 text-[11px] font-black text-amber-200 whitespace-nowrap shadow-[0_0_18px_rgba(251,191,36,0.35)]">
                 <Trophy className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                 <span className="font-mono-nums">{hud.roomBountyBanner}</span>
               </div>
-            ) : hud.roomBounty && hud.roomBounty.status === 'active' ? (
-              <div className="inline-flex items-center gap-2 bg-[#060a18]/88 border border-amber-400/25 rounded-lg px-3 py-0.5 text-[11px] font-semibold text-slate-200 max-w-full overflow-hidden">
+            ) : !hud.isTrainingMode && hud.roomBounty && hud.roomBounty.status === 'active' ? (
+              <div className="inline-flex items-center gap-1.5 bg-[#060a18]/88 border border-amber-400/25 rounded-lg px-2.5 py-0.5 text-[11px] font-semibold text-slate-200 max-w-full overflow-hidden">
                 <span className="text-amber-300 font-black shrink-0">Thử Thách</span>
                 <span className="text-slate-600">·</span>
                 <span className="truncate">{hud.roomBounty.title}</span>
@@ -823,12 +827,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <span className="font-mono-nums font-bold text-cyan-300 shrink-0">
                   {hud.roomBounty.progressLabel}
                 </span>
-                <span className="hidden sm:inline text-slate-600">·</span>
-                <span className="hidden sm:inline font-mono-nums text-amber-200/90 shrink-0">
+                <span className="hidden md:inline text-slate-600">·</span>
+                <span className="hidden md:inline font-mono-nums text-amber-200/90 shrink-0">
                   {hud.roomBounty.rewardLabel}
                 </span>
               </div>
             ) : null}
+
+            {(hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode && (
+              <div className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 bg-[#180912]/92 border border-rose-400/40 text-[11px] font-bold text-rose-200 whitespace-nowrap max-w-full overflow-hidden">
+                <Flame className="w-3 h-3 text-rose-400 shrink-0" />
+                <span className="truncate font-mono-nums">
+                  Ác Mộng {['', 'I', 'II', 'III', 'IV', 'V'][hud.nightmareTier ?? 0] ?? hud.nightmareTier}
+                  {hud.nightmareMutatorLabels && hud.nightmareMutatorLabels.length > 0
+                    ? ` · ${hud.nightmareMutatorLabels.join(' · ')}`
+                    : ''}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -855,19 +871,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <div className="mx-auto inline-flex items-center gap-1.5 bg-[#061420]/94 border border-cyan-300/65 rounded-lg px-3.5 py-0.5 text-[11px] font-bold text-cyan-100 whitespace-nowrap">
             <Zap className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
             <span>{hud.trapTriggerToast}</span>
-          </div>
-        )}
-
-        {/* Phase 5: Nightmare Ascension Active Mutator Line (clean unboxed text strip) */}
-        {(hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode && (
-          <div className="mx-auto max-w-xl rounded-xl px-3.5 py-1 bg-[#180912]/95 border border-rose-400/45 text-[11px] font-bold text-rose-200 flex items-center justify-center gap-2 whitespace-nowrap overflow-hidden">
-            <Flame className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-            <span className="truncate font-mono-nums">
-              Ác Mộng {['', 'I', 'II', 'III', 'IV', 'V'][hud.nightmareTier ?? 0] ?? hud.nightmareTier}
-              {hud.nightmareMutatorLabels && hud.nightmareMutatorLabels.length > 0
-                ? ` · ${hud.nightmareMutatorLabels.join(' · ')}`
-                : ''}
-            </span>
           </div>
         )}
 
@@ -1626,6 +1629,58 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
+        {/* Room Chaos Event / Surprise Ambush / Boss Shield Totems Tactical Alerts */}
+        {(hud.ambushBossActive || (hud.bossTotemsAlive ?? 0) > 0 || hud.activeRoomEvent) && (
+          <div className="w-full max-w-2xl mx-auto flex flex-wrap justify-center gap-1.5">
+            {hud.ambushBossActive && (
+              <div className="rounded-lg px-3 py-0.5 bg-[#2a0715]/95 border border-rose-400/85 text-[11px] font-black text-rose-100 flex items-center gap-1.5 whitespace-nowrap shadow-[0_0_18px_rgba(244,63,94,0.45)]">
+                <Skull className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                <span>PHỤC KÍCH TRUY NÃ · HẠ ĐỂ NHẬN +5💎 &amp; CHỌN KỸ NĂNG</span>
+              </div>
+            )}
+            {(hud.bossTotemsAlive ?? 0) > 0 && (
+              <div className="rounded-lg px-3 py-0.5 bg-[#071b2d]/95 border border-cyan-400/85 text-[11px] font-black text-cyan-100 flex items-center gap-1.5 whitespace-nowrap shadow-[0_0_18px_rgba(34,211,238,0.4)]">
+                <Shield className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                <span>CÒN {hud.bossTotemsAlive} TRỤ HỘ THUẪN · BOSS GIẢM 30% SÁT THƯƠNG</span>
+              </div>
+            )}
+            {hud.activeRoomEvent && !hud.ambushBossActive && (hud.bossTotemsAlive ?? 0) <= 0 && (
+              <div
+                className="hv2-panel rounded-lg px-3 py-0.5 text-[11px] font-bold text-slate-100 flex items-center gap-1.5 max-w-full overflow-hidden"
+                style={{ borderColor: `${hud.activeRoomEvent.accentHex}75` }}
+              >
+                <Sparkles className="w-3.5 h-3.5 shrink-0" style={{ color: hud.activeRoomEvent.accentHex }} />
+                <span className="font-black whitespace-nowrap shrink-0" style={{ color: hud.activeRoomEvent.accentHex }}>
+                  {hud.activeRoomEvent.title}
+                </span>
+                <span className="text-slate-300 hidden sm:inline truncate">
+                  · {hud.activeRoomEvent.subtitle}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* In-flow Stage / Portal Clear Banner (replaces old fixed top-[74px] overlap) */}
+        {!hud.bossWarningTitle &&
+          !bossIntroTitle &&
+          hud.stageBannerText &&
+          (hud.portalOpen ||
+            !hud.activeRoomEvent ||
+            !hud.stageBannerText.startsWith('Phòng ')) && (
+            <div className="mx-auto max-w-xl px-2">
+              <div
+                className={`px-3.5 py-0.5 rounded-lg border-b font-display text-[11px] font-black tracking-[0.05em] truncate shadow-[0_6px_18px_rgba(0,0,0,0.65)] ${
+                  hud.portalOpen
+                    ? 'bg-[#071814]/92 border-emerald-400/75 text-emerald-200'
+                    : 'bg-[#080d1e]/88 border-amber-300/65 text-amber-200'
+                }`}
+              >
+                {hud.stageBannerText}
+              </div>
+            </div>
+          )}
+
         {/* Phase 3–4: Active Elite Affix & Arena Floor Hazard Readout */}
         {((hud.activeEliteAffixLabel && !hud.bossName) || hud.activeArenaHazardLabel) && (
           <div className="w-full max-w-md mx-auto flex flex-wrap justify-center gap-2">
@@ -2036,21 +2091,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       ) : null}
 
-      {/* Stage / Room Clear Banner (Pinned tightly below top readout so north enemies stay 100% clear) */}
-      {!hud.bossWarningTitle && !bossIntroTitle && hud.stageBannerText && (
-        <div className="fixed top-[74px] left-1/2 -translate-x-1/2 z-[12] pointer-events-none px-3">
-          <div
-            className={`px-3.5 py-0.5 rounded-lg border-b font-display text-[11px] font-black tracking-[0.06em] whitespace-nowrap shadow-[0_6px_18px_rgba(0,0,0,0.65)] ${
-              hud.portalOpen
-                ? 'bg-[#071814]/92 border-emerald-400/75 text-emerald-200'
-                : 'bg-[#080d1e]/88 border-amber-300/65 text-amber-200'
-            }`}
-          >
-            {hud.stageBannerText}
-          </div>
-        </div>
-      )}
-
       {/* BOTTOM PERIMETER: Interactive Active Skills + Sleek Vitals + Dual Action Medallions */}
       <div
         className="fixed bottom-3.5 left-3 right-3 sm:left-6 sm:right-6 flex items-end justify-between gap-2.5"
@@ -2205,91 +2245,79 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           )}
         </div>
 
-        {/* Action Medallions: Ultimate (Q) + Signature Active Skill (E) + Dash (Space) with Radial Rings */}
-        <div className="flex items-end gap-2 sm:gap-3 shrink-0">
-          {(() => {
-            const circ = 2 * Math.PI * 29;
-            const ultOffset = circ * (1 - ultPct / 100);
-            const activeFill = Math.max(0, Math.min(1, 1 - activeSkillCdRatio));
-            const activeOffset = circ * (1 - activeFill);
-            const dashFill = Math.max(0, Math.min(1, 1 - hud.dashCooldownRatio));
-            const dashOffset = circ * (1 - dashFill);
-            return (
-              <>
-                <div className="relative flex flex-col items-center shrink-0">
-                  {ultReady && (
-                    <>
-                      <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-yellow-300 border border-amber-100 text-[9px] font-black text-slate-950 whitespace-nowrap shadow-lg">
-                        TUYỆT KỸ ĐẦY
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        className="a2-ult-ready-ring absolute -inset-1 rounded-full border-2 border-dashed border-amber-300/90 pointer-events-none"
-                      />
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    disabled={!ultReady}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onUltimateClick();
-                    }}
-                    title={hud.ultName}
-                    className={`pointer-events-auto relative overflow-hidden w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
-                      ultReady
-                        ? 'a2-purple-btn w13-skill-ready-glow cursor-pointer shadow-[0_0_26px_rgba(251,191,36,0.65)] hover:scale-105'
-                        : 'hv2-panel text-slate-300 cursor-not-allowed'
+        {/* Action Medallions: 4-Beat Combo + Ultimate (Q) + Active (E) + Heavy Break (F) + Dash (Space) */}
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {!hud.portalOpen && (
+            <div className="hv2-panel rounded-lg px-2.5 py-1 flex items-center gap-1.5 text-[10px] font-black tracking-wide">
+              <span className="text-slate-300 uppercase">Nhịp Đánh</span>
+              {[1, 2, 3, 4].map((beat) => {
+                const current = hud.comboBeat ?? 1;
+                const active = beat <= current;
+                const isFinisherBeat = beat === 4;
+                return (
+                  <span
+                    key={beat}
+                    className={`inline-flex items-center justify-center rounded-full font-mono-nums transition-transform ${
+                      isFinisherBeat ? 'w-4 h-4 text-[9px]' : 'w-2.5 h-2.5'
+                    } ${
+                      active
+                        ? isFinisherBeat
+                          ? 'bg-amber-300 text-slate-950 scale-110 shadow-[0_0_10px_rgba(253,224,71,0.8)]'
+                          : 'bg-cyan-300 shadow-[0_0_8px_rgba(103,232,249,0.7)]'
+                        : isFinisherBeat
+                        ? 'bg-slate-800 text-slate-400 border border-amber-300/40'
+                        : 'bg-slate-800 border border-slate-600'
                     }`}
                   >
-                    <svg
-                      viewBox="0 0 64 64"
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
-                    >
-                      <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
-                      <circle
-                        cx="32"
-                        cy="32"
-                        r="29"
-                        fill="none"
-                        stroke={ultReady ? '#fde047' : '#c084fc'}
-                        strokeWidth="2.8"
-                        strokeLinecap="round"
-                        strokeDasharray={circ}
-                        strokeDashoffset={ultOffset}
-                      />
-                    </svg>
-                    <Flame
-                      className={`w-5 h-5 relative z-[1] ${
-                        ultReady ? 'text-amber-200' : 'text-purple-300'
-                      }`}
-                    />
-                    <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                      {ultReady ? `CHIÊU ${ultKeyLabel}` : `${ultPct}%`}
-                    </span>
-                  </button>
-                  <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
-                    {ultKeyLabel}
-                  </kbd>
-                </div>
+                    {isFinisherBeat ? '★' : ''}
+                  </span>
+                );
+              })}
+              {hud.comboBeatFinisherReady && (
+                <span className="text-amber-300 font-black ml-0.5">+55% ĐÒN KẾT!</span>
+              )}
+            </div>
+          )}
 
-                {onActiveSkillClick && (
+          <div className="flex items-end gap-2 sm:gap-3 shrink-0">
+            {(() => {
+              const circ = 2 * Math.PI * 29;
+              const ultOffset = circ * (1 - ultPct / 100);
+              const activeFill = Math.max(0, Math.min(1, 1 - activeSkillCdRatio));
+              const activeOffset = circ * (1 - activeFill);
+              const breakCdRatio = Math.max(0, Math.min(1, hud.heavyBreakCooldownRatio ?? 0));
+              const breakCdSec = hud.heavyBreakCooldownSec ?? 0;
+              const breakReady = hud.heavyBreakReady ?? breakCdRatio <= 0.02;
+              const breakOffset = circ * breakCdRatio;
+              const dashFill = Math.max(0, Math.min(1, 1 - hud.dashCooldownRatio));
+              const dashOffset = circ * (1 - dashFill);
+              return (
+                <>
                   <div className="relative flex flex-col items-center shrink-0">
+                    {ultReady && (
+                      <>
+                        <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-yellow-300 border border-amber-100 text-[9px] font-black text-slate-950 whitespace-nowrap shadow-lg">
+                          TUYỆT KỸ ĐẦY
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className="a2-ult-ready-ring absolute -inset-1 rounded-full border-2 border-dashed border-amber-300/90 pointer-events-none"
+                        />
+                      </>
+                    )}
                     <button
                       type="button"
                       tabIndex={-1}
-                      disabled={!activeSkillReady}
+                      disabled={!ultReady}
                       onClick={(e) => {
                         e.currentTarget.blur();
-                        onActiveSkillClick();
+                        onUltimateClick();
                       }}
-                      title={hud.activeSkillName ?? `Kỹ Năng Chủ Động (${activeSkillKeyLabel})`}
-                      className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[64px] sm:h-[64px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
-                        activeSkillReady
-                          ? 'bg-gradient-to-b from-sky-500/95 to-indigo-700/95 border border-cyan-200/80 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)] cursor-pointer hover:scale-105'
-                          : 'hv2-panel text-slate-400 cursor-not-allowed'
+                      title={hud.ultName}
+                      className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[66px] sm:h-[66px] rounded-full flex flex-col items-center justify-center font-black transition-transform shrink-0 ${
+                        ultReady
+                          ? 'a2-purple-btn w13-skill-ready-glow cursor-pointer shadow-[0_0_26px_rgba(251,191,36,0.65)] hover:scale-105'
+                          : 'hv2-panel text-slate-300 cursor-not-allowed'
                       }`}
                     >
                       <svg
@@ -2303,76 +2331,176 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           cy="32"
                           r="29"
                           fill="none"
-                          stroke={activeSkillReady ? '#67e8f9' : '#38bdf8'}
+                          stroke={ultReady ? '#fde047' : '#c084fc'}
                           strokeWidth="2.8"
                           strokeLinecap="round"
                           strokeDasharray={circ}
-                          strokeDashoffset={activeOffset}
+                          strokeDashoffset={ultOffset}
                         />
                       </svg>
-                      <Sparkles
-                        className={`w-4 h-4 relative z-[1] ${
-                          activeSkillReady ? 'text-cyan-100' : 'text-slate-400'
+                      <Flame
+                        className={`w-5 h-5 relative z-[1] ${
+                          ultReady ? 'text-amber-200' : 'text-purple-300'
                         }`}
                       />
                       <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                        {activeSkillReady ? `CHIÊU ${activeSkillKeyLabel}` : `${activeSkillCdSec.toFixed(1)}s`}
+                        {ultReady ? `CHIÊU ${ultKeyLabel}` : `${ultPct}%`}
                       </span>
                     </button>
-                    <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-sky-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-sky-200">
-                      {activeSkillKeyLabel}
+                    <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
+                      {ultKeyLabel}
                     </kbd>
                   </div>
-                )}
 
-                <div className="relative flex flex-col items-center shrink-0">
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onDashClick();
-                    }}
-                    className={`pointer-events-auto relative overflow-hidden w-[60px] h-[60px] sm:w-[68px] sm:h-[68px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
-                      dashReady
-                        ? 'a2-emerald-btn w13-skill-ready-glow shadow-[0_0_22px_rgba(52,211,153,0.52)] hover:scale-105'
-                        : 'hv2-panel text-slate-400'
-                    }`}
-                  >
-                    <svg
-                      viewBox="0 0 64 64"
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
-                    >
-                      <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
-                      <circle
-                        cx="32"
-                        cy="32"
-                        r="29"
-                        fill="none"
-                        stroke={dashReady ? '#6ee7b7' : '#34d399'}
-                        strokeWidth="2.8"
-                        strokeLinecap="round"
-                        strokeDasharray={circ}
-                        strokeDashoffset={dashOffset}
-                      />
-                    </svg>
-                    <Zap
-                      className={`w-5 h-5 relative z-[1] ${
-                        dashReady ? 'text-amber-200' : 'text-slate-400'
+                  {onActiveSkillClick && (
+                    <div className="relative flex flex-col items-center shrink-0">
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={!activeSkillReady}
+                        onClick={(e) => {
+                          e.currentTarget.blur();
+                          onActiveSkillClick();
+                        }}
+                        title={hud.activeSkillName ?? `Kỹ Năng Chủ Động (${activeSkillKeyLabel})`}
+                        className={`pointer-events-auto relative overflow-hidden w-[56px] h-[56px] sm:w-[62px] sm:h-[62px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
+                          activeSkillReady
+                            ? 'bg-gradient-to-b from-sky-500/95 to-indigo-700/95 border border-cyan-200/80 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)] cursor-pointer hover:scale-105'
+                            : 'hv2-panel text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        <svg
+                          viewBox="0 0 64 64"
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                        >
+                          <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                          <circle
+                            cx="32"
+                            cy="32"
+                            r="29"
+                            fill="none"
+                            stroke={activeSkillReady ? '#67e8f9' : '#38bdf8'}
+                            strokeWidth="2.8"
+                            strokeLinecap="round"
+                            strokeDasharray={circ}
+                            strokeDashoffset={activeOffset}
+                          />
+                        </svg>
+                        <Sparkles
+                          className={`w-4 h-4 relative z-[1] ${
+                            activeSkillReady ? 'text-cyan-100' : 'text-slate-400'
+                          }`}
+                        />
+                        <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                          {activeSkillReady ? `CHIÊU ${activeSkillKeyLabel}` : `${activeSkillCdSec.toFixed(1)}s`}
+                        </span>
+                      </button>
+                      <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-sky-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-sky-200">
+                        {activeSkillKeyLabel}
+                      </kbd>
+                    </div>
+                  )}
+
+                  {onHeavyBreakClick && (
+                    <div className="relative flex flex-col items-center shrink-0">
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={!breakReady}
+                        onClick={(e) => {
+                          e.currentTarget.blur();
+                          onHeavyBreakClick();
+                        }}
+                        title="Phá Giáp Trảm (F / Chuột Phải): Lao chém phá khiên & đẩy lùi"
+                        className={`pointer-events-auto relative overflow-hidden w-[56px] h-[56px] sm:w-[62px] sm:h-[62px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
+                          breakReady
+                            ? 'bg-gradient-to-b from-amber-500/95 to-orange-700/95 border border-amber-200/85 text-white shadow-[0_0_20px_rgba(251,146,60,0.55)] cursor-pointer hover:scale-105'
+                            : 'hv2-panel text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        <svg
+                          viewBox="0 0 64 64"
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                        >
+                          <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                          <circle
+                            cx="32"
+                            cy="32"
+                            r="29"
+                            fill="none"
+                            stroke={breakReady ? '#fde047' : '#fb923c'}
+                            strokeWidth="2.8"
+                            strokeLinecap="round"
+                            strokeDasharray={circ}
+                            strokeDashoffset={breakOffset}
+                          />
+                        </svg>
+                        <Swords
+                          className={`w-4 h-4 relative z-[1] ${
+                            breakReady ? 'text-amber-100' : 'text-slate-400'
+                          }`}
+                        />
+                        <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                          {breakReady ? 'PHÁ GIÁP' : `${breakCdSec.toFixed(1)}s`}
+                        </span>
+                      </button>
+                      <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/60 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
+                        F
+                      </kbd>
+                    </div>
+                  )}
+
+                  <div className="relative flex flex-col items-center shrink-0">
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onDashClick();
+                      }}
+                      className={`pointer-events-auto relative overflow-hidden w-[58px] h-[58px] sm:w-[66px] sm:h-[66px] rounded-full flex flex-col items-center justify-center font-black cursor-pointer shrink-0 transition-transform ${
+                        dashReady
+                          ? 'a2-emerald-btn w13-skill-ready-glow shadow-[0_0_22px_rgba(52,211,153,0.52)] hover:scale-105'
+                          : 'hv2-panel text-slate-400'
                       }`}
-                    />
-                    <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                      {dashReady ? 'LƯỚT' : `${Math.ceil(hud.dashCooldownRatio * 100)}%`}
-                    </span>
-                  </button>
-                  <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-emerald-300/60 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-emerald-200">
-                    {dashKeyLabel}
-                  </kbd>
-                </div>
-              </>
-            );
-          })()}
+                    >
+                      <svg
+                        viewBox="0 0 64 64"
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 w-full h-full -rotate-90"
+                      >
+                        <circle cx="32" cy="32" r="29" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+                        <circle
+                          cx="32"
+                          cy="32"
+                          r="29"
+                          fill="none"
+                          stroke={dashReady ? '#6ee7b7' : '#34d399'}
+                          strokeWidth="2.8"
+                          strokeLinecap="round"
+                          strokeDasharray={circ}
+                          strokeDashoffset={dashOffset}
+                        />
+                      </svg>
+                      <Zap
+                        className={`w-5 h-5 relative z-[1] ${
+                          dashReady ? 'text-amber-200' : 'text-slate-400'
+                        }`}
+                      />
+                      <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
+                        {dashReady ? 'LƯỚT' : `${Math.ceil(hud.dashCooldownRatio * 100)}%`}
+                      </span>
+                    </button>
+                    <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-emerald-300/60 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-emerald-200">
+                      {dashKeyLabel}
+                    </kbd>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         </div>
       </div>
 
