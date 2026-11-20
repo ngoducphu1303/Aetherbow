@@ -3658,6 +3658,30 @@ export default function App() {
           equippedDynamicTitleId: receipt.rewardDynamicTitleId ?? prev.equippedDynamicTitleId,
         };
       });
+      if (auth.currentUser) {
+        const activeSeason = getActiveCompetitiveSeason();
+        const fairSnap = normalizeFairProgression(saveRef.current.fairProgression);
+        const seasonPts = Math.max(
+          0,
+          Math.round(
+            (saveRef.current.arena?.wins ?? 0) * 18 +
+              fairSnap.equalizedArenaWins * 24 +
+              (saveRef.current.bestTowerFloor ?? 0) * 6 +
+              (saveRef.current.highestChapterCleared ?? 0) * 20
+          )
+        );
+        void syncSeasonStandingToFirestore({
+          user: auth.currentUser,
+          seasonId: receipt.seasonId || activeSeason.seasonId,
+          displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+          heroId: saveRef.current.selectedHeroId,
+          seasonPoints: seasonPts,
+          weeksParticipated: activeSeason.weekIndexInSeason,
+          equalizedArenaWins: fairSnap.equalizedArenaWins,
+          rankTier: resolveSeasonRankTier(seasonPts).id,
+          claimedMilestones: [receipt.tierId],
+        }).catch(() => {});
+      }
       triggerUpgradeCelebration(
         'Nhận Thưởng Mùa Giải Boss Tuần!',
         `Danh hiệu "${receipt.rewardTitleLabel}"${receipt.rewardFrameName ? ` & Khung ${receipt.rewardFrameName}` : ''} đã mở khóa.`

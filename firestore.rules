@@ -435,7 +435,7 @@ service cloud.firestore {
         && incoming().seasonPoints >= existing().seasonPoints
         && incoming().equalizedArenaWins >= existing().equalizedArenaWins
         && (
-          // Action 1: Sync season points, Fair-Play wins & rank tier
+          // Action 1: Sync season points, Fair-Play wins, rank tier & claimed milestones
           incoming().diff(existing()).affectedKeys().hasOnly([
             'displayName',
             'heroId',
@@ -443,10 +443,11 @@ service cloud.firestore {
             'weeksParticipated',
             'equalizedArenaWins',
             'rankTier',
+            'claimedMilestones',
             'isPublic',
             'updatedAt'
           ])
-          // Action 2: Claim seasonal milestone tier
+          // Action 2: Claim seasonal milestone tier standalone
           || incoming().diff(existing()).affectedKeys().hasOnly([
             'claimedMilestones',
             'updatedAt'

@@ -31,6 +31,8 @@ import {
 import { liveAiSocket } from '../services/liveAiSocket';
 import {
   CloudBossRaceEntry,
+  CloudSeasonStandingRow,
+  subscribeSeasonStandings,
   subscribeWeeklyBossRace,
 } from '../services/playerCloudService';
 import {
@@ -99,6 +101,14 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     () => liveAiSocket.getSnapshot()?.players ?? []
   );
   const [cloudRaceRows, setCloudRaceRows] = useState<CloudBossRaceEntry[]>([]);
+  const [cloudSeasonRows, setCloudSeasonRows] = useState<CloudSeasonStandingRow[]>([]);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<{
+    bossRace: 'connecting' | 'live' | 'fallback';
+    seasonStandings: 'connecting' | 'live' | 'fallback';
+  }>({
+    bossRace: 'connecting',
+    seasonStandings: 'connecting',
+  });
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -151,13 +161,33 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     if (!activeWeekId) return undefined;
     return subscribeWeeklyBossRace(
       activeWeekId,
-      (rows) => setCloudRaceRows(rows),
+      (rows) => {
+        setCloudRaceRows(rows);
+        setCloudSyncStatus((prev) => ({ ...prev, bossRace: 'live' }));
+      },
       () => {
-        // Silent graceful fallback to /api/weekly-boss/state until firestore.rules are deployed
+        setCloudSyncStatus((prev) => ({ ...prev, bossRace: 'fallback' }));
       },
       40
     );
   }, [activeWeekId]);
+
+  // Real-time Firestore Season Standings subscription (/season_standings) with automatic fallback
+  const activeSeasonId = seasonState?.season.seasonId ?? null;
+  useEffect(() => {
+    if (!activeSeasonId) return undefined;
+    return subscribeSeasonStandings(
+      activeSeasonId,
+      (rows) => {
+        setCloudSeasonRows(rows);
+        setCloudSyncStatus((prev) => ({ ...prev, seasonStandings: 'live' }));
+      },
+      () => {
+        setCloudSyncStatus((prev) => ({ ...prev, seasonStandings: 'fallback' }));
+      },
+      40
+    );
+  }, [activeSeasonId]);
 
   const handleStart = async () => {
     if (!isAuthenticated) {
@@ -269,17 +299,44 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     });
   }, [aiPlayers, boardFilter, cloudRaceRows, currentUid, state?.leaderboard]);
 
-  const mergedSeasonLeaderboard = useMemo(
-    () =>
-      buildMergedWeeklySeasonLeaderboard({
-        verifiedStandings: seasonState?.standings ?? [],
-        aiPlayers,
-        filter: boardFilter,
-        currentWeekNumberInSeason: seasonState?.season.currentWeekNumberInSeason ?? 1,
-        currentUid,
-      }),
-    [aiPlayers, boardFilter, currentUid, seasonState?.season.currentWeekNumberInSeason, seasonState?.standings]
-  );
+  const mergedSeasonLeaderboard = useMemo(() => {
+    const serverStandings = seasonState?.standings ?? [];
+    const byUid = new Map(serverStandings.map((s) => [s.uid, s]));
+    for (const c of cloudSeasonRows) {
+      if (!c.uid) continue;
+      const existing = byUid.get(c.uid);
+      if (!existing || c.seasonPoints > existing.seasonPoints) {
+        byUid.set(c.uid, {
+          uid: c.uid,
+          displayName: c.displayName,
+          seasonPoints: c.seasonPoints,
+          weeksParticipated: Math.max(c.weeksParticipated, existing?.weeksParticipated ?? 1),
+          bestWeeklyScore: existing?.bestWeeklyScore ?? c.seasonPoints * 120,
+          highestRank: existing?.highestRank ?? 1,
+          totalClears: existing?.totalClears ?? 1,
+          updatedAt: c.updatedAtMs || Date.now(),
+        });
+      }
+    }
+    const combinedStandings = Array.from(byUid.values()).sort(
+      (a, b) => b.seasonPoints - a.seasonPoints
+    );
+
+    return buildMergedWeeklySeasonLeaderboard({
+      verifiedStandings: combinedStandings,
+      aiPlayers,
+      filter: boardFilter,
+      currentWeekNumberInSeason: seasonState?.season.currentWeekNumberInSeason ?? 1,
+      currentUid,
+    });
+  }, [
+    aiPlayers,
+    boardFilter,
+    cloudSeasonRows,
+    currentUid,
+    seasonState?.season.currentWeekNumberInSeason,
+    seasonState?.standings,
+  ]);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/92 overflow-y-auto">
@@ -305,6 +362,19 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                 {state.schedule.bossSubtitle}
               </p>
             )}
+            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px]">
+              <span
+                className={`font-semibold ${
+                  cloudSyncStatus.bossRace === 'live' && cloudSyncStatus.seasonStandings === 'live'
+                    ? 'text-emerald-300'
+                    : 'text-sky-300'
+                }`}
+              >
+                {cloudSyncStatus.bossRace === 'live' && cloudSyncStatus.seasonStandings === 'live'
+                  ? '● Cloud Firestore Trực Tuyến: Đua Boss Tuần & Bảng Mùa Giải đã đồng bộ bảo mật'
+                  : '● Đồng bộ Đua Boss Tuần & Bảng Mùa Giải (Kết hợp Cloud Firestore + Máy chủ dự phòng tự động)'}
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">

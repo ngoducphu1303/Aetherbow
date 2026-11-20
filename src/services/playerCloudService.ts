@@ -762,6 +762,10 @@ export async function syncSeasonStandingToFirestore(params: {
       const nextPoints = Math.max(Number(prev.seasonPoints ?? 0), seasonPoints);
       const nextWeeks = Math.max(Number(prev.weeksParticipated ?? 0), weeksParticipated);
       const nextEqWins = Math.max(Number(prev.equalizedArenaWins ?? 0), equalizedArenaWins);
+      const prevMilestones = Array.isArray(prev.claimedMilestones)
+        ? prev.claimedMilestones.filter((m): m is string => typeof m === 'string' && m.length > 0)
+        : [];
+      const mergedMilestones = Array.from(new Set([...prevMilestones, ...safeMilestones])).slice(0, 20);
       await updateDoc(ref, {
         displayName,
         heroId,
@@ -769,6 +773,7 @@ export async function syncSeasonStandingToFirestore(params: {
         weeksParticipated: nextWeeks,
         equalizedArenaWins: nextEqWins,
         rankTier: params.rankTier,
+        claimedMilestones: mergedMilestones,
         isPublic: true,
         updatedAt: serverTimestamp(),
       });
