@@ -38,9 +38,19 @@ import {
   sanitizeDisplayName,
   SaveConflictSnapshot,
   savePlayerCloudState,
+  syncBossRaceEntryToFirestore,
+  syncSeasonStandingToFirestore,
   updatePlayerDisplayName,
   updatePlayerPassword,
 } from './services/playerCloudService';
+import {
+  ASTRAL_SHARD_EXCHANGE_CATALOG,
+  appendGachaPullHistory,
+  computeAstralShardsAwarded,
+  getActiveCompetitiveSeason,
+  normalizeFairProgression,
+  resolveSeasonRankTier,
+} from './engine/aaaFivePillarsDirector';
 import { submitWeeklyBossAttempt } from './services/weeklyBossApi';
 import { liveAiSocket } from './services/liveAiSocket';
 import { applyLiveAiAuctionBidEvent } from './data/liveAiLeaderboards';
@@ -231,7 +241,7 @@ import {
   normalizeCheckIn,
   normalizeDailyQuests,
 } from './data/questsData';
-import { rollRuneChestBatch } from './data/runesData';
+import { RUNES_CATALOG, rollRuneChestBatch } from './data/runesData';
 import { rollSkillChoices } from './data/skillsData';
 import {
   TALENT_MAP,
@@ -728,9 +738,12 @@ export default function App() {
     isCrystalVaultMode?: boolean;
     isDragonLairMode?: boolean;
     isSkyCitadelMode?: boolean;
+    isArenaEqualized?: boolean;
+    isWeeklyRankedBossMode?: boolean;
     arenaOpponentName?: string;
     dailyRiftTitle?: string;
   } | null>(null);
+  const activeWeeklyWeekIdRef = useRef<string | null>(null);
   const [wave12SanctumTab, setWave12SanctumTab] = useState<Wave12SanctumTab | null>(null);
   const [wave13TreasuryTab, setWave13TreasuryTab] = useState<Wave13Tab | null>(null);
   const [wave13CarnivalOpen, setWave13CarnivalOpen] = useState<boolean>(false);
@@ -2086,6 +2099,45 @@ export default function App() {
                   rank: res.rank,
                   error: null,
                 });
+                const activeUser = auth.currentUser;
+                const weekId = activeWeeklyWeekIdRef.current;
+                if (activeUser && weekId) {
+                  void syncBossRaceEntryToFirestore({
+                    user: activeUser,
+                    weekId,
+                    displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+                    heroId: saveRef.current.selectedHeroId,
+                    score: res.verifiedScore,
+                    damage: Math.max(0, Math.round(summary.weeklyBossDamage ?? 0)),
+                    clearTimeMs: Math.max(0, Math.round(summary.weeklyBossClearTimeMs ?? 0)),
+                    perfectDodges: Math.max(0, Math.round(highlights?.perfectDodgesCount ?? 0)),
+                    autoPilotUsed: Boolean(summary.autoPilotUsed),
+                  }).catch(() => {});
+
+                  const activeSeason = getActiveCompetitiveSeason();
+                  const fairSnap = normalizeFairProgression(saveRef.current.fairProgression);
+                  const seasonPts = Math.max(
+                    0,
+                    Math.round(
+                      (saveRef.current.arena?.wins ?? 0) * 18 +
+                        fairSnap.equalizedArenaWins * 24 +
+                        (saveRef.current.bestTowerFloor ?? 0) * 6 +
+                        (saveRef.current.highestChapterCleared ?? 0) * 20 +
+                        Math.round(res.verifiedScore / 120)
+                    )
+                  );
+                  const rankTier = resolveSeasonRankTier(seasonPts).id;
+                  void syncSeasonStandingToFirestore({
+                    user: activeUser,
+                    seasonId: activeSeason.seasonId,
+                    displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+                    heroId: saveRef.current.selectedHeroId,
+                    seasonPoints: seasonPts,
+                    weeksParticipated: activeSeason.weekIndexInSeason,
+                    equalizedArenaWins: fairSnap.equalizedArenaWins,
+                    rankTier,
+                  }).catch(() => {});
+                }
               })
               .catch((err) => {
                 setWeeklyBossResult({
@@ -2619,7 +2671,37 @@ export default function App() {
 
             if (isArena) {
               const ar = normalizeArena(prev.arena);
+              const fp = normalizeFairProgression(prev.fairProgression);
               const nextRating = Math.max(900, ar.rating + arenaRatingDelta);
+              const isEqWin = victory && fp.arenaEqualizedMode;
+              const finalArenaCoins = isEqWin
+                ? Math.round(arenaCoinsGain * 1.35)
+                : arenaCoinsGain;
+              const nextEqWins = fp.equalizedArenaWins + (isEqWin ? 1 : 0);
+
+              if (isEqWin && auth.currentUser) {
+                const activeSeason = getActiveCompetitiveSeason();
+                const seasonPts = Math.max(
+                  0,
+                  Math.round(
+                    (ar.wins + 1) * 18 +
+                      nextEqWins * 24 +
+                      (prev.bestTowerFloor ?? 0) * 6 +
+                      (prev.highestChapterCleared ?? 0) * 20
+                  )
+                );
+                void syncSeasonStandingToFirestore({
+                  user: auth.currentUser,
+                  seasonId: activeSeason.seasonId,
+                  displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+                  heroId: prev.selectedHeroId,
+                  seasonPoints: seasonPts,
+                  weeksParticipated: activeSeason.weekIndexInSeason,
+                  equalizedArenaWins: nextEqWins,
+                  rankTier: resolveSeasonRankTier(seasonPts).id,
+                }).catch(() => {});
+              }
+
               return {
                 ...prev,
                 gold: prev.gold + totalGold,
@@ -2631,7 +2713,11 @@ export default function App() {
                   wins: ar.wins + (victory ? 1 : 0),
                   losses: ar.losses + (victory ? 0 : 1),
                   streak: victory ? ar.streak + 1 : 0,
-                  arenaCoins: ar.arenaCoins + arenaCoinsGain,
+                  arenaCoins: ar.arenaCoins + finalArenaCoins,
+                },
+                fairProgression: {
+                  ...fp,
+                  equalizedArenaWins: nextEqWins,
                 },
                 battlePass: nextBp,
                 career: nextCareer,
@@ -3169,11 +3255,13 @@ export default function App() {
       setPreviewHeroId(null);
       setRunSummary(null);
       setDamages([]);
+      const isEqualized = normalizeFairProgression(save.fairProgression).arenaEqualizedMode;
       setTransitionState({
         chapterId: 4,
         isTowerMode: false,
         isBossRushMode: false,
         isArenaMode: true,
+        isArenaEqualized: isEqualized,
         arenaOpponentName: opponent.name,
       });
       if (transitionTimerRef.current) {
@@ -3183,9 +3271,9 @@ export default function App() {
         setTransitionState(null);
       }, 560);
       setPhase(GamePhase.PLAYING);
-      engineRef.current?.startArenaDuel(playerStats, opponent);
+      engineRef.current?.startArenaDuel(playerStats, opponent, isEqualized);
     },
-    [save.arena, playerStats]
+    [save.arena, save.fairProgression, playerStats]
   );
 
   const handleStartCoopRaid = useCallback(
@@ -3358,11 +3446,13 @@ export default function App() {
       setRunSummary(null);
       setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
       setDamages([]);
+      activeWeeklyWeekIdRef.current = params.schedule.weekId;
       setTransitionState({
         chapterId: params.schedule.chapterVisualIndex + 1,
         isTowerMode: false,
         isBossRushMode: false,
         isWorldBossMode: true,
+        isWeeklyRankedBossMode: true,
       });
       if (transitionTimerRef.current) {
         window.clearTimeout(transitionTimerRef.current);
@@ -3419,6 +3509,7 @@ export default function App() {
 
   const handleChallengeLiveAiPlayer = useCallback(
     (opponent: AiLivePlayerProfile, duelId: string) => {
+      const isEqualized = normalizeFairProgression(saveRef.current.fairProgression).arenaEqualizedMode;
       pendingDirectChallengeIdRef.current = null;
       setLiveAiHubOpen(false);
       setWeeklyBossModalOpen(false);
@@ -3426,8 +3517,22 @@ export default function App() {
       setArenaModalOpen(false);
       setRunSummary(null);
       setDamages([]);
+      setTransitionState({
+        chapterId: 4,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isArenaMode: true,
+        isArenaEqualized: isEqualized,
+        arenaOpponentName: opponent.displayName,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
       setPhase(GamePhase.PLAYING);
-      engineRef.current?.startLiveAiDuel(playerStats, opponent, duelId);
+      engineRef.current?.startLiveAiDuel(playerStats, opponent, duelId, isEqualized);
     },
     [playerStats]
   );
@@ -6461,10 +6566,26 @@ export default function App() {
         const isPremium = variant === 'mythic';
         const policy = getEarlyProgressionPolicy(save);
         const { items, nextPity } = rollChestGearBatch(isPremium, count, save.pity, { policy });
+        const shardsEarned = computeAstralShardsAwarded(items.map((it) => it.rarity));
+        const nowTs = Date.now();
+        const historyBatch = items.map((it, idx) => {
+          const tpl = GEAR_TEMPLATES[it.templateId];
+          const perItemShards = computeAstralShardsAwarded([it.rarity]);
+          return {
+            id: `gp_${nowTs}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+            timestampMs: nowTs,
+            chestVariant: variant,
+            itemName: tpl?.name ?? it.templateId,
+            rarity: it.rarity,
+            isSTier: Boolean(tpl?.isSTier),
+            shardsGained: perItemShards,
+          };
+        });
         setSave((prev) => {
           const dq = normalizeDailyQuests(prev.dailyQuests);
           const career = normalizeCareer(prev.career);
           const bp = normalizeBattlePass(prev.battlePass);
+          const fp = normalizeFairProgression(prev.fairProgression);
           const rawXp = count === 10 ? 120 : 15;
           const xpGain = isVipActive(prev.vip) ? Math.round(rawXp * 1.25) : rawXp;
           let nextMetrics = prev.playtestMetrics;
@@ -6486,6 +6607,11 @@ export default function App() {
             nightMarket: addGemsSpent(prev, isGemChest ? totalCost : 0),
             inventory: [...prev.inventory, ...items],
             pity: nextPity,
+            fairProgression: {
+              ...fp,
+              astralShards: fp.astralShards + shardsEarned,
+              pullHistory: appendGachaPullHistory(fp.pullHistory, historyBatch, 30),
+            },
             dailyQuests: { ...dq, chests: dq.chests + count },
             career: { ...career, totalChestsOpened: career.totalChestsOpened + count },
             battlePass: { ...bp, xp: bp.xp + xpGain },
@@ -6497,10 +6623,26 @@ export default function App() {
         const isPremium = variant === 'rune_rare';
         const policy = getEarlyProgressionPolicy(save);
         const { items, nextPity } = rollRuneChestBatch(isPremium, count, save.pity, { policy });
+        const shardsEarned = computeAstralShardsAwarded(items.map((it) => it.rarity));
+        const nowTs = Date.now();
+        const historyBatch = items.map((it, idx) => {
+          const def = RUNES_CATALOG[it.runeId];
+          const perItemShards = computeAstralShardsAwarded([it.rarity]);
+          return {
+            id: `rp_${nowTs}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+            timestampMs: nowTs,
+            chestVariant: variant,
+            itemName: def?.name ?? it.runeId,
+            rarity: it.rarity,
+            isSTier: false,
+            shardsGained: perItemShards,
+          };
+        });
         setSave((prev) => {
           const dq = normalizeDailyQuests(prev.dailyQuests);
           const career = normalizeCareer(prev.career);
           const bp = normalizeBattlePass(prev.battlePass);
+          const fp = normalizeFairProgression(prev.fairProgression);
           const rawXp = count === 10 ? 120 : 15;
           const xpGain = isVipActive(prev.vip) ? Math.round(rawXp * 1.25) : rawXp;
           return {
@@ -6510,6 +6652,11 @@ export default function App() {
             nightMarket: addGemsSpent(prev, isGemChest ? totalCost : 0),
             runeInventory: [...prev.runeInventory, ...items],
             pity: nextPity,
+            fairProgression: {
+              ...fp,
+              astralShards: fp.astralShards + shardsEarned,
+              pullHistory: appendGachaPullHistory(fp.pullHistory, historyBatch, 30),
+            },
             dailyQuests: { ...dq, chests: dq.chests + count },
             career: { ...career, totalChestsOpened: career.totalChestsOpened + count },
             battlePass: { ...bp, xp: bp.xp + xpGain },
@@ -6519,6 +6666,70 @@ export default function App() {
       }
     },
     [save]
+  );
+
+  // Pillar 3: Equalized Fair-Play PvP Toggle & Direct Astral Shard S-Tier Exchange
+  const handleToggleArenaEqualizedMode = useCallback((enabled: boolean) => {
+    setSave((prev) => {
+      const fp = normalizeFairProgression(prev.fairProgression);
+      return {
+        ...prev,
+        fairProgression: { ...fp, arenaEqualizedMode: enabled },
+      };
+    });
+  }, []);
+
+  const handleExchangeAstralShard = useCallback(
+    (itemId: string) => {
+      const entry = ASTRAL_SHARD_EXCHANGE_CATALOG.find((x) => x.id === itemId);
+      if (!entry) return;
+      let exchanged = false;
+      setSave((prev) => {
+        const fp = normalizeFairProgression(prev.fairProgression);
+        if (fp.astralShards < entry.costShards) return prev;
+        exchanged = true;
+        const nextFp = {
+          ...fp,
+          astralShards: fp.astralShards - entry.costShards,
+          totalExchanges: fp.totalExchanges + 1,
+        };
+        if (entry.kind === 'gear' && entry.templateId) {
+          const newGear: GearInstance = {
+            uid: `ex_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            templateId: entry.templateId,
+            rarity: entry.rarity ?? Rarity.EPIC,
+            level: 1,
+          };
+          return {
+            ...prev,
+            inventory: [...prev.inventory, newGear],
+            fairProgression: nextFp,
+          };
+        }
+        if (entry.kind === 'awakening') {
+          return {
+            ...prev,
+            awakeningCrystals: (prev.awakeningCrystals ?? 0) + (entry.amount ?? 12),
+            fairProgression: nextFp,
+          };
+        }
+        if (entry.kind === 'gems') {
+          return {
+            ...prev,
+            gems: prev.gems + (entry.amount ?? 120),
+            fairProgression: nextFp,
+          };
+        }
+        return { ...prev, fairProgression: nextFp };
+      });
+      if (exchanged) {
+        triggerUpgradeCelebration(
+          'Đổi Mảnh Hoàng Đạo Thành Công',
+          `Đã nhận trực tiếp: ${entry.title}`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
   );
 
   // Battle Pass, Achievements & Settings Handlers
@@ -10677,6 +10888,8 @@ export default function App() {
           powerRating={playerStats.powerRating}
           playerDisplayName={playerDisplayName}
           currentUid={currentUser?.uid ?? null}
+          equalizedMode={normalizeFairProgression(save.fairProgression).arenaEqualizedMode}
+          onToggleEqualizedMode={handleToggleArenaEqualizedMode}
           onStartDuel={handleStartArenaDuel}
           onChallengeLiveAi={handleChallengeLiveAiById}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
@@ -10762,6 +10975,9 @@ export default function App() {
         <ChestGachaModal
           reveal={gachaReveal}
           canEquipRune={save.equippedRunes.length < 4}
+          pity={save.pity}
+          fairProgression={save.fairProgression}
+          onExchangeAstralShard={handleExchangeAstralShard}
           onClose={() => setGachaReveal(null)}
           onEquipGear={handleEquip}
           onEquipRune={handleEquipRune}
@@ -11128,6 +11344,8 @@ export default function App() {
           isCrystalVaultMode={transitionState.isCrystalVaultMode}
           isDragonLairMode={transitionState.isDragonLairMode}
           isSkyCitadelMode={transitionState.isSkyCitadelMode}
+          isArenaEqualized={transitionState.isArenaEqualized}
+          isWeeklyRankedBossMode={transitionState.isWeeklyRankedBossMode}
           arenaOpponentName={transitionState.arenaOpponentName}
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />

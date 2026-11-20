@@ -25,6 +25,8 @@ interface StageTransitionCurtainProps {
   isCrystalVaultMode?: boolean;
   isDragonLairMode?: boolean;
   isSkyCitadelMode?: boolean;
+  isArenaEqualized?: boolean;
+  isWeeklyRankedBossMode?: boolean;
   arenaOpponentName?: string;
   dailyRiftTitle?: string;
 }
@@ -50,6 +52,8 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   isCrystalVaultMode = false,
   isDragonLairMode = false,
   isSkyCitadelMode = false,
+  isArenaEqualized = false,
+  isWeeklyRankedBossMode = false,
   arenaOpponentName,
   dailyRiftTitle,
 }) => {
@@ -57,56 +61,96 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
   const elTower = ELEMENTAL_TOWER_MAP[elementalTowerId];
   const coopDef = COOP_DIFFICULTY_MAP[coopDifficulty];
 
+  const accentHex = isWeeklyRankedBossMode
+    ? '#f59e0b'
+    : isArenaMode && isArenaEqualized
+    ? '#34d399'
+    : isArenaMode
+    ? '#fb7185'
+    : isDragonLairMode || isBloodMoonMode
+    ? '#f43f5e'
+    : isSkyCitadelMode || isCoopRaidMode || isCrystalDefenseMode
+    ? '#38bdf8'
+    : ch.floorAccent || '#fbbf24';
+
   return (
-    <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-[#040611]/95 a2-curtain">
-      <div className="text-center px-6 py-8 max-w-md w-full">
-        <div className="flex justify-center mb-3 text-4xl sm:text-5xl text-amber-300">
-          {isSkyCitadelMode ? (
-            <Feather className="w-12 h-12 text-sky-300" />
-          ) : isDragonLairMode ? (
-            <Flame className="w-12 h-12 text-rose-400" />
-          ) : isCrystalVaultMode ? (
-            <Gem className="w-12 h-12 text-yellow-300" />
-          ) : isChampionshipMode ? (
-            <Trophy className="w-12 h-12 text-amber-300" />
-          ) : isArenaMode ? (
-            <Swords className="w-12 h-12 text-rose-400" />
-          ) : isPantheonMode ? (
-            <Crown className="w-12 h-12 text-amber-300" />
-          ) : isGuildWarMode ? (
-            <Shield className="w-12 h-12 text-emerald-300" />
-          ) : isAbyssalMode ? (
-            <Sparkles className="w-12 h-12 text-purple-300" />
-          ) : isBloodMoonMode ? (
-            <Moon className="w-12 h-12 text-rose-400" />
-          ) : isCrystalDefenseMode ? (
-            <Gem className="w-12 h-12 text-cyan-300" />
-          ) : isWorldBossMode ? (
-            <Trophy className="w-12 h-12 text-amber-300" />
-          ) : isCoopRaidMode ? (
-            <Users className="w-12 h-12 text-sky-300" />
-          ) : isElementalTowerMode ? (
-            elementalTowerId === 'fire' ? (
-              <Flame className="w-12 h-12 text-orange-400" />
-            ) : elementalTowerId === 'ice' ? (
-              <Snowflake className="w-12 h-12 text-sky-300" />
+    <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-[#040611]/96 a2-curtain">
+      <div className="relative text-center px-6 py-8 max-w-md w-full">
+        {/* Top & Bottom Elemental Accent Hairlines */}
+        <div
+          aria-hidden="true"
+          className="h-0.5 w-44 mx-auto mb-5 rounded-full"
+          style={{
+            background: `linear-gradient(90deg, transparent 0%, ${accentHex} 50%, transparent 100%)`,
+          }}
+        />
+
+        {/* Zodiac Crest Ring Medallion */}
+        <div className="flex justify-center mb-4">
+          <div
+            className="relative w-20 h-20 rounded-full border-2 flex items-center justify-center bg-[#090e22] text-4xl text-amber-300 shadow-[0_0_36px_rgba(0,0,0,0.85)]"
+            style={{
+              borderColor: accentHex,
+              boxShadow: `0 0 34px ${accentHex}44`,
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className="absolute -inset-2 rounded-full border border-dashed opacity-45"
+              style={{ borderColor: accentHex }}
+            />
+            {isWeeklyRankedBossMode ? (
+              <Crown className="w-10 h-10 text-amber-300" />
+            ) : isSkyCitadelMode ? (
+              <Feather className="w-10 h-10 text-sky-300" />
+            ) : isDragonLairMode ? (
+              <Flame className="w-10 h-10 text-rose-400" />
+            ) : isCrystalVaultMode ? (
+              <Gem className="w-10 h-10 text-yellow-300" />
+            ) : isChampionshipMode ? (
+              <Trophy className="w-10 h-10 text-amber-300" />
+            ) : isArenaMode ? (
+              <Swords className={`w-10 h-10 ${isArenaEqualized ? 'text-emerald-300' : 'text-rose-400'}`} />
+            ) : isPantheonMode ? (
+              <Crown className="w-10 h-10 text-amber-300" />
+            ) : isGuildWarMode ? (
+              <Shield className="w-10 h-10 text-emerald-300" />
+            ) : isAbyssalMode ? (
+              <Sparkles className="w-10 h-10 text-purple-300" />
+            ) : isBloodMoonMode ? (
+              <Moon className="w-10 h-10 text-rose-400" />
+            ) : isCrystalDefenseMode ? (
+              <Gem className="w-10 h-10 text-cyan-300" />
+            ) : isWorldBossMode ? (
+              <Trophy className="w-10 h-10 text-amber-300" />
+            ) : isCoopRaidMode ? (
+              <Users className="w-10 h-10 text-sky-300" />
+            ) : isElementalTowerMode ? (
+              elementalTowerId === 'fire' ? (
+                <Flame className="w-10 h-10 text-orange-400" />
+              ) : elementalTowerId === 'ice' ? (
+                <Snowflake className="w-10 h-10 text-sky-300" />
+              ) : (
+                <Zap className="w-10 h-10 text-purple-300" />
+              )
+            ) : isGuildBossMode ? (
+              <Skull className="w-10 h-10 text-amber-300" />
+            ) : isDailyRiftMode ? (
+              <Sparkles className="w-10 h-10 text-purple-300" />
+            ) : isBossRushMode ? (
+              <Skull className="w-10 h-10 text-rose-400" />
+            ) : isTowerMode ? (
+              <Compass className="w-10 h-10 text-purple-300" />
             ) : (
-              <Zap className="w-12 h-12 text-purple-300" />
-            )
-          ) : isGuildBossMode ? (
-            <Skull className="w-12 h-12 text-amber-300" />
-          ) : isDailyRiftMode ? (
-            <Sparkles className="w-12 h-12 text-purple-300" />
-          ) : isBossRushMode ? (
-            <Skull className="w-12 h-12 text-rose-400" />
-          ) : isTowerMode ? (
-            <Compass className="w-12 h-12 text-purple-300" />
-          ) : (
-            ch.zodiacIcon
-          )}
+              ch.zodiacIcon
+            )}
+          </div>
         </div>
-        <div className="text-xs font-extrabold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
-          {isSkyCitadelMode
+
+        <div className="text-xs font-extrabold uppercase tracking-[0.22em] text-amber-300 mb-1.5">
+          {isWeeklyRankedBossMode
+            ? 'Đua Boss Tuần Xếp Hạng · Xác Thực Máy Chủ'
+            : isSkyCitadelMode
             ? 'Không Chiến Tinh Giới 3D · 75 Giây · 3 Đợt Thần Cánh'
             : isDragonLairMode
             ? 'Phó Bản Đồ Long 3D · 75 Giây · 3 Pha Cuồng Nộ'
@@ -115,7 +159,9 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
             : isChampionshipMode
             ? 'Giải Đấu Quán Quân 3D · 3 Hiệp Chọn Chiến Thuật'
             : isArenaMode
-            ? 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
+            ? isArenaEqualized
+              ? 'Đấu Trường 1v1 · Cân Bằng Chỉ Số (Công Bằng · +35% Xu)'
+              : 'Đấu Trường Xếp Hạng 1v1 · 45 Giây'
             : isPantheonMode
             ? 'Viễn Chinh Điện Thần 3D · 3 Tầng Thần Chủ'
             : isGuildWarMode
@@ -143,7 +189,9 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
             : `Chương ${ch.id} · ${ch.zodiacName}`}
         </div>
         <h2 className="font-display text-2xl sm:text-3xl font-black text-white mb-2">
-          {isSkyCitadelMode
+          {isWeeklyRankedBossMode
+            ? 'Thánh Địa Đại Boss Tuần'
+            : isSkyCitadelMode
             ? 'Không Chiến Tinh Giới 3D'
             : isDragonLairMode
             ? 'Lãnh Địa Rồng Cổ Tinh Giới 3D'
@@ -180,8 +228,10 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
             : ch.name}
         </h2>
         <div className="cel-divider-gold max-w-[180px] mx-auto my-2.5" />
-        <div className="text-xs text-slate-300 font-semibold">
-          {isSkyCitadelMode
+        <div className="text-xs text-slate-300 font-semibold leading-relaxed">
+          {isWeeklyRankedBossMode
+            ? 'Điều khiển hoàn toàn bằng tay · Tối ưu hóa Điểm Yếu Boss, Bẫy Cộng Hưởng & Phản Tiễn Tinh Quang để ghi danh Bảng Xếp Hạng Mùa Giải!'
+            : isSkyCitadelMode
             ? 'Tung Cánh Thần Quang 3D vượt 3 đợt Không Chiến và đánh bại Thiên Sứ Thủ Vệ để thu thập Lông Vũ Thần Quang & Mảnh Thần Thoại!'
             : isDragonLairMode
             ? 'Chạm trán Cổ Long 3D qua 3 pha cuồng nộ! Quan sát vùng đỏ Hơi Thở Rồng để lướt né và thu hoạch Vảy Rồng Cổ, Cỏ Tinh Tú & Linh Ngọc!'
@@ -190,7 +240,9 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
             : isChampionshipMode
             ? 'Đánh bại liên tiếp 3 Anh Hùng Quán Quân 3D · Chọn 1 trong 3 Thẻ Chiến Thuật giữa mỗi hiệp để rinh Cúp Vinh Quang & Lõi Thần Sủng!'
             : isArenaMode
-            ? 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
+            ? isArenaEqualized
+              ? 'Cả hai bên cùng nền chỉ số công bằng (HP 3.200 · Công 165 · Chí Mạng 22%) · Kỹ năng né đòn, Phản Tiễn & chọn góc trụ quyết định chiến thắng!'
+              : 'Hạ gục đối thủ hoặc giữ % Sinh Lực cao hơn khi hết 45 giây để thăng hạng!'
             : isPantheonMode
             ? 'Đánh bại liên tiếp 3 Thần Chủ Điện Thần dưới sức mạnh Chúc Phúc để săn Thần Tinh nâng Hào Quang 3D!'
             : isGuildWarMode
@@ -217,6 +269,13 @@ export const StageTransitionCurtain: React.FC<StageTransitionCurtainProps> = ({
             ? 'Xoay vòng 12 Tinh Giới · Boss xuất hiện mỗi 3 tầng'
             : `Đang mở cổng Thánh Điện · Thủ lĩnh: ${ch.bossName}`}
         </div>
+        <div
+          aria-hidden="true"
+          className="h-0.5 w-32 mx-auto mt-5 rounded-full opacity-75"
+          style={{
+            background: `linear-gradient(90deg, transparent 0%, ${accentHex} 50%, transparent 100%)`,
+          }}
+        />
       </div>
     </div>
   );

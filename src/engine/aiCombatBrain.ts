@@ -54,6 +54,20 @@ export interface AiObstacleSnapshot {
   radius: number;
 }
 
+export interface AiWeakPointSnapshot {
+  x: number;
+  z: number;
+  active: boolean;
+}
+
+export interface AiResonanceTrapSnapshot {
+  x: number;
+  z: number;
+  ready: boolean;
+  aoeRadius: number;
+  label?: string;
+}
+
 export interface AutoPilotInput {
   tactic: AiAutoPilotTactic;
   simTimeSec: number;
@@ -64,6 +78,7 @@ export interface AutoPilotInput {
   dashReady: boolean;
   activeSkillReady: boolean;
   overchargeRatio: number;
+  counterShotReady?: boolean;
   portalOpen: boolean;
   portalX: number;
   portalZ: number;
@@ -74,6 +89,8 @@ export interface AutoPilotInput {
   incomingBullets: AiIncomingBullet[];
   healOrbs?: AiHealOrbSnapshot[];
   obstacles?: AiObstacleSnapshot[];
+  bossWeakPoint?: AiWeakPointSnapshot | null;
+  resonanceTraps?: AiResonanceTrapSnapshot[];
 }
 
 export interface AutoPilotDecision {
@@ -491,17 +508,49 @@ export function computeAutoPilotDecision(input: AutoPilotInput): AutoPilotDecisi
     }
   }
 
-  // 4. Stutter-step kiting: stop briefly to unleash shots / Astral Overcharge when in safe sweet spot
+  // 3.5. Tactical 3D Arena Resonance Trap exploitation:
+  // If a ready Resonance Trap has enemies inside its AoE, briefly stand to shoot/trigger it!
+  if (input.resonanceTraps && input.resonanceTraps.length > 0) {
+    for (const trap of input.resonanceTraps) {
+      if (!trap.ready) continue;
+      const hasEnemyInTrapAoe = input.enemies.some(
+        (e) =>
+          e.hp > 0 &&
+          Math.hypot(e.x - trap.x, e.z - trap.z) <= trap.aoeRadius + e.radius + 0.6
+      );
+      if (!hasEnemyInTrapAoe) continue;
+      const distToTrap = Math.hypot(trap.x - input.playerX, trap.z - input.playerZ);
+      if (distToTrap <= 11.5 && distToTrap >= 2.2) {
+        return {
+          moveX: 0,
+          moveZ: 0,
+          wantDash: false,
+          wantUltimate,
+          wantActiveSkill,
+          statusLabel: trap.label ? `Kích hoạt ${trap.label}!` : 'Bắn kích Trụ Cộng Hưởng!',
+          evadingDanger: false,
+        };
+      }
+    }
+  }
+
+  // 4. Stutter-step kiting + Boss Weak-Point angle alignment + Counter-Shot release
   const target = boss ?? nearest!;
-  const dx = target.x - input.playerX;
-  const dz = target.z - input.playerZ;
+  const aimX =
+    input.bossWeakPoint?.active && boss ? input.bossWeakPoint.x : target.x;
+  const aimZ =
+    input.bossWeakPoint?.active && boss ? input.bossWeakPoint.z : target.z;
+  const dx = aimX - input.playerX;
+  const dz = aimZ - input.playerZ;
   const dist = Math.hypot(dx, dz);
   const toTarget = normalizeVec(dx, dz);
 
-  // If Overcharge is nearly full (>= 0.88) and safely outside danger, hold brief firing stance to fire Overcharge!
+  // If Counter-Shot or Overcharge is armed and safely outside danger, hold brief firing stance immediately!
   const inSweetSpot = dist >= cfg.preferredMinDist && dist <= cfg.preferredMaxDist;
   const cyclePhase = (input.simTimeSec * 0.85) % 1;
   const shouldStandAndFire =
+    Boolean(input.counterShotReady && dist >= cfg.preferredMinDist * 0.65) ||
+    Boolean(input.bossWeakPoint?.active && dist >= cfg.preferredMinDist * 0.72 && dist <= cfg.preferredMaxDist * 1.15) ||
     (inSweetSpot && cyclePhase >= cfg.stutterMoveDuty) ||
     (input.overchargeRatio >= 0.88 && dist >= cfg.preferredMinDist * 0.78);
 
@@ -512,12 +561,15 @@ export function computeAutoPilotDecision(input: AutoPilotInput): AutoPilotDecisi
       wantDash: false,
       wantUltimate,
       wantActiveSkill,
-      statusLabel:
-        input.overchargeRatio >= 0.88
-          ? 'Đứng trụ xả Tụ Lực'
-          : boss?.staggerBroken
-          ? 'Xả sát thương Boss vỡ giáp'
-          : 'Ngắm bắn mục tiêu',
+      statusLabel: input.counterShotReady
+        ? 'Tung Phản Tiễn Tinh Quang!'
+        : input.bossWeakPoint?.active
+        ? 'Phá Lõi Điểm Yếu Boss!'
+        : input.overchargeRatio >= 0.88
+        ? 'Đứng trụ xả Tụ Lực'
+        : boss?.staggerBroken
+        ? 'Xả sát thương Boss vỡ giáp'
+        : 'Ngắm bắn mục tiêu',
       evadingDanger: false,
     };
   }
@@ -641,7 +693,9 @@ export function computeAiCompanionDecision(params: {
   telegraphs: AiThreatTelegraph[];
   incomingBullets: AiIncomingBullet[];
   obstacles?: AiObstacleSnapshot[];
-}): { steerX: number; steerZ: number; evading: boolean } {
+  bossWeakPoint?: AiWeakPointSnapshot | null;
+  bossEnraged?: boolean;
+}): { steerX: number; steerZ: number; evading: boolean; tacticalHint?: string } {
   const cfg = AI_COMPANION_ROLES[params.role];
   const avoidance = computeDangerAvoidanceVector({
     x: params.x,
@@ -651,17 +705,16 @@ export function computeAiCompanionDecision(params: {
     telegraphs: params.telegraphs,
     incomingBullets: params.incomingBullets,
     obstacles: params.obstacles,
-    telegraphPadding: params.role === 'vanguard' ? 0.85 : 1.35,
-    bulletLookaheadSec: 0.55,
+    telegraphPadding: params.role === 'vanguard' ? 0.85 : params.bossEnraged ? 1.55 : 1.35,
+    bulletLookaheadSec: params.bossEnraged ? 0.68 : 0.55,
   });
 
   if (avoidance.dangerScore >= 0.8) {
     const dir = normalizeVec(avoidance.escapeX, avoidance.escapeZ);
-    return { steerX: dir.x, steerZ: dir.z, evading: true };
+    return { steerX: dir.x, steerZ: dir.z, evading: true, tacticalHint: 'Né vùng Boss!' };
   }
 
   if (!params.target) {
-    // Formation follow behind/beside player
     const flankOffset = params.slotIndex === 0 ? -2.4 : 2.4;
     const fx = params.playerX + flankOffset - params.x;
     const fz = params.playerZ + 1.4 - params.z;
@@ -670,8 +723,17 @@ export function computeAiCompanionDecision(params: {
     return { steerX: dir.x, steerZ: dir.z, evading: false };
   }
 
-  const dx = params.target.x - params.x;
-  const dz = params.target.z - params.z;
+  const focusX =
+    params.role === 'ranger' && params.bossWeakPoint?.active
+      ? params.bossWeakPoint.x
+      : params.target.x;
+  const focusZ =
+    params.role === 'ranger' && params.bossWeakPoint?.active
+      ? params.bossWeakPoint.z
+      : params.target.z;
+
+  const dx = focusX - params.x;
+  const dz = focusZ - params.z;
   const dist = Math.hypot(dx, dz);
   const toTarget = normalizeVec(dx, dz);
 
@@ -686,13 +748,19 @@ export function computeAiCompanionDecision(params: {
     sz += toTarget.z * 1.15;
   }
 
-  // Distinct role geometry: Vanguard anchors between player & boss; Ranger flanks wide; Mystic stays near player's backline
+  let tacticalHint: string | undefined;
   if (params.role === 'vanguard') {
-    const midX = (params.playerX + params.target.x) * 0.52;
-    const midZ = (params.playerZ + params.target.z) * 0.52;
+    const guardBias = params.bossEnraged ? 0.42 : 0.52;
+    const midX = params.playerX * (1 - guardBias) + params.target.x * guardBias;
+    const midZ = params.playerZ * (1 - guardBias) + params.target.z * guardBias;
     const toGuard = normalizeVec(midX - params.x, midZ - params.z);
-    sx += toGuard.x * 0.7;
-    sz += toGuard.z * 0.7;
+    sx += toGuard.x * 0.82;
+    sz += toGuard.z * 0.82;
+    if (params.bossEnraged) tacticalHint = 'Chắn tuyến trước Boss cuồng nộ!';
+  } else if (params.role === 'ranger' && params.bossWeakPoint?.active) {
+    tacticalHint = 'Tập trung phá Điểm Yếu Boss!';
+    sx += toTarget.x * 0.45;
+    sz += toTarget.z * 0.45;
   } else {
     const strafeSign = params.slotIndex % 2 === 0 ? 1 : -1;
     const wave = Math.cos(params.simTimeSec * 1.15 + params.slotIndex * 2.1);
@@ -701,12 +769,13 @@ export function computeAiCompanionDecision(params: {
   }
 
   const dir = normalizeVec(sx, sz);
-  return { steerX: dir.x, steerZ: dir.z, evading: false };
+  return { steerX: dir.x, steerZ: dir.z, evading: false, tacticalHint };
 }
 
 /**
  * 60Hz deterministic real-time AI Rival 1v1 Duel controller.
- * Dodges incoming player arrows, stutter-steps, and adapts by personality.
+ * Dodges incoming player arrows, predicts player strafe velocity for lead-aiming,
+ * dash-flanks stationary players, and adapts by personality.
  */
 export function computeAiRivalDuelDecision(params: {
   personality: AiLivePlayerPersonality;
@@ -715,12 +784,43 @@ export function computeAiRivalDuelDecision(params: {
   rivalZ: number;
   playerX: number;
   playerZ: number;
+  playerVx?: number;
+  playerVz?: number;
+  playerStandingStill?: boolean;
   rivalHpRatio: number;
   arenaHalfW: number;
   arenaHalfD: number;
   playerBullets: AiIncomingBullet[];
   obstacles?: AiObstacleSnapshot[];
-}): { moveX: number; moveZ: number; wantFire: boolean; wantDashBurst: boolean; evadingArrow: boolean } {
+}): {
+  moveX: number;
+  moveZ: number;
+  wantFire: boolean;
+  wantDashBurst: boolean;
+  evadingArrow: boolean;
+  aimTargetX: number;
+  aimTargetZ: number;
+} {
+  const distNow = Math.hypot(params.playerX - params.rivalX, params.playerZ - params.rivalZ);
+  // Predictive lead-aiming based on projectile flight time (~16 units/s)
+  const leadFactor =
+    params.personality === 'tactical'
+      ? 0.68
+      : params.personality === 'assassin'
+      ? 0.58
+      : 0.44;
+  const flightTimeSec = clampVal(distNow / 16.5, 0.05, 0.55) * leadFactor;
+  const aimTargetX = clampVal(
+    params.playerX + (params.playerVx ?? 0) * flightTimeSec,
+    -params.arenaHalfW + 0.8,
+    params.arenaHalfW - 0.8
+  );
+  const aimTargetZ = clampVal(
+    params.playerZ + (params.playerVz ?? 0) * flightTimeSec,
+    -params.arenaHalfD + 0.8,
+    params.arenaHalfD - 0.8
+  );
+
   const avoidance = computeDangerAvoidanceVector({
     x: params.rivalX,
     z: params.rivalZ,
@@ -730,7 +830,7 @@ export function computeAiRivalDuelDecision(params: {
     incomingBullets: params.playerBullets,
     obstacles: params.obstacles,
     telegraphPadding: 0.9,
-    bulletLookaheadSec: params.personality === 'assassin' ? 0.78 : 0.62,
+    bulletLookaheadSec: params.personality === 'assassin' ? 0.8 : 0.65,
   });
 
   if (avoidance.dangerScore >= 0.78) {
@@ -739,8 +839,10 @@ export function computeAiRivalDuelDecision(params: {
       moveX: dir.x,
       moveZ: dir.z,
       wantFire: false,
-      wantDashBurst: avoidance.urgentTelegraphSec <= 0.24,
+      wantDashBurst: avoidance.urgentTelegraphSec <= 0.25,
       evadingArrow: true,
+      aimTargetX,
+      aimTargetZ,
     };
   }
 
@@ -754,16 +856,19 @@ export function computeAiRivalDuelDecision(params: {
   const prefMax =
     params.personality === 'aggressive' ? 6.8 : params.personality === 'assassin' ? 8.2 : 9.4;
 
-  // Stutter-step window so rival visibly pauses to loose volleys like a real human player
-  const cadence = (params.simTimeSec * (params.personality === 'aggressive' ? 1.1 : 0.85)) % 1;
+  // Punish stationary player with quicker volley window or assassin flank-dash
+  const cadence = (params.simTimeSec * (params.personality === 'aggressive' ? 1.12 : 0.88)) % 1;
   const inRange = dist >= prefMin * 0.85 && dist <= prefMax * 1.15;
-  if (inRange && cadence > 0.56) {
+  const fireThreshold = params.playerStandingStill ? 0.46 : 0.56;
+  if (inRange && cadence > fireThreshold) {
     return {
       moveX: 0,
       moveZ: 0,
       wantFire: true,
       wantDashBurst: false,
       evadingArrow: false,
+      aimTargetX,
+      aimTargetZ,
     };
   }
 
@@ -777,24 +882,47 @@ export function computeAiRivalDuelDecision(params: {
     sz += toPlayer.z * 1.25;
   }
 
+  // Tactical low-HP rival orbits near nearest pillar for soft cover
+  if (params.personality === 'tactical' && params.rivalHpRatio < 0.45 && params.obstacles && params.obstacles.length > 0) {
+    let bestObs = params.obstacles[0];
+    let bestObsDist = Math.hypot(bestObs.x - params.rivalX, bestObs.z - params.rivalZ);
+    for (let i = 1; i < params.obstacles.length; i++) {
+      const d = Math.hypot(params.obstacles[i].x - params.rivalX, params.obstacles[i].z - params.rivalZ);
+      if (d < bestObsDist) {
+        bestObsDist = d;
+        bestObs = params.obstacles[i];
+      }
+    }
+    const behindObsX = bestObs.x - toPlayer.x * (bestObs.radius + 1.5);
+    const behindObsZ = bestObs.z - toPlayer.z * (bestObs.radius + 1.5);
+    const toCover = normalizeVec(behindObsX - params.rivalX, behindObsZ - params.rivalZ);
+    sx += toCover.x * 0.65;
+    sz += toCover.z * 0.65;
+  }
+
   const strafeSign =
     params.personality === 'assassin'
-      ? Math.sin(params.simTimeSec * 2.1) >= 0
+      ? Math.sin(params.simTimeSec * 2.15) >= 0
         ? 1
         : -1
-      : Math.sin(params.simTimeSec * 0.9) >= 0
+      : Math.sin(params.simTimeSec * 0.92) >= 0
       ? 1
       : -1;
-  sx += -toPlayer.z * strafeSign * 1.05;
-  sz += toPlayer.x * strafeSign * 1.05;
+  sx += -toPlayer.z * strafeSign * 1.08;
+  sz += toPlayer.x * strafeSign * 1.08;
 
   const dir = normalizeVec(sx, sz);
+  const flankDash =
+    (params.personality === 'assassin' && dist > 7.8 && cadence < 0.08) ||
+    Boolean(params.playerStandingStill && dist > 6.5 && cadence < 0.06);
   return {
     moveX: dir.x,
     moveZ: dir.z,
     wantFire: false,
-    wantDashBurst: params.personality === 'assassin' && dist > 8.5 && cadence < 0.08,
+    wantDashBurst: flankDash,
     evadingArrow: false,
+    aimTargetX,
+    aimTargetZ,
   };
 }
 

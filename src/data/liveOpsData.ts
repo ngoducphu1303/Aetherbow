@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   photoLightingPreset: 'golden_hall',
   keybinds: { ...DEFAULT_COMBAT_KEYBINDS },
   showFpsOverlay: false,
+  adaptiveResolutionGuard: true,
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
@@ -62,6 +63,8 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     photoLightingPreset: s?.photoLightingPreset ?? DEFAULT_SETTINGS.photoLightingPreset,
     keybinds: normalizeCombatKeybinds(s?.keybinds),
     showFpsOverlay: s?.showFpsOverlay ?? DEFAULT_SETTINGS.showFpsOverlay,
+    adaptiveResolutionGuard:
+      s?.adaptiveResolutionGuard ?? DEFAULT_SETTINGS.adaptiveResolutionGuard,
   };
 }
 

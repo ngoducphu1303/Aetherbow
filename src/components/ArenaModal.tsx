@@ -16,7 +16,14 @@ import {
   LeaderboardFilterMode,
 } from '../data/liveAiLeaderboards';
 import { liveAiSocket } from '../services/liveAiSocket';
-import { CloudLeaderboardRow, fetchRealLeaderboard } from '../services/playerCloudService';
+import {
+  CloudLeaderboardRow,
+  subscribeRealLeaderboard,
+} from '../services/playerCloudService';
+import {
+  EQUALIZED_ARENA_BASELINE,
+  normalizeFairProgression,
+} from '../engine/aaaFivePillarsDirector';
 import { AiLivePlayerProfile, ArenaOpponent, SaveData } from '../types/game';
 import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon } from './GameIcons';
 
@@ -25,6 +32,8 @@ interface ArenaModalProps {
   powerRating: number;
   playerDisplayName?: string;
   currentUid?: string | null;
+  equalizedMode?: boolean;
+  onToggleEqualizedMode?: (enabled: boolean) => void;
   onStartDuel: (opponent: ArenaOpponent) => void;
   onChallengeLiveAi?: (aiPlayerId: string) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
@@ -39,6 +48,8 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
   powerRating,
   playerDisplayName,
   currentUid = null,
+  equalizedMode,
+  onToggleEqualizedMode,
   onStartDuel,
   onChallengeLiveAi,
   onInspectAiPlayer,
@@ -56,19 +67,26 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
   const [cloudPlayers, setCloudPlayers] = useState<CloudLeaderboardRow[]>([]);
 
   const arena = normalizeArena(save.arena);
+  const fairProg = normalizeFairProgression(save.fairProgression);
+  const isEqualized = equalizedMode ?? fairProg.arenaEqualizedMode;
   const rankInfo = getArenaRankInfo(arena.rating);
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const displayName = playerDisplayName || `Bạn (${activeHero.name})`;
 
   useEffect(() => {
     liveAiSocket.ensureConnected(displayName);
-    const unsub = liveAiSocket.subscribeSnapshot((snap) => {
+    const unsubAi = liveAiSocket.subscribeSnapshot((snap) => {
       setAiPlayers(snap.players);
     });
-    void fetchRealLeaderboard(40)
-      .then((rows) => setCloudPlayers(rows))
-      .catch(() => {});
-    return unsub;
+    const unsubCloud = subscribeRealLeaderboard(
+      (rows) => setCloudPlayers(rows),
+      () => {},
+      40
+    );
+    return () => {
+      unsubAi();
+      unsubCloud();
+    };
   }, [displayName]);
 
   const liveOpponents = useMemo(
@@ -245,11 +263,61 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
 
         {subTab === 'duel' && (
           <div className="space-y-3">
+            {/* Pillar 3: Fair-Play Equalized PvP Mode Switcher */}
+            <div className="rounded-2xl border border-emerald-400/35 bg-[#06111c]/95 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-black text-emerald-200">
+                  <Shield className="w-4 h-4 text-emerald-300 shrink-0" />
+                  <span>Chế Độ Đấu Trường 1v1</span>
+                  <span className="font-mono-nums text-[10px] text-amber-300">
+                    · Thắng Công Bằng: {fairProg.equalizedArenaWins} trận
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-snug">
+                  {isEqualized
+                    ? `Cân Bằng Chỉ Số: Cả hai bên đồng bộ HP ${EQUALIZED_ARENA_BASELINE.maxHp.toLocaleString('vi-VN')} · Công ${EQUALIZED_ARENA_BASELINE.attack} · Chí Mạng ${Math.round(EQUALIZED_ARENA_BASELINE.critChance * 100)}% (+35% Xu Arena).`
+                    : 'Tự Do Lực Chiến: Giữ nguyên toàn bộ chỉ số trang bị, Hồn Hoàn & Thần Binh khi xuất trận.'}
+                </p>
+              </div>
+              {onToggleEqualizedMode && (
+                <div className="inline-flex items-center gap-1 rounded-xl bg-[#040814] border border-slate-700 p-1 shrink-0 self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.06);
+                      onToggleEqualizedMode(true);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black cursor-pointer whitespace-nowrap transition-colors ${
+                      isEqualized
+                        ? 'bg-emerald-500/25 border border-emerald-300/70 text-emerald-200'
+                        : 'text-slate-400 hover:text-white border border-transparent'
+                    }`}
+                  >
+                    Công Bằng (+35% Xu)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.02);
+                      onToggleEqualizedMode(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black cursor-pointer whitespace-nowrap transition-colors ${
+                      !isEqualized
+                        ? 'bg-amber-400/20 border border-amber-300/70 text-amber-200'
+                        : 'text-slate-400 hover:text-white border border-transparent'
+                    }`}
+                  >
+                    Tự Do Lực Chiến
+                  </button>
+                </div>
+              )}
+            </div>
+
             {liveOpponents.length > 0 && (
               <div className="text-[11px] text-sky-200/90 flex items-center gap-2 px-1">
-                <span className="size-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="size-2 rounded-full bg-emerald-400 shrink-0" />
                 <span>
-                  Đối thủ <strong className="text-sky-300">[AI Live]</strong> trực tuyến thời gian thực · Tự né mũi tên &amp; đồng bộ điểm hạng 1v1 lên máy chủ!
+                  Đối thủ <strong className="text-sky-300">[AI Live]</strong> trực tuyến thời gian thực · Tự né mũi tên, đón đầu góc bắn &amp; che trụ chiến thuật!
                 </span>
               </div>
             )}
@@ -302,11 +370,15 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
                       <div className="grid grid-cols-2 gap-2 text-[11px] font-mono-nums bg-[#060916] border border-slate-800 rounded-xl p-2.5">
                         <div className="flex items-center gap-1 text-emerald-300 font-bold">
                           <Shield className="w-3.5 h-3.5 shrink-0" />
-                          <span>HP {opp.maxHp}</span>
+                          <span>
+                            HP {isEqualized ? EQUALIZED_ARENA_BASELINE.maxHp : opp.maxHp}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1 text-amber-300 font-bold">
                           <Zap className="w-3.5 h-3.5 shrink-0" />
-                          <span>ATK {opp.attack}</span>
+                          <span>
+                            ATK {isEqualized ? EQUALIZED_ARENA_BASELINE.attack : opp.attack}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -314,7 +386,13 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
                     <div className="pt-2 border-t border-slate-800/80 space-y-2.5">
                       <div className="flex items-center justify-between text-[11px] font-mono-nums font-bold">
                         <span className="text-emerald-300">Thắng: +{opp.rewardPoints} Điểm</span>
-                        <span className="text-amber-300">+{opp.rewardArenaCoins} Xu</span>
+                        <span className="text-amber-300">
+                          +
+                          {isEqualized
+                            ? Math.round(opp.rewardArenaCoins * 1.35)
+                            : opp.rewardArenaCoins}{' '}
+                          Xu
+                        </span>
                       </div>
 
                       <button

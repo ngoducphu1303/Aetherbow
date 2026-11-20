@@ -43,7 +43,7 @@
         },
         "saveData": {
           "type": "object",
-          "description": "Complete sanitized SaveData progression map (heroes, gear, runes, currencies, modes, cosmetics, career)."
+          "description": "Complete sanitized SaveData progression map (heroes, gear, runes, currencies, fairProgression, modes, cosmetics, career)."
         },
         "createdAt": {
           "type": "string",
@@ -169,6 +169,171 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "BossRaceEntry": {
+      "title": "BossRaceEntry",
+      "description": "PII-free persistent Weekly Boss Race standing persisted per weekId and authenticated player UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner Firebase Authentication UID."
+        },
+        "weekId": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 24,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ISO weekly schedule identifier (e.g. 2026-W47)."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "description": "Public warrior display name."
+        },
+        "heroId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Selected hero identifier."
+        },
+        "bestScore": {
+          "type": "number",
+          "description": "Best verified weekly boss score."
+        },
+        "bestDamage": {
+          "type": "number",
+          "description": "Highest single-attempt damage dealt to weekly boss."
+        },
+        "bestClearTimeMs": {
+          "type": "integer",
+          "description": "Fastest clear duration in milliseconds (0 if uncleared)."
+        },
+        "perfectDodges": {
+          "type": "integer",
+          "description": "Perfect dodges executed in the best run."
+        },
+        "autoPilotUsed": {
+          "type": "boolean",
+          "description": "Flag denoting whether Auto-Pilot was enabled."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Explicit opt-in public visibility flag."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of first submission for this week."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest best score update."
+        }
+      },
+      "required": [
+        "uid",
+        "weekId",
+        "displayName",
+        "heroId",
+        "bestScore",
+        "bestDamage",
+        "bestClearTimeMs",
+        "perfectDodges",
+        "autoPilotUsed",
+        "isPublic",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SeasonStanding": {
+      "title": "SeasonStanding",
+      "description": "PII-free persistent Competitive Season points and Fair-Play Arena record per seasonId and player UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner Firebase Authentication UID."
+        },
+        "seasonId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Competitive season identifier (e.g. S01)."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "description": "Public warrior display name."
+        },
+        "heroId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Selected hero identifier."
+        },
+        "seasonPoints": {
+          "type": "integer",
+          "description": "Cumulative seasonal championship points."
+        },
+        "weeksParticipated": {
+          "type": "integer",
+          "description": "Number of weeks participated in the active season."
+        },
+        "equalizedArenaWins": {
+          "type": "integer",
+          "description": "Total wins in Fair-Play Equalized Arena mode."
+        },
+        "rankTier": {
+          "type": "string",
+          "enum": ["bronze", "silver", "gold", "platinum", "astral_emperor"],
+          "description": "Current seasonal rank tier."
+        },
+        "claimedMilestones": {
+          "type": "array",
+          "description": "Bounded list of claimed seasonal tier milestone IDs (max 20)."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Explicit opt-in public visibility flag."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of season entry creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest standing update."
+        }
+      },
+      "required": [
+        "uid",
+        "seasonId",
+        "displayName",
+        "heroId",
+        "seasonPoints",
+        "weeksParticipated",
+        "equalizedArenaWins",
+        "rankTier",
+        "claimedMilestones",
+        "isPublic",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -179,6 +344,14 @@
     "/leaderboard/{uid}": {
       "schema": { "$ref": "#/entities/LeaderboardEntry" },
       "description": "Public PII-free player leaderboard metrics readable when isPublic == true and writable only by the authenticated owner."
+    },
+    "/boss_race_entries/{entryId}": {
+      "schema": { "$ref": "#/entities/BossRaceEntry" },
+      "description": "Public PII-free Weekly Boss Race entries keyed by {weekId}_{uid}, readable when isPublic == true and writable only by the matching authenticated owner."
+    },
+    "/season_standings/{standingId}": {
+      "schema": { "$ref": "#/entities/SeasonStanding" },
+      "description": "Public PII-free Competitive Season standings keyed by {seasonId}_{uid}, readable when isPublic == true and writable only by the matching authenticated owner."
     }
   }
 }

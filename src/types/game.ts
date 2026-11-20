@@ -553,6 +553,25 @@ export interface GameSettings {
   photoLightingPreset?: PhotoLightingPreset;
   keybinds?: Partial<CombatKeybinds>;
   showFpsOverlay?: boolean;
+  adaptiveResolutionGuard?: boolean;
+}
+
+export interface GachaPullHistoryEntry {
+  id: string;
+  timestampMs: number;
+  chestVariant: 'iron' | 'mythic' | 'rune_bag' | 'rune_rare';
+  itemName: string;
+  rarity: Rarity;
+  isSTier?: boolean;
+  shardsGained: number;
+}
+
+export interface FairProgressionState {
+  astralShards: number;
+  pullHistory: GachaPullHistoryEntry[];
+  totalExchanges: number;
+  arenaEqualizedMode: boolean;
+  equalizedArenaWins: number;
 }
 
 export interface BattlePassProgress {
@@ -1208,6 +1227,7 @@ export interface SaveData {
   bestBossRushRound?: number;
   battlePass?: BattlePassProgress;
   pity?: PityState;
+  fairProgression?: FairProgressionState;
   career?: CareerStats;
   achievementsClaimed?: string[];
   settings?: GameSettings;
@@ -1986,6 +2006,8 @@ export interface HudSnapshot {
   liveAiRivalTag?: string | null;
   perfDrawCalls?: number;
   perfSimHz?: number;
+  isArenaEqualized?: boolean;
+  combatLightingMood?: 'normal' | 'boss_enrage' | 'victory_golden';
 }
 
 export interface EncounterOffer {

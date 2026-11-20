@@ -27,7 +27,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // Validation Blueprint: PlayerAccount (/players/{uid})
+    // Validation Blueprint 1: PlayerAccount (/players/{uid})
     function isValidPlayerAccount(data, uid) {
       return data.keys().hasAll([
         'uid',
@@ -75,12 +75,12 @@ service cloud.firestore {
       && data.highestChapterCleared <= 100
       && data.saveData is map
       && data.saveData.keys().size() >= 1
-      && data.saveData.keys().size() <= 240
+      && data.saveData.keys().size() <= 260
       && data.createdAt is timestamp
       && data.updatedAt is timestamp;
     }
 
-    // Validation Blueprint: LeaderboardEntry (/leaderboard/{uid})
+    // Validation Blueprint 2: LeaderboardEntry (/leaderboard/{uid})
     function isValidLeaderboardEntry(data, uid) {
       return data.keys().hasAll([
         'uid',
@@ -161,6 +161,135 @@ service cloud.firestore {
       && data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint 3: BossRaceEntry (/boss_race_entries/{entryId})
+    function isValidBossRaceEntry(data, entryId) {
+      return data.keys().hasAll([
+        'uid',
+        'weekId',
+        'displayName',
+        'heroId',
+        'bestScore',
+        'bestDamage',
+        'bestClearTimeMs',
+        'perfectDodges',
+        'autoPilotUsed',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid',
+        'weekId',
+        'displayName',
+        'heroId',
+        'bestScore',
+        'bestDamage',
+        'bestClearTimeMs',
+        'perfectDodges',
+        'autoPilotUsed',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.uid is string
+      && data.uid == request.auth.uid
+      && isValidId(data.uid)
+      && data.weekId is string
+      && data.weekId.size() >= 4
+      && data.weekId.size() <= 24
+      && data.weekId.matches('^[a-zA-Z0-9_\\-]+$')
+      && entryId == (data.weekId + '_' + data.uid)
+      && data.displayName is string
+      && data.displayName.size() >= 2
+      && data.displayName.size() <= 24
+      && data.heroId is string
+      && data.heroId.size() >= 1
+      && data.heroId.size() <= 32
+      && data.heroId.matches('^[a-zA-Z0-9_\\-]+$')
+      && data.bestScore is number
+      && data.bestScore >= 0
+      && data.bestScore <= 100000000
+      && data.bestDamage is number
+      && data.bestDamage >= 0
+      && data.bestDamage <= 10000000000
+      && data.bestClearTimeMs is int
+      && data.bestClearTimeMs >= 0
+      && data.bestClearTimeMs <= 600000
+      && data.perfectDodges is int
+      && data.perfectDodges >= 0
+      && data.perfectDodges <= 500
+      && data.autoPilotUsed is bool
+      && data.isPublic is bool
+      && data.isPublic == true
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint 4: SeasonStanding (/season_standings/{standingId})
+    function isValidSeasonStanding(data, standingId) {
+      return data.keys().hasAll([
+        'uid',
+        'seasonId',
+        'displayName',
+        'heroId',
+        'seasonPoints',
+        'weeksParticipated',
+        'equalizedArenaWins',
+        'rankTier',
+        'claimedMilestones',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid',
+        'seasonId',
+        'displayName',
+        'heroId',
+        'seasonPoints',
+        'weeksParticipated',
+        'equalizedArenaWins',
+        'rankTier',
+        'claimedMilestones',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.uid is string
+      && data.uid == request.auth.uid
+      && isValidId(data.uid)
+      && data.seasonId is string
+      && data.seasonId.size() >= 2
+      && data.seasonId.size() <= 24
+      && data.seasonId.matches('^[a-zA-Z0-9_\\-]+$')
+      && standingId == (data.seasonId + '_' + data.uid)
+      && data.displayName is string
+      && data.displayName.size() >= 2
+      && data.displayName.size() <= 24
+      && data.heroId is string
+      && data.heroId.size() >= 1
+      && data.heroId.size() <= 32
+      && data.heroId.matches('^[a-zA-Z0-9_\\-]+$')
+      && data.seasonPoints is int
+      && data.seasonPoints >= 0
+      && data.seasonPoints <= 1000000
+      && data.weeksParticipated is int
+      && data.weeksParticipated >= 0
+      && data.weeksParticipated <= 12
+      && data.equalizedArenaWins is int
+      && data.equalizedArenaWins >= 0
+      && data.equalizedArenaWins <= 10000
+      && data.rankTier is string
+      && data.rankTier in ['bronze', 'silver', 'gold', 'platinum', 'astral_emperor']
+      && data.claimedMilestones is list
+      && data.claimedMilestones.size() <= 20
+      && (data.claimedMilestones.size() == 0 || data.claimedMilestones[0] is string)
+      && data.isPublic is bool
+      && data.isPublic == true
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
     // Collection 1: Private Player Accounts & Full Progression Saves (PII Isolated)
     match /players/{uid} {
       allow get: if isOwner(uid) && isValidId(uid);
@@ -232,6 +361,94 @@ service cloud.firestore {
           // Action 2: Display name update only
           || incoming().diff(existing()).affectedKeys().hasOnly([
             'displayName',
+            'updatedAt'
+          ])
+        );
+      allow delete: if false;
+    }
+
+    // Collection 3: Public PII-Free Weekly Boss Race Entries
+    match /boss_race_entries/{entryId} {
+      allow get: if isValidId(entryId)
+        && (
+          (resource != null && existing().isPublic == true)
+          || (isSignedIn() && (resource == null || existing().uid == request.auth.uid))
+        );
+      allow list: if resource.data.isPublic == true;
+      allow create: if isSignedIn()
+        && isValidId(entryId)
+        && isValidBossRaceEntry(incoming(), entryId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(entryId)
+        && isValidBossRaceEntry(incoming(), entryId)
+        && existing().uid == request.auth.uid
+        && incoming().uid == existing().uid
+        && incoming().weekId == existing().weekId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().bestScore >= existing().bestScore
+        && (
+          // Action 1: Update weekly best score & telemetry
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'heroId',
+            'bestScore',
+            'bestDamage',
+            'bestClearTimeMs',
+            'perfectDodges',
+            'autoPilotUsed',
+            'isPublic',
+            'updatedAt'
+          ])
+          // Action 2: Display name sync
+          || incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'updatedAt'
+          ])
+        );
+      allow delete: if false;
+    }
+
+    // Collection 4: Public PII-Free Competitive Season Standings
+    match /season_standings/{standingId} {
+      allow get: if isValidId(standingId)
+        && (
+          (resource != null && existing().isPublic == true)
+          || (isSignedIn() && (resource == null || existing().uid == request.auth.uid))
+        );
+      allow list: if resource.data.isPublic == true;
+      allow create: if isSignedIn()
+        && isValidId(standingId)
+        && isValidSeasonStanding(incoming(), standingId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(standingId)
+        && isValidSeasonStanding(incoming(), standingId)
+        && existing().uid == request.auth.uid
+        && incoming().uid == existing().uid
+        && incoming().seasonId == existing().seasonId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().seasonPoints >= existing().seasonPoints
+        && incoming().equalizedArenaWins >= existing().equalizedArenaWins
+        && (
+          // Action 1: Sync season points, Fair-Play wins & rank tier
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'heroId',
+            'seasonPoints',
+            'weeksParticipated',
+            'equalizedArenaWins',
+            'rankTier',
+            'isPublic',
+            'updatedAt'
+          ])
+          // Action 2: Claim seasonal milestone tier
+          || incoming().diff(existing()).affectedKeys().hasOnly([
+            'claimedMilestones',
             'updatedAt'
           ])
         );

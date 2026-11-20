@@ -1027,7 +1027,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
         {/* Arena 1v1 Duel VS Bar */}
         {hud.isArenaMode && (
-          <div className="w-full max-w-lg mx-auto rounded-2xl px-4 py-2.5 bg-[#110a24]/95 border border-amber-400/65 shadow-2xl">
+          <div
+            className={`w-full max-w-lg mx-auto rounded-2xl px-4 py-2.5 bg-[#110a24]/95 border shadow-2xl ${
+              hud.isArenaEqualized ? 'border-emerald-400/70' : 'border-amber-400/65'
+            }`}
+          >
+            {hud.isArenaEqualized && (
+              <div className="flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300 mb-1">
+                <Shield className="w-3 h-3 shrink-0" />
+                <span>Chế Độ Công Bằng · Cân Bằng Chỉ Số · +35% Xu Đấu Trường</span>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-2 text-xs font-black mb-1.5">
               <span className="text-emerald-300 truncate">
                 {hud.heroName} ({Math.round(hpPct)}%)
@@ -1932,14 +1942,29 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         {/* Center Player Vitals Bar + Counter-Shot Ready Callout + Gamepad Legend */}
         <div className="flex flex-col items-center gap-1.5 w-full max-w-[265px] mx-auto">
           {hud.counterShotReady && (
-            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200 drop-shadow-[0_2px_10px_rgba(251,191,36,0.75)]">
-              <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span>PHẢN TIỄN SẴN SÀNG</span>
-              {typeof hud.counterShotTimer === 'number' && hud.counterShotTimer > 0 && (
-                <span className="font-mono-nums text-amber-300">
-                  {hud.counterShotTimer.toFixed(1)}s
+            <div className="w-full px-3 py-1 rounded-xl bg-[#181004]/95 border border-amber-300/80 shadow-[0_0_20px_rgba(251,191,36,0.4)]">
+              <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-200">
+                <span className="flex items-center gap-1 min-w-0 truncate">
+                  <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span className="truncate">PHẢN TIỄN TINH QUANG · DỪNG ĐỂ PHÓNG</span>
                 </span>
-              )}
+                {typeof hud.counterShotTimer === 'number' && hud.counterShotTimer > 0 && (
+                  <span className="font-mono-nums text-amber-300 shrink-0">
+                    {hud.counterShotTimer.toFixed(1)}s
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 h-1 w-full rounded-full bg-slate-950 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 via-yellow-200 to-cyan-300 transition-all duration-75"
+                  style={{
+                    width: `${Math.max(
+                      0,
+                      Math.min(100, ((hud.counterShotTimer ?? 0) / 3.2) * 100)
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
           )}
 

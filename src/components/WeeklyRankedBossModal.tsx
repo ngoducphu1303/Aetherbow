@@ -30,6 +30,14 @@ import {
 } from '../services/weeklyBossApi';
 import { liveAiSocket } from '../services/liveAiSocket';
 import {
+  CloudBossRaceEntry,
+  subscribeWeeklyBossRace,
+} from '../services/playerCloudService';
+import {
+  SEASON_RANK_TIERS,
+  resolveSeasonRankTier,
+} from '../engine/aaaFivePillarsDirector';
+import {
   buildMergedWeeklyBossLeaderboard,
   buildMergedWeeklySeasonLeaderboard,
   LeaderboardFilterMode,
@@ -90,6 +98,7 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
   const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
     () => liveAiSocket.getSnapshot()?.players ?? []
   );
+  const [cloudRaceRows, setCloudRaceRows] = useState<CloudBossRaceEntry[]>([]);
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -135,6 +144,20 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
       unsubRank();
     };
   }, [playerDisplayName]);
+
+  // Real-time Firestore Boss Race subscription (gracefully falls back to server API if rules not yet deployed)
+  const activeWeekId = state?.schedule.weekId ?? null;
+  useEffect(() => {
+    if (!activeWeekId) return undefined;
+    return subscribeWeeklyBossRace(
+      activeWeekId,
+      (rows) => setCloudRaceRows(rows),
+      () => {
+        // Silent graceful fallback to /api/weekly-boss/state until firestore.rules are deployed
+      },
+      40
+    );
+  }, [activeWeekId]);
 
   const handleStart = async () => {
     if (!isAuthenticated) {
@@ -215,16 +238,36 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     [seasonState?.player?.claimedSeasonTierIds]
   );
 
-  const mergedLeaderboard = useMemo(
-    () =>
-      buildMergedWeeklyBossLeaderboard({
-        verifiedEntries: state?.leaderboard ?? [],
-        aiPlayers,
-        filter: boardFilter,
-        currentUid,
-      }),
-    [aiPlayers, boardFilter, currentUid, state?.leaderboard]
-  );
+  const mergedLeaderboard = useMemo(() => {
+    const serverEntries = state?.leaderboard ?? [];
+    const byUid = new Map(serverEntries.map((e) => [e.uid, e]));
+    for (const c of cloudRaceRows) {
+      if (!c.uid || c.autoPilotUsed) continue;
+      const existing = byUid.get(c.uid);
+      if (!existing || c.bestScore > existing.bestScore) {
+        byUid.set(c.uid, {
+          uid: c.uid,
+          displayName: c.displayName,
+          bestScore: c.bestScore,
+          bestDamage: c.bestDamage,
+          bestClearTimeMs: c.bestClearTimeMs > 0 ? c.bestClearTimeMs : null,
+          cleared: c.bestClearTimeMs > 0 || Boolean(existing?.cleared),
+          attemptsUsed: existing?.attemptsUsed ?? 1,
+          updatedAt: c.updatedAtMs || Date.now(),
+        });
+      }
+    }
+    const combinedVerified = Array.from(byUid.values()).sort(
+      (a, b) => b.bestScore - a.bestScore
+    );
+
+    return buildMergedWeeklyBossLeaderboard({
+      verifiedEntries: combinedVerified,
+      aiPlayers,
+      filter: boardFilter,
+      currentUid,
+    });
+  }, [aiPlayers, boardFilter, cloudRaceRows, currentUid, state?.leaderboard]);
 
   const mergedSeasonLeaderboard = useMemo(
     () =>
@@ -632,13 +675,41 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                   </div>
                   <div className="text-left sm:text-right shrink-0">
                     <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                      Điểm Mùa Của Bạn
+                      Điểm Mùa Của Bạn · Bậc {resolveSeasonRankTier(seasonState?.player?.seasonPoints ?? 0).label}
                     </div>
                     <div className="font-mono-nums tabular-nums text-lg font-black text-amber-300">
                       {(seasonState?.player?.seasonPoints ?? 0).toLocaleString('vi-VN')} CP
                       {seasonState?.player?.seasonRank ? ` · Hạng Thật #${seasonState.player.seasonRank}` : ''}
                     </div>
                   </div>
+                </div>
+
+                {/* Pillar 4: Competitive Season Rank Tiers Ladder */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {SEASON_RANK_TIERS.map((tier) => {
+                    const myCp = seasonState?.player?.seasonPoints ?? 0;
+                    const reached = myCp >= tier.minPoints;
+                    return (
+                      <div
+                        key={tier.id}
+                        className={`rounded-xl border px-2.5 py-2 text-center ${
+                          reached
+                            ? 'bg-[#0b1628] border-amber-300/60'
+                            : 'bg-[#060916] border-slate-800'
+                        }`}
+                      >
+                        <div className={`text-[11px] font-black truncate ${tier.colorClass}`}>
+                          {tier.label}
+                        </div>
+                        <div className="font-mono-nums text-[10px] text-slate-300 mt-0.5">
+                          ≥ {tier.minPoints} CP
+                        </div>
+                        <div className="font-mono-nums text-[10px] text-emerald-300 mt-0.5">
+                          +{tier.rewardGems} Ngọc · +{tier.rewardShards} Mảnh
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Season Milestones (Idempotent Cosmetic Claims) */}

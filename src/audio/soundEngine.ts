@@ -2310,6 +2310,30 @@ class SoundEngine {
       osc.stop(t + 0.45);
     });
   }
+
+  /**
+   * Pillar 2 World-Class Game Feel: Escalating celestial harmonic lift on Combo Style Rank promotion (B -> A -> S -> SS -> SSS).
+   */
+  public playComboRankUp(pitchBoost = 1.0): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const scale = Math.max(0.85, Math.min(1.55, pitchBoost));
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx === 3 ? 'sine' : 'triangle';
+      const t = now + idx * 0.028;
+      osc.frequency.setValueAtTime(freq * scale, t);
+      g.gain.setValueAtTime(0.055, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.26);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();

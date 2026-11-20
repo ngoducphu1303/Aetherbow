@@ -1086,6 +1086,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 : 'Đã tắt'}
             </div>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onUpdateSettings({
+                adaptiveResolutionGuard: settings.adaptiveResolutionGuard === false,
+              });
+            }}
+            className={`col-span-2 p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+              settings.adaptiveResolutionGuard !== false
+                ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
+                : 'bg-[#080d1e] border-slate-700 text-slate-400'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-black">Bảo Vệ Độ Phân Giải Thích Ứng (AAA 60 FPS)</span>
+              <span className="text-[11px] font-bold shrink-0">
+                {settings.adaptiveResolutionGuard !== false ? 'Đang bật' : 'Đã tắt'}
+              </span>
+            </div>
+            <div className="text-[10px] mt-0.5 text-slate-300/90">
+              Tự động tinh chỉnh tỷ lệ pixel GPU khi FPS xuống dưới 44 để giữ mượt khi đấu Đại Boss.
+            </div>
+          </button>
         </div>
 
         {/* AAA Wave 4: Controls, Haptics & Accessibility */}

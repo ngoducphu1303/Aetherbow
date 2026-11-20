@@ -15,6 +15,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -536,6 +537,315 @@ export async function fetchRealLeaderboard(maxEntries = 60): Promise<CloudLeader
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
   }
+}
+
+/**
+ * Real-time Firestore leaderboard subscription (Pillar 4 Competitive LiveOps).
+ * Strictly queries with `where('isPublic', '==', true)` + bounded `limit` and cleans up on unmount.
+ */
+export function subscribeRealLeaderboard(
+  onData: (rows: CloudLeaderboardRow[]) => void,
+  onError?: (err: Error) => void,
+  maxEntries = 50
+): () => void {
+  const path = 'leaderboard';
+  const q = query(
+    collection(db, 'leaderboard'),
+    where('isPublic', '==', true),
+    limit(Math.max(10, Math.min(60, maxEntries)))
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const rows: CloudLeaderboardRow[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        rows.push({
+          uid: String(data.uid ?? docSnap.id),
+          displayName: String(data.displayName ?? 'Chiến Binh'),
+          heroId: (data.heroId as HeroId) || 'artemis',
+          heroName: String(data.heroName ?? 'Artemis'),
+          title: String(data.title ?? 'Tân Binh Tinh Giới'),
+          equippedAvatarFrameId: (data.equippedAvatarFrameId as AvatarFrameId) || 'default_gold',
+          powerRating: Number(data.powerRating ?? 0),
+          highestChapterCleared: Number(data.highestChapterCleared ?? 0),
+          bestTowerFloor: Number(data.bestTowerFloor ?? 0),
+          arenaRating: Number(data.arenaRating ?? 0),
+          worldBossBestDamage: Number(data.worldBossBestDamage ?? 0),
+          vipLevel: Number(data.vipLevel ?? 0),
+          updatedAtMs: toTimestampMs(data.updatedAt),
+        });
+      });
+      onData(rows);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (wrapped) {
+        onError?.(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+      }
+    }
+  );
+}
+
+export interface CloudBossRaceEntry {
+  uid: string;
+  weekId: string;
+  displayName: string;
+  heroId: HeroId;
+  bestScore: number;
+  bestDamage: number;
+  bestClearTimeMs: number;
+  perfectDodges: number;
+  autoPilotUsed: boolean;
+  updatedAtMs: number;
+}
+
+export async function syncBossRaceEntryToFirestore(params: {
+  user: User;
+  weekId: string;
+  displayName: string;
+  heroId: HeroId;
+  score: number;
+  damage: number;
+  clearTimeMs: number;
+  perfectDodges: number;
+  autoPilotUsed: boolean;
+}): Promise<void> {
+  const uid = params.user.uid;
+  const weekId = safeIdToken(params.weekId, '2026-W01', 24);
+  const entryId = `${weekId}_${uid}`;
+  const path = `boss_race_entries/${entryId}`;
+  const ref = doc(db, 'boss_race_entries', entryId);
+
+  const displayName = sanitizeDisplayName(params.displayName, 'Chiến Binh');
+  const heroId = safeIdToken(params.heroId, 'artemis', 32);
+  const bestScore = clampNum(Math.round(params.score), 0, 100000000);
+  const bestDamage = clampNum(Math.round(params.damage), 0, 10000000000);
+  const bestClearTimeMs = clampInt(params.clearTimeMs, 0, 600000);
+  const perfectDodges = clampInt(params.perfectDodges, 0, 500);
+  const autoPilotUsed = Boolean(params.autoPilotUsed);
+
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const prev = snap.data();
+      const prevBest = Number(prev.bestScore ?? 0);
+      const nextBestScore = Math.max(prevBest, bestScore);
+      const nextBestDamage = Math.max(Number(prev.bestDamage ?? 0), bestDamage);
+      const prevTime = Number(prev.bestClearTimeMs ?? 0);
+      const nextBestTime =
+        bestClearTimeMs > 0 && (prevTime === 0 || bestClearTimeMs < prevTime)
+          ? bestClearTimeMs
+          : prevTime;
+      await updateDoc(ref, {
+        displayName,
+        heroId,
+        bestScore: nextBestScore,
+        bestDamage: nextBestDamage,
+        bestClearTimeMs: nextBestTime,
+        perfectDodges: Math.max(Number(prev.perfectDodges ?? 0), perfectDodges),
+        autoPilotUsed,
+        isPublic: true,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        uid,
+        weekId,
+        displayName,
+        heroId,
+        bestScore,
+        bestDamage,
+        bestClearTimeMs,
+        perfectDodges,
+        autoPilotUsed,
+        isPublic: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export function subscribeWeeklyBossRace(
+  weekIdRaw: string,
+  onData: (rows: CloudBossRaceEntry[]) => void,
+  onError?: (err: Error) => void,
+  maxEntries = 40
+): () => void {
+  const weekId = safeIdToken(weekIdRaw, '2026-W01', 24);
+  const path = 'boss_race_entries';
+  const q = query(
+    collection(db, 'boss_race_entries'),
+    where('isPublic', '==', true),
+    where('weekId', '==', weekId),
+    limit(Math.max(10, Math.min(50, maxEntries)))
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const rows: CloudBossRaceEntry[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        rows.push({
+          uid: String(data.uid ?? ''),
+          weekId: String(data.weekId ?? weekId),
+          displayName: String(data.displayName ?? 'Chiến Binh'),
+          heroId: (data.heroId as HeroId) || 'artemis',
+          bestScore: Number(data.bestScore ?? 0),
+          bestDamage: Number(data.bestDamage ?? 0),
+          bestClearTimeMs: Number(data.bestClearTimeMs ?? 0),
+          perfectDodges: Number(data.perfectDodges ?? 0),
+          autoPilotUsed: Boolean(data.autoPilotUsed),
+          updatedAtMs: toTimestampMs(data.updatedAt),
+        });
+      });
+      rows.sort((a, b) => b.bestScore - a.bestScore);
+      onData(rows);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (wrapped) {
+        onError?.(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+      }
+    }
+  );
+}
+
+export interface CloudSeasonStandingRow {
+  uid: string;
+  seasonId: string;
+  displayName: string;
+  heroId: HeroId;
+  seasonPoints: number;
+  weeksParticipated: number;
+  equalizedArenaWins: number;
+  rankTier: 'bronze' | 'silver' | 'gold' | 'platinum' | 'astral_emperor';
+  claimedMilestones: string[];
+  updatedAtMs: number;
+}
+
+export async function syncSeasonStandingToFirestore(params: {
+  user: User;
+  seasonId: string;
+  displayName: string;
+  heroId: HeroId;
+  seasonPoints: number;
+  weeksParticipated: number;
+  equalizedArenaWins: number;
+  rankTier: 'bronze' | 'silver' | 'gold' | 'platinum' | 'astral_emperor';
+  claimedMilestones?: string[];
+}): Promise<void> {
+  const uid = params.user.uid;
+  const seasonId = safeIdToken(params.seasonId, 'S01', 24);
+  const standingId = `${seasonId}_${uid}`;
+  const path = `season_standings/${standingId}`;
+  const ref = doc(db, 'season_standings', standingId);
+
+  const displayName = sanitizeDisplayName(params.displayName, 'Chiến Binh');
+  const heroId = safeIdToken(params.heroId, 'artemis', 32);
+  const seasonPoints = clampInt(params.seasonPoints, 0, 1000000);
+  const weeksParticipated = clampInt(params.weeksParticipated, 0, 12);
+  const equalizedArenaWins = clampInt(params.equalizedArenaWins, 0, 10000);
+  const safeMilestones = (params.claimedMilestones ?? [])
+    .filter((m): m is string => typeof m === 'string' && m.length > 0)
+    .slice(0, 20);
+
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const prev = snap.data();
+      const nextPoints = Math.max(Number(prev.seasonPoints ?? 0), seasonPoints);
+      const nextWeeks = Math.max(Number(prev.weeksParticipated ?? 0), weeksParticipated);
+      const nextEqWins = Math.max(Number(prev.equalizedArenaWins ?? 0), equalizedArenaWins);
+      await updateDoc(ref, {
+        displayName,
+        heroId,
+        seasonPoints: nextPoints,
+        weeksParticipated: nextWeeks,
+        equalizedArenaWins: nextEqWins,
+        rankTier: params.rankTier,
+        isPublic: true,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        uid,
+        seasonId,
+        displayName,
+        heroId,
+        seasonPoints,
+        weeksParticipated,
+        equalizedArenaWins,
+        rankTier: params.rankTier,
+        claimedMilestones: safeMilestones,
+        isPublic: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export function subscribeSeasonStandings(
+  seasonIdRaw: string,
+  onData: (rows: CloudSeasonStandingRow[]) => void,
+  onError?: (err: Error) => void,
+  maxEntries = 40
+): () => void {
+  const seasonId = safeIdToken(seasonIdRaw, 'S01', 24);
+  const path = 'season_standings';
+  const q = query(
+    collection(db, 'season_standings'),
+    where('isPublic', '==', true),
+    where('seasonId', '==', seasonId),
+    limit(Math.max(10, Math.min(50, maxEntries)))
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const rows: CloudSeasonStandingRow[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        const tier = String(data.rankTier ?? 'bronze');
+        rows.push({
+          uid: String(data.uid ?? ''),
+          seasonId: String(data.seasonId ?? seasonId),
+          displayName: String(data.displayName ?? 'Chiến Binh'),
+          heroId: (data.heroId as HeroId) || 'artemis',
+          seasonPoints: Number(data.seasonPoints ?? 0),
+          weeksParticipated: Number(data.weeksParticipated ?? 0),
+          equalizedArenaWins: Number(data.equalizedArenaWins ?? 0),
+          rankTier:
+            tier === 'silver' ||
+            tier === 'gold' ||
+            tier === 'platinum' ||
+            tier === 'astral_emperor'
+              ? tier
+              : 'bronze',
+          claimedMilestones: Array.isArray(data.claimedMilestones)
+            ? data.claimedMilestones.map(String)
+            : [],
+          updatedAtMs: toTimestampMs(data.updatedAt),
+        });
+      });
+      rows.sort((a, b) => b.seasonPoints - a.seasonPoints);
+      onData(rows);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (wrapped) {
+        onError?.(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+      }
+    }
+  );
 }
 
 /**

@@ -35,6 +35,21 @@ import {
   triggerDeterministicHitStop,
   triggerDeterministicPerfectDodgeBurst,
 } from './aiCombatBrain';
+import {
+  clearCombatInputBuffer,
+  CombatInputBufferState,
+  CombatLightingMood,
+  CombatLightingState,
+  computeEqualizedArenaStats,
+  consumeBufferedAction,
+  createCombatInputBuffer,
+  createCombatLightingState,
+  evaluateAdaptiveResolutionScale,
+  evaluateComboRankPromotion,
+  getWeaponKineticSignature,
+  queueBufferedAction,
+  stepCombatLightingMood,
+} from './aaaFivePillarsDirector';
 import type { WeeklyBossSchedule } from '../data/weeklyBossData';
 import {
   classifyGpuCapability,
@@ -1240,6 +1255,12 @@ export class GameEngine {
   // Input state
   private keys: Record<string, boolean> = {};
   private dashBufferTimer = 0;
+  private combatInputBuffer: CombatInputBufferState = createCombatInputBuffer();
+  private combatLightingState: CombatLightingState = createCombatLightingState();
+  private isArenaEqualized = false;
+  private adaptiveResolutionGuard = true;
+  private adaptiveResScale = 1.0;
+  private adaptiveResCheckTimer = 0;
   private pointerDown = false;
   private pointerId: number | null = null;
   private joyOriginX = 0;
@@ -4145,7 +4166,14 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  public startArenaDuel(stats: ComputedPlayerStats, opponent: ArenaOpponent): void {
+  public startArenaDuel(
+    stats: ComputedPlayerStats,
+    opponent: ArenaOpponent,
+    equalized = false
+  ): void {
+    const eq = equalized ? computeEqualizedArenaStats(stats, opponent) : null;
+    const effectiveStats = eq ? eq.playerStats : stats;
+    const effectiveOpponent = eq ? eq.opponent : opponent;
     this.isTowerMode = false;
     this.towerFloor = 0;
     this.isBossRushMode = false;
@@ -4161,22 +4189,31 @@ export class GameEngine {
     this.isAbyssalMode = false;
     this.isGuildWarMode = false;
     this.isArenaMode = true;
+    this.isArenaEqualized = equalized;
     this.isWeeklyRankedBossMode = false;
     this.isWeeklyBossPracticeMode = false;
     this.arenaTimeLeft = 45;
-    this.arenaOpponentName = opponent.name;
+    this.arenaOpponentName = effectiveOpponent.name;
     this.liveAiDuelId = null;
     this.liveAiPlayerId = null;
     this.liveAiPersonality = 'tactical';
     this.liveAiRivalTag = null;
     this.currentChapter = CHAPTERS[9] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
-    this.baseStats = stats;
+    this.baseStats = effectiveStats;
 
     this.buildArena(this.currentChapter);
-    this.resetRunState(stats);
+    this.resetRunState(effectiveStats);
+    clearCombatInputBuffer(this.combatInputBuffer);
     this.ultCharge = 75;
     this.rebuildCompanions();
-    this.setupStageArena('sanctum', true, `ĐẤU TRƯỜNG 1V1 · ${opponent.name}`);
+    this.setupStageArena(
+      'sanctum',
+      true,
+      equalized
+        ? `ĐẤU TRƯỜNG CÂN BẰNG 1V1 · ${effectiveOpponent.name}`
+        : `ĐẤU TRƯỜNG 1V1 · ${effectiveOpponent.name}`
+    );
+    opponent = effectiveOpponent;
 
     // Place player & spawn AI 3D Rival Hero across the arena
     this.px = 0;
@@ -4584,7 +4621,8 @@ export class GameEngine {
   public startLiveAiDuel(
     stats: ComputedPlayerStats,
     opponent: AiLivePlayerProfile,
-    duelId: string
+    duelId: string,
+    equalized = false
   ): void {
     const oppHero = HERO_MAP[opponent.heroId] ?? HERO_MAP.artemis;
     const powerRatio = Math.max(0.75, Math.min(1.45, opponent.powerRating / Math.max(1200, stats.powerRating)));
@@ -4605,12 +4643,14 @@ export class GameEngine {
       rewardPoints: 24,
       rewardArenaCoins: 85,
     };
-    this.startArenaDuel(stats, syntheticOpponent);
+    this.startArenaDuel(stats, syntheticOpponent, equalized);
     this.liveAiDuelId = duelId;
     this.liveAiPlayerId = opponent.id;
     this.liveAiPersonality = opponent.personality;
     this.liveAiRivalTag = opponent.tag;
-    this.stageBannerText = `THÁCH ĐẤU 1V1 LIVE · ${opponent.displayName.toUpperCase()} [AI LIVE]`;
+    this.stageBannerText = equalized
+      ? `ĐẤU CÂN BẰNG 1V1 · ${opponent.displayName.toUpperCase()} [AI LIVE]`
+      : `THÁCH ĐẤU 1V1 LIVE · ${opponent.displayName.toUpperCase()} [AI LIVE]`;
     this.stageBannerTimer = 2.6;
     this.syncHudImmediate();
   }
@@ -7551,6 +7591,7 @@ export class GameEngine {
     photoLightingPreset?: PhotoLightingPreset;
     keybinds?: Partial<CombatKeybinds>;
     showFpsOverlay?: boolean;
+    adaptiveResolutionGuard?: boolean;
   }): void {
     const quality = this.isSoftwareGl || this.lowEndGpu ? 'low' : cfg.graphicsQuality;
     this.graphicsQuality = quality;
@@ -7569,6 +7610,12 @@ export class GameEngine {
     }
     if (typeof cfg.showFpsOverlay === 'boolean') {
       this.showFpsOverlay = cfg.showFpsOverlay;
+    }
+    if (typeof cfg.adaptiveResolutionGuard === 'boolean') {
+      this.adaptiveResolutionGuard = cfg.adaptiveResolutionGuard;
+      if (!cfg.adaptiveResolutionGuard) {
+        this.adaptiveResScale = 1.0;
+      }
     }
     this.bloomEnabled = cfg.bloomEnabled !== false;
     this.starfallEnabled = !this.lowEndGpu && !this.isSoftwareGl && cfg.starfallWeather !== false;
@@ -7768,6 +7815,7 @@ export class GameEngine {
   public triggerDash(): void {
     if (this.phase === GamePhase.PLAYING) {
       this.dashBufferTimer = 0.14;
+      queueBufferedAction(this.combatInputBuffer, 'dash', performance.now());
     }
   }
 
@@ -7810,7 +7858,11 @@ export class GameEngine {
   }
 
   public triggerHeroActiveSkill(): void {
-    if (this.phase !== GamePhase.PLAYING || this.activeSkillCooldown > 0) return;
+    if (this.phase !== GamePhase.PLAYING) return;
+    if (this.activeSkillCooldown > 0) {
+      queueBufferedAction(this.combatInputBuffer, 'activeSkill', performance.now());
+      return;
+    }
 
     const skillDef = getHeroActiveSkill(this.baseStats.heroId);
     this.activeSkillMaxCooldown = skillDef.cooldownSec;
@@ -7951,7 +8003,11 @@ export class GameEngine {
   }
 
   public triggerHeroUltimate(): void {
-    if (this.phase !== GamePhase.PLAYING || this.ultCharge < 100) return;
+    if (this.phase !== GamePhase.PLAYING) return;
+    if (this.ultCharge < 100) {
+      queueBufferedAction(this.combatInputBuffer, 'ultimate', performance.now());
+      return;
+    }
     this.ultCharge = 0;
 
     const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.artemis;
@@ -8533,6 +8589,57 @@ export class GameEngine {
       this.combatAuraGroup.visible = this.phase === GamePhase.PLAYING;
       this.combatAuraGroup.position.set(this.px, 0.04, this.pz);
       this.combatAuraGroup.rotation.y += dt * 1.35;
+    }
+
+    // Pillar 1: Dynamic Combat Lighting Mood Director (Normal -> Boss Enrage -> Victory Golden Hour)
+    const activeBossForMood = this.enemies.find((e) => e.isBoss && e.hp > 0);
+    const desiredLightingMood: CombatLightingMood =
+      this.phase === GamePhase.VICTORY
+        ? 'victory_golden'
+        : activeBossForMood && (activeBossForMood.bossPhase ?? 1) >= 2
+        ? 'boss_enrage'
+        : 'normal';
+    this.combatLightingState = stepCombatLightingMood(
+      this.combatLightingState,
+      desiredLightingMood,
+      dt
+    );
+    if (this.rimLight && this.arenaGroup.visible) {
+      this.rimLight.intensity = 0.72 * this.combatLightingState.rimIntensity;
+      if (this.combatLightingState.enrageBlend > 0.05) {
+        this.rimLight.color.setHex(0xfb7185);
+      } else if (this.combatLightingState.victoryBlend > 0.05) {
+        this.rimLight.color.setHex(0xfde047);
+      } else {
+        this.rimLight.color.setHex(this.arenaThemeSpec?.rimLightHex ?? 0x93c5fd);
+      }
+    }
+    if (this.hemiLight && this.arenaGroup.visible) {
+      this.hemiLight.intensity = 0.88 * this.combatLightingState.hemiIntensity;
+    }
+
+    // Pillar 1: Adaptive Resolution Guard (hardware WebGL only; software WebGL stays capped)
+    if (this.adaptiveResolutionGuard && !this.isSoftwareGl) {
+      this.adaptiveResCheckTimer += dt;
+      if (this.adaptiveResCheckTimer >= 1.2) {
+        this.adaptiveResCheckTimer = 0;
+        const fpsRead = readFpsMetrics(this.fpsSampler);
+        if (fpsRead.frameTimeMs > 0) {
+          const nextScale = evaluateAdaptiveResolutionScale(
+            fpsRead.frameTimeMs,
+            this.adaptiveResScale,
+            this.adaptiveResolutionGuard
+          );
+          if (Math.abs(nextScale - this.adaptiveResScale) >= 0.04) {
+            this.adaptiveResScale = nextScale;
+            const maxPr =
+              this.graphicsQuality === 'low' ? 1.0 : this.graphicsQuality === 'medium' ? 1.5 : 2.0;
+            this.renderer.setPixelRatio(
+              Math.min(maxPr, (window.devicePixelRatio || 1) * this.adaptiveResScale)
+            );
+          }
+        }
+      }
     }
     if (this.arenaDustMesh && this.arenaDustSeeds.length > 0 && this.arenaGroup.visible) {
       for (let i = 0; i < this.arenaDustSeeds.length; i++) {
@@ -9732,6 +9839,15 @@ export class GameEngine {
           .filter((orb) => orb.active && orb.kind === 'heal')
           .map((orb) => ({ x: orb.x, z: orb.z }));
 
+        const activeBossWp = this.bossWeakPointState?.active && this.bossWeakPointEnemyId !== null
+          ? (() => {
+              const b = this.enemies.find((en) => en.id === this.bossWeakPointEnemyId && en.hp > 0);
+              if (!b || !this.bossWeakPointState) return null;
+              const wp = getBossWeakPointWorldPos(b.x, b.z, this.bossWeakPointState);
+              return { x: wp.x, z: wp.z, active: true };
+            })()
+          : null;
+
         const decision = computeAutoPilotDecision({
           tactic: this.autoPilotTactic,
           simTimeSec: this.simClock.totalSimTime,
@@ -9742,6 +9858,7 @@ export class GameEngine {
           dashReady: this.dashCooldown <= 0.05 && this.dashTimer <= 0,
           activeSkillReady: this.activeSkillCooldown <= 0.05,
           overchargeRatio: this.astralOvercharge,
+          counterShotReady: this.counterShotTimer > 0,
           portalOpen: this.portalOpen,
           portalX: 0,
           portalZ: -ARENA_HALF_D + 1.4,
@@ -9765,6 +9882,14 @@ export class GameEngine {
           obstacles: this.obstacles
             .filter((o) => o.intact !== false)
             .map((o) => ({ x: o.x, z: o.z, radius: o.radius })),
+          bossWeakPoint: activeBossWp,
+          resonanceTraps: this.resonanceTraps.map((t) => ({
+            x: t.x,
+            z: t.z,
+            ready: t.cooldown <= 0,
+            aoeRadius: RESONANCE_TRAP_CONFIGS[t.kind].aoeRadius,
+            label: RESONANCE_TRAP_CONFIGS[t.kind].label,
+          })),
         });
 
         moveX = decision.moveX;
@@ -9782,6 +9907,18 @@ export class GameEngine {
       }
     } else {
       this.autoPilotManualOverride = false;
+    }
+
+    // Pillar 2: Drain 120ms buffered combat inputs for frame-perfect responsiveness
+    const bufferNowMs = performance.now();
+    if (this.activeSkillCooldown <= 0 && consumeBufferedAction(this.combatInputBuffer, 'activeSkill', bufferNowMs)) {
+      this.triggerHeroActiveSkill();
+    }
+    if (this.ultCharge >= 100 && consumeBufferedAction(this.combatInputBuffer, 'ultimate', bufferNowMs)) {
+      this.triggerHeroUltimate();
+    }
+    if (this.dashCooldown <= 0 && this.dashTimer <= 0 && consumeBufferedAction(this.combatInputBuffer, 'dash', bufferNowMs)) {
+      this.dashBufferTimer = Math.max(this.dashBufferTimer, 0.14);
     }
 
     const inputLen = Math.hypot(moveX, moveZ);
@@ -10315,18 +10452,24 @@ export class GameEngine {
     this.astralOvercharge = enhancement.nextAstralOvercharge;
 
     if (isCounterShot) {
+      const weaponSig = getWeaponKineticSignature(this.baseStats.weaponArchetype);
       this.counterShotsCount += 1;
       soundEngine.playCounterShotRelease();
       triggerHapticPulse('crit', this.hapticsEnabled);
-      this.spawnShockwave(this.px, this.pz, 0xfde047, 2.2, 0.26);
-      this.spawnParticles(this.px, 1.05, this.pz, 0xfde047, 14);
-      this.emitFloatingNumber(this.px, 2.1, this.pz, 0, true, false, undefined, 'PHẢN TIỄN!');
+      triggerDeterministicHitStop(this.kinestheticsClock, weaponSig.hitstopTicks);
+      this.shakeIntensity = Math.max(this.shakeIntensity, weaponSig.recoilKick * 1.35);
+      this.spawnShockwave(this.px, this.pz, 0x22d3ee, 2.7, 0.28);
+      this.spawnShockwave(this.px, this.pz, weaponSig.impactHex, 2.0, 0.24);
+      this.spawnParticles(this.px, 1.05, this.pz, weaponSig.impactHex, weaponSig.sparkCount + 8);
+      this.emitFloatingNumber(this.px, 2.15, this.pz, 0, true, false, undefined, 'PHẢN TIỄN TINH QUANG!');
       this.triggerCompanionSynergyStrike();
     } else if (isOvercharge) {
+      const weaponSig = getWeaponKineticSignature(this.baseStats.weaponArchetype);
       soundEngine.playOverchargeRelease(computeSpatialPan(this.px, ARENA_HALF_W));
       triggerHapticPulse('crit', this.hapticsEnabled);
+      this.shakeIntensity = Math.max(this.shakeIntensity, weaponSig.recoilKick);
       this.spawnShockwave(this.px, this.pz, 0x38bdf8, 1.85, 0.22);
-      this.spawnParticles(this.px, 1.05, this.pz, 0xfde047, 10);
+      this.spawnParticles(this.px, 1.05, this.pz, weaponSig.impactHex, weaponSig.sparkCount + 3);
       this.heroSquashY = Math.min(this.heroSquashY, 0.9);
       this.heroLightPulse = Math.max(this.heroLightPulse, 0.34);
     }
@@ -10339,6 +10482,7 @@ export class GameEngine {
     proj.source = dmgSource;
     proj.coopAllyIndex = undefined;
     proj.homing =
+      isCounterShot ||
       this.baseStats.innateHoming ||
       (this.activeSkills.tracking_eye ?? 0) > 0 ||
       this.baseStats.weaponArchetype === 'staff';
@@ -11047,6 +11191,14 @@ export class GameEngine {
         }
       }
 
+      const allyBossWp =
+        this.bossWeakPointState?.active && target?.isBoss
+          ? (() => {
+              const wp = getBossWeakPointWorldPos(target.x, target.z, this.bossWeakPointState!);
+              return { x: wp.x, z: wp.z, active: true };
+            })()
+          : null;
+
       const steerDecision = computeAiCompanionDecision({
         role,
         slotIndex: idx,
@@ -11074,11 +11226,13 @@ export class GameEngine {
         obstacles: this.obstacles
           .filter((o) => o.intact !== false)
           .map((o) => ({ x: o.x, z: o.z, radius: o.radius })),
+        bossWeakPoint: allyBossWp,
+        bossEnraged: Boolean(target?.isBoss && (target.bossPhase ?? 1) >= 2),
       });
 
-      if (steerDecision.evading && (!ally.calloutTimer || ally.calloutTimer <= 0)) {
-        ally.calloutText = 'Né vùng Boss!';
-        ally.calloutTimer = 1.4;
+      if ((steerDecision.evading || steerDecision.tacticalHint) && (!ally.calloutTimer || ally.calloutTimer <= 0)) {
+        ally.calloutText = steerDecision.tacticalHint ?? 'Né vùng Boss!';
+        ally.calloutTimer = 1.6;
       }
 
       const allySpeed = roleCfg.moveSpeed;
@@ -11660,6 +11814,9 @@ export class GameEngine {
             rivalZ: e.z,
             playerX: this.px,
             playerZ: this.pz,
+            playerVx: this.pvx,
+            playerVz: this.pvz,
+            playerStandingStill: Math.hypot(this.pvx, this.pvz) < 0.25,
             rivalHpRatio: e.hp / Math.max(1, e.maxHp),
             arenaHalfW: ARENA_HALF_W,
             arenaHalfD: ARENA_HALF_D,
@@ -11672,14 +11829,19 @@ export class GameEngine {
           e.vx = rivalDecision.moveX * e.speed * 1.15 * dashBoost * slowMult;
           e.vz = rivalDecision.moveZ * e.speed * 1.15 * dashBoost * slowMult;
           if (e.attackTimer <= 0 && (rivalDecision.wantFire || !rivalDecision.evadingArrow)) {
+            const leadDx = rivalDecision.aimTargetX - e.x;
+            const leadDz = rivalDecision.aimTargetZ - e.z;
+            const leadLen = Math.hypot(leadDx, leadDz) || 1;
+            const leadDirX = leadDx / leadLen;
+            const leadDirZ = leadDz / leadLen;
             const roll = this.combatRng();
-            const baseYaw = Math.atan2(dirX, dirZ);
+            const baseYaw = Math.atan2(leadDirX, leadDirZ);
             if (roll < 0.45) {
               e.telegraphType = 'shot';
               e.telegraphDuration = 0.4;
               e.telegraphTimer = 0.4;
-              e.aimX = dirX;
-              e.aimZ = dirZ;
+              e.aimX = leadDirX;
+              e.aimZ = leadDirZ;
             } else if (roll < 0.78) {
               e.telegraphType = 'lane';
               e.telegraphDuration = 0.54;
@@ -11689,8 +11851,8 @@ export class GameEngine {
               e.telegraphType = 'spiral';
               e.telegraphDuration = 0.48;
               e.telegraphTimer = 0.48;
-              e.aimX = dirX;
-              e.aimZ = dirZ;
+              e.aimX = leadDirX;
+              e.aimZ = leadDirZ;
             }
           }
         } else if (e.isBoss) {
@@ -12587,8 +12749,15 @@ export class GameEngine {
     }
 
     this.ultCharge = Math.min(100, this.ultCharge + (e.isBoss ? 5.5 : 4.2));
+    const prevCombo = this.comboCount;
     this.comboCount += 1;
     this.comboTimer = this.comboWindow;
+    const rankPromo = evaluateComboRankPromotion(prevCombo, this.comboCount);
+    if (rankPromo.promoted && coopAllyIndex === undefined) {
+      soundEngine.playComboRankUp(rankPromo.pitchBoost);
+      this.spawnShockwave(this.px, this.pz, 0xfde047, 2.5, 0.28);
+      this.heroLightPulse = Math.max(this.heroLightPulse, 0.42);
+    }
     if (this.comboCount > this.maxRunCombo) {
       this.maxRunCombo = this.comboCount;
       if (this.comboCount === 10 || this.comboCount === 20 || this.comboCount === 35 || this.comboCount === 50 || this.comboCount % 25 === 0) {
@@ -15557,6 +15726,8 @@ export class GameEngine {
           : undefined,
       bossStaggerBroken: Boolean(boss && boss.stunTimer && boss.stunTimer > 0),
       liveAiRivalTag: this.isArenaMode ? this.liveAiRivalTag : null,
+      isArenaEqualized: this.isArenaMode ? this.isArenaEqualized : undefined,
+      combatLightingMood: this.combatLightingState.mood,
       perfDrawCalls: this.showFpsOverlay ? this.renderer.info.render.calls : undefined,
       perfSimHz: this.showFpsOverlay ? 60 : undefined,
       isTrainingMode: this.isTrainingMode || undefined,

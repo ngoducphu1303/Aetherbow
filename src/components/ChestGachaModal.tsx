@@ -1,11 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { Layers, Sparkles } from 'lucide-react';
+import { History, Layers, ShieldCheck, Sparkles, Store } from 'lucide-react';
 import tarotCardBack from '../assets/images/arcane_tarot_frame_1794971375666.jpg';
 import royalChestArt from '../assets/images/royal_zodiac_chest_1794971375438.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { GEAR_TEMPLATES, RARITY_META, RARITY_ORDER, getGearStats } from '../data/gearData';
 import { RUNES_CATALOG } from '../data/runesData';
-import { GearInstance, Rarity, RuneInstance } from '../types/game';
+import {
+  ASTRAL_SHARD_EXCHANGE_CATALOG,
+  computeTransparentPitySummary,
+  normalizeFairProgression,
+} from '../engine/aaaFivePillarsDirector';
+import {
+  FairProgressionState,
+  GearInstance,
+  PityState,
+  Rarity,
+  RuneInstance,
+} from '../types/game';
 import { ChestSvg, GearSlotSvg, RARITY_FRAME_CLASS } from './GameIcons';
 
 export interface GachaRevealState {
@@ -18,6 +29,9 @@ export interface GachaRevealState {
 interface ChestGachaModalProps {
   reveal: GachaRevealState;
   canEquipRune: boolean;
+  pity?: PityState;
+  fairProgression?: FairProgressionState;
+  onExchangeAstralShard?: (itemId: string) => void;
   onClose: () => void;
   onEquipGear: (uid: string) => void;
   onEquipRune: (uid: string) => void;
@@ -36,6 +50,9 @@ const RARITY_GLOW_BG: Record<Rarity, string> = {
 export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
   reveal,
   canEquipRune,
+  pity,
+  fairProgression,
+  onExchangeAstralShard,
   onClose,
   onEquipGear,
   onEquipRune,
@@ -46,6 +63,10 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
   const [flippedIndices, setFlippedIndices] = useState<Set<number>>(new Set());
   const [chestImgFailed, setChestImgFailed] = useState(false);
   const [cardBackFailed, setCardBackFailed] = useState(false);
+  const [fairDrawer, setFairDrawer] = useState<'none' | 'rates' | 'exchange'>('none');
+
+  const pitySummary = computeTransparentPitySummary(pity, reveal.chestVariant);
+  const fairState = normalizeFairProgression(fairProgression);
 
   const isBatch = reveal.count === 10;
   const itemsCount = reveal.gears?.length ?? reveal.runes?.length ?? 0;
@@ -711,6 +732,174 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
             >
               Xác Nhận &amp; Đóng
             </button>
+          </div>
+        )}
+
+        {/* Pillar 3: Transparent Pity Ledger + 30-Pull History + Astral Shard Exchange */}
+        {stage === 'revealed' && (
+          <div className="relative z-10 mt-3 pt-3 border-t border-amber-400/20 text-left space-y-2.5 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono-nums">
+                <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>Pity Sử Thi {pitySummary.epicPityCurrent}/{pitySummary.epicPityMax}</span>
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="font-bold text-amber-300">
+                  S-Tier {pitySummary.sTierPityCurrent}/{pitySummary.sTierPityMax}
+                </span>
+                {pitySummary.softPityActive && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span className="font-black text-rose-300">
+                      Soft Pity +{pitySummary.effectiveSTierRatePct}%
+                    </span>
+                  </>
+                )}
+                <span className="text-slate-600">·</span>
+                <span className="font-bold text-cyan-300">
+                  Tinh Mảnh: {fairState.astralShards}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.02);
+                    setFairDrawer((prev) => (prev === 'rates' ? 'none' : 'rates'));
+                  }}
+                  className={`px-2.5 py-1 rounded-lg border text-[10px] font-black flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                    fairDrawer === 'rates'
+                      ? 'bg-sky-500/20 border-sky-400/60 text-sky-200'
+                      : 'bg-[#070b1a] border-slate-700 text-slate-300 hover:border-sky-400/50'
+                  }`}
+                >
+                  <History className="w-3 h-3 shrink-0" />
+                  <span>Tỷ Lệ &amp; Lịch Sử</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playUiClick(1.05);
+                    setFairDrawer((prev) => (prev === 'exchange' ? 'none' : 'exchange'));
+                  }}
+                  className={`px-2.5 py-1 rounded-lg border text-[10px] font-black flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                    fairDrawer === 'exchange'
+                      ? 'bg-amber-400/20 border-amber-300 text-amber-200'
+                      : 'bg-[#070b1a] border-slate-700 text-amber-200 hover:border-amber-300/70'
+                  }`}
+                >
+                  <Store className="w-3 h-3 shrink-0" />
+                  <span>Đổi Mảnh [S]</span>
+                </button>
+              </div>
+            </div>
+
+            {fairDrawer === 'rates' && (
+              <div className="rounded-xl bg-[#060916] border border-sky-400/30 p-3 space-y-2.5 max-h-52 overflow-y-auto a2-scroll">
+                <div className="flex items-center justify-between text-[11px] font-black text-sky-200">
+                  <span>Bảng Tỷ Lệ Minh Bạch &amp; Bảo Hiểm Soft Pity</span>
+                  <span className="font-mono-nums text-amber-300">
+                    S-Tier hiện tại: {pitySummary.effectiveSTierRatePct}%
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-800/80 text-[11px]">
+                  {pitySummary.rates.map((row) => (
+                    <div key={row.label} className="py-1.5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className={`font-bold ${RARITY_META[row.rarity].textClass}`}>
+                          {row.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1.5">{row.softPityNote}</span>
+                      </div>
+                      <span className="font-mono-nums font-black text-white shrink-0">
+                        {row.baseRatePct.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-2 border-t border-slate-800/80 space-y-1">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Lịch Sử Triệu Hồi Gần Nhất ({fairState.pullHistory.length}/30)
+                  </div>
+                  {fairState.pullHistory.length === 0 ? (
+                    <div className="text-[11px] text-slate-400">
+                      Lịch sử sẽ tự động ghi lại 30 lượt triệu hồi gần nhất của bạn.
+                    </div>
+                  ) : (
+                    <div className="space-y-1 max-h-24 overflow-y-auto a2-scroll">
+                      {fairState.pullHistory.slice(0, 12).map((h) => (
+                        <div
+                          key={h.id}
+                          className="flex items-center justify-between gap-2 text-[10px] font-mono-nums"
+                        >
+                          <span className="truncate text-slate-200">
+                            <span className={RARITY_META[h.rarity].textClass}>
+                              [{RARITY_META[h.rarity].label}]
+                            </span>{' '}
+                            {h.itemName}
+                            {h.isSTier ? ' [S]' : ''}
+                          </span>
+                          <span className="text-slate-400 shrink-0">
+                            +{h.shardsGained} Mảnh
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {fairDrawer === 'exchange' && (
+              <div className="rounded-xl bg-[#060916] border border-amber-400/35 p-3 space-y-2 max-h-56 overflow-y-auto a2-scroll">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-black text-amber-200">
+                    Đài Đổi Mảnh Hoàng Đạo (F2P Chọn Trực Tiếp S-Tier)
+                  </span>
+                  <span className="font-mono-nums font-black text-cyan-300">
+                    Đang có: {fairState.astralShards} Mảnh
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {ASTRAL_SHARD_EXCHANGE_CATALOG.map((item) => {
+                    const affordable = fairState.astralShards >= item.costShards;
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl bg-[#0a1024] border border-slate-800 p-2.5 flex flex-col justify-between gap-2"
+                      >
+                        <div>
+                          <div className={`text-xs font-black ${item.accentClass}`}>
+                            {item.title}
+                          </div>
+                          <div className="text-[10px] text-slate-300 mt-0.5 leading-snug">
+                            {item.subtitle}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!affordable || !onExchangeAstralShard}
+                          onClick={() => {
+                            if (!onExchangeAstralShard) return;
+                            soundEngine.playLevelUp();
+                            onExchangeAstralShard(item.id);
+                          }}
+                          className={`w-full py-1.5 rounded-lg text-[11px] font-black font-mono-nums whitespace-nowrap ${
+                            affordable && onExchangeAstralShard
+                              ? 'a2-yellow-btn cursor-pointer'
+                              : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {affordable ? `Đổi Ngay (${item.costShards} Mảnh)` : `Cần ${item.costShards} Mảnh`}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

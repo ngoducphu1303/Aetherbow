@@ -37,7 +37,14 @@ import {
 import {
   CloudLeaderboardRow,
   fetchRealLeaderboard,
+  subscribeRealLeaderboard,
 } from '../services/playerCloudService';
+import {
+  getActiveCompetitiveSeason,
+  getNextSeasonRankTier,
+  normalizeFairProgression,
+  resolveSeasonRankTier,
+} from '../engine/aaaFivePillarsDirector';
 import { liveAiSocket } from '../services/liveAiSocket';
 import {
   buildMergedHonorLeaderboard,
@@ -132,8 +139,25 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   }, []);
 
   useEffect(() => {
-    void loadCloudBoard();
-  }, [loadCloudBoard]);
+    setCloudLoading(true);
+    const unsub = subscribeRealLeaderboard(
+      (data) => {
+        setCloudPlayers(data);
+        setCloudError(null);
+        setCloudLoading(false);
+      },
+      (err) => {
+        setCloudError(
+          err.message.includes('Quota exceeded')
+            ? 'Hạn mức đọc dữ liệu hôm nay đã đạt giới hạn.'
+            : 'Không thể đồng bộ trực tuyến bảng xếp hạng đám mây lúc này.'
+        );
+        setCloudLoading(false);
+      },
+      60
+    );
+    return unsub;
+  }, []);
 
   useEffect(() => {
     liveAiSocket.ensureConnected(playerDisplayName || heroName);
@@ -262,6 +286,73 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
         {/* SECTION 1: LEADERBOARDS & WORLD BOSS MILESTONES */}
         {section === 'rankings' && (
           <div className="space-y-4">
+            {/* Pillar 4: Competitive Season Hub Strip (Live Countdown & Rank Tier) */}
+            {(() => {
+              const activeSeason = getActiveCompetitiveSeason();
+              const fairProg = normalizeFairProgression(save.fairProgression);
+              const seasonPointsEst = Math.max(
+                0,
+                Math.round(
+                  (save.arena?.wins ?? 0) * 18 +
+                    fairProg.equalizedArenaWins * 24 +
+                    (save.bestTowerFloor ?? 0) * 6 +
+                    (save.highestChapterCleared ?? 0) * 20
+                )
+              );
+              const currentTier = resolveSeasonRankTier(seasonPointsEst);
+              const nextTier = getNextSeasonRankTier(seasonPointsEst);
+              const remDays = Math.floor(activeSeason.remainingMs / 86400000);
+              const remHours = Math.floor((activeSeason.remainingMs % 86400000) / 3600000);
+              const progressPct = nextTier
+                ? Math.min(
+                    100,
+                    Math.round(
+                      ((seasonPointsEst - currentTier.minPoints) /
+                        Math.max(1, nextTier.minPoints - currentTier.minPoints)) *
+                        100
+                    )
+                  )
+                : 100;
+
+              return (
+                <div className="rounded-2xl border border-cyan-400/35 bg-[#071120]/95 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-black">
+                      <span className="uppercase tracking-wider text-cyan-300">
+                        {activeSeason.title} · Tuần {activeSeason.weekIndexInSeason}/4
+                      </span>
+                      <span className="text-slate-600">·</span>
+                      <span className="font-mono-nums text-emerald-300">
+                        Còn {remDays} ngày {remHours}g
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className={`font-display font-black ${currentTier.colorClass}`}>
+                        Hạng {currentTier.label}
+                      </span>
+                      <span className="font-mono-nums text-slate-300">
+                        ({seasonPointsEst.toLocaleString('vi-VN')} Điểm Mùa · Thắng Công Bằng: {fairProg.equalizedArenaWins})
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full max-w-sm rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-cyan-400 to-amber-300 transition-all duration-300"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-left sm:text-right shrink-0">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      {nextTier ? `Mốc Kế: ${nextTier.label}` : 'Đã Đạt Bậc Tối Thượng'}
+                    </div>
+                    <div className="font-mono-nums text-xs font-black text-amber-300 mt-0.5">
+                      Thưởng Mùa: +{currentTier.rewardGems} Ngọc · +{currentTier.rewardShards} Mảnh [S]
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Wave 13: Đài Vinh Danh Đỉnh Cao 3D · Top 3 Liên Server & Soi Đội Hình */}
             <div className="rounded-2xl border border-amber-300/45 bg-gradient-to-b from-[#171234] via-[#0b1026] to-[#070b18] p-4">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
