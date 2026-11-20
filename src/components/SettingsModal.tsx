@@ -1054,9 +1054,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 : 'bg-[#080d1e] border-slate-700 text-slate-400'
             }`}
           >
-            <div className="text-xs font-black">Mưa Sao Băng 3D</div>
+            <div className="text-xs font-black">Thời Tiết 3D Động</div>
             <div className="text-[11px] mt-0.5 font-semibold">
-              {settings.starfallWeather !== false ? 'Đang bật' : 'Đã tắt'}
+              {settings.starfallWeather !== false ? 'Đang bật (4 khí hậu)' : 'Đã tắt'}
             </div>
           </button>
 

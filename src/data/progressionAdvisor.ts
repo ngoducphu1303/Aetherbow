@@ -12,6 +12,7 @@ import {
 import {
   craftEarlyTargetGear,
   createInitialSaveData,
+  findBestUpgradeTransferSource,
   GEAR_TEMPLATES,
   getUpgradeCost,
   RARITY_META,
@@ -521,3 +522,145 @@ export function computeDropProtectionSnapshot(save: SaveData): DropProtectionSna
     primaryActionLabel,
   };
 }
+
+export interface DropRateCodexRow {
+  rarityLabel: string;
+  colorClass: string;
+  baseChestPct: string;
+  mythicChestPct: string;
+  guaranteeRule: string;
+}
+
+export interface DropRateCodexSnapshot {
+  rows: DropRateCodexRow[];
+  protection: DropProtectionSnapshot;
+  salvageConversionNote: string;
+  targetSlotCraftCosts: {
+    rareShards: number;
+    epicShards: number;
+    sTierBlueprints: number;
+  };
+  excessSalvageableCount: number;
+}
+
+export function computeDropRateCodex(save: SaveData): DropRateCodexSnapshot {
+  const protection = computeDropProtectionSnapshot(save);
+  const equippedSet = new Set(Object.values(save.equipped).filter(Boolean) as string[]);
+  const excessSalvageableCount = save.inventory.filter((item) => {
+    if (equippedSet.has(item.uid)) return false;
+    const tpl = GEAR_TEMPLATES[item.templateId];
+    if (tpl?.isSTier) return false;
+    return item.rarity === Rarity.COMMON || item.rarity === Rarity.RARE;
+  }).length;
+
+  return {
+    rows: [
+      {
+        rarityLabel: 'Thường (Common)',
+        colorClass: 'text-slate-300',
+        baseChestPct: '62.0%',
+        mythicChestPct: '0.0%',
+        guaranteeRule: 'Phân giải hoàn +2 Mảnh Hiếm · +10 Bụi Tinh Tú',
+      },
+      {
+        rarityLabel: 'Hiếm (Rare)',
+        colorClass: 'text-sky-300',
+        baseChestPct: '28.0%',
+        mythicChestPct: '58.0%',
+        guaranteeRule: 'Bảo đảm 100% trong 1–3 lượt Ch.1 hoặc Rèn Đúng Ô (12 Mảnh)',
+      },
+      {
+        rarityLabel: 'Sử Thi (Epic)',
+        colorClass: 'text-purple-300',
+        baseChestPct: '8.5%',
+        mythicChestPct: '33.0%',
+        guaranteeRule: `Pity cứng mỗi 10 rương (còn ${protection.mythicEpicRemaining}) · Rèn Đúng Ô (20 Mảnh)`,
+      },
+      {
+        rarityLabel: 'Huyền Thoại / [S]',
+        colorClass: 'text-amber-300',
+        baseChestPct: '1.5%',
+        mythicChestPct: '9.0%',
+        guaranteeRule: `Pity cứng mỗi 50 rương (còn ${protection.mythicLegendRemaining}) · Bản Vẽ [S]`,
+      },
+    ],
+    protection,
+    salvageConversionNote:
+      'Phân Giải An Toàn chỉ tách đồ Thường/Hiếm chưa mặc, tuyệt đối không xóa đồ đang mặc hay bậc Thần Thoại.',
+    targetSlotCraftCosts: {
+      rareShards: EARLY_FORGE_COSTS.rareShards,
+      epicShards: EARLY_FORGE_COSTS.epicShards,
+      sTierBlueprints: EARLY_FORGE_COSTS.sTierBlueprints,
+    },
+    excessSalvageableCount,
+  };
+}
+
+export interface WeeklyFairnessSummary {
+  mythicEpicRemaining: number;
+  mythicLegendRemaining: number;
+  reforgeGoldPityCount: number;
+  reforgeGoldPityMax: number;
+  reforgeGoldPityRemaining: number;
+  rareShards: number;
+  rareShardsTarget: number;
+  epicShards: number;
+  epicShardsTarget: number;
+  sTierBlueprints: number;
+  sTierBlueprintsTarget: number;
+  freeTransferEligibleCount: number;
+  highlightNote: string;
+}
+
+/**
+ * Pure Wave 7 Fair Progression summary surfacing exact Pity counters,
+ * Gold Substat Reforge pity (X/5), Forge Shards, and 100% Free Gear Upgrade Transfer count.
+ */
+export function computeWeeklyFairnessSummary(save: SaveData): WeeklyFairnessSummary {
+  const protection = computeDropProtectionSnapshot(save);
+  const forge = normalizeEarlyForgeProgress(save.earlyForgeProgress);
+  const reforgeGoldPityMax = 5;
+  const reforgeGoldPityCount = Math.max(
+    0,
+    Math.min(reforgeGoldPityMax, save.reforgeGoldPityCount ?? 0)
+  );
+  const reforgeGoldPityRemaining = Math.max(1, reforgeGoldPityMax - reforgeGoldPityCount);
+
+  let freeTransferEligibleCount = 0;
+  for (const item of save.inventory) {
+    if (findBestUpgradeTransferSource(save, item.uid)) {
+      freeTransferEligibleCount += 1;
+    }
+  }
+
+  const sTierBlueprints = forge.sTierBlueprints;
+  const sTierBlueprintsTarget = EARLY_FORGE_COSTS.sTierBlueprints;
+
+  let highlightNote: string;
+  if (freeTransferEligibleCount > 0) {
+    highlightNote = `Có ${freeTransferEligibleCount} trang bị kế thừa cấp Cường Hóa 100% Miễn Phí (0 Vàng · Không mất đồ).`;
+  } else if (reforgeGoldPityCount >= 4) {
+    highlightNote = 'Lần Tẩy Luyện tiếp theo bảo đảm 100% nổ Dòng Vàng (5/5 Pity)!';
+  } else if (protection.epicCraftReady || protection.rareCraftReady) {
+    highlightNote = 'Đủ mảnh rèn bù xui — có thể chế tạo đúng ô trang bị mục tiêu ngay!';
+  } else {
+    highlightNote = `Bảo hiểm công bằng: còn ${protection.mythicEpicRemaining} lượt Sử Thi · ${reforgeGoldPityCount}/${reforgeGoldPityMax} Pity Dòng Vàng.`;
+  }
+
+  return {
+    mythicEpicRemaining: protection.mythicEpicRemaining,
+    mythicLegendRemaining: protection.mythicLegendRemaining,
+    reforgeGoldPityCount,
+    reforgeGoldPityMax,
+    reforgeGoldPityRemaining,
+    rareShards: forge.rareShards,
+    rareShardsTarget: EARLY_FORGE_COSTS.rareShards,
+    epicShards: forge.epicShards,
+    epicShardsTarget: EARLY_FORGE_COSTS.epicShards,
+    sTierBlueprints,
+    sTierBlueprintsTarget,
+    freeTransferEligibleCount,
+    highlightNote,
+  };
+}
+

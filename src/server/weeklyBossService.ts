@@ -4,11 +4,14 @@ import path from 'path';
 import {
   computeWeeklyBossScore,
   computeWeeklySeasonPointsForRank,
+  computeWeekendBlitzScore,
   getCurrentWeeklyBossSchedule,
+  getCurrentWeekendBlitzSchedule,
   getWeeklyBossSeasonInfo,
   WEEKLY_BOSS_LOANER_STATS,
   WEEKLY_BOSS_MAX_FREE_ATTEMPTS,
 } from '../data/weeklyBossData.ts';
+import type { CombatStyleGrade } from '../types/game.ts';
 import type {
   WeeklyBossClaimReceipt,
   WeeklyBossLeaderboardEntry,
@@ -18,7 +21,19 @@ import type {
   WeeklyBossSeasonEntry,
   WeeklyBossSeasonStateResponse,
   WeeklyBossStateResponse,
+  WeekendBlitzClaimReceipt,
+  WeekendBlitzSchedule,
+  WeekendBlitzStateResponse,
 } from '../data/weeklyBossData.ts';
+
+const VALID_STYLE_GRADES = new Set<CombatStyleGrade>(['B', 'A', 'S', 'SS', 'SSS']);
+
+function sanitizeStyleGrade(raw: unknown): CombatStyleGrade | undefined {
+  if (typeof raw === 'string' && VALID_STYLE_GRADES.has(raw as CombatStyleGrade)) {
+    return raw as CombatStyleGrade;
+  }
+  return undefined;
+}
 
 export interface WeeklyBossAttemptRecord {
   attemptId: string;
@@ -56,9 +71,20 @@ export interface WeeklyBossWeekLedger {
   auditLog?: WeeklyBossAuditEntry[];
 }
 
+export interface WeekendBlitzEventLedger {
+  eventId: string;
+  attempts: Record<string, WeeklyBossAttemptRecord>;
+  attemptsByUser: Record<string, string[]>;
+  leaderboard: Record<string, WeeklyBossLeaderboardEntry>;
+  claims: Record<string, WeekendBlitzClaimReceipt>;
+  idempotencyIndex: Record<string, string>;
+  auditLog?: WeeklyBossAuditEntry[];
+}
+
 export interface WeeklyBossStoreData {
   version: 1;
   weeks: Record<string, WeeklyBossWeekLedger>;
+  weekendEvents?: Record<string, WeekendBlitzEventLedger>;
   seasonClaims?: Record<string, WeeklyBossSeasonClaimReceipt>;
   seasonIdempotencyIndex?: Record<string, string>;
 }
@@ -73,6 +99,10 @@ export interface SubmitAttemptPayload {
   remainingHpPct: number;
   perfectDodges: number;
   autoPilotUsed?: boolean;
+  splitsMs?: Array<number | null>;
+  counterHitsLanded?: number;
+  guardBreaksLanded?: number;
+  peakStyleGrade?: CombatStyleGrade;
 }
 
 export interface SubmitAttemptResult {
@@ -245,8 +275,11 @@ export class WeeklyBossService {
         bestDamage: lbEntry?.bestDamage ?? 0,
         claimedTierIds: receipts.map((r) => r.tierId),
         receipts,
+        bestSplitsMs: lbEntry?.bestSplitsMs ?? null,
+        lastVerifiedAttemptId: lbEntry?.lastVerifiedAttemptId ?? null,
       },
       leaderboard,
+      top1SplitsMs: leaderboard[0]?.bestSplitsMs ?? null,
     };
   }
 
@@ -479,6 +512,20 @@ export class WeeklyBossService {
         payload.cleared &&
         (prev.bestClearTimeMs === null || clearTimeMs < prev.bestClearTimeMs));
 
+    const sanitizedSplits =
+      Array.isArray(payload.splitsMs) && payload.splitsMs.length === 4
+        ? payload.splitsMs.map((v) =>
+            v !== null && Number.isFinite(Number(v)) && Number(v) > 0
+              ? Math.min(clearTimeMs, Math.round(Number(v)))
+              : payload.cleared
+              ? clearTimeMs
+              : 0
+          )
+        : null;
+    const counterHitsLanded = Math.max(0, Math.min(50, Math.floor(Number(payload.counterHitsLanded ?? 0))));
+    const guardBreaksLanded = Math.max(0, Math.min(20, Math.floor(Number(payload.guardBreaksLanded ?? 0))));
+    const peakStyleGrade = sanitizeStyleGrade(payload.peakStyleGrade) ?? prev?.peakStyleGrade;
+
     ledger.leaderboard[user.uid] = isBetter
       ? {
           uid: user.uid,
@@ -489,6 +536,14 @@ export class WeeklyBossService {
           cleared: Boolean(payload.cleared || prev?.cleared),
           attemptsUsed,
           updatedAt: nowMs,
+          bestSplitsMs:
+            sanitizedSplits && sanitizedSplits.every((v) => v > 0)
+              ? sanitizedSplits
+              : prev?.bestSplitsMs ?? null,
+          counterHitsLanded,
+          guardBreaksLanded,
+          peakStyleGrade,
+          lastVerifiedAttemptId: attempt.attemptId,
         }
       : {
           ...prev,
@@ -809,6 +864,446 @@ export class WeeklyBossService {
       alreadyClaimed: false,
       receipt,
       claimedSeasonTierIds,
+    };
+  }
+
+  // ============================================================================
+  // WAVE 5 — PILLAR 4: WEEKEND BLITZ COMPETITIVE EVENT (SERVER-AUTHORITATIVE)
+  // ============================================================================
+
+  private ensureWeekendLedger(eventId: string): WeekendBlitzEventLedger {
+    if (!this.store.weekendEvents) {
+      this.store.weekendEvents = {};
+    }
+    let ledger = this.store.weekendEvents[eventId];
+    if (!ledger) {
+      ledger = {
+        eventId,
+        attempts: {},
+        attemptsByUser: {},
+        leaderboard: {},
+        claims: {},
+        idempotencyIndex: {},
+        auditLog: [],
+      };
+      this.store.weekendEvents[eventId] = ledger;
+    }
+    return ledger;
+  }
+
+  private getSortedWeekendLeaderboard(
+    ledger: WeekendBlitzEventLedger
+  ): WeeklyBossLeaderboardEntry[] {
+    return Object.values(ledger.leaderboard)
+      .sort((a, b) => {
+        if (b.bestScore !== a.bestScore) return b.bestScore - a.bestScore;
+        if (a.bestClearTimeMs !== null && b.bestClearTimeMs !== null) {
+          return a.bestClearTimeMs - b.bestClearTimeMs;
+        }
+        return a.updatedAt - b.updatedAt;
+      })
+      .slice(0, 50);
+  }
+
+  public getWeekendBlitzState(
+    user: { uid: string; displayName: string } | null,
+    nowMs = Date.now()
+  ): WeekendBlitzStateResponse {
+    const schedule = getCurrentWeekendBlitzSchedule(nowMs);
+    const ledger = this.ensureWeekendLedger(schedule.eventId);
+    const leaderboard = this.getSortedWeekendLeaderboard(ledger);
+
+    if (!user) {
+      return {
+        schedule,
+        serverNow: nowMs,
+        authenticated: false,
+        player: null,
+        leaderboard,
+      };
+    }
+
+    const userAttemptIds = ledger.attemptsByUser[user.uid] ?? [];
+    const activeAttempt = userAttemptIds
+      .map((id) => ledger.attempts[id])
+      .find((a) => a && a.status === 'active');
+    const lbEntry = ledger.leaderboard[user.uid];
+    const receipts = Object.values(ledger.claims)
+      .filter((c) => c.uid === user.uid && c.eventId === schedule.eventId)
+      .sort((a, b) => a.claimedAt - b.claimedAt);
+
+    return {
+      schedule,
+      serverNow: nowMs,
+      authenticated: true,
+      player: {
+        uid: user.uid,
+        displayName: user.displayName,
+        attemptsUsed: userAttemptIds.length,
+        attemptsRemaining: Math.max(0, schedule.maxFreeAttempts - userAttemptIds.length),
+        activeAttemptId: activeAttempt?.attemptId ?? null,
+        bestScore: lbEntry?.bestScore ?? 0,
+        bestClearTimeMs: lbEntry?.bestClearTimeMs ?? null,
+        bestDamage: lbEntry?.bestDamage ?? 0,
+        claimedTierIds: receipts.map((r) => r.tierId),
+        receipts,
+        bestSplitsMs: lbEntry?.bestSplitsMs ?? null,
+        lastVerifiedAttemptId: lbEntry?.lastVerifiedAttemptId ?? null,
+      },
+      leaderboard,
+      top1SplitsMs: leaderboard[0]?.bestSplitsMs ?? null,
+    };
+  }
+
+  public startWeekendBlitzAttempt(
+    user: { uid: string; displayName: string },
+    nowMs = Date.now()
+  ): {
+    schedule: WeekendBlitzSchedule;
+    attempt: WeeklyBossAttemptRecord;
+    attemptsUsed: number;
+    attemptsRemaining: number;
+  } {
+    const schedule = getCurrentWeekendBlitzSchedule(nowMs);
+    const ledger = this.ensureWeekendLedger(schedule.eventId);
+    const existingIds = ledger.attemptsByUser[user.uid] ?? [];
+
+    const openAttempt = existingIds
+      .map((id) => ledger.attempts[id])
+      .find((a) => a && a.status === 'active');
+    if (openAttempt) {
+      return {
+        schedule,
+        attempt: openAttempt,
+        attemptsUsed: existingIds.length,
+        attemptsRemaining: Math.max(0, schedule.maxFreeAttempts - existingIds.length),
+      };
+    }
+
+    if (existingIds.length >= schedule.maxFreeAttempts) {
+      throw new WeeklyBossServiceError(
+        403,
+        'WEEKEND_ATTEMPTS_EXHAUSTED',
+        `Bạn đã dùng hết ${schedule.maxFreeAttempts} lượt Sự Kiện Boss Cuối Tuần này.`
+      );
+    }
+
+    const attemptId = `wba_${crypto.randomBytes(8).toString('hex')}`;
+    const attempt: WeeklyBossAttemptRecord = {
+      attemptId,
+      weekId: schedule.eventId,
+      uid: user.uid,
+      displayName: user.displayName,
+      seed: schedule.seed,
+      startedAt: nowMs,
+      status: 'active',
+    };
+    ledger.attempts[attemptId] = attempt;
+    ledger.attemptsByUser[user.uid] = [...existingIds, attemptId];
+    this.persistStore();
+
+    return {
+      schedule,
+      attempt,
+      attemptsUsed: ledger.attemptsByUser[user.uid].length,
+      attemptsRemaining: Math.max(
+        0,
+        schedule.maxFreeAttempts - ledger.attemptsByUser[user.uid].length
+      ),
+    };
+  }
+
+  public submitWeekendBlitzAttempt(
+    user: { uid: string; displayName: string },
+    payload: SubmitAttemptPayload,
+    nowMs = Date.now()
+  ): SubmitAttemptResult & { seasonCpBonusAwarded: number } {
+    const schedule = getCurrentWeekendBlitzSchedule(nowMs);
+    const ledger = this.ensureWeekendLedger(schedule.eventId);
+    const attempt = ledger.attempts[payload.attemptId];
+
+    if (!attempt || attempt.uid !== user.uid) {
+      throw new WeeklyBossServiceError(
+        404,
+        'ATTEMPT_NOT_FOUND',
+        'Không tìm thấy phiên Boss Cuối Tuần hợp lệ.'
+      );
+    }
+    if (attempt.status !== 'active') {
+      throw new WeeklyBossServiceError(
+        409,
+        'ATTEMPT_ALREADY_FINALIZED',
+        'Lượt Boss Cuối Tuần này đã được ghi nhận trước đó.'
+      );
+    }
+    if (payload.autoPilotUsed) {
+      attempt.status = 'rejected';
+      attempt.rejectReason = 'Chế độ AI Tự Chơi không tính hạng Boss Cuối Tuần';
+      this.persistStore();
+      throw new WeeklyBossServiceError(
+        422,
+        'AUTOPILOT_NOT_RANKED',
+        'Boss Cuối Tuần chỉ tính hạng cho lượt điều khiển thủ công.'
+      );
+    }
+    if (payload.seed !== schedule.seed) {
+      attempt.status = 'rejected';
+      attempt.rejectReason = 'Seed sự kiện cuối tuần không khớp';
+      this.persistStore();
+      throw new WeeklyBossServiceError(
+        422,
+        'SEED_MISMATCH',
+        'Mã seed sự kiện cuối tuần không khớp máy chủ.'
+      );
+    }
+
+    const damageDealt = Number(payload.damageDealt);
+    const simTicks = Math.floor(Number(payload.simTicks));
+    const clearTimeMs = Math.floor(Number(payload.clearTimeMs));
+    const remainingHpPct = Number(payload.remainingHpPct);
+    const perfectDodges = Math.floor(Number(payload.perfectDodges));
+    const simSeconds = simTicks / 60;
+    const clearSeconds = clearTimeMs / 1000;
+    const wallElapsedSec = Math.max(0, (nowMs - attempt.startedAt) / 1000);
+
+    if (
+      !Number.isFinite(damageDealt) ||
+      damageDealt < 0 ||
+      simTicks < 60 ||
+      clearTimeMs < 1000 ||
+      clearSeconds > schedule.timeLimitSec + 2 ||
+      Math.abs(simSeconds - clearSeconds) > 1.5 ||
+      clearSeconds > wallElapsedSec + 2.5
+    ) {
+      attempt.status = 'rejected';
+      attempt.rejectReason = 'Thông số nhịp cố định hoặc thời gian thực không hợp lệ';
+      this.persistStore();
+      throw new WeeklyBossServiceError(
+        422,
+        'INVALID_SIM_TELEMETRY',
+        'Dữ liệu lượt Boss Cuối Tuần không hợp lệ.'
+      );
+    }
+
+    const maxPlausibleDps = computeMaxPlausibleDps();
+    const observedDps = damageDealt / Math.max(1, simSeconds);
+    if (observedDps > maxPlausibleDps || (payload.cleared && clearSeconds < 6)) {
+      attempt.status = 'rejected';
+      attempt.rejectReason = `DPS (${Math.round(observedDps)}) vượt ngưỡng chuẩn hóa`;
+      this.persistStore();
+      throw new WeeklyBossServiceError(
+        422,
+        'LOANER_DPS_EXCEEDED',
+        'Sát thương vượt giới hạn bộ Sử Thi chuẩn hóa.'
+      );
+    }
+
+    if (payload.cleared && damageDealt < schedule.bossMaxHp * 0.98) {
+      attempt.status = 'rejected';
+      attempt.rejectReason = 'Sát thương chưa đủ hạ Boss Cuối Tuần';
+      this.persistStore();
+      throw new WeeklyBossServiceError(
+        422,
+        'INCOMPLETE_CLEAR_DAMAGE',
+        'Sát thương chưa đủ hạ Boss Cuối Tuần.'
+      );
+    }
+
+    const verifiedScore = computeWeekendBlitzScore({
+      cleared: Boolean(payload.cleared),
+      damageDealt: Math.min(schedule.bossMaxHp, Math.round(damageDealt)),
+      bossMaxHp: schedule.bossMaxHp,
+      clearTimeMs,
+      timeLimitSec: schedule.timeLimitSec,
+      remainingHpPct: Math.max(0, Math.min(1, remainingHpPct)),
+      perfectDodges: Math.max(0, Math.min(20, perfectDodges)),
+      modifier: schedule.modifier,
+    });
+
+    attempt.status = 'submitted';
+    attempt.submittedAt = nowMs;
+    attempt.verifiedScore = verifiedScore;
+    attempt.damageDealt = Math.min(schedule.bossMaxHp, Math.round(damageDealt));
+    attempt.clearTimeMs = payload.cleared ? clearTimeMs : null;
+    attempt.simTicks = simTicks;
+    attempt.cleared = Boolean(payload.cleared);
+
+    const prev = ledger.leaderboard[user.uid];
+    const attemptsUsed = (ledger.attemptsByUser[user.uid] ?? []).length;
+    const isBetter =
+      !prev ||
+      verifiedScore > prev.bestScore ||
+      (verifiedScore === prev.bestScore &&
+        payload.cleared &&
+        (prev.bestClearTimeMs === null || clearTimeMs < prev.bestClearTimeMs));
+
+    const sanitizedSplits =
+      Array.isArray(payload.splitsMs) && payload.splitsMs.length === 4
+        ? payload.splitsMs.map((v) =>
+            v !== null && Number.isFinite(Number(v)) && Number(v) > 0
+              ? Math.min(clearTimeMs, Math.round(Number(v)))
+              : payload.cleared
+              ? clearTimeMs
+              : 0
+          )
+        : null;
+    const counterHitsLanded = Math.max(0, Math.min(50, Math.floor(Number(payload.counterHitsLanded ?? 0))));
+    const guardBreaksLanded = Math.max(0, Math.min(20, Math.floor(Number(payload.guardBreaksLanded ?? 0))));
+    const peakStyleGrade = sanitizeStyleGrade(payload.peakStyleGrade) ?? prev?.peakStyleGrade;
+
+    ledger.leaderboard[user.uid] = isBetter
+      ? {
+          uid: user.uid,
+          displayName: user.displayName,
+          bestScore: verifiedScore,
+          bestClearTimeMs: payload.cleared ? clearTimeMs : prev?.bestClearTimeMs ?? null,
+          bestDamage: Math.max(prev?.bestDamage ?? 0, attempt.damageDealt),
+          cleared: Boolean(payload.cleared || prev?.cleared),
+          attemptsUsed,
+          updatedAt: nowMs,
+          bestSplitsMs:
+            sanitizedSplits && sanitizedSplits.every((v) => v > 0)
+              ? sanitizedSplits
+              : prev?.bestSplitsMs ?? null,
+          counterHitsLanded,
+          guardBreaksLanded,
+          peakStyleGrade,
+          lastVerifiedAttemptId: attempt.attemptId,
+        }
+      : {
+          ...prev,
+          displayName: user.displayName,
+          attemptsUsed,
+        };
+
+    // Award verified Weekend Blitz score into Weekly Season eligibility if user hasn't scored yet this week
+    const seasonCpBonusAwarded = payload.cleared ? schedule.seasonCpBonusOnClear : 10;
+    const weekLedger = this.ensureWeekLedger(schedule.weekId);
+    const existingWeekEntry = weekLedger.leaderboard[user.uid];
+    if (!existingWeekEntry || verifiedScore > existingWeekEntry.bestScore) {
+      weekLedger.leaderboard[user.uid] = {
+        uid: user.uid,
+        displayName: user.displayName,
+        bestScore: Math.max(existingWeekEntry?.bestScore ?? 0, verifiedScore),
+        bestClearTimeMs: payload.cleared
+          ? clearTimeMs
+          : existingWeekEntry?.bestClearTimeMs ?? null,
+        bestDamage: Math.max(existingWeekEntry?.bestDamage ?? 0, attempt.damageDealt),
+        cleared: Boolean(payload.cleared || existingWeekEntry?.cleared),
+        attemptsUsed: existingWeekEntry?.attemptsUsed ?? 1,
+        updatedAt: nowMs,
+      };
+    }
+
+    this.persistStore();
+    const sorted = this.getSortedWeekendLeaderboard(ledger);
+    const rank = Math.max(1, sorted.findIndex((e) => e.uid === user.uid) + 1);
+
+    this.onLeaderboardUpdated?.({
+      weekId: schedule.eventId,
+      uid: user.uid,
+      displayName: user.displayName,
+      rank,
+      verifiedScore,
+      cleared: Boolean(payload.cleared),
+      leaderboard: sorted,
+    });
+
+    return {
+      ok: true,
+      attempt,
+      verifiedScore,
+      rank,
+      attemptsRemaining: Math.max(0, schedule.maxFreeAttempts - attemptsUsed),
+      leaderboard: sorted,
+      seasonCpBonusAwarded,
+    };
+  }
+
+  public claimWeekendBlitzReward(
+    user: { uid: string; displayName: string },
+    tierId: string,
+    idempotencyKey?: string,
+    nowMs = Date.now()
+  ): {
+    ok: true;
+    alreadyClaimed: boolean;
+    receipt: WeekendBlitzClaimReceipt;
+    claimedTierIds: string[];
+  } {
+    const schedule = getCurrentWeekendBlitzSchedule(nowMs);
+    const ledger = this.ensureWeekendLedger(schedule.eventId);
+    const tier = schedule.rewardTiers.find((t) => t.tierId === tierId);
+
+    if (!tier) {
+      throw new WeeklyBossServiceError(
+        404,
+        'WEEKEND_TIER_NOT_FOUND',
+        'Không tìm thấy mốc thưởng Boss Cuối Tuần.'
+      );
+    }
+
+    const claimKey = `${schedule.eventId}:${user.uid}:${tierId}`;
+    const idemLookupKey = idempotencyKey
+      ? `${schedule.eventId}:${user.uid}:${idempotencyKey}`
+      : null;
+
+    const existingByIdem =
+      idemLookupKey && ledger.idempotencyIndex[idemLookupKey]
+        ? ledger.claims[ledger.idempotencyIndex[idemLookupKey]]
+        : undefined;
+    const existingClaim = existingByIdem ?? ledger.claims[claimKey];
+
+    if (existingClaim) {
+      const claimedTierIds = Object.values(ledger.claims)
+        .filter((c) => c.uid === user.uid && c.eventId === schedule.eventId)
+        .map((c) => c.tierId);
+      return {
+        ok: true,
+        alreadyClaimed: true,
+        receipt: existingClaim,
+        claimedTierIds,
+      };
+    }
+
+    const bestScore = ledger.leaderboard[user.uid]?.bestScore ?? 0;
+    if (bestScore < tier.minScore) {
+      throw new WeeklyBossServiceError(
+        403,
+        'SCORE_THRESHOLD_NOT_MET',
+        `Cần tối thiểu ${tier.minScore.toLocaleString('vi-VN')} điểm xác minh Boss Cuối Tuần (hiện có ${bestScore.toLocaleString('vi-VN')}).`
+      );
+    }
+
+    const receipt: WeekendBlitzClaimReceipt = {
+      claimKey,
+      eventId: schedule.eventId,
+      uid: user.uid,
+      tierId: tier.tierId,
+      claimedAt: nowMs,
+      rewardGems: tier.rewardGems,
+      rewardEpicShards: tier.rewardEpicShards,
+      rewardTitleLabel: tier.rewardTitleLabel,
+      rewardFrameId: tier.rewardFrameId,
+      rewardFrameName: tier.rewardFrameName,
+      idempotencyKey,
+    };
+
+    ledger.claims[claimKey] = receipt;
+    if (idemLookupKey) {
+      ledger.idempotencyIndex[idemLookupKey] = claimKey;
+    }
+    this.persistStore();
+
+    const claimedTierIds = Object.values(ledger.claims)
+      .filter((c) => c.uid === user.uid && c.eventId === schedule.eventId)
+      .map((c) => c.tierId);
+
+    return {
+      ok: true,
+      alreadyClaimed: false,
+      receipt,
+      claimedTierIds,
     };
   }
 }

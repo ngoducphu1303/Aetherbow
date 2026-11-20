@@ -150,9 +150,12 @@ export function getEffectiveSubstats(item: GearInstance): GearSubstat[] {
   return item.substats ?? [];
 }
 
+export const REFORGE_GOLD_PITY_THRESHOLD = 5;
+
 export function reforgeItemSubstats(
   item: GearInstance,
-  lockedIds: string[]
+  lockedIds: string[],
+  options?: { guaranteeGoldTier?: boolean }
 ): GearSubstat[] {
   const maxLines = getMaxSubstatsForRarity(item.rarity);
   if (maxLines === 0) return [];
@@ -161,12 +164,103 @@ export function reforgeItemSubstats(
   const kept = existing.filter((s) => lockedSet.has(s.id)).slice(0, Math.max(0, maxLines - 1));
   const usedKinds = new Set<SubstatKind>(kept.map((k) => k.kind));
   const next: GearSubstat[] = [...kept];
+  let rolledAnyGold = false;
+
   while (next.length < maxLines) {
     const rolled = rollSingleSubstat(item.rarity, usedKinds);
     usedKinds.add(rolled.kind);
+    if (rolled.tier === 'gold') rolledAnyGold = true;
     next.push(rolled);
   }
+
+  // Wave 6 Pillar 3 (Fair Progression): Gold-tier pity guarantees at least one top-tier line
+  // among the newly rolled (unlocked) slots on the 5th consecutive non-gold reforge.
+  if (options?.guaranteeGoldTier && !rolledAnyGold && next.length > kept.length) {
+    const upgradeIdx = kept.length;
+    const target = next[upgradeIdx];
+    const def = SUBSTAT_DEFS[target.kind];
+    if (def) {
+      const goldVal = Math.round((def.minPct + (def.maxPct - def.minPct) * 0.9) * 100) / 100;
+      next[upgradeIdx] = {
+        ...target,
+        value: goldVal,
+        tier: 'gold',
+      };
+    }
+  }
+
   return next;
+}
+
+export function reforgeItemSubstatsWithPity(
+  item: GearInstance,
+  lockedIds: string[],
+  currentPityCount = 0
+): {
+  substats: GearSubstat[];
+  nextPityCount: number;
+  triggeredGoldPity: boolean;
+  rolledGoldLine: boolean;
+} {
+  const safePity = Math.max(0, Math.floor(currentPityCount));
+  const shouldGuarantee = safePity + 1 >= REFORGE_GOLD_PITY_THRESHOLD;
+  const substats = reforgeItemSubstats(item, lockedIds, {
+    guaranteeGoldTier: shouldGuarantee,
+  });
+  const lockedSet = new Set(lockedIds);
+  const rolledGoldLine = substats.some((s) => !lockedSet.has(s.id) && s.tier === 'gold');
+  return {
+    substats,
+    nextPityCount: rolledGoldLine ? 0 : Math.min(REFORGE_GOLD_PITY_THRESHOLD - 1, safePity + 1),
+    triggeredGoldPity: shouldGuarantee,
+    rolledGoldLine,
+  };
+}
+
+export function scoreGearForGoal(
+  item: GearInstance,
+  goal: 'campaign' | 'boss' | 'arena',
+  isSTier: boolean,
+  baseAtk: number,
+  baseHp: number,
+  baseCrit: number,
+  baseDr: number
+): number {
+  const rarityMult =
+    item.rarity === Rarity.MYTHIC
+      ? 3.45
+      : item.rarity === Rarity.LEGENDARY
+      ? 2.6
+      : item.rarity === Rarity.EPIC
+      ? 1.9
+      : item.rarity === Rarity.RARE
+      ? 1.38
+      : 1.0;
+  const lvScale = 1 + Math.max(0, item.level - 1) * 0.085;
+  const awakenMult = getAwakeningMultiplier(item.awakeningLevel ?? 0);
+  const effectiveAtk = baseAtk * rarityMult * lvScale * awakenMult;
+  const effectiveHp = baseHp * rarityMult * lvScale * awakenMult;
+  const substats = getEffectiveSubstats(item);
+
+  let subScore = 0;
+  for (const s of substats) {
+    if (s.kind === 'boss_dmg_pct') subScore += s.value * (goal === 'boss' ? 1400 : 420);
+    else if (s.kind === 'crit_dmg_pct' || s.kind === 'crit_pct')
+      subScore += s.value * (goal === 'boss' ? 1150 : 880);
+    else if (s.kind === 'atk_pct') subScore += s.value * 950;
+    else if (s.kind === 'hp_pct' || s.kind === 'dr_pct')
+      subScore += s.value * (goal === 'arena' ? 980 : 520);
+    else subScore += s.value * 480;
+  }
+
+  const sBonus = isSTier ? 140 : 0;
+  if (goal === 'boss') {
+    return effectiveAtk * 3.6 + effectiveHp * 0.24 + baseCrit * 900 + subScore + sBonus;
+  }
+  if (goal === 'arena') {
+    return effectiveAtk * 2.5 + effectiveHp * 0.62 + baseDr * 950 + baseCrit * 650 + subScore + sBonus;
+  }
+  return effectiveAtk * 3.0 + effectiveHp * 0.4 + baseCrit * 760 + baseDr * 520 + subScore + sBonus;
 }
 
 export function getReforgeCost(

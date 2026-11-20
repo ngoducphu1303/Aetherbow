@@ -37,6 +37,7 @@ import {
   normalizeDestinyWheel,
   normalizeGuild,
   reforgeItemSubstats,
+  scoreGearForGoal,
 } from './wave4Data';
 import {
   createSocketGem,
@@ -1617,7 +1618,8 @@ export function rollChestGearBatch(
 export function craftEarlyTargetGear(
   save: SaveData,
   tier: 'rare' | 'epic' | 's_tier',
-  rng?: () => number
+  rng?: () => number,
+  targetSlot?: GearSlot
 ): { ok: boolean; reason?: string; item?: GearInstance; nextSave?: SaveData } {
   const fp = normalizeEarlyForgeProgress(save.earlyForgeProgress);
   const ch = Math.max(0, Math.floor(save.highestChapterCleared ?? 0));
@@ -1636,11 +1638,12 @@ export function craftEarlyTargetGear(
     const hasRareWeapon = save.inventory.some(
       (g) => GEAR_TEMPLATES[g.templateId]?.slot === GearSlot.WEAPON && RARITY_RANK[g.rarity] >= RARITY_RANK[Rarity.RARE]
     );
+    const chosenSlot = targetSlot ?? (hasRareWeapon ? undefined : GearSlot.WEAPON);
     const item = rollChestGear(true, Rarity.RARE, false, {
       maxRarity: Rarity.RARE,
       allowSTier: false,
       rng,
-      preferredSlot: hasRareWeapon ? undefined : GearSlot.WEAPON,
+      preferredSlot: chosenSlot,
     });
     return {
       ok: true,
@@ -1666,11 +1669,12 @@ export function craftEarlyTargetGear(
     const hasEpicWeapon = save.inventory.some(
       (g) => GEAR_TEMPLATES[g.templateId]?.slot === GearSlot.WEAPON && RARITY_RANK[g.rarity] >= RARITY_RANK[Rarity.EPIC]
     );
+    const chosenSlot = targetSlot ?? (hasEpicWeapon ? undefined : GearSlot.WEAPON);
     const item = rollChestGear(true, Rarity.EPIC, false, {
       maxRarity: Rarity.EPIC,
       allowSTier: false,
       rng,
-      preferredSlot: hasEpicWeapon ? undefined : GearSlot.WEAPON,
+      preferredSlot: chosenSlot,
     });
     return {
       ok: true,
@@ -1696,11 +1700,12 @@ export function craftEarlyTargetGear(
   const hasSWeapon = save.inventory.some(
     (g) => GEAR_TEMPLATES[g.templateId]?.slot === GearSlot.WEAPON && GEAR_TEMPLATES[g.templateId]?.isSTier
   );
+  const chosenSlot = targetSlot ?? (hasSWeapon ? undefined : GearSlot.WEAPON);
   const item = rollChestGear(true, Rarity.EPIC, true, {
     maxRarity: Rarity.LEGENDARY,
     allowSTier: true,
     rng,
-    preferredSlot: hasSWeapon ? undefined : GearSlot.WEAPON,
+    preferredSlot: chosenSlot,
   });
   return {
     ok: true,
@@ -1715,3 +1720,310 @@ export function craftEarlyTargetGear(
     },
   };
 }
+
+export interface ExcessSalvageResult {
+  salvagedCount: number;
+  rareShardsGained: number;
+  epicShardsGained: number;
+  starDustGained: number;
+  goldGained: number;
+  nextSave: SaveData;
+}
+
+/**
+ * Wave 5 Pillar 3 (Fair Progression): Safely converts unequipped surplus Common/Rare
+ * gear directly into Target-Slot Forge Shards + StarDust + Gold.
+ * Strictly protects all equipped items, Epic+, Legendary, and Mythic gear.
+ */
+export function salvageExcessGearToForgeShards(
+  save: SaveData,
+  options?: { includeRare?: boolean }
+): ExcessSalvageResult {
+  const includeRare = options?.includeRare ?? true;
+  const equippedSet = new Set(Object.values(save.equipped).filter(Boolean) as string[]);
+  const kept: GearInstance[] = [];
+  let salvagedCount = 0;
+  let rareShardsGained = 0;
+  let epicShardsGained = 0;
+  let starDustGained = 0;
+  let goldGained = 0;
+
+  for (const item of save.inventory) {
+    const isEquipped = equippedSet.has(item.uid);
+    const tpl = GEAR_TEMPLATES[item.templateId];
+    const isSTier = Boolean(tpl?.isSTier);
+    const canSalvage =
+      !isEquipped &&
+      !isSTier &&
+      (item.rarity === Rarity.COMMON || (includeRare && item.rarity === Rarity.RARE));
+
+    if (!canSalvage) {
+      kept.push(item);
+      continue;
+    }
+
+    salvagedCount += 1;
+    if (item.rarity === Rarity.COMMON) {
+      rareShardsGained += 2;
+      starDustGained += 10;
+      goldGained += 80 + Math.max(0, item.level - 1) * 25;
+    } else {
+      rareShardsGained += 3;
+      epicShardsGained += 1;
+      starDustGained += 25;
+      goldGained += 220 + Math.max(0, item.level - 1) * 45;
+    }
+  }
+
+  if (salvagedCount === 0) {
+    return {
+      salvagedCount: 0,
+      rareShardsGained: 0,
+      epicShardsGained: 0,
+      starDustGained: 0,
+      goldGained: 0,
+      nextSave: save,
+    };
+  }
+
+  const fp = normalizeEarlyForgeProgress(save.earlyForgeProgress);
+  return {
+    salvagedCount,
+    rareShardsGained,
+    epicShardsGained,
+    starDustGained,
+    goldGained,
+    nextSave: {
+      ...save,
+      gold: save.gold + goldGained,
+      starDust: (save.starDust ?? 0) + starDustGained,
+      inventory: kept,
+      earlyForgeProgress: {
+        ...fp,
+        rareShards: fp.rareShards + rareShardsGained,
+        epicShards: fp.epicShards + epicShardsGained,
+      },
+    },
+  };
+}
+
+export interface AutoOptimizeLoadoutResult {
+  goal: 'campaign' | 'boss' | 'arena';
+  changedSlots: GearSlot[];
+  beforePower: number;
+  afterPower: number;
+  powerDelta: number;
+  nextEquipped: Partial<Record<GearSlot, string>>;
+  nextSave: SaveData;
+}
+
+/**
+ * Wave 6 Pillar 3 (Fair Progression): 1-Click Auto-Optimize across all 6 GearSlots
+ * for Campaign, Boss Hunt, or 1v1 Arena without ever modifying or deleting items.
+ */
+export function computeAutoOptimizeEquipment(
+  save: SaveData,
+  goal: 'campaign' | 'boss' | 'arena' = 'campaign'
+): AutoOptimizeLoadoutResult {
+  const beforePower = computePlayerStats(save).powerRating;
+  const nextEquipped: Partial<Record<GearSlot, string>> = { ...save.equipped };
+  const changedSlots: GearSlot[] = [];
+
+  for (const slot of Object.values(GearSlot)) {
+    const candidates = save.inventory.filter((item) => GEAR_TEMPLATES[item.templateId]?.slot === slot);
+    if (candidates.length === 0) continue;
+
+    let bestItem = candidates[0];
+    let bestScore = -1;
+    for (const item of candidates) {
+      const tpl = GEAR_TEMPLATES[item.templateId];
+      if (!tpl) continue;
+      const sc = scoreGearForGoal(
+        item,
+        goal,
+        Boolean(tpl.isSTier),
+        tpl.baseAtk,
+        tpl.baseHp,
+        tpl.baseCritChance,
+        tpl.baseDamageReduction
+      );
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestItem = item;
+      }
+    }
+
+    if (bestItem && nextEquipped[slot] !== bestItem.uid) {
+      nextEquipped[slot] = bestItem.uid;
+      changedSlots.push(slot);
+    }
+  }
+
+  const nextSave: SaveData =
+    changedSlots.length > 0 ? { ...save, equipped: nextEquipped } : save;
+  const afterPower = computePlayerStats(nextSave).powerRating;
+
+  return {
+    goal,
+    changedSlots,
+    beforePower,
+    afterPower,
+    powerDelta: afterPower - beforePower,
+    nextEquipped,
+    nextSave,
+  };
+}
+
+export function previewPresetPowerDelta(
+  save: SaveData,
+  presetEquipped: Partial<Record<GearSlot, string>>,
+  presetHeroId: SaveData['selectedHeroId'],
+  presetRunes: string[]
+): { presetPower: number; currentPower: number; delta: number } {
+  const currentPower = computePlayerStats(save).powerRating;
+  const validInventory = new Set(save.inventory.map((g) => g.uid));
+  const sanitizedEquipped: Partial<Record<GearSlot, string>> = { ...save.equipped };
+  for (const [slot, uid] of Object.entries(presetEquipped) as Array<[GearSlot, string | undefined]>) {
+    if (uid && validInventory.has(uid)) {
+      sanitizedEquipped[slot] = uid;
+    }
+  }
+  const validRunes = new Set(save.runeInventory.map((r) => r.uid));
+  const sanitizedRunes = presetRunes.filter((uid) => validRunes.has(uid));
+  const simSave: SaveData = {
+    ...save,
+    selectedHeroId: save.unlockedHeroes.includes(presetHeroId) ? presetHeroId : save.selectedHeroId,
+    equipped: sanitizedEquipped,
+    equippedRunes: sanitizedRunes.length > 0 ? sanitizedRunes : save.equippedRunes,
+  };
+  const presetPower = computePlayerStats(simSave).powerRating;
+  return {
+    presetPower,
+    currentPower,
+    delta: presetPower - currentPower,
+  };
+}
+
+/**
+ * Wave 7 Pillar 3 (Fair Progression): Finds the highest-level same-slot item that can freely
+ * donate its enhancement level to `targetUid` (0 Gold, 0 Gem loss, neither item destroyed).
+ */
+export function findBestUpgradeTransferSource(
+  save: SaveData,
+  targetUid: string
+): GearInstance | null {
+  const target = save.inventory.find((g) => g.uid === targetUid);
+  if (!target) return null;
+  const targetTpl = GEAR_TEMPLATES[target.templateId];
+  if (!targetTpl) return null;
+
+  let best: GearInstance | null = null;
+  for (const item of save.inventory) {
+    if (item.uid === target.uid) continue;
+    const tpl = GEAR_TEMPLATES[item.templateId];
+    if (!tpl || tpl.slot !== targetTpl.slot) continue;
+    if (item.level <= target.level) continue;
+    if (!best || item.level > best.level) {
+      best = item;
+    }
+  }
+  return best;
+}
+
+/**
+ * Wave 7 Pillar 3 (Fair Progression): 100% Free Gear Upgrade Level Swap/Transfer.
+ * Transfers the higher enhancement level from `sourceUid` to `targetUid` (swapping levels)
+ * with zero currency loss and zero item destruction.
+ */
+export function transferGearUpgradeLevel(
+  save: SaveData,
+  sourceUid: string,
+  targetUid: string
+): {
+  ok: boolean;
+  reason?: string;
+  sourceUid: string;
+  targetUid: string;
+  previousTargetLevel: number;
+  nextTargetLevel: number;
+  powerDelta: number;
+  nextSave: SaveData;
+} {
+  if (sourceUid === targetUid) {
+    return {
+      ok: false,
+      reason: 'Không thể kế thừa lên chính trang bị hiện tại.',
+      sourceUid,
+      targetUid,
+      previousTargetLevel: 1,
+      nextTargetLevel: 1,
+      powerDelta: 0,
+      nextSave: save,
+    };
+  }
+  const sourceIdx = save.inventory.findIndex((g) => g.uid === sourceUid);
+  const targetIdx = save.inventory.findIndex((g) => g.uid === targetUid);
+  if (sourceIdx === -1 || targetIdx === -1) {
+    return {
+      ok: false,
+      reason: 'Không tìm thấy trang bị nguồn hoặc đích.',
+      sourceUid,
+      targetUid,
+      previousTargetLevel: 1,
+      nextTargetLevel: 1,
+      powerDelta: 0,
+      nextSave: save,
+    };
+  }
+
+  const source = save.inventory[sourceIdx];
+  const target = save.inventory[targetIdx];
+  const srcTpl = GEAR_TEMPLATES[source.templateId];
+  const tgtTpl = GEAR_TEMPLATES[target.templateId];
+  if (!srcTpl || !tgtTpl || srcTpl.slot !== tgtTpl.slot) {
+    return {
+      ok: false,
+      reason: 'Chỉ có thể kế thừa cường hóa giữa 2 trang bị cùng ô.',
+      sourceUid,
+      targetUid,
+      previousTargetLevel: target.level,
+      nextTargetLevel: target.level,
+      powerDelta: 0,
+      nextSave: save,
+    };
+  }
+
+  if (source.level <= target.level) {
+    return {
+      ok: false,
+      reason: 'Trang bị nguồn cần có cấp cường hóa cao hơn trang bị đích.',
+      sourceUid,
+      targetUid,
+      previousTargetLevel: target.level,
+      nextTargetLevel: target.level,
+      powerDelta: 0,
+      nextSave: save,
+    };
+  }
+
+  const beforePower = computePlayerStats(save).powerRating;
+  const nextInventory = [...save.inventory];
+  nextInventory[sourceIdx] = { ...source, level: target.level };
+  nextInventory[targetIdx] = { ...target, level: source.level };
+  const nextSave: SaveData = {
+    ...save,
+    inventory: nextInventory,
+  };
+  const afterPower = computePlayerStats(nextSave).powerRating;
+
+  return {
+    ok: true,
+    sourceUid,
+    targetUid,
+    previousTargetLevel: target.level,
+    nextTargetLevel: source.level,
+    powerDelta: afterPower - beforePower,
+    nextSave,
+  };
+}
+

@@ -4,10 +4,12 @@ import {
   Bot,
   CheckCircle2,
   Cpu,
+  Crown,
   Radio,
   Shield,
   Sparkles,
   Swords,
+  Trophy,
   Users,
   Wifi,
   WifiOff,
@@ -15,6 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { AI_COMPANION_ROLES, AI_TACTIC_CONFIGS } from '../engine/aiCombatBrain';
+import { COOP_AI_ROLE_LIST, computeCoopRoleSynergy } from '../engine/wave6CombatSystems';
 import { HERO_MAP } from '../data/heroesData';
 import { liveAiSocket, LiveSocketStatus } from '../services/liveAiSocket';
 import type {
@@ -23,13 +26,27 @@ import type {
   AiLiveHubSnapshot,
   AiLivePlayerProfile,
   AiPreferencesState,
+  AiRivalRecord,
+  CoopAiRole,
+  HeroId,
 } from '../types/game';
 
 interface LiveAiHubModalProps {
   playerDisplayName: string;
+  playerHeroId?: HeroId;
+  playerPowerRating?: number;
   aiPreferences: AiPreferencesState;
+  coopPartyRoles?: [CoopAiRole, CoopAiRole];
   onUpdateAiPreferences: (next: AiPreferencesState) => void;
+  onUpdateCoopPartyRoles?: (roles: [CoopAiRole, CoopAiRole]) => void;
   onChallengeAiPlayer: (opponent: AiLivePlayerProfile, duelId: string) => void;
+  onStartMiniCupMatch?: (opponent: AiLivePlayerProfile, cupMatchId: string) => void;
+  onClaimMiniCupPrize?: (reward: { rewardGold: number; rewardGems: number; titleLabel: string }) => void;
+  onClaimServerBountyReward?: (reward: {
+    rewardGold: number;
+    rewardGems: number;
+    rewardStarDust: number;
+  }) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
   onClose: () => void;
 }
@@ -57,9 +74,16 @@ function formatAgo(ts: number, nowMs: number): string {
 
 export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   playerDisplayName,
+  playerHeroId = 'artemis',
+  playerPowerRating = 18500,
   aiPreferences,
+  coopPartyRoles = ['dps', 'guardian'],
   onUpdateAiPreferences,
+  onUpdateCoopPartyRoles,
   onChallengeAiPlayer,
+  onStartMiniCupMatch,
+  onClaimMiniCupPrize,
+  onClaimServerBountyReward,
   onInspectAiPlayer,
   onClose,
 }) => {
@@ -69,13 +93,22 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   const [socketStatus, setSocketStatus] = useState<LiveSocketStatus>(() =>
     liveAiSocket.getStatus()
   );
-  const [activeTab, setActiveTab] = useState<'players' | 'feed' | 'autopilot'>('players');
+  const [activeTab, setActiveTab] = useState<
+    'players' | 'bounty' | 'cup' | 'rivals' | 'feed' | 'autopilot'
+  >('players');
   const [filterMode, setFilterMode] = useState<'all' | 'ready_duel'>('all');
   const [challengingId, setChallengingId] = useState<string | null>(null);
+  const [claimingBountyId, setClaimingBountyId] = useState<string | null>(null);
+  const [claimingCupPrize, setClaimingCupPrize] = useState(false);
+  const [claimingServerBounty, setClaimingServerBounty] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const coopSynergy = useMemo(() => computeCoopRoleSynergy(coopPartyRoles), [coopPartyRoles]);
 
   useEffect(() => {
     liveAiSocket.ensureConnected(playerDisplayName);
+    liveAiSocket.syncMiniCup();
+    liveAiSocket.syncServerBounty(playerDisplayName);
     const unsubSnap = liveAiSocket.subscribeSnapshot((next, status) => {
       setSnapshot(next);
       setSocketStatus(status);
@@ -84,11 +117,40 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
       setChallengingId(null);
       onChallengeAiPlayer(accepted.opponent, accepted.duelId);
     });
+    const unsubBounty = liveAiSocket.subscribeRivalBountyAck((ack) => {
+      setClaimingBountyId(null);
+      setFeedback(ack.message);
+    });
+    const unsubCupPrize = liveAiSocket.subscribeMiniCupPrizeAck((ack) => {
+      setClaimingCupPrize(false);
+      setFeedback(ack.message);
+      if (ack.ok && !ack.alreadyClaimed) {
+        onClaimMiniCupPrize?.({
+          rewardGold: ack.goldReward,
+          rewardGems: ack.gemsReward,
+          titleLabel: ack.titleLabel ?? 'Cúp 1v1 Tinh Giới',
+        });
+      }
+    });
+    const unsubServerBounty = liveAiSocket.subscribeServerBountyClaimAck((ack) => {
+      setClaimingServerBounty(false);
+      setFeedback(ack.message);
+      if (ack.ok && !ack.alreadyClaimed) {
+        onClaimServerBountyReward?.({
+          rewardGold: ack.goldReward,
+          rewardGems: ack.gemsReward,
+          rewardStarDust: ack.starDustReward,
+        });
+      }
+    });
     return () => {
       unsubSnap();
       unsubDuel();
+      unsubBounty();
+      unsubCupPrize();
+      unsubServerBounty();
     };
-  }, [playerDisplayName, onChallengeAiPlayer]);
+  }, [playerDisplayName, onChallengeAiPlayer, onClaimMiniCupPrize, onClaimServerBountyReward]);
 
   const filteredPlayers = useMemo(() => {
     const list = snapshot?.players ?? [];
@@ -196,40 +258,78 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 bg-[#060a18] border border-sky-400/20 rounded-xl p-1">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-1 bg-[#060a18] border border-sky-400/20 rounded-xl p-1">
             <button
               type="button"
               onClick={() => setActiveTab('players')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
                 activeTab === 'players'
                   ? 'bg-sky-400/20 text-sky-200'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              Đối Thủ AI Live ({snapshot?.players.length ?? 0})
+              AI Live ({snapshot?.players.length ?? 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('bounty');
+                liveAiSocket.syncServerBounty(playerDisplayName);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 ${
+                activeTab === 'bounty'
+                  ? 'bg-emerald-500/25 text-emerald-200'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span>Truy Nã Server</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('cup')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 ${
+                activeTab === 'cup'
+                  ? 'bg-amber-400/25 text-amber-200'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <Trophy className="w-3.5 h-3.5 shrink-0" />
+              <span>Cúp 1v1 (8)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('rivals')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                activeTab === 'rivals'
+                  ? 'bg-rose-500/25 text-amber-200'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Truyền Kiếp ({snapshot?.rivals?.length ?? 0})
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('feed')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
                 activeTab === 'feed'
                   ? 'bg-sky-400/20 text-sky-200'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              Bảng Tin Thế Giới ({snapshot?.activities.length ?? 0})
+              Bảng Tin ({snapshot?.activities.length ?? 0})
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('autopilot')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
                 activeTab === 'autopilot'
                   ? 'bg-amber-400/20 text-amber-200'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              AI Tự Chơi &amp; Đồng Đội 3D
+              AI &amp; Đồng Đội 3D
             </button>
           </div>
 
@@ -343,6 +443,435 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
             })}
           </div>
         )}
+
+        {/* TAB 1A: Live 8-Player 1v1 Mini-Cup Knockout Bracket (Wave 6 Pillar 5) */}
+        {activeTab === 'cup' && (
+          <div className="space-y-4">
+            {(() => {
+              const cup = snapshot?.miniCup ?? null;
+              if (!cup) {
+                return (
+                  <div className="rounded-2xl border border-amber-400/35 bg-[#080d22] p-6 text-center space-y-3">
+                    <Crown className="w-8 h-8 text-amber-300 mx-auto" />
+                    <h3 className="font-display text-lg font-black text-white">
+                      Cúp Loại Trực Tiếp 1v1 (Bạn + 7 Cao Thủ [AI Live])
+                    </h3>
+                    <p className="text-xs text-slate-300 max-w-lg mx-auto">
+                      Thi đấu 3 vòng liên tiếp (Tứ Kết → Bán Kết → Chung Kết) theo nhánh đấu trực tuyến trên máy chủ. Các cặp AI ở nhánh khác tự giao đấu song song sau mỗi vòng!
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        liveAiSocket.startMiniCup({
+                          playerName: playerDisplayName,
+                          heroId: playerHeroId,
+                          powerRating: playerPowerRating,
+                          duelRating: aiPreferences.liveDuelRating,
+                        });
+                        setFeedback('Đang bốc thăm nhánh đấu Cúp 1v1 8 Người…');
+                      }}
+                      className="a2-yellow-btn px-5 py-2.5 rounded-xl text-xs font-black inline-flex items-center gap-2 cursor-pointer"
+                    >
+                      <Trophy className="w-4 h-4" />
+                      <span>Khởi Tạo Giải Đấu Cúp 1v1 Ngay</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              const activeMatch = cup.matches.find(
+                (m) =>
+                  m.status === 'ready' &&
+                  m.round === cup.currentRound &&
+                  (m.fighterA?.isHuman || m.fighterB?.isHuman)
+              );
+              const nextOpponentSlot = activeMatch
+                ? activeMatch.fighterA?.isHuman
+                  ? activeMatch.fighterB
+                  : activeMatch.fighterA
+                : null;
+              const nextOpponentProfile = nextOpponentSlot
+                ? snapshot?.players.find((p) => p.id === nextOpponentSlot.id) ?? null
+                : null;
+
+              const roundMeta = [
+                { round: 1 as const, title: 'Tứ Kết (8 → 4)' },
+                { round: 2 as const, title: 'Bán Kết (4 → 2)' },
+                { round: 3 as const, title: 'Chung Kết (Vô Địch)' },
+              ];
+
+              return (
+                <>
+                  <div className="rounded-2xl border border-amber-400/35 bg-[#080d22] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                        <Trophy className="w-3.5 h-3.5" />
+                        <span>{cup.rewardTitleLabel ?? 'Cúp Loại Trực Tiếp 1v1 (8 Người)'}</span>
+                      </div>
+                      <div className="text-sm font-black text-white">
+                        {cup.status === 'champion'
+                          ? 'CHÚC MỪNG! Bạn đã đăng quang Quán Quân Cúp 1v1!'
+                          : cup.status === 'eliminated'
+                          ? 'Hành trình dừng bước — bạn vẫn nhận thưởng tham dự!'
+                          : nextOpponentSlot
+                          ? `Vòng ${cup.currentRound}/3 · Đối thủ tiếp theo: ${nextOpponentSlot.displayName} [AI Live]`
+                          : `Đang ở Vòng ${cup.currentRound}/3`}
+                      </div>
+                      <div className="text-[11px] font-mono-nums tabular-nums text-emerald-300">
+                        Quỹ thưởng giải đấu: +{cup.rewardGems} Ngọc · +{cup.rewardGold.toLocaleString('vi-VN')} Vàng
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {cup.status === 'active' && activeMatch && nextOpponentProfile && onStartMiniCupMatch && (
+                        <button
+                          type="button"
+                          onClick={() => onStartMiniCupMatch(nextOpponentProfile, activeMatch.matchId)}
+                          className="a2-yellow-btn px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                        >
+                          <Swords className="w-4 h-4" />
+                          <span>Vào Trận Vòng {cup.currentRound}</span>
+                        </button>
+                      )}
+
+                      {(cup.status === 'champion' || cup.status === 'eliminated') && !cup.prizeClaimed && (
+                        <button
+                          type="button"
+                          disabled={claimingCupPrize}
+                          onClick={() => {
+                            setClaimingCupPrize(true);
+                            liveAiSocket.claimMiniCupPrize(cup.cupId, playerDisplayName);
+                          }}
+                          className="a2-emerald-btn px-4 py-2.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap disabled:opacity-50"
+                        >
+                          {claimingCupPrize ? 'Đang phát thưởng…' : 'Nhận Thưởng Giải Đấu'}
+                        </button>
+                      )}
+
+                      {(cup.status === 'champion' || cup.status === 'eliminated') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            liveAiSocket.startMiniCup({
+                              playerName: playerDisplayName,
+                              heroId: playerHeroId,
+                              powerRating: playerPowerRating,
+                              duelRating: aiPreferences.liveDuelRating,
+                            });
+                            setFeedback('Đã mở mùa Cúp 1v1 mới với 7 đối thủ [AI Live]!');
+                          }}
+                          className="a2-slate-btn px-3.5 py-2.5 rounded-xl text-xs font-bold text-sky-200 border border-sky-400/40 cursor-pointer whitespace-nowrap"
+                        >
+                          Mở Cúp Mới
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3-Round Bracket Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {roundMeta.map((rm) => {
+                      const matches = cup.matches.filter((m) => m.round === rm.round);
+                      return (
+                        <div key={rm.round} className="space-y-2">
+                          <div className="text-[11px] font-black uppercase tracking-wider text-amber-200">
+                            {rm.title}
+                          </div>
+                          <div className="space-y-2">
+                            {matches.map((m) => {
+                              const isPlayerMatch =
+                                Boolean(m.fighterA?.isHuman) || Boolean(m.fighterB?.isHuman);
+                              return (
+                                <div
+                                  key={m.matchId}
+                                  className={`rounded-xl p-2.5 border text-xs space-y-1.5 ${
+                                    isPlayerMatch && m.status === 'ready'
+                                      ? 'bg-amber-500/12 border-amber-300/70'
+                                      : 'bg-[#070b1a] border-slate-800'
+                                  }`}
+                                >
+                                  {[m.fighterA, m.fighterB].map((slot, sIdx) => {
+                                    const won = slot && m.winnerId === slot.id;
+                                    return (
+                                      <div
+                                        key={`${m.matchId}-${sIdx}`}
+                                        className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg ${
+                                          won
+                                            ? 'bg-emerald-500/15 text-emerald-200 font-black'
+                                            : slot?.isHuman
+                                            ? 'bg-amber-400/10 text-amber-200 font-bold'
+                                            : 'text-slate-300'
+                                        }`}
+                                      >
+                                        <span className="truncate">
+                                          {slot ? (
+                                            <>
+                                              <span className="font-mono-nums text-[10px] text-slate-500 mr-1">
+                                                {slot.duelRating}
+                                              </span>
+                                              {slot.displayName}
+                                              {!slot.isHuman && (
+                                                <span className="ml-1 text-[9px] text-sky-300">
+                                                  [AI Live]
+                                                </span>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <span className="text-slate-500">Chờ nhánh trước…</span>
+                                          )}
+                                        </span>
+                                        {won && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 shrink-0" />}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* TAB 1B: Persistent Rival / Nemesis System */}
+        {activeTab === 'rivals' && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-300">
+              Các đối thủ <strong className="text-sky-200">[AI Live]</strong> bạn từng giao đấu 1v1 sẽ lưu lịch sử Thắng–Thua vĩnh viễn. Đánh bại Kỳ Phùng / Truyền Kiếp mỗi ngày để nhận Thưởng Đòi Nợ (Vàng &amp; Ngọc).
+            </p>
+            {(snapshot?.rivals ?? []).length === 0 ? (
+              <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
+                Chưa có lịch sử Truyền Kiếp nào. Hãy chọn một chiến binh [AI Live] ở tab Đối Thủ và bấm Thách Đấu 1v1 để khởi tạo duyên nợ!
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/80 border-y border-slate-800/80 max-h-[44vh] overflow-y-auto">
+                {(snapshot?.rivals ?? []).map((r: AiRivalRecord) => {
+                  const aiProfile = snapshot?.players.find((p) => p.id === r.aiPlayerId);
+                  const todayKey = new Date(snapshot?.serverNow ?? Date.now()).toISOString().slice(0, 10);
+                  const dailyClaimed = r.bountyClaimedDateKey === todayKey;
+                  const canClaimBounty = r.winsAgainst > 0 && !dailyClaimed;
+                  const tierLabel =
+                    r.rivalryTier === 'nemesis'
+                      ? 'Truyền Kiếp'
+                      : r.rivalryTier === 'archrival'
+                      ? 'Kỳ Phùng Địch Thủ'
+                      : 'Đối Thủ Cân Tài';
+                  const tierColor =
+                    r.rivalryTier === 'nemesis'
+                      ? 'text-rose-300'
+                      : r.rivalryTier === 'archrival'
+                      ? 'text-amber-300'
+                      : 'text-sky-300';
+                  return (
+                    <div
+                      key={r.aiPlayerId}
+                      className="py-3 px-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-2 text-sm font-bold text-white">
+                          <span className={tierColor}>{tierLabel}</span>
+                          <span aria-hidden="true" className="text-slate-600">·</span>
+                          {onInspectAiPlayer ? (
+                            <button
+                              type="button"
+                              onClick={() => onInspectAiPlayer(r.aiPlayerId)}
+                              className="truncate text-sky-200 hover:text-amber-300 underline decoration-sky-400/40 underline-offset-2 cursor-pointer"
+                            >
+                              {r.aiDisplayName}
+                            </button>
+                          ) : (
+                            <span className="truncate">{r.aiDisplayName}</span>
+                          )}
+                        </div>
+                        <div className="text-xs font-mono-nums text-slate-300">
+                          Tỷ số của bạn:{' '}
+                          <strong className="text-emerald-300">{r.winsAgainst} Thắng</strong> –{' '}
+                          <strong className="text-rose-300">{r.lossesAgainst} Thua</strong> · {r.lastEncounterReason} ({formatAgo(r.lastEncounterAt, snapshot?.serverNow ?? Date.now())})
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {canClaimBounty ? (
+                          <button
+                            type="button"
+                            disabled={claimingBountyId === r.aiPlayerId}
+                            onClick={() => {
+                              setClaimingBountyId(r.aiPlayerId);
+                              liveAiSocket.claimRivalBounty(r.aiPlayerId);
+                            }}
+                            className="a2-emerald-btn px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-50"
+                          >
+                            {claimingBountyId === r.aiPlayerId ? 'Đang nhận…' : 'Nhận Thưởng Đòi Nợ'}
+                          </button>
+                        ) : dailyClaimed ? (
+                          <span className="text-[11px] font-bold text-emerald-300 whitespace-nowrap">
+                            Đã nhận thưởng hôm nay
+                          </span>
+                        ) : null}
+                        {aiProfile && (
+                          <button
+                            type="button"
+                            disabled={challengingId === aiProfile.id}
+                            onClick={() => handleChallenge(aiProfile)}
+                            className="a2-yellow-btn px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50"
+                          >
+                            <Swords className="w-3.5 h-3.5" />
+                            <span>Tái Đấu 1v1</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* WAVE 7 TAB: Server-Authoritative Live Server-Wide Bounty Board */}
+        {activeTab === 'bounty' && (() => {
+          const bounty = snapshot?.serverBounty;
+          if (!bounty) {
+            return (
+              <div className="py-10 text-center text-xs text-slate-400 border border-dashed border-slate-700/80 rounded-2xl">
+                Đang đồng bộ Lệnh Truy Nã Toàn Server qua WebSocket…
+              </div>
+            );
+          }
+          const pct = Math.max(
+            0,
+            Math.min(100, Math.round((bounty.currentPoints / Math.max(1, bounty.targetPoints)) * 100))
+          );
+          const readyToClaim = bounty.completed || bounty.currentPoints >= bounty.targetPoints;
+          return (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-emerald-400/30 bg-[#060d1c] p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Radio className="w-3.5 h-3.5 shrink-0" />
+                      <span>Hợp Lực Toàn Server · Ngày {bounty.dateKey}</span>
+                    </div>
+                    <h3 className="font-display text-lg font-black text-white mt-0.5">
+                      {bounty.title}
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">{bounty.subtitle}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-[10px] font-semibold text-slate-400">
+                      Rương Thưởng Toàn Server
+                    </div>
+                    <div className="font-mono-nums tabular-nums text-xs font-black text-amber-300 mt-0.5">
+                      +{bounty.rewardGold.toLocaleString('vi-VN')} Vàng · +{bounty.rewardGems} Ngọc · +
+                      {bounty.rewardStarDust} Bụi Tinh Tú
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-xs font-bold mb-1">
+                    <span className="text-slate-200">{bounty.objectiveLabel}</span>
+                    <span className="font-mono-nums tabular-nums text-emerald-300">
+                      {bounty.currentPoints.toLocaleString('vi-VN')} /{' '}
+                      {bounty.targetPoints.toLocaleString('vi-VN')} ({pct}%)
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full rounded-full bg-slate-950 border border-emerald-400/35 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-300 transition-all duration-300"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ok = liveAiSocket.contributeServerBounty({
+                        playerName: playerDisplayName,
+                        heroId: playerHeroId,
+                        points: 120,
+                        sourceLabel: 'Chi viện Sảnh',
+                      });
+                      setFeedback(
+                        ok
+                          ? 'Đã gửi +120 Chiến Tích vào Lệnh Truy Nã Toàn Server!'
+                          : 'WebSocket đang kết nối lại — vui lòng thử lại sau giây lát.'
+                      );
+                    }}
+                    className="a2-yellow-btn px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  >
+                    <Zap className="w-3.5 h-3.5 shrink-0" />
+                    <span>Góp Chiến Tích (+120)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!readyToClaim || bounty.claimedByPlayer || claimingServerBounty}
+                    onClick={() => {
+                      setClaimingServerBounty(true);
+                      liveAiSocket.claimServerBountyReward(bounty.bountyId, playerDisplayName);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      bounty.claimedByPlayer
+                        ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 cursor-default'
+                        : readyToClaim
+                        ? 'a2-emerald-btn'
+                        : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      {bounty.claimedByPlayer
+                        ? 'Đã Nhận Rương Hôm Nay'
+                        : readyToClaim
+                        ? 'Nhận Rương Truy Nã Server'
+                        : 'Chưa Đủ Mốc Toàn Server'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs font-bold text-slate-300 mb-2">
+                  Bảng Đóng Góp Thực Chiến ({bounty.contributors.length} chiến binh)
+                </div>
+                <div className="divide-y divide-slate-800/80 border-y border-slate-800/80 max-h-[34vh] overflow-y-auto">
+                  {bounty.contributors.map((c, idx) => (
+                    <div
+                      key={c.id}
+                      className={`py-2 px-2.5 flex items-center justify-between gap-3 text-xs ${
+                        c.isHuman ? 'bg-amber-400/10' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="font-mono-nums font-black text-slate-400 w-6 shrink-0">
+                          #{idx + 1}
+                        </span>
+                        <span className="font-bold text-white truncate">
+                          {c.displayName}
+                          {c.isHuman ? ' (Bạn)' : ''}
+                        </span>
+                        <span className="text-[11px] text-slate-400 shrink-0">
+                          · {HERO_MAP[c.heroId]?.name ?? c.heroId}
+                        </span>
+                      </div>
+                      <span className="font-mono-nums tabular-nums font-black text-emerald-300 shrink-0">
+                        +{c.points.toLocaleString('vi-VN')} Chiến Tích
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* TAB 2: Real-Time World Activity Feed */}
         {activeTab === 'feed' && (
@@ -508,6 +1037,66 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                   );
                 })}
               </div>
+
+              {/* Wave 6 Pillar 5: Co-op 3D AI Party Role Presets & Live Team Synergy */}
+              {onUpdateCoopPartyRoles && (
+                <div className="pt-3 border-t border-slate-800/80 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-black text-amber-200">
+                      Vai Trò Tổ Đội Co-op 3D (2 Đồng Đội AI)
+                    </span>
+                    <span className="text-[11px] font-bold text-emerald-300">
+                      {coopSynergy.teamBadge}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {([0, 1] as const).map((slotIdx) => (
+                      <div
+                        key={slotIdx}
+                        className="rounded-xl bg-[#070b1a] border border-slate-800 p-2 space-y-1.5"
+                      >
+                        <div className="text-[10px] font-bold text-slate-400">
+                          Vị Trí AI #{slotIdx + 1}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {COOP_AI_ROLE_LIST.map((roleDef) => {
+                            const selected = coopPartyRoles[slotIdx] === roleDef.id;
+                            return (
+                              <button
+                                key={roleDef.id}
+                                type="button"
+                                onClick={() => {
+                                  const next: [CoopAiRole, CoopAiRole] = [
+                                    coopPartyRoles[0],
+                                    coopPartyRoles[1],
+                                  ];
+                                  next[slotIdx] = roleDef.id;
+                                  onUpdateCoopPartyRoles(next);
+                                }}
+                                className={`py-1 px-1.5 rounded-lg text-[10px] font-black cursor-pointer border whitespace-nowrap ${
+                                  selected
+                                    ? 'bg-amber-400/20 border-amber-300/75 text-amber-200'
+                                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {roleDef.shortLabel}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-[10px] font-mono-nums tabular-nums text-slate-300">
+                    Hiệu ứng cộng hưởng: +{Math.round(coopSynergy.bossDamageBonus * 100)}% ST Boss ·{' '}
+                    -{Math.round(coopSynergy.enemyProjectileSlowPct * 100)}% Tốc Đạn Địch · +
+                    {Math.round(coopSynergy.damageReductionBonus * 100)}% Giảm Thương
+                    {coopSynergy.periodicHealPct > 0
+                      ? ` · Hồi ${Math.round(coopSynergy.periodicHealPct * 100)}% Máu/8s`
+                      : ''}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

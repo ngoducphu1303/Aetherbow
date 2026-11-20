@@ -214,6 +214,80 @@ class SoundEngine {
     }
   }
 
+  public getVolumes(): { master: number; bgm: number; sfx: number } {
+    return { master: this.masterVol, bgm: this.bgmVol, sfx: this.sfxVol };
+  }
+
+  /**
+   * Wave 6 Pillar 1/2: Crisp golden time-warp chime + resonant counter chord
+   * fired when the player triggers a Perfect Dodge Counter-Window.
+   */
+  public playPerfectDodgeCounter(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Brief time-warp downward sweep
+    const sweep = ctx.createOscillator();
+    const sweepGain = ctx.createGain();
+    sweep.type = 'sine';
+    sweep.frequency.setValueAtTime(640, now);
+    sweep.frequency.exponentialRampToValueAtTime(195, now + 0.14);
+    sweepGain.gain.setValueAtTime(0.001, now);
+    sweepGain.gain.linearRampToValueAtTime(0.22, now + 0.015);
+    sweepGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.18);
+    sweep.connect(sweepGain).connect(dest);
+    sweep.start(now);
+    sweep.stop(now + 0.19);
+
+    // Shimmering golden harmonic fifth chime (C6 + G6)
+    const freqs = [1046.5, 1567.98];
+    freqs.forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t0 = now + 0.03 + idx * 0.035;
+      osc.frequency.setValueAtTime(f, t0);
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.14, t0 + 0.018);
+      g.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.34);
+      osc.connect(g).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + 0.36);
+    });
+  }
+
+  /**
+   * Wave 6 Pillar 1/2: Dramatic brass-like boss phase escalation stinger (Phase 2 / Phase 3)
+   * layered cleanly over the procedural BGM sequencer.
+   */
+  public playBossPhaseStinger(phase: 2 | 3): void {
+    this.setBossIntensity(phase);
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const notes = phase === 3 ? [146.83, 174.61, 220, 293.66] : [130.81, 164.81, 196];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(phase === 3 ? 1650 : 1200, now);
+      const t0 = now + i * 0.055;
+      osc.frequency.setValueAtTime(freq, t0);
+      gain.gain.setValueAtTime(0.001, t0);
+      gain.gain.linearRampToValueAtTime(0.11, t0 + 0.035);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.45);
+      osc.connect(filter).connect(gain).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + 0.48);
+    });
+  }
+
   public playBossEntranceFanfare(): void {
     const dest = this.getSfxDest();
     const ctx = this.ctx;
@@ -2332,6 +2406,69 @@ class SoundEngine {
       g.connect(dest);
       osc.start(t);
       osc.stop(t + 0.26);
+    });
+  }
+
+  /**
+   * Wave 7 Pillar 1/2: Crystalline armor-shatter chord + sub-bass drop on Boss Guard Break (Phá Giáp).
+   */
+  public playBossGuardBreak(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Deep sub-bass drop
+    const sub = ctx.createOscillator();
+    const subG = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(145, now);
+    sub.frequency.exponentialRampToValueAtTime(38, now + 0.34);
+    subG.gain.setValueAtTime(0.18, now);
+    subG.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+    sub.connect(subG);
+    subG.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.38);
+
+    // Metallic glass shatter arpeggio
+    [987.77, 1318.51, 1567.98, 2093.0].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.025;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.12, t + 0.22);
+      g.gain.setValueAtTime(0.085, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    });
+    this.playNoiseBurst(ctx, dest, now, 0.14, 'highpass', 1800, 900, 0.09, 1.4);
+  }
+
+  /**
+   * Wave 7 Pillar 5: Crisp double-ping tactical signal for Co-op 3D AI Squad commands.
+   */
+  public playCoopTacticalPing(): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [740, 1108.73].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      const t = now + idx * 0.055;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.06, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.15);
     });
   }
 }

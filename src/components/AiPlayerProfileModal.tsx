@@ -12,10 +12,11 @@ import {
   X,
 } from 'lucide-react';
 import { HERO_MAP } from '../data/heroesData';
-import type { AiLivePlayerProfile } from '../types/game';
+import type { AiLivePlayerProfile, AiRivalRecord } from '../types/game';
 
 interface AiPlayerProfileModalProps {
   player: AiLivePlayerProfile | null;
+  rivalRecord?: AiRivalRecord | null;
   isPinnedForCoop?: boolean;
   onChallengeDuel: (aiPlayerId: string) => void;
   onTogglePinCoop: (aiPlayerId: string) => void;
@@ -45,6 +46,7 @@ const PERSONALITY_META: Record<
 
 export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
   player,
+  rivalRecord,
   isPinnedForCoop = false,
   onChallengeDuel,
   onTogglePinCoop,
@@ -156,6 +158,26 @@ export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
             </div>
           </div>
         </div>
+
+        {rivalRecord && (
+          <div className="rounded-xl bg-[#180c1c] border border-rose-400/40 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="font-bold text-rose-200">
+              {rivalRecord.rivalryTier === 'nemesis'
+                ? 'Truyền Kiếp'
+                : rivalRecord.rivalryTier === 'archrival'
+                ? 'Kỳ Phùng Địch Thủ'
+                : 'Lịch Sử Đối Đầu'}
+              : <span className="font-mono-nums text-emerald-300">{rivalRecord.winsAgainst} Thắng</span> –{' '}
+              <span className="font-mono-nums text-rose-300">{rivalRecord.lossesAgainst} Thua</span>
+            </div>
+            <span className="text-[11px] text-amber-200 font-semibold">
+              {rivalRecord.winsAgainst > 0 &&
+              rivalRecord.bountyClaimedDateKey !== new Date().toISOString().slice(0, 10)
+                ? 'Có Thưởng Đòi Nợ ở Trung Tâm AI Live!'
+                : rivalRecord.lastEncounterReason}
+            </span>
+          </div>
+        )}
 
         {/* Equipped Build Snapshot */}
         <div className="space-y-3">

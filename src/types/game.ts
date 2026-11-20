@@ -1231,6 +1231,7 @@ export interface SaveData {
   career?: CareerStats;
   achievementsClaimed?: string[];
   settings?: GameSettings;
+  claimedRivalBounties?: Record<string, string>; // aiPlayerId -> YYYY-MM-DD date key
   onboardingCompleted?: boolean;
   equippedTitle?: string;
   mailInbox?: MailItem[];
@@ -1369,6 +1370,9 @@ export interface SaveData {
   discoveredSynergies?: SkillSynergyId[];
   // Wave 2 AAA + Real-Time AI Preferences & Duel Record
   aiPreferences?: AiPreferencesState;
+  // Wave 6: Fair Progression Substat Gold Pity + Co-op AI Role Presets
+  reforgeGoldPityCount?: number;
+  coopPartyRoles?: [CoopAiRole, CoopAiRole];
 }
 
 export type AiAutoPilotTactic = 'aggressive' | 'balanced' | 'evasive';
@@ -1482,6 +1486,37 @@ export interface AiLiveAuctionBidEvent {
   timestamp: number;
 }
 
+export type CoopTacticalOrder = 'focus_boss' | 'clear_adds' | 'hold_resonance';
+export type AdaptiveFpsTier = 'full' | 'balanced' | 'performance_guard';
+
+export interface AiLiveInvite {
+  inviteId: string;
+  kind: 'coop_raid' | 'arena_duel';
+  aiPlayerId: string;
+  aiDisplayName: string;
+  aiHeroId: HeroId;
+  aiPowerRating: number;
+  message: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export type AiRivalTier = 'contender' | 'archrival' | 'nemesis';
+
+export interface AiRivalRecord {
+  aiPlayerId: string;
+  aiDisplayName: string;
+  aiHeroId: HeroId;
+  aiPowerRating: number;
+  winsAgainst: number;
+  lossesAgainst: number;
+  rivalryScore: number;
+  rivalryTier: AiRivalTier;
+  lastEncounterReason: string;
+  lastEncounterAt: number;
+  bountyClaimedDateKey?: string;
+}
+
 export interface AiLiveHubSnapshot {
   serverNow: number;
   onlineHumanCount: number;
@@ -1492,6 +1527,11 @@ export interface AiLiveHubSnapshot {
     lobby: AiLiveChatMessage[];
     guild: AiLiveChatMessage[];
   };
+  pendingInvites?: AiLiveInvite[];
+  rivals?: AiRivalRecord[];
+  guildBossLive?: LiveGuildBossState;
+  miniCup?: LiveMiniCupState | null;
+  serverBounty?: LiveServerBountyState;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm' | 'azure_dragon';
@@ -1847,6 +1887,9 @@ export interface HudSnapshot {
     calloutText: string | null;
     alliesUltReady: string[];
   } | null;
+  coopTacticalOrder?: CoopTacticalOrder;
+  adaptiveFpsTier?: AdaptiveFpsTier;
+  adaptiveFpsAvg?: number;
   activeEliteAffixLabel?: string;
   activeArenaHazardLabel?: string;
   activeSynergies?: SkillSynergyId[];
@@ -2008,6 +2051,20 @@ export interface HudSnapshot {
   perfSimHz?: number;
   isArenaEqualized?: boolean;
   combatLightingMood?: 'normal' | 'boss_enrage' | 'victory_golden';
+  // Wave 6: Perfect Dodge Counter-Window, Live Boss Split Pace & Co-op Role Synergy
+  counterWindowRemainingSec?: number;
+  counterChargesRemaining?: number;
+  counterTotalLanded?: number;
+  bossPace?: BossPaceHudSnapshot | null;
+  coopRoleSynergyLabel?: string | null;
+  activeWeatherLabel?: string | null;
+  // Wave 7: Boss Guard-Break, Combat Style Momentum & Co-op Ping Callouts
+  bossStaggerBrokenSec?: number;
+  bossGuardBreaksTotal?: number;
+  styleGrade?: CombatStyleGrade;
+  styleScore?: number;
+  styleFillRatio?: number;
+  coopPingToast?: string | null;
 }
 
 export interface EncounterOffer {
@@ -3067,6 +3124,146 @@ export interface RunCombatHighlights {
   elementalReactionsCount?: number;
   damageTakenCount?: number;
 }
+
+// ============================================================================
+// WAVE 6 TYPES: WEATHER, BOSS PACE SPLITS, CO-OP ROLES, LIVE GUILD BOSS & CUP
+// ============================================================================
+
+export type WeatherBiomeKind = 'ember_ash' | 'starlight_snow' | 'storm_rain' | 'celestial_dust';
+
+export type CoopAiRole = 'dps' | 'control' | 'guardian';
+
+export interface CoopRoleSynergySummary {
+  roles: [CoopAiRole, CoopAiRole];
+  teamBadge: string;
+  bossDamageBonus: number;
+  enemyProjectileSlowPct: number;
+  periodicHealPct: number;
+  damageReductionBonus: number;
+}
+
+export type AutoOptimizeGoal = 'campaign' | 'boss' | 'arena';
+
+export interface BossPaceHudSnapshot {
+  referenceLabel: string;
+  elapsedMs: number;
+  referenceTargetMs: number;
+  deltaSec: number;
+  ahead: boolean;
+  checkpointsReached: number;
+  splitsMs: Array<number | null>;
+}
+
+export interface LiveGuildBossContributor {
+  id: string;
+  displayName: string;
+  isHuman: boolean;
+  heroId: HeroId;
+  damage: number;
+  attacks: number;
+  lastHitAt: number;
+}
+
+export interface LiveGuildBossMilestone {
+  tierId: string;
+  label: string;
+  damageRequired: number;
+  rewardGold: number;
+  rewardGems: number;
+  rewardGuildCoins: number;
+}
+
+export interface LiveGuildBossState {
+  dateKey: string;
+  bossName: string;
+  bossTitle: string;
+  maxHp: number;
+  currentHp: number;
+  totalDamage: number;
+  defeatedCount: number;
+  contributors: LiveGuildBossContributor[];
+  milestones: LiveGuildBossMilestone[];
+  claimedMilestoneIds: string[];
+  lastUpdatedAt: number;
+}
+
+export interface LiveMiniCupParticipant {
+  id: string;
+  displayName: string;
+  isHuman: boolean;
+  heroId: HeroId;
+  powerRating: number;
+  duelRating: number;
+}
+
+export interface LiveMiniCupMatch {
+  matchId: string;
+  round: 1 | 2 | 3;
+  slotIndex: number;
+  fighterA: LiveMiniCupParticipant | null;
+  fighterB: LiveMiniCupParticipant | null;
+  winnerId: string | null;
+  status: 'pending' | 'ready' | 'completed';
+  summary?: string;
+}
+
+export interface LiveMiniCupState {
+  cupId: string;
+  playerName: string;
+  createdAt: number;
+  status: 'active' | 'champion' | 'eliminated';
+  currentRound: 1 | 2 | 3;
+  matches: LiveMiniCupMatch[];
+  championName?: string;
+  prizeClaimed: boolean;
+  rewardGems: number;
+  rewardGold: number;
+  rewardTitleLabel?: string;
+}
+
+// ---------------------------------------------------------------------------
+// WAVE 7 — GUARD BREAK, STYLE RANK, FREE GEAR TRANSFER & LIVE SERVER BOUNTY
+// ---------------------------------------------------------------------------
+
+export type CombatStyleGrade = 'B' | 'A' | 'S' | 'SS' | 'SSS';
+
+export interface GearUpgradeTransferResult {
+  ok: boolean;
+  reason?: string;
+  sourceUid: string;
+  targetUid: string;
+  previousTargetLevel: number;
+  nextTargetLevel: number;
+  powerDelta: number;
+  nextSave: SaveData;
+}
+
+export interface LiveServerBountyContributor {
+  id: string;
+  displayName: string;
+  isHuman: boolean;
+  heroId: HeroId;
+  points: number;
+  lastContributedAt: number;
+}
+
+export interface LiveServerBountyState {
+  bountyId: string;
+  dateKey: string;
+  title: string;
+  subtitle: string;
+  objectiveLabel: string;
+  targetPoints: number;
+  currentPoints: number;
+  completed: boolean;
+  rewardGold: number;
+  rewardGems: number;
+  rewardStarDust: number;
+  claimedByPlayer: boolean;
+  contributors: LiveServerBountyContributor[];
+  lastUpdatedAt: number;
+}
+
 
 
 

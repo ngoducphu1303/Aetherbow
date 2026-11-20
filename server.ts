@@ -151,6 +151,10 @@ export function createWeeklyBossRouter(service: WeeklyBossService): express.Rout
         remainingHpPct: Number(req.body?.remainingHpPct ?? 0),
         perfectDodges: Number(req.body?.perfectDodges ?? 0),
         autoPilotUsed: Boolean(req.body?.autoPilotUsed ?? false),
+        splitsMs: Array.isArray(req.body?.splitsMs) ? req.body.splitsMs : undefined,
+        counterHitsLanded: Number(req.body?.counterHitsLanded ?? 0),
+        guardBreaksLanded: Number(req.body?.guardBreaksLanded ?? 0),
+        peakStyleGrade: typeof req.body?.peakStyleGrade === 'string' ? (req.body.peakStyleGrade as any) : undefined,
       });
       res.json(result);
     } catch (err) {
@@ -206,6 +210,91 @@ export function createWeeklyBossRouter(service: WeeklyBossService): express.Rout
           : undefined;
       const result = service.claimSeasonReward(user, tierId, idempotencyKey);
       res.json(result);
+    } catch (err) {
+      handleApiError(res, err);
+    }
+  });
+
+  // Wave 5 — Pillar 4: Weekend Blitz Competitive Event endpoints
+  router.get('/weekend/state', async (req, res) => {
+    try {
+      let user: VerifiedRequestUser | null = null;
+      if (req.headers.authorization?.startsWith('Bearer ')) {
+        try {
+          user = await resolveBearerUser(req);
+        } catch {
+          user = null;
+        }
+      }
+      res.json(service.getWeekendBlitzState(user));
+    } catch (err) {
+      handleApiError(res, err);
+    }
+  });
+
+  router.post('/weekend/start', async (req, res) => {
+    try {
+      const user = await resolveBearerUser(req, req.body?.displayName);
+      if (!user) {
+        throw new WeeklyBossServiceError(
+          401,
+          'AUTH_REQUIRED',
+          'Bạn cần đăng nhập tài khoản đám mây để tham gia Sự Kiện Boss Cuối Tuần.'
+        );
+      }
+      res.json(service.startWeekendBlitzAttempt(user));
+    } catch (err) {
+      handleApiError(res, err);
+    }
+  });
+
+  router.post('/weekend/submit', async (req, res) => {
+    try {
+      const user = await resolveBearerUser(req, req.body?.displayName);
+      if (!user) {
+        throw new WeeklyBossServiceError(
+          401,
+          'AUTH_REQUIRED',
+          'Bạn cần đăng nhập tài khoản đám mây để gửi kết quả Boss Cuối Tuần.'
+        );
+      }
+      const result = service.submitWeekendBlitzAttempt(user, {
+        attemptId: String(req.body?.attemptId ?? ''),
+        seed: String(req.body?.seed ?? ''),
+        cleared: Boolean(req.body?.cleared),
+        damageDealt: Number(req.body?.damageDealt ?? 0),
+        simTicks: Number(req.body?.simTicks ?? 0),
+        clearTimeMs: Number(req.body?.clearTimeMs ?? 0),
+        remainingHpPct: Number(req.body?.remainingHpPct ?? 0),
+        perfectDodges: Number(req.body?.perfectDodges ?? 0),
+        autoPilotUsed: Boolean(req.body?.autoPilotUsed ?? false),
+        splitsMs: Array.isArray(req.body?.splitsMs) ? req.body.splitsMs : undefined,
+        counterHitsLanded: Number(req.body?.counterHitsLanded ?? 0),
+        guardBreaksLanded: Number(req.body?.guardBreaksLanded ?? 0),
+        peakStyleGrade: typeof req.body?.peakStyleGrade === 'string' ? (req.body.peakStyleGrade as any) : undefined,
+      });
+      res.json(result);
+    } catch (err) {
+      handleApiError(res, err);
+    }
+  });
+
+  router.post('/weekend/claim', async (req, res) => {
+    try {
+      const user = await resolveBearerUser(req);
+      if (!user) {
+        throw new WeeklyBossServiceError(
+          401,
+          'AUTH_REQUIRED',
+          'Bạn cần đăng nhập tài khoản đám mây để nhận thưởng Boss Cuối Tuần.'
+        );
+      }
+      const tierId = String(req.body?.tierId ?? '').trim();
+      const idempotencyKey =
+        typeof req.body?.idempotencyKey === 'string' && req.body.idempotencyKey.trim()
+          ? req.body.idempotencyKey.trim().slice(0, 80)
+          : undefined;
+      res.json(service.claimWeekendBlitzReward(user, tierId, idempotencyKey));
     } catch (err) {
       handleApiError(res, err);
     }
@@ -269,9 +358,17 @@ export function attachLiveAiWebSocketServer(
   };
 
   const emitSnapshotTo = (ws: WebSocket) => {
+    const playerName = clientNames.get(ws) ?? 'Chiến Binh Tinh Giới';
+    const baseSnap = liveAiService.getSnapshot(wss.clients.size);
     sendJson(ws, {
       type: 'hub:snapshot',
-      payload: liveAiService.getSnapshot(wss.clients.size),
+      payload: {
+        ...baseSnap,
+        rivals: liveAiService.getRivalsForPlayer(playerName),
+        guildBossLive: liveAiService.getLiveGuildBossState(playerName),
+        miniCup: liveAiService.getMiniCupForPlayer(playerName),
+        serverBounty: liveAiService.getServerBountyState(playerName),
+      },
     });
   };
 
@@ -451,6 +548,7 @@ export function attachLiveAiWebSocketServer(
               alreadyProcessed: res.alreadyProcessed,
               ratingDelta: res.ratingDelta,
               opponent: res.opponent,
+              rivals: liveAiService.getRivalsForPlayer(challengerName),
             },
           });
           if (!res.alreadyProcessed && res.event && res.opponent) {
@@ -463,6 +561,287 @@ export function attachLiveAiWebSocketServer(
               },
             });
           }
+          return;
+        }
+
+        if (type === 'invite:request_now') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const preferredKind =
+            payload.kind === 'arena_duel'
+              ? 'arena_duel'
+              : payload.kind === 'coop_raid'
+              ? 'coop_raid'
+              : undefined;
+          const invite = liveAiService.generateLiveInvite({
+            playerName,
+            preferredKind,
+          });
+          sendJson(ws, {
+            type: 'invite:received',
+            payload: invite,
+          });
+          return;
+        }
+
+        if (type === 'invite:respond') {
+          const inviteId = String(payload.inviteId ?? '').trim();
+          const action = payload.action === 'accept' ? 'accept' : 'decline';
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          if (!inviteId) return;
+          const res = liveAiService.respondToInvite({
+            inviteId,
+            action,
+            playerName,
+          });
+          sendJson(ws, {
+            type: 'invite:ack',
+            payload: {
+              inviteId,
+              action,
+              ok: res.ok,
+              alreadyProcessed: res.alreadyProcessed,
+              invite: res.invite,
+              duelId: res.duelId,
+              opponent: res.opponent,
+            },
+          });
+          if (!res.alreadyProcessed && res.event && res.opponent) {
+            broadcast({
+              type: 'hub:activity',
+              payload: {
+                event: res.event,
+                updatedPlayer: res.opponent,
+                onlineHumanCount: Math.max(1, wss.clients.size),
+              },
+            });
+          }
+          return;
+        }
+
+        if (type === 'rival:claim_bounty') {
+          const aiPlayerId = String(payload.aiPlayerId ?? '').trim();
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          if (!aiPlayerId) return;
+          const claimed = liveAiService.claimRivalDailyBounty({
+            playerName,
+            aiPlayerId,
+          });
+          sendJson(ws, {
+            type: 'rival:bounty_ack',
+            payload: {
+              ...claimed,
+              rivals: liveAiService.getRivalsForPlayer(playerName),
+            },
+          });
+          return;
+        }
+
+        if (type === 'guild_boss:sync') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          sendJson(ws, {
+            type: 'guild_boss:update',
+            payload: {
+              guildBossLive: liveAiService.getLiveGuildBossState(playerName),
+            },
+          });
+          return;
+        }
+
+        if (type === 'guild_boss:attack') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const damage = Number(payload.damage ?? 0);
+          const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
+          if (!Number.isFinite(damage) || damage <= 0) return;
+          const res = liveAiService.recordHumanGuildBossAttack({
+            playerName,
+            heroId: heroId as any,
+            damage,
+          });
+          broadcast({
+            type: 'guild_boss:update',
+            payload: {
+              guildBossLive: res.state,
+              event: res.event,
+            },
+          });
+          return;
+        }
+
+        if (type === 'guild_boss:claim_milestone') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const tierId = String(payload.tierId ?? '').trim();
+          if (!tierId) return;
+          const claimed = liveAiService.claimLiveGuildBossMilestone({
+            playerName,
+            tierId,
+          });
+          sendJson(ws, {
+            type: 'guild_boss:claim_ack',
+            payload: claimed,
+          });
+          return;
+        }
+
+        if (type === 'cup:sync') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          sendJson(ws, {
+            type: 'cup:state',
+            payload: {
+              cup: liveAiService.getMiniCupForPlayer(playerName),
+            },
+          });
+          return;
+        }
+
+        if (type === 'cup:start') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const started = liveAiService.startMiniCup({
+            playerName,
+            playerHeroId: typeof payload.heroId === 'string' ? (payload.heroId as any) : 'artemis',
+            playerPowerRating: Number(payload.powerRating ?? 1800),
+            playerDuelRating: Number(payload.duelRating ?? 1200),
+          });
+          sendJson(ws, {
+            type: 'cup:state',
+            payload: {
+              cup: started.cup,
+            },
+          });
+          broadcast({
+            type: 'hub:activity',
+            payload: {
+              event: started.event,
+              updatedPlayer: liveAiService.getSnapshot(wss.clients.size).players[0],
+              onlineHumanCount: Math.max(1, wss.clients.size),
+            },
+          });
+          return;
+        }
+
+        if (type === 'cup:report_match') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const matchId = String(payload.matchId ?? '').trim();
+          const playerWon = Boolean(payload.playerWon);
+          if (!matchId) return;
+          const res = liveAiService.reportMiniCupMatchResult({
+            playerName,
+            matchId,
+            playerWon,
+          });
+          sendJson(ws, {
+            type: 'cup:state',
+            payload: {
+              cup: res.cup,
+              rivals: liveAiService.getRivalsForPlayer(playerName),
+            },
+          });
+          if (!res.alreadyProcessed && res.event) {
+            broadcast({
+              type: 'hub:activity',
+              payload: {
+                event: res.event,
+                updatedPlayer: liveAiService.getSnapshot(wss.clients.size).players[0],
+                onlineHumanCount: Math.max(1, wss.clients.size),
+              },
+            });
+          }
+          return;
+        }
+
+        if (type === 'cup:claim_prize') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const cupId = String(payload.cupId ?? '').trim();
+          if (!cupId) return;
+          const claimed = liveAiService.claimMiniCupPrize({
+            playerName,
+            cupId,
+          });
+          sendJson(ws, {
+            type: 'cup:prize_ack',
+            payload: claimed,
+          });
+          return;
+        }
+
+        if (type === 'bounty:sync') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          sendJson(ws, {
+            type: 'bounty:update',
+            payload: {
+              serverBounty: liveAiService.getServerBountyState(playerName),
+            },
+          });
+          return;
+        }
+
+        if (type === 'bounty:contribute') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const points = Number(payload.points ?? 0);
+          const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
+          const sourceLabel =
+            typeof payload.sourceLabel === 'string'
+              ? payload.sourceLabel.slice(0, 48)
+              : undefined;
+          if (!Number.isFinite(points) || points <= 0) return;
+          const res = liveAiService.recordHumanBountyContribution({
+            playerName,
+            heroId: heroId as any,
+            points,
+            sourceLabel,
+          });
+          for (const client of wss.clients) {
+            if (client.readyState === WebSocket.OPEN) {
+              const pName = clientNames.get(client);
+              sendJson(client, {
+                type: 'bounty:update',
+                payload: {
+                  serverBounty: liveAiService.getServerBountyState(pName),
+                  event: res.event,
+                },
+              });
+            }
+          }
+          return;
+        }
+
+        if (type === 'bounty:claim_reward') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const bountyId =
+            typeof payload.bountyId === 'string' ? payload.bountyId.trim() : undefined;
+          const claimed = liveAiService.claimServerBountyReward({
+            playerName,
+            bountyId,
+          });
+          sendJson(ws, {
+            type: 'bounty:claim_ack',
+            payload: claimed,
+          });
         }
       } catch {
         // Ignore malformed frames safely
@@ -490,6 +869,32 @@ export function attachLiveAiWebSocketServer(
           onlineHumanCount: Math.max(1, wss.clients.size),
         },
       });
+      if (tick.event.kind === 'guild') {
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            const pName = clientNames.get(client);
+            sendJson(client, {
+              type: 'guild_boss:update',
+              payload: {
+                guildBossLive: liveAiService.getLiveGuildBossState(pName),
+              },
+            });
+          }
+        }
+      }
+      if (tick.event.kind === 'world_boss') {
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            const pName = clientNames.get(client);
+            sendJson(client, {
+              type: 'bounty:update',
+              payload: {
+                serverBounty: liveAiService.getServerBountyState(pName),
+              },
+            });
+          }
+        }
+      }
       // Every 2nd server tick (~9s), let [AI Live] players actively compete on open auction lots
       if (wsTickCount % 2 === 0) {
         for (const client of wss.clients) {
@@ -505,6 +910,19 @@ export function attachLiveAiWebSocketServer(
           type: 'chat:message',
           payload: aiChat,
         });
+      }
+      // Every 7th server tick (~31s), an [AI Live] teammate or rival sends a live Co-op / 1v1 invite
+      if (wsTickCount % 7 === 0) {
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            const pName = clientNames.get(client) ?? 'Chiến Binh Tinh Giới';
+            const invite = liveAiService.generateLiveInvite({ playerName: pName });
+            sendJson(client, {
+              type: 'invite:received',
+              payload: invite,
+            });
+          }
+        }
       }
     }
   }, tickIntervalMs);

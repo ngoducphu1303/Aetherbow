@@ -42,12 +42,15 @@ import {
   FloatingDamage,
   HudScaleMode,
   HudSnapshot,
+  CoopTacticalOrder,
   JoystickState,
   LoadoutPreset,
   LoadoutPresetSlotId,
   SkillId,
   TrainingTargetMode,
 } from '../types/game';
+import { COOP_TACTICAL_ORDERS } from '../engine/wave5CombatSystems';
+import { getStyleRewardBonusPct } from '../engine/wave7CombatSystems';
 import { GoldCoinIcon, SoulGemIcon } from './GameIcons';
 
 interface GameHUDProps {
@@ -66,6 +69,7 @@ interface GameHUDProps {
   onUltimateClick: () => void;
   onToggleAutoPilot?: () => void;
   onSelectAutoPilotTactic?: (tactic: AiAutoPilotTactic) => void;
+  onSetCoopTacticalOrder?: (order: CoopTacticalOrder) => void;
   onSelectChampionshipTactic?: (tacticId: ChampionshipTacticId) => void;
   loadoutPresets?: LoadoutPreset[];
   activeLoadoutPresetId?: LoadoutPresetSlotId | null;
@@ -91,6 +95,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onUltimateClick,
   onToggleAutoPilot,
   onSelectAutoPilotTactic,
+  onSetCoopTacticalOrder,
   onSelectChampionshipTactic,
   loadoutPresets,
   activeLoadoutPresetId,
@@ -729,6 +734,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           )}
 
+          {hud.isCoopRaidMode && hud.coopRoleSynergyLabel && (
+            <div className="inline-flex items-center gap-1.5 bg-[#060a18]/92 border border-emerald-400/40 rounded-lg px-2.5 py-1 text-[11px] font-bold text-emerald-200 whitespace-nowrap">
+              <Users className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+              <span>{hud.coopRoleSynergyLabel}</span>
+            </div>
+          )}
+
           {liveDpsMeter && !hud.isTrainingMode && (
             <div className="inline-flex items-center gap-2.5 bg-[#060a18]/90 border border-amber-400/25 rounded-lg px-2.5 py-1 text-[11px] font-mono-nums font-bold text-slate-200">
               <span className="text-amber-300">
@@ -845,13 +857,58 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
-        {/* Phase 5: Perfect Dodge Tactical Micro-Banner */}
-        {(hud.perfectDodgeBannerTimer ?? 0) > 0 && (
+        {/* Phase 5 + Wave 6: Perfect Dodge Tactical & Counter-Window Strip (zero-blur) */}
+        {(hud.counterChargesRemaining ?? 0) > 0 ? (
+          <div className="mx-auto rounded-xl px-3.5 py-1 bg-[#1b1204]/95 border border-amber-300/80 text-[11px] font-black text-amber-100 flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_22px_rgba(251,191,36,0.45)]">
+            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span className="font-mono-nums tabular-nums">
+              PHẢN KÍCH HOÀNG KIM ×{hud.counterChargesRemaining} · +65% ST CHÍ MẠNG XUYÊN ·{' '}
+              {(hud.counterWindowRemainingSec ?? 0).toFixed(1)}s
+            </span>
+          </div>
+        ) : (hud.perfectDodgeBannerTimer ?? 0) > 0 ? (
           <div className="mx-auto rounded-xl px-3.5 py-1 bg-[#071b28]/95 border border-cyan-300/75 text-[11px] font-black text-cyan-100 flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_20px_rgba(34,211,238,0.45)]">
             <Sparkles className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
             <span className="font-mono-nums">
               NÉ HOÀN HẢO · +20% Sát Thương · -2s Hồi Chiêu E · +12% Tuyệt Kỹ
             </span>
+          </div>
+        ) : null}
+
+        {/* Wave 6 Pillar 4: Live Boss Split Pace HUD (Weekly & Weekend Boss) */}
+        {hud.bossPace && (
+          <div className="mx-auto rounded-xl px-3.5 py-1 bg-[#060a18]/94 border border-amber-400/35 text-[11px] font-bold text-slate-200 flex items-center justify-center gap-2.5 whitespace-nowrap">
+            <span className="text-slate-400">So với {hud.bossPace.referenceLabel}:</span>
+            <span
+              className={`font-mono-nums tabular-nums font-black ${
+                hud.bossPace.ahead ? 'text-emerald-300' : 'text-amber-300'
+              }`}
+            >
+              {hud.bossPace.deltaSec <= 0
+                ? `${hud.bossPace.deltaSec.toFixed(1)}s`
+                : `+${hud.bossPace.deltaSec.toFixed(1)}s`}
+            </span>
+            <span className="text-slate-600">·</span>
+            <span className="font-mono-nums tabular-nums text-sky-200">
+              {(hud.bossPace.elapsedMs / 1000).toFixed(1)}s
+            </span>
+            <div className="hidden sm:flex items-center gap-1 pl-1 border-l border-slate-700/80">
+              {(['75%', '50%', '25%', '0%'] as const).map((cpLabel, idx) => {
+                const reached = hud.bossPace?.splitsMs[idx] != null;
+                return (
+                  <span
+                    key={cpLabel}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono-nums tabular-nums ${
+                      reached
+                        ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/45'
+                        : 'bg-slate-900/90 text-slate-500 border border-slate-800'
+                    }`}
+                  >
+                    {cpLabel}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -1334,17 +1391,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </div>
               </div>
 
-              {/* AAA Wave 2: Segmented Boss Stagger / Guard-Break Sub-bar */}
-              {(hud.bossMaxShield ?? 0) > 0 && (() => {
-                const breakPct = Math.max(
-                  0,
-                  Math.min(
-                    100,
-                    ((hud.bossShield ?? 0) / Math.max(1, hud.bossMaxShield ?? 1)) * 100
-                  )
-                );
-                const stunRemaining = hud.bossStunTimer ?? 0;
-                const isStunned = stunRemaining > 0.05;
+              {/* Wave 7 Pillar 1+2: Deterministic Boss Stagger / Guard-Break Sub-bar (4.0s +45% Vulnerability) */}
+              {((hud.bossMaxShield ?? 0) > 0 || hud.bossStaggerRatio !== undefined) && (() => {
+                const staggerPct =
+                  hud.bossStaggerRatio !== undefined
+                    ? Math.max(0, Math.min(100, hud.bossStaggerRatio * 100))
+                    : Math.max(
+                        0,
+                        Math.min(
+                          100,
+                          100 -
+                            ((hud.bossShield ?? 0) / Math.max(1, hud.bossMaxShield ?? 1)) * 100
+                        )
+                      );
+                const stunRemaining = hud.bossStaggerBrokenSec ?? hud.bossStunTimer ?? 0;
+                const isStunned = Boolean(hud.bossStaggerBroken || stunRemaining > 0.05);
                 return (
                   <div className="mt-1.5">
                     <div className="flex items-center justify-between text-[10px] font-black mb-0.5">
@@ -1360,12 +1421,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         )}
                         <span>
                           {isStunned
-                            ? `PHÁ GIÁP · BOSS CHOÁNG (${stunRemaining.toFixed(1)}s) · +45% SÁT THƯƠNG`
-                            : 'Giáp Phá Boss · Chí Mạng & Tuyệt Kỹ bào ×2'}
+                            ? `PHÁ GIÁP CHẤN ĐỘNG (${stunRemaining.toFixed(1)}s) · +45% SÁT THƯƠNG`
+                            : 'Thanh Phá Giáp · Phản Kích & Tuyệt Kỹ tích cực nhanh'}
                         </span>
                       </span>
-                      <span className="font-mono-nums text-amber-300">
-                        {isStunned ? 'VỠ GIÁP' : `${Math.round(breakPct)}%`}
+                      <span className="font-mono-nums tabular-nums text-amber-300">
+                        {isStunned
+                          ? `VỠ GIÁP${(hud.bossGuardBreaksTotal ?? 0) > 0 ? ` ×${hud.bossGuardBreaksTotal}` : ''}`
+                          : `${Math.round(staggerPct)}%`}
                       </span>
                     </div>
                     <div className="relative h-2 w-full rounded-full bg-slate-950/95 border border-amber-400/40 overflow-hidden">
@@ -1375,7 +1438,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                             ? 'bg-gradient-to-r from-yellow-300 via-amber-400 to-rose-400'
                             : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-200'
                         }`}
-                        style={{ width: `${isStunned ? 100 : breakPct}%` }}
+                        style={{ width: `${isStunned ? 100 : staggerPct}%` }}
                       />
                       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
                         {[25, 50, 75].map((tick) => (
@@ -1454,12 +1517,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           );
         })()}
 
-        {/* Wave 12: Dramatic Boss Break-Shield Shatter Banner */}
+        {/* Wave 12 + Wave 7: Dramatic Boss Guard-Break Shatter Banner */}
         {(hud.bossBrokenBannerTimer ?? 0) > 0 && (
           <div className="w-full max-w-md mx-auto rounded-xl px-4 py-1.5 bg-gradient-to-r from-amber-500/95 via-yellow-400/95 to-orange-500/95 border border-yellow-100 text-slate-950 text-center shadow-[0_0_24px_rgba(251,191,36,0.65)]">
             <div className="font-display text-xs sm:text-sm font-black tracking-wide flex items-center justify-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-slate-950 fill-current shrink-0" />
-              <span>PHÁ GIÁP BOSS THÀNH CÔNG! · CHOÁNG 3S &amp; +45% SÁT THƯƠNG</span>
+              <span>PHÁ GIÁP CHẤN ĐỘNG! · CHOÁNG 4S &amp; +45% SÁT THƯƠNG</span>
               <Zap className="w-3.5 h-3.5 text-slate-950 fill-current shrink-0" />
             </div>
           </div>
@@ -1594,6 +1657,32 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <span>{COOP_DIFFICULTY_MAP[hud.coopDifficulty ?? 'normal']?.badge}</span>
               </div>
             )}
+            {hud.isCoopRaidMode && onSetCoopTacticalOrder && (
+              <div
+                className="pointer-events-auto flex items-center gap-1 rounded-xl bg-[#060a18]/92 border border-sky-400/40 p-1"
+                role="group"
+                aria-label="Lệnh chiến thuật tổ đội Co-op"
+              >
+                {COOP_TACTICAL_ORDERS.map((ord) => {
+                  const active = (hud.coopTacticalOrder ?? 'focus_boss') === ord.id;
+                  return (
+                    <button
+                      key={ord.id}
+                      type="button"
+                      onClick={() => onSetCoopTacticalOrder(ord.id)}
+                      title={ord.desc}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer transition-colors ${
+                        active
+                          ? 'bg-amber-400/25 text-amber-200 border border-amber-300/70'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      [{ord.hotkey}] {ord.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {hud.isCoopRaidMode && hud.coopSynergy && (
               (hud.coopSynergy.resonanceRemainingSec > 0 ||
                 hud.coopSynergy.windowRemainingSec > 0 ||
@@ -1623,6 +1712,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   )}
                 </div>
               )
+            )}
+            {hud.isCoopRaidMode && hud.coopPingToast && (
+              <div className="rounded-xl px-3 py-1.5 bg-[#061826]/95 border border-cyan-400/70 text-[10px] font-black text-cyan-100 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                <span>{hud.coopPingToast}</span>
+              </div>
             )}
           </div>
         )}
@@ -1658,17 +1753,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
-        {/* Top-Right Tactical Arena Mini-Radar + AAA Style Rank Emblem (C -> SSS) */}
+        {/* Top-Right Tactical Arena Mini-Radar + Wave 7 Style Momentum & Combo Rank (B -> SSS) */}
         <div className="max-w-5xl w-full mx-auto flex items-start justify-end gap-2.5 pointer-events-none">
-          {hud.comboCount >= 2 && (() => {
+          {(hud.comboCount >= 2 || Boolean(hud.styleGrade)) && (() => {
             const comboMeta = getComboTierMeta(hud.comboCount);
             const styleRank = computeComboStyleRank(hud.comboCount);
+            const displayGrade = hud.styleGrade ?? styleRank.grade;
+            const styleRewardBonusPct = hud.styleGrade ? getStyleRewardBonusPct(hud.styleGrade) : 0;
             const bonusPct = Math.round((hud.comboDmgBonusPct ?? comboMeta.dmgBonusPct) * 100);
             const ringCirc = 2 * Math.PI * 19;
-            const ringOffset = ringCirc * (1 - Math.max(0, Math.min(1, hud.comboTimerRatio)));
+            const fillRatio =
+              hud.styleFillRatio !== undefined ? hud.styleFillRatio : hud.comboTimerRatio;
+            const ringOffset = ringCirc * (1 - Math.max(0, Math.min(1, fillRatio)));
             return (
               <div
-                className={`hv2-panel rounded-2xl px-3 py-2 min-w-[178px] border ${styleRank.borderClass} flex items-center gap-2.5 shadow-xl`}
+                className={`hv2-panel rounded-2xl px-3 py-2 min-w-[186px] border ${styleRank.borderClass} flex items-center gap-2.5 shadow-xl`}
               >
                 <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
                   <svg
@@ -1697,16 +1796,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     />
                   </svg>
                   <span
-                    key={styleRank.grade}
+                    key={displayGrade}
                     className={`aaa-rank-pop relative z-[1] font-display font-black leading-none ${
-                      styleRank.grade === 'SSS'
+                      displayGrade === 'SSS'
                         ? 'text-xs tracking-tighter'
-                        : styleRank.grade === 'SS'
+                        : displayGrade === 'SS'
                         ? 'text-sm tracking-tight'
                         : 'text-lg'
                     } ${styleRank.textClass}`}
                   >
-                    {styleRank.grade}
+                    {displayGrade}
                   </span>
                 </div>
 
@@ -1714,20 +1813,26 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   <div className="flex items-baseline justify-between gap-2">
                     <span
                       key={hud.comboCount}
-                      className="a2-combo-pop font-mono-nums text-lg font-black text-white leading-none"
+                      className="a2-combo-pop font-mono-nums tabular-nums text-lg font-black text-white leading-none"
                     >
-                      ×{hud.comboCount}
+                      ×{Math.max(1, hud.comboCount)}
                     </span>
                     <span className={`text-[10px] font-black tracking-wider ${styleRank.textClass}`}>
-                      {styleRank.title}
+                      {hud.styleGrade ? `Hạng ${hud.styleGrade}` : styleRank.title}
                     </span>
                   </div>
-                  <div className="mt-1 flex items-center justify-between text-[10px] font-mono-nums font-bold">
-                    <span className="text-slate-400">
-                      {styleRank.nextThreshold
-                        ? `Bậc kế: ${styleRank.nextThreshold}`
-                        : 'Cực Hạn'}
-                    </span>
+                  <div className="mt-1 flex items-center justify-between text-[10px] font-mono-nums tabular-nums font-bold">
+                    {styleRewardBonusPct > 0 ? (
+                      <span className="text-amber-300 font-black">
+                        +{styleRewardBonusPct}% Vàng/EXP
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">
+                        {styleRank.nextThreshold
+                          ? `Bậc kế: ${styleRank.nextThreshold}`
+                          : 'Cực Hạn'}
+                      </span>
+                    )}
                     {bonusPct > 0 && (
                       <span className="text-emerald-300 font-black">+{bonusPct}% ST</span>
                     )}

@@ -99,6 +99,21 @@ import {
   updateRoomBountyProgress,
 } from './aaaWave6Director';
 import {
+  applyBossStaggerDamage,
+  BossStaggerState,
+  createBossStaggerState,
+  createStyleMomentumState,
+  getStyleFillRatio,
+  GUARD_BREAK_DURATION_SEC,
+  pickCoopPingAiReply,
+  recordStyleAction,
+  recordStyleDamageTaken,
+  stepBossStaggerState,
+  stepStyleMomentum,
+  StyleMomentumState,
+} from './wave7CombatSystems';
+import type { CombatStyleGrade } from '../types/game';
+import {
   BossWeakPointState,
   ChapterWeatherProfile,
   checkBossWeakPointHit,
@@ -126,6 +141,36 @@ import {
   stepCoopSynergyClock,
   toHudCoopSynergy,
 } from './coopSynergy';
+import {
+  AdaptiveFpsGovernor,
+  BOSS_FINISHER_DURATION_SEC,
+  BOSS_PHASE_ATMOSPHERE,
+  COOP_TACTICAL_ORDERS,
+  CombatElementKind,
+  computeBossFinisherPresentation,
+  createAdaptiveFpsGovernor,
+  ELEMENTAL_IMPACT_VFX,
+  getAdaptiveFpsModifiers,
+  sampleAdaptiveFpsFrame,
+  selectCoopAllyTarget,
+  shouldCoopAllyHoldUlt,
+} from './wave5CombatSystems';
+import {
+  BossPaceTrackerState,
+  COOP_AI_ROLE_DEFS,
+  PerfectDodgeCounterState,
+  WEATHER_BIOME_PROFILES,
+  computeCoopRoleSynergy,
+  computeCounterVisualTimeScale,
+  computeWeatherInstanceBudget,
+  consumePerfectDodgeCounterShot,
+  createBossPaceTracker,
+  createPerfectDodgeCounterState,
+  resolveWeatherBiome,
+  stepPerfectDodgeCounter,
+  triggerPerfectDodgeCounter,
+  updateBossPaceTracker,
+} from './wave6CombatSystems';
 import { createArtemisMotion } from './artemisMotion';
 import { createDragonMountMotion } from './dragonMountMotion';
 import { discardModelDownload, downloadModel, getModelAssetUrl, type ModelAsset } from './modelAssets';
@@ -189,6 +234,7 @@ import {
   ComputedPlayerStats,
   CoopAllySummary,
   CoopRaidDifficulty,
+  CoopTacticalOrder,
   ArenaHazardType,
   DailyRiftMutatorPair,
   DamageBreakdown,
@@ -223,6 +269,10 @@ import {
   AiCompanionRole,
   AiLivePlayerPersonality,
   AiLivePlayerProfile,
+  BossPaceHudSnapshot,
+  CoopAiRole,
+  CoopRoleSynergySummary,
+  WeatherBiomeKind,
   WheelOutcome,
 } from '../types/game';
 import {
@@ -624,6 +674,11 @@ export interface EngineCallbacks {
       weeklyBossSimTicks?: number;
       weeklyBossClearTimeMs?: number;
       weeklyBossRemainingHpPct?: number;
+      weeklyBossSplitsMs?: (number | null)[];
+      weeklyBossCounterHits?: number;
+      weeklyBossGuardBreaks?: number;
+      peakStyleGrade?: CombatStyleGrade;
+      weeklyBossIsWeekendBlitz?: boolean;
       autoPilotUsed?: boolean;
       liveAiDuelId?: string;
       liveAiPlayerId?: string;
@@ -723,10 +778,13 @@ export class GameEngine {
   private bossIntroFocusX = 0;
   private bossIntroFocusZ = -5;
   private bossFinisherTimer = 0;
-  private bossFinisherDuration = 0.85;
+  private bossFinisherDuration = BOSS_FINISHER_DURATION_SEC;
   private bossFinisherFocusX = 0;
   private bossFinisherFocusZ = 0;
   private bossFinisherName: string | null = null;
+  private coopTacticalOrder: CoopTacticalOrder = 'focus_boss';
+  private adaptiveFpsGovernor: AdaptiveFpsGovernor = createAdaptiveFpsGovernor(true);
+  private elementalImpactVfxCd = 0;
   private synergyAwakenedName: string | null = null;
   private synergyAwakenedTimer = 0;
   private elementalZonePool: Array<{
@@ -1241,6 +1299,20 @@ export class GameEngine {
   private counterShotTimer = 0;
   private elementalReactionsCount = 0;
   private counterShotsCount = 0;
+  // Wave 6: Deterministic Perfect Dodge Counter-Window, Live Boss Pace, Co-op Roles & Weather
+  private perfectDodgeCounter: PerfectDodgeCounterState = createPerfectDodgeCounterState();
+  private bossPaceTracker: BossPaceTrackerState | null = null;
+  private bossPaceHud: BossPaceHudSnapshot | null = null;
+  private weeklyBossIsWeekendBlitz = false;
+  private coopRoleSynergy: CoopRoleSynergySummary | null = null;
+  private coopGuardianHealTicks = 0;
+  private activeWeatherBiome: WeatherBiomeKind = 'celestial_dust';
+  // Wave 7: Deterministic Boss Stagger/Guard-Break, Style Momentum (B->SSS), Co-op Tactical Pings
+  private bossStaggerState: BossStaggerState | null = null;
+  private bossStaggerOwnerId: number | null = null;
+  private styleMomentum: StyleMomentumState = createStyleMomentumState();
+  private coopPingToast: string | null = null;
+  private coopPingToastTimer = 0;
   private victoryOrbitClock = 0;
   private gamepadConnected = false;
   private gamepadMoveX = 0;
@@ -3990,7 +4062,8 @@ export class GameEngine {
   public startCoopRaid(
     stats: ComputedPlayerStats,
     difficulty: CoopRaidDifficulty,
-    liveTeammates?: AiLivePlayerProfile[]
+    liveTeammates?: AiLivePlayerProfile[],
+    coopRoles?: [CoopAiRole, CoopAiRole]
   ): void {
     const diffCfg = COOP_DIFFICULTY_MAP[difficulty];
     this.isTowerMode = false;
@@ -4003,6 +4076,9 @@ export class GameEngine {
     this.isArenaMode = false;
     this.isCoopRaidMode = true;
     this.coopDifficulty = difficulty;
+    const resolvedRoles: [CoopAiRole, CoopAiRole] = coopRoles ?? ['dps', 'guardian'];
+    this.coopRoleSynergy = computeCoopRoleSynergy(resolvedRoles);
+    this.coopGuardianHealTicks = 0;
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
@@ -4022,10 +4098,8 @@ export class GameEngine {
     const activeLiveSquad = (liveTeammates ?? []).slice(0, 2);
     const bannerSubtitle =
       activeLiveSquad.length > 0
-        ? `CO-OP 3D · ${diffCfg.name.toUpperCase()} · ĐỘI [AI LIVE]: ${activeLiveSquad
-            .map((p) => p.displayName)
-            .join(' & ')}`
-        : `PHÓ BẢN HỢP TÁC AI 3D · ${diffCfg.name.toUpperCase()}`;
+        ? `CO-OP 3D · ${diffCfg.name.toUpperCase()} · ${this.coopRoleSynergy.teamBadge.toUpperCase()}`
+        : `PHÓ BẢN HỢP TÁC AI 3D · ${diffCfg.name.toUpperCase()} · ${this.coopRoleSynergy.teamBadge.toUpperCase()}`;
 
     this.setupStageArena('sanctum', true, bannerSubtitle);
 
@@ -4048,6 +4122,10 @@ export class GameEngine {
     });
 
     resolvedAllies.forEach(({ heroDef: allyDef, displayName }, idx) => {
+      const roleKey = resolvedRoles[idx] ?? (idx === 0 ? 'dps' : 'guardian');
+      const roleDef = COOP_AI_ROLE_DEFS[roleKey];
+      const companionRole: AiCompanionRole =
+        roleKey === 'guardian' ? 'vanguard' : roleKey === 'control' ? 'mystic' : 'ranger';
       const ax = idx === 0 ? -4.2 : 4.2;
       const az = 5.4;
       const allyWeaponArchetype =
@@ -4057,7 +4135,7 @@ export class GameEngine {
           ? 'claw'
           : 'bow';
       const allyModel = createHeroModel({
-        weaponAccentHex: allyDef.accentHex,
+        weaponAccentHex: roleDef.accentHex,
         cloakColorHex: allyDef.cloakHex,
         hairColorHex: allyDef.hairHex,
         eyeColor: allyDef.eyeColor,
@@ -4087,13 +4165,16 @@ export class GameEngine {
       this.coopAllies.push({
         heroId: allyDef.id,
         name: displayName,
-        accentHex: allyDef.accentHex,
+        role: companionRole,
+        roleLabel: roleDef.shortLabel,
+        accentHex: roleDef.accentHex,
         x: ax,
         z: az,
         vx: 0,
         vz: 0,
         facing: Math.PI,
-        attackTimer: 0.35 + idx * 0.25,
+        attackTimer: (0.35 + idx * 0.25) / roleDef.fireRateMult,
+        supportTimer: roleKey === 'guardian' ? 7.5 : roleKey === 'control' ? 8.5 : undefined,
         ultCharge: 35 + idx * 15,
         damageDealt: 0,
         phaseAngle: idx * 2.1,
@@ -4658,7 +4739,14 @@ export class GameEngine {
   public startWeeklyRankedBoss(
     schedule: WeeklyBossSchedule,
     attemptId: string,
-    options?: { practice?: boolean }
+    options?: {
+      practice?: boolean;
+      isWeekendBlitz?: boolean;
+      top1ClearTimeMs?: number | null;
+      top1SplitsMs?: number[] | null;
+      personalBestClearTimeMs?: number | null;
+      personalBestSplitsMs?: number[] | null;
+    }
   ): void {
     const isPractice = Boolean(options?.practice);
     this.isTowerMode = false;
@@ -4670,6 +4758,7 @@ export class GameEngine {
     this.isGuildBossMode = false;
     this.isArenaMode = false;
     this.isCoopRaidMode = false;
+    this.coopRoleSynergy = null;
     this.isElementalTowerMode = false;
     this.isCrystalDefenseMode = false;
     this.isWorldBossMode = false;
@@ -4685,11 +4774,20 @@ export class GameEngine {
 
     this.isWeeklyRankedBossMode = true;
     this.isWeeklyBossPracticeMode = isPractice;
+    this.weeklyBossIsWeekendBlitz = Boolean(options?.isWeekendBlitz);
     this.weeklyBossAttemptId = isPractice ? null : attemptId;
     this.weeklyBossSeed = schedule.seed;
     this.weeklyBossTimeLeft = schedule.timeLimitSec;
     this.weeklyBossTotalDamage = 0;
     this.weeklyBossMaxHp = schedule.bossMaxHp;
+    this.bossPaceTracker = createBossPaceTracker({
+      timeLimitSec: schedule.timeLimitSec,
+      top1ClearTimeMs: options?.top1ClearTimeMs,
+      top1SplitsMs: options?.top1SplitsMs,
+      personalBestClearTimeMs: options?.personalBestClearTimeMs,
+      personalBestSplitsMs: options?.personalBestSplitsMs,
+    });
+    this.bossPaceHud = updateBossPaceTracker(this.bossPaceTracker, 1, 0);
     this.combatRng = createSeededRng(schedule.seed);
     this.simClock = createFixedTimestepClock();
     this.kinestheticsClock = createDeterministicKinestheticsClock();
@@ -5907,6 +6005,16 @@ export class GameEngine {
     this.counterShotTimer = 0;
     this.elementalReactionsCount = 0;
     this.counterShotsCount = 0;
+    this.perfectDodgeCounter = createPerfectDodgeCounterState();
+    this.coopGuardianHealTicks = 0;
+    if (!this.isCoopRaidMode) {
+      this.coopRoleSynergy = null;
+    }
+    if (!this.isWeeklyRankedBossMode) {
+      this.bossPaceTracker = null;
+      this.bossPaceHud = null;
+      this.weeklyBossIsWeekendBlitz = false;
+    }
     this.victoryOrbitClock = 0;
     this.runElapsedSeconds = 0;
     this.runWeakPointHits = 0;
@@ -5914,6 +6022,11 @@ export class GameEngine {
     this.runBountiesCompleted = 0;
     this.runBossBreaksCount = 0;
     this.runDamageTakenCount = 0;
+    this.bossStaggerState = null;
+    this.bossStaggerOwnerId = null;
+    this.styleMomentum = createStyleMomentumState();
+    this.coopPingToast = null;
+    this.coopPingToastTimer = 0;
     this.windBeaconSpeedTimer = 0;
     this.trapTriggerToast = null;
     this.trapTriggerToastTimer = 0;
@@ -7613,8 +7726,10 @@ export class GameEngine {
     }
     if (typeof cfg.adaptiveResolutionGuard === 'boolean') {
       this.adaptiveResolutionGuard = cfg.adaptiveResolutionGuard;
+      this.adaptiveFpsGovernor.enabled = cfg.adaptiveResolutionGuard;
       if (!cfg.adaptiveResolutionGuard) {
         this.adaptiveResScale = 1.0;
+        this.adaptiveFpsGovernor.tier = 'full';
       }
     }
     this.bloomEnabled = cfg.bloomEnabled !== false;
@@ -7622,8 +7737,10 @@ export class GameEngine {
     if (this.starfallMesh) {
       this.starfallMesh.visible = this.starfallEnabled;
     }
-    this.particleDensityScale =
+    const baseParticleDensity =
       quality === 'low' ? 0.45 : quality === 'medium' ? 0.75 : 1.0;
+    const govMods = getAdaptiveFpsModifiers(this.adaptiveFpsGovernor);
+    this.particleDensityScale = baseParticleDensity * govMods.particleScale;
 
     if (!this.isSoftwareGl) {
       const shadowsOn = quality !== 'low';
@@ -7683,9 +7800,48 @@ export class GameEngine {
       this.triggerHeroActiveSkill();
     } else if (code === kb.cycleCamera && !this.keys[code]) {
       this.quickCycleCombatCamera();
+    } else if (this.isCoopRaidMode && !this.keys[code]) {
+      if (code === 'Digit1') {
+        this.setCoopTacticalOrder('focus_boss');
+      } else if (code === 'Digit2') {
+        this.setCoopTacticalOrder('clear_adds');
+      } else if (code === 'Digit3') {
+        this.setCoopTacticalOrder('hold_resonance');
+      }
     }
     this.keys[code] = true;
   };
+
+  public setCoopTacticalOrder(order: CoopTacticalOrder): void {
+    this.coopTacticalOrder = order;
+    const meta = COOP_TACTICAL_ORDERS.find((o) => o.id === order);
+    if (meta && this.isCoopRaidMode) {
+      soundEngine.playCoopTacticalPing();
+      for (const ally of this.coopAllies) {
+        ally.calloutText = meta.shortLabel;
+        ally.calloutTimer = 2.4;
+      }
+      const responder =
+        this.coopAllies[0]?.name ?? 'Đồng Đội [AI Live]';
+      this.coopPingToast = pickCoopPingAiReply(order, responder);
+      this.coopPingToastTimer = 3.2;
+      this.emitFloatingNumber(
+        this.px,
+        2.45,
+        this.pz,
+        0,
+        true,
+        false,
+        undefined,
+        meta.callout
+      );
+      this.syncHudImmediate();
+    }
+  }
+
+  public triggerCoopTacticalPing(order: CoopTacticalOrder): void {
+    this.setCoopTacticalOrder(order);
+  }
 
   public quickCycleCombatCamera(): void {
     const cycled = cycleCombatCameraPreset(this.combatCameraPreset);
@@ -7834,6 +7990,11 @@ export class GameEngine {
     this.ultCharge = res.nextUltCharge;
     this.perfectDodgeCount += 1;
     this.counterShotTimer = 3.5;
+    triggerPerfectDodgeCounter(this.perfectDodgeCounter);
+    const dodgeStyleRes = recordStyleAction(this.styleMomentum, 'perfect_dodge');
+    if (dodgeStyleRes.promoted) {
+      soundEngine.playComboRankUp(dodgeStyleRes.pitchBoost);
+    }
 
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
@@ -7852,8 +8013,9 @@ export class GameEngine {
     this.spawnDashGhost(this.px - this.dashDirX * 0.45, this.pz - this.dashDirZ * 0.45, this.pFacing, 0x34d399);
     this.spawnDashGhost(this.px, this.pz, this.pFacing, 0xfde047);
     this.spawnShockwave(this.px, this.pz, 0xe0f2fe, 3.6, 0.34);
+    this.spawnShockwave(this.px, this.pz, 0xfde047, 4.15, 0.36);
     this.spawnParticles(this.px, 0.9, this.pz, 0x38bdf8, 16);
-    this.emitFloatingNumber(this.px, 2.25, this.pz, 0, true, false, 'ice', 'NÉ HOÀN HẢO!');
+    this.emitFloatingNumber(this.px, 2.25, this.pz, 0, true, false, 'ice', 'PHẢN KÍCH THỜI GIAN! ×2');
     this.syncHudImmediate();
   }
 
@@ -8618,8 +8780,25 @@ export class GameEngine {
       this.hemiLight.intensity = 0.88 * this.combatLightingState.hemiIntensity;
     }
 
-    // Pillar 1: Adaptive Resolution Guard (hardware WebGL only; software WebGL stays capped)
+    // Pillar 1: Wave 5 Adaptive FPS Governor + Resolution Guard (hardware WebGL only; never recreates WebGLRenderer)
+    this.elementalImpactVfxCd = Math.max(0, this.elementalImpactVfxCd - dt);
+    const govStep = sampleAdaptiveFpsFrame(this.adaptiveFpsGovernor, dt);
     if (this.adaptiveResolutionGuard && !this.isSoftwareGl) {
+      if (govStep.tierChanged) {
+        const baseParticleDensity =
+          this.graphicsQuality === 'low' ? 0.45 : this.graphicsQuality === 'medium' ? 0.75 : 1.0;
+        this.particleDensityScale = baseParticleDensity * govStep.modifiers.particleScale;
+        const maxPr =
+          this.graphicsQuality === 'low' ? 1.0 : this.graphicsQuality === 'medium' ? 1.5 : 2.0;
+        const nextDpr = Math.min(
+          maxPr,
+          (window.devicePixelRatio || 1) * Math.min(this.adaptiveResScale, govStep.modifiers.dprScale)
+        );
+        this.renderer.setPixelRatio(nextDpr);
+        if (this.composer) {
+          this.composer.setPixelRatio(nextDpr);
+        }
+      }
       this.adaptiveResCheckTimer += dt;
       if (this.adaptiveResCheckTimer >= 1.2) {
         this.adaptiveResCheckTimer = 0;
@@ -8634,9 +8813,12 @@ export class GameEngine {
             this.adaptiveResScale = nextScale;
             const maxPr =
               this.graphicsQuality === 'low' ? 1.0 : this.graphicsQuality === 'medium' ? 1.5 : 2.0;
-            this.renderer.setPixelRatio(
-              Math.min(maxPr, (window.devicePixelRatio || 1) * this.adaptiveResScale)
-            );
+            const dprMult = Math.min(this.adaptiveResScale, govStep.modifiers.dprScale);
+            const nextDpr = Math.min(maxPr, (window.devicePixelRatio || 1) * dprMult);
+            this.renderer.setPixelRatio(nextDpr);
+            if (this.composer) {
+              this.composer.setPixelRatio(nextDpr);
+            }
           }
         }
       }
@@ -8771,6 +8953,17 @@ export class GameEngine {
 
     if (this.isWeeklyRankedBossMode) {
       this.weeklyBossTimeLeft = Math.max(0, this.weeklyBossTimeLeft - dt);
+      if (this.bossPaceTracker) {
+        const rankedBoss = this.enemies.find((en) => en.isBoss);
+        const bossHpRatio = rankedBoss
+          ? Math.max(0, rankedBoss.hp / Math.max(1, rankedBoss.maxHp))
+          : Math.max(0, 1 - this.weeklyBossTotalDamage / Math.max(1, this.weeklyBossMaxHp));
+        this.bossPaceHud = updateBossPaceTracker(
+          this.bossPaceTracker,
+          bossHpRatio,
+          Math.round(this.simClock.totalSimTime * 1000)
+        );
+      }
       if (this.weeklyBossTimeLeft <= 0) {
         const totalDmg = Math.min(this.weeklyBossMaxHp, Math.round(this.weeklyBossTotalDamage));
         soundEngine.playPlayerHurt();
@@ -8784,6 +8977,7 @@ export class GameEngine {
           gems: 0,
           isWeeklyRankedBossMode: true,
           weeklyBossIsPractice: this.isWeeklyBossPracticeMode,
+          weeklyBossIsWeekendBlitz: this.weeklyBossIsWeekendBlitz,
           weeklyBossAttemptId: this.weeklyBossAttemptId ?? undefined,
           weeklyBossSeed: this.weeklyBossSeed ?? undefined,
           weeklyBossDamage: totalDmg,
@@ -8791,11 +8985,47 @@ export class GameEngine {
           weeklyBossSimTicks: this.simClock.totalTicks,
           weeklyBossClearTimeMs: Math.round(this.simClock.totalSimTime * 1000),
           weeklyBossRemainingHpPct: Math.max(0, this.hp / Math.max(1, this.maxHp)),
+          weeklyBossSplitsMs: this.bossPaceTracker ? [...this.bossPaceTracker.currentSplitsMs] : undefined,
+          weeklyBossCounterHits: this.perfectDodgeCounter.totalCountersLanded,
+          weeklyBossGuardBreaks: this.runBossBreaksCount,
+          peakStyleGrade: this.styleMomentum.peakGrade,
           autoPilotUsed: this.autoPilotUsedInRun,
           maxCombo: this.maxRunCombo,
           damageBreakdown: this.getDamageBreakdownSnapshot(),
         });
         return;
+      }
+    }
+
+    // Wave 6 + Wave 7: Deterministic Perfect Dodge Counter-Window, Style Momentum, Boss Stagger & Co-op Ping Decay
+    stepPerfectDodgeCounter(this.perfectDodgeCounter, dt);
+    stepStyleMomentum(this.styleMomentum, dt);
+    if (this.coopPingToastTimer > 0) {
+      this.coopPingToastTimer = Math.max(0, this.coopPingToastTimer - dt);
+      if (this.coopPingToastTimer <= 0) {
+        this.coopPingToast = null;
+      }
+    }
+    if (this.bossStaggerState) {
+      const staggerTick = stepBossStaggerState(this.bossStaggerState, dt);
+      if (staggerTick.recovered) {
+        const activeBoss = this.enemies.find((en) => en.id === this.bossStaggerOwnerId);
+        if (activeBoss) {
+          activeBoss.maxBreakShield = this.bossStaggerState.max;
+          activeBoss.breakShield = this.bossStaggerState.max;
+        }
+      }
+    }
+    if (this.isCoopRaidMode && this.coopRoleSynergy && this.coopRoleSynergy.periodicHealPct > 0) {
+      this.coopGuardianHealTicks += 1;
+      if (this.coopGuardianHealTicks >= 480) {
+        this.coopGuardianHealTicks = 0;
+        if (this.hp > 0 && this.hp < this.maxHp) {
+          const healAmt = Math.max(4, Math.round(this.maxHp * this.coopRoleSynergy.periodicHealPct));
+          this.hp = Math.min(this.maxHp, this.hp + healAmt);
+          this.spawnParticles(this.px, 1.0, this.pz, 0x34d399, 8);
+          this.emitFloatingNumber(this.px, 2.05, this.pz, healAmt, false, true);
+        }
       }
     }
 
@@ -9241,6 +9471,14 @@ export class GameEngine {
       this.perfectDodgeSlowTimer = Math.max(0, this.perfectDodgeSlowTimer - dt);
       timeScale = Math.min(timeScale, PERFECT_DODGE_SLOWMO_SCALE);
     }
+    if (this.perfectDodgeCounter.visualSlowMoRemainingSec > 0) {
+      const reducedMotion =
+        typeof window !== 'undefined' &&
+        Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+      if (!reducedMotion) {
+        timeScale = Math.min(timeScale, computeCounterVisualTimeScale(this.perfectDodgeCounter));
+      }
+    }
     if (this.bossFinisherTimer > 0) {
       this.bossFinisherTimer = Math.max(0, this.bossFinisherTimer - dt);
       if (this.bossFinisherTimer <= 0) {
@@ -9251,12 +9489,19 @@ export class GameEngine {
       this.bossFinisherTimer,
       this.bossFinisherDuration
     );
-    if (finisherKinematics.active) {
+    const wave5Finisher = computeBossFinisherPresentation(
+      this.bossFinisherTimer,
+      this.bossFinisherDuration
+    );
+    if (finisherKinematics.active || wave5Finisher.active) {
       const prefersReducedMotion =
         typeof window !== 'undefined' &&
         Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
       if (!prefersReducedMotion) {
-        timeScale = Math.min(timeScale, finisherKinematics.timeScale);
+        timeScale = Math.min(
+          timeScale,
+          wave5Finisher.active ? wave5Finisher.visualTimeScale : finisherKinematics.timeScale
+        );
       }
     }
     const simDt = dt * timeScale;
@@ -9651,64 +9896,76 @@ export class GameEngine {
       return;
     }
     this.starfallMesh.visible = true;
-    let mode: LobbyWeatherId | 'meteor_shower' = this.lobbyWeatherId;
-    if (this.phase !== GamePhase.TITLE) {
-      const boss = this.enemies.find((e) => e.isBoss);
-      const biome = resolveChapterBiomeAtmosphere(this.currentChapter.zodiacId, boss?.bossPhase ?? 1);
-      mode =
-        biome.weatherKind === 'embers'
-          ? 'golden_embers'
-          : biome.weatherKind === 'snow'
-          ? 'starlight_snow'
-          : biome.weatherKind === 'petals'
-          ? 'sakura_petals'
-          : 'meteor_shower';
+    const biomeKind = resolveWeatherBiome({
+      chapterIndex: Math.max(0, (this.currentChapter?.id ?? 1) - 1),
+      isWeeklyBoss: this.isWeeklyRankedBossMode,
+      isWeekendBlitz: this.weeklyBossIsWeekendBlitz,
+      isLobby: this.phase === GamePhase.TITLE,
+    });
+    this.activeWeatherBiome = biomeKind;
+    const profile = WEATHER_BIOME_PROFILES[biomeKind];
+    const activeBudget = Math.min(
+      this.STARFALL_COUNT,
+      computeWeatherInstanceBudget(profile, this.adaptiveFpsGovernor.tier, this.isSoftwareGl)
+    );
+    this.starfallMesh.count = activeBudget;
+
+    const starMat = this.starfallMesh.material as THREE.MeshBasicMaterial | undefined;
+    if (starMat?.color && this.phase !== GamePhase.TITLE) {
+      _starCol.setHex(profile.particleHex);
+      starMat.color.lerp(_starCol, Math.min(1, dt * 3.0));
     }
-    for (let i = 0; i < this.STARFALL_COUNT; i++) {
+
+    for (let i = 0; i < activeBudget; i++) {
       const s = this.starfallSeeds[i];
-      if (mode === 'golden_embers') {
-        s.y += Math.abs(s.vy) * 0.85 * dt;
-        s.x += Math.sin(this.elapsed * 2.1 + s.phase) * 0.65 * dt;
+      if (biomeKind === 'ember_ash') {
+        s.y += Math.abs(profile.fallSpeed) * (0.75 + (s.scale * 0.35)) * dt;
+        s.x += Math.sin(this.elapsed * 2.1 + s.phase) * profile.driftX * dt;
+        s.z += Math.cos(this.elapsed * 1.5 + s.phase) * profile.driftZ * dt;
         if (s.y > 16.5) {
-          s.y = 0.2 + Math.random() * 1.4;
-          s.x = (Math.random() - 0.5) * 28;
-          s.z = (Math.random() - 0.5) * 28;
+          s.y = 0.25 + ((i * 0.37) % 1.4);
+          s.x = ((i * 7.3) % 28) - 14;
+          s.z = ((i * 11.1) % 28) - 14;
         }
-        _dummy.scale.setScalar(s.scale * (0.85 + 0.35 * Math.sin(this.elapsed * 6 + s.phase)));
-      } else if (mode === 'starlight_snow') {
-        s.y += s.vy * 0.48 * dt;
-        s.x += Math.sin(this.elapsed * 1.4 + s.phase) * 0.55 * dt;
+        const flicker = 0.8 + 0.35 * Math.sin(this.elapsed * 6 + s.phase);
+        _dummy.scale.set(s.scale * flicker, s.scale * flicker, s.scale * flicker);
+      } else if (biomeKind === 'starlight_snow') {
+        s.y -= profile.fallSpeed * (0.45 + s.scale * 0.25) * dt;
+        s.x += Math.sin(this.elapsed * 1.4 + s.phase) * profile.driftX * dt;
+        s.z += Math.cos(this.elapsed * 1.1 + s.phase) * profile.driftZ * dt;
         if (s.y < 0.2) {
-          s.y = 14 + Math.random() * 3.5;
-          s.x = (Math.random() - 0.5) * 30;
-          s.z = (Math.random() - 0.5) * 30;
+          s.y = 14 + ((i * 0.61) % 3.5);
+          s.x = ((i * 9.7) % 30) - 15;
+          s.z = ((i * 13.3) % 30) - 15;
         }
-        _dummy.scale.setScalar(s.scale * 1.18);
-      } else if (mode === 'sakura_petals') {
-        s.y += s.vy * 0.52 * dt;
-        s.x += (0.85 + Math.cos(this.elapsed * 2.2 + s.phase) * 0.7) * dt;
-        if (s.y < 0.2 || s.x > 16) {
-          s.y = 13 + Math.random() * 4;
-          s.x = -14 + Math.random() * 24;
-          s.z = (Math.random() - 0.5) * 30;
+        _dummy.scale.setScalar(s.scale * 1.16);
+      } else if (biomeKind === 'storm_rain') {
+        s.y -= profile.fallSpeed * (0.85 + s.scale * 0.22) * dt;
+        s.x -= profile.driftX * dt;
+        if (s.y < 0.25) {
+          s.y = 14.5 + ((i * 0.73) % 3.5);
+          s.x = ((i * 8.9) % 30) - 12;
+          s.z = ((i * 12.7) % 32) - 16;
         }
-        _dummy.scale.set(s.scale * 1.5, s.scale * 0.35, s.scale * 1.1);
+        _dummy.scale.set(s.scale * 0.48, s.scale * 3.1, s.scale * 0.48);
       } else {
-        // meteor_shower
-        s.y += s.vy * 1.35 * dt;
-        s.x += (s.vx - 1.35) * dt;
-        if (s.y < 0.3) {
-          s.y = 14 + Math.random() * 3.5;
-          s.x = (Math.random() - 0.5) * 30 + 4;
-          s.z = (Math.random() - 0.5) * 32;
+        // celestial_dust
+        s.y += Math.abs(profile.fallSpeed) * (0.55 + s.scale * 0.28) * dt;
+        s.x += Math.sin(this.elapsed * 1.3 + s.phase) * profile.driftX * dt;
+        s.z += Math.cos(this.elapsed * 1.1 + s.phase) * profile.driftZ * dt;
+        if (s.y > 15.5) {
+          s.y = 0.4 + ((i * 0.53) % 2.1);
+          s.x = ((i * 10.3) % 28) - 14;
+          s.z = ((i * 14.1) % 28) - 14;
         }
-        _dummy.scale.set(s.scale * 0.65, s.scale * 2.4, s.scale * 0.65);
+        const pulse = 0.85 + 0.28 * Math.sin(this.elapsed * 3.2 + s.phase);
+        _dummy.scale.setScalar(s.scale * pulse);
       }
       _dummy.position.set(s.x, s.y, s.z);
       _dummy.rotation.set(
-        mode === 'sakura_petals' ? this.elapsed * 1.8 + s.phase : 0,
-        this.elapsed * 1.9 + s.phase,
-        mode === 'meteor_shower' ? 0.38 : 0
+        biomeKind === 'storm_rain' ? 0 : this.elapsed * 1.1 + s.phase,
+        this.elapsed * 1.6 + s.phase,
+        biomeKind === 'storm_rain' ? 0.24 : 0
       );
       _dummy.updateMatrix();
       this.starfallMesh.setMatrixAt(i, _dummy.matrix);
@@ -10440,28 +10697,48 @@ export class GameEngine {
     const isAtreusOrb =
       bonusShadow || (this.baseStats.heroId === 'atreus' && this.atreusShotCount % 4 === 0);
 
+    const wave6Counter =
+      isPrimary && dmgSource === 'basic'
+        ? consumePerfectDodgeCounterShot(this.perfectDodgeCounter)
+        : { empowered: false, damageMult: 1, guaranteedCrit: false, piercing: false };
+
     const enhancement = resolvePrimaryArrowEnhancement({
       isPrimary,
       dmgSource,
-      counterShotTimer: this.counterShotTimer,
+      counterShotTimer: wave6Counter.empowered ? 0 : this.counterShotTimer,
       astralOvercharge: this.astralOvercharge,
     });
-    const isCounterShot = enhancement.isCounterShot;
-    const isOvercharge = enhancement.isOvercharge;
-    this.counterShotTimer = enhancement.nextCounterShotTimer;
+    const isCounterShot = wave6Counter.empowered || enhancement.isCounterShot;
+    const isOvercharge = !wave6Counter.empowered && enhancement.isOvercharge;
+    this.counterShotTimer = wave6Counter.empowered
+      ? this.perfectDodgeCounter.windowRemainingSec
+      : enhancement.nextCounterShotTimer;
     this.astralOvercharge = enhancement.nextAstralOvercharge;
 
     if (isCounterShot) {
       const weaponSig = getWeaponKineticSignature(this.baseStats.weaponArchetype);
       this.counterShotsCount += 1;
-      soundEngine.playCounterShotRelease();
+      if (wave6Counter.empowered) {
+        soundEngine.playPerfectDodgeCounter();
+      } else {
+        soundEngine.playCounterShotRelease();
+      }
       triggerHapticPulse('crit', this.hapticsEnabled);
       triggerDeterministicHitStop(this.kinestheticsClock, weaponSig.hitstopTicks);
       this.shakeIntensity = Math.max(this.shakeIntensity, weaponSig.recoilKick * 1.35);
-      this.spawnShockwave(this.px, this.pz, 0x22d3ee, 2.7, 0.28);
+      this.spawnShockwave(this.px, this.pz, 0xfde047, 3.0, 0.28);
       this.spawnShockwave(this.px, this.pz, weaponSig.impactHex, 2.0, 0.24);
       this.spawnParticles(this.px, 1.05, this.pz, weaponSig.impactHex, weaponSig.sparkCount + 8);
-      this.emitFloatingNumber(this.px, 2.15, this.pz, 0, true, false, undefined, 'PHẢN TIỄN TINH QUANG!');
+      this.emitFloatingNumber(
+        this.px,
+        2.15,
+        this.pz,
+        0,
+        true,
+        false,
+        undefined,
+        wave6Counter.empowered ? 'PHẢN KÍCH HOÀNG KIM!' : 'PHẢN TIỄN TINH QUANG!'
+      );
       this.triggerCompanionSynergyStrike();
     } else if (isOvercharge) {
       const weaponSig = getWeaponKineticSignature(this.baseStats.weaponArchetype);
@@ -10493,14 +10770,20 @@ export class GameEngine {
     const finalArrowSpeed =
       this.baseStats.arrowSpeed *
       (hasPiercingVolley ? 1.15 : 1.0) *
-      (isCounterShot ? 1.32 : isOvercharge ? 1.24 : 1.0);
+      (isCounterShot ? 1.38 : isOvercharge ? 1.24 : 1.0);
     proj.vx = dirX * finalArrowSpeed;
     proj.vz = dirZ * finalArrowSpeed;
     proj.damage =
       (isAtreusOrb ? rawDamage * 1.15 : rawDamage) *
-      (isCounterShot ? 1.35 : isOvercharge ? 1.22 : 1.0);
+      (wave6Counter.empowered
+        ? wave6Counter.damageMult
+        : isCounterShot
+        ? 1.35
+        : isOvercharge
+        ? 1.22
+        : 1.0);
     proj.radius = isCounterShot
-      ? 0.44
+      ? 0.46
       : isOvercharge
       ? 0.4
       : this.baseStats.weaponArchetype === 'claw'
@@ -10512,7 +10795,7 @@ export class GameEngine {
       (this.baseStats.innatePierce ? 2 : 0) +
       (this.baseStats.weaponArchetype === 'claw' ? 1 : 0) +
       (isAtreusOrb ? 3 : 0) +
-      (isCounterShot ? 2 : 0) +
+      (wave6Counter.piercing ? 3 : isCounterShot ? 2 : 0) +
       (isOvercharge ? 2 : 0);
     proj.ricochetLeft = (this.activeSkills.ricochet ?? 0) * 2;
     proj.wallBounceLeft = (this.activeSkills.bouncy_wall ?? 0) * 2;
@@ -11159,9 +11442,23 @@ export class GameEngine {
       .filter((o) => o.active)
       .map((o) => ({ x: o.x, z: o.z, vx: o.vx, vz: o.vz, radius: 0.35 }));
 
+    const coopCandidates = this.enemies.map((e) => ({
+      id: e.id,
+      x: e.x,
+      z: e.z,
+      isBoss: e.isBoss,
+      isElite: e.isElite,
+      hp: e.hp,
+      alive: e.hp > 0 && e.spawnTimer <= 0,
+      ref: e,
+    }));
+
     for (let idx = 0; idx < this.coopAllies.length; idx++) {
       const ally = this.coopAllies[idx];
-      const target = nearest ? this.findNearestEnemy(ally.x, ally.z) ?? nearest : null;
+      const orderedPick = this.isCoopRaidMode
+        ? selectCoopAllyTarget(coopCandidates, ally.x, ally.z, this.coopTacticalOrder)?.ref ?? null
+        : null;
+      const target = orderedPick ?? (nearest ? this.findNearestEnemy(ally.x, ally.z) ?? nearest : null);
       const role = ally.role ?? (idx === 0 ? 'ranger' : 'mystic');
       const roleCfg = AI_COMPANION_ROLES[role];
 
@@ -11298,8 +11595,21 @@ export class GameEngine {
           const isIce = ally.heroId === 'rolla';
           const isStorm = ally.heroId === 'thor';
 
-          // Trigger Ally Ultimate when ready
-          if (ally.ultCharge >= 100) {
+          // Trigger Ally Ultimate when ready (respecting Co-op Tactical Order 'hold_resonance')
+          const holdUltForResonance =
+            this.isCoopRaidMode &&
+            shouldCoopAllyHoldUlt({
+              order: this.coopTacticalOrder,
+              playerUltRecentRemainingSec: this.coopSynergyClock.playerUltRecentRemainingSec,
+              resonanceRemainingSec: this.coopSynergyClock.resonanceRemainingSec,
+            });
+          if (ally.ultCharge >= 100 && holdUltForResonance) {
+            if (!ally.calloutTimer || ally.calloutTimer <= 0) {
+              ally.calloutText = 'Đang giữ Tuyệt Kỹ · Bấm Q Liên Kích!';
+              ally.calloutTimer = 2.4;
+            }
+          }
+          if (ally.ultCharge >= 100 && !holdUltForResonance) {
             ally.ultCharge = 0;
             if (this.isCoopRaidMode) {
               const allyRes = onCoopAllyUltimateCast(this.coopSynergyClock, ally.name);
@@ -12520,8 +12830,12 @@ export class GameEngine {
         continue;
       }
 
-      p.x += p.vx * dt;
-      p.z += p.vz * dt;
+      const coopProjSpeedMult =
+        this.isCoopRaidMode && this.coopRoleSynergy
+          ? Math.max(0.55, 1 - this.coopRoleSynergy.enemyProjectileSlowPct)
+          : 1;
+      p.x += p.vx * dt * coopProjSpeedMult;
+      p.z += p.vz * dt * coopProjSpeedMult;
       p.mesh.position.set(p.x, p.y, p.z);
 
       if (Math.abs(p.x) >= ARENA_HALF_W || Math.abs(p.z) >= ARENA_HALF_D) {
@@ -12639,6 +12953,10 @@ export class GameEngine {
       }
     }
 
+    if (this.isCoopRaidMode && this.coopRoleSynergy && e.isBoss) {
+      mult *= 1 + this.coopRoleSynergy.bossDamageBonus;
+    }
+
     const finalDmg = Math.max(1, Math.round(amount * mult));
     if (e.isTrainingDummy) {
       recordTrainingHit(this.trainingDpsState, this.trainingClockSec, finalDmg, isCrit);
@@ -12662,51 +12980,99 @@ export class GameEngine {
       e.hitFlashTimer = 0.1;
     }
 
-    // Wave 12: Boss Break-Shield Mechanic (Lazy init & Shatter Stun 3s)
+    // Wave 5 Pillar 1/2: Elemental Arrow Impact Bursts (fire / ice / lightning / poison)
+    if ((blaze || frost || storm || poison) && this.elementalImpactVfxCd <= 0) {
+      const elemKind: CombatElementKind = storm
+        ? 'lightning'
+        : frost
+        ? 'ice'
+        : blaze
+        ? 'fire'
+        : 'poison';
+      const elemSpec = ELEMENTAL_IMPACT_VFX[elemKind];
+      const scaledCount = Math.max(
+        4,
+        Math.round(elemSpec.particleCount * Math.max(0.45, this.particleDensityScale))
+      );
+      this.spawnParticles(e.x, 1.05, e.z, elemSpec.primaryHex, scaledCount);
+      this.spawnShockwave(e.x, e.z, elemSpec.secondaryHex, elemSpec.ringRadius, 0.24);
+      this.elementalImpactVfxCd = 0.09;
+    }
+
+    // Wave 7: Deterministic Boss Stagger / Guard-Break Mechanic (4.0s Guard Break & +45% Vulnerability)
     if (e.isBoss && e.hp > 0 && !e.isTrainingDummy) {
-      if (e.maxBreakShield === undefined) {
-        e.maxBreakShield = Math.max(120, Math.round(e.maxHp * 0.42));
-        e.breakShield = e.maxBreakShield;
+      if (this.bossStaggerOwnerId !== e.id || !this.bossStaggerState) {
+        this.bossStaggerOwnerId = e.id;
+        this.bossStaggerState = createBossStaggerState(e.maxHp);
+        e.maxBreakShield = this.bossStaggerState.max;
+        e.breakShield = this.bossStaggerState.max;
       }
-      if (!e.stunTimer || e.stunTimer <= 0) {
-        const breakMult =
-          (isCrit ? 1.8 : 1.0) *
-          (dmgSource === 'ultimate' ? 2.1 : 1.0) *
-          (1 + (this.baseStats.mythicWeaponTier ?? 0) * 0.14);
-        e.breakShield = Math.max(0, (e.breakShield ?? e.maxBreakShield) - finalDmg * breakMult);
-        if (e.breakShield <= 0) {
-          e.stunTimer = 3.0;
-          e.punishWindowTimer = 0;
-          if (e.punishRingMesh) e.punishRingMesh.visible = false;
-          e.telegraphType = 'none';
-          e.telegraphGroup.visible = false;
-          e.laserLine.visible = false;
-          this.dangerLanePool.forEach((l) => {
-            l.active = false;
-            l.mesh.visible = false;
-          });
-          this.bossBrokenBannerTimer = 2.6;
-          this.hitstopTimer = Math.max(this.hitstopTimer, 0.085);
-          this.shakeIntensity = Math.max(this.shakeIntensity, 0.55);
-          const breakPan = computeSpatialPan(e.x, ARENA_HALF_W);
-          soundEngine.playBossBreakShatter(breakPan);
-          soundEngine.playBossStaggerRoar(breakPan);
-          soundEngine.playImpactScorchThump(breakPan);
-          triggerHapticPulse('boss_break', this.hapticsEnabled);
-          this.spawnArmorShards(e.x, 1.35, e.z, 0xfbbf24, 14);
-          this.spawnImpactLight(e.x, 1.8, e.z, 'super_crit');
-          this.spawnCritStar(e.x, 1.5, e.z, 0xfde047, 2.4);
-          this.triggerPostFxImpulse('boss_break');
-          this.spawnShockwave(e.x, e.z, 0xfde047, 6.8, 0.54);
-          this.spawnImpactDecal(e.x, e.z, 0xfde047, 3.2, 2.0);
-          this.spawnBattleScar(e.x, e.z, 1.25);
-          this.spawnParticles(e.x, 1.3, e.z, 0xfde047, 36);
-          this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHÁ GIÁP! +45% ST', true);
-          this.runBossBreaksCount += 1;
-          this.advanceRoomBounty({ type: 'boss_break' });
-          // Deterministic 4-tick (66ms) Boss Stagger Break hit-stop
-          triggerDeterministicHitStop(this.kinestheticsClock, 4);
+      const staggerRes = applyBossStaggerDamage(
+        this.bossStaggerState,
+        finalDmg * (1 + (this.baseStats.mythicWeaponTier ?? 0) * 0.14),
+        {
+          isCrit,
+          isCounterShot: Boolean(resolvedLabel && resolvedLabel.includes('PHẢN')),
+          isUltimate: dmgSource === 'ultimate',
         }
+      );
+      const isBossBroken = this.bossStaggerState.brokenRemainingSec > 0;
+      e.maxBreakShield = this.bossStaggerState.max;
+      e.breakShield = isBossBroken
+        ? 0
+        : Math.max(0, Math.round(this.bossStaggerState.max - this.bossStaggerState.current));
+      if (staggerRes.triggeredBreak) {
+        e.stunTimer = GUARD_BREAK_DURATION_SEC;
+        e.punishWindowTimer = 0;
+        if (e.punishRingMesh) e.punishRingMesh.visible = false;
+        e.telegraphType = 'none';
+        e.telegraphGroup.visible = false;
+        e.laserLine.visible = false;
+        this.dangerLanePool.forEach((l) => {
+          l.active = false;
+          l.mesh.visible = false;
+        });
+        this.bossBrokenBannerTimer = 2.8;
+        this.hitstopTimer = Math.max(this.hitstopTimer, 0.065);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.58);
+        const breakPan = computeSpatialPan(e.x, ARENA_HALF_W);
+        soundEngine.playBossGuardBreak(breakPan);
+        soundEngine.playBossBreakShatter(breakPan);
+        soundEngine.playBossStaggerRoar(breakPan);
+        soundEngine.playImpactScorchThump(breakPan);
+        triggerHapticPulse('boss_break', this.hapticsEnabled);
+        this.spawnArmorShards(e.x, 1.35, e.z, 0xfbbf24, 16);
+        this.spawnImpactLight(e.x, 1.8, e.z, 'super_crit');
+        this.spawnCritStar(e.x, 1.5, e.z, 0xfde047, 2.5);
+        this.triggerPostFxImpulse('boss_break');
+        this.spawnShockwave(e.x, e.z, 0xfde047, 7.2, 0.56);
+        this.spawnImpactDecal(e.x, e.z, 0xfde047, 3.3, 2.0);
+        this.spawnBattleScar(e.x, e.z, 1.25);
+        this.spawnParticles(e.x, 1.3, e.z, 0xfde047, 38);
+        this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHÁ GIÁP! +45% ST', true);
+        this.runBossBreaksCount += 1;
+        this.advanceRoomBounty({ type: 'boss_break' });
+        const gbStyle = recordStyleAction(this.styleMomentum, 'guard_break');
+        if (gbStyle.promoted) {
+          soundEngine.playComboRankUp(gbStyle.pitchBoost);
+        }
+        // Deterministic 4-tick (66ms) Boss Stagger Break hit-stop
+        triggerDeterministicHitStop(this.kinestheticsClock, 4);
+      }
+    }
+    if (coopAllyIndex === undefined && !e.isTrainingDummy) {
+      const styleEventKind =
+        dmgSource === 'ultimate'
+          ? 'ultimate'
+          : resolvedLabel && resolvedLabel.includes('PHẢN')
+          ? 'counter_shot'
+          : isCrit
+          ? 'crit'
+          : 'hit';
+      const styleRes = recordStyleAction(this.styleMomentum, styleEventKind);
+      if (styleRes.promoted) {
+        soundEngine.playComboRankUp(styleRes.pitchBoost);
+        this.spawnShockwave(this.px, this.pz, 0xfde047, 2.4, 0.26);
       }
     }
     if (isCrit && coopAllyIndex === undefined && (e.isBoss || finalDmg > this.baseStats.attack * 2.2)) {
@@ -12792,13 +13158,18 @@ export class GameEngine {
       }
       soundEngine.playBossPhaseTwo();
       soundEngine.playBossPhaseShift(2);
+      soundEngine.playBossPhaseStinger(2);
       this.spawnImpactLight(e.x, 1.8, e.z, 'boss_slam');
       if (e.model.bossCoreMat) {
         e.model.bossCoreMat.emissive.setHex(0xf43f5e);
         e.model.bossCoreMat.emissiveIntensity = 2.85;
       }
       this.spawnUltColumn(e.x, e.z, 0xf43f5e, 0.72);
-      this.spawnShockwave(e.x, e.z, 0xf43f5e, 6.8, 0.54);
+      this.spawnShockwave(e.x, e.z, BOSS_PHASE_ATMOSPHERE[2].shockHex, 6.8, 0.54);
+      if (this.rimLight) {
+        this.rimLight.color.setHex(BOSS_PHASE_ATMOSPHERE[2].rimHex);
+        this.rimLight.intensity = BOSS_PHASE_ATMOSPHERE[2].rimIntensity;
+      }
       this.spawnBattleScar(e.x, e.z, 1.38);
       this.spawnParticles(e.x, 1.2, e.z, 0xf43f5e, 34);
       this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', 'PHA II · CUỒNG NỘ!', true);
@@ -12845,13 +13216,18 @@ export class GameEngine {
       }
       soundEngine.playBossPhaseThree();
       soundEngine.playBossPhaseShift(3);
+      soundEngine.playBossPhaseStinger(3);
       if (e.model.bossCoreMat) {
         e.model.bossCoreMat.emissive.setHex(0xfde047);
         e.model.bossCoreMat.emissiveIntensity = 3.4;
       }
       this.spawnUltColumn(e.x, e.z, 0xfbbf24, 0.85);
       this.spawnShockwave(e.x, e.z, 0xfbbf24, 7.6, 0.56);
-      this.spawnShockwave(e.x, e.z, 0xe11d48, 5.4, 0.42);
+      this.spawnShockwave(e.x, e.z, BOSS_PHASE_ATMOSPHERE[3].shockHex, 5.4, 0.42);
+      if (this.rimLight) {
+        this.rimLight.color.setHex(BOSS_PHASE_ATMOSPHERE[3].rimHex);
+        this.rimLight.intensity = BOSS_PHASE_ATMOSPHERE[3].rimIntensity;
+      }
       this.spawnBattleScar(e.x, e.z, 1.55);
       this.spawnParticles(e.x, 1.35, e.z, 0xfbbf24, 42);
       this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHA III · TỐI THƯỢNG!', true);
@@ -13122,6 +13498,8 @@ export class GameEngine {
       triggerHapticPulse('boss_break', this.hapticsEnabled);
       this.spawnImpactLight(e.x, 2.0, e.z, 'ultimate');
       this.spawnCritStar(e.x, 1.6, e.z, 0xfde047, 2.8);
+      this.spawnShockwave(e.x, e.z, 0xfde047, 8.2, 0.62);
+      this.spawnShockwave(e.x, e.z, 0x38bdf8, 6.0, 0.46);
       this.spawnParticles(e.x, 1.3, e.z, 0xe0f2fe, 24);
       this.triggerPostFxImpulse('boss_break');
       this.hitstopTimer = 0.095;
@@ -13665,6 +14043,10 @@ export class GameEngine {
         this.weeklyBossMaxHp,
         Math.max(this.weeklyBossMaxHp, Math.round(this.weeklyBossTotalDamage))
       );
+      const clearMs = Math.round(this.simClock.totalSimTime * 1000);
+      if (this.bossPaceTracker) {
+        this.bossPaceHud = updateBossPaceTracker(this.bossPaceTracker, 0, clearMs);
+      }
       soundEngine.playVictory();
       this.phase = GamePhase.VICTORY;
       this.syncHudImmediate();
@@ -13676,13 +14058,18 @@ export class GameEngine {
         gems: 0,
         isWeeklyRankedBossMode: true,
         weeklyBossIsPractice: this.isWeeklyBossPracticeMode,
+        weeklyBossIsWeekendBlitz: this.weeklyBossIsWeekendBlitz,
         weeklyBossAttemptId: this.weeklyBossAttemptId ?? undefined,
         weeklyBossSeed: this.weeklyBossSeed ?? undefined,
         weeklyBossDamage: totalDmg,
         weeklyBossCleared: true,
         weeklyBossSimTicks: this.simClock.totalTicks,
-        weeklyBossClearTimeMs: Math.round(this.simClock.totalSimTime * 1000),
+        weeklyBossClearTimeMs: clearMs,
         weeklyBossRemainingHpPct: Math.max(0, this.hp / Math.max(1, this.maxHp)),
+        weeklyBossSplitsMs: this.bossPaceTracker ? [...this.bossPaceTracker.currentSplitsMs] : undefined,
+        weeklyBossCounterHits: this.perfectDodgeCounter.totalCountersLanded,
+        weeklyBossGuardBreaks: this.runBossBreaksCount,
+        peakStyleGrade: this.styleMomentum.peakGrade,
         autoPilotUsed: this.autoPilotUsedInRun,
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
@@ -13894,6 +14281,7 @@ export class GameEngine {
     soundEngine.playPlayerHurt();
     triggerHapticPulse('dash', this.hapticsEnabled);
     this.runDamageTakenCount += 1;
+    recordStyleDamageTaken(this.styleMomentum);
     this.advanceRoomBounty({ type: 'player_hit' });
 
     if (this.baseStats.heroId === 'alex') {
@@ -13902,7 +14290,9 @@ export class GameEngine {
 
     const effectiveDr = Math.min(
       0.8,
-      this.baseStats.damageReduction + (this.isChampionshipMode ? this.championshipDrBonus : 0)
+      this.baseStats.damageReduction +
+        (this.isChampionshipMode ? this.championshipDrBonus : 0) +
+        (this.isCoopRaidMode && this.coopRoleSynergy ? this.coopRoleSynergy.damageReductionBonus : 0)
     );
     let dmg = Math.max(2, Math.round(rawAmount * (1 - effectiveDr)));
     if (this.shield > 0) {
@@ -13998,6 +14388,9 @@ export class GameEngine {
           : undefined,
         isWeeklyRankedBossMode: this.isWeeklyRankedBossMode,
         weeklyBossIsPractice: this.isWeeklyRankedBossMode ? this.isWeeklyBossPracticeMode : undefined,
+        weeklyBossIsWeekendBlitz: this.isWeeklyRankedBossMode
+          ? this.weeklyBossIsWeekendBlitz
+          : undefined,
         weeklyBossAttemptId: this.isWeeklyRankedBossMode ? this.weeklyBossAttemptId ?? undefined : undefined,
         weeklyBossSeed: this.isWeeklyRankedBossMode ? this.weeklyBossSeed ?? undefined : undefined,
         weeklyBossDamage: this.isWeeklyRankedBossMode
@@ -14009,6 +14402,15 @@ export class GameEngine {
           ? Math.round(this.simClock.totalSimTime * 1000)
           : undefined,
         weeklyBossRemainingHpPct: this.isWeeklyRankedBossMode ? 0 : undefined,
+        weeklyBossSplitsMs:
+          this.isWeeklyRankedBossMode && this.bossPaceTracker
+            ? [...this.bossPaceTracker.currentSplitsMs]
+            : undefined,
+        weeklyBossCounterHits: this.isWeeklyRankedBossMode
+          ? this.perfectDodgeCounter.totalCountersLanded
+          : undefined,
+        weeklyBossGuardBreaks: this.isWeeklyRankedBossMode ? this.runBossBreaksCount : undefined,
+        peakStyleGrade: this.styleMomentum.peakGrade,
         autoPilotUsed: this.autoPilotUsedInRun,
         liveAiDuelId: this.isArenaMode ? this.liveAiDuelId ?? undefined : undefined,
         liveAiPlayerId: this.isArenaMode ? this.liveAiPlayerId ?? undefined : undefined,
@@ -15065,6 +15467,10 @@ export class GameEngine {
       this.bossFinisherTimer,
       this.bossFinisherDuration
     );
+    const wave5FinisherCam = computeBossFinisherPresentation(
+      this.bossFinisherTimer,
+      this.bossFinisherDuration
+    );
     const camRig = resolveCombatCameraConfig(this.combatCameraPreset);
     const ridingVisibleMount = Boolean(this.hero?.mountGroup && this.hero.mountGroup.visible);
     const mountCamYOffset = ridingVisibleMount ? 1.15 : 0;
@@ -15086,17 +15492,21 @@ export class GameEngine {
     const introCamZ = THREE.MathUtils.clamp(this.bossIntroFocusZ + 9.2, 3.8, 16.5);
 
     const finisherCamX = THREE.MathUtils.clamp(this.bossFinisherFocusX * 0.8, -5.4, 5.4);
-    const finisherCamY = 11.8;
-    const finisherCamZ = THREE.MathUtils.clamp(this.bossFinisherFocusZ + 8.6, 3.6, 16.0);
+    const finisherCamY = 11.4;
+    const finisherCamZ = THREE.MathUtils.clamp(this.bossFinisherFocusZ + 8.1, 3.4, 15.6);
 
     let targetCamX = THREE.MathUtils.lerp(baseCamX, introCamX, introBlend);
     let targetCamY = THREE.MathUtils.lerp(baseCamY, introCamY, introBlend);
     let targetCamZ = THREE.MathUtils.lerp(baseCamZ, introCamZ, introBlend);
 
-    if (finisherKin.cameraBlend > 0.001) {
-      targetCamX = THREE.MathUtils.lerp(targetCamX, finisherCamX, finisherKin.cameraBlend);
-      targetCamY = THREE.MathUtils.lerp(targetCamY, finisherCamY, finisherKin.cameraBlend);
-      targetCamZ = THREE.MathUtils.lerp(targetCamZ, finisherCamZ, finisherKin.cameraBlend);
+    const effectiveFinisherBlend = Math.max(
+      finisherKin.cameraBlend,
+      wave5FinisherCam.cameraZoomBlend * 0.85
+    );
+    if (effectiveFinisherBlend > 0.001) {
+      targetCamX = THREE.MathUtils.lerp(targetCamX, finisherCamX, effectiveFinisherBlend);
+      targetCamY = THREE.MathUtils.lerp(targetCamY, finisherCamY, effectiveFinisherBlend);
+      targetCamZ = THREE.MathUtils.lerp(targetCamZ, finisherCamZ, effectiveFinisherBlend);
     }
 
     if (entryFlyBlend > 0.001) {
@@ -15142,7 +15552,11 @@ export class GameEngine {
       if (this.cameraFovOffset < 0.02) this.cameraFovOffset = 0;
     }
     const desiredFov =
-      camRig.fov + this.cameraFovOffset - introBlend * 3.5 + finisherKin.fovBoost + ultCutin.fovPunch;
+      camRig.fov +
+      this.cameraFovOffset -
+      introBlend * 3.5 +
+      (wave5FinisherCam.active ? wave5FinisherCam.fovDelta : finisherKin.fovBoost) +
+      ultCutin.fovPunch;
     if (Math.abs(this.camera.fov - desiredFov) > 0.015) {
       this.camera.fov = THREE.MathUtils.damp(this.camera.fov, desiredFov, 7.5, dt);
       this.camera.updateProjectionMatrix();
@@ -15518,6 +15932,9 @@ export class GameEngine {
             this.coopAllies.filter((a) => a.ultCharge >= 88).map((a) => a.name)
           )
         : null,
+      coopTacticalOrder: this.isCoopRaidMode ? this.coopTacticalOrder : undefined,
+      adaptiveFpsTier: this.adaptiveFpsGovernor.tier,
+      adaptiveFpsAvg: Math.round(this.adaptiveFpsGovernor.avgFps),
       isElementalTowerMode: this.isElementalTowerMode,
       elementalTowerId: this.isElementalTowerMode ? this.elementalTowerId : undefined,
       elementalTowerFloor: this.isElementalTowerMode ? this.elementalTowerFloor : undefined,
@@ -15721,12 +16138,56 @@ export class GameEngine {
         ? Math.round(this.weeklyBossTotalDamage)
         : undefined,
       bossStaggerRatio:
-        boss && boss.maxBreakShield && boss.maxBreakShield > 0 && boss.breakShield !== undefined
-          ? Math.max(0, Math.min(1, boss.breakShield / boss.maxBreakShield))
+        this.bossStaggerState && boss && boss.id === this.bossStaggerOwnerId
+          ? this.bossStaggerState.brokenRemainingSec > 0
+            ? 1
+            : Math.max(
+                0,
+                Math.min(1, this.bossStaggerState.current / Math.max(1, this.bossStaggerState.max))
+              )
+          : boss && boss.maxBreakShield && boss.maxBreakShield > 0 && boss.breakShield !== undefined
+          ? Math.max(0, Math.min(1, 1 - boss.breakShield / boss.maxBreakShield))
           : undefined,
-      bossStaggerBroken: Boolean(boss && boss.stunTimer && boss.stunTimer > 0),
+      bossStaggerBroken: Boolean(
+        (this.bossStaggerState &&
+          this.bossStaggerState.brokenRemainingSec > 0 &&
+          boss &&
+          boss.id === this.bossStaggerOwnerId) ||
+          (boss && boss.stunTimer && boss.stunTimer > 0)
+      ),
+      bossStaggerBrokenSec:
+        this.bossStaggerState && this.bossStaggerState.brokenRemainingSec > 0
+          ? Number(this.bossStaggerState.brokenRemainingSec.toFixed(1))
+          : boss && boss.stunTimer && boss.stunTimer > 0
+          ? Number(boss.stunTimer.toFixed(1))
+          : undefined,
+      bossGuardBreaksTotal: this.runBossBreaksCount > 0 ? this.runBossBreaksCount : undefined,
+      styleGrade: this.styleMomentum.score > 0 ? this.styleMomentum.grade : undefined,
+      styleScore: this.styleMomentum.score > 0 ? Math.round(this.styleMomentum.score) : undefined,
+      styleFillRatio:
+        this.styleMomentum.score > 0
+          ? Number(getStyleFillRatio(this.styleMomentum.score).toFixed(2))
+          : undefined,
+      coopPingToast: this.coopPingToastTimer > 0 ? this.coopPingToast : null,
       liveAiRivalTag: this.isArenaMode ? this.liveAiRivalTag : null,
       isArenaEqualized: this.isArenaMode ? this.isArenaEqualized : undefined,
+      counterWindowRemainingSec:
+        this.perfectDodgeCounter.windowRemainingSec > 0
+          ? Number(this.perfectDodgeCounter.windowRemainingSec.toFixed(2))
+          : undefined,
+      counterChargesRemaining:
+        this.perfectDodgeCounter.chargesRemaining > 0
+          ? this.perfectDodgeCounter.chargesRemaining
+          : undefined,
+      counterTotalLanded:
+        this.perfectDodgeCounter.totalCountersLanded > 0
+          ? this.perfectDodgeCounter.totalCountersLanded
+          : undefined,
+      bossPace: this.isWeeklyRankedBossMode ? this.bossPaceHud : null,
+      coopRoleSynergyLabel:
+        this.isCoopRaidMode && this.coopRoleSynergy ? this.coopRoleSynergy.teamBadge : null,
+      activeWeatherLabel:
+        this.starfallEnabled ? WEATHER_BIOME_PROFILES[this.activeWeatherBiome]?.label ?? null : null,
       combatLightingMood: this.combatLightingState.mood,
       perfDrawCalls: this.showFpsOverlay ? this.renderer.info.render.calls : undefined,
       perfSimHz: this.showFpsOverlay ? 60 : undefined,

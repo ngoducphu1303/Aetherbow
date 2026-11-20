@@ -140,6 +140,7 @@ import {
   AuraStyleId,
   AiLiveActivityEvent,
   AiLivePlayerProfile,
+  AutoOptimizeGoal,
   AvatarFrameId,
   BundlePreviewPayload,
   ComputedPlayerStats,
@@ -329,8 +330,10 @@ interface TitleScreenProps {
   onUpgradeHalo?: (haloId: HaloId) => void;
   onEquipGear: (uid: string) => void;
   onUpgradeGear: (uid: string) => void;
+  onTransferGearUpgrade?: (sourceUid: string, targetUid: string) => void;
   onFuseGear: (uid: string) => void;
   onAutoEquipBest: () => void;
+  onAutoOptimizeGear?: (goal: AutoOptimizeGoal) => void;
   onBulkFuseGear: () => void;
   onSaveBuildPreset: (idx: number) => void;
   onApplyBuildPreset: (idx: number) => void;
@@ -544,8 +547,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUpgradeHalo,
   onEquipGear,
   onUpgradeGear,
+  onTransferGearUpgrade,
   onFuseGear,
   onAutoEquipBest,
+  onAutoOptimizeGear,
   onBulkFuseGear,
   onSaveBuildPreset,
   onApplyBuildPreset,
@@ -1944,8 +1949,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               stats={stats}
               onEquip={onEquipGear}
               onUpgrade={onUpgradeGear}
+              onTransferGearUpgrade={onTransferGearUpgrade}
               onFuse={onFuseGear}
               onAutoEquipBest={onAutoEquipBest}
+              onAutoOptimizeGear={onAutoOptimizeGear}
               onBulkFuseGear={onBulkFuseGear}
               onOpenForge={onOpenForgeModal}
               onOpenForgeSubTab={onOpenForgeSubTab}

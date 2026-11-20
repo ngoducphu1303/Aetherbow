@@ -37,6 +37,7 @@ import {
   AiLivePlayerProfile,
   GuildMonumentId,
   GuildTechId,
+  LiveGuildBossState,
   SaveData,
 } from '../types/game';
 import { ArtifactRelicIcon, GoldCoinIcon, MysticTokenIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
@@ -56,6 +57,12 @@ interface ZodiacGuildModalProps {
   onClaimDailyGuildBossChest?: (chestId: string) => void;
   onOpenGuildChat?: () => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
+  onClaimLiveGuildBossMilestone?: (reward: {
+    milestoneId: string;
+    rewardGold: number;
+    rewardGems: number;
+    rewardGuildCoins: number;
+  }) => void;
   onClose: () => void;
 }
 
@@ -74,6 +81,7 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
   onClaimDailyGuildBossChest,
   onOpenGuildChat,
   onInspectAiPlayer,
+  onClaimLiveGuildBossMilestone,
   onClose,
 }) => {
   const [subTab, setSubTab] = useState<'boss' | 'sanctuary' | 'war' | 'tech' | 'members'>('boss');
@@ -87,6 +95,11 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
         (a) => a.kind === 'guild' || a.kind === 'world_boss'
       )
   );
+  const [liveGuildBoss, setLiveGuildBoss] = useState<LiveGuildBossState | null>(
+    () => liveAiSocket.getSnapshot()?.guildBossLive ?? null
+  );
+  const [liveBossNotice, setLiveBossNotice] = useState<string | null>(null);
+  const [claimingLiveMilestoneId, setClaimingLiveMilestoneId] = useState<string | null>(null);
   const [imgErr, setImgErr] = useState(false);
   const [warImgErr, setWarImgErr] = useState(false);
   const [sanctuaryImgErr, setSanctuaryImgErr] = useState(false);
@@ -105,11 +118,31 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
 
   useEffect(() => {
     liveAiSocket.ensureConnected(playerLabel);
-    return liveAiSocket.subscribeSnapshot((snap) => {
+    liveAiSocket.syncGuildBossLive();
+    const unsubSnap = liveAiSocket.subscribeSnapshot((snap) => {
       setAiPlayers(snap.players);
       setGuildFeed(snap.activities.filter((a) => a.kind === 'guild' || a.kind === 'world_boss'));
+      if (snap.guildBossLive) {
+        setLiveGuildBoss(snap.guildBossLive);
+      }
     });
-  }, [playerLabel]);
+    const unsubClaim = liveAiSocket.subscribeGuildBossClaimAck((ack) => {
+      setClaimingLiveMilestoneId(null);
+      setLiveBossNotice(ack.message);
+      if (ack.ok && !ack.alreadyClaimed) {
+        onClaimLiveGuildBossMilestone?.({
+          milestoneId: claimingLiveMilestoneId ?? 'milestone',
+          rewardGold: ack.goldReward,
+          rewardGems: ack.gemsReward,
+          rewardGuildCoins: ack.guildCoinsReward,
+        });
+      }
+    });
+    return () => {
+      unsubSnap();
+      unsubClaim();
+    };
+  }, [playerLabel, onClaimLiveGuildBossMilestone]);
 
   const memberBoard = useMemo(
     () =>
@@ -320,9 +353,164 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
             <div className="space-y-4">
               {guildFeed.length > 0 && (
                 <div className="rounded-xl border border-sky-400/30 bg-[#061124]/90 px-3.5 py-2 flex items-center gap-2 text-xs text-sky-100">
-                  <span className="size-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <Flame className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span className="font-black text-sky-300 shrink-0">{guildFeed[0].actorName}</span>
                   <span className="truncate text-slate-200">{guildFeed[0].summary}</span>
+                </div>
+              )}
+
+              {/* Wave 6 Pillar 5: Shared Live AI Guild Boss War (Collective HP + 3 Idempotent Chests) */}
+              {liveGuildBoss && (
+                <div className="rounded-2xl border border-amber-400/40 bg-[#070d20] p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-[11px] font-black text-amber-300 uppercase tracking-wider">
+                        <Crown className="w-3.5 h-3.5 shrink-0" />
+                        <span>Boss Bang Hợp Lực Trực Tuyến · {liveGuildBoss.dateKey}</span>
+                      </div>
+                      <h3 className="font-display text-base font-black text-white mt-0.5 truncate">
+                        {liveGuildBoss.bossName}
+                      </h3>
+                      <p className="text-[11px] text-slate-300">
+                        {liveGuildBoss.bossTitle} · Đã hạ gục {liveGuildBoss.defeatedCount} lượt hôm nay
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.1);
+                        const strikeDmg = Math.max(8500, Math.round(powerRating * 14));
+                        liveAiSocket.submitGuildBossLiveAttack({
+                          playerName: playerLabel,
+                          heroId: save.selectedHeroId,
+                          damage: strikeDmg,
+                        });
+                        setLiveBossNotice(
+                          `Bạn vừa tung đòn chi viện gây ${strikeDmg.toLocaleString('vi-VN')} ST lên ${liveGuildBoss.bossName}!`
+                        );
+                      }}
+                      className="a2-emerald-btn px-3.5 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
+                    >
+                      <Swords className="w-3.5 h-3.5" />
+                      <span>Chi Viện Nhanh</span>
+                    </button>
+                  </div>
+
+                  {/* Shared Boss HP Bar */}
+                  {(() => {
+                    const hpPct = Math.max(
+                      0,
+                      Math.min(100, (liveGuildBoss.currentHp / Math.max(1, liveGuildBoss.maxHp)) * 100)
+                    );
+                    const totalDealt = Math.max(0, liveGuildBoss.totalDamage);
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] font-mono-nums tabular-nums">
+                          <span className="font-bold text-rose-300">
+                            HP Boss Chung: {liveGuildBoss.currentHp.toLocaleString('vi-VN')} /{' '}
+                            {liveGuildBoss.maxHp.toLocaleString('vi-VN')} ({hpPct.toFixed(1)}%)
+                          </span>
+                          <span className="font-bold text-emerald-300">
+                            Tổng ST Bang: {totalDealt.toLocaleString('vi-VN')}
+                          </span>
+                        </div>
+                        <div className="h-2.5 rounded-full bg-slate-950 border border-rose-400/35 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-rose-500 via-amber-400 to-yellow-300 transition-all duration-300"
+                            style={{ width: `${hpPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {liveBossNotice && (
+                    <div className="rounded-lg bg-emerald-950/50 border border-emerald-400/40 px-3 py-1.5 text-[11px] font-semibold text-emerald-200">
+                      {liveBossNotice}
+                    </div>
+                  )}
+
+                  {/* 3 Collective Milestones */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {liveGuildBoss.milestones.map((ms) => {
+                      const claimed = liveGuildBoss.claimedMilestoneIds.includes(ms.tierId);
+                      const reached = liveGuildBoss.totalDamage >= ms.damageRequired;
+                      const busy = claimingLiveMilestoneId === ms.tierId;
+                      return (
+                        <div
+                          key={ms.tierId}
+                          className={`rounded-xl p-2.5 border flex flex-col justify-between gap-2 ${
+                            claimed
+                              ? 'bg-[#060a18] border-slate-800'
+                              : reached
+                              ? 'bg-amber-500/12 border-amber-300/60'
+                              : 'bg-[#060a18] border-slate-800/80'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-black text-white">{ms.label}</div>
+                            <div className="text-[10px] font-mono-nums tabular-nums text-slate-300 mt-0.5">
+                              +{ms.rewardGuildCoins} Xu · +{ms.rewardGems} Ngọc · +{ms.rewardGold.toLocaleString('vi-VN')} V
+                            </div>
+                          </div>
+                          {claimed ? (
+                            <span className="text-[11px] font-black text-emerald-300 flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" /> Đã Nhận Mốc Bang
+                            </span>
+                          ) : reached ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                soundEngine.playAchievement();
+                                setClaimingLiveMilestoneId(ms.tierId);
+                                liveAiSocket.claimGuildBossLiveMilestone(ms.tierId, playerLabel);
+                              }}
+                              className="a2-yellow-btn w-full py-1.5 rounded-lg text-[11px] font-black cursor-pointer disabled:opacity-50"
+                            >
+                              {busy ? 'Đang nhận…' : 'Nhận Rương Bang'}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-mono-nums tabular-nums text-slate-500">
+                              Cần tổng ST ≥ {ms.damageRequired.toLocaleString('vi-VN')}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Top Live Contributors */}
+                  {liveGuildBoss.contributors.length > 0 && (
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <div className="text-[11px] font-black text-sky-200 mb-1.5">
+                        Đóng Góp Sát Thương Trực Tiếp (Bạn &amp; Thành Viên [AI Live])
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {liveGuildBoss.contributors.slice(0, 6).map((c, idx) => (
+                          <div
+                            key={c.id}
+                            className={`rounded-lg px-2.5 py-1.5 border flex items-center justify-between gap-2 text-[11px] ${
+                              c.isHuman
+                                ? 'bg-amber-500/12 border-amber-300/60'
+                                : 'bg-[#060a18] border-slate-800/80'
+                            }`}
+                          >
+                            <span className="truncate font-bold text-white">
+                              <span className="font-mono-nums text-amber-300 mr-1.5">#{idx + 1}</span>
+                              {c.displayName}
+                              {!c.isHuman && (
+                                <span className="ml-1 text-[10px] text-sky-300">[AI Live]</span>
+                              )}
+                            </span>
+                            <span className="font-mono-nums tabular-nums font-black text-emerald-300 shrink-0">
+                              {c.damage.toLocaleString('vi-VN')} ST
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="cel-panel rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-rose-400/40">

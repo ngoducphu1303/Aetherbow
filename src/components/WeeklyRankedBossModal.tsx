@@ -15,6 +15,10 @@ import {
   X,
 } from 'lucide-react';
 import {
+  computeWeeklyBossAnalytics,
+  WeekendBlitzClaimReceipt,
+  WeekendBlitzSchedule,
+  WeekendBlitzStateResponse,
   WeeklyBossClaimReceipt,
   WeeklyBossSchedule,
   WeeklyBossSeasonClaimReceipt,
@@ -22,10 +26,13 @@ import {
   WeeklyBossStateResponse,
 } from '../data/weeklyBossData';
 import {
+  claimWeekendBlitzReward,
   claimWeeklyBossReward,
   claimWeeklyBossSeasonReward,
+  fetchWeekendBlitzState,
   fetchWeeklyBossSeasonState,
   fetchWeeklyBossState,
+  startWeekendBlitzAttempt,
   startWeeklyBossAttempt,
 } from '../services/weeklyBossApi';
 import { liveAiSocket } from '../services/liveAiSocket';
@@ -53,9 +60,30 @@ interface WeeklyRankedBossModalProps {
   onStartVerifiedRun: (params: {
     attemptId: string;
     schedule: WeeklyBossSchedule;
+    top1ClearTimeMs?: number | null;
+    top1SplitsMs?: number[] | null;
+    personalBestClearTimeMs?: number | null;
+    personalBestSplitsMs?: number[] | null;
   }) => void;
-  onStartPracticeRun?: (schedule: WeeklyBossSchedule) => void;
+  onStartWeekendBlitzRun?: (params: {
+    attemptId: string;
+    schedule: WeekendBlitzSchedule;
+    top1ClearTimeMs?: number | null;
+    top1SplitsMs?: number[] | null;
+    personalBestClearTimeMs?: number | null;
+    personalBestSplitsMs?: number[] | null;
+  }) => void;
+  onStartPracticeRun?: (
+    schedule: WeeklyBossSchedule,
+    paceRef?: {
+      top1ClearTimeMs?: number | null;
+      top1SplitsMs?: number[] | null;
+      personalBestClearTimeMs?: number | null;
+      personalBestSplitsMs?: number[] | null;
+    }
+  ) => void;
   onRewardClaimed: (receipt: WeeklyBossClaimReceipt) => void;
+  onWeekendRewardClaimed?: (receipt: WeekendBlitzClaimReceipt) => void;
   onSeasonRewardClaimed?: (receipt: WeeklyBossSeasonClaimReceipt) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
   onOpenAuthModal?: () => void;
@@ -80,8 +108,10 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
   playerDisplayName,
   currentUid,
   onStartVerifiedRun,
+  onStartWeekendBlitzRun,
   onStartPracticeRun,
   onRewardClaimed,
+  onWeekendRewardClaimed,
   onSeasonRewardClaimed,
   onInspectAiPlayer,
   onOpenAuthModal,
@@ -89,13 +119,18 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
 }) => {
   const [state, setState] = useState<WeeklyBossStateResponse | null>(null);
   const [seasonState, setSeasonState] = useState<WeeklyBossSeasonStateResponse | null>(null);
+  const [weekendState, setWeekendState] = useState<WeekendBlitzStateResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [startingWeekend, setStartingWeekend] = useState(false);
   const [claimingTierId, setClaimingTierId] = useState<string | null>(null);
+  const [claimingWeekendTierId, setClaimingWeekendTierId] = useState<string | null>(null);
   const [claimingSeasonTierId, setClaimingSeasonTierId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'leaderboard' | 'season' | 'history' | 'rewards'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'weekend' | 'leaderboard' | 'season' | 'history' | 'rewards'
+  >('overview');
   const [boardFilter, setBoardFilter] = useState<LeaderboardFilterMode>('all');
   const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
     () => liveAiSocket.getSnapshot()?.players ?? []
@@ -114,12 +149,14 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const [next, nextSeason] = await Promise.all([
+      const [next, nextSeason, nextWeekend] = await Promise.all([
         fetchWeeklyBossState(),
         fetchWeeklyBossSeasonState().catch(() => null),
+        fetchWeekendBlitzState().catch(() => null),
       ]);
       setState(next);
       if (nextSeason) setSeasonState(nextSeason);
+      if (nextWeekend) setWeekendState(nextWeekend);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tải dữ liệu Boss Tuần.');
     } finally {
@@ -203,6 +240,10 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
       onStartVerifiedRun({
         attemptId: res.attempt.attemptId,
         schedule: res.schedule,
+        top1ClearTimeMs: state?.leaderboard[0]?.bestClearTimeMs ?? null,
+        top1SplitsMs: state?.top1SplitsMs ?? state?.leaderboard[0]?.bestSplitsMs ?? null,
+        personalBestClearTimeMs: state?.player?.bestClearTimeMs ?? null,
+        personalBestSplitsMs: state?.player?.bestSplitsMs ?? null,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể bắt đầu lượt tính hạng.');
@@ -258,9 +299,65 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     }
   };
 
+  const handleStartWeekendBlitz = async () => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.();
+      return;
+    }
+    if (startingWeekend || !onStartWeekendBlitzRun) return;
+    setStartingWeekend(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const res = await startWeekendBlitzAttempt(playerDisplayName);
+      onStartWeekendBlitzRun({
+        attemptId: res.attempt.attemptId,
+        schedule: res.schedule,
+        top1ClearTimeMs: weekendState?.leaderboard[0]?.bestClearTimeMs ?? null,
+        top1SplitsMs: weekendState?.top1SplitsMs ?? weekendState?.leaderboard[0]?.bestSplitsMs ?? null,
+        personalBestClearTimeMs: weekendState?.player?.bestClearTimeMs ?? null,
+        personalBestSplitsMs: weekendState?.player?.bestSplitsMs ?? null,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể mở lượt Sự Kiện Boss Cuối Tuần.');
+      await loadState();
+    } finally {
+      setStartingWeekend(false);
+    }
+  };
+
+  const handleClaimWeekend = async (tierId: string) => {
+    if (!weekendState || claimingWeekendTierId) return;
+    setClaimingWeekendTierId(tierId);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const idempotencyKey = `weekend-claim-${weekendState.schedule.eventId}-${tierId}`;
+      const res = await claimWeekendBlitzReward({ tierId, idempotencyKey });
+      if (!res.alreadyClaimed) {
+        onWeekendRewardClaimed?.(res.receipt);
+        setStatusMessage(
+          `Đã nhận thưởng Boss Cuối Tuần: +${res.receipt.rewardGems} Ngọc · +${res.receipt.rewardEpicShards} Mảnh Sử Thi · ${res.receipt.rewardTitleLabel}`
+        );
+      } else {
+        setStatusMessage('Mốc thưởng Cuối Tuần này đã được nhận trước đó (chống nhận trùng).');
+      }
+      await loadState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể nhận thưởng Boss Cuối Tuần.');
+    } finally {
+      setClaimingWeekendTierId(null);
+    }
+  };
+
   const claimedSet = useMemo(
     () => new Set(state?.player?.claimedTierIds ?? []),
     [state?.player?.claimedTierIds]
+  );
+
+  const weekendClaimedSet = useMemo(
+    () => new Set(weekendState?.player?.claimedTierIds ?? []),
+    [weekendState?.player?.claimedTierIds]
   );
 
   const seasonClaimedSet = useMemo(
@@ -338,6 +435,15 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
     seasonState?.standings,
   ]);
 
+  const mergedWeekendLeaderboard = useMemo(() => {
+    return buildMergedWeeklyBossLeaderboard({
+      verifiedEntries: weekendState?.leaderboard ?? [],
+      aiPlayers,
+      filter: boardFilter,
+      currentUid,
+    });
+  }, [aiPlayers, boardFilter, currentUid, weekendState?.leaderboard]);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/92 overflow-y-auto">
       <div className="cel-panel-ornate w-full max-w-4xl rounded-3xl p-5 sm:p-7 my-auto max-h-[92vh] overflow-y-auto text-left space-y-5">
@@ -409,6 +515,17 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
             }`}
           >
             Tuần Hiện Tại
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('weekend')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+              activeTab === 'weekend'
+                ? 'bg-rose-500/25 text-amber-200'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Boss Cuối Tuần
           </button>
           <button
             type="button"
@@ -600,7 +717,14 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                     {onStartPracticeRun && (
                       <button
                         type="button"
-                        onClick={() => onStartPracticeRun(state.schedule)}
+                        onClick={() =>
+                          onStartPracticeRun(state.schedule, {
+                            top1ClearTimeMs: state.leaderboard[0]?.bestClearTimeMs ?? null,
+                            top1SplitsMs: state.top1SplitsMs ?? state.leaderboard[0]?.bestSplitsMs ?? null,
+                            personalBestClearTimeMs: state.player?.bestClearTimeMs ?? null,
+                            personalBestSplitsMs: state.player?.bestSplitsMs ?? null,
+                          })
+                        }
                         className="a2-slate-btn w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap border border-sky-400/35 text-sky-200 hover:bg-sky-500/15"
                       >
                         <Swords className="w-3.5 h-3.5" />
@@ -608,10 +732,261 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                       </button>
                     )}
                     <div className="text-[11px] text-slate-400 text-center">
-                      Giới hạn 90 giây · Mô phỏng 60Hz xác định · Khóa AI trong Tính Hạng
+                      Giới hạn 90 giây · Mô phỏng 60Hz xác định · So nhịp trực tiếp với Top 1
                     </div>
                   </div>
                 </div>
+
+                {/* Wave 6 Pillar 4: Verified Run Receipt Card with 4 HP Split Checkpoints */}
+                {state.player && state.player.bestScore > 0 && (
+                  <div className="lg:col-span-12 rounded-2xl bg-[#070d1f] border border-emerald-400/30 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-black text-emerald-300">
+                        <ShieldCheck className="w-4 h-4 shrink-0" />
+                        <span>Biên Lai Xác Minh Kỷ Lục Tuần</span>
+                        {state.player.lastVerifiedAttemptId && (
+                          <span className="font-mono-nums text-[10px] text-slate-400">
+                            Mã: {state.player.lastVerifiedAttemptId.slice(0, 14)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs font-mono-nums tabular-nums text-slate-200">
+                        Điểm: <strong className="text-amber-300">{state.player.bestScore.toLocaleString('vi-VN')}</strong>
+                        {' · '}
+                        Thời gian: <strong className="text-sky-300">{formatClearTime(state.player.bestClearTimeMs)}</strong>
+                        {state.leaderboard[0]?.bestClearTimeMs && state.player.bestClearTimeMs ? (
+                          <>
+                            {' · '}
+                            So với Top 1:{' '}
+                            <strong
+                              className={
+                                state.player.bestClearTimeMs <= state.leaderboard[0].bestClearTimeMs
+                                  ? 'text-emerald-300'
+                                  : 'text-amber-300'
+                              }
+                            >
+                              {state.player.bestClearTimeMs <= state.leaderboard[0].bestClearTimeMs
+                                ? `${((state.player.bestClearTimeMs - state.leaderboard[0].bestClearTimeMs) / 1000).toFixed(2)}s`
+                                : `+${((state.player.bestClearTimeMs - state.leaderboard[0].bestClearTimeMs) / 1000).toFixed(2)}s`}
+                            </strong>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1.5 shrink-0">
+                      {(['75% HP', '50% HP', '25% HP', '0% HP'] as const).map((label, idx) => {
+                        const splitVal = state.player?.bestSplitsMs?.[idx] ?? null;
+                        return (
+                          <div
+                            key={label}
+                            className="rounded-lg bg-[#050814] border border-slate-800 px-2.5 py-1.5 text-center"
+                          >
+                            <div className="text-[9px] font-bold text-slate-400">{label}</div>
+                            <div className="font-mono-nums tabular-nums text-[11px] font-black text-sky-200">
+                              {splitVal ? `${(splitVal / 1000).toFixed(1)}s` : '—'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'weekend' && weekendState && (
+              <div className="space-y-4">
+                {/* Weekend Event Hero Card */}
+                <div className="rounded-2xl border border-rose-400/35 bg-[#080d22] p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-rose-300">
+                      <Crown className="w-4 h-4 shrink-0 text-amber-300" />
+                      <span>Sự Kiện Boss Cuối Tuần</span>
+                      <span aria-hidden="true" className="text-slate-600">·</span>
+                      <span className="font-mono-nums text-amber-200">{weekendState.schedule.eventId}</span>
+                      <span aria-hidden="true" className="text-slate-600">·</span>
+                      <span className="text-emerald-300">
+                        Thưởng +{weekendState.schedule.seasonCpBonusOnClear} CP Mùa Giải
+                      </span>
+                    </div>
+                    <h3 className="font-display text-xl font-black text-white">
+                      {weekendState.schedule.bossName} · {weekendState.schedule.modifier.title}
+                    </h3>
+                    <p className="text-xs text-slate-300">
+                      <strong className="text-amber-200">{weekendState.schedule.modifier.scoreBonusNote}</strong> — {weekendState.schedule.modifier.subtitle}
+                    </p>
+                    <div className="text-[11px] font-mono-nums text-sky-300">
+                      Lượt miễn phí: {weekendState.player ? `${weekendState.player.attemptsRemaining}/${weekendState.schedule.maxFreeAttempts}` : `3/3`} · Điểm cao nhất: {(weekendState.player?.bestScore ?? 0).toLocaleString('vi-VN')} · Hết hạn sau {formatCountdown(weekendState.schedule.endsAt, weekendState.serverNow)}
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex flex-col gap-2 min-w-[220px]">
+                    {!isAuthenticated ? (
+                      <button
+                        type="button"
+                        onClick={onOpenAuthModal}
+                        className="a2-yellow-btn py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                      >
+                        <Lock className="w-4 h-4" />
+                        <span>Đăng Nhập Đột Kích Cuối Tuần</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={
+                          startingWeekend ||
+                          !onStartWeekendBlitzRun ||
+                          (weekendState.player !== null &&
+                            weekendState.player.attemptsRemaining <= 0 &&
+                            !weekendState.player.activeAttemptId)
+                        }
+                        onClick={() => void handleStartWeekendBlitz()}
+                        className="a2-yellow-btn py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap disabled:opacity-50"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        <span>
+                          {startingWeekend
+                            ? 'Đang mở Đột Kích…'
+                            : weekendState.player &&
+                              weekendState.player.attemptsRemaining <= 0 &&
+                              !weekendState.player.activeAttemptId
+                            ? 'Đã hết 3/3 lượt Cuối Tuần'
+                            : 'Bắt Đầu Đột Kích Cuối Tuần'}
+                        </span>
+                      </button>
+                    )}
+                    <div className="text-[10px] text-slate-400 text-center">
+                      Trang bị Sử Thi +15 chuẩn hóa · 60Hz xác định · 75 giây
+                    </div>
+                  </div>
+                </div>
+
+                {/* Weekend Reward Tiers (Idempotent) */}
+                <div className="space-y-2">
+                  <div className="text-xs font-black uppercase tracking-wider text-amber-200">
+                    Mốc Thưởng Đột Kích Cuối Tuần (Ngọc · Mảnh Rèn · Danh Hiệu)
+                  </div>
+                  <div className="divide-y divide-slate-800/80 border-y border-slate-800/80">
+                    {weekendState.schedule.rewardTiers.map((tier) => {
+                      const bestScore = weekendState.player?.bestScore ?? 0;
+                      const eligible = isAuthenticated && bestScore >= tier.minScore;
+                      const claimed = weekendClaimedSet.has(tier.tierId);
+                      const busy = claimingWeekendTierId === tier.tierId;
+                      return (
+                        <div
+                          key={tier.tierId}
+                          className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-white flex items-center gap-2">
+                              <span>{tier.title}</span>
+                              <span aria-hidden="true" className="text-slate-600">·</span>
+                              <span className="font-mono-nums text-amber-300">
+                                ≥ {tier.minScore.toLocaleString('vi-VN')} điểm
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-300 font-mono-nums">
+                              +{tier.rewardGems} Ngọc · +{tier.rewardEpicShards} Mảnh Sử Thi · Danh hiệu{' '}
+                              <strong className="font-sans text-amber-200">{tier.rewardTitleLabel}</strong>
+                              {tier.rewardFrameName ? ` · Khung ${tier.rewardFrameName}` : ''}
+                            </div>
+                          </div>
+                          <div className="shrink-0">
+                            {claimed ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-300">
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>Đã nhận</span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={!eligible || busy}
+                                onClick={() => void handleClaimWeekend(tier.tierId)}
+                                className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer disabled:opacity-45 whitespace-nowrap"
+                              >
+                                {busy
+                                  ? 'Đang cấp…'
+                                  : eligible
+                                  ? 'Nhận Thưởng'
+                                  : `Cần ${tier.minScore.toLocaleString('vi-VN')}đ`}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Weekend Merged Leaderboard */}
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-[#060a18] p-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setBoardFilter('all')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap ${
+                        boardFilter === 'all'
+                          ? 'bg-sky-500/20 text-sky-200 border border-sky-400/50'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      Tất Cả (Thật + {aiPlayers.length} AI Live)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBoardFilter('real')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap ${
+                        boardFilter === 'real'
+                          ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      Chỉ Người Thật ({weekendState.leaderboard.length})
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-emerald-300 font-semibold">
+                    Điểm sự kiện Cuối Tuần cộng thưởng thẳng vào BXH Mùa Giải 4 Tuần
+                  </span>
+                </div>
+
+                {mergedWeekendLeaderboard.length === 0 ? (
+                  <div className="py-8 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
+                    Chưa có lượt Đột Kích Cuối Tuần người thật nào. Hãy là người đầu tiên chinh phục!
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800/80 border-y border-slate-800/80 max-h-60 overflow-y-auto">
+                    {mergedWeekendLeaderboard.slice(0, 20).map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`py-2 px-3 flex items-center justify-between gap-3 text-xs ${
+                          entry.isMe ? 'bg-amber-400/10' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="font-mono-nums w-7 font-black text-amber-300 shrink-0">
+                            #{entry.displayRank}
+                          </span>
+                          <div className="min-w-0 truncate font-bold text-white">
+                            {entry.displayName}
+                            {entry.isMe ? ' (Bạn)' : ''}
+                            <span className="ml-1.5 text-[10px] font-bold text-sky-300">
+                              {entry.isAiLive ? '[AI Live]' : `Xác Minh #${entry.humanRank}`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="font-mono-nums text-right shrink-0">
+                          <span className="font-black text-amber-300">
+                            {entry.bestScore.toLocaleString('vi-VN')}đ
+                          </span>
+                          <span className="ml-2 text-[11px] text-sky-300">
+                            {formatClearTime(entry.bestClearTimeMs)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -646,6 +1021,59 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                     Thưởng Danh Hiệu &amp; Khung chỉ tính theo hạng Người Thật đã xác minh
                   </span>
                 </div>
+
+                {(() => {
+                  const analytics = computeWeeklyBossAnalytics(state);
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-amber-400/20 bg-[#060a18] p-3 text-xs">
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-400">
+                          Khoảng Cách Hạng Kế
+                        </div>
+                        <div className="font-mono-nums tabular-nums font-black text-amber-300 mt-0.5">
+                          {analytics.gapToNextRank !== null
+                            ? `+${analytics.gapToNextRank.toLocaleString('vi-VN')} điểm`
+                            : analytics.playerRank === 1
+                            ? 'Đang Dẫn Đầu #1'
+                            : 'Chưa ghi danh'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-400">
+                          Cách Top 1 Xác Minh
+                        </div>
+                        <div className="font-mono-nums tabular-nums font-black text-sky-300 mt-0.5">
+                          {analytics.gapToTop1 !== null
+                            ? analytics.gapToTop1 === 0
+                              ? 'Đỉnh Bảng #1'
+                              : `${analytics.gapToTop1.toLocaleString('vi-VN')} điểm`
+                            : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-400">
+                          Trung Bình Top 3 Hạ Boss
+                        </div>
+                        <div className="font-mono-nums tabular-nums font-black text-emerald-300 mt-0.5">
+                          {analytics.top3AvgClearTimeMs
+                            ? formatClearTime(analytics.top3AvgClearTimeMs)
+                            : 'Chưa có kỷ lục'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-400">
+                          Phá Giáp &amp; Hạng Kỹ Năng
+                        </div>
+                        <div className="font-mono-nums tabular-nums font-black text-white mt-0.5">
+                          Phá Giáp ×{analytics.playerGuardBreaks} ·{' '}
+                          <span className="text-amber-300">
+                            {analytics.playerPeakStyleGrade ?? '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {mergedLeaderboard.length === 0 ? (
                   <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
@@ -706,11 +1134,18 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-slate-400 font-mono-nums">
+                              <div className="text-[11px] text-slate-400 font-mono-nums tabular-nums">
                                 Sát thương {entry.bestDamage.toLocaleString('vi-VN')} ·{' '}
                                 {entry.isAiLive
                                   ? 'Tập luyện cùng seed tuần'
-                                  : `${entry.attemptsUsed}/3 lượt xác minh`}
+                                  : (() => {
+                                      const rawReal = state.leaderboard.find((r) => r.uid === entry.id.replace(/^human_/, ''));
+                                      const gb = rawReal?.guardBreaksLanded ?? 0;
+                                      const grade = rawReal?.peakStyleGrade;
+                                      return `${entry.attemptsUsed}/3 lượt xác minh${
+                                        gb > 0 ? ` · Phá Giáp ×${gb}` : ''
+                                      }${grade ? ` · Hạng ${grade}` : ''}`;
+                                    })()}
                               </div>
                             </div>
                           </div>

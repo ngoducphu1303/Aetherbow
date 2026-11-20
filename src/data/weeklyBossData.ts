@@ -1,4 +1,9 @@
-import type { AvatarFrameId, ComputedPlayerStats, DynamicTitleId } from '../types/game';
+import type {
+  AvatarFrameId,
+  CombatStyleGrade,
+  ComputedPlayerStats,
+  DynamicTitleId,
+} from '../types/game';
 
 export const WEEKLY_BOSS_MAX_FREE_ATTEMPTS = 3;
 export const WEEKLY_BOSS_TIME_LIMIT_SEC = 90;
@@ -51,6 +56,11 @@ export interface WeeklyBossLeaderboardEntry {
   cleared: boolean;
   attemptsUsed: number;
   updatedAt: number;
+  bestSplitsMs?: number[] | null;
+  counterHitsLanded?: number;
+  guardBreaksLanded?: number;
+  peakStyleGrade?: CombatStyleGrade;
+  lastVerifiedAttemptId?: string;
 }
 
 export interface WeeklyBossClaimReceipt {
@@ -81,8 +91,11 @@ export interface WeeklyBossStateResponse {
     bestDamage: number;
     claimedTierIds: string[];
     receipts: WeeklyBossClaimReceipt[];
+    bestSplitsMs?: number[] | null;
+    lastVerifiedAttemptId?: string | null;
   } | null;
   leaderboard: WeeklyBossLeaderboardEntry[];
+  top1SplitsMs?: number[] | null;
 }
 
 export const WEEKLY_BOSS_LOANER_GEAR: WeeklyBossLoanerGearItem[] = [
@@ -438,3 +451,291 @@ export function getWeeklyBossSeasonInfo(nowMs = Date.now()): WeeklyBossSeasonInf
     milestones: WEEKLY_BOSS_SEASON_MILESTONES,
   };
 }
+
+// ============================================================================
+// WAVE 5 — PILLAR 4: WEEKEND BLITZ BOSS EVENT (COMPETITIVE LIVEOPS)
+// ============================================================================
+
+export type WeekendBlitzModifierId = 'gale_charge' | 'crit_counter' | 'iron_tempo';
+
+export interface WeekendBlitzModifier {
+  id: WeekendBlitzModifierId;
+  title: string;
+  subtitle: string;
+  scoreBonusNote: string;
+  dodgePointBonusPct: number;
+  clearBonusPoints: number;
+}
+
+export const WEEKEND_BLITZ_MODIFIERS: WeekendBlitzModifier[] = [
+  {
+    id: 'gale_charge',
+    title: 'Gió Bão Tụ Lực',
+    subtitle: 'Nhịp tụ lực nhanh hơn · Thưởng thêm điểm kỹ năng khi Né Hoàn Hảo chuẩn nhịp.',
+    scoreBonusNote: '+20% điểm Né Hoàn Hảo · +300 điểm Hạ Boss Cuối Tuần',
+    dodgePointBonusPct: 20,
+    clearBonusPoints: 300,
+  },
+  {
+    id: 'crit_counter',
+    title: 'Phản Đòn Chí Mạng',
+    subtitle: 'Ưu tiên đọc chiêu Boss chuẩn xác và phản công liên hoàn sau mỗi lần né.',
+    scoreBonusNote: '+30% điểm Né Hoàn Hảo · +350 điểm Hạ Boss Cuối Tuần',
+    dodgePointBonusPct: 30,
+    clearBonusPoints: 350,
+  },
+  {
+    id: 'iron_tempo',
+    title: 'Nhịp Điệu Thép',
+    subtitle: 'Duy trì máu cao và dứt điểm Boss nhanh bằng bộ Sử Thi chuẩn hóa công bằng.',
+    scoreBonusNote: '+15% điểm Né Hoàn Hảo · +450 điểm Hạ Boss Cuối Tuần',
+    dodgePointBonusPct: 15,
+    clearBonusPoints: 450,
+  },
+];
+
+export interface WeekendBlitzRewardTier {
+  tierId: string;
+  minScore: number;
+  title: string;
+  subtitle: string;
+  rewardGems: number;
+  rewardEpicShards: number;
+  rewardTitleLabel: string;
+  rewardFrameId?: AvatarFrameId;
+  rewardFrameName?: string;
+}
+
+export const WEEKEND_BLITZ_REWARD_TIERS: WeekendBlitzRewardTier[] = [
+  {
+    tierId: 'weekend_striker',
+    minScore: 4500,
+    title: 'Mốc Đồng · Tiên Phong Cuối Tuần',
+    subtitle: 'Đạt ≥ 4.500 điểm xác minh trong Sự Kiện Boss Cuối Tuần',
+    rewardGems: 120,
+    rewardEpicShards: 6,
+    rewardTitleLabel: 'Tiên Phong Boss Cuối Tuần',
+  },
+  {
+    tierId: 'weekend_ace',
+    minScore: 9500,
+    title: 'Mốc Bạc · Thợ Săn Thần Tốc',
+    subtitle: 'Đạt ≥ 9.500 điểm xác minh — Làm chủ biến thể chiến thuật cuối tuần',
+    rewardGems: 220,
+    rewardEpicShards: 10,
+    rewardTitleLabel: 'Thợ Săn Thần Tốc Cuối Tuần',
+    rewardFrameId: 'crystal_guardian',
+    rewardFrameName: 'Khung Tinh Quang Cuối Tuần',
+  },
+  {
+    tierId: 'weekend_sovereign',
+    minScore: 13200,
+    title: 'Mốc Vàng · Chinh Phục Cuối Tuần',
+    subtitle: 'Đạt ≥ 13.200 điểm xác minh — Đỉnh cao kỹ năng công bằng +25 CP Mùa Giải',
+    rewardGems: 360,
+    rewardEpicShards: 16,
+    rewardTitleLabel: 'Bá Chủ Đấu Trường Cuối Tuần',
+    rewardFrameId: 'world_dragon',
+    rewardFrameName: 'Khung Hoàng Kim Cuối Tuần',
+  },
+];
+
+export interface WeekendBlitzSchedule {
+  eventId: string; // e.g. WE-2026-W47
+  weekId: string;
+  bossId: string;
+  bossName: string;
+  bossSubtitle: string;
+  chapterVisualIndex: number;
+  seed: string;
+  startsAt: number;
+  endsAt: number;
+  maxFreeAttempts: number;
+  timeLimitSec: number;
+  bossMaxHp: number;
+  modifier: WeekendBlitzModifier;
+  loanerGear: WeeklyBossLoanerGearItem[];
+  loanerStats: ComputedPlayerStats;
+  rewardTiers: WeekendBlitzRewardTier[];
+  seasonCpBonusOnClear: number;
+}
+
+export interface WeekendBlitzClaimReceipt {
+  claimKey: string;
+  eventId: string;
+  uid: string;
+  tierId: string;
+  claimedAt: number;
+  rewardGems: number;
+  rewardEpicShards: number;
+  rewardTitleLabel: string;
+  rewardFrameId?: AvatarFrameId;
+  rewardFrameName?: string;
+  idempotencyKey?: string;
+}
+
+export interface WeekendBlitzStateResponse {
+  schedule: WeekendBlitzSchedule;
+  serverNow: number;
+  authenticated: boolean;
+  player: {
+    uid: string;
+    displayName: string;
+    attemptsUsed: number;
+    attemptsRemaining: number;
+    activeAttemptId: string | null;
+    bestScore: number;
+    bestClearTimeMs: number | null;
+    bestDamage: number;
+    claimedTierIds: string[];
+    receipts: WeekendBlitzClaimReceipt[];
+    bestSplitsMs?: number[] | null;
+    lastVerifiedAttemptId?: string | null;
+  } | null;
+  leaderboard: WeeklyBossLeaderboardEntry[];
+  top1SplitsMs?: number[] | null;
+}
+
+export function getCurrentWeekendBlitzSchedule(nowMs = Date.now()): WeekendBlitzSchedule {
+  const weekly = getCurrentWeeklyBossSchedule(nowMs);
+  const modifier =
+    WEEKEND_BLITZ_MODIFIERS[weekly.weekIndex % WEEKEND_BLITZ_MODIFIERS.length];
+  const eventId = `WE-${weekly.weekId}`;
+  return {
+    eventId,
+    weekId: weekly.weekId,
+    bossId: `${weekly.bossId}_blitz`,
+    bossName: `${weekly.bossName} · Đột Kích Cuối Tuần`,
+    bossSubtitle: `Biến thể "${modifier.title}" · Bộ Sử Thi +15 chuẩn hóa · +25 CP Mùa Giải khi hạ Boss`,
+    chapterVisualIndex: weekly.chapterVisualIndex,
+    seed: `BLITZ-${weekly.weekId}-${modifier.id.toUpperCase()}`,
+    startsAt: weekly.startsAt,
+    endsAt: weekly.endsAt,
+    maxFreeAttempts: WEEKLY_BOSS_MAX_FREE_ATTEMPTS,
+    timeLimitSec: 75,
+    bossMaxHp: Math.round(weekly.bossMaxHp * 0.92),
+    modifier,
+    loanerGear: WEEKLY_BOSS_LOANER_GEAR,
+    loanerStats: WEEKLY_BOSS_LOANER_STATS,
+    rewardTiers: WEEKEND_BLITZ_REWARD_TIERS,
+    seasonCpBonusOnClear: 25,
+  };
+}
+
+export function computeWeekendBlitzScore(params: {
+  cleared: boolean;
+  damageDealt: number;
+  bossMaxHp: number;
+  clearTimeMs: number;
+  timeLimitSec: number;
+  remainingHpPct: number;
+  perfectDodges: number;
+  modifier: WeekendBlitzModifier;
+}): number {
+  const base = computeWeeklyBossScore({
+    cleared: params.cleared,
+    damageDealt: params.damageDealt,
+    bossMaxHp: params.bossMaxHp,
+    clearTimeMs: params.clearTimeMs,
+    timeLimitSec: params.timeLimitSec,
+    remainingHpPct: params.remainingHpPct,
+    perfectDodges: params.perfectDodges,
+  });
+  const dodgeBonus = Math.round(
+    Math.min(20, Math.max(0, Math.floor(params.perfectDodges))) *
+      125 *
+      (params.modifier.dodgePointBonusPct / 100)
+  );
+  const clearModBonus = params.cleared ? params.modifier.clearBonusPoints : 0;
+  return base + dodgeBonus + clearModBonus;
+}
+
+export interface WeeklyBossAnalytics {
+  totalRankedPlayers: number;
+  playerRank: number | null;
+  playerBestScore: number;
+  gapToNextRank: number | null;
+  nextRankTargetName: string | null;
+  gapToTop10: number | null;
+  gapToTop1: number | null;
+  top3AvgClearTimeMs: number | null;
+  top3AvgSplitsMs: number[] | null;
+  playerGuardBreaks: number;
+  playerPeakStyleGrade: CombatStyleGrade | null;
+}
+
+/**
+ * Computes transparent Weekly/Weekend Boss competitive gap analytics
+ * strictly from verified human leaderboard entries.
+ */
+export function computeWeeklyBossAnalytics(
+  state: Pick<WeeklyBossStateResponse | WeekendBlitzStateResponse, 'leaderboard' | 'player'>
+): WeeklyBossAnalytics {
+  const lb = state.leaderboard ?? [];
+  const playerUid = state.player?.uid ?? null;
+  const playerIdx = playerUid ? lb.findIndex((e) => e.uid === playerUid) : -1;
+  const playerEntry = playerIdx >= 0 ? lb[playerIdx] : null;
+  const playerBestScore = playerEntry?.bestScore ?? state.player?.bestScore ?? 0;
+  const playerRank = playerIdx >= 0 ? playerIdx + 1 : null;
+
+  let gapToNextRank: number | null = null;
+  let nextRankTargetName: string | null = null;
+  if (playerIdx > 0) {
+    const above = lb[playerIdx - 1];
+    gapToNextRank = Math.max(1, above.bestScore - playerBestScore);
+    nextRankTargetName = above.displayName;
+  } else if (playerIdx === -1 && lb.length > 0) {
+    const tail = lb[Math.min(lb.length - 1, 9)];
+    gapToNextRank = Math.max(1, tail.bestScore - playerBestScore);
+    nextRankTargetName = tail.displayName;
+  }
+
+  const top10Entry = lb.length >= 10 ? lb[9] : lb[lb.length - 1] ?? null;
+  const gapToTop10 =
+    top10Entry && (playerRank === null || playerRank > 10)
+      ? Math.max(0, top10Entry.bestScore - playerBestScore)
+      : playerRank !== null && playerRank <= 10
+      ? 0
+      : null;
+
+  const top1Entry = lb[0] ?? null;
+  const gapToTop1 = top1Entry ? Math.max(0, top1Entry.bestScore - playerBestScore) : null;
+
+  const top3 = lb.slice(0, 3);
+  const top3ClearTimes = top3
+    .map((e) => e.bestClearTimeMs)
+    .filter((v): v is number => typeof v === 'number' && v > 0);
+  const top3AvgClearTimeMs =
+    top3ClearTimes.length > 0
+      ? Math.round(top3ClearTimes.reduce((acc, v) => acc + v, 0) / top3ClearTimes.length)
+      : null;
+
+  const top3WithSplits = top3.filter(
+    (e): e is WeeklyBossLeaderboardEntry & { bestSplitsMs: number[] } =>
+      Array.isArray(e.bestSplitsMs) && e.bestSplitsMs.length === 4 && e.bestSplitsMs.every((v) => v > 0)
+  );
+  const top3AvgSplitsMs =
+    top3WithSplits.length > 0
+      ? [0, 1, 2, 3].map((idx) =>
+          Math.round(
+            top3WithSplits.reduce((acc, e) => acc + e.bestSplitsMs[idx], 0) /
+              top3WithSplits.length
+          )
+        )
+      : null;
+
+  return {
+    totalRankedPlayers: lb.length,
+    playerRank,
+    playerBestScore,
+    gapToNextRank,
+    nextRankTargetName,
+    gapToTop10,
+    gapToTop1,
+    top3AvgClearTimeMs,
+    top3AvgSplitsMs,
+    playerGuardBreaks: playerEntry?.guardBreaksLanded ?? 0,
+    playerPeakStyleGrade: playerEntry?.peakStyleGrade ?? null,
+  };
+}
+

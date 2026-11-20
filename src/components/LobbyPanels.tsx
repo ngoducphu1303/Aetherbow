@@ -62,10 +62,13 @@ import {
   RARITY_META,
   RARITY_ORDER,
   evaluateEquippedGearSets,
+  findBestUpgradeTransferSource,
   getGearPowerScore,
+  previewPresetPowerDelta,
   getGearStats,
   getUpgradeCost,
 } from '../data/gearData';
+import { computeWeeklyFairnessSummary } from '../data/progressionAdvisor';
 import { HEROES, HERO_MAP, getHeroStarUpgradeCost } from '../data/heroesData';
 import { getTodayKey } from '../data/questsData';
 import { RUNES_CATALOG } from '../data/runesData';
@@ -230,6 +233,7 @@ interface GearPanelProps {
   stats: ComputedPlayerStats;
   onEquip: (uid: string) => void;
   onUpgrade: (uid: string) => void;
+  onTransferGearUpgrade?: (sourceUid: string, targetUid: string) => void;
   onFuse: (uid: string) => void;
   onAutoEquipBest: () => void;
   onBulkFuseGear: () => void;
@@ -242,6 +246,7 @@ interface GearPanelProps {
   onApplyBuildPreset: (idx: number) => void;
   onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onAutoOptimizeGear?: (goal: 'campaign' | 'boss' | 'arena') => void;
   onStartTrainingGrounds?: () => void;
   onOpenWardrobe?: () => void;
   onRotateHero?: (deltaRad: number) => void;
@@ -257,6 +262,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   stats,
   onEquip,
   onUpgrade,
+  onTransferGearUpgrade,
   onFuse,
   onAutoEquipBest,
   onBulkFuseGear,
@@ -266,6 +272,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   onApplyBuildPreset,
   onSaveLoadoutPreset,
   onApplyLoadoutPreset,
+  onAutoOptimizeGear,
   onStartTrainingGrounds,
   onOpenWardrobe,
   onRotateHero,
@@ -600,6 +607,37 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
             );
           })()}
 
+          {/* Wave 7 Pillar 3: Compact Fair Progression & Pity Transparency Strip */}
+          {(() => {
+            const fairness = computeWeeklyFairnessSummary(save);
+            return (
+              <div className="mb-2.5 rounded-xl bg-[#070d20]/95 border border-emerald-400/25 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+                <div className="text-emerald-200 font-semibold leading-snug">
+                  {fairness.highlightNote}
+                </div>
+                <div className="flex items-center gap-2.5 font-mono-nums tabular-nums text-[10px] font-bold text-slate-300 shrink-0">
+                  <span>
+                    Pity Sử Thi: <strong className="text-purple-300">{fairness.mythicEpicRemaining}</strong>
+                  </span>
+                  <span className="text-slate-600">·</span>
+                  <span>
+                    Dòng Vàng:{' '}
+                    <strong className="text-amber-300">
+                      {fairness.reforgeGoldPityCount}/{fairness.reforgeGoldPityMax}
+                    </strong>
+                  </span>
+                  <span className="text-slate-600">·</span>
+                  <span>
+                    Mảnh Sử Thi:{' '}
+                    <strong className="text-sky-300">
+                      {fairness.epicShards}/{fairness.epicShardsTarget}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Vertical Flow inside Right Drawer: Selected Item Inspector → Filters & Relic Grid → Saved Loadouts */}
           <div className="flex flex-col gap-3 pb-4">
             {/* SELECTED ITEM INSPECTOR */}
@@ -803,6 +841,28 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                             </span>
                           </button>
 
+                          {onTransferGearUpgrade && (() => {
+                            const transferSrc = findBestUpgradeTransferSource(save, selectedItem.uid);
+                            if (!transferSrc) return null;
+                            const srcTpl = GEAR_TEMPLATES[transferSrc.templateId];
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundEngine.playUiClick(1.1);
+                                  onTransferGearUpgrade(transferSrc.uid, selectedItem.uid);
+                                }}
+                                title={`Hoán đổi cấp Cường Hóa miễn phí từ ${srcTpl?.name ?? 'đồ cũ'} (+${transferSrc.level}) — 0 Vàng, không mất vật phẩm`}
+                                className="col-span-2 px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer bg-emerald-500/20 border border-emerald-400/60 text-emerald-200 hover:bg-emerald-500/30 transition-colors"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                                <span className="font-mono-nums tabular-nums">
+                                  Kế Thừa Lv.{transferSrc.level} Miễn Phí (0 Vàng · Không mất đồ)
+                                </span>
+                              </button>
+                            );
+                          })()}
+
                           {selectedItem.rarity !== Rarity.COMMON && (
                             <>
                               <button
@@ -940,27 +1000,57 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                 })}
               </div>
 
-              {/* Phase 4 & 5: 3-Slot Saved Loadout Presets + 3D Training Grounds Entry */}
-              <div className="cel-panel rounded-xl p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
-                  <div className="flex items-center gap-1 text-[11px] font-black text-amber-200 whitespace-nowrap">
-                    <Bookmark className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span>Bộ Loadout:</span>
+              {/* Phase 4, 5 & Wave 6: 3-Slot Saved Loadout Presets (+/- CP Diff) + 1-Click Auto-Optimize */}
+              <div className="cel-panel rounded-xl p-2 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1 text-[11px] font-black text-amber-200 whitespace-nowrap">
+                      <Bookmark className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span>3 Bộ Trang Bị Nhanh</span>
+                    </div>
+                    {onStartTrainingGrounds && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick(1.08);
+                          onStartTrainingGrounds();
+                        }}
+                        className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-sky-500/15 border border-sky-400/50 text-sky-200 hover:border-sky-300 whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        Sân Tập 3D
+                      </button>
+                    )}
                   </div>
-                  {onStartTrainingGrounds && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        soundEngine.playUiClick(1.08);
-                        onStartTrainingGrounds();
-                      }}
-                      className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-sky-500/15 border border-sky-400/50 text-sky-200 hover:border-sky-300 whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      Sân Tập 3D
-                    </button>
+
+                  {onAutoOptimizeGear && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                        Tối Ưu 1 Chạm:
+                      </span>
+                      {(
+                        [
+                          { id: 'campaign', label: 'Leo Chương' },
+                          { id: 'boss', label: 'Săn Boss' },
+                          { id: 'arena', label: 'Đấu 1v1' },
+                        ] as const
+                      ).map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playLevelUp();
+                            onAutoOptimizeGear(g.id);
+                          }}
+                          className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-amber-400/15 border border-amber-300/50 text-amber-200 hover:bg-amber-400/25 whitespace-nowrap cursor-pointer"
+                        >
+                          {g.label}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 flex-1">
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                   {DEFAULT_LOADOUT_PRESET_SLOTS.map((slotMeta, idx) => {
                     const savedLoadouts = normalizeLoadoutPresets(save.loadoutPresets);
                     const savedPreset = savedLoadouts.find((p) => p.slotId === slotMeta.slotId);
@@ -974,11 +1064,19 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                     const runeCount = savedPreset
                       ? savedPreset.equippedRunes.length
                       : legacyPreset?.equippedRunes.length ?? 0;
+                    const cpDiff = savedPreset
+                      ? previewPresetPowerDelta(
+                          save,
+                          savedPreset.equipped,
+                          savedPreset.heroId,
+                          savedPreset.equippedRunes
+                        ).delta
+                      : null;
 
                     return (
                       <div
                         key={slotMeta.slotId}
-                        className={`rounded-lg bg-[#070b1a] border px-2 py-1 flex items-center justify-between gap-1.5 ${
+                        className={`rounded-lg bg-[#070b1a] border px-2 py-1.5 flex items-center justify-between gap-1.5 ${
                           isActive ? 'border-emerald-400/70' : 'border-amber-400/20'
                         }`}
                       >
@@ -986,6 +1084,15 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                           <div className="text-[10px] font-black text-white truncate flex items-center gap-1">
                             <span className="truncate">{savedPreset?.name ?? slotMeta.defaultName}</span>
                             {isActive && <Check className="w-3 h-3 text-emerald-300 shrink-0" />}
+                            {cpDiff !== null && cpDiff !== 0 && !isActive && (
+                              <span
+                                className={`font-mono-nums tabular-nums text-[9px] font-black shrink-0 ${
+                                  cpDiff > 0 ? 'text-emerald-300' : 'text-amber-300'
+                                }`}
+                              >
+                                {cpDiff > 0 ? `+${cpDiff}` : cpDiff} LC
+                              </span>
+                            )}
                           </div>
                           <div className="text-[9px] text-slate-400 font-semibold font-mono-nums truncate">
                             {savedPreset

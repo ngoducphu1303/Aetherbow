@@ -5,7 +5,13 @@ import type {
   AiLiveChatChannel,
   AiLiveChatMessage,
   AiLiveHubSnapshot,
+  AiLiveInvite,
   AiLivePlayerProfile,
+  AiRivalRecord,
+  HeroId,
+  LiveGuildBossState,
+  LiveMiniCupState,
+  LiveServerBountyState,
 } from '../types/game';
 import type { WeeklyBossLeaderboardEntry } from '../data/weeklyBossData';
 
@@ -31,6 +37,57 @@ export interface LiveDuelResultAckPayload {
   alreadyProcessed: boolean;
   ratingDelta: number;
   opponent: AiLivePlayerProfile | null;
+  rivals?: AiRivalRecord[];
+}
+
+export interface LiveInviteAckPayload {
+  inviteId: string;
+  action: 'accept' | 'decline';
+  ok: boolean;
+  alreadyProcessed: boolean;
+  invite: AiLiveInvite | null;
+  duelId?: string;
+  opponent?: AiLivePlayerProfile;
+}
+
+export interface LiveRivalBountyAckPayload {
+  ok: boolean;
+  alreadyClaimed: boolean;
+  goldReward: number;
+  gemsReward: number;
+  rival: AiRivalRecord | null;
+  message: string;
+  rivals?: AiRivalRecord[];
+}
+
+export interface LiveGuildBossClaimAckPayload {
+  ok: boolean;
+  alreadyClaimed: boolean;
+  goldReward: number;
+  gemsReward: number;
+  guildCoinsReward: number;
+  message: string;
+  state: LiveGuildBossState;
+}
+
+export interface LiveMiniCupPrizeAckPayload {
+  ok: boolean;
+  alreadyClaimed: boolean;
+  goldReward: number;
+  gemsReward: number;
+  titleLabel?: string;
+  cup: LiveMiniCupState | null;
+  message: string;
+}
+
+export interface LiveServerBountyClaimAckPayload {
+  ok: boolean;
+  alreadyClaimed: boolean;
+  goldReward: number;
+  gemsReward: number;
+  starDustReward: number;
+  message: string;
+  state: LiveServerBountyState;
 }
 
 type SnapshotListener = (snapshot: AiLiveHubSnapshot, status: LiveSocketStatus) => void;
@@ -39,6 +96,12 @@ type DuelAcceptedListener = (payload: LiveDuelAcceptedPayload) => void;
 type DuelResultAckListener = (payload: LiveDuelResultAckPayload) => void;
 type AuctionBidListener = (event: AiLiveAuctionBidEvent) => void;
 type ChatListener = (channels: { lobby: AiLiveChatMessage[]; guild: AiLiveChatMessage[] }) => void;
+type InviteListener = (invite: AiLiveInvite) => void;
+type InviteAckListener = (ack: LiveInviteAckPayload) => void;
+type RivalBountyAckListener = (ack: LiveRivalBountyAckPayload) => void;
+type GuildBossClaimAckListener = (ack: LiveGuildBossClaimAckPayload) => void;
+type MiniCupPrizeAckListener = (ack: LiveMiniCupPrizeAckPayload) => void;
+type ServerBountyClaimAckListener = (ack: LiveServerBountyClaimAckPayload) => void;
 
 class LiveAiSocketClient {
   private ws: WebSocket | null = null;
@@ -60,6 +123,12 @@ class LiveAiSocketClient {
   private duelResultAckListeners = new Set<DuelResultAckListener>();
   private auctionBidListeners = new Set<AuctionBidListener>();
   private chatListeners = new Set<ChatListener>();
+  private inviteListeners = new Set<InviteListener>();
+  private inviteAckListeners = new Set<InviteAckListener>();
+  private rivalBountyAckListeners = new Set<RivalBountyAckListener>();
+  private guildBossClaimAckListeners = new Set<GuildBossClaimAckListener>();
+  private miniCupPrizeAckListeners = new Set<MiniCupPrizeAckListener>();
+  private serverBountyClaimAckListeners = new Set<ServerBountyClaimAckListener>();
 
   public getStatus(): LiveSocketStatus {
     return this.status;
@@ -185,6 +254,10 @@ class LiveAiSocketClient {
           }
           if (msg.type === 'duel:result_ack' && msg.payload) {
             const ack = msg.payload as LiveDuelResultAckPayload;
+            if (ack.rivals && this.snapshot) {
+              this.snapshot = { ...this.snapshot, rivals: ack.rivals };
+              this.emitSnapshot();
+            }
             for (const cb of this.duelResultAckListeners) cb(ack);
             return;
           }
@@ -200,6 +273,107 @@ class LiveAiSocketClient {
           if (msg.type === 'chat:message' && msg.payload) {
             const chatMsg = msg.payload as AiLiveChatMessage;
             this.appendChatMessage(chatMsg);
+            return;
+          }
+          if (msg.type === 'invite:received' && msg.payload) {
+            const invite = msg.payload as AiLiveInvite;
+            for (const cb of this.inviteListeners) cb(invite);
+            return;
+          }
+          if (msg.type === 'invite:ack' && msg.payload) {
+            const ack = msg.payload as LiveInviteAckPayload;
+            for (const cb of this.inviteAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'rival:bounty_ack' && msg.payload) {
+            const ack = msg.payload as LiveRivalBountyAckPayload;
+            if (ack.rivals && this.snapshot) {
+              this.snapshot = { ...this.snapshot, rivals: ack.rivals };
+              this.emitSnapshot();
+            }
+            for (const cb of this.rivalBountyAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'guild_boss:update' && msg.payload) {
+            const data = msg.payload as {
+              guildBossLive: LiveGuildBossState;
+              event?: AiLiveActivityEvent;
+            };
+            if (this.snapshot && data.guildBossLive) {
+              this.snapshot = {
+                ...this.snapshot,
+                guildBossLive: data.guildBossLive,
+                activities: data.event
+                  ? [
+                      data.event,
+                      ...this.snapshot.activities.filter((a) => a.id !== data.event!.id),
+                    ].slice(0, 20)
+                  : this.snapshot.activities,
+              };
+              this.emitSnapshot();
+            }
+            return;
+          }
+          if (msg.type === 'guild_boss:claim_ack' && msg.payload) {
+            const ack = msg.payload as LiveGuildBossClaimAckPayload;
+            if (this.snapshot && ack.state) {
+              this.snapshot = { ...this.snapshot, guildBossLive: ack.state };
+              this.emitSnapshot();
+            }
+            for (const cb of this.guildBossClaimAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'cup:state' && msg.payload) {
+            const data = msg.payload as {
+              cup: LiveMiniCupState | null;
+              rivals?: AiRivalRecord[];
+            };
+            if (this.snapshot) {
+              this.snapshot = {
+                ...this.snapshot,
+                miniCup: data.cup,
+                rivals: data.rivals ?? this.snapshot.rivals,
+              };
+              this.emitSnapshot();
+            }
+            return;
+          }
+          if (msg.type === 'cup:prize_ack' && msg.payload) {
+            const ack = msg.payload as LiveMiniCupPrizeAckPayload;
+            if (this.snapshot && ack.cup) {
+              this.snapshot = { ...this.snapshot, miniCup: ack.cup };
+              this.emitSnapshot();
+            }
+            for (const cb of this.miniCupPrizeAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'bounty:update' && msg.payload) {
+            const data = msg.payload as {
+              serverBounty: LiveServerBountyState;
+              event?: AiLiveActivityEvent;
+            };
+            if (this.snapshot && data.serverBounty) {
+              this.snapshot = {
+                ...this.snapshot,
+                serverBounty: data.serverBounty,
+                activities: data.event
+                  ? [
+                      data.event,
+                      ...this.snapshot.activities.filter((a) => a.id !== data.event!.id),
+                    ].slice(0, 20)
+                  : this.snapshot.activities,
+              };
+              this.emitSnapshot();
+            }
+            return;
+          }
+          if (msg.type === 'bounty:claim_ack' && msg.payload) {
+            const ack = msg.payload as LiveServerBountyClaimAckPayload;
+            if (this.snapshot && ack.state) {
+              this.snapshot = { ...this.snapshot, serverBounty: ack.state };
+              this.emitSnapshot();
+            }
+            for (const cb of this.serverBountyClaimAckListeners) cb(ack);
           }
         } catch {
           // Ignore invalid JSON message
@@ -398,6 +572,198 @@ class LiveAiSocketClient {
     return this.send({
       type: 'duel:complete',
       payload: params,
+    });
+  }
+
+  public subscribeInvites(cb: InviteListener): () => void {
+    this.inviteListeners.add(cb);
+    return () => {
+      this.inviteListeners.delete(cb);
+    };
+  }
+
+  public subscribeInviteAck(cb: InviteAckListener): () => void {
+    this.inviteAckListeners.add(cb);
+    return () => {
+      this.inviteAckListeners.delete(cb);
+    };
+  }
+
+  public subscribeRivalBountyAck(cb: RivalBountyAckListener): () => void {
+    this.rivalBountyAckListeners.add(cb);
+    return () => {
+      this.rivalBountyAckListeners.delete(cb);
+    };
+  }
+
+  public respondToInvite(
+    inviteId: string,
+    action: 'accept' | 'decline',
+    playerName?: string
+  ): boolean {
+    return this.send({
+      type: 'invite:respond',
+      payload: {
+        inviteId,
+        action,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public claimRivalBounty(aiPlayerId: string, playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'rival:claim_bounty',
+      payload: {
+        aiPlayerId,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public subscribeGuildBossClaimAck(cb: GuildBossClaimAckListener): () => void {
+    this.guildBossClaimAckListeners.add(cb);
+    return () => {
+      this.guildBossClaimAckListeners.delete(cb);
+    };
+  }
+
+  public subscribeMiniCupPrizeAck(cb: MiniCupPrizeAckListener): () => void {
+    this.miniCupPrizeAckListeners.add(cb);
+    return () => {
+      this.miniCupPrizeAckListeners.delete(cb);
+    };
+  }
+
+  public syncGuildBossLive(playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'guild_boss:sync',
+      payload: { playerName: playerName || this.announcedDisplayName },
+    });
+  }
+
+  public submitGuildBossLiveAttack(params: {
+    playerName?: string;
+    heroId: HeroId;
+    damage: number;
+  }): boolean {
+    this.ensureConnected(params.playerName);
+    return this.send({
+      type: 'guild_boss:attack',
+      payload: {
+        playerName: params.playerName || this.announcedDisplayName,
+        heroId: params.heroId,
+        damage: params.damage,
+      },
+    });
+  }
+
+  public claimGuildBossLiveMilestone(tierId: string, playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'guild_boss:claim_milestone',
+      payload: {
+        tierId,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public syncMiniCup(playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'cup:sync',
+      payload: { playerName: playerName || this.announcedDisplayName },
+    });
+  }
+
+  public startMiniCup(params: {
+    playerName?: string;
+    heroId: HeroId;
+    powerRating: number;
+    duelRating: number;
+  }): boolean {
+    this.ensureConnected(params.playerName);
+    return this.send({
+      type: 'cup:start',
+      payload: {
+        playerName: params.playerName || this.announcedDisplayName,
+        heroId: params.heroId,
+        powerRating: params.powerRating,
+        duelRating: params.duelRating,
+      },
+    });
+  }
+
+  public reportMiniCupMatch(params: {
+    playerName?: string;
+    matchId: string;
+    playerWon: boolean;
+  }): boolean {
+    return this.send({
+      type: 'cup:report_match',
+      payload: {
+        playerName: params.playerName || this.announcedDisplayName,
+        matchId: params.matchId,
+        playerWon: params.playerWon,
+      },
+    });
+  }
+
+  public claimMiniCupPrize(cupId: string, playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'cup:claim_prize',
+      payload: {
+        cupId,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public subscribeServerBountyClaimAck(cb: ServerBountyClaimAckListener): () => void {
+    this.serverBountyClaimAckListeners.add(cb);
+    return () => {
+      this.serverBountyClaimAckListeners.delete(cb);
+    };
+  }
+
+  public syncServerBounty(playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'bounty:sync',
+      payload: { playerName: playerName || this.announcedDisplayName },
+    });
+  }
+
+  public contributeServerBounty(params: {
+    playerName?: string;
+    heroId: HeroId;
+    points: number;
+    sourceLabel?: string;
+  }): boolean {
+    this.ensureConnected(params.playerName);
+    return this.send({
+      type: 'bounty:contribute',
+      payload: {
+        playerName: params.playerName || this.announcedDisplayName,
+        heroId: params.heroId,
+        points: params.points,
+        sourceLabel: params.sourceLabel,
+      },
+    });
+  }
+
+  public claimServerBountyReward(bountyId?: string, playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'bounty:claim_reward',
+      payload: {
+        bountyId,
+        playerName: playerName || this.announcedDisplayName,
+      },
     });
   }
 }

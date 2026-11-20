@@ -4,9 +4,26 @@ import awakeningAnvilArt from '../assets/images/awakening_star_anvil_17949820551
 import relicForgeArt from '../assets/images/relic_forge_anvil_art_1794977270695.jpg';
 import zodiacGemArt from '../assets/images/zodiac_gem_sockets_1794983175988.jpg';
 import { soundEngine } from '../audio/soundEngine';
-import { GEAR_TEMPLATES, RARITY_META, RARITY_ORDER, getGearPowerScore } from '../data/gearData';
-import { FORGE_RECIPES, getSalvageValue } from '../data/wave3Data';
 import {
+  GEAR_TEMPLATES,
+  RARITY_META,
+  RARITY_ORDER,
+  getGearPowerScore,
+} from '../data/gearData';
+import { normalizeEarlyForgeProgress } from '../data/earlyProgressionData';
+import { computeDropRateCodex } from '../data/progressionAdvisor';
+import { FORGE_RECIPES, getSalvageValue } from '../data/wave3Data';
+
+const TARGET_SLOT_LABELS: Record<GearSlot, string> = {
+  [GearSlot.WEAPON]: 'Vũ Khí',
+  [GearSlot.ARMOR]: 'Áo Giáp',
+  [GearSlot.RING]: 'Nhẫn',
+  [GearSlot.NECKLACE]: 'Dây Chuyền',
+  [GearSlot.HELMET]: 'Mũ',
+  [GearSlot.BOOTS]: 'Giày',
+};
+import {
+  REFORGE_GOLD_PITY_THRESHOLD,
   SUBSTAT_DEFS,
   getAwakenCost,
   getAwakeningMultiplier,
@@ -25,7 +42,7 @@ import {
   getSocketGemTierRoman,
   normalizeSocketGems,
 } from '../data/wave5Data';
-import { ForgeRecipe, GearInstance, Rarity, SaveData, SocketGemColor } from '../types/game';
+import { ForgeRecipe, GearInstance, GearSlot, Rarity, SaveData, SocketGemColor } from '../types/game';
 import { GearSlotSvg, GoldCoinIcon, RARITY_FRAME_CLASS, StarDustIcon } from './GameIcons';
 
 interface RelicForgeModalProps {
@@ -33,6 +50,8 @@ interface RelicForgeModalProps {
   initialSubTab?: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets';
   initialGearUid?: string;
   onSalvageGear: (uids: string[]) => void;
+  onSafeSalvageExcess?: () => void;
+  onCraftTargetSlotGear?: (tier: 'rare' | 'epic' | 's_tier', targetSlot: GearSlot) => void;
   onCraftForgeRecipe: (recipe: ForgeRecipe) => void;
   onReforgeGear: (uid: string, lockedIds: string[]) => void;
   onAwakenGear: (uid: string) => void;
@@ -48,6 +67,8 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   initialSubTab = 'salvage',
   initialGearUid,
   onSalvageGear,
+  onSafeSalvageExcess,
+  onCraftTargetSlotGear,
   onCraftForgeRecipe,
   onReforgeGear,
   onAwakenGear,
@@ -60,6 +81,8 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   const [subTab, setSubTab] = useState<'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets'>(
     initialSubTab
   );
+  const [selectedTargetSlot, setSelectedTargetSlot] = useState<GearSlot>(GearSlot.WEAPON);
+  const [showDropCodex, setShowDropCodex] = useState(false);
   const [selectedUids, setSelectedUids] = useState<string[]>([]);
   const [imgErr, setImgErr] = useState(false);
   const [awakenImgErr, setAwakenImgErr] = useState(false);
@@ -146,7 +169,13 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   };
 
   const starDust = save.starDust ?? 0;
+  const forgeProg = useMemo(
+    () => normalizeEarlyForgeProgress(save.earlyForgeProgress),
+    [save.earlyForgeProgress]
+  );
   const guildCoins = normalizeGuild(save.guild).guildCoins;
+  const dropCodex = useMemo(() => computeDropRateCodex(save), [save]);
+  const safeExcessCount = dropCodex.excessSalvageableCount;
 
   const focusMaxSubstats = focusedItem ? getMaxSubstatsForRarity(focusedItem.rarity) : 0;
   const focusSubstats = focusedItem ? getEffectiveSubstats(focusedItem) : [];
@@ -295,7 +324,21 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
               <p className="text-[11px] text-slate-300 font-semibold">
                 Trang bị đang mặc và bậc Thần Thoại (Mythic) được bảo vệ an toàn.
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {onSafeSalvageExcess && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playForgeCraft();
+                      onSafeSalvageExcess();
+                    }}
+                    disabled={safeExcessCount === 0}
+                    title="Tự động phân giải đồ Thường & Hiếm dư thành Mảnh Rèn (bảo vệ đồ đang mặc, [S], Sử Thi+)"
+                    className="a2-yellow-btn px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer disabled:opacity-40"
+                  >
+                    Tách Đồ Dư → Mảnh Rèn ({safeExcessCount} món)
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={selectAllCommonRare}
@@ -418,12 +461,166 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
                   Xưởng Đúc Tinh Tú Hoàng Đạo
                 </div>
                 <div className="font-display text-lg sm:text-xl font-black text-white">
-                  Chế Tạo Đích Danh Trang Bị [S] &amp; Tinh Chất
+                  Chế Tạo Đúng Ô Mục Tiêu &amp; Thánh Vật [S]
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[42vh] overflow-y-auto a2-scroll pr-1">
+            {/* Pillar 3 Wave 5: Target-Slot Forge (Pick exact 1 of 6 slots) + Transparent Drop-Rate Codex */}
+            {onCraftTargetSlotGear && (
+              <div className="rounded-2xl bg-[#070b1a]/95 border border-emerald-400/35 p-3.5 mb-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-black text-emerald-300">
+                      Chế Tạo Đúng Ô Mục Tiêu (Không Phụ Thuộc May Rủi)
+                    </div>
+                    <div className="text-[11px] text-slate-300">
+                      Chọn chính xác 1 trong 6 ô trang bị để đúc trực tiếp bằng Mảnh Rèn.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono-nums tabular-nums text-[11px] font-black text-sky-300">
+                      Hiếm: {forgeProg.rareShards}
+                    </span>
+                    <span className="font-mono-nums tabular-nums text-[11px] font-black text-purple-300">
+                      Sử Thi: {forgeProg.epicShards}
+                    </span>
+                    <span className="font-mono-nums tabular-nums text-[11px] font-black text-amber-300">
+                      Bản Vẽ [S]: {forgeProg.sTierBlueprints}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDropCodex((v) => !v)}
+                      className="a2-slate-btn px-2.5 py-1 rounded-lg text-[10px] font-bold text-sky-200 whitespace-nowrap cursor-pointer"
+                    >
+                      {showDropCodex ? 'Ẩn Bảng Tỷ Lệ' : 'Bảng Tỷ Lệ & Bảo Hiểm'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 6 Slot Selector */}
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                  {(Object.values(GearSlot) as GearSlot[]).map((slot) => {
+                    const active = selectedTargetSlot === slot;
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playUiClick();
+                          setSelectedTargetSlot(slot);
+                        }}
+                        className={`px-2 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer border transition-colors ${
+                          active
+                            ? 'bg-emerald-500/20 border-emerald-300/75 text-emerald-200'
+                            : 'bg-[#091025] border-slate-800 text-slate-300 hover:border-slate-600'
+                        }`}
+                      >
+                        {TARGET_SLOT_LABELS[slot]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 3 Target Craft Tiers */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {(
+                    [
+                      {
+                        tier: 'rare' as const,
+                        label: `Rèn ${TARGET_SLOT_LABELS[selectedTargetSlot]} Hiếm`,
+                        accent: 'text-sky-300',
+                        costLabel: `${dropCodex.targetSlotCraftCosts.rareShards} Mảnh Hiếm`,
+                        affordable: forgeProg.rareShards >= dropCodex.targetSlotCraftCosts.rareShards,
+                      },
+                      {
+                        tier: 'epic' as const,
+                        label: `Rèn ${TARGET_SLOT_LABELS[selectedTargetSlot]} Sử Thi`,
+                        accent: 'text-purple-300',
+                        costLabel: `${dropCodex.targetSlotCraftCosts.epicShards} Mảnh Sử Thi`,
+                        affordable: forgeProg.epicShards >= dropCodex.targetSlotCraftCosts.epicShards,
+                      },
+                      {
+                        tier: 's_tier' as const,
+                        label: `Rèn ${TARGET_SLOT_LABELS[selectedTargetSlot]} [S]`,
+                        accent: 'text-amber-300',
+                        costLabel: `${dropCodex.targetSlotCraftCosts.sTierBlueprints} Bản Vẽ [S]`,
+                        affordable:
+                          forgeProg.sTierBlueprints >= dropCodex.targetSlotCraftCosts.sTierBlueprints,
+                      },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.tier}
+                      type="button"
+                      disabled={!opt.affordable}
+                      onClick={() => {
+                        soundEngine.playForgeCraft();
+                        onCraftTargetSlotGear(opt.tier, selectedTargetSlot);
+                      }}
+                      className="rounded-xl bg-[#0a1228] border border-slate-700/80 hover:border-amber-300/60 px-3 py-2 text-left flex items-center justify-between gap-2 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                    >
+                      <div className="min-w-0">
+                        <div className={`text-xs font-black truncate ${opt.accent}`}>
+                          {opt.label}
+                        </div>
+                        <div className="font-mono-nums tabular-nums text-[10px] text-slate-300">
+                          Cần {opt.costLabel}
+                        </div>
+                      </div>
+                      <Hammer className="w-4 h-4 text-amber-300 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+
+                {/* Transparent Drop-Rate & Pity Codex Table */}
+                {showDropCodex && (
+                  <div className="pt-2.5 border-t border-slate-800/80 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <span className="font-black text-sky-200">
+                        Bảng Tỷ Lệ Rơi &amp; Bảo Hiểm Công Khai (100% Minh Bạch)
+                      </span>
+                      <span className="font-mono-nums tabular-nums text-emerald-300 font-bold">
+                        Pity Sử Thi: {dropCodex.protection.mythicEpicPityCurrent}/{dropCodex.protection.mythicEpicPityMax} · Pity [S]: {dropCodex.protection.mythicLegendPityCurrent}/{dropCodex.protection.mythicLegendPityMax}
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-[11px] font-mono-nums tabular-nums">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-400">
+                            <th className="py-1.5 pr-2 font-bold">Phẩm Chất</th>
+                            <th className="py-1.5 px-2 font-bold">Rương Sắt</th>
+                            <th className="py-1.5 px-2 font-bold text-amber-300">Rương Thần Thoại</th>
+                            <th className="py-1.5 pl-2 font-bold text-emerald-300">Cơ Chế Bảo Hiểm</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/70">
+                          {dropCodex.rows.map((row) => (
+                            <tr key={row.rarityLabel} className="text-slate-200">
+                              <td className={`py-1.5 pr-2 font-sans font-bold ${row.colorClass}`}>
+                                {row.rarityLabel}
+                              </td>
+                              <td className="py-1.5 px-2">{row.baseChestPct}</td>
+                              <td className="py-1.5 px-2 text-amber-300 font-black">
+                                {row.mythicChestPct}
+                              </td>
+                              <td className="py-1.5 pl-2 font-sans text-emerald-300">
+                                {row.guaranteeRule}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {dropCodex.salvageConversionNote}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[38vh] overflow-y-auto a2-scroll pr-1">
               {FORGE_RECIPES.map((recipe) => {
                 const canAfford =
                   starDust >= recipe.starDustCost && save.gold >= recipe.goldCost;
@@ -784,6 +981,45 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
                           </div>
                         ) : (
                           <>
+                            {/* Wave 6 Pillar 3: Gold-Tier Substat Pity Tracker (5 rolls) */}
+                            {(() => {
+                              const pityCurrent = Math.min(
+                                REFORGE_GOLD_PITY_THRESHOLD - 1,
+                                Math.max(0, Math.floor(save.reforgeGoldPityCount ?? 0))
+                              );
+                              const nextIsGuaranteed = pityCurrent >= REFORGE_GOLD_PITY_THRESHOLD - 1;
+                              const pityPct = Math.round(
+                                (pityCurrent / REFORGE_GOLD_PITY_THRESHOLD) * 100
+                              );
+                              return (
+                                <div className="rounded-xl bg-[#070b1a] border border-amber-400/35 px-3 py-2 space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                                    <span className="font-bold text-amber-200 flex items-center gap-1.5">
+                                      <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                                      <span>
+                                        {nextIsGuaranteed
+                                          ? 'Lần Tẩy Kế Tiếp CHẮC CHẮN Nổ Dòng Vàng!'
+                                          : 'Bảo Hiểm Tẩy Luyện Dòng Vàng (Mốc 5 Lần)'}
+                                      </span>
+                                    </span>
+                                    <span className="font-mono-nums tabular-nums font-black text-amber-300 shrink-0">
+                                      {pityCurrent}/{REFORGE_GOLD_PITY_THRESHOLD}
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-slate-900 overflow-hidden">
+                                    <div
+                                      className={`h-full transition-all duration-200 ${
+                                        nextIsGuaranteed
+                                          ? 'bg-gradient-to-r from-amber-300 to-yellow-200'
+                                          : 'bg-gradient-to-r from-purple-400 to-amber-400'
+                                      }`}
+                                      style={{ width: `${nextIsGuaranteed ? 100 : pityPct}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
                             <div className="space-y-2">
                               {focusSubstats.length === 0 ? (
                                 <div className="rounded-xl bg-[#070b1a] border border-purple-400/30 p-3 text-xs text-purple-200">

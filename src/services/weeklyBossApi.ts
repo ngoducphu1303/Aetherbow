@@ -1,4 +1,5 @@
 import { auth } from '../firebase';
+import type { CombatStyleGrade } from '../types/game';
 import type {
   WeeklyBossClaimReceipt,
   WeeklyBossLeaderboardEntry,
@@ -6,6 +7,9 @@ import type {
   WeeklyBossSeasonClaimReceipt,
   WeeklyBossSeasonStateResponse,
   WeeklyBossStateResponse,
+  WeekendBlitzClaimReceipt,
+  WeekendBlitzSchedule,
+  WeekendBlitzStateResponse,
 } from '../data/weeklyBossData';
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -64,6 +68,10 @@ export async function submitWeeklyBossAttempt(payload: {
   remainingHpPct: number;
   perfectDodges: number;
   autoPilotUsed?: boolean;
+  splitsMs?: Array<number | null>;
+  counterHitsLanded?: number;
+  guardBreaksLanded?: number;
+  peakStyleGrade?: CombatStyleGrade;
 }): Promise<{
   ok: true;
   verifiedScore: number;
@@ -115,6 +123,77 @@ export async function claimWeeklyBossSeasonReward(payload: {
 }> {
   const headers = await getAuthHeaders();
   const res = await fetch('/api/weekly-boss/season/claim', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseApiResponse(res);
+}
+
+export async function fetchWeekendBlitzState(): Promise<WeekendBlitzStateResponse> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/weekly-boss/weekend/state', { method: 'GET', headers });
+  return parseApiResponse<WeekendBlitzStateResponse>(res);
+}
+
+export async function startWeekendBlitzAttempt(displayName: string): Promise<{
+  schedule: WeekendBlitzSchedule;
+  attempt: { attemptId: string; seed: string; startedAt: number };
+  attemptsUsed: number;
+  attemptsRemaining: number;
+}> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/weekly-boss/weekend/start', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ displayName }),
+  });
+  return parseApiResponse(res);
+}
+
+export async function submitWeekendBlitzAttempt(payload: {
+  attemptId: string;
+  seed: string;
+  displayName: string;
+  cleared: boolean;
+  damageDealt: number;
+  simTicks: number;
+  clearTimeMs: number;
+  remainingHpPct: number;
+  perfectDodges: number;
+  autoPilotUsed?: boolean;
+  splitsMs?: Array<number | null>;
+  counterHitsLanded?: number;
+  guardBreaksLanded?: number;
+  peakStyleGrade?: CombatStyleGrade;
+}): Promise<{
+  ok: true;
+  verifiedScore: number;
+  rank: number;
+  attemptsRemaining: number;
+  leaderboard: WeeklyBossLeaderboardEntry[];
+  seasonCpBonusAwarded: number;
+}> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/weekly-boss/weekend/submit', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return parseApiResponse(res);
+}
+
+export async function claimWeekendBlitzReward(payload: {
+  tierId: string;
+  idempotencyKey: string;
+}): Promise<{
+  ok: true;
+  alreadyClaimed: boolean;
+  receipt: WeekendBlitzClaimReceipt;
+  claimedTierIds: string[];
+}> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/weekly-boss/weekend/claim', {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),

@@ -22,6 +22,8 @@ import type { Wave14Tab } from './components/Wave14AscensionModal';
 import type { LiveEventActionTarget } from './components/Wave14EventCenterModal';
 import type { UpgradeActionTarget } from './data/progressionAdvisor';
 import type {
+  WeekendBlitzClaimReceipt,
+  WeekendBlitzSchedule,
   WeeklyBossClaimReceipt,
   WeeklyBossSchedule,
   WeeklyBossSeasonClaimReceipt,
@@ -51,12 +53,13 @@ import {
   normalizeFairProgression,
   resolveSeasonRankTier,
 } from './engine/aaaFivePillarsDirector';
-import { submitWeeklyBossAttempt } from './services/weeklyBossApi';
+import { submitWeekendBlitzAttempt, submitWeeklyBossAttempt } from './services/weeklyBossApi';
 import { liveAiSocket } from './services/liveAiSocket';
 import { applyLiveAiAuctionBidEvent } from './data/liveAiLeaderboards';
 import { computeWeeklyBossScore } from './data/weeklyBossData';
 import { getNextTargetGoal, normalizeAiPreferences } from './data/earlyProgressionData';
 import { computeNextUpgradeRecommendation } from './data/progressionAdvisor';
+import { getStyleRewardBonusPct } from './engine/wave7CombatSystems';
 
 // Lazy-loaded non-startup event, shop, and progression modals to minimize initial JS payload
 const ArenaModal = lazy(() =>
@@ -187,6 +190,7 @@ import {
   GEAR_TEMPLATES,
   RARITY_META,
   RARITY_ORDER,
+  computeAutoOptimizeEquipment,
   computePlayerStats,
   craftEarlyTargetGear,
   createInitialSaveData,
@@ -195,6 +199,8 @@ import {
   getUpgradeCost,
   rollChestGearBatch,
   rollProgressionGatedGear,
+  salvageExcessGearToForgeShards,
+  transferGearUpgradeLevel,
 } from './data/gearData';
 import {
   RARITY_RANK,
@@ -283,7 +289,7 @@ import {
   normalizeBuildPresets,
   normalizeDestinyWheel,
   normalizeGuild,
-  reforgeItemSubstats,
+  reforgeItemSubstatsWithPity,
   rollDestinyPrize,
 } from './data/wave4Data';
 import {
@@ -498,12 +504,14 @@ import {
   AstralSteedId,
   AuctionLotItem,
   AuraStyleId,
+  AutoOptimizeGoal,
   AvatarFrameId,
   BundlePreviewPayload,
   CelestialWingId,
   ChampionshipTacticId,
   CombatPowerCategoryItem,
   ConstellationId,
+  CoopAiRole,
   CoopRaidDifficulty,
   DamageBreakdown,
   DestinyWheelPrize,
@@ -562,8 +570,11 @@ import {
   AiAutoPilotTactic,
   AiLiveActivityEvent,
   AiLiveChatChannel,
+  AiLiveInvite,
   AiLivePlayerProfile,
   AiPreferencesState,
+  AiRivalRecord,
+  CoopTacticalOrder,
 } from './types/game';
 
 const STORAGE_KEY = 'artemis_3d_save_v1';
@@ -744,6 +755,11 @@ export default function App() {
     dailyRiftTitle?: string;
   } | null>(null);
   const activeWeeklyWeekIdRef = useRef<string | null>(null);
+  const activeWeeklyRunKindRef = useRef<'weekly' | 'weekend'>('weekly');
+  const activeMiniCupMatchRef = useRef<{ matchId: string; opponentId: string } | null>(null);
+  const [pendingLiveInvite, setPendingLiveInvite] = useState<AiLiveInvite | null>(null);
+  const [liveAiRivals, setLiveAiRivals] = useState<AiRivalRecord[]>([]);
+  const [lobbyDwellReady, setLobbyDwellReady] = useState<boolean>(false);
   const [wave12SanctumTab, setWave12SanctumTab] = useState<Wave12SanctumTab | null>(null);
   const [wave13TreasuryTab, setWave13TreasuryTab] = useState<Wave13Tab | null>(null);
   const [wave13CarnivalOpen, setWave13CarnivalOpen] = useState<boolean>(false);
@@ -948,16 +964,49 @@ export default function App() {
   const currentAiPrefs = useMemo(() => normalizeAiPreferences(save.aiPreferences), [save.aiPreferences]);
 
   useEffect(() => {
+    if (!enteredGame) {
+      setLobbyDwellReady(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setLobbyDwellReady(true), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [enteredGame]);
+
+  useEffect(() => {
     liveAiSocket.ensureConnected(playerDisplayName);
     const unsubSnap = liveAiSocket.subscribeSnapshot((snap) => {
       setLiveAiOnlineCount(snap.onlineAiCount);
       if (snap.activities.length > 0) {
         setLiveAiLatestActivity(snap.activities[0]);
       }
+      if (Array.isArray(snap.rivals)) {
+        setLiveAiRivals(snap.rivals);
+      }
       const onlineSquad = [...snap.players]
         .sort((a, b) => b.powerRating - a.powerRating)
         .slice(0, 4);
       setLiveAiOnlineTeammates(onlineSquad);
+    });
+    const unsubInvite = liveAiSocket.subscribeInvites((invite) => {
+      setPendingLiveInvite(invite);
+    });
+    const unsubRivalBounty = liveAiSocket.subscribeRivalBountyAck((ack) => {
+      if (!ack.ok || ack.alreadyClaimed) return;
+      soundEngine.playAchievement();
+      const rivalId = ack.rival?.aiPlayerId ?? 'rival';
+      setSave((prev) => ({
+        ...prev,
+        gold: prev.gold + Math.max(0, ack.goldReward),
+        gems: prev.gems + Math.max(0, ack.gemsReward),
+        claimedRivalBounties: {
+          ...(prev.claimedRivalBounties ?? {}),
+          [rivalId]: new Date().toISOString().slice(0, 10),
+        },
+      }));
+      triggerUpgradeCelebration(
+        'Thưởng Đòi Nợ Truyền Kiếp!',
+        `+${ack.goldReward.toLocaleString('vi-VN')} Vàng · +${ack.gemsReward} Ngọc`
+      );
     });
     const unsubAuction = liveAiSocket.subscribeAuctionEvents((evt) => {
       if (processedAuctionEventIdsRef.current.has(evt.eventId)) return;
@@ -995,6 +1044,8 @@ export default function App() {
     });
     return () => {
       unsubSnap();
+      unsubInvite();
+      unsubRivalBounty();
       unsubAuction();
     };
   }, [playerDisplayName, triggerUpgradeCelebration]);
@@ -2038,6 +2089,24 @@ export default function App() {
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
 
+          if (isGuildBoss && guildBossDamage > 0) {
+            liveAiSocket.submitGuildBossLiveAttack({
+              playerName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+              heroId: saveRef.current.selectedHeroId,
+              damage: Math.round(guildBossDamage),
+            });
+          }
+
+          if (summary.isArenaMode && activeMiniCupMatchRef.current) {
+            const cupMatch = activeMiniCupMatchRef.current;
+            activeMiniCupMatchRef.current = null;
+            liveAiSocket.reportMiniCupMatch({
+              playerName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+              matchId: cupMatch.matchId,
+              playerWon: victory,
+            });
+          }
+
           if (summary.liveAiDuelId && summary.liveAiPlayerId) {
             liveAiSocket.reportDuelComplete({
               duelId: summary.liveAiDuelId,
@@ -2080,18 +2149,41 @@ export default function App() {
           } else if (summary.isWeeklyRankedBossMode && summary.weeklyBossAttemptId && summary.weeklyBossSeed) {
             setWeeklyBossResult({ submitting: true, verifiedScore: null, rank: null, error: null });
             const highlights = engineRef.current?.getRunCombatHighlights();
-            void submitWeeklyBossAttempt({
-              attemptId: summary.weeklyBossAttemptId,
-              seed: summary.weeklyBossSeed,
-              displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
-              cleared: Boolean(summary.weeklyBossCleared ?? victory),
-              damageDealt: Math.max(0, Math.round(summary.weeklyBossDamage ?? 0)),
-              simTicks: Math.max(1, Math.round(summary.weeklyBossSimTicks ?? 60)),
-              clearTimeMs: Math.max(100, Math.round(summary.weeklyBossClearTimeMs ?? 1000)),
-              remainingHpPct: Math.max(0, Math.min(100, Math.round(summary.weeklyBossRemainingHpPct ?? 0))),
-              perfectDodges: Math.max(0, Math.round(highlights?.perfectDodgesCount ?? 0)),
-              autoPilotUsed: Boolean(summary.autoPilotUsed),
-            })
+            const isWeekendRun = activeWeeklyRunKindRef.current === 'weekend';
+            const submitPromise = isWeekendRun
+              ? submitWeekendBlitzAttempt({
+                  attemptId: summary.weeklyBossAttemptId,
+                  seed: summary.weeklyBossSeed,
+                  displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+                  cleared: Boolean(summary.weeklyBossCleared ?? victory),
+                  damageDealt: Math.max(0, Math.round(summary.weeklyBossDamage ?? 0)),
+                  simTicks: Math.max(1, Math.round(summary.weeklyBossSimTicks ?? 60)),
+                  clearTimeMs: Math.max(100, Math.round(summary.weeklyBossClearTimeMs ?? 1000)),
+                  remainingHpPct: Math.max(0, Math.min(100, Math.round(summary.weeklyBossRemainingHpPct ?? 0))),
+                  perfectDodges: Math.max(0, Math.round(highlights?.perfectDodgesCount ?? 0)),
+                  autoPilotUsed: Boolean(summary.autoPilotUsed),
+                  splitsMs: summary.weeklyBossSplitsMs,
+                  counterHitsLanded: summary.weeklyBossCounterHits,
+                  guardBreaksLanded: summary.weeklyBossGuardBreaks,
+                  peakStyleGrade: summary.peakStyleGrade,
+                })
+              : submitWeeklyBossAttempt({
+                  attemptId: summary.weeklyBossAttemptId,
+                  seed: summary.weeklyBossSeed,
+                  displayName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+                  cleared: Boolean(summary.weeklyBossCleared ?? victory),
+                  damageDealt: Math.max(0, Math.round(summary.weeklyBossDamage ?? 0)),
+                  simTicks: Math.max(1, Math.round(summary.weeklyBossSimTicks ?? 60)),
+                  clearTimeMs: Math.max(100, Math.round(summary.weeklyBossClearTimeMs ?? 1000)),
+                  remainingHpPct: Math.max(0, Math.min(100, Math.round(summary.weeklyBossRemainingHpPct ?? 0))),
+                  perfectDodges: Math.max(0, Math.round(highlights?.perfectDodgesCount ?? 0)),
+                  autoPilotUsed: Boolean(summary.autoPilotUsed),
+                  splitsMs: summary.weeklyBossSplitsMs,
+                  counterHitsLanded: summary.weeklyBossCounterHits,
+                  guardBreaksLanded: summary.weeklyBossGuardBreaks,
+                  peakStyleGrade: summary.peakStyleGrade,
+                });
+            void submitPromise
               .then((res) => {
                 setWeeklyBossResult({
                   submitting: false,
@@ -2172,11 +2264,29 @@ export default function App() {
             const elDef = ELEMENTAL_TOWER_MAP[elTowerId];
             const coopDef = COOP_DIFFICULTY_MAP[coopDiff];
 
+            const styleBonusPct = summary.peakStyleGrade
+              ? getStyleRewardBonusPct(summary.peakStyleGrade)
+              : 0;
+            const boostedMasteryExp = Math.round(runMasteryExp * (1 + styleBonusPct / 100));
             const masteryResult = grantHeroMasteryExp(
               prev.heroMastery,
               prev.selectedHeroId,
-              runMasteryExp
+              boostedMasteryExp
             );
+            if (victory && (summary.kills ?? 0) >= 3) {
+              const bountyPts = Math.min(
+                240,
+                60 + (summary.weeklyBossGuardBreaks ?? 0) * 35 + Math.round(styleBonusPct * 2)
+              );
+              liveAiSocket.contributeServerBounty({
+                playerName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+                heroId: prev.selectedHeroId,
+                points: bountyPts,
+                sourceLabel: summary.peakStyleGrade
+                  ? `Hạng ${summary.peakStyleGrade}`
+                  : 'Chiến thắng 3D',
+              });
+            }
             if (masteryResult.leveledUp) {
               setRunSummary((cur) =>
                 cur
@@ -3333,9 +3443,14 @@ export default function App() {
         }
         liveTeammates.push(candidate);
       }
-      engineRef.current?.startCoopRaid(playerStats, difficulty, liveTeammates);
+      engineRef.current?.startCoopRaid(
+        playerStats,
+        difficulty,
+        liveTeammates,
+        save.coopPartyRoles ?? ['dps', 'guardian']
+      );
     },
-    [playerStats, liveAiOnlineTeammates, pinnedCoopAiIds]
+    [playerStats, liveAiOnlineTeammates, pinnedCoopAiIds, save.coopPartyRoles]
   );
 
   const handleStartElementalTower = useCallback(
@@ -3425,7 +3540,14 @@ export default function App() {
   }, [save.crystalDefense, playerStats]);
 
   const handleStartWeeklyRankedBoss = useCallback(
-    (params: { attemptId: string; schedule: WeeklyBossSchedule }) => {
+    (params: {
+      attemptId: string;
+      schedule: WeeklyBossSchedule;
+      top1ClearTimeMs?: number | null;
+      top1SplitsMs?: number[] | null;
+      personalBestClearTimeMs?: number | null;
+      personalBestSplitsMs?: number[] | null;
+    }) => {
       soundEngine.unlock();
       setWeeklyBossModalOpen(false);
       setHonorBoardOpen(false);
@@ -3446,6 +3568,7 @@ export default function App() {
       setRunSummary(null);
       setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
       setDamages([]);
+      activeWeeklyRunKindRef.current = 'weekly';
       activeWeeklyWeekIdRef.current = params.schedule.weekId;
       setTransitionState({
         chapterId: params.schedule.chapterVisualIndex + 1,
@@ -3463,20 +3586,94 @@ export default function App() {
       setPhase(GamePhase.PLAYING);
       engineRef.current?.startWeeklyRankedBoss(params.schedule, params.attemptId, {
         practice: false,
+        isWeekendBlitz: false,
+        top1ClearTimeMs: params.top1ClearTimeMs ?? null,
+        top1SplitsMs: params.top1SplitsMs ?? null,
+        personalBestClearTimeMs: params.personalBestClearTimeMs ?? null,
+        personalBestSplitsMs: params.personalBestSplitsMs ?? null,
       });
     },
     []
   );
 
-  const handleStartWeeklyBossPractice = useCallback((schedule: WeeklyBossSchedule) => {
-    setWeeklyBossModalOpen(false);
-    setLiveAiHubOpen(false);
-    setRunSummary(null);
-    setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
-    setDamages([]);
-    setPhase(GamePhase.PLAYING);
-    engineRef.current?.startWeeklyRankedBoss(schedule, 'practice', { practice: true });
-  }, []);
+  const handleStartWeekendBlitz = useCallback(
+    (params: {
+      attemptId: string;
+      schedule: WeekendBlitzSchedule;
+      top1ClearTimeMs?: number | null;
+      top1SplitsMs?: number[] | null;
+      personalBestClearTimeMs?: number | null;
+      personalBestSplitsMs?: number[] | null;
+    }) => {
+      soundEngine.unlock();
+      setWeeklyBossModalOpen(false);
+      setHonorBoardOpen(false);
+      setEnteredGame(true);
+      setRunSummary(null);
+      setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
+      setDamages([]);
+      activeWeeklyRunKindRef.current = 'weekend';
+      activeWeeklyWeekIdRef.current = params.schedule.weekId;
+      setTransitionState({
+        chapterId: params.schedule.chapterVisualIndex + 1,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isWorldBossMode: true,
+        isWeeklyRankedBossMode: true,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
+      setPhase(GamePhase.PLAYING);
+      const adaptedSchedule: WeeklyBossSchedule = {
+        ...params.schedule,
+        weekIndex: 0,
+        fairPlayRules: [
+          params.schedule.modifier.subtitle,
+          params.schedule.modifier.scoreBonusNote,
+        ],
+      };
+      engineRef.current?.startWeeklyRankedBoss(adaptedSchedule, params.attemptId, {
+        practice: false,
+        isWeekendBlitz: true,
+        top1ClearTimeMs: params.top1ClearTimeMs ?? null,
+        top1SplitsMs: params.top1SplitsMs ?? null,
+        personalBestClearTimeMs: params.personalBestClearTimeMs ?? null,
+        personalBestSplitsMs: params.personalBestSplitsMs ?? null,
+      });
+    },
+    []
+  );
+
+  const handleStartWeeklyBossPractice = useCallback(
+    (
+      schedule: WeeklyBossSchedule,
+      paceRef?: {
+        top1ClearTimeMs?: number | null;
+        top1SplitsMs?: number[] | null;
+        personalBestClearTimeMs?: number | null;
+        personalBestSplitsMs?: number[] | null;
+      }
+    ) => {
+      setWeeklyBossModalOpen(false);
+      setLiveAiHubOpen(false);
+      setRunSummary(null);
+      setWeeklyBossResult({ submitting: false, verifiedScore: null, rank: null, error: null });
+      setDamages([]);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startWeeklyRankedBoss(schedule, 'practice', {
+        practice: true,
+        top1ClearTimeMs: paceRef?.top1ClearTimeMs ?? null,
+        top1SplitsMs: paceRef?.top1SplitsMs ?? null,
+        personalBestClearTimeMs: paceRef?.personalBestClearTimeMs ?? null,
+        personalBestSplitsMs: paceRef?.personalBestSplitsMs ?? null,
+      });
+    },
+    []
+  );
 
   const handleUpdateAiPreferences = useCallback((next: AiPreferencesState) => {
     setSave((prev) => ({ ...prev, aiPreferences: next }));
@@ -3548,6 +3745,83 @@ export default function App() {
       }
     },
     [handleChallengeLiveAiPlayer, liveAiOnlineTeammates]
+  );
+
+  const handleUpdateCoopPartyRoles = useCallback((roles: [CoopAiRole, CoopAiRole]) => {
+    soundEngine.playUiClick(1.06);
+    setSave((prev) => ({
+      ...prev,
+      coopPartyRoles: roles,
+    }));
+  }, []);
+
+  const handleStartMiniCupMatch = useCallback(
+    (opponent: AiLivePlayerProfile, cupMatchId: string) => {
+      activeMiniCupMatchRef.current = { matchId: cupMatchId, opponentId: opponent.id };
+      handleChallengeLiveAiPlayer(opponent, `cup_${cupMatchId}`);
+    },
+    [handleChallengeLiveAiPlayer]
+  );
+
+  const handleClaimMiniCupPrize = useCallback(
+    (reward: { rewardGold: number; rewardGems: number; titleLabel: string }) => {
+      soundEngine.playVictory();
+      setSave((prev) => ({
+        ...prev,
+        gold: prev.gold + Math.max(0, reward.rewardGold),
+        gems: prev.gems + Math.max(0, reward.rewardGems),
+      }));
+      triggerUpgradeCelebration(
+        `Thưởng Cúp 1v1: ${reward.titleLabel}`,
+        `+${reward.rewardGold.toLocaleString('vi-VN')} Vàng · +${reward.rewardGems} Ngọc`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimServerBountyReward = useCallback(
+    (reward: { rewardGold: number; rewardGems: number; rewardStarDust: number }) => {
+      soundEngine.playVictory();
+      setSave((prev) => ({
+        ...prev,
+        gold: prev.gold + Math.max(0, reward.rewardGold),
+        gems: prev.gems + Math.max(0, reward.rewardGems),
+        starDust: (prev.starDust ?? 0) + Math.max(0, reward.rewardStarDust),
+      }));
+      triggerUpgradeCelebration(
+        'Rương Truy Nã Toàn Server!',
+        `+${reward.rewardGold.toLocaleString('vi-VN')} Vàng · +${reward.rewardGems} Ngọc · +${reward.rewardStarDust} Bụi Tinh Tú`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimLiveGuildBossMilestone = useCallback(
+    (reward: {
+      milestoneId: string;
+      rewardGold: number;
+      rewardGems: number;
+      rewardGuildCoins: number;
+    }) => {
+      soundEngine.playVictory();
+      setSave((prev) => {
+        const g = normalizeGuild(prev.guild);
+        return {
+          ...prev,
+          gold: prev.gold + Math.max(0, reward.rewardGold),
+          gems: prev.gems + Math.max(0, reward.rewardGems),
+          guild: {
+            ...g,
+            guildCoins: g.guildCoins + Math.max(0, reward.rewardGuildCoins),
+          },
+        };
+      });
+      triggerUpgradeCelebration(
+        'Rương Boss Bang Hợp Lực!',
+        `+${reward.rewardGold.toLocaleString('vi-VN')} Vàng · +${reward.rewardGems} Ngọc · +${reward.rewardGuildCoins} Xu Bang`
+      );
+    },
+    [triggerUpgradeCelebration]
   );
 
   useEffect(() => {
@@ -3632,6 +3906,35 @@ export default function App() {
       triggerUpgradeCelebration(
         'Nhận Thưởng Hạng Boss Tuần!',
         `Danh hiệu "${receipt.rewardTitleLabel}" & Khung ngoại hình đã mở khóa.`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleWeekendBlitzRewardClaimed = useCallback(
+    (receipt: WeekendBlitzClaimReceipt) => {
+      soundEngine.playAchievement();
+      setSave((prev) => {
+        const nextFrames = new Set<AvatarFrameId>(prev.unlockedAvatarFrames ?? ['default_gold']);
+        if (receipt.rewardFrameId) {
+          nextFrames.add(receipt.rewardFrameId);
+        }
+        const fp = normalizeEarlyForgeProgress(prev.earlyForgeProgress);
+        return {
+          ...prev,
+          gems: prev.gems + Math.max(0, receipt.rewardGems),
+          earlyForgeProgress: {
+            ...fp,
+            epicShards: fp.epicShards + Math.max(0, receipt.rewardEpicShards),
+          },
+          unlockedAvatarFrames: Array.from(nextFrames),
+          equippedAvatarFrameId: receipt.rewardFrameId ?? prev.equippedAvatarFrameId,
+          equippedTitle: receipt.rewardTitleLabel || prev.equippedTitle,
+        };
+      });
+      triggerUpgradeCelebration(
+        'Nhận Thưởng Boss Cuối Tuần!',
+        `+${receipt.rewardGems} Ngọc · +${receipt.rewardEpicShards} Mảnh Sử Thi · "${receipt.rewardTitleLabel}"`
       );
     },
     [triggerUpgradeCelebration]
@@ -6298,6 +6601,24 @@ export default function App() {
     });
   };
 
+  const handleTransferGearUpgrade = useCallback(
+    (sourceUid: string, targetUid: string) => {
+      setSave((prev) => {
+        const res = transferGearUpgradeLevel(prev, sourceUid, targetUid);
+        if (!res.ok || !res.nextSave) return prev;
+        soundEngine.playLevelUp();
+        const targetItem = res.nextSave.inventory.find((g) => g.uid === targetUid);
+        const tpl = targetItem ? GEAR_TEMPLATES[targetItem.templateId] : null;
+        triggerUpgradeCelebration(
+          `Kế Thừa Lv.${res.nextTargetLevel} Miễn Phí!`,
+          `${tpl?.name ?? 'Trang bị mới'} đã nhận cấp Cường Hóa 100% (0 Vàng · Không mất đồ cũ).`
+        );
+        return res.nextSave;
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
   const handleFuse = (uid: string) => {
     setSave((prev) => {
       const target = prev.inventory.find((g) => g.uid === uid);
@@ -6382,6 +6703,32 @@ export default function App() {
       return { ...prev, equipped: nextEquipped };
     });
   }, []);
+
+  const handleAutoOptimizeGear = useCallback(
+    (goal: AutoOptimizeGoal) => {
+      const preview = computeAutoOptimizeEquipment(saveRef.current, goal);
+      soundEngine.playLoadoutSwitch();
+      if (preview.changedSlots.length > 0) {
+        setSave((prev) => {
+          const applied = computeAutoOptimizeEquipment(prev, goal);
+          return { ...prev, equipped: applied.nextEquipped };
+        });
+      }
+      const goalLabel =
+        goal === 'boss' ? 'Săn Boss' : goal === 'arena' ? 'Đấu 1v1 / Tháp' : 'Leo Chương';
+      const deltaStr =
+        preview.powerDelta >= 0
+          ? `+${preview.powerDelta.toLocaleString('vi-VN')} LC`
+          : `${preview.powerDelta.toLocaleString('vi-VN')} LC`;
+      triggerUpgradeCelebration(
+        `Tối Ưu 1 Chạm: ${goalLabel}`,
+        preview.changedSlots.length > 0
+          ? `Đã tối ưu ${preview.changedSlots.length} ô trang bị (${deltaStr})`
+          : 'Bộ trang bị hiện tại đã đạt cấu hình tối ưu nhất!'
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
 
   const handleBulkFuseGear = useCallback(() => {
     setSave((prev) => {
@@ -6510,14 +6857,14 @@ export default function App() {
   }, []);
 
   const handleCraftEarlyTargetGear = useCallback(
-    (tier: 'rare' | 'epic' | 's_tier') => {
+    (tier: 'rare' | 'epic' | 's_tier', targetSlot?: GearSlot) => {
       setSave((prev) => {
-        const res = craftEarlyTargetGear(prev, tier);
+        const res = craftEarlyTargetGear(prev, tier, Math.random, targetSlot);
         if (!res.ok || !res.nextSave || !res.item) return prev;
         soundEngine.playForgeCraft();
         const tpl = GEAR_TEMPLATES[res.item.templateId];
         triggerUpgradeCelebration(
-          'Chế Tạo Trang Bị Mục Tiêu',
+          targetSlot ? 'Chế Tạo Đúng Ô Mục Tiêu' : 'Chế Tạo Trang Bị Mục Tiêu',
           `${tpl?.name ?? 'Trang Bị'} (${RARITY_META[res.item.rarity].label})`
         );
         let nextMetrics = res.nextSave.playtestMetrics;
@@ -6535,6 +6882,45 @@ export default function App() {
     },
     [triggerUpgradeCelebration]
   );
+
+  const handleSafeSalvageExcess = useCallback(() => {
+    setSave((prev) => {
+      const res = salvageExcessGearToForgeShards(prev);
+      if (res.salvagedCount === 0) return prev;
+      soundEngine.playForgeCraft();
+      triggerUpgradeCelebration(
+        'Phân Giải An Toàn Hoàn Tất!',
+        `Tách ${res.salvagedCount} món dư → +${res.rareShardsGained} Mảnh Hiếm · +${res.epicShardsGained} Mảnh Sử Thi · +${res.goldGained.toLocaleString('vi-VN')} Vàng`
+      );
+      return res.nextSave;
+    });
+  }, [triggerUpgradeCelebration]);
+
+  const handleSetCoopTacticalOrder = useCallback((order: CoopTacticalOrder) => {
+    engineRef.current?.setCoopTacticalOrder(order);
+  }, []);
+
+  const handleAcceptLiveInvite = useCallback(
+    (invite: AiLiveInvite) => {
+      liveAiSocket.respondToInvite(invite.inviteId, 'accept');
+      setPendingLiveInvite(null);
+      if (invite.kind === 'coop_raid') {
+        setPinnedCoopAiIds((prev) => {
+          const filtered = prev.filter((id) => id !== invite.aiPlayerId);
+          return [invite.aiPlayerId, ...filtered].slice(0, 2);
+        });
+        handleStartCoopRaid(selectedCoopDifficulty);
+      } else {
+        handleChallengeLiveAiById(invite.aiPlayerId);
+      }
+    },
+    [handleChallengeLiveAiById, handleStartCoopRaid, selectedCoopDifficulty]
+  );
+
+  const handleDeclineLiveInvite = useCallback((invite: AiLiveInvite) => {
+    liveAiSocket.respondToInvite(invite.inviteId, 'decline');
+    setPendingLiveInvite(null);
+  }, []);
 
   const handleQuickUpgradeWeapon = useCallback(() => {
     setSave((prev) => {
@@ -7388,27 +7774,43 @@ export default function App() {
   }, []);
 
   // Wave 4 Handlers: Reforge, Awakening, Build Presets, Guild, Destiny Wheel & Season Medals
-  const handleReforgeGear = useCallback((uid: string, lockedIds: string[]) => {
-    setSave((prev) => {
-      const idx = prev.inventory.findIndex((g) => g.uid === uid);
-      if (idx === -1) return prev;
-      const item = prev.inventory[idx];
-      const cost = getReforgeCost(item, lockedIds.length);
-      const currentDust = prev.starDust ?? 0;
-      if (currentDust < cost.starDust || prev.gold < cost.gold) return prev;
+  const handleReforgeGear = useCallback(
+    (uid: string, lockedIds: string[]) => {
+      let triggeredPity = false;
+      setSave((prev) => {
+        const idx = prev.inventory.findIndex((g) => g.uid === uid);
+        if (idx === -1) return prev;
+        const item = prev.inventory[idx];
+        const cost = getReforgeCost(item, lockedIds.length);
+        const currentDust = prev.starDust ?? 0;
+        if (currentDust < cost.starDust || prev.gold < cost.gold) return prev;
 
-      const nextSubstats = reforgeItemSubstats(item, lockedIds);
-      const nextInventory = [...prev.inventory];
-      nextInventory[idx] = { ...item, substats: nextSubstats };
-      soundEngine.playForgeCraft();
-      return {
-        ...prev,
-        gold: prev.gold - cost.gold,
-        starDust: currentDust - cost.starDust,
-        inventory: nextInventory,
-      };
-    });
-  }, []);
+        const reforgeRes = reforgeItemSubstatsWithPity(
+          item,
+          lockedIds,
+          prev.reforgeGoldPityCount ?? 0
+        );
+        triggeredPity = reforgeRes.triggeredGoldPity;
+        const nextInventory = [...prev.inventory];
+        nextInventory[idx] = { ...item, substats: reforgeRes.substats };
+        soundEngine.playForgeCraft();
+        return {
+          ...prev,
+          gold: prev.gold - cost.gold,
+          starDust: currentDust - cost.starDust,
+          reforgeGoldPityCount: reforgeRes.nextPityCount,
+          inventory: nextInventory,
+        };
+      });
+      if (triggeredPity) {
+        triggerUpgradeCelebration(
+          'Kích Hoạt Bảo Hiểm Dòng Vàng!',
+          'Chắc chắn xuất hiện ít nhất 1 Dòng Phụ Vàng (Bậc Đỉnh)!'
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
 
   const handleAwakenGear = useCallback((uid: string) => {
     setSave((prev) => {
@@ -10315,8 +10717,10 @@ export default function App() {
           onUpgradeHalo={handleUpgradeHalo}
           onEquipGear={handleEquip}
           onUpgradeGear={handleUpgrade}
+          onTransferGearUpgrade={handleTransferGearUpgrade}
           onFuseGear={handleFuse}
           onAutoEquipBest={handleAutoEquipBest}
+          onAutoOptimizeGear={handleAutoOptimizeGear}
           onBulkFuseGear={handleBulkFuseGear}
           onSaveBuildPreset={handleSaveBuildPreset}
           onApplyBuildPreset={handleApplyBuildPreset}
@@ -10422,6 +10826,7 @@ export default function App() {
           onUltimateClick={() => engineRef.current?.triggerHeroUltimate()}
           onToggleAutoPilot={handleToggleAutoPilotInCombat}
           onSelectAutoPilotTactic={handleSelectAutoPilotTactic}
+          onSetCoopTacticalOrder={handleSetCoopTacticalOrder}
           onSelectChampionshipTactic={handleSelectChampionshipTactic}
           loadoutPresets={normalizeLoadoutPresets(save.loadoutPresets)}
           activeLoadoutPresetId={save.activeLoadoutPresetId ?? null}
@@ -10857,6 +11262,8 @@ export default function App() {
           initialSubTab={forgeConfig.subTab}
           initialGearUid={forgeConfig.gearUid}
           onSalvageGear={handleSalvageGear}
+          onSafeSalvageExcess={handleSafeSalvageExcess}
+          onCraftTargetSlotGear={handleCraftEarlyTargetGear}
           onCraftForgeRecipe={handleCraftForgeRecipe}
           onReforgeGear={handleReforgeGear}
           onAwakenGear={handleAwakenGear}
@@ -10884,6 +11291,7 @@ export default function App() {
           onClaimDailyGuildBossChest={handleClaimDailyGuildBossChest}
           onOpenGuildChat={() => handleOpenLiveChat('guild')}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
+          onClaimLiveGuildBossMilestone={handleClaimLiveGuildBossMilestone}
           onClose={() => setGuildModalOpen(false)}
         />
       )}
@@ -11082,8 +11490,10 @@ export default function App() {
           playerDisplayName={playerDisplayName}
           currentUid={currentUser?.uid}
           onStartVerifiedRun={handleStartWeeklyRankedBoss}
+          onStartWeekendBlitzRun={handleStartWeekendBlitz}
           onStartPracticeRun={handleStartWeeklyBossPractice}
           onRewardClaimed={handleWeeklyBossRewardClaimed}
+          onWeekendRewardClaimed={handleWeekendBlitzRewardClaimed}
           onSeasonRewardClaimed={handleWeeklyBossSeasonRewardClaimed}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onOpenAuthModal={() => {
@@ -11097,9 +11507,16 @@ export default function App() {
       {phase === GamePhase.TITLE && enteredGame && liveAiHubOpen && (
         <LiveAiHubModal
           playerDisplayName={playerDisplayName}
+          playerHeroId={save.selectedHeroId}
+          playerPowerRating={playerStats.powerRating}
           aiPreferences={currentAiPrefs}
+          coopPartyRoles={save.coopPartyRoles ?? ['dps', 'guardian']}
           onUpdateAiPreferences={handleUpdateAiPreferences}
+          onUpdateCoopPartyRoles={handleUpdateCoopPartyRoles}
           onChallengeAiPlayer={handleChallengeLiveAiPlayer}
+          onStartMiniCupMatch={handleStartMiniCupMatch}
+          onClaimMiniCupPrize={handleClaimMiniCupPrize}
+          onClaimServerBountyReward={handleClaimServerBountyReward}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onClose={() => setLiveAiHubOpen(false)}
         />
@@ -11120,9 +11537,11 @@ export default function App() {
         const allAi = liveAiSocket.getSnapshot()?.players ?? liveAiOnlineTeammates;
         const inspected = allAi.find((p) => p.id === inspectedAiPlayerId) ?? null;
         if (!inspected) return null;
+        const matchedRival = liveAiRivals.find((r) => r.aiPlayerId === inspected.id) ?? null;
         return (
           <AiPlayerProfileModal
             player={inspected}
+            rivalRecord={matchedRival}
             isPinnedForCoop={pinnedCoopAiIds.includes(inspected.id)}
             onChallengeDuel={(aiId) => {
               setInspectedAiPlayerId(null);
@@ -11139,6 +11558,63 @@ export default function App() {
           />
         );
       })()}
+
+      {/* Pillar 5 Wave 5: Non-blocking Real-Time [AI Live] Co-op / 1v1 Invite Banner (after >=10s lobby dwell) */}
+      {phase === GamePhase.TITLE &&
+        enteredGame &&
+        lobbyDwellReady &&
+        pendingLiveInvite &&
+        !weeklyBossModalOpen &&
+        !liveAiHubOpen &&
+        !liveChatOpen &&
+        !inspectedAiPlayerId &&
+        !forgeConfig.open &&
+        !arenaModalOpen &&
+        !guildModalOpen &&
+        !honorBoardOpen &&
+        !settingsOpen &&
+        !authLinkModalOpen && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed top-16 right-3 sm:right-5 z-30 w-[300px] sm:w-[340px] rounded-2xl bg-[#070d20]/96 border border-sky-400/55 shadow-2xl p-3.5 text-left space-y-2.5"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-wider text-sky-300">
+                  {pendingLiveInvite.kind === 'coop_raid'
+                    ? 'Lời Mời Tổ Đội Co-op 3D'
+                    : 'Thách Đấu 1v1 Real-Time'}
+                </div>
+                <div className="text-xs font-black text-white truncate mt-0.5">
+                  {pendingLiveInvite.aiDisplayName} [AI Live]
+                </div>
+              </div>
+              <span className="font-mono-nums text-[10px] font-bold text-amber-300 shrink-0">
+                {pendingLiveInvite.aiPowerRating.toLocaleString('vi-VN')} LC
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-snug">
+              {pendingLiveInvite.message}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => handleDeclineLiveInvite(pendingLiveInvite)}
+                className="a2-slate-btn px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap cursor-pointer"
+              >
+                Bỏ Qua
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAcceptLiveInvite(pendingLiveInvite)}
+                className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer"
+              >
+                {pendingLiveInvite.kind === 'coop_raid' ? 'Vào Co-op Ngay' : 'Nhận Thách Đấu'}
+              </button>
+            </div>
+          </div>
+        )}
 
       {authLinkModalOpen && (
         <div className="fixed inset-0 z-[65] flex items-center justify-center bg-[#040611]/92 p-4">
