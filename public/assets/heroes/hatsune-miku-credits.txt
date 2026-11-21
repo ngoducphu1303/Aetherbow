@@ -1,0 +1,7 @@
+Hatsune Miku (Vocaloid) T-Pose 3D Model
+Model by Leon Okafor (https://sketchfab.com/leonokafor).
+Source: https://sketchfab.com/3d-models/hatsune-miku-vocaloid-t-pose-3d-model-bcd028af84a64daea3df025a4c860e99
+License: Creative Commons Attribution 4.0 International (https://creativecommons.org/licenses/by/4.0/).
+
+The Aetherbow version reorients, simplifies, and rigs the supplied model.
+The roster portrait was rendered from that model.

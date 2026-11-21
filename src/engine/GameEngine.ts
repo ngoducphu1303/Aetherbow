@@ -2880,7 +2880,7 @@ export class GameEngine {
 
   private wantsRiggedHeroModel(): boolean {
     const visualHeroId = this.heroVisualCfg?.heroId ?? this.baseStats.heroId;
-    return visualHeroId === 'artemis' || visualHeroId === 'van_tich';
+    return visualHeroId === 'artemis' || visualHeroId === 'van_tich' || visualHeroId === 'hatsune_miku';
   }
 
   private wantsDragonMount(): boolean {
@@ -2926,9 +2926,14 @@ export class GameEngine {
     }
   }
 
+  private get hasCadencePassive(): boolean {
+    return this.baseStats.heroId === 'alex' || this.baseStats.heroId === 'hatsune_miku';
+  }
+
   private getRiggedHeroAsset(): ModelAsset {
     const heroId = this.heroVisualCfg.heroId ?? this.baseStats.heroId;
     if (heroId === 'van_tich') return 'heroes/van-tich.glb';
+    if (heroId === 'hatsune_miku') return 'heroes/hatsune-miku.glb';
     if (heroId === 'artemis' && this.heroVisualCfg.skinId === 'alice_ao_dai') {
       return 'heroes/alice-ao-dai-hoa-mai.glb';
     }
@@ -2973,7 +2978,11 @@ export class GameEngine {
         scene.traverse((object) => {
           if (object instanceof THREE.Mesh) object.castShadow = true;
         });
-        this.artemisMotion = createArtemisMotion(scene, asset === 'heroes/van-tich.glb' ? 'staff' : 'bow');
+        this.artemisMotion = createArtemisMotion(
+          scene,
+          asset === 'heroes/van-tich.glb' ? 'staff' : 'bow',
+          asset === 'heroes/hatsune-miku.glb',
+        );
         this.artemisLoadedAsset = asset;
         this.artemisModel = scene;
         this.useArtemisModel();
@@ -8835,7 +8844,12 @@ export class GameEngine {
           });
         break;
       }
-      case 'valiant_cadence': {
+      case 'valiant_cadence':
+      case 'stage_crescendo': {
+        if (skillDef.effectKind === 'stage_crescendo') {
+          this.spawnShockwave(this.px, this.pz, skillDef.accentHex, skillDef.radius * 0.55, 0.3);
+          this.spawnShockwave(this.px, this.pz, 0xf9a8d4, skillDef.radius * 0.78, 0.36);
+        }
         this.alexCadenceTimer = skillDef.durationSec ?? 3.5;
         liveEnemies
           .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
@@ -8847,7 +8861,7 @@ export class GameEngine {
               e.x = THREE.MathUtils.clamp(e.x + (dx / d) * 1.4, -ARENA_HALF_W + 0.8, ARENA_HALF_W - 0.8);
               e.z = THREE.MathUtils.clamp(e.z + (dz / d) * 1.4, -ARENA_HALF_D + 0.8, ARENA_HALF_D - 0.8);
             }
-            this.damageEnemy(e, skillDmg, false, false, false, false, false, 'DŨNG KHÍ', 'ultimate');
+            this.damageEnemy(e, skillDmg, false, false, false, false, false, skillDef.shortLabel.toLocaleUpperCase('vi'), 'ultimate');
           });
         break;
       }
@@ -9045,9 +9059,10 @@ export class GameEngine {
         });
         break;
       }
+      case 'hatsune_miku':
       case 'alex': {
         this.alexOverdriveTimer = 5.0;
-        this.spawnShockwave(this.px, this.pz, 0x38bdf8, 6.2, 0.48);
+        this.spawnShockwave(this.px, this.pz, heroDef.accentHex, 6.2, 0.48);
         for (const e of [...this.enemies]) {
           if (!e || e.dead || e.spawnTimer > 0) continue;
           const dx = e.x - this.px;
@@ -14118,11 +14133,11 @@ export class GameEngine {
           }
 
           let isCrit = p.isCounterShot ? true : Math.random() < critChance;
-          if (this.baseStats.heroId === 'alex' && this.alexGuaranteedCrit) {
+          if (this.hasCadencePassive && this.alexGuaranteedCrit) {
             isCrit = true;
             this.alexGuaranteedCrit = false;
           }
-          if (isCrit && this.baseStats.heroId === 'alex') {
+          if (isCrit && this.hasCadencePassive) {
             this.alexAspdBuffTimer = 5.0;
           }
 
@@ -15870,7 +15885,7 @@ export class GameEngine {
     recordStyleDamageTaken(this.styleMomentum);
     this.advanceRoomBounty({ type: 'player_hit' });
 
-    if (this.baseStats.heroId === 'alex') {
+    if (this.hasCadencePassive) {
       this.alexGuaranteedCrit = true;
     }
 
@@ -16209,7 +16224,7 @@ export class GameEngine {
           this.emitFloatingNumber(this.px, 1.9, this.pz, o.value, false, true);
           soundEngine.playPickup(true);
         } else if (o.kind === 'xp') {
-          const xpBonus = this.baseStats.heroId === 'alex' ? 1.12 : 1.0;
+          const xpBonus = this.hasCadencePassive ? 1.12 : 1.0;
           this.xp += Math.round(o.value * xpBonus);
           soundEngine.playPickup(false);
           if (this.xp >= this.xpToNext) {

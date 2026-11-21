@@ -2,6 +2,7 @@ const MODEL_VERSIONS = {
   'heroes/golden-dress-girl.glb': 2,
   'heroes/alice-ao-dai-hoa-mai.glb': 1,
   'heroes/van-tich.glb': 1,
+  'heroes/hatsune-miku.glb': 1,
   'mounts/dragon.glb': 3,
 } as const;
 
@@ -10,6 +11,7 @@ export const MODEL_LABELS: Record<keyof typeof MODEL_VERSIONS, string> = {
   'heroes/alice-ao-dai-hoa-mai.glb': 'Áo Dài Hoa Mai của Alice',
   'mounts/dragon.glb': 'Thú Cưỡi Thanh Long 3D',
   'heroes/van-tich.glb': 'Vân Tịch 3D',
+  'heroes/hatsune-miku.glb': 'Hatsune Miku 3D',
 };
 
 export type ModelAsset = keyof typeof MODEL_VERSIONS;

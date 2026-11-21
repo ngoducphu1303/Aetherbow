@@ -39,7 +39,8 @@ export type HeroId =
   | 'atreus'
   | 'dracoola'
   | 'lisa'
-  | 'van_tich';
+  | 'van_tich'
+  | 'hatsune_miku';
 
 export type CrownStyle =
   | 'crescent'
@@ -3062,6 +3063,7 @@ export interface Royal3DTitleDef {
 export type HeroActiveSkillEffectKind =
   | 'moon_fan_mark'
   | 'valiant_cadence'
+  | 'stage_crescendo'
   | 'crimson_swarm'
   | 'glacial_spire'
   | 'ember_nova'

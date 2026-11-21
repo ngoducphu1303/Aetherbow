@@ -97,6 +97,13 @@ export function computeVanTichPose(input: VanTichMotionInput): VanTichMotionPose
   };
 }
 
+/**
+ * Rest drop applied to the shoulders of the Hatsune Miku rig. The supplied model is
+ * authored in a horizontal T-pose, so the bow/staff poses above are calibrated against
+ * a lowered-arm baseline instead of the raw rest pose.
+ */
+const T_POSE_ARM_DROP = 1.37;
+
 function findJoint(model: THREE.Group, name: string): Joint | undefined {
   const bone = model.getObjectByName(name);
   if (!(bone instanceof THREE.Bone)) return undefined;
@@ -110,7 +117,21 @@ function findJoint(model: THREE.Group, name: string): Joint | undefined {
   };
 }
 
-export function createArtemisMotion(model: THREE.Group, weapon: 'bow' | 'staff' = 'bow') {
+export function createArtemisMotion(
+  model: THREE.Group,
+  weapon: 'bow' | 'staff' = 'bow',
+  tPose = false,
+) {
+  if (tPose) {
+    // Bone quaternions are captured as the rest baseline right below, so this offset is
+    // folded into every later pose rather than applied once and overwritten.
+    for (const [name, angle] of [['UpperArmL', -T_POSE_ARM_DROP], ['UpperArmR', T_POSE_ARM_DROP]] as const) {
+      const shoulder = findJoint(model, name);
+      shoulder?.bone.quaternion.multiply(
+        new THREE.Quaternion().setFromAxisAngle(shoulder.rollAxis, angle),
+      );
+    }
+  }
   const leftArm = findJoint(model, 'UpperArmL');
   const rightArm = findJoint(model, 'UpperArmR');
   const leftForearm = findJoint(model, 'ForearmL');

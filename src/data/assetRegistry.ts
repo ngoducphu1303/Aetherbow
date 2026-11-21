@@ -84,6 +84,13 @@ export const HERO_ASSET_PACKS: Record<HeroId, CharacterAssetPack> = {
     skill: '/assets/apiaetherbow/characters/lisa/skill.png',
     burst: '/assets/apiaetherbow/characters/lisa/burst.png',
   },
+  hatsune_miku: {
+    assetKey: 'hatsune-miku',
+    icon: '/assets/apiaetherbow/characters/hatsune-miku/icon.png',
+    portrait: '/assets/apiaetherbow/characters/hatsune-miku/portrait.png',
+    skill: '/assets/apiaetherbow/characters/hatsune-miku/skill.png',
+    burst: '/assets/apiaetherbow/characters/hatsune-miku/burst.png',
+  },
   van_tich: {
     assetKey: 'van-tich',
     icon: '/assets/apiaetherbow/characters/van-tich/icon.webp',
