@@ -1595,6 +1595,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       <main key={activeTab} className="flex-1 min-h-0 flex flex-col a2-tab-enter">
         {activeTab === 'battle' && (
           <div className="flex-1 flex flex-col justify-end px-3 sm:px-6 pb-2.5 min-h-0 relative overflow-hidden">
+            <p className="lobby-city-hint absolute left-3 top-3 rounded-lg bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-sky-100 sm:left-6">
+              Dạo phố · WASD, phím mũi tên hoặc kéo trên đường
+            </p>
             {/* Optional 3D-Projected Floating Royal Title (only if equipped) */}
             {equippedRoyalTitleDef && lobbyHeadPos?.visible && (
               <div

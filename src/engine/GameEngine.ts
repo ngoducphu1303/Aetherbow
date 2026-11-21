@@ -183,6 +183,7 @@ import {
   updateBossPaceTracker,
 } from './wave6CombatSystems';
 import { createArtemisMotion } from './artemisMotion';
+import { createLobbyCityNavigation, LOBBY_CITY_ASSET, LOBBY_CITY_KEYS, LOBBY_CITY_SCALE, lobbyCityDirection, type LobbyCityPose } from './lobbyCity';
 import {
   HEAVY_BREAK_COOLDOWN_SEC,
   type EnemyTacticalRole,
@@ -807,6 +808,11 @@ export class GameEngine {
   private heroShieldMesh!: THREE.Mesh;
   private lobbyHaloGroup: THREE.Group | null = null;
   private lobbySanctuary: CelestialSanctuaryRefs | null = null;
+  private lobbyCity: { group: THREE.Group; nav: NonNullable<ReturnType<typeof createLobbyCityNavigation>>; pose: LobbyCityPose } | null = null;
+  private lobbyCityRequest = new AbortController();
+  private lobbyCityKeys: Record<string, boolean> = {};
+  private lobbyCityActive = false;
+  private lobbyCityStride = 0;
   private lobbySanctuaryDustSeeds: Array<{
     x: number;
     y: number;
@@ -1570,6 +1576,7 @@ export class GameEngine {
     }
 
     this.bindEvents();
+    void this.loadLobbyCity();
     this.startLoop();
   }
 
@@ -6440,7 +6447,8 @@ export class GameEngine {
       return;
     }
     this.arenaEntryStartCam.copy(this.camera.position);
-    this.arenaEntryStartLook.set(0, 1.05, 4.5);
+    const pose = this.lobbyCityActive ? this.lobbyCity?.pose : undefined;
+    this.arenaEntryStartLook.set(pose?.x ?? 0, (pose?.y ?? 0) + 1.05, pose?.z ?? 4.5);
     this.arenaEntryFlyTimer = this.arenaEntryFlyDuration;
   }
 
@@ -6449,15 +6457,17 @@ export class GameEngine {
     this.lobbyEmoteTimer = this.lobbyEmoteDuration;
     this.lobbyAutoSpinIdleTimer = Math.max(this.lobbyAutoSpinIdleTimer, 2.4);
     soundEngine.playLobbyBowEmote();
-    this.spawnShockwave(0, 4.5, this.weaponAccentHex, 2.6, 0.42);
-    this.spawnCritStar(0, 1.45, 4.5, 0xfde047, 1.5);
-    this.spawnParticles(0, 1.15, 4.5, this.weaponAccentHex, 22);
+    const { x, y, z } = this.hero.root.position;
+    this.spawnShockwave(x, z, this.weaponAccentHex, 2.6, 0.42);
+    this.spawnCritStar(x, y + 1.45, z, 0xfde047, 1.5);
+    this.spawnParticles(x, y + 1.15, z, this.weaponAccentHex, 22);
   }
 
   public setPhase(phase: GamePhase): void {
     const prevPhase = this.phase;
     this.phase = phase;
     const isTitle = phase === GamePhase.TITLE;
+    if (!isTitle && this.lobbyCityActive) this.setLobbyCityActive(false);
     if (this.lobbyHaloGroup) {
       this.lobbyHaloGroup.visible = isTitle;
     }
@@ -6567,6 +6577,42 @@ export class GameEngine {
 
   public setLobbyViewMode(mode: 'battle' | 'gear' | 'heroes' | 'runes' | 'vault'): void {
     this.lobbyViewMode = mode;
+  }
+
+  private async loadLobbyCity(): Promise<void> {
+    const url = new URL(`${import.meta.env.BASE_URL}${LOBBY_CITY_ASSET}`, document.baseURI);
+    try {
+      const response = await fetch(url, { signal: this.lobbyCityRequest.signal });
+      if (!response.ok || response.headers.get('content-type')?.includes('text/html')) return;
+      const data = await response.arrayBuffer();
+      if (this.disposed) return;
+      const { scene: group } = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
+      if (this.disposed) { this.releaseObject(group); return; }
+      group.scale.setScalar(LOBBY_CITY_SCALE);
+      const nav = createLobbyCityNavigation(group);
+      const x = -3 * LOBBY_CITY_SCALE;
+      const z = 8 * LOBBY_CITY_SCALE;
+      const y = nav?.groundAt(x, z);
+      if (!nav || y == null) { this.releaseObject(group); return; }
+      group.visible = false;
+      this.scene.add(group);
+      this.lobbyCity = { group, nav, pose: { x, y, z } };
+    } catch (error) {
+      if (!this.disposed) console.warn('Không tải được phố 3D; dùng sảnh mặc định.', error);
+    }
+  }
+
+  private setLobbyCityActive(active: boolean): void {
+    if (active === this.lobbyCityActive) return;
+    this.lobbyCityActive = active;
+    if (this.lobbyCity) this.lobbyCity.group.visible = active;
+    this.container.dataset.lobbyCity = String(active);
+    this.lobbyCityKeys = {};
+    this.lobbyCityStride = 0;
+    this.lobbyDragActive = false;
+    this.lobbyDragPointerId = null;
+    if (this.pointerDown) this.onWindowBlur();
+    if (!active && this.phase === GamePhase.TITLE) this.snapCameraToLobby();
   }
 
   public setLobbyCameraPreset(preset: LobbyCameraPreset): void {
@@ -8469,6 +8515,12 @@ export class GameEngine {
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
+    if (this.phase === GamePhase.TITLE && this.lobbyCityActive && LOBBY_CITY_KEYS.has(e.code)) {
+      if (e.ctrlKey || e.metaKey || e.altKey || (e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable],[role="dialog"]'))) return;
+      e.preventDefault();
+      this.lobbyCityKeys[e.code] = true;
+      return;
+    }
     if (this.phase !== GamePhase.PLAYING) return;
     const code = e.code;
     const kb = this.combatKeybinds;
@@ -8540,10 +8592,12 @@ export class GameEngine {
 
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys[e.code] = false;
+    if (LOBBY_CITY_KEYS.has(e.code)) this.lobbyCityKeys[e.code] = false;
   };
 
   private onWindowBlur = () => {
     this.keys = {};
+    this.lobbyCityKeys = {};
     this.pointerDown = false;
     this.pointerId = null;
     this.joyVecX = 0;
@@ -8565,7 +8619,8 @@ export class GameEngine {
   };
 
   private onPointerDown = (e: PointerEvent) => {
-    if (this.phase === GamePhase.TITLE) {
+    if (e.button !== 0 && this.phase === GamePhase.TITLE && this.lobbyCityActive) return;
+    if (this.phase === GamePhase.TITLE && !this.lobbyCityActive) {
       soundEngine.unlock();
       this.lobbyDragActive = true;
       this.lobbyDragPointerId = e.pointerId;
@@ -8574,7 +8629,7 @@ export class GameEngine {
       this.lobbyDragMovedDist = 0;
       return;
     }
-    if (this.phase !== GamePhase.PLAYING) return;
+    if (this.phase !== GamePhase.PLAYING && !(this.phase === GamePhase.TITLE && this.lobbyCityActive)) return;
     soundEngine.unlock();
     this.pointerDown = true;
     this.pointerId = e.pointerId;
@@ -9201,6 +9256,8 @@ export class GameEngine {
         this.lastTime = now;
         if (this.fpsSampler) pushFpsSample(this.fpsSampler, rawDt);
         const dt = Math.min(Math.max(rawDt, 0.001), MAX_FRAME_DT);
+        // Some modes set the phase directly rather than using setPhase().
+        if (this.lobbyCityActive && this.phase !== GamePhase.TITLE) this.setLobbyCityActive(false);
         // Keep the lobby interactive while models load. Hold combat simulation until the rider is visible.
         if (!this.appearanceBlocked || this.phase === GamePhase.TITLE) this.update(dt);
         this.renderSceneFrame();
@@ -9264,6 +9321,24 @@ export class GameEngine {
     const dt = visualDt;
 
     if (this.phase === GamePhase.TITLE) {
+      const city = this.lobbyViewMode === 'battle' && !this.lobbyInspectActive && !this.lobbyPhotoMode ? this.lobbyCity : null;
+      const enteringCity = !!city && !this.lobbyCityActive;
+      this.setLobbyCityActive(!!city);
+      const origin = city?.pose;
+      let walk = 0;
+      if (city) {
+        const [dx, dz] = lobbyCityDirection(this.lobbyCityKeys, this.joyVecX, this.joyVecZ);
+        const { x, z } = city.pose;
+        city.nav.move(city.pose, dx * 7.2 * dt, dz * 7.2 * dt);
+        walk = Math.min(1, Math.hypot(city.pose.x - x, city.pose.z - z) / (7.2 * dt));
+        if (walk > 0.01) {
+          const yaw = Math.atan2(city.pose.x - x, city.pose.z - z);
+          this.lobbyTargetYaw = this.lobbyYaw + Math.atan2(Math.sin(yaw - this.lobbyYaw), Math.cos(yaw - this.lobbyYaw));
+        }
+      }
+      this.hero.root.position.set(origin?.x ?? 0, origin?.y ?? 0, origin?.z ?? 4.5);
+      this.heroShadow.position.copy(this.hero.root.position);
+      this.heroShadow.position.y += 0.025;
       const sway = Math.sin(this.elapsed * 0.45) * 0.24;
       const hasMount = Boolean(this.hero.mountGroup);
       const mountExtraZ = hasMount ? 1.85 : 0;
@@ -9351,10 +9426,19 @@ export class GameEngine {
         lookY = THREE.MathUtils.lerp(lookY, 1.24 + (hasMount ? 0.42 : 0), inspectBlend);
       }
 
+      if (origin) {
+        targetCamX = origin.x;
+        targetCamY = origin.y + 7.9 + mountExtraY + this.lobbyOrbitZoom * 0.25;
+        targetCamZ = origin.z + Math.max(4, 5.4 + aspectExtraZ + this.lobbyOrbitZoom * 0.5);
+        lookX = origin.x;
+        lookY = origin.y + 0.85 + mountLookY;
+        if (enteringCity) this.camera.position.set(targetCamX, targetCamY, targetCamZ);
+      }
       this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 5.2, dt);
       this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 5.2, dt);
       this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 5.2, dt);
-      this.camera.lookAt(lookX, lookY, 4.5);
+      this.camera.lookAt(lookX, lookY, origin ? origin.z - 0.85 : 4.5);
+      this.heroLight.position.set((origin?.x ?? 0) + 1.8, (origin?.y ?? 0) + 2.55, (origin?.z ?? 4.5) + 3.1);
 
       if (this.lobbyPhotoMode) {
         this.applyPhotoStudioLighting(dt);
@@ -9375,7 +9459,7 @@ export class GameEngine {
 
       if (this.lobbyAutoSpinIdleTimer > 0) {
         this.lobbyAutoSpinIdleTimer -= dt;
-      } else if (!this.lobbyDragActive) {
+      } else if (!this.lobbyDragActive && !city) {
         const spinSpeed = this.lobbyInspectActive
           ? this.lobbyInspectAutoRotate
             ? 0.58
@@ -9390,7 +9474,7 @@ export class GameEngine {
       if (this.lobbyHeadSyncTimer <= 0 && this.callbacks.onLobbyHeadPos) {
         this.lobbyHeadSyncTimer = 0.05;
         const headWorldY = (hasMount ? 3.28 : 2.52) + (this.lobbyHeroPose === 'astral_float' ? 0.35 : 0);
-        _v2.set(0, headWorldY, 4.5).project(this.camera);
+        _v2.set(origin?.x ?? 0, (origin?.y ?? 0) + headWorldY, origin?.z ?? 4.5).project(this.camera);
         const cw = this.container.clientWidth || window.innerWidth;
         const ch = this.container.clientHeight || window.innerHeight;
         const sx = ((_v2.x + 1) * 0.5) * cw;
@@ -9407,7 +9491,7 @@ export class GameEngine {
       }
       const emotePose = computeLobbyEmotePose(this.lobbyEmoteTimer, this.lobbyEmoteDuration);
       const onDragon = Boolean(this.dragonMount && this.dragonMount.parent === this.hero.mountGroup);
-      const mountOffset = onDragon ? this.updateDragonRide(dt, 0) : this.hero.mountGroup ? 0.68 : 0;
+      const mountOffset = onDragon ? this.updateDragonRide(dt, walk) : this.hero.mountGroup ? 0.68 : 0;
       const poseFloatY =
         (this.lobbyHeroPose === 'astral_float'
           ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1
@@ -9434,6 +9518,12 @@ export class GameEngine {
         (this.heroVisualCfg.mythicWeaponTier ?? 0) >= 1;
 
       this.hero.root.rotation.y = this.lobbyYaw;
+      this.lobbyCityStride += walk * dt * 15;
+      if (!hasMount) {
+        const step = Math.sin(this.lobbyCityStride) * walk * 0.48;
+        this.hero.leftLeg.rotation.x = THREE.MathUtils.damp(this.hero.leftLeg.rotation.x, step, 14, dt);
+        this.hero.rightLeg.rotation.x = THREE.MathUtils.damp(this.hero.rightLeg.rotation.x, -step, 14, dt);
+      }
       this.hero.bodyGroup.position.y = onDragon
         ? mountOffset
         : THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset + poseFloatY, 6, dt);
@@ -9516,7 +9606,7 @@ export class GameEngine {
         this.artemisMotion?.update(
           dt,
           this.elapsed,
-          0,
+          walk,
           showWeaponInLobby,
           emotePose.active ? 0.35 + emotePose.drawProgress * 0.65 : 0.35,
           this.hero.bowGroup,
@@ -9526,12 +9616,12 @@ export class GameEngine {
         );
       }
       if (this.lobbyHaloGroup) {
-        this.lobbyHaloGroup.visible = true;
+        this.lobbyHaloGroup.visible = !city;
         this.lobbyHaloGroup.rotation.y += dt * 0.55;
       }
-      if (this.lobbySanctuary) {
-        this.lobbySanctuary.group.visible = true;
-        this.arenaGroup.visible = false;
+      this.arenaGroup.visible = false;
+      if (this.lobbySanctuary) this.lobbySanctuary.group.visible = !city;
+      if (this.lobbySanctuary && !city) {
         this.lobbySanctuary.outerArchRing.rotation.z += dt * 0.14;
         this.lobbySanctuary.innerArchRing.rotation.z -= dt * 0.26;
         this.lobbySanctuary.archVeil.rotation.z += dt * 0.085;
@@ -9562,7 +9652,7 @@ export class GameEngine {
       if (this.petModel) {
         this.petModel.visible = true;
         const petBob = Math.sin(this.elapsed * 3.0) * 0.11;
-        this.petModel.position.set(-1.14, 1.08 + petBob, 4.78);
+        this.petModel.position.set((origin?.x ?? 0) - 1.14, (origin?.y ?? 0) + 1.08 + petBob, (origin?.z ?? 4.5) + 0.28);
         this.petModel.rotation.y = this.lobbyYaw * 0.6 + Math.sin(this.elapsed * 1.4) * 0.25;
       }
       // Wave 11 & Wave 13: Smooth Lobby 3D Sky & Weather Theme Damping (zero allocations)
@@ -9570,18 +9660,18 @@ export class GameEngine {
       const weatherDef = LOBBY_WEATHER_DEFS.find((w) => w.id === this.lobbyWeatherId);
       const dampAlpha = 1 - Math.exp(-3.5 * dt);
       if (this.scene.background instanceof THREE.Color) {
-        _skyCol.setHex(skyTheme.skyHex);
+        _skyCol.setHex(city ? 0x94bdd4 : skyTheme.skyHex);
         this.scene.background.lerp(_skyCol, dampAlpha);
       }
       if (this.scene.fog instanceof THREE.FogExp2) {
-        _fogCol.setHex(skyTheme.fogHex);
+        _fogCol.setHex(city ? 0xa5beda : skyTheme.fogHex);
         this.scene.fog.color.lerp(_fogCol, dampAlpha);
       }
-      _keyCol.setHex(skyTheme.keyLightHex);
+      _keyCol.setHex(city ? 0xfff3df : skyTheme.keyLightHex);
       this.keyLight.color.lerp(_keyCol, dampAlpha);
-      _hemiSkyCol.setHex(skyTheme.hemiSkyHex);
+      _hemiSkyCol.setHex(city ? 0xd6eaff : skyTheme.hemiSkyHex);
       this.hemiLight.color.lerp(_hemiSkyCol, dampAlpha);
-      _hemiGndCol.setHex(skyTheme.hemiGroundHex);
+      _hemiGndCol.setHex(city ? 0xa99886 : skyTheme.hemiGroundHex);
       this.hemiLight.groundColor.lerp(_hemiGndCol, dampAlpha);
       const starMat = this.starfallMesh?.material as THREE.MeshBasicMaterial | undefined;
       if (starMat?.color) {
@@ -9595,6 +9685,7 @@ export class GameEngine {
 
       this.portal.vortex.rotation.z += dt * 0.9;
       this.updateStarfallWeather(dt);
+      if (city && this.starfallMesh) this.starfallMesh.visible = false;
       this.updateParticles(dt);
       this.updateShockwaves(dt);
       this.updateUltColumns(dt);
@@ -18007,6 +18098,8 @@ export class GameEngine {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.lobbyCityRequest.abort();
+    delete this.container.dataset.lobbyCity;
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
     if (this.pendingGpuSync) {
