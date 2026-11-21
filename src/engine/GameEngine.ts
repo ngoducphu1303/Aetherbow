@@ -265,6 +265,7 @@ import {
 } from './funCombatOverhaul';
 import { createDragonMountMotion } from './dragonMountMotion';
 import { BLACK_DRAGON_ASSET, createBlackDragonRide } from './blackDragonRide';
+import { getChapter1MapAssetUrl, prepareChapter1MapModel } from './chapter1Map';
 import { discardModelDownload, downloadModel, getModelAssetUrl, type ModelAsset } from './modelAssets';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
@@ -861,6 +862,10 @@ export class GameEngine {
   private arenaLightShafts: THREE.Mesh[] = [];
 
   private arenaGroup = new THREE.Group();
+  private proceduralArenaShell: THREE.Group | null = null;
+  private chapter1MapModel: THREE.Group | null = null;
+  private chapter1MapRequest?: AbortController;
+  private chapter1MapFailed = false;
   private entitiesGroup = new THREE.Group();
   private projectilesGroup = new THREE.Group();
   private particlesGroup = new THREE.Group();
@@ -1720,7 +1725,7 @@ export class GameEngine {
 
     this.initPools();
     this.buildHero();
-    this.buildArena(this.currentChapter);
+    this.buildArena(this.currentChapter, false);
     // Start in clean Lobby Sanctuary showcase with combat arena hidden and camera framed directly on hero
     this.arenaGroup.visible = false;
     if (this.lobbySanctuary) {
@@ -3657,7 +3662,68 @@ export class GameEngine {
     }
   }
 
-  private buildArena(chapter: ChapterDefinition): void {
+  private applyChapter1MapState(): void {
+    const wantsCustomMap = this.currentChapter.id === 1 && !!this.chapter1MapModel;
+    if (wantsCustomMap && this.chapter1MapModel) {
+      if (this.chapter1MapModel.parent !== this.arenaGroup) {
+        this.arenaGroup.add(this.chapter1MapModel);
+      }
+      this.chapter1MapModel.visible = true;
+      if (this.proceduralArenaShell) {
+        this.proceduralArenaShell.visible = false;
+      }
+    } else {
+      if (this.chapter1MapModel?.parent === this.arenaGroup) {
+        this.arenaGroup.remove(this.chapter1MapModel);
+      }
+      if (this.proceduralArenaShell) {
+        this.proceduralArenaShell.visible = true;
+      }
+    }
+  }
+
+  private ensureChapter1MapLoaded(): void {
+    if (this.chapter1MapModel) {
+      this.applyChapter1MapState();
+      return;
+    }
+    if (this.chapter1MapRequest || this.chapter1MapFailed) return;
+    const request = new AbortController();
+    this.chapter1MapRequest = request;
+    const baseUrl =
+      (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+    const url = getChapter1MapAssetUrl(baseUrl, document.baseURI);
+    void (async () => {
+      try {
+        const response = await fetch(url, { signal: request.signal });
+        if (!response.ok || response.headers.get('content-type')?.includes('text/html')) {
+          throw new Error(`Không tải được Map Chương 1 (HTTP ${response.status}).`);
+        }
+        const data = await response.arrayBuffer();
+        if (this.disposed) return;
+        const gltf = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
+        if (this.disposed) {
+          this.releaseObject(gltf.scene);
+          return;
+        }
+        const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+        const prepared = prepareChapter1MapModel(gltf.scene, maxAniso);
+        this.chapter1MapModel = prepared.group;
+        this.applyChapter1MapState();
+      } catch (error) {
+        if (!this.disposed && !(error instanceof DOMException && error.name === 'AbortError')) {
+          this.chapter1MapFailed = true;
+          console.warn('Không tải được Map Chương 1 GLB; giữ sân đấu mặc định.', error);
+        }
+      } finally {
+        if (this.chapter1MapRequest === request) {
+          this.chapter1MapRequest = undefined;
+        }
+      }
+    })();
+  }
+
+  private buildArena(chapter: ChapterDefinition, loadCustomMap = true): void {
     this.arenaBrazierGems = [];
     this.arenaBrazierFlames = [];
     this.arenaLightShafts = [];
@@ -3666,6 +3732,11 @@ export class GameEngine {
     this.chapterWeatherProfile = null;
     this.skyDomeMesh = null;
     this.skyDomeMat = null;
+    this.proceduralArenaShell = null;
+    // Detach cached Chapter 1 GLB map before clearing procedural arena children so it is never disposed mid-session.
+    if (this.chapter1MapModel?.parent === this.arenaGroup) {
+      this.arenaGroup.remove(this.chapter1MapModel);
+    }
     while (this.arenaGroup.children.length > 0) {
       this.releaseObject(this.arenaGroup.children[0]);
     }
@@ -3761,6 +3832,11 @@ export class GameEngine {
     const normalTex = createStoneNormalTexture(maxAniso);
     const roughnessTex = createStoneRoughnessTexture(maxAniso);
 
+    const proceduralShell = new THREE.Group();
+    proceduralShell.name = 'ProceduralArenaShell';
+    this.proceduralArenaShell = proceduralShell;
+    this.arenaGroup.add(proceduralShell);
+
     // 1. High-Contrast Mythic PBR Marble Temple Arena Floor (Albedo + Roughness + Tangent-Space Normal)
     const floorGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.6, 1.4, ARENA_HALF_D * 2 + 1.6);
     const floorMat = new THREE.MeshStandardMaterial({
@@ -3775,7 +3851,7 @@ export class GameEngine {
     this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
     this.floorMesh.position.set(0, -0.7, 0);
     this.floorMesh.receiveShadow = true;
-    this.arenaGroup.add(this.floorMesh);
+    proceduralShell.add(this.floorMesh);
 
     const marbleMat = new THREE.MeshStandardMaterial({
       color: chapter.stoneHex,
@@ -3847,7 +3923,7 @@ export class GameEngine {
       spoke.rotation.z = (s * Math.PI) / 4;
       compassGroup.add(spoke);
     }
-    this.arenaGroup.add(compassGroup);
+    proceduralShell.add(compassGroup);
 
     // 3. Stepped Sanctuary Terrace & Double Gilded Cornice Perimeter
     const outerTerrace = new THREE.Mesh(
@@ -3856,7 +3932,7 @@ export class GameEngine {
     );
     outerTerrace.position.set(0, -1.3, 0);
     outerTerrace.receiveShadow = true;
-    this.arenaGroup.add(outerTerrace);
+    proceduralShell.add(outerTerrace);
 
     const borderThick = 0.38;
     const hBorderGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.9, 0.16, borderThick);
@@ -3869,7 +3945,7 @@ export class GameEngine {
     wEdge.position.set(-ARENA_HALF_W - 0.78, 0.06, 0);
     const eEdge = new THREE.Mesh(vBorderGeo, goldTrimMat);
     eEdge.position.set(ARENA_HALF_W + 0.78, 0.06, 0);
-    this.arenaGroup.add(nEdge, sEdge, wEdge, eEdge);
+    proceduralShell.add(nEdge, sEdge, wEdge, eEdge);
 
     // 4. Perimeter Gilded Temple Colonnade (4 batched InstancedMeshes for ultra-low draw calls)
     const postPositions: Array<[number, number]> = [];
@@ -3939,7 +4015,7 @@ export class GameEngine {
     for (const inst of [plinthInst, shaftInst, collarInst, finialInst]) {
       inst.instanceMatrix.needsUpdate = true;
       inst.computeBoundingSphere();
-      this.arenaGroup.add(inst);
+      proceduralShell.add(inst);
     }
 
     // 5. Four Corner 12-Zodiac Elemental Shrines (4 distinct architectural silhouettes)
@@ -3964,7 +4040,7 @@ export class GameEngine {
       const bRing = new THREE.Mesh(brazierBowlGeo, goldTrimMat);
       bRing.rotation.x = Math.PI / 2;
       bRing.position.set(cx, 0.8, cz);
-      this.arenaGroup.add(bBase, bRing);
+      proceduralShell.add(bBase, bRing);
 
       const topper = new THREE.Group();
       topper.position.set(cx, 1.5, cz);
@@ -4003,7 +4079,7 @@ export class GameEngine {
         pillar.position.set(cx, 1.02, cz);
         const crown = new THREE.Mesh(monolithCrownGeo, goldTrimMat);
         crown.position.set(cx, 1.72, cz);
-        this.arenaGroup.add(pillar, crown);
+        proceduralShell.add(pillar, crown);
         const keystone = new THREE.Mesh(brazierGemGeo, chapterGlowMat);
         keystone.scale.set(0.92, 1.28, 0.92);
         topper.position.set(cx, 2.22, cz);
@@ -4011,7 +4087,7 @@ export class GameEngine {
       }
 
       this.arenaBrazierGems.push(topper);
-      this.arenaGroup.add(topper);
+      proceduralShell.add(topper);
 
       // AAA Wave 6: Flickering Dynamic Brazier Flames reacting to Boss Phase rage
       const flameGroup = new THREE.Group();
@@ -4039,7 +4115,7 @@ export class GameEngine {
       });
       const coreFlame = new THREE.Mesh(coreFlameGeo, coreFlameMat);
       flameGroup.add(outerFlame, coreFlame);
-      this.arenaGroup.add(flameGroup);
+      proceduralShell.add(flameGroup);
       this.arenaBrazierFlames.push({
         group: flameGroup,
         outer: outerFlame,
@@ -4076,7 +4152,7 @@ export class GameEngine {
     monoliths.computeBoundingSphere();
     monolithTips.instanceMatrix.needsUpdate = true;
     monolithTips.computeBoundingSphere();
-    this.arenaGroup.add(monoliths, monolithTips);
+    proceduralShell.add(monoliths, monolithTips);
 
     // 7. Drifting Ambient Celestial Temple Dust Motes (single InstancedMesh)
     const arenaDustCount = this.isSoftwareGl || this.lowEndGpu ? 14 : 28;
@@ -4218,6 +4294,12 @@ export class GameEngine {
     constGroup.add(constLines);
     this.constellationGroup = constGroup;
     this.arenaGroup.add(constGroup);
+
+    if (chapter.id === 1 && loadCustomMap) {
+      this.ensureChapter1MapLoaded();
+    } else {
+      this.applyChapter1MapState();
+    }
 
     this.arenaGroup.visible = this.phase !== GamePhase.TITLE;
   }
@@ -19685,6 +19767,7 @@ export class GameEngine {
     this.disposed = true;
     this.lobbyCityRequest.abort();
     this.blackDragonRequest?.abort();
+    this.chapter1MapRequest?.abort();
     delete this.container.dataset.lobbyCity;
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
@@ -19722,6 +19805,10 @@ export class GameEngine {
       this.blackDragon.dispose();
       this.releaseObject(this.blackDragon.model);
       this.blackDragon = undefined;
+    }
+    if (this.chapter1MapModel) {
+      this.releaseObject(this.chapter1MapModel);
+      this.chapter1MapModel = null;
     }
     this.releaseObject(this.scene);
     this.disposePostProcessing();
