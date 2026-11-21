@@ -43,9 +43,24 @@ export const DEFAULT_SETTINGS: GameSettings = {
   showFpsOverlay: false,
   adaptiveResolutionGuard: true,
   compactHud: false,
+  chapter1MapMode: 'auto',
+  lowEndSafetyMode: 'auto',
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
+  const rawMapMode = s?.chapter1MapMode;
+  const chapter1MapMode =
+    rawMapMode === 'lite_3d' ||
+    rawMapMode === 'light' ||
+    rawMapMode === 'high_3d' ||
+    rawMapMode === 'auto'
+      ? rawMapMode
+      : DEFAULT_SETTINGS.chapter1MapMode;
+  const rawSafetyMode = s?.lowEndSafetyMode;
+  const lowEndSafetyMode =
+    rawSafetyMode === 'on' || rawSafetyMode === 'off' || rawSafetyMode === 'auto'
+      ? rawSafetyMode
+      : DEFAULT_SETTINGS.lowEndSafetyMode;
   return {
     masterVol: s?.masterVol ?? DEFAULT_SETTINGS.masterVol,
     bgmVol: s?.bgmVol ?? DEFAULT_SETTINGS.bgmVol,
@@ -67,6 +82,8 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     adaptiveResolutionGuard:
       s?.adaptiveResolutionGuard ?? DEFAULT_SETTINGS.adaptiveResolutionGuard,
     compactHud: s?.compactHud ?? DEFAULT_SETTINGS.compactHud,
+    chapter1MapMode,
+    lowEndSafetyMode,
   };
 }
 

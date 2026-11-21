@@ -11,7 +11,15 @@ export const CHAPTER1_MAP_PATH_SEGMENTS = [
   'Chương 1.glb',
 ] as const;
 
+export const CHAPTER1_MAP_LITE_PATH_SEGMENTS = [
+  'assets',
+  'Chương 1',
+  'Map mới',
+  'Chương 1 Lite.glb',
+] as const;
+
 export const CHAPTER1_MAP_VERSION = '2';
+export const CHAPTER1_MAP_LITE_VERSION = '1';
 export const CHAPTER1_MAP_CHUNK_BYTES = 6 * 1024 * 1024;
 export const CHAPTER1_MAP_MAX_SAFE_CHUNK_BYTES = 8 * 1024 * 1024;
 
@@ -35,6 +43,19 @@ export function getChapter1MapAssetUrl(
   const encodedPath = CHAPTER1_MAP_PATH_SEGMENTS.map((seg) => encodeURIComponent(seg)).join('/');
   const url = new URL(`${normalizedBase}${encodedPath}`, baseUri);
   url.searchParams.set('v', CHAPTER1_MAP_VERSION);
+  return url;
+}
+
+export function getChapter1MapLiteAssetUrl(
+  baseUrl = '/',
+  baseUri = 'http://localhost:3000/'
+): URL {
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const encodedPath = CHAPTER1_MAP_LITE_PATH_SEGMENTS.map((seg) => encodeURIComponent(seg)).join(
+    '/'
+  );
+  const url = new URL(`${normalizedBase}${encodedPath}`, baseUri);
+  url.searchParams.set('v', CHAPTER1_MAP_LITE_VERSION);
   return url;
 }
 
@@ -268,10 +289,11 @@ export interface PreparedChapter1Map {
  */
 export function prepareChapter1MapModel(
   gltfScene: THREE.Object3D,
-  maxAnisotropy = 4
+  maxAnisotropy = 4,
+  options?: { liteMode?: boolean }
 ): PreparedChapter1Map {
   const group = new THREE.Group();
-  group.name = 'Chapter1MapGLB';
+  group.name = options?.liteMode ? 'Chapter1MapLiteGLB' : 'Chapter1MapGLB';
 
   gltfScene.updateMatrixWorld(true);
   const rawBox = new THREE.Box3().setFromObject(gltfScene);
@@ -299,11 +321,12 @@ export function prepareChapter1MapModel(
     -rawCenter.z * scale
   );
 
-  const aniso = Math.max(1, Math.min(8, Math.floor(maxAnisotropy || 1)));
+  const anisoCap = options?.liteMode ? 2 : 8;
+  const aniso = Math.max(1, Math.min(anisoCap, Math.floor(maxAnisotropy || 1)));
   gltfScene.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     // Receiving shadows from hero/enemies/bosses onto the 3D stone floor looks crisp,
-    // while keeping castShadow=false avoids rendering 942k terrain vertices twice per frame.
+    // while keeping castShadow=false avoids rendering terrain vertices twice per frame.
     obj.receiveShadow = true;
     obj.castShadow = false;
     obj.frustumCulled = false;

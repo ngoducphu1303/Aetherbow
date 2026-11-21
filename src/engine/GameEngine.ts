@@ -52,7 +52,6 @@ import {
 } from './aaaFivePillarsDirector';
 import type { WeeklyBossSchedule } from '../data/weeklyBossData';
 import {
-  classifyGpuCapability,
   MythicZodiacGradeShader,
   resolvePostFxConfig,
 } from './aaaVisualPipeline';
@@ -123,7 +122,12 @@ import {
   LethalArenaMatchConfig,
   stepAiRivalCombatBrain,
 } from './wave8LethalAiSystems';
-import type { AiDuelDifficultyTier, CombatStyleGrade } from '../types/game';
+import type {
+  AiDuelDifficultyTier,
+  Chapter1MapMode,
+  CombatStyleGrade,
+  LowEndSafetyMode,
+} from '../types/game';
 import {
   advanceElementalResonance,
   AiDominantElement,
@@ -265,10 +269,26 @@ import {
 } from './funCombatOverhaul';
 import { createDragonMountMotion } from './dragonMountMotion';
 import { BLACK_DRAGON_ASSET, createBlackDragonRide } from './blackDragonRide';
-import { getChapter1MapAssetUrl, prepareChapter1MapModel } from './chapter1Map';
 import {
-  CHAPTER1_MAP_MODEL_ASSET,
+  getChapter1MapAssetUrl,
+  getChapter1MapLiteAssetUrl,
+  prepareChapter1MapModel,
+} from './chapter1Map';
+import {
+  clearChapter1MapLoadInFlight,
+  detectStartupGpuProfile,
+  isLowEndSafetyModeActive,
+  markChapter1MapLoadInFlight,
+  readPersistedChapter1MapMode,
+  refreshStartupGpuProfile,
+  resetGpuCrashSentinel,
+  resolveChapter1MapVariant,
+  tripGpuCrashSentinel,
+} from './gpuSafetyGuard';
+import {
+  discardChapter1MapDownload,
   discardModelDownload,
+  downloadChapter1Map,
   downloadModel,
   getModelAssetUrl,
   type ModelAsset,
@@ -705,6 +725,7 @@ export type AppearanceStatus = 'loading' | 'ready' | 'error';
 export interface EngineCallbacks {
   onAppearanceStatusChange?: (status: AppearanceStatus) => void;
   onChapter1MapStatusChange?: (status: AppearanceStatus) => void;
+  onGpuSafetyTriggered?: (profile: GpuProfileSummary) => void;
   onHudUpdate: (hud: HudSnapshot) => void;
   onFloatingDamage: (dmg: FloatingDamage) => void;
   onJoystickUpdate: (joy: JoystickState) => void;
@@ -871,9 +892,15 @@ export class GameEngine {
   private arenaGroup = new THREE.Group();
   private proceduralArenaShell: THREE.Group | null = null;
   private chapter1MapModel: THREE.Group | null = null;
+  private chapter1MapLoadedVariant: 'none' | 'lite' | 'full' = 'none';
+  private chapter1MapLoadingVariant: 'none' | 'lite' | 'full' = 'none';
   private chapter1MapLoading = false;
   private chapter1MapFailCount = 0;
   private chapter1MapStatus: AppearanceStatus = 'loading';
+  private chapter1MapMode: Chapter1MapMode = 'auto';
+  private lowEndSafetyMode: LowEndSafetyMode = 'auto';
+  private chapter1MapInFlightMarked = false;
+  private chapter1MapStableFrames = 0;
   private entitiesGroup = new THREE.Group();
   private projectilesGroup = new THREE.Group();
   private particlesGroup = new THREE.Group();
@@ -1635,28 +1662,17 @@ export class GameEngine {
     this.heroVisualCfg = initialVisualCfg;
     this.weaponAccentHex = initialVisualCfg.weaponAccentHex;
 
-    // Auto GPU capability detection (3-tier: software / integrated / discrete)
-    const detectedProfile = (() => {
-      const probeCanvas = document.createElement('canvas');
-      const gl = probeCanvas.getContext('webgl2');
-      if (!gl) {
-        return classifyGpuCapability('', undefined, navigator.hardwareConcurrency || 4);
-      }
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
-      const gpu = String(gl.getParameter(param) ?? '');
-      const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
-      return classifyGpuCapability(gpu, memory, navigator.hardwareConcurrency || 8);
-    })();
+    // Auto GPU capability detection + crash sentinel (shared across SplashGate, modelAssets & engine)
+    const detectedProfile = detectStartupGpuProfile();
     this.gpuProfile = detectedProfile;
     this.isSoftwareGl = detectedProfile.tier === 'software';
-    this.lowEndGpu = detectedProfile.tier !== 'discrete';
+    this.lowEndGpu = isLowEndSafetyModeActive(detectedProfile, this.lowEndSafetyMode);
     this.graphicsQuality = detectedProfile.recommendedQuality;
+    this.chapter1MapMode = readPersistedChapter1MapMode();
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl && !this.lowEndGpu,
-      powerPreference: this.isSoftwareGl ? 'low-power' : 'high-performance',
+      powerPreference: this.isSoftwareGl || this.lowEndGpu ? 'low-power' : 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -3681,8 +3697,46 @@ export class GameEngine {
     this.callbacks.onChapter1MapStatusChange?.(status);
   }
 
+  private getActiveChapter1MapVariant(): 'none' | 'lite' | 'full' {
+    return resolveChapter1MapVariant(this.gpuProfile, this.chapter1MapMode);
+  }
+
+  private unloadChapter1MapModel(): void {
+    if (this.chapter1MapInFlightMarked) {
+      clearChapter1MapLoadInFlight();
+      this.chapter1MapInFlightMarked = false;
+      this.chapter1MapStableFrames = 0;
+    }
+    if (this.chapter1MapModel) {
+      if (this.chapter1MapModel.parent === this.arenaGroup) {
+        this.arenaGroup.remove(this.chapter1MapModel);
+      }
+      this.releaseObject(this.chapter1MapModel);
+      this.chapter1MapModel = null;
+    }
+    this.chapter1MapLoadedVariant = 'none';
+    if (this.proceduralArenaShell) {
+      this.proceduralArenaShell.visible = true;
+    }
+  }
+
+  public resetGpuCrashGuard(): GpuProfileSummary {
+    resetGpuCrashSentinel();
+    this.gpuProfile = refreshStartupGpuProfile();
+    this.isSoftwareGl = this.gpuProfile.tier === 'software';
+    this.lowEndGpu = isLowEndSafetyModeActive(this.gpuProfile, this.lowEndSafetyMode);
+    this.chapter1MapFailCount = 0;
+    this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
+    return this.gpuProfile;
+  }
+
   private applyChapter1MapState(): void {
-    const wantsCustomMap = this.currentChapter.id === 1 && !!this.chapter1MapModel;
+    const targetVariant = this.getActiveChapter1MapVariant();
+    const wantsCustomMap =
+      this.currentChapter.id === 1 &&
+      targetVariant !== 'none' &&
+      this.chapter1MapLoadedVariant === targetVariant &&
+      !!this.chapter1MapModel;
     if (wantsCustomMap && this.chapter1MapModel) {
       if (this.chapter1MapModel.parent !== this.arenaGroup) {
         this.arenaGroup.add(this.chapter1MapModel);
@@ -3702,44 +3756,93 @@ export class GameEngine {
   }
 
   private ensureChapter1MapLoaded(): void {
-    if (this.chapter1MapModel) {
+    const targetVariant = this.getActiveChapter1MapVariant();
+    if (targetVariant === 'none') {
+      // Software WebGL, crash-tripped GPU, or user-selected Light Arena:
+      // keep the ultra-light procedural arena and never upload external map textures.
+      this.unloadChapter1MapModel();
       this.setChapter1MapStatus('ready');
       this.applyChapter1MapState();
       return;
     }
-    if (this.chapter1MapLoading || this.chapter1MapFailCount >= 3) return;
+    if (this.chapter1MapModel && this.chapter1MapLoadedVariant === targetVariant) {
+      this.setChapter1MapStatus('ready');
+      this.applyChapter1MapState();
+      return;
+    }
+    if (this.chapter1MapModel && this.chapter1MapLoadedVariant !== targetVariant) {
+      this.unloadChapter1MapModel();
+    }
+    if (
+      (this.chapter1MapLoading && this.chapter1MapLoadingVariant === targetVariant) ||
+      this.chapter1MapFailCount >= 3
+    ) {
+      return;
+    }
     this.chapter1MapLoading = true;
+    this.chapter1MapLoadingVariant = targetVariant;
     this.setChapter1MapStatus('loading');
     const baseUrl =
       (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
-    const assetUrl = getChapter1MapAssetUrl(baseUrl, document.baseURI);
+    const assetUrl =
+      targetVariant === 'lite'
+        ? getChapter1MapLiteAssetUrl(baseUrl, document.baseURI)
+        : getChapter1MapAssetUrl(baseUrl, document.baseURI);
     void (async () => {
       let data: ArrayBuffer | undefined;
       try {
-        data = await downloadModel(CHAPTER1_MAP_MODEL_ASSET);
-        if (this.disposed) return;
+        data = await downloadChapter1Map(targetVariant);
+        if (this.disposed || this.getActiveChapter1MapVariant() !== targetVariant) {
+          if (!this.disposed && this.getActiveChapter1MapVariant() === 'none') {
+            this.setChapter1MapStatus('ready');
+          }
+          return;
+        }
+        // Latch crash sentinel right before decoding GLB geometry & uploading textures.
+        // Cleared automatically after 2 stable frames render without webglcontextlost.
+        markChapter1MapLoadInFlight();
+        this.chapter1MapInFlightMarked = true;
+        this.chapter1MapStableFrames = 0;
+
         const gltf = await new GLTFLoader().parseAsync(data, new URL('.', assetUrl).href);
-        if (this.disposed) {
+        if (this.disposed || this.getActiveChapter1MapVariant() !== targetVariant) {
           this.releaseObject(gltf.scene);
+          clearChapter1MapLoadInFlight();
+          this.chapter1MapInFlightMarked = false;
+          if (!this.disposed && this.getActiveChapter1MapVariant() === 'none') {
+            this.setChapter1MapStatus('ready');
+          }
           return;
         }
         const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
-        const prepared = prepareChapter1MapModel(gltf.scene, maxAniso);
+        const prepared = prepareChapter1MapModel(gltf.scene, maxAniso, {
+          liteMode: targetVariant === 'lite',
+        });
+        this.unloadChapter1MapModel();
         this.chapter1MapModel = prepared.group;
+        this.chapter1MapLoadedVariant = targetVariant;
         this.chapter1MapFailCount = 0;
         this.applyChapter1MapState();
         this.setChapter1MapStatus('ready');
       } catch (error) {
+        clearChapter1MapLoadInFlight();
+        this.chapter1MapInFlightMarked = false;
         if (data) {
-          discardModelDownload(CHAPTER1_MAP_MODEL_ASSET, data);
+          discardChapter1MapDownload(targetVariant, data);
         }
-        if (!this.disposed) {
+        if (!this.disposed && this.getActiveChapter1MapVariant() === targetVariant) {
           this.chapter1MapFailCount += 1;
           this.setChapter1MapStatus('error');
-          console.warn('Không tải được Map Chương 1 GLB; giữ sân đấu mặc định.', error);
+          console.warn(
+            `Không tải được Map Chương 1 GLB (${targetVariant}); giữ sân đấu mặc định.`,
+            error
+          );
         }
       } finally {
-        this.chapter1MapLoading = false;
+        if (this.chapter1MapLoadingVariant === targetVariant) {
+          this.chapter1MapLoading = false;
+          this.chapter1MapLoadingVariant = 'none';
+        }
       }
     })();
   }
@@ -9275,6 +9378,19 @@ export class GameEngine {
     clearTimeout(this.frameId);
     // Context đã mất tự hủy các sync handle cũ.
     this.pendingGpuSync = null;
+
+    // Immediately trip persistent GPU Safe Mode so a WebGL crash / driver TDR reset
+    // automatically drops the 90.3 MB 4K map, restores the lightweight arena, and caps at 30 FPS.
+    tripGpuCrashSentinel(
+      'Phát hiện mất kết nối WebGL / quá tải GPU · Đã tự chuyển sang Sân Nhẹ & 30 FPS'
+    );
+    this.gpuProfile = refreshStartupGpuProfile();
+    this.lowEndGpu = true;
+    this.graphicsQuality = 'low';
+    this.chapter1MapMode = 'light';
+    this.unloadChapter1MapModel();
+    this.setChapter1MapStatus('ready');
+    this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
   };
 
   private onContextRestored = () => this.resumeAfterContextRestore();
@@ -9311,7 +9427,31 @@ export class GameEngine {
     keybinds?: Partial<CombatKeybinds>;
     showFpsOverlay?: boolean;
     adaptiveResolutionGuard?: boolean;
+    chapter1MapMode?: Chapter1MapMode;
+    lowEndSafetyMode?: LowEndSafetyMode;
   }): void {
+    if (cfg.lowEndSafetyMode) {
+      this.lowEndSafetyMode = cfg.lowEndSafetyMode;
+    }
+    if (this.gpuProfile) {
+      this.lowEndGpu = isLowEndSafetyModeActive(this.gpuProfile, this.lowEndSafetyMode);
+    }
+    const prevVariant = this.getActiveChapter1MapVariant();
+    if (cfg.chapter1MapMode) {
+      this.chapter1MapMode = cfg.chapter1MapMode;
+    }
+    const nextVariant = this.getActiveChapter1MapVariant();
+    if (nextVariant !== prevVariant) {
+      this.chapter1MapFailCount = 0;
+      if (nextVariant === 'none') {
+        this.unloadChapter1MapModel();
+        this.setChapter1MapStatus('ready');
+      } else {
+        this.ensureChapter1MapLoaded();
+      }
+      this.applyChapter1MapState();
+    }
+
     const quality = this.isSoftwareGl || this.lowEndGpu ? 'low' : cfg.graphicsQuality;
     this.graphicsQuality = quality;
     this.screenShakeEnabled = cfg.screenShake;
@@ -10069,6 +10209,13 @@ export class GameEngine {
         // Keep the lobby interactive while models load. Hold combat simulation until the rider is visible.
         if (!this.appearanceBlocked || this.phase === GamePhase.TITLE) this.update(dt);
         this.renderSceneFrame();
+        if (this.chapter1MapInFlightMarked && this.chapter1MapModel && !this.contextLost) {
+          this.chapter1MapStableFrames += 1;
+          if (this.chapter1MapStableFrames >= 2) {
+            clearChapter1MapLoadInFlight();
+            this.chapter1MapInFlightMarked = false;
+          }
+        }
         if (!this.appearanceBlocked && this.appearanceStatus === 'loading') {
           this.setAppearanceStatus('ready');
         }

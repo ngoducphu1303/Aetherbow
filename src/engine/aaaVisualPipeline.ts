@@ -14,18 +14,36 @@ export interface PostFxRuntimeConfig {
 
 const SOFTWARE_GPU_RE = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i;
 const INTEGRATED_GPU_RE = /Intel.*(?:HD|UHD|Iris|Graphics)|Mali-G[0-5]\d|Adreno\s*\(TM\)\s*[45]\d\d/i;
+// Legacy / weak integrated & mobile GPUs that risk TDR black-screen or thermal
+// shutdown when uploading 942k vertices + three 4096x4096 RGBA8 PBR textures.
+const LEGACY_WEAK_GPU_RE =
+  /Intel.*(?:HD\s*Graphics(?:\s*(?:2\d00|3\d00|4\d00|5\d00|5\d0|6\d0))?|UHD\s*Graphics\s*(?:6\d0|G1)|GMA|Graphics\s*Media\s*Accelerator|Iris(?:\s*(?:Pro|Plus))?\s*(?:5\d0|6\d0|5100|5200|6100))|Radeon\s*(?:HD\s*[2-8]\d{3}|R[2-7]\b|Vega\s*[36]\b)|GeForce\s*(?:GT\s*[2-7]\d0|GTS|8[0-4]0M|9[0-4]0M|MX1[13]0)|Mali-(?:G[0-5]\d|T\d+)|Adreno\s*\(TM\)\s*[345]\d\d|PowerVR/i;
+
+export interface ClassifyGpuOptions {
+  maxTextureSize?: number;
+  crashGuardTripped?: boolean;
+  crashReason?: string;
+}
 
 /**
  * Classifies the runtime WebGL GPU into 3 deterministic AAA hardware tiers
- * (software / integrated / discrete) so Aetherbow auto-selects safe shadows,
- * bloom post-processing, and combat frame pacing without stuttering.
+ * (software / integrated / discrete) plus heavy-3D-map safety metadata so
+ * legacy laptops (e.g., Dell Latitude E5430 · Intel HD 4000 · 4 logical threads)
+ * stay cool and stable without crashing or shutting down.
  */
 export function classifyGpuCapability(
   rendererString: string,
   deviceMemoryGb?: number,
-  hardwareConcurrency = 8
+  hardwareConcurrency = 8,
+  options?: ClassifyGpuOptions
 ): GpuProfileSummary {
   const cleanName = (rendererString || 'WebGL2 Renderer').trim().slice(0, 64);
+  const logicalCores = Number.isFinite(hardwareConcurrency) && hardwareConcurrency > 0
+    ? Math.floor(hardwareConcurrency)
+    : 4;
+  const maxTextureSize =
+    options?.maxTextureSize && options.maxTextureSize > 0 ? options.maxTextureSize : undefined;
+  const crashGuardTripped = Boolean(options?.crashGuardTripped);
 
   if (!rendererString || SOFTWARE_GPU_RE.test(rendererString)) {
     return {
@@ -36,31 +54,82 @@ export function classifyGpuCapability(
       bloomSupported: false,
       shadowMapSize: 0,
       targetCombatFps: 12,
+      lowPowerLegacyGpu: true,
+      supportsHighDetailChapter1Map: false,
+      safetyReason: crashGuardTripped
+        ? options?.crashReason || 'Tự bảo vệ sau sự cố WebGL ở phiên trước'
+        : 'WebGL phần mềm · Tự dùng Sân Đấu 3D Nhẹ để tránh treo máy',
+      crashGuardTripped,
+      logicalCores,
+      maxTextureSize,
     };
   }
 
   const lowMemory = deviceMemoryGb !== undefined && deviceMemoryGb <= 4;
-  const lowCores = hardwareConcurrency > 0 && hardwareConcurrency <= 4;
-  if (INTEGRATED_GPU_RE.test(rendererString) || lowMemory || lowCores) {
+  const lowCores = logicalCores <= 4;
+  const isLegacyWeakGpu = LEGACY_WEAK_GPU_RE.test(rendererString);
+  const lowTexLimit = maxTextureSize !== undefined && maxTextureSize < 8192;
+  const lowPowerLegacyGpu =
+    isLegacyWeakGpu || lowMemory || lowCores || lowTexLimit || crashGuardTripped;
+
+  const buildSafetyReason = (): string | undefined => {
+    if (crashGuardTripped) {
+      return options?.crashReason || 'Tự bảo vệ sau sự cố mất WebGL / sập GPU ở phiên trước';
+    }
+    if (isLegacyWeakGpu && lowCores) {
+      return `GPU tích hợp đời cũ & CPU ${logicalCores} luồng · Tự dùng Map 3D Lite & 30 FPS`;
+    }
+    if (isLegacyWeakGpu) {
+      return 'GPU tích hợp đời cũ · Tự dùng Map 3D Lite (~30k mặt) để tránh quá tải';
+    }
+    if (lowCores) {
+      return `CPU ${logicalCores} luồng · Tự dùng Map 3D Lite & 30 FPS`;
+    }
+    if (lowMemory) {
+      return 'RAM hệ thống giới hạn · Tự dùng Map 3D Lite để tránh tràn bộ nhớ';
+    }
+    if (lowTexLimit) {
+      return `Giới hạn texture GPU ${maxTextureSize}px · Tự dùng Map 3D Lite 1024px`;
+    }
+    return undefined;
+  };
+
+  if (INTEGRATED_GPU_RE.test(rendererString) || lowMemory || lowCores || isLegacyWeakGpu || lowTexLimit) {
     return {
       tier: 'integrated',
-      tierLabel: 'GPU Tích Hợp · Cân Bằng',
+      tierLabel: lowPowerLegacyGpu
+        ? 'GPU Tích Hợp / Máy Yếu · Chế Độ Bảo Vệ'
+        : 'GPU Tích Hợp · Cân Bằng',
       rendererName: cleanName,
-      recommendedQuality: 'medium',
+      recommendedQuality: lowPowerLegacyGpu ? 'low' : 'medium',
       bloomSupported: false,
-      shadowMapSize: 1024,
+      shadowMapSize: lowPowerLegacyGpu ? 0 : 1024,
       targetCombatFps: 30,
+      lowPowerLegacyGpu,
+      supportsHighDetailChapter1Map: !lowPowerLegacyGpu,
+      safetyReason: buildSafetyReason(),
+      crashGuardTripped,
+      logicalCores,
+      maxTextureSize,
     };
   }
 
   return {
     tier: 'discrete',
-    tierLabel: 'GPU Hiệu Năng Cao · Chuẩn AAA',
+    tierLabel: crashGuardTripped
+      ? 'GPU Rời · Đang Bật Chốt Bảo Vệ'
+      : 'GPU Hiệu Năng Cao · Chuẩn AAA',
     rendererName: cleanName,
-    recommendedQuality: 'high',
-    bloomSupported: true,
-    shadowMapSize: 2048,
-    targetCombatFps: 60,
+    recommendedQuality: crashGuardTripped ? 'low' : 'high',
+    bloomSupported: !crashGuardTripped,
+    shadowMapSize: crashGuardTripped ? 0 : 2048,
+    targetCombatFps: crashGuardTripped ? 30 : 60,
+    lowPowerLegacyGpu: crashGuardTripped,
+    supportsHighDetailChapter1Map: !crashGuardTripped,
+    safetyReason: buildSafetyReason(),
+    crashGuardTripped,
+    logicalCores,
+    maxTextureSize,
   };
 }
 

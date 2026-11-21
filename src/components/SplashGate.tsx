@@ -15,6 +15,7 @@ import splashArtSrc from '../assets/images/celestial_sanctuary_backdrop_17949713
 import { CHAPTERS } from '../data/chaptersData';
 import { HEROES } from '../data/heroesData';
 import type { AppearanceStatus } from '../engine/GameEngine';
+import { resolveChapter1MapVariant } from '../engine/gpuSafetyGuard';
 import {
   getModelDownloadProgress,
   ModelAsset,
@@ -25,7 +26,7 @@ import {
   CloudSyncStatus,
   formatAccountHandle,
 } from '../services/playerCloudService';
-import { SaveData } from '../types/game';
+import { Chapter1MapMode, GpuProfileSummary, SaveData } from '../types/game';
 import { AuthGatePanel, AuthSuccessMeta } from './AuthGatePanel';
 
 interface SplashGateProps {
@@ -33,6 +34,8 @@ interface SplashGateProps {
   powerRating: number;
   appearanceStatus: AppearanceStatus;
   chapter1MapStatus?: AppearanceStatus;
+  gpuProfile?: GpuProfileSummary;
+  chapter1MapMode?: Chapter1MapMode;
   authReady: boolean;
   currentUser: User | null;
   playerDisplayName: string;
@@ -69,6 +72,8 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   powerRating,
   appearanceStatus,
   chapter1MapStatus = 'ready',
+  gpuProfile,
+  chapter1MapMode = 'auto',
   authReady,
   currentUser,
   playerDisplayName,
@@ -88,6 +93,9 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   const [imgFailed, setImgFailed] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const progress = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadProgress);
+  const chapter1Variant = gpuProfile
+    ? resolveChapter1MapVariant(gpuProfile, chapter1MapMode)
+    : 'full';
   const ready =
     progress.status === 'ready' &&
     appearanceStatus === 'ready' &&
@@ -250,7 +258,9 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                       ? 'Một số tài nguyên 3D tải lỗi'
                       : progress.status === 'ready'
                       ? chapter1MapStatus !== 'ready'
-                        ? 'Đang dựng Bản Đồ 3D Chương 1…'
+                        ? chapter1Variant === 'lite'
+                          ? 'Đang dựng Bản Đồ 3D Chương 1 Lite…'
+                          : 'Đang dựng Bản Đồ 3D Chương 1…'
                         : 'Đang dựng ngoại hình đã trang bị…'
                       : 'Đang tải toàn bộ mô hình & bản đồ 3D…'}
                   </span>
@@ -357,8 +367,23 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                 className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-300"
               >
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Toàn bộ mô hình & Bản Đồ 3D Chương 1 đã sẵn sàng</span>
+                <span>
+                  {chapter1Variant === 'full'
+                    ? 'Toàn bộ mô hình & Bản Đồ 3D Chương 1 đã sẵn sàng'
+                    : chapter1Variant === 'lite'
+                    ? 'Toàn bộ mô hình & Bản Đồ 3D Chương 1 Lite đã sẵn sàng'
+                    : 'Mô hình 3D & Sân Đấu Nhẹ (30 FPS) đã sẵn sàng'}
+                </span>
               </div>
+            )}
+            {gpuProfile && chapter1Variant !== 'full' && (
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-300/90">
+                {chapter1Variant === 'lite'
+                  ? 'Chế độ tối ưu máy yếu · Đang dùng Bản Đồ 3D Chương 1 Lite (~1,3 MB · 30k mặt) để chạy mượt 30 FPS'
+                  : 'Chế độ bảo vệ phần cứng · Đang dùng Sân Đấu 3D Nhẹ để tránh quá tải GPU'}
+                {gpuProfile.safetyReason ? ` · ${gpuProfile.safetyReason}` : ''}
+                {' · '}Có thể điều chỉnh trong Cài Đặt.
+              </p>
             )}
           </div>
         </div>

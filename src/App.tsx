@@ -518,7 +518,17 @@ import {
   resolveAstralBoardRoll,
 } from './data/wave14Data';
 import { GameEngine, type AppearanceStatus } from './engine/GameEngine';
-import { getModelDownloadStatus, preloadGameModels, subscribeToModelDownloads } from './engine/modelAssets';
+import {
+  detectStartupGpuProfile,
+  readPersistedChapter1MapMode,
+  resolveChapter1MapVariant,
+} from './engine/gpuSafetyGuard';
+import {
+  getModelDownloadStatus,
+  preloadGameModels,
+  setChapter1MapPreloadVariant,
+  subscribeToModelDownloads,
+} from './engine/modelAssets';
 import { HeroVisualConfig } from './engine/models';
 import {
   AchievementDefinition,
@@ -778,8 +788,13 @@ export default function App() {
   const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
   const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
+  const [gpuProfile, setGpuProfile] = useState(() => detectStartupGpuProfile());
   const [appearanceStatus, setAppearanceStatus] = useState<AppearanceStatus>('loading');
-  const [chapter1MapStatus, setChapter1MapStatus] = useState<AppearanceStatus>('loading');
+  const [chapter1MapStatus, setChapter1MapStatus] = useState<AppearanceStatus>(() => {
+    const initialProfile = detectStartupGpuProfile();
+    const initialMode = readPersistedChapter1MapMode();
+    return resolveChapter1MapVariant(initialProfile, initialMode) === 'none' ? 'ready' : 'loading';
+  });
   const modelDownloadStatus = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadStatus);
   const canEnterGame =
     modelDownloadStatus === 'ready' &&
@@ -1919,12 +1934,26 @@ export default function App() {
     return undefined;
   }, [playerStats.powerRating, enteredGame, phase]);
 
-  useEffect(() => { preloadGameModels(); }, []);
+  useEffect(() => {
+    const startupProfile = detectStartupGpuProfile();
+    const startupMapMode = readPersistedChapter1MapMode();
+    setChapter1MapPreloadVariant(resolveChapter1MapVariant(startupProfile, startupMapMode));
+    preloadGameModels();
+  }, []);
 
   const retryStartupModels = useCallback(() => {
+    const activeMode = currentSettings.chapter1MapMode ?? 'auto';
+    setChapter1MapPreloadVariant(resolveChapter1MapVariant(gpuProfile, activeMode));
     preloadGameModels();
     engineRef.current?.retryAppearance();
-  }, []);
+  }, [currentSettings.chapter1MapMode, gpuProfile]);
+
+  const handleResetGpuCrashGuard = useCallback(() => {
+    const nextProfile = engineRef.current?.resetGpuCrashGuard() ?? detectStartupGpuProfile();
+    setGpuProfile(nextProfile);
+    const activeMode = currentSettings.chapter1MapMode ?? 'auto';
+    setChapter1MapPreloadVariant(resolveChapter1MapVariant(nextProfile, activeMode));
+  }, [currentSettings.chapter1MapMode]);
 
   // Initialize Three.js engine once
   useEffect(() => {
@@ -1936,6 +1965,21 @@ export default function App() {
       {
         onAppearanceStatusChange: setAppearanceStatus,
         onChapter1MapStatusChange: setChapter1MapStatus,
+        onGpuSafetyTriggered: (nextProfile) => {
+          setGpuProfile(nextProfile);
+          if (nextProfile.crashGuardTripped) {
+            setChapter1MapPreloadVariant('none');
+            setSave((prev) => ({
+              ...prev,
+              settings: {
+                ...normalizeSettings(prev.settings),
+                graphicsQuality: 'low',
+                chapter1MapMode: 'light',
+                lowEndSafetyMode: 'on',
+              },
+            }));
+          }
+        },
         onHudUpdate: (snap) => {
           setHud(snap);
         },
@@ -3397,10 +3441,15 @@ export default function App() {
     engineRef.current?.setLobbyViewMode(mode);
   }, [activeLobbyTab]);
 
-  // Sync runtime 3D graphics, shake & damage number preferences
+  // Sync runtime 3D graphics, shake, GPU safety & Chapter 1 map preferences
   useEffect(() => {
+    const targetVariant = resolveChapter1MapVariant(
+      gpuProfile,
+      currentSettings.chapter1MapMode ?? 'auto'
+    );
+    setChapter1MapPreloadVariant(targetVariant);
     engineRef.current?.applyRuntimeSettings(currentSettings);
-  }, [currentSettings]);
+  }, [currentSettings, gpuProfile]);
 
   // Clean up expired floating damage numbers
   useEffect(() => {
@@ -11206,6 +11255,8 @@ export default function App() {
           powerRating={playerStats.powerRating}
           appearanceStatus={appearanceStatus}
           chapter1MapStatus={chapter1MapStatus}
+          gpuProfile={gpuProfile}
+          chapter1MapMode={currentSettings.chapter1MapMode ?? 'auto'}
           authReady={authReady}
           currentUser={currentUser}
           playerDisplayName={playerDisplayName}
@@ -12076,7 +12127,8 @@ export default function App() {
           settings={currentSettings}
           muted={save.muted}
           save={save}
-          gpuProfile={engineRef.current?.getGpuProfile()}
+          gpuProfile={gpuProfile}
+          onResetGpuCrashGuard={handleResetGpuCrashGuard}
           onUpdateSettings={handleUpdateSettings}
           onToggleMute={handleToggleMute}
           onReplayTutorial={

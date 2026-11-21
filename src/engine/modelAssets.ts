@@ -1,6 +1,11 @@
-import { fetchChapter1MapArrayBuffer } from './chapter1Map';
+import type { Chapter1MapVariant } from '../types/game';
+import {
+  fetchChapter1MapArrayBuffer,
+  getChapter1MapLiteAssetUrl,
+} from './chapter1Map';
 
 export const CHAPTER1_MAP_MODEL_ASSET = 'Chương 1/Map mới/Chương 1.glb' as const;
+export const CHAPTER1_MAP_LITE_LABEL = 'Bản Đồ 3D Chương 1 Lite · Tối Ưu Máy Yếu';
 
 const MODEL_VERSIONS = {
   'heroes/golden-dress-girl.glb': 2,
@@ -51,16 +56,58 @@ interface Download {
 }
 
 const models = Object.keys(MODEL_VERSIONS) as ModelAsset[];
-const downloads = new Map<ModelAsset, Download>();
+const downloads = new Map<string, Download>();
 const listeners = new Set<() => void>();
+let chapter1MapPreloadVariant: Chapter1MapVariant = 'full';
+
+function getCacheKeyForChapter1Variant(variant: 'lite' | 'full'): string {
+  return variant === 'lite' ? `${CHAPTER1_MAP_MODEL_ASSET}::lite` : CHAPTER1_MAP_MODEL_ASSET;
+}
+
+function getCacheKeyForActiveModel(path: ModelAsset): string {
+  if (path !== CHAPTER1_MAP_MODEL_ASSET) return path;
+  return getCacheKeyForChapter1Variant(chapter1MapPreloadVariant === 'lite' ? 'lite' : 'full');
+}
+
+function getLabelForActiveModel(path: ModelAsset): string {
+  if (path === CHAPTER1_MAP_MODEL_ASSET && chapter1MapPreloadVariant === 'lite') {
+    return CHAPTER1_MAP_LITE_LABEL;
+  }
+  return MODEL_LABELS[path];
+}
+
+function getActiveModels(): ModelAsset[] {
+  return chapter1MapPreloadVariant === 'none'
+    ? models.filter((path) => path !== CHAPTER1_MAP_MODEL_ASSET)
+    : models;
+}
+
+export function getChapter1MapPreloadVariant(): Chapter1MapVariant {
+  return chapter1MapPreloadVariant;
+}
+
+export function setChapter1MapPreloadVariant(variant: Chapter1MapVariant): void {
+  if (chapter1MapPreloadVariant === variant) return;
+  chapter1MapPreloadVariant = variant;
+  publishProgress();
+}
+
+export function isChapter1MapPreloadEnabled(): boolean {
+  return chapter1MapPreloadVariant !== 'none';
+}
+
+export function setChapter1MapPreloadEnabled(enabled: boolean): void {
+  setChapter1MapPreloadVariant(enabled ? 'full' : 'none');
+}
 
 function buildFileSnapshots(): ModelFileProgress[] {
-  return models.map((path) => {
-    const dl = downloads.get(path);
+  return getActiveModels().map((path) => {
+    const dl = downloads.get(getCacheKeyForActiveModel(path));
+    const label = getLabelForActiveModel(path);
     if (!dl) {
       return {
         path,
-        label: MODEL_LABELS[path],
+        label,
         status: 'loading',
         percent: 0,
         received: 0,
@@ -70,7 +117,7 @@ function buildFileSnapshots(): ModelFileProgress[] {
     if (dl.data) {
       return {
         path,
-        label: MODEL_LABELS[path],
+        label,
         status: 'ready',
         percent: 100,
         received: dl.data.byteLength,
@@ -80,7 +127,7 @@ function buildFileSnapshots(): ModelFileProgress[] {
     if (dl.failed) {
       return {
         path,
-        label: MODEL_LABELS[path],
+        label,
         status: 'error',
         percent: dl.length > 0 ? Math.min(99, Math.floor((dl.received / dl.length) * 100)) : 0,
         received: dl.received,
@@ -91,7 +138,7 @@ function buildFileSnapshots(): ModelFileProgress[] {
     const pct = dl.length > 0 ? Math.min(99, Math.floor((dl.received / dl.length) * 100)) : 0;
     return {
       path,
-      label: MODEL_LABELS[path],
+      label,
       status: 'loading',
       percent: pct,
       received: dl.received,
@@ -130,11 +177,12 @@ export const getModelDownloadProgress = (): ModelDownloadSnapshot => progress;
 export const getModelDownloadStatus = (): ModelDownloadStatus => progress.status;
 
 function publishProgress() {
+  const activeModels = getActiveModels();
   let completed = 0;
   let fraction = 0;
   let failed = false;
-  for (const model of models) {
-    const download = downloads.get(model);
+  for (const model of activeModels) {
+    const download = downloads.get(getCacheKeyForActiveModel(model));
     if (!download) continue;
     if (download.data) {
       completed++;
@@ -144,18 +192,19 @@ function publishProgress() {
     }
     failed ||= download.failed;
   }
-  const percent = Math.floor((fraction / models.length) * 100);
+  const total = Math.max(1, activeModels.length);
+  const percent = Math.floor((fraction / total) * 100);
   const status: ModelDownloadStatus = failed
     ? 'error'
-    : completed === models.length
+    : completed === activeModels.length
     ? 'ready'
     : 'loading';
   const files = buildFileSnapshots();
-  progress = { status, percent, completed, total: models.length, files };
+  progress = { status, percent, completed, total: activeModels.length, files };
   listeners.forEach((listener) => listener());
 }
 
-async function readModel(path: ModelAsset, download: Download): Promise<ArrayBuffer> {
+async function readStreamUrl(url: URL, download: Download): Promise<ArrayBuffer> {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   function resetTimeout() {
@@ -165,26 +214,7 @@ async function readModel(path: ModelAsset, download: Download): Promise<ArrayBuf
 
   resetTimeout();
   try {
-    if (path === CHAPTER1_MAP_MODEL_ASSET) {
-      const baseUrl =
-        (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
-      return await fetchChapter1MapArrayBuffer({
-        baseUrl,
-        baseUri: document.baseURI,
-        signal: controller.signal,
-        concurrency: 4,
-        onProgress: (loadedBytes, totalBytes) => {
-          resetTimeout();
-          download.received = loadedBytes;
-          if (totalBytes > 0) {
-            download.length = totalBytes;
-          }
-          publishProgress();
-        },
-      });
-    }
-
-    const response = await fetch(getModelAssetUrl(path), { signal: controller.signal });
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const encoding = response.headers.get('content-encoding');
     if (!encoding || encoding === 'identity') {
@@ -213,14 +243,53 @@ async function readModel(path: ModelAsset, download: Download): Promise<ArrayBuf
   }
 }
 
-export function downloadModel(path: ModelAsset): Promise<ArrayBuffer> {
-  const existing = downloads.get(path);
+async function readChapter1Map(variant: 'lite' | 'full', download: Download): Promise<ArrayBuffer> {
+  const baseUrl =
+    (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+  if (variant === 'lite') {
+    const liteUrl = getChapter1MapLiteAssetUrl(baseUrl, document.baseURI);
+    return readStreamUrl(liteUrl, download);
+  }
+
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  function resetTimeout() {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => controller.abort(), 45_000);
+  }
+
+  resetTimeout();
+  try {
+    return await fetchChapter1MapArrayBuffer({
+      baseUrl,
+      baseUri: document.baseURI,
+      signal: controller.signal,
+      concurrency: 4,
+      onProgress: (loadedBytes, totalBytes) => {
+        resetTimeout();
+        download.received = loadedBytes;
+        if (totalBytes > 0) {
+          download.length = totalBytes;
+        }
+        publishProgress();
+      },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function startCachedDownload(
+  cacheKey: string,
+  loader: (download: Download) => Promise<ArrayBuffer>
+): Promise<ArrayBuffer> {
+  const existing = downloads.get(cacheKey);
   if (existing?.data) return Promise.resolve(existing.data);
   if (existing?.pending) return existing.pending;
 
   const download: Download = { received: 0, length: 0, failed: false };
-  downloads.set(path, download);
-  download.pending = readModel(path, download)
+  downloads.set(cacheKey, download);
+  download.pending = loader(download)
     .then((data) => {
       const header = new DataView(data);
       if (
@@ -253,26 +322,47 @@ export function downloadModel(path: ModelAsset): Promise<ArrayBuffer> {
   return download.pending;
 }
 
+export function downloadChapter1Map(variant: 'lite' | 'full'): Promise<ArrayBuffer> {
+  const cacheKey = getCacheKeyForChapter1Variant(variant);
+  return startCachedDownload(cacheKey, (download) => readChapter1Map(variant, download));
+}
+
+export function discardChapter1MapDownload(variant: 'lite' | 'full', data: ArrayBuffer): void {
+  const cacheKey = getCacheKeyForChapter1Variant(variant);
+  if (downloads.get(cacheKey)?.data !== data) return;
+  downloads.delete(cacheKey);
+  publishProgress();
+}
+
+export function downloadModel(path: ModelAsset): Promise<ArrayBuffer> {
+  if (path === CHAPTER1_MAP_MODEL_ASSET) {
+    return downloadChapter1Map(chapter1MapPreloadVariant === 'lite' ? 'lite' : 'full');
+  }
+  return startCachedDownload(path, (download) => readStreamUrl(getModelAssetUrl(path), download));
+}
+
 /**
  * Retries a single failed model file without discarding already-completed model files.
  */
 export function retryModelDownload(path: ModelAsset): Promise<ArrayBuffer> {
-  const existing = downloads.get(path);
+  const cacheKey = getCacheKeyForActiveModel(path);
+  const existing = downloads.get(cacheKey);
   if (existing?.data) return Promise.resolve(existing.data);
   if (existing?.pending) return existing.pending;
-  downloads.delete(path);
+  downloads.delete(cacheKey);
   publishProgress();
   return downloadModel(path);
 }
 
 export function discardModelDownload(path: ModelAsset, data: ArrayBuffer): void {
-  if (downloads.get(path)?.data !== data) return;
-  downloads.delete(path);
+  const cacheKey = getCacheKeyForActiveModel(path);
+  if (downloads.get(cacheKey)?.data !== data) return;
+  downloads.delete(cacheKey);
   publishProgress();
 }
 
 export function preloadGameModels(): void {
-  for (const model of models) {
+  for (const model of getActiveModels()) {
     // Only starts models that haven't completed yet; already-loaded files stay cached.
     void downloadModel(model).catch(() => {});
   }

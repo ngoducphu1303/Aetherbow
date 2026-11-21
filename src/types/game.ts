@@ -489,6 +489,12 @@ export type GraphicsQuality = 'low' | 'medium' | 'high';
 
 export type GpuCapabilityTier = 'software' | 'integrated' | 'discrete';
 
+export type Chapter1MapVariant = 'none' | 'lite' | 'full';
+
+export type Chapter1MapMode = 'auto' | 'lite_3d' | 'light' | 'high_3d';
+
+export type LowEndSafetyMode = 'auto' | 'on' | 'off';
+
 export interface GpuProfileSummary {
   tier: GpuCapabilityTier;
   tierLabel: string;
@@ -497,6 +503,12 @@ export interface GpuProfileSummary {
   bloomSupported: boolean;
   shadowMapSize: 0 | 1024 | 2048;
   targetCombatFps: 12 | 30 | 60;
+  lowPowerLegacyGpu?: boolean;
+  supportsHighDetailChapter1Map?: boolean;
+  safetyReason?: string;
+  crashGuardTripped?: boolean;
+  logicalCores?: number;
+  maxTextureSize?: number;
 }
 
 export type HudScaleMode = 'compact' | 'normal' | 'large';
@@ -548,6 +560,8 @@ export interface GameSettings {
   showFpsOverlay?: boolean;
   adaptiveResolutionGuard?: boolean;
   compactHud?: boolean;
+  chapter1MapMode?: Chapter1MapMode;
+  lowEndSafetyMode?: LowEndSafetyMode;
 }
 
 export interface GachaPullHistoryEntry {

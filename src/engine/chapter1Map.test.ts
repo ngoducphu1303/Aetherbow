@@ -5,10 +5,13 @@ import test from 'node:test';
 import * as THREE from 'three';
 import {
   CHAPTER1_MAP_FLOOR_OFFSET_Y,
+  CHAPTER1_MAP_LITE_PATH_SEGMENTS,
+  CHAPTER1_MAP_LITE_VERSION,
   CHAPTER1_MAP_PATH_SEGMENTS,
   CHAPTER1_MAP_VERSION,
   fetchChapter1MapArrayBuffer,
   getChapter1MapAssetUrl,
+  getChapter1MapLiteAssetUrl,
   prepareChapter1MapModel,
 } from './chapter1Map';
 
@@ -33,6 +36,48 @@ test('Chapter 1 uncompressed GLB map exists intact on disk and encodes URL segme
     '/assets/Ch%C6%B0%C6%A1ng%201/Map%20m%E1%BB%9Bi/Ch%C6%B0%C6%A1ng%201.glb'
   );
   assert.equal(url.searchParams.get('v'), CHAPTER1_MAP_VERSION);
+  assert.equal(stat.size, 94_747_964, 'Original 90.3 MB Chương 1.glb must remain uncompressed');
+});
+
+test('Chapter 1 Lite GLB exists intact on disk, stays lightweight (~30k tris, 1024px albedo, < 5 MB), and preserves canonical scale', () => {
+  const absPath = path.resolve(process.cwd(), 'public', ...CHAPTER1_MAP_LITE_PATH_SEGMENTS);
+  assert.ok(fs.existsSync(absPath), `Missing Chapter 1 Lite GLB at ${absPath}`);
+  const buf = fs.readFileSync(absPath);
+  assert.equal(buf.toString('ascii', 0, 4), 'glTF');
+  assert.equal(buf.readUInt32LE(4), 2);
+  assert.equal(buf.readUInt32LE(8), buf.byteLength);
+  assert.ok(
+    buf.byteLength < 5 * 1024 * 1024,
+    `Expected Lite GLB under 5 MB, got ${(buf.byteLength / (1024 * 1024)).toFixed(2)} MB`
+  );
+
+  const jsonLen = buf.readUInt32LE(12);
+  const gltf = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+  const prim = gltf.meshes[0].primitives[0];
+  const idxAcc = gltf.accessors[prim.indices];
+  const posAcc = gltf.accessors[prim.attributes.POSITION];
+  const triCount = idxAcc.count / 3;
+  assert.ok(
+    triCount >= 20_000 && triCount <= 40_000,
+    `Expected Lite triangle count around 30k, got ${triCount}`
+  );
+  assert.equal(gltf.images.length, 1, 'Lite GLB should embed only 1 BaseColor albedo image');
+  assert.equal(gltf.images[0].mimeType, 'image/jpeg');
+  assert.equal(
+    Boolean(gltf.extensionsUsed?.includes('KHR_materials_specular')),
+    false,
+    'Lite GLB should use lightweight MeshStandardMaterial without KHR_materials_specular'
+  );
+  // Canonical raw bounds should closely match original Chương 1.glb
+  assert.ok(posAcc.min[0] < -0.58 && posAcc.max[0] > 0.58);
+  assert.ok(posAcc.min[1] < -0.58 && posAcc.max[1] > 0.59);
+
+  const url = getChapter1MapLiteAssetUrl('/', 'http://127.0.0.1:3000/');
+  assert.equal(
+    url.pathname,
+    '/assets/Ch%C6%B0%C6%A1ng%201/Map%20m%E1%BB%9Bi/Ch%C6%B0%C6%A1ng%201%20Lite.glb'
+  );
+  assert.equal(url.searchParams.get('v'), CHAPTER1_MAP_LITE_VERSION);
 });
 
 test('prepareChapter1MapModel calibrates canonical Chương 1.glb bounds, floor elevation, and shadow flags', () => {

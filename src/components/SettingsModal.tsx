@@ -38,21 +38,28 @@ import { HERO_MAP } from '../data/heroesData';
 import { decodeSaveTransferCode, encodeSaveTransferCode } from '../data/phase5Data';
 import { SKILL_SYNERGIES, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import {
+  Chapter1MapMode,
   CombatCameraPreset,
   CombatKeybindAction,
   GameSettings,
   GpuProfileSummary,
   GraphicsQuality,
   HudScaleMode,
+  LowEndSafetyMode,
   SaveData,
   SaveTransferPreview,
 } from '../types/game';
+import {
+  isLowEndSafetyModeActive,
+  resolveChapter1MapVariant,
+} from '../engine/gpuSafetyGuard';
 
 interface SettingsModalProps {
   settings: GameSettings;
   muted: boolean;
   save?: SaveData;
   gpuProfile?: GpuProfileSummary;
+  onResetGpuCrashGuard?: () => void;
   onUpdateSettings: (patch: Partial<GameSettings>) => void;
   onToggleMute: () => void;
   onReplayTutorial?: () => void;
@@ -92,6 +99,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   muted,
   save,
   gpuProfile,
+  onResetGpuCrashGuard,
   onUpdateSettings,
   onToggleMute,
   onReplayTutorial,
@@ -112,6 +120,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   } | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmHeavyMapOverride, setConfirmHeavyMapOverride] = useState(false);
   const [gamepadLabel, setGamepadLabel] = useState<string | null>(null);
   const [capturingKeyAction, setCapturingKeyAction] = useState<CombatKeybindAction | null>(null);
   const [keybindNotice, setKeybindNotice] = useState<string | null>(null);
@@ -951,27 +960,201 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {gpuProfile && (
-            <div className="rounded-xl bg-[#070b18] border border-slate-800 px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
-              <div className="min-w-0">
-                <div className="font-bold text-slate-200 truncate">{gpuProfile.tierLabel}</div>
-                <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                  Đề xuất:{' '}
-                  <span className="text-amber-300 font-bold">
-                    {gpuProfile.recommendedQuality === 'high'
-                      ? 'Cao (AAA)'
-                      : gpuProfile.recommendedQuality === 'medium'
-                      ? 'Trung Bình'
-                      : 'Thấp'}
-                  </span>
+            <div className="rounded-xl bg-[#070b18] border border-slate-800 px-3 py-2.5 space-y-1.5 text-[11px]">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-bold text-slate-100 truncate">{gpuProfile.tierLabel}</div>
+                <span className="font-mono-nums text-[10px] font-bold text-slate-400 shrink-0 whitespace-nowrap">
+                  {gpuProfile.logicalCores ? `${gpuProfile.logicalCores} luồng` : gpuProfile.tier}
                   {' · '}
-                  {gpuProfile.bloomSupported ? 'Hỗ trợ Bloom HDR' : 'Tự tắt Bloom để giữ FPS'}
-                </div>
+                  {isLowEndSafetyModeActive(gpuProfile, settings.lowEndSafetyMode ?? 'auto')
+                    ? '30 FPS'
+                    : `${gpuProfile.targetCombatFps} FPS`}
+                </span>
               </div>
-              <span className="font-mono-nums text-[10px] font-bold text-slate-400 uppercase shrink-0">
-                {gpuProfile.tier}
-              </span>
+              <div className="text-[10px] text-slate-400 truncate">
+                {gpuProfile.rendererName}
+                {' · '}
+                Đề xuất:{' '}
+                <span className="text-amber-300 font-bold">
+                  {gpuProfile.recommendedQuality === 'high'
+                    ? 'Cao (AAA)'
+                    : gpuProfile.recommendedQuality === 'medium'
+                    ? 'Trung Bình'
+                    : 'Thấp'}
+                </span>
+              </div>
+              {gpuProfile.safetyReason && (
+                <div className="text-[10px] text-amber-200/90 leading-relaxed">
+                  {gpuProfile.safetyReason}
+                </div>
+              )}
+              {gpuProfile.crashGuardTripped && onResetGpuCrashGuard && (
+                <div className="pt-1 flex items-center justify-between gap-2 border-t border-slate-800/80">
+                  <span className="text-[10px] text-rose-300 font-semibold flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Chốt chống sập WebGL đang khóa bản đồ nặng</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      onResetGpuCrashGuard();
+                    }}
+                    className="text-[10px] font-bold text-sky-300 hover:text-sky-200 underline underline-offset-2 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    Đặt lại chốt
+                  </button>
+                </div>
+              )}
             </div>
           )}
+
+          {/* Chapter 1 3D Map Mode */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-bold text-slate-200">Bản Đồ 3D Chương 1</span>
+              <span className="text-[10px] text-slate-400 font-mono-nums">
+                {(() => {
+                  if (!gpuProfile) return 'Bản Đồ 3D Chương 1';
+                  const activeVariant = resolveChapter1MapVariant(
+                    gpuProfile,
+                    settings.chapter1MapMode ?? 'auto'
+                  );
+                  if (activeVariant === 'full') return 'Đang dùng Bản Gốc 90,3 MB';
+                  if (activeVariant === 'lite') return 'Đang dùng 3D Lite (~1,3 MB)';
+                  return 'Đang dùng Sân Đấu Nhẹ';
+                })()}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { id: 'auto', label: 'Tự động', hint: 'Máy yếu tự dùng Lite' },
+                  { id: 'lite_3d', label: '3D Lite', hint: '~1,3 MB · 30k mặt' },
+                  { id: 'light', label: 'Sân Nhẹ', hint: 'Nhẹ nhất · 0 MB' },
+                  { id: 'high_3d', label: 'Bản Gốc 90MB', hint: 'Chi tiết 4K đầy đủ' },
+                ] as Array<{ id: Chapter1MapMode; label: string; hint: string }>
+              ).map((opt) => {
+                const active = (settings.chapter1MapMode ?? 'auto') === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      if (
+                        opt.id === 'high_3d' &&
+                        gpuProfile &&
+                        (!gpuProfile.supportsHighDetailChapter1Map || gpuProfile.crashGuardTripped)
+                      ) {
+                        setConfirmHeavyMapOverride(true);
+                        return;
+                      }
+                      setConfirmHeavyMapOverride(false);
+                      onUpdateSettings({ chapter1MapMode: opt.id });
+                    }}
+                    className={`py-2 px-2.5 rounded-xl text-center border cursor-pointer transition-colors whitespace-nowrap ${
+                      active
+                        ? 'a2-yellow-btn'
+                        : 'bg-[#080d1e] border-amber-400/25 text-slate-200 hover:border-amber-300'
+                    }`}
+                  >
+                    <div className="text-xs font-black truncate">{opt.label}</div>
+                    <div
+                      className={`text-[10px] mt-0.5 truncate ${
+                        active ? 'text-slate-900 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      {opt.hint}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {confirmHeavyMapOverride && (
+              <div className="rounded-xl bg-rose-950/50 border border-rose-400/40 p-2.5 space-y-2 text-[11px]">
+                <div className="text-rose-100 font-semibold leading-relaxed">
+                  Máy hiện tại thuộc nhóm GPU tích hợp yếu/cũ. Nạp bản gốc 90,3 MB (3 texture 4K · 1,5 triệu mặt) có thể gây đơ, đen màn hình hoặc tắt nguồn do quá nhiệt. Khuyên dùng bản 3D Lite (~1,3 MB) — bạn vẫn muốn bật bản gốc?
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(0.95);
+                      setConfirmHeavyMapOverride(false);
+                      onUpdateSettings({ chapter1MapMode: 'lite_3d' });
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold cursor-pointer whitespace-nowrap"
+                  >
+                    Dùng 3D Lite
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.08);
+                      setConfirmHeavyMapOverride(false);
+                      onUpdateSettings({ chapter1MapMode: 'high_3d' });
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-bold cursor-pointer whitespace-nowrap"
+                  >
+                    Vẫn Bật 90MB
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Low-End Hardware Safety Mode (30 FPS Cap) */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-bold text-slate-200">Bảo Vệ Máy Yếu (Khóa 30 FPS)</span>
+              <span className="text-[10px] text-slate-400">
+                {gpuProfile &&
+                isLowEndSafetyModeActive(gpuProfile, settings.lowEndSafetyMode ?? 'auto')
+                  ? 'Đang bảo vệ · Tối đa 30 FPS'
+                  : 'Hiệu năng đầy đủ (60 FPS)'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: 'auto', label: 'Tự động', hint: 'Khuyên dùng' },
+                  { id: 'on', label: 'Luôn Bật', hint: 'Mát máy 30 FPS' },
+                  { id: 'off', label: 'Tắt', hint: 'Mở khóa 60 FPS' },
+                ] as Array<{ id: LowEndSafetyMode; label: string; hint: string }>
+              ).map((opt) => {
+                const active = (settings.lowEndSafetyMode ?? 'auto') === opt.id;
+                const lockedSoftware = opt.id === 'off' && gpuProfile?.tier === 'software';
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={lockedSoftware}
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      onUpdateSettings({ lowEndSafetyMode: opt.id });
+                    }}
+                    className={`py-2 px-2 rounded-xl text-center border transition-colors whitespace-nowrap ${
+                      lockedSoftware
+                        ? 'bg-[#080d1e] border-slate-800 text-slate-500 cursor-not-allowed'
+                        : active
+                        ? 'a2-yellow-btn cursor-pointer'
+                        : 'bg-[#080d1e] border-amber-400/25 text-slate-200 hover:border-amber-300 cursor-pointer'
+                    }`}
+                  >
+                    <div className="text-xs font-black truncate">{opt.label}</div>
+                    <div
+                      className={`text-[10px] mt-0.5 truncate ${
+                        active ? 'text-slate-900 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      {opt.hint}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="grid grid-cols-3 gap-2">
             {qualityOptions.map((opt) => {
