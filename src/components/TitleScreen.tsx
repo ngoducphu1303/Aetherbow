@@ -1609,7 +1609,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   </button>
                 ))}
               </div>
-              <p className="mt-1 px-1">Dạo phố · WASD, phím mũi tên hoặc kéo trên đường</p>
+              <p className="mt-1 px-1">Dạo phố · Kéo chuột phải để xoay, cuộn để thu phóng</p>
+              <p className="px-1">Di chuyển · WASD, phím mũi tên hoặc kéo chuột trái</p>
             </div>
             {/* Optional 3D-Projected Floating Royal Title (only if equipped) */}
             {equippedRoyalTitleDef && lobbyHeadPos?.visible && (

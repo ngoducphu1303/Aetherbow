@@ -11,13 +11,19 @@ export const DEFAULT_LOBBY_CITY_CAMERA: LobbyCityCameraId = 'follow';
 
 export function frameLobbyCityCamera(
   id: LobbyCityCameraId, hero: THREE.Vector3, aspect: number, zoom: number, mount: number,
-  eye: THREE.Vector3, focus: THREE.Vector3,
+  eye: THREE.Vector3, focus: THREE.Vector3, yaw = 0, tilt = 0,
 ): number {
   const view = LOBBY_CITY_CAMERA_OPTIONS.find((preset) => preset.id === id)!;
   const scale = 1 + zoom * 0.105;
   const portrait = Math.max(0, 1.15 - aspect);
-  eye.set(hero.x, hero.y + view.height * scale + mount + portrait * 1.7, hero.z + view.back * scale);
-  focus.set(hero.x, hero.y + 1.05 + mount, hero.z - view.ahead);
+  const height = view.height * scale + portrait * 1.7;
+  const back = view.back * scale;
+  const radius = Math.hypot(back, height - 1.05);
+  const pitch = THREE.MathUtils.clamp(Math.atan2(height - 1.05, back) + tilt, 0.06, 1.49);
+  const depth = radius * Math.cos(pitch);
+  const sin = Math.sin(yaw), cos = Math.cos(yaw);
+  eye.set(hero.x + depth * sin, hero.y + 1.05 + mount + radius * Math.sin(pitch), hero.z + depth * cos);
+  focus.set(hero.x - view.ahead * sin, hero.y + 1.05 + mount, hero.z - view.ahead * cos);
   return view.fov;
 }
 

@@ -819,6 +819,9 @@ export class GameEngine {
   private lobbyCityEye = new THREE.Vector3();
   private lobbyCityFocus = new THREE.Vector3();
   private lobbyCitySight = new THREE.Vector3();
+  private lobbyCityYaw = 0;
+  private lobbyCityTilt = 0;
+  private lobbyCityOrbitDrag: { id: number; x: number; y: number } | null = null;
   private lobbyCityReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   private lobbySanctuaryDustSeeds: Array<{
     x: number;
@@ -3377,6 +3380,8 @@ export class GameEngine {
   }
 
   public resetLobbyOrbit(): void {
+    this.lobbyCityYaw = 0;
+    this.lobbyCityTilt = 0;
     this.lobbyTargetYaw = 0;
     this.lobbyTargetPitch = 0;
     this.lobbyTargetZoom = 0;
@@ -6621,6 +6626,7 @@ export class GameEngine {
     this.container.dataset.lobbyCity = String(active);
     this.lobbyCityKeys = {};
     this.lobbyCityStride = 0;
+    this.lobbyCityOrbitDrag = null;
     this.lobbyDragActive = false;
     this.lobbyDragPointerId = null;
     if (this.pointerDown) this.onWindowBlur();
@@ -8397,6 +8403,7 @@ export class GameEngine {
   }
 
   private onContextMenu = (e: MouseEvent) => {
+    if (this.phase === GamePhase.TITLE && this.lobbyCityActive) e.preventDefault();
     if (this.phase === GamePhase.PLAYING) {
       e.preventDefault();
       this.triggerHeavyBreakStrike();
@@ -8610,6 +8617,7 @@ export class GameEngine {
   private onWindowBlur = () => {
     this.keys = {};
     this.lobbyCityKeys = {};
+    this.lobbyCityOrbitDrag = null;
     this.pointerDown = false;
     this.pointerId = null;
     this.joyVecX = 0;
@@ -8631,7 +8639,13 @@ export class GameEngine {
   };
 
   private onPointerDown = (e: PointerEvent) => {
-    if (e.button !== 0 && this.phase === GamePhase.TITLE && this.lobbyCityActive) return;
+    if (this.phase === GamePhase.TITLE && this.lobbyCityActive && e.button !== 0) {
+      if (e.button === 2 && e.pointerType === 'mouse') {
+        e.preventDefault();
+        this.lobbyCityOrbitDrag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      }
+      return;
+    }
     if (this.phase === GamePhase.TITLE && !this.lobbyCityActive) {
       soundEngine.unlock();
       this.lobbyDragActive = true;
@@ -8661,6 +8675,19 @@ export class GameEngine {
   };
 
   private onPointerMove = (e: PointerEvent) => {
+    const orbit = this.lobbyCityOrbitDrag;
+    if (orbit && e.pointerId === orbit.id) {
+      if (!(e.buttons & 2)) {
+        this.lobbyCityOrbitDrag = null;
+      } else {
+        const tau = Math.PI * 2;
+        this.lobbyCityYaw = (this.lobbyCityYaw - (e.clientX - orbit.x) * 0.008) % tau;
+        this.lobbyCityTilt = THREE.MathUtils.clamp(this.lobbyCityTilt + (e.clientY - orbit.y) * 0.006, -1.5, 1.5);
+        orbit.x = e.clientX;
+        orbit.y = e.clientY;
+        return;
+      }
+    }
     if (this.phase === GamePhase.TITLE && this.lobbyDragActive && e.pointerId === this.lobbyDragPointerId) {
       const dx = e.clientX - this.lobbyDragLastX;
       const dy = e.clientY - this.lobbyDragLastY;
@@ -8698,6 +8725,7 @@ export class GameEngine {
   };
 
   private onPointerUp = (e: PointerEvent) => {
+    if (this.lobbyCityOrbitDrag?.id === e.pointerId) this.lobbyCityOrbitDrag = null;
     if (this.lobbyDragActive && e.pointerId === this.lobbyDragPointerId) {
       const wasTap = this.phase === GamePhase.TITLE && this.lobbyDragMovedDist < 8;
       this.lobbyDragActive = false;
@@ -9339,7 +9367,7 @@ export class GameEngine {
       const origin = city?.pose;
       let walk = 0;
       if (city) {
-        const [dx, dz] = lobbyCityDirection(this.lobbyCityKeys, this.joyVecX, this.joyVecZ);
+        const [dx, dz] = lobbyCityDirection(this.lobbyCityKeys, this.joyVecX, this.joyVecZ, this.lobbyCityYaw);
         const { x, z } = city.pose;
         const distance = LOBBY_CITY_WALK_SPEED * dt;
         city.nav.move(city.pose, dx * distance, dz * distance);
@@ -9443,7 +9471,8 @@ export class GameEngine {
         const hero = this.hero.root.position;
         const { position } = this.camera;
         const { lobbyCityEye: eye, lobbyCityFocus: focus, lobbyCitySight: sight } = this;
-        const fov = frameLobbyCityCamera(this.lobbyCityCamera, hero, this.camera.aspect, this.lobbyOrbitZoom, mountExtraY, eye, focus);
+        const fov = frameLobbyCityCamera(this.lobbyCityCamera, hero, this.camera.aspect, this.lobbyOrbitZoom,
+          mountExtraY, eye, focus, this.lobbyCityYaw, this.lobbyCityTilt);
         sight.set(hero.x, hero.y + 1.3 + mountLookY, hero.z);
         const snap = enteringCity || this.lobbyCityReducedMotion?.matches;
         if (snap) position.copy(eye);
@@ -9451,7 +9480,7 @@ export class GameEngine {
         if (city.nav.clearCamera(sight, position)) {
           if (position.distanceToSquared(sight) < 9) {
             // A narrow alley can leave too little room behind the hero; rise to a near-vertical view.
-            position.set(hero.x, Math.max(hero.y + 6, eye.y), hero.z + 0.3);
+            position.set(hero.x + Math.sin(this.lobbyCityYaw) * 0.3, Math.max(hero.y + 6, eye.y), hero.z + Math.cos(this.lobbyCityYaw) * 0.3);
             city.nav.clearCamera(sight, position);
           }
           focus.copy(sight);

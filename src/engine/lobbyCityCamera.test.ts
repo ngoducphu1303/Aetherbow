@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from 'three';
 import { LOBBY_CITY_CAMERA_OPTIONS, frameLobbyCityCamera, createLobbyCameraClearance } from './lobbyCityCamera';
+import { lobbyCityDirection } from './lobbyCity';
 
 test('four street cameras give distinct compositions and keep the hero on screen', () => {
   const hero = new THREE.Vector3(14, 0, -25);
@@ -33,4 +34,22 @@ test('camera pulls forward of an intervening wall, then releases in the open', (
   eye.set(5, 4, 0);
   assert.equal(clear(focus, eye), false);
   assert.deepEqual(eye.toArray(), [5, 4, 0]);
+});
+
+test('orbit faces all four sides and movement follows the screen axes', () => {
+  const hero = new THREE.Vector3(3, 0, 7);
+  const eye = new THREE.Vector3(), focus = new THREE.Vector3();
+  const sides = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+  for (const [i, [x, z]] of sides.entries()) {
+    const yaw = i * Math.PI / 2;
+    frameLobbyCityCamera('street', hero, 1.6, 0, 0, eye, focus, yaw, 0);
+    assert.ok(Math.abs(eye.x - hero.x - x * 4.9) < 1e-9);
+    assert.ok(Math.abs(eye.z - hero.z - z * 4.9) < 1e-9);
+    const [forwardX, forwardZ] = lobbyCityDirection({ KeyW: true }, 0, 0, yaw);
+    assert.ok(Math.abs(forwardX + x) < 1e-9 && Math.abs(forwardZ + z) < 1e-9);
+  }
+  frameLobbyCityCamera('street', hero, 1.6, 0, 0, eye, focus, 0, 0);
+  const y = eye.y;
+  frameLobbyCityCamera('street', hero, 1.6, 0, 0, eye, focus, 0, 0.4);
+  assert.ok(eye.y > y + 1);
 });

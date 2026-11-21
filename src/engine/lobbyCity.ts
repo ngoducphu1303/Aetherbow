@@ -10,11 +10,12 @@ export const LOBBY_CITY_WALK_SPEED = 4.8;
 const radius = 0.32;
 const floorName = /^Plane(?:\.00[3567])?_Material\.009_0$/;
 
-export function lobbyCityDirection(keys: Readonly<Record<string, boolean>>, stickX: number, stickZ: number) {
+export function lobbyCityDirection(keys: Readonly<Record<string, boolean>>, stickX: number, stickZ: number, yaw = 0) {
   const x = Number(!!(keys.KeyD || keys.ArrowRight)) - Number(!!(keys.KeyA || keys.ArrowLeft)) + stickX;
   const z = Number(!!(keys.KeyS || keys.ArrowDown)) - Number(!!(keys.KeyW || keys.ArrowUp)) + stickZ;
   const length = Math.max(1, Math.hypot(x, z));
-  return [x / length, z / length] as const;
+  const sin = Math.sin(yaw), cos = Math.cos(yaw);
+  return [(x * cos + z * sin) / length, (z * cos - x * sin) / length] as const;
 }
 
 /** The source GLB has named street surfaces but no authored collision or navigation mesh. */
