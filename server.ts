@@ -1265,6 +1265,92 @@ async function startServer() {
     });
   });
 
+  // Stream the uncompressed 90.3 MB Chapter 1 GLB map in <= 6 MiB byte chunks so
+  // every HTTP/1.1 response stays safely under Cloud Run's 32 MiB response limit.
+  const CHAPTER1_MAP_DEFAULT_CHUNK_BYTES = 6 * 1024 * 1024;
+  const CHAPTER1_MAP_MAX_CHUNK_BYTES = 12 * 1024 * 1024;
+  const resolveChapter1MapFile = (): { filePath: string; stat: fs.Stats } | null => {
+    const candidates = [
+      path.resolve(__dirname, 'public', 'assets', 'Chương 1', 'Map mới', 'Chương 1.glb'),
+      path.resolve(__dirname, 'dist', 'assets', 'Chương 1', 'Map mới', 'Chương 1.glb'),
+    ];
+    for (const filePath of candidates) {
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.isFile() && stat.size > 0) {
+          return { filePath, stat };
+        }
+      } catch {
+        // Try next candidate
+      }
+    }
+    return null;
+  };
+
+  app.get('/api/assets/chapter1-map/meta', (_req, res) => {
+    const resolved = resolveChapter1MapFile();
+    if (!resolved) {
+      res.status(404).json({ error: 'CHAPTER1_MAP_NOT_FOUND' });
+      return;
+    }
+    const etag = `"${resolved.stat.size}-${Math.floor(resolved.stat.mtimeMs)}"`;
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('ETag', etag);
+    res.json({
+      size: resolved.stat.size,
+      chunkSize: CHAPTER1_MAP_DEFAULT_CHUNK_BYTES,
+      etag,
+    });
+  });
+
+  app.get('/api/assets/chapter1-map/chunk', (req, res) => {
+    const resolved = resolveChapter1MapFile();
+    if (!resolved) {
+      res.status(404).json({ error: 'CHAPTER1_MAP_NOT_FOUND' });
+      return;
+    }
+    const totalSize = resolved.stat.size;
+    const start = Number(req.query.start);
+    const end = Number(req.query.end);
+    if (
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < 0 ||
+      end < start ||
+      end >= totalSize
+    ) {
+      res.status(400).json({ error: 'INVALID_BYTE_RANGE', totalSize });
+      return;
+    }
+    const byteLength = end - start + 1;
+    if (byteLength > CHAPTER1_MAP_MAX_CHUNK_BYTES) {
+      res.status(400).json({
+        error: 'CHUNK_TOO_LARGE',
+        maxChunkBytes: CHAPTER1_MAP_MAX_CHUNK_BYTES,
+      });
+      return;
+    }
+    const etag = `"${totalSize}-${Math.floor(resolved.stat.mtimeMs)}-${start}-${end}"`;
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', String(byteLength));
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('ETag', etag);
+    res.setHeader('X-Chapter1-Total-Bytes', String(totalSize));
+
+    const stream = fs.createReadStream(resolved.filePath, { start, end });
+    stream.on('error', () => {
+      if (!res.headersSent) {
+        res.status(500).end();
+      } else {
+        res.destroy();
+      }
+    });
+    res.on('close', () => {
+      stream.destroy();
+    });
+    stream.pipe(res);
+  });
+
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');

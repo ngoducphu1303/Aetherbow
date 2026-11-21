@@ -266,7 +266,13 @@ import {
 import { createDragonMountMotion } from './dragonMountMotion';
 import { BLACK_DRAGON_ASSET, createBlackDragonRide } from './blackDragonRide';
 import { getChapter1MapAssetUrl, prepareChapter1MapModel } from './chapter1Map';
-import { discardModelDownload, downloadModel, getModelAssetUrl, type ModelAsset } from './modelAssets';
+import {
+  CHAPTER1_MAP_MODEL_ASSET,
+  discardModelDownload,
+  downloadModel,
+  getModelAssetUrl,
+  type ModelAsset,
+} from './modelAssets';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
 import {
@@ -698,6 +704,7 @@ export type AppearanceStatus = 'loading' | 'ready' | 'error';
 
 export interface EngineCallbacks {
   onAppearanceStatusChange?: (status: AppearanceStatus) => void;
+  onChapter1MapStatusChange?: (status: AppearanceStatus) => void;
   onHudUpdate: (hud: HudSnapshot) => void;
   onFloatingDamage: (dmg: FloatingDamage) => void;
   onJoystickUpdate: (joy: JoystickState) => void;
@@ -864,8 +871,9 @@ export class GameEngine {
   private arenaGroup = new THREE.Group();
   private proceduralArenaShell: THREE.Group | null = null;
   private chapter1MapModel: THREE.Group | null = null;
-  private chapter1MapRequest?: AbortController;
-  private chapter1MapFailed = false;
+  private chapter1MapLoading = false;
+  private chapter1MapFailCount = 0;
+  private chapter1MapStatus: AppearanceStatus = 'loading';
   private entitiesGroup = new THREE.Group();
   private projectilesGroup = new THREE.Group();
   private particlesGroup = new THREE.Group();
@@ -1726,6 +1734,9 @@ export class GameEngine {
     this.initPools();
     this.buildHero();
     this.buildArena(this.currentChapter, false);
+    // Preload and parse the full Chapter 1 3D GLB map while on SplashGate so
+    // entering Chapter 1 displays the 3D temple immediately on frame 1.
+    this.ensureChapter1MapLoaded();
     // Start in clean Lobby Sanctuary showcase with combat arena hidden and camera framed directly on hero
     this.arenaGroup.visible = false;
     if (this.lobbySanctuary) {
@@ -3091,8 +3102,10 @@ export class GameEngine {
     this.artemisFailedAsset = undefined;
     this.dragonMountFailed = false;
     this.blackDragonFailed = false;
+    this.chapter1MapFailCount = 0;
     if (this.wantsRiggedHeroModel()) this.useArtemisModel();
     this.useBlackDragonMount();
+    this.ensureChapter1MapLoaded();
     this.refreshAppearanceGate();
   }
 
@@ -3662,6 +3675,12 @@ export class GameEngine {
     }
   }
 
+  private setChapter1MapStatus(status: AppearanceStatus): void {
+    if (this.chapter1MapStatus === status) return;
+    this.chapter1MapStatus = status;
+    this.callbacks.onChapter1MapStatusChange?.(status);
+  }
+
   private applyChapter1MapState(): void {
     const wantsCustomMap = this.currentChapter.id === 1 && !!this.chapter1MapModel;
     if (wantsCustomMap && this.chapter1MapModel) {
@@ -3684,24 +3703,22 @@ export class GameEngine {
 
   private ensureChapter1MapLoaded(): void {
     if (this.chapter1MapModel) {
+      this.setChapter1MapStatus('ready');
       this.applyChapter1MapState();
       return;
     }
-    if (this.chapter1MapRequest || this.chapter1MapFailed) return;
-    const request = new AbortController();
-    this.chapter1MapRequest = request;
+    if (this.chapter1MapLoading || this.chapter1MapFailCount >= 3) return;
+    this.chapter1MapLoading = true;
+    this.setChapter1MapStatus('loading');
     const baseUrl =
       (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
-    const url = getChapter1MapAssetUrl(baseUrl, document.baseURI);
+    const assetUrl = getChapter1MapAssetUrl(baseUrl, document.baseURI);
     void (async () => {
+      let data: ArrayBuffer | undefined;
       try {
-        const response = await fetch(url, { signal: request.signal });
-        if (!response.ok || response.headers.get('content-type')?.includes('text/html')) {
-          throw new Error(`Không tải được Map Chương 1 (HTTP ${response.status}).`);
-        }
-        const data = await response.arrayBuffer();
+        data = await downloadModel(CHAPTER1_MAP_MODEL_ASSET);
         if (this.disposed) return;
-        const gltf = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
+        const gltf = await new GLTFLoader().parseAsync(data, new URL('.', assetUrl).href);
         if (this.disposed) {
           this.releaseObject(gltf.scene);
           return;
@@ -3709,16 +3726,20 @@ export class GameEngine {
         const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
         const prepared = prepareChapter1MapModel(gltf.scene, maxAniso);
         this.chapter1MapModel = prepared.group;
+        this.chapter1MapFailCount = 0;
         this.applyChapter1MapState();
+        this.setChapter1MapStatus('ready');
       } catch (error) {
-        if (!this.disposed && !(error instanceof DOMException && error.name === 'AbortError')) {
-          this.chapter1MapFailed = true;
+        if (data) {
+          discardModelDownload(CHAPTER1_MAP_MODEL_ASSET, data);
+        }
+        if (!this.disposed) {
+          this.chapter1MapFailCount += 1;
+          this.setChapter1MapStatus('error');
           console.warn('Không tải được Map Chương 1 GLB; giữ sân đấu mặc định.', error);
         }
       } finally {
-        if (this.chapter1MapRequest === request) {
-          this.chapter1MapRequest = undefined;
-        }
+        this.chapter1MapLoading = false;
       }
     })();
   }
@@ -19767,7 +19788,7 @@ export class GameEngine {
     this.disposed = true;
     this.lobbyCityRequest.abort();
     this.blackDragonRequest?.abort();
-    this.chapter1MapRequest?.abort();
+    this.chapter1MapLoading = false;
     delete this.container.dataset.lobbyCity;
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);

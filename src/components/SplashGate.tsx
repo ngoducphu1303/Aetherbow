@@ -32,6 +32,7 @@ interface SplashGateProps {
   save: SaveData;
   powerRating: number;
   appearanceStatus: AppearanceStatus;
+  chapter1MapStatus?: AppearanceStatus;
   authReady: boolean;
   currentUser: User | null;
   playerDisplayName: string;
@@ -67,6 +68,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   save,
   powerRating,
   appearanceStatus,
+  chapter1MapStatus = 'ready',
   authReady,
   currentUser,
   playerDisplayName,
@@ -86,8 +88,14 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   const [imgFailed, setImgFailed] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const progress = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadProgress);
-  const ready = progress.status === 'ready' && appearanceStatus === 'ready';
-  const failed = progress.status === 'error' || appearanceStatus === 'error';
+  const ready =
+    progress.status === 'ready' &&
+    appearanceStatus === 'ready' &&
+    chapter1MapStatus === 'ready';
+  const failed =
+    progress.status === 'error' ||
+    appearanceStatus === 'error' ||
+    chapter1MapStatus === 'error';
   const canProceedDirect = Boolean(currentUser) || guestModeSelected;
 
   useEffect(() => {
@@ -239,16 +247,18 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                 <div className="flex items-center justify-between gap-3 text-xs font-bold text-amber-100">
                   <span role={failed ? 'alert' : 'status'}>
                     {failed
-                      ? 'Một số tệp mô hình 3D tải lỗi'
+                      ? 'Một số tài nguyên 3D tải lỗi'
                       : progress.status === 'ready'
-                      ? 'Đang dựng ngoại hình đã trang bị…'
-                      : 'Đang tải mô hình 3D…'}
+                      ? chapter1MapStatus !== 'ready'
+                        ? 'Đang dựng Bản Đồ 3D Chương 1…'
+                        : 'Đang dựng ngoại hình đã trang bị…'
+                      : 'Đang tải toàn bộ mô hình & bản đồ 3D…'}
                   </span>
                   <span className="font-mono-nums">{progress.percent}%</span>
                 </div>
                 <div
                   role="progressbar"
-                  aria-label="Tiến độ tải mô hình 3D"
+                  aria-label="Tiến độ tải mô hình và bản đồ 3D"
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={progress.percent}
@@ -263,13 +273,20 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                 {/* Per-file model download list */}
                 <div className="divide-y divide-amber-200/10 pt-0.5">
                   {progress.files.map((file) => {
-                    const kbReceived = Math.round(file.received / 1024);
-                    const kbTotal = file.length > 0 ? Math.round(file.length / 1024) : 0;
+                    const formatBytes = (bytes: number): string => {
+                      if (bytes >= 1024 * 1024) {
+                        return `${(bytes / (1024 * 1024)).toLocaleString('vi-VN', {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        })} MB`;
+                      }
+                      return `${Math.round(bytes / 1024).toLocaleString('vi-VN')} KB`;
+                    };
                     const sizeText =
-                      kbTotal > 0
-                        ? `${kbReceived.toLocaleString('vi-VN')}/${kbTotal.toLocaleString('vi-VN')} KB`
-                        : kbReceived > 0
-                        ? `${kbReceived.toLocaleString('vi-VN')} KB`
+                      file.length > 0
+                        ? `${formatBytes(file.received)} / ${formatBytes(file.length)}`
+                        : file.received > 0
+                        ? formatBytes(file.received)
                         : '';
                     return (
                       <div
@@ -317,7 +334,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-slate-300 pt-0.5">
-                  <span>Tải đủ tài nguyên 3D trước khi vào sảnh</span>
+                  <span>Tải đầy đủ mô hình & bản đồ 3D trước khi vào game</span>
                   <span className="font-mono-nums">
                     {progress.completed}/{progress.total} tệp
                   </span>
@@ -340,7 +357,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                 className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-300"
               >
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Sân khấu 3D đã sẵn sàng chiến đấu</span>
+                <span>Toàn bộ mô hình & Bản Đồ 3D Chương 1 đã sẵn sàng</span>
               </div>
             )}
           </div>

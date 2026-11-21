@@ -1,17 +1,23 @@
+import { fetchChapter1MapArrayBuffer } from './chapter1Map';
+
+export const CHAPTER1_MAP_MODEL_ASSET = 'Chương 1/Map mới/Chương 1.glb' as const;
+
 const MODEL_VERSIONS = {
   'heroes/golden-dress-girl.glb': 2,
   'heroes/alice-ao-dai-hoa-mai.glb': 1,
   'heroes/van-tich.glb': 1,
   'heroes/hatsune-miku.glb': 1,
   'mounts/dragon.glb': 3,
+  [CHAPTER1_MAP_MODEL_ASSET]: 2,
 } as const;
 
 export const MODEL_LABELS: Record<keyof typeof MODEL_VERSIONS, string> = {
   'heroes/golden-dress-girl.glb': 'Mô hình Anh Hùng Alice 3D',
   'heroes/alice-ao-dai-hoa-mai.glb': 'Áo Dài Hoa Mai của Alice',
-  'mounts/dragon.glb': 'Thú Cưỡi Thanh Long 3D',
+  'mounts/dragon.glb': 'Thú Cưỡi Hắc Long 3D',
   'heroes/van-tich.glb': 'Vân Tịch 3D',
   'heroes/hatsune-miku.glb': 'Hatsune Miku 3D',
+  [CHAPTER1_MAP_MODEL_ASSET]: 'Bản Đồ 3D Chương 1 · Thánh Điện Nhật Luân',
 };
 
 export type ModelAsset = keyof typeof MODEL_VERSIONS;
@@ -105,7 +111,12 @@ let progress: ModelDownloadSnapshot = {
 export function getModelAssetUrl(path: ModelAsset): URL {
   const baseUrl =
     (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
-  return new URL(`${baseUrl}assets/${path}?v=${MODEL_VERSIONS[path]}`, document.baseURI);
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const encodedPath = path
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return new URL(`${normalizedBase}assets/${encodedPath}?v=${MODEL_VERSIONS[path]}`, document.baseURI);
 }
 
 export function subscribeToModelDownloads(listener: () => void) {
@@ -154,6 +165,25 @@ async function readModel(path: ModelAsset, download: Download): Promise<ArrayBuf
 
   resetTimeout();
   try {
+    if (path === CHAPTER1_MAP_MODEL_ASSET) {
+      const baseUrl =
+        (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+      return await fetchChapter1MapArrayBuffer({
+        baseUrl,
+        baseUri: document.baseURI,
+        signal: controller.signal,
+        concurrency: 4,
+        onProgress: (loadedBytes, totalBytes) => {
+          resetTimeout();
+          download.received = loadedBytes;
+          if (totalBytes > 0) {
+            download.length = totalBytes;
+          }
+          publishProgress();
+        },
+      });
+    }
+
     const response = await fetch(getModelAssetUrl(path), { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const encoding = response.headers.get('content-encoding');

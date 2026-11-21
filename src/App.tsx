@@ -779,8 +779,12 @@ export default function App() {
   const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
   const [appearanceStatus, setAppearanceStatus] = useState<AppearanceStatus>('loading');
+  const [chapter1MapStatus, setChapter1MapStatus] = useState<AppearanceStatus>('loading');
   const modelDownloadStatus = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadStatus);
-  const canEnterGame = modelDownloadStatus === 'ready' && appearanceStatus === 'ready';
+  const canEnterGame =
+    modelDownloadStatus === 'ready' &&
+    appearanceStatus === 'ready' &&
+    chapter1MapStatus === 'ready';
   const [phase, setPhase] = useState<GamePhase>(GamePhase.TITLE);
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
   const selectedChapterIdRef = useRef<number>(1);
@@ -1931,6 +1935,7 @@ export default function App() {
       mount,
       {
         onAppearanceStatusChange: setAppearanceStatus,
+        onChapter1MapStatusChange: setChapter1MapStatus,
         onHudUpdate: (snap) => {
           setHud(snap);
         },
@@ -11200,6 +11205,7 @@ export default function App() {
           save={save}
           powerRating={playerStats.powerRating}
           appearanceStatus={appearanceStatus}
+          chapter1MapStatus={chapter1MapStatus}
           authReady={authReady}
           currentUser={currentUser}
           playerDisplayName={playerDisplayName}
