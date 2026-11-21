@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   keybinds: { ...DEFAULT_COMBAT_KEYBINDS },
   showFpsOverlay: false,
   adaptiveResolutionGuard: true,
+  compactHud: false,
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
@@ -65,6 +66,7 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     showFpsOverlay: s?.showFpsOverlay ?? DEFAULT_SETTINGS.showFpsOverlay,
     adaptiveResolutionGuard:
       s?.adaptiveResolutionGuard ?? DEFAULT_SETTINGS.adaptiveResolutionGuard,
+    compactHud: s?.compactHud ?? DEFAULT_SETTINGS.compactHud,
   };
 }
 

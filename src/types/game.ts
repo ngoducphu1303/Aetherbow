@@ -558,6 +558,7 @@ export interface GameSettings {
   keybinds?: Partial<CombatKeybinds>;
   showFpsOverlay?: boolean;
   adaptiveResolutionGuard?: boolean;
+  compactHud?: boolean;
 }
 
 export interface GachaPullHistoryEntry {

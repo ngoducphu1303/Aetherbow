@@ -4,6 +4,7 @@ import {
   computeCameraSightline,
   computeTraumaShake,
   projectFloatingScreenPos,
+  resolveFloatingNumberPresentation,
   yawToRadarDegrees,
 } from './combatFeel';
 
@@ -39,7 +40,7 @@ test('computeTraumaShake scales quadratically and returns zero below threshold',
   assert.ok(Math.abs(full.rollZ) <= 0.025, 'Micro-roll stays cinematic and bounded');
 });
 
-test('projectFloatingScreenPos rejects behind-camera NDC and clamps with spread jitter', () => {
+test('projectFloatingScreenPos rejects behind-camera NDC and separates onto left/right flanks', () => {
   const behind = projectFloatingScreenPos(0, 0, 1.2, 1440, 900, 1);
   assert.equal(behind.visible, false);
 
@@ -49,9 +50,30 @@ test('projectFloatingScreenPos rejects behind-camera NDC and clamps with spread 
   const a = projectFloatingScreenPos(0, 0, 0.5, 1440, 900, 1);
   const b = projectFloatingScreenPos(0, 0, 0.5, 1440, 900, 2);
   assert.equal(a.visible, true);
-  assert.notEqual(a.x, b.x, 'Sequential hits should spread horizontally for readability');
+  assert.ok(a.x < 720 && b.x > 720, 'Odd/even hits should push left and right away from center');
 
   const edge = projectFloatingScreenPos(1.5, -1.5, 0.2, 1440, 900, 3);
   assert.equal(edge.visible, true);
   assert.ok(edge.x <= 1440 - 44 && edge.y <= 900 - 54);
+});
+
+test('resolveFloatingNumberPresentation compacts status tags and thins normal hits in dense fights', () => {
+  const sample = Array.from({ length: 12 }, (_, idx) => ({
+    id: idx + 1,
+    x: 720,
+    y: 360,
+    amount: 50 + idx,
+    isCrit: idx === 11,
+    isSuperCrit: idx === 10,
+    label: idx === 3 ? 'TAN CHẢY!' : undefined,
+    element: idx === 3 ? ('fire' as const) : undefined,
+  }));
+
+  const presented = resolveFloatingNumberPresentation(sample, 6, false);
+  assert.ok(presented.length <= 10, 'Dense combat caps visible simultaneous numbers');
+  assert.ok(presented.some((d) => d.isCrit) && presented.some((d) => d.isSuperCrit));
+  const meltEntry = presented.find((d) => d.label === 'TAN CHẢY!');
+  assert.equal(meltEntry?.compactLabel, 'Chảy');
+  assert.equal(presented[0]?.denseMode, true);
+  assert.notEqual(presented[0]?.x, 720, 'Dense numbers nudge further off target center');
 });

@@ -1130,7 +1130,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <button
               type="button"
               onClick={() => {
@@ -1168,6 +1168,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="text-xs font-black">Báo Đòn Tương Phản</div>
               <div className="text-[11px] mt-0.5 font-semibold">
                 {settings.highContrastTelegraphs ? 'Xanh Lam / Vàng' : 'Mặc định'}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onUpdateSettings({
+                  compactHud: !settings.compactHud,
+                });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.compactHud
+                  ? 'bg-amber-500/18 border-amber-400/70 text-amber-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-400'
+              }`}
+            >
+              <div className="text-xs font-black">Chế Độ HUD Gọn</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.compactHud ? 'Đang bật · Thoáng map' : 'Tiêu chuẩn'}
               </div>
             </button>
           </div>

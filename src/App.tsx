@@ -1811,7 +1811,7 @@ export default function App() {
       currentlyUnlocked.forEach((a) => unlockedToastIdsRef.current!.add(a.id));
       setActiveAchievementToast(newlyUnlocked);
       soundEngine.playAchievement();
-      const t = window.setTimeout(() => setActiveAchievementToast(null), 3400);
+      const t = window.setTimeout(() => setActiveAchievementToast(null), 2500);
       return () => window.clearTimeout(t);
     }
     return undefined;
@@ -11063,10 +11063,14 @@ export default function App() {
           damages={damages}
           joystick={joystick}
           hudScale={currentSettings.hudScale}
+          compactHud={Boolean(currentSettings.compactHud)}
           liveDpsMeter={Boolean(currentSettings.liveDpsMeter)}
           showFpsOverlay={Boolean(currentSettings.showFpsOverlay)}
           keybinds={currentSettings.keybinds}
           onToggleMute={handleToggleMute}
+          onToggleCompactHud={() =>
+            handleUpdateSettings({ compactHud: !currentSettings.compactHud })
+          }
           onPause={handlePause}
           onDashClick={() => engineRef.current?.triggerDash()}
           onHeavyBreakClick={() => engineRef.current?.triggerHeavyBreakStrike()}

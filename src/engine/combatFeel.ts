@@ -71,7 +71,8 @@ export function computeTraumaShake(trauma: number, elapsed: number): TraumaShake
 
 /**
  * Projects normalized device coordinates to clamped HUD pixels with a strict
- * camera frustum Z guard and deterministic horizontal spread to avoid overlapping numbers.
+ * camera frustum Z guard and alternating left/right flank separation so damage
+ * text clears the monster/boss silhouette directly ahead.
  */
 export function projectFloatingScreenPos(
   ndcX: number,
@@ -84,8 +85,10 @@ export function projectFloatingScreenPos(
   if (ndcZ < -1 || ndcZ > 1 || viewportW <= 0 || viewportH <= 0) {
     return { visible: false, x: 0, y: 0 };
   }
-  const jitterX = (((salt * 37) % 11) - 5) * 3.4;
-  const jitterY = (((salt * 19) % 5) - 2) * 2.5;
+  const side = salt % 2 === 0 ? 1 : -1;
+  const lane = (Math.abs(salt) * 7) % 4;
+  const jitterX = side * (22 + lane * 7);
+  const jitterY = (((salt * 19) % 5) - 2) * 3.2 - 6;
   const rawX = ((ndcX + 1) / 2) * viewportW + jitterX;
   const rawY = ((-ndcY + 1) / 2) * viewportH + jitterY;
   const padX = Math.min(44, viewportW * 0.08);
@@ -95,4 +98,81 @@ export function projectFloatingScreenPos(
     x: Math.max(padX, Math.min(viewportW - padX, rawX)),
     y: Math.max(padY, Math.min(viewportH - padY, rawY)),
   };
+}
+
+export interface PresentedFloatingDamage {
+  id: number;
+  x: number;
+  y: number;
+  amount: number;
+  isCrit: boolean;
+  isSuperCrit?: boolean;
+  isHeal?: boolean;
+  label?: string;
+  element?: 'fire' | 'ice' | 'storm' | 'poison' | 'playerHit';
+  compactLabel?: string;
+  denseMode: boolean;
+}
+
+const DENSE_STATUS_LABEL_MAP: Record<string, string> = {
+  'TAN CHẢY!': 'Chảy',
+  'ĐÓNG BĂNG!': 'Băng',
+  'QUÁ TẢI!': 'Sét',
+  'TRÚNG ĐỘC!': 'Độc',
+  'PHẢN ỨNG!': 'C.Hưởng',
+  'PHÁ GIÁP!': 'Phá Giáp',
+  'XUYÊN GIÁP!': 'Xuyên',
+  'NÉ HOÀN HẢO': 'Né!',
+};
+
+/**
+ * Scales down, shortens long status labels, pushes flanks outward, and trims
+ * low-priority normal ticks when many enemies or simultaneous numbers are active.
+ */
+export function resolveFloatingNumberPresentation(
+  damages: ReadonlyArray<{
+    id: number;
+    x: number;
+    y: number;
+    amount: number;
+    isCrit: boolean;
+    isSuperCrit?: boolean;
+    isHeal?: boolean;
+    label?: string;
+    element?: 'fire' | 'ice' | 'storm' | 'poison' | 'playerHit';
+  }>,
+  enemiesRemaining: number,
+  compactHud = false
+): PresentedFloatingDamage[] {
+  const denseMode = compactHud || enemiesRemaining >= 4 || damages.length >= 6;
+  const veryDense = compactHud || enemiesRemaining >= 7 || damages.length >= 10;
+
+  let filtered = damages;
+  if (veryDense) {
+    // Keep all crits, super-crits, heals, player hits, and every 2nd normal hit (capped at 10)
+    filtered = damages.filter(
+      (d, idx) =>
+        d.isSuperCrit ||
+        d.isCrit ||
+        d.isHeal ||
+        d.element === 'playerHit' ||
+        (Boolean(d.label) && !compactHud) ||
+        idx % 2 === 0
+    );
+  }
+  const capped = filtered.slice(veryDense ? -10 : -14);
+
+  return capped.map((d) => {
+    const side = d.id % 2 === 0 ? 1 : -1;
+    const extraPush = denseMode ? side * (12 + (d.id % 3) * 6) : 0;
+    const rawLabel = d.label?.trim();
+    const mappedLabel = rawLabel && denseMode ? DENSE_STATUS_LABEL_MAP[rawLabel] ?? rawLabel : rawLabel;
+    return {
+      ...d,
+      x: d.x + extraPush,
+      y: denseMode ? d.y - (d.id % 3) * 4 : d.y,
+      compactLabel: mappedLabel,
+      denseMode,
+    };
+  });
 }
