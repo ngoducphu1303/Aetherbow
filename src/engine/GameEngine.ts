@@ -3094,6 +3094,7 @@ export class GameEngine {
     const request = new AbortController();
     this.blackDragonRequest = request;
     const url = new URL(`${import.meta.env.BASE_URL}${BLACK_DRAGON_ASSET}`, document.baseURI);
+    url.searchParams.set('v', '2');
     void (async () => {
       try {
         const response = await fetch(url, { signal: request.signal });
@@ -3122,9 +3123,9 @@ export class GameEngine {
     })();
   }
 
-  private updateDragonRide(dt: number, speed: number): number {
+  private updateDragonRide(dt: number, speed: number, sprint = false): number {
     const black = this.blackDragon?.model.parent === this.hero.mountGroup ? this.blackDragon : undefined;
-    if (black) black.update(dt, speed);
+    if (black) black.update(dt, speed, sprint);
     else if (this.dragonMotion) this.dragonMotion.update(dt, this.elapsed, speed);
     const saddle = black?.saddle ?? this.dragonMotion?.saddle;
     if (!saddle) return 0.68;
@@ -9604,7 +9605,8 @@ export class GameEngine {
       }
       const emotePose = computeLobbyEmotePose(this.lobbyEmoteTimer, this.lobbyEmoteDuration);
       const onDragon = this.hasDragonRide();
-      const mountOffset = onDragon ? this.updateDragonRide(dt, walk) : this.hero.mountGroup ? 0.68 : 0;
+      const rideSpeed = this.blackDragon?.model.parent === this.hero.mountGroup ? walk * LOBBY_CITY_WALK_SPEED : walk;
+      const mountOffset = onDragon ? this.updateDragonRide(dt, rideSpeed) : this.hero.mountGroup ? 0.68 : 0;
       const poseFloatY =
         (this.lobbyHeroPose === 'astral_float'
           ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1
@@ -11618,7 +11620,7 @@ export class GameEngine {
 
     if (onDragon) {
       const travelSpeed = travelDist / dt;
-      this.hero.bodyGroup.position.y = this.updateDragonRide(dt, travelSpeed);
+      this.hero.bodyGroup.position.y = this.updateDragonRide(dt, travelSpeed, this.dashTimer > 0);
       this.hero.bodyGroup.rotation.x = travelSpeed > 0.3 ? 0.07 : 0;
     } else if (this.hero.mountGroup) {
       // AAA Wave 6: Mount banking tilt on turns + subtle shock-trail accent on fast sprint/dash

@@ -26,6 +26,18 @@ test('the published dragon uses its embedded idle and carries a grounded, center
   const bytes = readFileSync(asset);
   const gltf = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
   assert.ok(gltf.animations[0].duration > 5);
+  for (const name of ['Walk', 'Sprint', 'WingFlare']) {
+    const clip = gltf.animations.find((candidate) => candidate.name === name);
+    assert.ok(clip && clip.duration > 0.4 && clip.tracks.length >= 10, `missing authored ${name}`);
+    const tracks = new Set(clip.tracks.map((track) => track.name));
+    assert.ok(gltf.animations[0].tracks.every((track) => tracks.has(track.name)), `${name} must preserve unkeyed idle-pose joints`);
+    for (const track of clip.tracks) {
+      const n = track.getValueSize();
+      const end = track.values.length - n;
+      assert.ok(track.values.every(Number.isFinite));
+      assert.ok(track.values.slice(0, n).every((value, i) => Math.abs(value - track.values[end + i]) < 0.0001), `${name}: ${track.name}`);
+    }
+  }
   assert.ok(!gltf.scene.getObjectByName('Plane'));
   const ride = createBlackDragonRide(gltf.scene, gltf.animations);
   const first = ride.saddle.getWorldPosition(new Vector3());
@@ -38,6 +50,17 @@ test('the published dragon uses its embedded idle and carries a grounded, center
   for (let i = 0; i < 36; i++) ride.update(1 / 30, 0);
   assert.ok(head.getWorldPosition(new Vector3()).distanceTo(initialHead) > 0.005);
   assert.ok(ride.saddle.getWorldPosition(new Vector3()).distanceTo(first) > 0.001);
+  const foot = ride.model.getObjectByName('ik_underarm_L_end_0196')!;
+  const idleFoot = foot.getWorldPosition(new Vector3());
+  for (let i = 0; i < 16; i++) ride.update(1 / 60, 4.8);
+  assert.equal(ride.motion, 'Walk');
+  assert.ok(foot.getWorldPosition(new Vector3()).distanceTo(idleFoot) > 0.03);
+  ride.update(1 / 60, 9, true);
+  assert.equal(ride.motion, 'Sprint');
+  for (let i = 0; i < 510 && ride.motion !== 'WingFlare'; i++) ride.update(1 / 60, 0);
+  assert.equal(ride.motion, 'WingFlare');
+  ride.update(1 / 60, 4.8);
+  assert.equal(ride.motion, 'Walk');
   let skinned = 0;
   ride.model.traverse((node) => { if (node instanceof SkinnedMesh) skinned++; });
   assert.equal(skinned, 3);

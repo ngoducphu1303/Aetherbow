@@ -13,6 +13,15 @@ export function createBlackDragonRide(scene: Group, clips: AnimationClip[]) {
   model.add(scene);
   const mixer = new AnimationMixer(scene);
   const action = mixer.clipAction(idle).play();
+  const motions = ['Walk', 'Sprint', 'WingFlare'] as const;
+  const actions = Object.fromEntries(motions.flatMap((name) => {
+    const clip = clips.find((item) => item.name === name && item.duration > 0);
+    return clip ? [[name, mixer.clipAction(clip).setEffectiveWeight(0).play()] as const] : [];
+  }));
+  const entries = [['Scene', action], ...Object.entries(actions)] as const;
+  let current: 'Scene' | typeof motions[number] = 'Scene';
+  let idleTime = 0;
+  let flareTime = 0;
   mixer.update(0);
   model.updateMatrixWorld(true);
 
@@ -35,9 +44,25 @@ export function createBlackDragonRide(scene: Group, clips: AnimationClip[]) {
   return {
     model,
     saddle,
-    // The source has no walk cycle; use the same authored motion at a slightly faster rate while moving.
-    update(dt: number, speed: number) {
-      action.timeScale = MathUtils.damp(action.timeScale, speed > 0.06 ? 1.35 : 1, 8, dt);
+    get motion() { return current; },
+    update(dt: number, speed: number, sprint = false) {
+      idleTime = speed > 0.06 ? 0 : idleTime + dt;
+      flareTime = Math.max(0, flareTime - dt);
+      if (speed > 0.06) flareTime = 0;
+      const flare = actions.WingFlare;
+      if (idleTime >= 7 && flare && flareTime === 0) {
+        flareTime = flare.getClip().duration;
+        idleTime = 0;
+      }
+      const next = sprint && speed > 0.06 && actions.Sprint ? 'Sprint'
+        : speed > 0.06 && actions.Walk ? 'Walk'
+        : flareTime > 0 ? 'WingFlare' : 'Scene';
+      if (next !== current && next === 'WingFlare' && flare) flare.time = 0;
+      current = next;
+      if (actions.Walk) actions.Walk.timeScale = MathUtils.clamp(speed / 4.8, 0.7, 1.65);
+      for (const [name, clipAction] of entries) {
+        clipAction.setEffectiveWeight(MathUtils.damp(clipAction.getEffectiveWeight(), name === current ? 1 : 0, 14, dt));
+      }
       mixer.update(dt);
     },
     dispose() {
