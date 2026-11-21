@@ -14,6 +14,7 @@ import {
   WeaponArchetype,
 } from '../types/game';
 import { HERO_MAP } from './heroesData';
+import { ACCOUNT_RESET_EPOCH } from '../services/accountHydrationPolicy';
 import {
   DEFAULT_SETTINGS,
   MAX_DAILY_SWEEPS,
@@ -1456,6 +1457,7 @@ export function createInitialSaveData(): SaveData {
     sanctuaryFloorTheme: 'marble_gold',
     unlockedRoyal3DTitles: [],
     equippedRoyal3DTitleId: null,
+    accountResetEpoch: ACCOUNT_RESET_EPOCH,
   };
 }
 

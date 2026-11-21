@@ -1412,6 +1412,8 @@ export interface SaveData {
     count: number;
     lastDate: string;
   };
+  // Global account reset epoch counter
+  accountResetEpoch?: number;
 }
 
 export type AiAutoPilotTactic = 'aggressive' | 'balanced' | 'evasive';

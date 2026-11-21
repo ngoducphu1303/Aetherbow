@@ -33,9 +33,10 @@ import {
   OperationType,
 } from '../firebase';
 import { AvatarFrameId, HeroId, SaveData } from '../types/game';
+import { CURRENT_RESET_SAVE_VERSION } from './accountHydrationPolicy';
 
 export const PLAYER_DOMAIN_SUFFIX = '@artemis3d.player';
-export const SAVE_SCHEMA_VERSION = 2;
+export const SAVE_SCHEMA_VERSION = CURRENT_RESET_SAVE_VERSION;
 
 export type CloudSyncStatus = 'guest' | 'loading' | 'pending' | 'syncing' | 'synced' | 'error';
 
@@ -297,7 +298,7 @@ export async function fetchPlayerCloudDoc(uid: string): Promise<CloudPlayerRecor
       displayName: sanitizeDisplayName(String(data.displayName ?? ''), 'Chiến Binh'),
       username: String(data.username ?? ''),
       authProvider: data.authProvider === 'google' ? 'google' : 'password',
-      saveVersion: Number(data.saveVersion ?? SAVE_SCHEMA_VERSION),
+      saveVersion: Number(data.saveVersion ?? 0),
       powerRating: Number(data.powerRating ?? 0),
       highestChapterCleared: Number(data.highestChapterCleared ?? 0),
       saveData: data.saveData as SaveData,
@@ -854,7 +855,11 @@ export function subscribeSeasonStandings(
 }
 
 export {
+  ACCOUNT_RESET_EPOCH,
+  CURRENT_RESET_SAVE_VERSION,
   hasMeaningfulLocalProgress,
+  isCloudRecordBeforeResetEpoch,
+  isSaveBeforeResetEpoch,
   resolveAccountHydrationAction,
 } from './accountHydrationPolicy';
 export type {

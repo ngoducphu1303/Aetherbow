@@ -31,9 +31,11 @@ import type {
 } from './data/weeklyBossData';
 import { auth } from './firebase';
 import {
+  ACCOUNT_RESET_EPOCH,
   CloudSyncStatus,
   fetchPlayerCloudDoc,
   formatAccountHandle,
+  isSaveBeforeResetEpoch,
   logoutPlayer,
   mapAuthError,
   PlayerCloudSummary,
@@ -588,6 +590,29 @@ import {
 const STORAGE_KEY = 'artemis_3d_save_v1';
 const GUEST_STORAGE_KEY = 'artemis_3d_guest_save_v1';
 const STORAGE_OWNER_KEY = 'artemis_3d_save_owner_v1';
+const RESET_EPOCH_MARKER_KEY = 'artemis_3d_reset_epoch_v1';
+
+function ensureBrowserLocalSavesPurgedForResetEpoch(): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (localStorage.getItem(RESET_EPOCH_MARKER_KEY) === String(ACCOUNT_RESET_EPOCH)) {
+      return;
+    }
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('artemis_3d_save_')) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem(RESET_EPOCH_MARKER_KEY, String(ACCOUNT_RESET_EPOCH));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+ensureBrowserLocalSavesPurgedForResetEpoch();
 
 function getUserStorageKey(uid: string): string {
   return `artemis_3d_save_uid_${uid}`;
@@ -639,6 +664,9 @@ function parseStoredSave(raw: string | null): SaveData | null {
     ) {
       return null;
     }
+    if (isSaveBeforeResetEpoch(parsed)) {
+      return null;
+    }
     return touchFairActiveDays(migrateSaveData(parsed));
   } catch {
     return null;
@@ -646,6 +674,7 @@ function parseStoredSave(raw: string | null): SaveData | null {
 }
 
 function loadGuestSaveData(): SaveData {
+  ensureBrowserLocalSavesPurgedForResetEpoch();
   try {
     const dedicated = parseStoredSave(localStorage.getItem(GUEST_STORAGE_KEY));
     if (dedicated) return dedicated;
@@ -1520,7 +1549,12 @@ export default function App() {
         });
 
         if (action === 'fresh_initial') {
-          // Brand-new account: ALWAYS start from clean initial data (never copy a previous account's save)
+          // Brand-new account OR legacy pre-reset account: ALWAYS start from clean initial data
+          const resolvedResetName = sanitizeDisplayName(
+            options?.displayNameOverride || cloudRecord?.displayName || fallbackName,
+            'Chiến Binh'
+          );
+          setPlayerDisplayName(resolvedResetName);
           const freshSave = createFreshSaveData();
           skipNextAutoSyncRef.current = true;
           cloudHydratedUidRef.current = uid;
@@ -1538,12 +1572,17 @@ export default function App() {
           } catch {
             // ignore storage errors
           }
-          await performCloudSave(user, freshSave, fallbackName);
+          await performCloudSave(user, freshSave, resolvedResetName);
           return;
         }
 
         if (action === 'upload_guest') {
           // Active Guest explicitly chose "Tạo Tài Khoản & Giữ Tiến Trình"
+          const resolvedUploadName = sanitizeDisplayName(
+            options?.displayNameOverride || cloudRecord?.displayName || fallbackName,
+            'Chiến Binh'
+          );
+          setPlayerDisplayName(resolvedUploadName);
           cloudHydratedUidRef.current = uid;
           try {
             localStorage.setItem(getUserStorageKey(uid), JSON.stringify(localSave));
@@ -1551,7 +1590,7 @@ export default function App() {
           } catch {
             // ignore storage errors
           }
-          await performCloudSave(user, localSave, fallbackName);
+          await performCloudSave(user, localSave, resolvedUploadName);
           return;
         }
 
