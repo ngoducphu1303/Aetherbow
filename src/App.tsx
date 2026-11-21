@@ -15,6 +15,7 @@ import { SkillDraftModal } from './components/SkillDraftModal';
 import { SplashGate } from './components/SplashGate';
 import { StageTransitionCurtain } from './components/StageTransitionCurtain';
 import { LobbyGameMode, LobbyTab, TitleScreen } from './components/TitleScreen';
+import { DEFAULT_LOBBY_CITY_CAMERA, type LobbyCityCameraId } from './engine/lobbyCityCamera';
 import type { UpgradeCelebrationState } from './components/UpgradeCelebrationOverlay';
 import type { Wave12SanctumTab } from './components/Wave12SanctumModal';
 import type { Wave13Tab } from './components/Wave13TreasuryModal';
@@ -708,6 +709,7 @@ export default function App() {
   const [selectedElementalTower, setSelectedElementalTower] = useState<ElementalTowerId>('fire');
   const [previewHeroId, setPreviewHeroId] = useState<HeroId | null>(null);
   const [cameraPreset, setCameraPreset] = useState<LobbyCameraPreset>('overview');
+  const [cityCamera, setCityCamera] = useState<LobbyCityCameraId>(DEFAULT_LOBBY_CITY_CAMERA);
   const [wardrobeOpen, setWardrobeOpen] = useState<boolean>(false);
   const [dispatchOpen, setDispatchOpen] = useState<boolean>(false);
   const [festivalModalOpen, setFestivalModalOpen] = useState<boolean>(false);
@@ -10874,6 +10876,11 @@ export default function App() {
           onSelectSanctuaryFloor={handleSelectSanctuaryFloor}
           onResetLobbyOrbit={() => engineRef.current?.resetLobbyOrbit()}
           onAdjustLobbyZoom={(delta) => engineRef.current?.adjustLobbyZoom(delta)}
+          cityCamera={cityCamera}
+          onChangeCityCamera={(mode) => {
+            setCityCamera(mode);
+            engineRef.current?.setLobbyCityCamera(mode);
+          }}
           onReplayEntranceVfx={() => engineRef.current?.triggerRoyalEntranceVfx()}
           onTriggerLobbyEmote={() => engineRef.current?.triggerLobbyHeroEmote()}
           lobbyInspectMode={lobbyInspectMode}

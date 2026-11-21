@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { LOBBY_CITY_EXTENSION_FLOOR } from './lobbyCityStreets';
+import { createLobbyCameraClearance } from './lobbyCityCamera';
 
 export interface LobbyCityPose { x: number; y: number; z: number }
 export const LOBBY_CITY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']);
@@ -68,5 +69,5 @@ export function createLobbyCityNavigation(scene: THREE.Object3D) {
     }
   }
 
-  return { groundAt, move };
+  return { groundAt, move, clearCamera: createLobbyCameraClearance(obstacles.filter((box) => box.max.y > 1.5)) };
 }

@@ -185,6 +185,7 @@ import {
 import { createArtemisMotion } from './artemisMotion';
 import { createLobbyCityNavigation, LOBBY_CITY_ASSET, LOBBY_CITY_KEYS, LOBBY_CITY_SCALE, LOBBY_CITY_WALK_SPEED, lobbyCityDirection, type LobbyCityPose } from './lobbyCity';
 import { addLobbyCityStreets } from './lobbyCityStreets';
+import { DEFAULT_LOBBY_CITY_CAMERA, frameLobbyCityCamera, type LobbyCityCameraId } from './lobbyCityCamera';
 import {
   HEAVY_BREAK_COOLDOWN_SEC,
   type EnemyTacticalRole,
@@ -814,6 +815,11 @@ export class GameEngine {
   private lobbyCityKeys: Record<string, boolean> = {};
   private lobbyCityActive = false;
   private lobbyCityStride = 0;
+  private lobbyCityCamera: LobbyCityCameraId = DEFAULT_LOBBY_CITY_CAMERA;
+  private lobbyCityEye = new THREE.Vector3();
+  private lobbyCityFocus = new THREE.Vector3();
+  private lobbyCitySight = new THREE.Vector3();
+  private lobbyCityReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   private lobbySanctuaryDustSeeds: Array<{
     x: number;
     y: number;
@@ -6580,6 +6586,10 @@ export class GameEngine {
     this.lobbyViewMode = mode;
   }
 
+  public setLobbyCityCamera(mode: LobbyCityCameraId): void {
+    this.lobbyCityCamera = mode;
+  }
+
   private async loadLobbyCity(): Promise<void> {
     const url = new URL(`${import.meta.env.BASE_URL}${LOBBY_CITY_ASSET}`, document.baseURI);
     try {
@@ -9429,18 +9439,35 @@ export class GameEngine {
         lookY = THREE.MathUtils.lerp(lookY, 1.24 + (hasMount ? 0.42 : 0), inspectBlend);
       }
 
-      if (origin) {
-        targetCamX = origin.x;
-        targetCamY = origin.y + 7.9 + mountExtraY + this.lobbyOrbitZoom * 0.25;
-        targetCamZ = origin.z + Math.max(4, 5.4 + aspectExtraZ + this.lobbyOrbitZoom * 0.5);
-        lookX = origin.x;
-        lookY = origin.y + 0.85 + mountLookY;
-        if (enteringCity) this.camera.position.set(targetCamX, targetCamY, targetCamZ);
+      if (city) {
+        const hero = this.hero.root.position;
+        const { position } = this.camera;
+        const { lobbyCityEye: eye, lobbyCityFocus: focus, lobbyCitySight: sight } = this;
+        const fov = frameLobbyCityCamera(this.lobbyCityCamera, hero, this.camera.aspect, this.lobbyOrbitZoom, mountExtraY, eye, focus);
+        sight.set(hero.x, hero.y + 1.3 + mountLookY, hero.z);
+        const snap = enteringCity || this.lobbyCityReducedMotion?.matches;
+        if (snap) position.copy(eye);
+        else position.lerp(eye, 1 - Math.exp(-7 * dt));
+        if (city.nav.clearCamera(sight, position)) {
+          if (position.distanceToSquared(sight) < 9) {
+            // A narrow alley can leave too little room behind the hero; rise to a near-vertical view.
+            position.set(hero.x, Math.max(hero.y + 6, eye.y), hero.z + 0.3);
+            city.nav.clearCamera(sight, position);
+          }
+          focus.copy(sight);
+        }
+        const nextFov = snap ? fov : THREE.MathUtils.damp(this.camera.fov, fov, 8, dt);
+        if (Math.abs(this.camera.fov - nextFov) > 0.01) {
+          this.camera.fov = nextFov;
+          this.camera.updateProjectionMatrix();
+        }
+        this.camera.lookAt(focus);
+      } else {
+        this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 5.2, dt);
+        this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 5.2, dt);
+        this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 5.2, dt);
+        this.camera.lookAt(lookX, lookY, 4.5);
       }
-      this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 5.2, dt);
-      this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 5.2, dt);
-      this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 5.2, dt);
-      this.camera.lookAt(lookX, lookY, origin ? origin.z - 0.85 : 4.5);
       this.heroLight.position.set((origin?.x ?? 0) + 1.8, (origin?.y ?? 0) + 2.55, (origin?.z ?? 4.5) + 3.1);
 
       if (this.lobbyPhotoMode) {

@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
+import { LOBBY_CITY_CAMERA_OPTIONS, type LobbyCityCameraId } from '../engine/lobbyCityCamera';
 import {
   Bot,
   Camera,
@@ -405,6 +406,8 @@ interface TitleScreenProps {
   onSelectSanctuaryFloor?: (floorId: SanctuaryFloorId) => void;
   onResetLobbyOrbit?: () => void;
   onAdjustLobbyZoom?: (delta: number) => void;
+  cityCamera: LobbyCityCameraId;
+  onChangeCityCamera: (mode: LobbyCityCameraId) => void;
   onReplayEntranceVfx?: () => void;
   onTriggerLobbyEmote?: () => void;
   lobbyInspectMode?: boolean;
@@ -624,6 +627,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onManualCloudSave,
   onOpenLinkAccount,
   onAdjustLobbyZoom,
+  cityCamera,
+  onChangeCityCamera,
   onReplayEntranceVfx,
   onTriggerLobbyEmote,
   lobbyInspectMode = false,
@@ -1595,9 +1600,17 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       <main key={activeTab} className="flex-1 min-h-0 flex flex-col a2-tab-enter">
         {activeTab === 'battle' && (
           <div className="flex-1 flex flex-col justify-end px-3 sm:px-6 pb-2.5 min-h-0 relative overflow-hidden">
-            <p className="lobby-city-hint absolute left-3 top-3 rounded-lg bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-sky-100 sm:left-6">
-              Dạo phố · WASD, phím mũi tên hoặc kéo trên đường
-            </p>
+            <div className="lobby-city-hint absolute left-3 top-3 z-20 max-w-[calc(100%-1.5rem)] rounded-xl border border-sky-300/30 bg-slate-950/90 p-2 text-xs text-sky-100 sm:left-6">
+              <div role="group" aria-label="Góc nhìn dạo phố" className="pointer-events-auto flex flex-wrap gap-1">
+                {LOBBY_CITY_CAMERA_OPTIONS.map(({ id, label }) => (
+                  <button key={id} type="button" aria-pressed={cityCamera === id} onClick={() => onChangeCityCamera(id)}
+                    className={`min-h-9 rounded-md px-2.5 font-bold focus-visible:outline-2 focus-visible:outline-sky-300 ${cityCamera === id ? 'bg-sky-200 text-slate-950' : 'bg-slate-800 text-sky-100 hover:bg-slate-700'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 px-1">Dạo phố · WASD, phím mũi tên hoặc kéo trên đường</p>
+            </div>
             {/* Optional 3D-Projected Floating Royal Title (only if equipped) */}
             {equippedRoyalTitleDef && lobbyHeadPos?.visible && (
               <div
