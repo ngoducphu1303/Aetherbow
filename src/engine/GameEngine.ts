@@ -183,7 +183,8 @@ import {
   updateBossPaceTracker,
 } from './wave6CombatSystems';
 import { createArtemisMotion } from './artemisMotion';
-import { createLobbyCityNavigation, LOBBY_CITY_ASSET, LOBBY_CITY_KEYS, LOBBY_CITY_SCALE, lobbyCityDirection, type LobbyCityPose } from './lobbyCity';
+import { createLobbyCityNavigation, LOBBY_CITY_ASSET, LOBBY_CITY_KEYS, LOBBY_CITY_SCALE, LOBBY_CITY_WALK_SPEED, lobbyCityDirection, type LobbyCityPose } from './lobbyCity';
+import { addLobbyCityStreets } from './lobbyCityStreets';
 import {
   HEAVY_BREAK_COOLDOWN_SEC,
   type EnemyTacticalRole,
@@ -6589,6 +6590,7 @@ export class GameEngine {
       const { scene: group } = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
       if (this.disposed) { this.releaseObject(group); return; }
       group.scale.setScalar(LOBBY_CITY_SCALE);
+      addLobbyCityStreets(group);
       const nav = createLobbyCityNavigation(group);
       const x = -3 * LOBBY_CITY_SCALE;
       const z = 8 * LOBBY_CITY_SCALE;
@@ -9329,8 +9331,9 @@ export class GameEngine {
       if (city) {
         const [dx, dz] = lobbyCityDirection(this.lobbyCityKeys, this.joyVecX, this.joyVecZ);
         const { x, z } = city.pose;
-        city.nav.move(city.pose, dx * 7.2 * dt, dz * 7.2 * dt);
-        walk = Math.min(1, Math.hypot(city.pose.x - x, city.pose.z - z) / (7.2 * dt));
+        const distance = LOBBY_CITY_WALK_SPEED * dt;
+        city.nav.move(city.pose, dx * distance, dz * distance);
+        walk = Math.min(1, Math.hypot(city.pose.x - x, city.pose.z - z) / distance);
         if (walk > 0.01) {
           const yaw = Math.atan2(city.pose.x - x, city.pose.z - z);
           this.lobbyTargetYaw = this.lobbyYaw + Math.atan2(Math.sin(yaw - this.lobbyYaw), Math.cos(yaw - this.lobbyYaw));

@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import { LOBBY_CITY_EXTENSION_FLOOR } from './lobbyCityStreets';
 
 export interface LobbyCityPose { x: number; y: number; z: number }
 export const LOBBY_CITY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']);
 export const LOBBY_CITY_ASSET = 'assets/lobby-local/street-city.glb';
 export const LOBBY_CITY_SCALE = 2.4;
+export const LOBBY_CITY_WALK_SPEED = 4.8;
 const radius = 0.32;
 const floorName = /^Plane(?:\.00[3567])?_Material\.009_0$/;
 
@@ -22,13 +24,14 @@ export function createLobbyCityNavigation(scene: THREE.Object3D) {
   scene.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     const name = object.userData.name ?? object.name;
-    if (floorName.test(name)) {
+    if (floorName.test(name) || name === LOBBY_CITY_EXTENSION_FLOOR) {
       floors.push(object);
       return;
     }
-    if (!/^(Cube|Plane\.|node_0)/.test(name)) return;
+    if (!/^(Cube|Plane\.|Cylinder|node_0)/.test(name)) return;
     const box = new THREE.Box3().setFromObject(object);
-    if (box.min.y < 1.1 && box.max.y > 0.45) obstacles.push(box);
+    const wall = box.max.y - box.min.y > 1.2 && box.min.y < 3;
+    if (wall || (box.min.y < 1.1 && box.max.y > 0.34)) obstacles.push(box);
   });
   if (!floors.length) return null;
   const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 24);

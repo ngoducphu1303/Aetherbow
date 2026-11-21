@@ -4,6 +4,7 @@ import test from 'node:test';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createLobbyCityNavigation, LOBBY_CITY_ASSET, LOBBY_CITY_SCALE, lobbyCityDirection } from './lobbyCity';
+import { addLobbyCityStreets } from './lobbyCityStreets';
 
 function makeStreet() {
   const scene = new THREE.Group();
@@ -39,7 +40,7 @@ test('city direction supports arrows/WASD and clamps combined input', () => {
 });
 
 const assetPath = `public/${LOBBY_CITY_ASSET}`;
-test('local city GLB: paths connect the spawn and the northern and eastern streets', {
+test('city GLB: a continuous loop reaches the outer streets and the detached storefronts', {
   skip: !existsSync(assetPath) && 'Optional local city asset is not installed',
 }, async () => {
   const bytes = readFileSync(assetPath);
@@ -47,6 +48,7 @@ test('local city GLB: paths connect the spawn and the northern and eastern stree
     .register(() => ({ name: 'test-geometry-only', loadTexture: async () => new THREE.Texture() }))
     .parseAsync(Uint8Array.from(bytes).buffer, '');
   scene.scale.setScalar(LOBBY_CITY_SCALE);
+  addLobbyCityStreets(scene);
   const nav = createLobbyCityNavigation(scene);
   assert.ok(nav);
   const start = [-7, 19] as const;
@@ -69,4 +71,9 @@ test('local city GLB: paths connect the spawn and the northern and eastern stree
   assert.ok(queue.some(([x, z]) => x >= 14 && z <= -23), 'eastern street must be reachable');
   assert.ok(queue.some(([, z]) => z <= -30), 'northern street must be reachable');
   assert.ok(queue.some(([, z]) => z >= 24), 'southern end must be reachable');
+  for (const point of [[-43, 56], [-43, -65], [20, -65], [95, -20], [95, 17], [43, 17], [27, 63]]) {
+    assert.ok(reached.has(point.join(',')), `outer route must reach ${point}`);
+  }
+  assert.equal(nav.groundAt(109, 0), null, 'no walking beyond the finished edge');
+  assert.equal(nav.groundAt(62, -3), null, 'detached storefronts remain solid');
 });
