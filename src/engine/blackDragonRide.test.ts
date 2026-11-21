@@ -61,6 +61,25 @@ test('the published dragon uses its embedded idle and carries a grounded, center
   assert.equal(ride.motion, 'WingFlare');
   ride.update(1 / 60, 4.8);
   assert.equal(ride.motion, 'Walk');
+  for (const [name, speed, dash] of [['Walk', 4.8, false], ['Sprint', 9, true]] as const) {
+    const left = ride.model.getObjectByName('w_C_L_057')!;
+    const right = ride.model.getObjectByName('w_C_R_069')!;
+    const paw = ride.model.getObjectByName('Hand_L_0133')!;
+    const cycle = gltf.animations.find((clip) => clip.name === name)!.duration;
+    for (let i = 0; i < 45; i++) ride.update(1 / 60, speed, dash);
+    assert.equal(ride.motion, name);
+    const snapshot = () => ({ left: left.quaternion.clone(), right: right.quaternion.clone(), paw: paw.getWorldPosition(new Vector3()) });
+    const samples = [snapshot()];
+    let simultaneousFlapAndStride = false;
+    for (let i = 0; i <= Math.ceil(cycle * 60); i++) {
+      ride.update(1 / 60, speed, dash);
+      const pose = snapshot();
+      simultaneousFlapAndStride ||= samples.some((previous) => previous.left.angleTo(pose.left) > 0.50 &&
+        previous.right.angleTo(pose.right) > 0.50 && previous.paw.distanceTo(pose.paw) > 0.07);
+      samples.push(pose);
+    }
+    assert.ok(simultaneousFlapAndStride, `${name}: both wings must flap visibly while the paw is striding`);
+  }
   let skinned = 0;
   ride.model.traverse((node) => { if (node instanceof SkinnedMesh) skinned++; });
   assert.equal(skinned, 3);

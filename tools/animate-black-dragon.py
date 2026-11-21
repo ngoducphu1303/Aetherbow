@@ -55,7 +55,13 @@ worlds = {}
 
 def world(i):
     if i not in worlds:
-        m = Matrix.LocRotScale(Vector(base(i, 'translation', (0, 0, 0))), rotation(i), Vector(base(i, 'scale', (1, 1, 1))))
+        # glTF stores imported wrapper transforms in column-major matrices.
+        # Dropping them makes world-space paw offsets nearly disappear.
+        packed = nodes[i].get('matrix')
+        if packed is not None:
+            m = Matrix([packed[c:c + 4] for c in range(0, 16, 4)]).transposed()
+        else:
+            m = Matrix.LocRotScale(Vector(base(i, 'translation', (0, 0, 0))), rotation(i), Vector(base(i, 'scale', (1, 1, 1))))
         worlds[i] = world(parents[i]) @ m if i in parents else m
     return worlds[i]
 
@@ -131,9 +137,13 @@ def bake(name, duration, strong=0):
             turn('tail_1_04', yaw, .10 * math.sin(angle - .7))
             turn('tail_2_05', yaw, .13 * math.sin(angle - 1.3))
             turn('tail_3_06', yaw, .18 * math.sin(angle - 1.9))
+            # One full wingbeat per stride. Bias upward to clear the ground;
+            # the outer wing folds slightly behind the shoulder on the recovery.
+            beat = .5 - .5 * math.cos(angle + .35)
+            recovery = .5 - .5 * math.cos(angle - .55)
             for wing, tip, side in WINGS:
-                turn(wing, roll, side * (.075 + .13 * strong) * math.sin(2 * angle - .3))
-                turn(tip, roll, side * .10 * math.sin(2 * angle - 1))
+                turn(wing, roll, side * (.035 + (1.06 + .11 * strong) * beat))
+                turn(tip, roll, side * (-.10 - .28 * recovery))
     endpoints = accessor([(0,), (duration,)], 1)
     for key, value in rest.items():
         if key not in tracks:

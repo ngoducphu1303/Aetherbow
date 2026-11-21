@@ -3094,7 +3094,7 @@ export class GameEngine {
     const request = new AbortController();
     this.blackDragonRequest = request;
     const url = new URL(`${import.meta.env.BASE_URL}${BLACK_DRAGON_ASSET}`, document.baseURI);
-    url.searchParams.set('v', '2');
+    url.searchParams.set('v', '3');
     void (async () => {
       try {
         const response = await fetch(url, { signal: request.signal });
