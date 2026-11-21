@@ -204,6 +204,20 @@ import {
   toHudCoopSynergy,
 } from './coopSynergy';
 import {
+  BossAiRuntimeState,
+  BossHazardKind,
+  BossPendingVolley,
+  clearBossAiTransientCombat,
+  computeSafeBlinkDestination,
+  createBossAiRuntimeState,
+  getBossPerformanceBudget,
+  getBossRecoveryDuration,
+  planNextBossSkill,
+  scaleOrbCountForBudget,
+  stepBossMovement,
+  ZODIAC_BOSS_PROFILES,
+} from './zodiacBossAi';
+import {
   AdaptiveFpsGovernor,
   BOSS_FINISHER_DURATION_SEC,
   BOSS_PHASE_ATMOSPHERE,
@@ -599,6 +613,7 @@ interface EnemyEntity {
   solarLionVisualGroup?: THREE.Group;
   solarLionBurstType?: 'none' | 'lunge' | 'slam' | 'roar';
   solarLionBurstTimer?: number;
+  bossAiState?: BossAiRuntimeState;
   dead?: boolean;
 }
 
@@ -1073,6 +1088,39 @@ export class GameEngine {
   private lightningPool: LightningArc[] = [];
   private shockwavePool: ShockwaveRing[] = [];
   private dangerLanePool: DangerLane[] = [];
+  private bossHazardPool: Array<{
+    active: boolean;
+    kind: BossHazardKind;
+    x: number;
+    z: number;
+    radius: number;
+    life: number;
+    maxLife: number;
+    tickTimer: number;
+    damagePerTick: number;
+    ownerName: string;
+    group: THREE.Group;
+    disc: THREE.Mesh;
+    ring: THREE.Mesh;
+  }> = [];
+  private bossMultiSlamPool: Array<{
+    active: boolean;
+    x: number;
+    z: number;
+    radius: number;
+    delayTimer: number;
+    timer: number;
+    duration: number;
+    damage: number;
+    colorHex: number;
+    hazardKind?: BossHazardKind;
+    hazardDurationSec?: number;
+    ownerName: string;
+    group: THREE.Group;
+    fill: THREE.Mesh;
+    outerRing: THREE.Mesh;
+    countdownRing: THREE.Mesh;
+  }> = [];
   private ultColumnPool: Array<{
     active: boolean;
     life: number;
@@ -2423,6 +2471,141 @@ export class GameEngine {
       group.visible = false;
       this.particlesGroup.add(group);
       this.dangerLanePool.push({ active: false, mesh: group, fillMesh });
+    }
+
+    // Pooled Boss Ground Hazard Zones (fire / poison / frost / whirlpool — zero runtime allocation, Lite-GPU safe)
+    const hazardDiscGeo = new THREE.CircleGeometry(1, 28);
+    const hazardRingGeo = new THREE.RingGeometry(0.86, 1.0, 28);
+    for (let i = 0; i < 6; i++) {
+      const group = new THREE.Group();
+      const disc = new THREE.Mesh(
+        hazardDiscGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.32,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -3,
+          polygonOffsetUnits: -3,
+        })
+      );
+      disc.rotation.x = -Math.PI / 2;
+      disc.renderOrder = 6;
+
+      const ring = new THREE.Mesh(
+        hazardRingGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xfde047,
+          transparent: true,
+          opacity: 0.84,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+          polygonOffsetUnits: -4,
+        })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.015;
+      ring.renderOrder = 8;
+
+      group.add(disc, ring);
+      group.visible = false;
+      this.particlesGroup.add(group);
+      this.bossHazardPool.push({
+        active: false,
+        kind: 'fire',
+        x: 0,
+        z: 0,
+        radius: 2.4,
+        life: 0,
+        maxLife: 4,
+        tickTimer: 0,
+        damagePerTick: 18,
+        ownerName: 'Boss',
+        group,
+        disc,
+        ring,
+      });
+    }
+
+    // Pooled Boss Multi-Slam Delayed Telegraphs (meteor cascades / frost pillars / rune blooms)
+    const multiFillGeo = new THREE.CircleGeometry(1, 28);
+    const multiOuterGeo = new THREE.RingGeometry(0.9, 1.0, 28);
+    const multiCountGeo = new THREE.RingGeometry(0.84, 0.94, 28);
+    for (let i = 0; i < 4; i++) {
+      const group = new THREE.Group();
+      const fill = new THREE.Mesh(
+        multiFillGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.34,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -3,
+          polygonOffsetUnits: -3,
+        })
+      );
+      fill.rotation.x = -Math.PI / 2;
+      fill.renderOrder = 10;
+
+      const outerRing = new THREE.Mesh(
+        multiOuterGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xfef08a,
+          transparent: true,
+          opacity: 0.94,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+          polygonOffsetUnits: -4,
+        })
+      );
+      outerRing.rotation.x = -Math.PI / 2;
+      outerRing.position.y = 0.015;
+      outerRing.renderOrder = 12;
+
+      const countdownRing = new THREE.Mesh(
+        multiCountGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xf43f5e,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -5,
+          polygonOffsetUnits: -5,
+        })
+      );
+      countdownRing.rotation.x = -Math.PI / 2;
+      countdownRing.position.y = 0.025;
+      countdownRing.renderOrder = 13;
+
+      group.add(fill, outerRing, countdownRing);
+      group.visible = false;
+      this.particlesGroup.add(group);
+      this.bossMultiSlamPool.push({
+        active: false,
+        x: 0,
+        z: 0,
+        radius: 2.5,
+        delayTimer: 0,
+        timer: 0,
+        duration: 0.72,
+        damage: 40,
+        colorHex: 0xf97316,
+        ownerName: 'Boss',
+        group,
+        fill,
+        outerRing,
+        countdownRing,
+      });
     }
 
     // 3D Starfall Ambient Weather (InstancedMesh)
@@ -7857,6 +8040,14 @@ export class GameEngine {
       l.active = false;
       l.mesh.visible = false;
     });
+    this.bossHazardPool?.forEach((h) => {
+      h.active = false;
+      h.group.visible = false;
+    });
+    this.bossMultiSlamPool?.forEach((m) => {
+      m.active = false;
+      m.group.visible = false;
+    });
     this.orbitOrbMeshes.forEach((m) => (m.visible = false));
   }
 
@@ -9291,6 +9482,10 @@ export class GameEngine {
       hpBarHeight,
       tacticalRole,
       chargerCooldown: tacticalRole === 'charger' ? 2.1 : undefined,
+      bossAiState:
+        isBoss && !this.isTrainingMode && !this.isArenaMode
+          ? this.buildBossAiStateForKind(kind)
+          : undefined,
     });
 
     const spawnedEntity = this.enemies[this.enemies.length - 1];
@@ -11871,6 +12066,7 @@ export class GameEngine {
     this.updateOrbitOrbs(simDt);
     this.updateCompanions(simDt);
     this.updateEnemies(simDt);
+    this.updateBossGroundHazardsAndMultiSlams(simDt);
     this.updateDyingCorpses(simDt);
     this.updateProjectiles(simDt);
     this.updateMeteors(simDt);
@@ -14559,8 +14755,176 @@ export class GameEngine {
 
       const isEnraged = e.isBoss && e.bossPhase >= 2;
 
-      // Hide danger lanes each frame unless active enemy lane telegraph refreshes them
-      if (e.telegraphType !== 'none') {
+      // Ensure every non-rival, non-dummy boss across ALL modes gets dynamic Zodiac Boss AI
+      if (
+        e.isBoss &&
+        !e.isArenaRival &&
+        !e.isTrainingDummy &&
+        !e.isVaultPillar &&
+        !e.bossAiState
+      ) {
+        e.bossAiState = this.buildBossAiStateForKind(e.kind);
+      }
+
+      const bossAi = e.bossAiState;
+      if (bossAi) {
+        if (bossAi.blinkFlashTimer > 0) {
+          bossAi.blinkFlashTimer = Math.max(0, bossAi.blinkFlashTimer - dt);
+        }
+        // Process staggered follow-up projectile / shockwave waves (true rotating spirals, mobile bursts, tectonic rings)
+        if (bossAi.pendingVolleys.length > 0) {
+          const bossPartSlowPct = e.bossParts
+            ? Math.min(0.4, e.bossParts.reduce((s, bp) => s + (bp.broken ? bp.barrageSlowPct : 0), 0))
+            : 0;
+          const pveProjMult =
+            !this.isTrainingMode && !this.isArenaMode && !this.isWeeklyRankedBossMode
+              ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled).enemyProjectileSpeedMult
+              : 1.0;
+          const finalProjMult = pveProjMult * (1 - bossPartSlowPct);
+          for (let vi = bossAi.pendingVolleys.length - 1; vi >= 0; vi--) {
+            const volley = bossAi.pendingVolleys[vi];
+            volley.delaySec -= dt * slowMult;
+            if (volley.delaySec <= 0) {
+              bossAi.pendingVolleys.splice(vi, 1);
+              this.fireBossPendingVolley(e, volley, finalProjMult);
+            }
+          }
+        }
+      }
+
+      // Active Boss Movement Action (Parabolic Leap Slam / High-Speed Dash Charge / Guard Stance)
+      if (bossAi && bossAi.activeAction) {
+        const act = bossAi.activeAction;
+        act.elapsed += dt * slowMult;
+        const progress = Math.min(1, act.elapsed / Math.max(0.05, act.duration));
+
+        if (act.kind === 'leap') {
+          const prevX = e.x;
+          const prevZ = e.z;
+          e.x = act.startX + (act.targetX - act.startX) * progress;
+          e.z = act.startZ + (act.targetZ - act.startZ) * progress;
+          e.vx = (e.x - prevX) / Math.max(0.001, dt);
+          e.vz = (e.z - prevZ) / Math.max(0.001, dt);
+          bossAi.visualHeightY = 4 * act.peakHeight * progress * (1 - progress);
+          if (progress >= 1) {
+            bossAi.visualHeightY = 0;
+            bossAi.activeAction = null;
+            this.resolveBossLeapLanding(e, act);
+            this.scheduleNextBossCooldownOrCombo(e, isEnraged);
+          }
+        } else if (act.kind === 'dash') {
+          const dashSpd = act.speed * slowMult;
+          e.vx = act.dirX * dashSpd;
+          e.vz = act.dirZ * dashSpd;
+          e.x += e.vx * dt;
+          e.z += e.vz * dt;
+          bossAi.visualHeightY = 0;
+
+          const budget = getBossPerformanceBudget(this.lowEndGpu);
+          if (Math.random() < (this.lowEndGpu ? 0.35 : 0.7)) {
+            this.spawnParticles(e.x, 0.65, e.z, act.colorHex, Math.max(1, Math.round(3 * budget.particleScale)));
+          }
+          act.trailTimer -= dt;
+          if (act.hazardKind && budget.allowTrailHazards && act.trailTimer <= 0) {
+            act.trailTimer = this.lowEndGpu ? 0.24 : 0.16;
+            this.spawnBossHazardZone({
+              kind: act.hazardKind,
+              x: e.x,
+              z: e.z,
+              radius: 1.95,
+              durationSec: Math.min(3.8, act.hazardDurationSec ?? 3.4),
+              damagePerTick: Math.max(12, Math.round(e.damage * 0.42)),
+              ownerName: e.bossTitle || this.currentChapter.bossName,
+            });
+          }
+
+          // Contact hit during boss dash charge
+          if (!act.hitPlayerDuringDash && Math.hypot(this.px - e.x, this.pz - e.z) < e.radius + 0.75) {
+            act.hitPlayerDuringDash = true;
+            this.damagePlayer(
+              Math.round(e.damage * act.damageMult),
+              {
+                code: 'boss_lane',
+                label: `${bossAi.activeSkillLabel || 'Xung Kích'} của ${e.bossTitle ?? 'Boss'}`,
+                tip: 'Lướt ngang vuông góc đường xung kích để dụ Boss đập tường bị choáng!',
+                killerName: e.bossTitle,
+              },
+              e.x,
+              e.z
+            );
+          }
+
+          // Shatter destructible obstacles along charge path; hitting arena boundary staggers the boss!
+          for (const obs of this.obstacles) {
+            if (obs.intact === false) continue;
+            if (Math.hypot(e.x - obs.x, e.z - obs.z) < e.radius + obs.radius + 0.25) {
+              if (obs.destructible) {
+                this.shatterCrystalObstacle(obs);
+              } else {
+                bossAi.activeAction = null;
+                clearBossAiTransientCombat(bossAi);
+                e.stunTimer = 1.75;
+                e.vx = 0;
+                e.vz = 0;
+                this.openBossWeakPoint(e);
+                soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
+                this.spawnShockwave(e.x, e.z, 0xfbbf24, 3.2, 0.34);
+                this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'fire', 'CHOÁNG ĐẬP TRỤ!', true);
+                this.scheduleNextBossCooldownOrCombo(e, isEnraged);
+                break;
+              }
+            }
+          }
+
+          if (
+            bossAi.activeAction &&
+            (Math.abs(e.x) >= ARENA_HALF_W - e.radius - 0.12 ||
+              Math.abs(e.z) >= ARENA_HALF_D - e.radius - 0.12)
+          ) {
+            bossAi.activeAction = null;
+            clearBossAiTransientCombat(bossAi);
+            e.stunTimer = 1.75;
+            e.vx = 0;
+            e.vz = 0;
+            this.openBossWeakPoint(e);
+            soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
+            this.spawnShockwave(e.x, e.z, 0xfbbf24, 3.4, 0.36);
+            this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'fire', 'CHOÁNG ĐẬP TƯỜNG!', true);
+            this.scheduleNextBossCooldownOrCombo(e, isEnraged);
+          } else if (bossAi.activeAction && progress >= 1) {
+            bossAi.activeAction = null;
+            this.spawnShockwave(e.x, e.z, act.colorHex, 2.6, 0.26);
+            this.scheduleNextBossCooldownOrCombo(e, isEnraged);
+          }
+        } else if (act.kind === 'guard') {
+          bossAi.guardDamageReduction = 0.35;
+          const move = stepBossMovement(bossAi, {
+            dt,
+            elapsed: this.elapsed,
+            bossX: e.x,
+            bossZ: e.z,
+            playerX: this.px,
+            playerZ: this.pz,
+            baseSpeed: e.speed,
+            slowMult,
+            bossPhase: e.bossPhase,
+            arenaHalfW: ARENA_HALF_W,
+            arenaHalfD: ARENA_HALF_D,
+            isTelegraphing: true,
+            telegraphMoveMult: 0.28,
+          });
+          e.vx = move.vx;
+          e.vz = move.vz;
+          e.x += e.vx * dt;
+          e.z += e.vz * dt;
+          if (progress >= 1) {
+            bossAi.guardDamageReduction = 0;
+            bossAi.activeAction = null;
+            this.resolveBossGuardCounterBurst(e, act);
+            this.scheduleNextBossCooldownOrCombo(e, isEnraged);
+          }
+        }
+      } else if (e.telegraphType !== 'none') {
         e.telegraphTimer -= dt * slowMult;
         const progress = Math.min(
           1,
@@ -14618,6 +14982,34 @@ export class GameEngine {
           });
         }
 
+        // Bosses stay fluidly mobile during non-rooting telegraphs instead of freezing like statues
+        if (bossAi) {
+          const activeSkill =
+            bossAi.activeSkillId
+              ? ZODIAC_BOSS_PROFILES[bossAi.profileId]?.skills[bossAi.activeSkillId]
+              : undefined;
+          const teleMoveMult = activeSkill?.telegraphMoveMult ?? 0.24;
+          const move = stepBossMovement(bossAi, {
+            dt,
+            elapsed: this.elapsed,
+            bossX: e.x,
+            bossZ: e.z,
+            playerX: this.px,
+            playerZ: this.pz,
+            baseSpeed: e.speed,
+            slowMult,
+            bossPhase: e.bossPhase,
+            arenaHalfW: ARENA_HALF_W,
+            arenaHalfD: ARENA_HALF_D,
+            isTelegraphing: true,
+            telegraphMoveMult: teleMoveMult,
+          });
+          e.vx = move.vx;
+          e.vz = move.vz;
+          e.x += e.vx * dt;
+          e.z += e.vz * dt;
+        }
+
         if (e.telegraphTimer <= 0) {
           e.laserLine.visible = false;
           e.telegraphGroup.visible = false;
@@ -14627,32 +15019,25 @@ export class GameEngine {
               l.mesh.visible = false;
             });
           }
-          this.executeEnemyAttack(e, isEnraged);
-          e.telegraphType = 'none';
-          // Deliberate punish recovery windows per boss archetype; Arena AI Rival uses lethal adaptive cadence
-          if (e.isArenaRival) {
-            e.attackTimer = this.aiRivalNextCooldown;
+          if (bossAi) {
+            const startedActiveMotion = this.executeZodiacBossSkill(e, bossAi, isEnraged);
+            e.telegraphType = 'none';
+            if (!startedActiveMotion) {
+              this.scheduleNextBossCooldownOrCombo(e, isEnraged);
+            }
           } else {
-            const pveProfile =
-              !this.isTrainingMode && !this.isWeeklyRankedBossMode
-                ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled)
-                : null;
-            const pveCdMult = pveProfile ? pveProfile.enemyCooldownMult : 1.0;
-            e.attackTimer =
-              (e.isBoss
-                ? e.bossPhase === 3
-                  ? 1.0
-                  : isEnraged
-                  ? 1.15
-                  : e.kind === EnemyKind.WARDEN_BOSS
-                  ? 1.55
-                  : e.kind === EnemyKind.TITAN_BOSS
-                  ? 1.5
-                  : 1.45
-                : 1.85 + Math.random() * 0.8) * pveCdMult;
-            if (e.isBoss) {
-              e.punishWindowMax = e.attackTimer;
-              e.punishWindowTimer = e.attackTimer;
+            this.executeEnemyAttack(e, isEnraged);
+            e.telegraphType = 'none';
+            // Deliberate punish recovery windows per boss archetype; Arena AI Rival uses lethal adaptive cadence
+            if (e.isArenaRival) {
+              e.attackTimer = this.aiRivalNextCooldown;
+            } else {
+              const pveProfile =
+                !this.isTrainingMode && !this.isWeeklyRankedBossMode
+                  ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled)
+                  : null;
+              const pveCdMult = pveProfile ? pveProfile.enemyCooldownMult : 1.0;
+              e.attackTimer = (1.85 + Math.random() * 0.8) * pveCdMult;
             }
           }
         }
@@ -14882,63 +15267,146 @@ export class GameEngine {
               this.emitFloatingNumber(e.x, 2.5, e.z, 0, true, false, 'fire', 'AI TUYỆT KỸ!');
             }
           }
-        } else if (e.isBoss) {
-          e.vx = dirX * e.speed * (isEnraged ? 0.92 : 0.68) * slowMult;
-          e.vz = dirZ * e.speed * (isEnraged ? 0.92 : 0.68) * slowMult;
+        } else if (e.isBoss && bossAi) {
+          // Active Zodiac Boss Navigation (stalking, orbiting, kiting, flanking — never static!)
+          const move = stepBossMovement(bossAi, {
+            dt,
+            elapsed: this.elapsed,
+            bossX: e.x,
+            bossZ: e.z,
+            playerX: this.px,
+            playerZ: this.pz,
+            baseSpeed: e.speed,
+            slowMult,
+            bossPhase: e.bossPhase,
+            arenaHalfW: ARENA_HALF_W,
+            arenaHalfD: ARENA_HALF_D,
+            isTelegraphing: false,
+            telegraphMoveMult: 1.0,
+          });
+          e.vx = move.vx;
+          e.vz = move.vz;
+
           if (e.attackTimer <= 0) {
-            const baseYaw = Math.atan2(dirX, dirZ);
-            const step = e.patternCounter ?? 0;
-            e.patternCounter = step + 1;
+            const plan = planNextBossSkill(bossAi, {
+              bossX: e.x,
+              bossZ: e.z,
+              playerX: this.px,
+              playerZ: this.pz,
+              playerVx: this.pvx,
+              playerVz: this.pvz,
+              bossPhase: e.bossPhase,
+              arenaHalfW: ARENA_HALF_W,
+              arenaHalfD: ARENA_HALF_D,
+              lowEndGpu: this.lowEndGpu,
+            });
+            e.patternCounter = (e.patternCounter ?? 0) + 1;
+            e.punishWindowTimer = 0;
+            if (e.punishRingMesh) e.punishRingMesh.visible = false;
 
-            let chosenPattern: 'lane' | 'shot' | 'slam' | 'spiral';
-            if (e.kind === EnemyKind.WARDEN_BOSS) {
-              chosenPattern = step % 2 === 0 ? 'slam' : 'shot';
-            } else if (e.kind === EnemyKind.TITAN_BOSS) {
-              const cycle: Array<'lane' | 'shot' | 'slam'> = ['lane', 'shot', 'slam'];
-              chosenPattern = cycle[step % cycle.length];
-            } else if (e.kind === EnemyKind.ZODIAC_BOSS) {
-              const cycle: Array<'lane' | 'shot' | 'slam' | 'spiral'> = isEnraged
-                ? ['lane', 'slam', 'spiral']
-                : ['lane', 'slam', 'shot'];
-              chosenPattern = cycle[step % cycle.length];
-            } else {
-              const roll = Math.random();
-              chosenPattern =
-                roll < 0.34 ? 'lane' : roll < 0.62 ? 'shot' : roll < 0.86 ? 'slam' : 'spiral';
+            // Blink Strike teleports immediately to a safe flank before telegraphing its cross-lanes!
+            if (plan.skill.kind === 'blink_strike') {
+              const dest = computeSafeBlinkDestination({
+                bossX: e.x,
+                bossZ: e.z,
+                playerX: this.px,
+                playerZ: this.pz,
+                playerVx: this.pvx,
+                playerVz: this.pvz,
+                strafeDir: bossAi.strafeDir,
+                arenaHalfW: ARENA_HALF_W,
+                arenaHalfD: ARENA_HALF_D,
+              });
+              const bColor = plan.skill.colorHex ?? bossAi.accentHex;
+              const budget = getBossPerformanceBudget(this.lowEndGpu);
+              this.spawnParticles(e.x, 1.1, e.z, bColor, Math.max(4, Math.round(14 * budget.particleScale)));
+              this.spawnShockwave(e.x, e.z, bColor, 2.4, 0.24);
+              e.x = dest.x;
+              e.z = dest.z;
+              bossAi.blinkFlashTimer = 0.35;
+              this.spawnParticles(e.x, 1.1, e.z, bColor, Math.max(4, Math.round(16 * budget.particleScale)));
+              this.spawnShockwave(e.x, e.z, bColor, 2.8, 0.28);
+              soundEngine.playDash();
+              this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'ice', 'BIẾN ẢNH!');
+              // Re-aim lanes from new post-blink position toward hero
+              const bdx = this.px - e.x;
+              const bdz = this.pz - e.z;
+              const bd = Math.hypot(bdx, bdz) || 1;
+              plan.aimX = bdx / bd;
+              plan.aimZ = bdz / bd;
+              const bYaw = Math.atan2(plan.aimX, plan.aimZ);
+              if (plan.skill.laneLayout === 'twin_flank') {
+                plan.laneAngles = e.bossPhase >= 2 ? [bYaw - 0.24, bYaw, bYaw + 0.24] : [bYaw - 0.24, bYaw + 0.24];
+              }
             }
 
-            if (chosenPattern === 'lane') {
-              e.telegraphType = 'lane';
-              e.telegraphDuration = isEnraged ? 0.76 : 0.9;
-              e.telegraphTimer = e.telegraphDuration;
-              e.laneAngles = isEnraged
-                ? [baseYaw - 0.36, baseYaw, baseYaw + 0.36]
-                : [baseYaw - 0.24, baseYaw + 0.24];
+            if (plan.skill.kind === 'guard_counter') {
+              // Immediately enter Guard Stance with glowing aura -> counter burst at end of stance
+              const guardDur = Math.max(0.56, plan.telegraphDuration);
+              bossAi.guardDamageReduction = 0.35;
+              bossAi.activeAction = {
+                kind: 'guard',
+                elapsed: 0,
+                duration: guardDur,
+                startX: e.x,
+                startZ: e.z,
+                targetX: e.x,
+                targetZ: e.z,
+                dirX: plan.aimX,
+                dirZ: plan.aimZ,
+                speed: 0,
+                peakHeight: 0,
+                damageMult: plan.skill.damageMult,
+                colorHex: plan.skill.colorHex ?? bossAi.accentHex,
+                orbCount: scaleOrbCountForBudget(plan.skill.count ?? 12, e.bossPhase, this.lowEndGpu),
+                projectileSpeed: plan.skill.projectileSpeed ?? 10.4,
+                slamRadius: plan.slamRadius,
+                trailTimer: 0,
+              };
+              this.spawnShockwave(e.x, e.z, plan.skill.colorHex ?? bossAi.accentHex, 3.2, 0.34);
+              this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'ice', plan.skill.label.toUpperCase());
               soundEngine.playBossTelegraph();
-            } else if (chosenPattern === 'shot') {
-              e.telegraphType = 'shot';
-              e.telegraphDuration = isEnraged ? 0.58 : 0.72;
-              e.telegraphTimer = e.telegraphDuration;
-              e.aimX = dirX;
-              e.aimZ = dirZ;
-            } else if (chosenPattern === 'slam') {
-              e.telegraphType = 'slam';
-              e.telegraphDuration = isEnraged ? 0.76 : 0.94;
-              e.telegraphTimer = e.telegraphDuration;
-              e.slamX = this.px;
-              e.slamZ = this.pz;
-              e.slamRadius = e.kind === EnemyKind.ZODIAC_BOSS || isEnraged ? 3.6 : 3.0;
-              soundEngine.playBossTelegraph();
-            } else {
+            } else if (plan.skill.kind === 'meteor_cascade' && plan.multiSlamPoints.length > 0) {
+              // Spawn staggered pooled meteor/pillar/rune circles immediately
+              const mColor = plan.skill.colorHex ?? bossAi.accentHex;
+              plan.multiSlamPoints.forEach((pt) => {
+                this.spawnBossMultiSlam({
+                  x: pt.x,
+                  z: pt.z,
+                  radius: pt.radius,
+                  delaySec: pt.delaySec,
+                  duration: plan.telegraphDuration,
+                  damage: Math.round(e.damage * plan.skill.damageMult),
+                  colorHex: mColor,
+                  hazardKind: plan.skill.hazardKind,
+                  hazardDurationSec: plan.skill.hazardDurationSec,
+                  ownerName: e.bossTitle || this.currentChapter.bossName,
+                });
+              });
               e.telegraphType = 'spiral';
-              e.telegraphDuration = 0.64;
-              e.telegraphTimer = 0.64;
-              e.aimX = dirX;
-              e.aimZ = dirZ;
+              e.telegraphDuration = plan.telegraphDuration;
+              e.telegraphTimer = plan.telegraphDuration;
+              e.aimX = plan.aimX;
+              e.aimZ = plan.aimZ;
               soundEngine.playBossTelegraph();
+            } else {
+              e.telegraphType = plan.skill.telegraphChannel;
+              e.telegraphDuration = plan.telegraphDuration;
+              e.telegraphTimer = plan.telegraphDuration;
+              e.aimX = plan.aimX;
+              e.aimZ = plan.aimZ;
+              e.slamX = plan.slamX;
+              e.slamZ = plan.slamZ;
+              e.slamRadius = plan.slamRadius;
+              e.laneAngles = plan.laneAngles;
+              if (
+                plan.skill.telegraphChannel === 'lane' ||
+                plan.skill.telegraphChannel === 'slam' ||
+                plan.skill.telegraphChannel === 'spiral'
+              ) {
+                soundEngine.playBossTelegraph();
+              }
             }
-            e.vx = 0;
-            e.vz = 0;
           }
         }
 
@@ -15042,9 +15510,20 @@ export class GameEngine {
         );
       }
 
-      e.model.root.position.set(e.x, 0, e.z);
-      e.model.root.rotation.y = Math.atan2(dirX, dirZ);
+      const bossHeightY = e.bossAiState ? e.bossAiState.visualHeightY : 0;
+      e.model.root.position.set(e.x, bossHeightY, e.z);
+      const facingYaw =
+        e.bossAiState?.activeAction?.kind === 'dash'
+          ? Math.atan2(e.bossAiState.activeAction.dirX, e.bossAiState.activeAction.dirZ)
+          : Math.atan2(dirX, dirZ);
+      e.model.root.rotation.y = facingYaw;
       e.shadow.position.set(e.x, 0.02, e.z);
+      if (bossHeightY > 0.01) {
+        const airScale = Math.max(0.55, 1 - bossHeightY * 0.11);
+        e.shadow.scale.setScalar(airScale);
+      } else if (e.isBoss) {
+        e.shadow.scale.setScalar(1);
+      }
 
       const bScale = e.baseScale ?? 1;
       if (e.hitFlashTimer > 0) {
@@ -15151,11 +15630,723 @@ export class GameEngine {
         e.kind === EnemyKind.IMP_ARCHER
       ) {
         e.model.bodyGroup.position.y = Math.sin(this.elapsed * 4.2 + e.phaseAngle) * 0.14;
+      } else if (e.isBoss && e.bossAiState) {
+        // Dynamic procedural combat posture for all Chapter 2–12 & Sub-Boss models
+        const spd = Math.hypot(e.vx, e.vz);
+        const actKind = e.bossAiState.activeAction?.kind;
+        const targetPitch =
+          actKind === 'dash'
+            ? 0.24
+            : actKind === 'leap'
+            ? -0.18
+            : e.telegraphType === 'slam' || e.telegraphType === 'lane'
+            ? -0.12
+            : Math.min(0.12, spd * 0.022);
+        const lateral = e.vx * Math.cos(e.model.root.rotation.y) - e.vz * Math.sin(e.model.root.rotation.y);
+        const targetRoll = THREE.MathUtils.clamp(-lateral * 0.032, -0.16, 0.16);
+        e.model.bodyGroup.rotation.x = THREE.MathUtils.damp(e.model.bodyGroup.rotation.x, targetPitch, 9, dt);
+        e.model.bodyGroup.rotation.z = THREE.MathUtils.damp(e.model.bodyGroup.rotation.z, targetRoll, 9, dt);
+        e.model.bodyGroup.position.y =
+          actKind === 'leap'
+            ? 0
+            : spd > 0.35
+            ? Math.abs(Math.sin(this.elapsed * 9.5 + e.phaseAngle)) * 0.12
+            : Math.sin(this.elapsed * 3.2 + e.phaseAngle) * 0.05;
       } else {
         const moving = Math.hypot(e.vx, e.vz) > 0.2;
         e.model.bodyGroup.position.y = moving
           ? Math.abs(Math.sin(this.elapsed * 10 + e.phaseAngle)) * 0.08
           : 0;
+      }
+    }
+  }
+
+  private buildBossAiStateForKind(kind: EnemyKind): BossAiRuntimeState {
+    return createBossAiRuntimeState({
+      enemyKind: kind,
+      chapterId: this.currentChapter.id,
+      zodiacId: this.currentChapter.zodiacId,
+      weeklyBossId: this.isWeeklyRankedBossMode ? this.weeklyBossId : null,
+      weeklyChapterVisualIndex: this.isWeeklyRankedBossMode ? this.currentChapter.id - 1 : null,
+      isTowerMode: this.isTowerMode,
+      towerFloor: this.towerFloor,
+      isBossRushMode: this.isBossRushMode,
+      bossRushStage: this.bossRushRound,
+    });
+  }
+
+  private scheduleNextBossCooldownOrCombo(e: EnemyEntity, isEnraged: boolean): void {
+    const bossAi = e.bossAiState;
+    if (!bossAi) return;
+    if (bossAi.comboQueue.length > 0) {
+      const prevSkill = bossAi.activeSkillId
+        ? ZODIAC_BOSS_PROFILES[bossAi.profileId]?.skills[bossAi.activeSkillId]
+        : undefined;
+      e.attackTimer = Math.max(0.26, (prevSkill?.comboGapSec ?? 0.36) * (e.bossPhase === 3 ? 0.85 : 1.0));
+      e.punishWindowTimer = 0;
+      if (e.punishRingMesh) e.punishRingMesh.visible = false;
+      return;
+    }
+    const pveProfile =
+      !this.isTrainingMode && !this.isWeeklyRankedBossMode
+        ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled)
+        : null;
+    const pveCdMult = pveProfile ? pveProfile.enemyCooldownMult : 1.0;
+    const rec = getBossRecoveryDuration(bossAi, isEnraged ? e.bossPhase : 1, pveCdMult);
+    e.attackTimer = rec;
+    e.punishWindowMax = rec;
+    e.punishWindowTimer = rec;
+    bossAi.activeSkillLabel = '';
+    bossAi.activeActionHint = '';
+  }
+
+  private executeZodiacBossSkill(
+    e: EnemyEntity,
+    bossAi: BossAiRuntimeState,
+    isEnraged: boolean
+  ): boolean {
+    const profile = ZODIAC_BOSS_PROFILES[bossAi.profileId];
+    const skill =
+      (bossAi.activeSkillId ? profile.skills[bossAi.activeSkillId] : undefined) ??
+      Object.values(profile.skills)[0];
+    const colorHex = skill.colorHex ?? bossAi.accentHex;
+    const budget = getBossPerformanceBudget(this.lowEndGpu);
+    const bossPartSlowPct = e.bossParts
+      ? Math.min(0.4, e.bossParts.reduce((s, bp) => s + (bp.broken ? bp.barrageSlowPct : 0), 0))
+      : 0;
+    const pveSpdMult =
+      !this.isTrainingMode && !this.isArenaMode && !this.isWeeklyRankedBossMode
+        ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled).enemyProjectileSpeedMult
+        : 1.0;
+    const projMult = pveSpdMult * (1 - bossPartSlowPct);
+    const baseYaw = Math.atan2(e.aimX, e.aimZ);
+    const dmg = Math.max(12, Math.round(e.damage * skill.damageMult));
+
+    if (skill.kind === 'leap_slam') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'slam';
+        e.solarLionBurstTimer = 0.45;
+      }
+      bossAi.activeAction = {
+        kind: 'leap',
+        elapsed: 0,
+        duration: skill.leapDurationSec ?? 0.34,
+        startX: e.x,
+        startZ: e.z,
+        targetX: e.slamX,
+        targetZ: e.slamZ,
+        dirX: e.aimX,
+        dirZ: e.aimZ,
+        speed: 0,
+        peakHeight: skill.leapPeakHeight ?? 3.0,
+        damageMult: skill.damageMult,
+        colorHex,
+        orbCount: scaleOrbCountForBudget(skill.count ?? 10, e.bossPhase, this.lowEndGpu),
+        projectileSpeed: (skill.projectileSpeed ?? 9.8) * projMult,
+        slamRadius: e.slamRadius,
+        hazardKind: skill.hazardKind,
+        hazardDurationSec: skill.hazardDurationSec,
+        trailTimer: 0,
+      };
+      soundEngine.playDash();
+      this.spawnParticles(e.x, 0.4, e.z, colorHex, Math.max(4, Math.round(12 * budget.particleScale)));
+      return true;
+    }
+
+    if (skill.kind === 'dash_charge') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'lunge';
+        e.solarLionBurstTimer = 0.46;
+      }
+      const laneYaw = e.laneAngles[0] ?? baseYaw;
+      bossAi.activeAction = {
+        kind: 'dash',
+        elapsed: 0,
+        duration: skill.dashDurationSec ?? 0.54,
+        startX: e.x,
+        startZ: e.z,
+        targetX: e.x,
+        targetZ: e.z,
+        dirX: Math.sin(laneYaw),
+        dirZ: Math.cos(laneYaw),
+        speed: (skill.dashSpeed ?? 14.8) * (isEnraged ? 1.08 : 1.0),
+        peakHeight: 0,
+        damageMult: skill.damageMult,
+        colorHex,
+        orbCount: 0,
+        projectileSpeed: 0,
+        slamRadius: 0,
+        hazardKind: skill.hazardKind,
+        hazardDurationSec: skill.hazardDurationSec,
+        trailTimer: 0.06,
+      };
+      soundEngine.playDash();
+      this.spawnShockwave(e.x, e.z, colorHex, 2.4, 0.24);
+      return true;
+    }
+
+    if (skill.kind === 'lane_sweep' || skill.kind === 'blink_strike') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'roar';
+        e.solarLionBurstTimer = 0.36;
+      }
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
+      soundEngine.playMeteorImpact(computeSpatialPan(e.x, ARENA_HALF_W));
+      const baseSpd = (skill.projectileSpeed ?? 14.2) * projMult;
+      const bursts = this.lowEndGpu ? 2 : isEnraged ? 3 : 2;
+      e.laneAngles.forEach((ang) => {
+        for (let b = 0; b < bursts; b++) {
+          const speed = baseSpd + b * 2.1;
+          this.fireEnemyOrb(
+            e.x + Math.sin(ang) * 0.65,
+            e.z + Math.cos(ang) * 0.65,
+            Math.sin(ang) * speed,
+            Math.cos(ang) * speed,
+            dmg,
+            colorHex,
+            'boss_lane'
+          );
+        }
+        const ldx = Math.sin(ang);
+        const ldz = Math.cos(ang);
+        for (const obs of this.obstacles) {
+          if (!obs.destructible || obs.intact === false) continue;
+          const relX = obs.x - e.x;
+          const relZ = obs.z - e.z;
+          const along = relX * ldx + relZ * ldz;
+          if (along > 0.5 && along < 15.5 && Math.abs(relX * ldz - relZ * ldx) < 1.45) {
+            this.shatterCrystalObstacle(obs);
+          }
+        }
+      });
+      return false;
+    }
+
+    if (skill.kind === 'petal_spiral') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'roar';
+        e.solarLionBurstTimer = 0.42;
+      }
+      const orbCount = scaleOrbCountForBudget(skill.count ?? 8, e.bossPhase, this.lowEndGpu);
+      const speed = (skill.projectileSpeed ?? 9.8) * projMult;
+      const totalWaves = Math.max(1, (skill.waves ?? 3) - (this.lowEndGpu ? 1 : 0));
+      const interval = skill.waveIntervalSec ?? 0.24;
+      this.fireBossPendingVolley(
+        e,
+        {
+          delaySec: 0,
+          kind: 'spiral',
+          waveIndex: 0,
+          baseYaw,
+          count: orbCount,
+          projectileSpeed: speed,
+          damageMult: skill.damageMult,
+          colorHex,
+        },
+        1.0
+      );
+      for (let w = 1; w < totalWaves; w++) {
+        bossAi.pendingVolleys.push({
+          delaySec: w * interval,
+          kind: 'spiral',
+          waveIndex: w,
+          baseYaw,
+          count: orbCount,
+          projectileSpeed: speed,
+          damageMult: skill.damageMult,
+          colorHex,
+        });
+      }
+      if (skill.hazardKind) {
+        this.spawnBossHazardZone({
+          kind: skill.hazardKind,
+          x: this.px,
+          z: this.pz,
+          radius: 2.35,
+          durationSec: skill.hazardDurationSec ?? 4.0,
+          damagePerTick: Math.max(12, Math.round(e.damage * 0.4)),
+          ownerName: e.bossTitle || this.currentChapter.bossName,
+        });
+      }
+      return false;
+    }
+
+    if (skill.kind === 'strafe_barrage') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'roar';
+        e.solarLionBurstTimer = 0.34;
+      }
+      const count = Math.max(3, Math.round((skill.count ?? 5) * budget.orbCountScale));
+      const speed = (skill.projectileSpeed ?? 12.0) * projMult;
+      const totalWaves = Math.max(1, skill.waves ?? 2);
+      const interval = skill.waveIntervalSec ?? 0.24;
+      this.fireBossPendingVolley(
+        e,
+        {
+          delaySec: 0,
+          kind: 'strafe_shot',
+          waveIndex: 0,
+          baseYaw,
+          count,
+          projectileSpeed: speed,
+          damageMult: skill.damageMult,
+          colorHex,
+        },
+        1.0
+      );
+      for (let w = 1; w < totalWaves; w++) {
+        bossAi.pendingVolleys.push({
+          delaySec: w * interval,
+          kind: 'strafe_shot',
+          waveIndex: w,
+          baseYaw,
+          count,
+          projectileSpeed: speed,
+          damageMult: skill.damageMult,
+          colorHex,
+        });
+      }
+      return false;
+    }
+
+    if (skill.kind === 'tectonic_pulse') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'slam';
+        e.solarLionBurstTimer = 0.44;
+      }
+      const waves = Math.max(2, (skill.waves ?? 3) - (this.lowEndGpu ? 1 : 0));
+      const interval = skill.waveIntervalSec ?? 0.4;
+      const baseRadius = e.slamRadius;
+      const orbCount = scaleOrbCountForBudget(skill.count ?? 8, e.bossPhase, this.lowEndGpu);
+      const speed = (skill.projectileSpeed ?? 9.2) * projMult;
+      this.fireBossPendingVolley(
+        e,
+        {
+          delaySec: 0,
+          kind: 'tectonic_ring',
+          waveIndex: 0,
+          baseYaw,
+          count: orbCount,
+          projectileSpeed: speed,
+          damageMult: skill.damageMult,
+          colorHex,
+          radius: baseRadius,
+        },
+        1.0
+      );
+      for (let w = 1; w < waves; w++) {
+        bossAi.pendingVolleys.push({
+          delaySec: w * interval,
+          kind: 'tectonic_ring',
+          waveIndex: w,
+          baseYaw,
+          count: Math.max(6, orbCount - 2),
+          projectileSpeed: speed * 1.05,
+          damageMult: skill.damageMult * 0.92,
+          colorHex,
+          radius: baseRadius + w * 1.45,
+        });
+      }
+      return false;
+    }
+
+    if (skill.kind === 'hazard_ring') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'roar';
+        e.solarLionBurstTimer = 0.36;
+      }
+      const hazardCount = this.lowEndGpu ? 2 : isEnraged ? 3 : 2;
+      const hKind = skill.hazardKind ?? bossAi.hazardFlavor;
+      for (let h = 0; h < hazardCount; h++) {
+        const ang = baseYaw + (h - (hazardCount - 1) / 2) * 1.15;
+        const dist = h === 0 ? 0.5 : 3.2;
+        const hx = THREE.MathUtils.clamp(this.px + Math.sin(ang) * dist, -ARENA_HALF_W + 2.2, ARENA_HALF_W - 2.2);
+        const hz = THREE.MathUtils.clamp(this.pz + Math.cos(ang) * dist, -ARENA_HALF_D + 2.2, ARENA_HALF_D - 2.2);
+        this.spawnBossHazardZone({
+          kind: hKind,
+          x: hx,
+          z: hz,
+          radius: Math.min(3.0, (skill.radius ?? 2.75) * 0.92),
+          durationSec: skill.hazardDurationSec ?? 4.6,
+          damagePerTick: Math.max(12, Math.round(e.damage * 0.44)),
+          ownerName: e.bossTitle || this.currentChapter.bossName,
+        });
+      }
+      const orbCount = scaleOrbCountForBudget(skill.count ?? 8, e.bossPhase, this.lowEndGpu);
+      const speed = (skill.projectileSpeed ?? 10.2) * projMult;
+      for (let r = 0; r < orbCount; r++) {
+        const a = (r / orbCount) * Math.PI * 2 + baseYaw * 0.2;
+        this.fireEnemyOrb(e.x, e.z, Math.sin(a) * speed, Math.cos(a) * speed, dmg, colorHex, 'boss_projectile');
+      }
+      this.spawnShockwave(e.x, e.z, colorHex, 3.8, 0.36);
+      return false;
+    }
+
+    // Meteor cascade already launched pooled delayed circles on telegraph start; add light aimed orb pressure
+    if (skill.kind === 'meteor_cascade') {
+      const orbCount = this.lowEndGpu ? 3 : 5;
+      const speed = 10.8 * projMult;
+      for (let k = 0; k < orbCount; k++) {
+        const a = baseYaw + (k - (orbCount - 1) / 2) * 0.24;
+        this.fireEnemyOrb(e.x, e.z, Math.sin(a) * speed, Math.cos(a) * speed, Math.round(dmg * 0.8), colorHex, 'boss_projectile');
+      }
+      return false;
+    }
+
+    this.executeEnemyAttack(e, isEnraged);
+    return false;
+  }
+
+  private fireBossPendingVolley(
+    e: EnemyEntity,
+    volley: BossPendingVolley,
+    speedMult: number
+  ): void {
+    const dmg = Math.max(10, Math.round(e.damage * volley.damageMult));
+    const speed = volley.projectileSpeed * speedMult;
+    const budget = getBossPerformanceBudget(this.lowEndGpu);
+
+    if (volley.kind === 'spiral') {
+      const twist = volley.waveIndex * 0.28 * (e.bossAiState?.strafeDir ?? 1);
+      for (let r = 0; r < volley.count; r++) {
+        const a = (r / volley.count) * Math.PI * 2 + volley.baseYaw + twist;
+        this.fireEnemyOrb(e.x, e.z, Math.sin(a) * speed, Math.cos(a) * speed, dmg, volley.colorHex, 'boss_projectile');
+      }
+      if (volley.waveIndex === 0) {
+        this.spawnShockwave(e.x, e.z, volley.colorHex, 3.4, 0.3);
+      }
+      return;
+    }
+
+    if (volley.kind === 'strafe_shot') {
+      // Fresh aim toward hero on each burst while boss is moving laterally
+      const dx = this.px + this.pvx * 0.28 - e.x;
+      const dz = this.pz + this.pvz * 0.28 - e.z;
+      const yaw = Math.atan2(dx, dz);
+      const spread = 0.2;
+      for (let k = 0; k < volley.count; k++) {
+        const a = yaw + (k - (volley.count - 1) / 2) * spread;
+        this.fireEnemyOrb(e.x, e.z, Math.sin(a) * speed, Math.cos(a) * speed, dmg, volley.colorHex, 'boss_projectile');
+      }
+      return;
+    }
+
+    if (volley.kind === 'tectonic_ring') {
+      const rad = volley.radius ?? 3.4;
+      const pan = computeSpatialPan(e.x, ARENA_HALF_W);
+      soundEngine.playMeteorImpact(pan);
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.3);
+      this.spawnShockwave(e.x, e.z, volley.colorHex, rad + 0.5, 0.42);
+      this.spawnImpactDecal(e.x, e.z, volley.colorHex, rad * 0.9, 1.5);
+      this.spawnParticles(e.x, 0.45, e.z, volley.colorHex, Math.max(6, Math.round(16 * budget.particleScale)));
+      if (volley.waveIndex === 0) {
+        this.openBossWeakPoint(e);
+      }
+      const dist = Math.hypot(this.px - e.x, this.pz - e.z);
+      const innerSafe = volley.waveIndex === 0 ? 0 : Math.max(0, rad - 2.2);
+      if (dist <= rad + 0.3 && dist >= innerSafe) {
+        this.damagePlayer(
+          dmg,
+          {
+            code: 'boss_slam',
+            label: `${e.bossAiState?.activeSkillLabel || 'Địa Chấn'} của ${e.bossTitle ?? 'Boss'}`,
+            tip: 'Chạy lùi ra khỏi nhịp sóng địa chấn lan rộng rồi phản công sau nhịp cuối.',
+            killerName: e.bossTitle,
+          },
+          e.x,
+          e.z
+        );
+      }
+      for (let r = 0; r < volley.count; r++) {
+        const a = (r / volley.count) * Math.PI * 2 + volley.waveIndex * 0.24;
+        this.fireEnemyOrb(e.x, e.z, Math.sin(a) * speed, Math.cos(a) * speed, Math.round(dmg * 0.78), volley.colorHex, 'boss_projectile');
+      }
+    }
+  }
+
+  private resolveBossLeapLanding(
+    e: EnemyEntity,
+    act: NonNullable<BossAiRuntimeState['activeAction']>
+  ): void {
+    const budget = getBossPerformanceBudget(this.lowEndGpu);
+    const pan = computeSpatialPan(e.x, ARENA_HALF_W);
+    this.spawnShockwave(e.x, e.z, act.colorHex, act.slamRadius + 0.65, 0.44);
+    this.spawnImpactDecal(e.x, e.z, act.colorHex, act.slamRadius * 0.92, 1.8);
+    this.spawnBattleScar(e.x, e.z, Math.max(0.85, act.slamRadius * 0.4));
+    this.spawnParticles(e.x, 0.45, e.z, act.colorHex, Math.max(8, Math.round(22 * budget.particleScale)));
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.36);
+    soundEngine.playMeteorImpact(pan);
+    soundEngine.playImpactScorchThump(pan);
+    this.spawnImpactLight(e.x, 1.4, e.z, 'boss_slam');
+    this.triggerPostFxImpulse('boss_slam');
+    if (e.isBoss && !e.isTrainingDummy) {
+      this.openBossWeakPoint(e);
+    }
+    for (const obs of this.obstacles) {
+      if (!obs.destructible || obs.intact === false) continue;
+      if (Math.hypot(obs.x - e.x, obs.z - e.z) <= act.slamRadius + 1.2) {
+        this.shatterCrystalObstacle(obs);
+      }
+    }
+    const dmg = Math.max(14, Math.round(e.damage * act.damageMult));
+    if (Math.hypot(this.px - e.x, this.pz - e.z) <= act.slamRadius + 0.35) {
+      this.damagePlayer(
+        dmg,
+        {
+          code: 'boss_slam',
+          label: `${e.bossAiState?.activeSkillLabel || 'Nhảy Vồ'} của ${e.bossTitle ?? 'Boss'}`,
+          tip: 'Lướt (Space) ra khỏi vòng cảnh báo trước khi Boss tiếp đất rồi phản công vào điểm yếu!',
+          killerName: e.bossTitle,
+        },
+        e.x,
+        e.z
+      );
+    }
+    for (let r = 0; r < act.orbCount; r++) {
+      const a = (r / Math.max(1, act.orbCount)) * Math.PI * 2;
+      this.fireEnemyOrb(
+        e.x,
+        e.z,
+        Math.sin(a) * act.projectileSpeed,
+        Math.cos(a) * act.projectileSpeed,
+        Math.round(dmg * 0.78),
+        act.colorHex,
+        'boss_projectile'
+      );
+    }
+    if (act.hazardKind) {
+      this.spawnBossHazardZone({
+        kind: act.hazardKind,
+        x: e.x,
+        z: e.z,
+        radius: Math.min(2.9, act.slamRadius * 0.82),
+        durationSec: act.hazardDurationSec ?? 4.2,
+        damagePerTick: Math.max(12, Math.round(e.damage * 0.42)),
+        ownerName: e.bossTitle || this.currentChapter.bossName,
+      });
+    }
+  }
+
+  private resolveBossGuardCounterBurst(
+    e: EnemyEntity,
+    act: NonNullable<BossAiRuntimeState['activeAction']>
+  ): void {
+    const budget = getBossPerformanceBudget(this.lowEndGpu);
+    soundEngine.playMeteorImpact(computeSpatialPan(e.x, ARENA_HALF_W));
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.3);
+    this.spawnShockwave(e.x, e.z, act.colorHex, act.slamRadius + 1.0, 0.44);
+    this.spawnParticles(e.x, 1.0, e.z, act.colorHex, Math.max(8, Math.round(20 * budget.particleScale)));
+    const dmg = Math.max(14, Math.round(e.damage * act.damageMult));
+    if (Math.hypot(this.px - e.x, this.pz - e.z) <= act.slamRadius + 0.4) {
+      this.damagePlayer(
+        dmg,
+        {
+          code: 'boss_slam',
+          label: `${e.bossAiState?.activeSkillLabel || 'Phản Sóng'} của ${e.bossTitle ?? 'Boss'}`,
+          tip: 'Khi Boss tụ vỏ giáp phát sáng, hãy giữ cự ly và né vòng sóng phản lực.',
+          killerName: e.bossTitle,
+        },
+        e.x,
+        e.z
+      );
+    }
+    for (let r = 0; r < act.orbCount; r++) {
+      const a = (r / Math.max(1, act.orbCount)) * Math.PI * 2;
+      this.fireEnemyOrb(
+        e.x,
+        e.z,
+        Math.sin(a) * act.projectileSpeed,
+        Math.cos(a) * act.projectileSpeed,
+        Math.round(dmg * 0.8),
+        act.colorHex,
+        'boss_projectile'
+      );
+    }
+  }
+
+  private spawnBossHazardZone(params: {
+    kind: BossHazardKind;
+    x: number;
+    z: number;
+    radius: number;
+    durationSec: number;
+    damagePerTick: number;
+    ownerName: string;
+  }): void {
+    const budget = getBossPerformanceBudget(this.lowEndGpu);
+    const activeCount = this.bossHazardPool.reduce((c, h) => c + (h.active ? 1 : 0), 0);
+    let slot = this.bossHazardPool.find((h) => !h.active);
+    if (!slot || activeCount >= budget.maxActiveHazards) {
+      // Recycle oldest active hazard so we strictly obey Lite-mode cap
+      slot = this.bossHazardPool
+        .filter((h) => h.active)
+        .sort((a, b) => a.life - b.life)[0] ?? this.bossHazardPool[0];
+    }
+    if (!slot) return;
+
+    const palette: Record<BossHazardKind, { disc: number; ring: number }> = {
+      fire: { disc: 0xf97316, ring: 0xfde047 },
+      poison: { disc: 0x9333ea, ring: 0x4ade80 },
+      frost: { disc: 0x0ea5e9, ring: 0xbae6fd },
+      whirlpool: { disc: 0x0284c7, ring: 0x5eead4 },
+    };
+    const colors = palette[params.kind];
+    slot.active = true;
+    slot.kind = params.kind;
+    slot.x = THREE.MathUtils.clamp(params.x, -ARENA_HALF_W + 1.5, ARENA_HALF_W - 1.5);
+    slot.z = THREE.MathUtils.clamp(params.z, -ARENA_HALF_D + 1.5, ARENA_HALF_D - 1.5);
+    slot.radius = params.radius;
+    slot.life = params.durationSec;
+    slot.maxLife = params.durationSec;
+    slot.tickTimer = 0.25;
+    slot.damagePerTick = params.damagePerTick;
+    slot.ownerName = params.ownerName;
+
+    (slot.disc.material as THREE.MeshBasicMaterial).color.setHex(colors.disc);
+    (slot.ring.material as THREE.MeshBasicMaterial).color.setHex(colors.ring);
+    slot.group.position.set(slot.x, 0.045, slot.z);
+    slot.group.scale.setScalar(slot.radius);
+    slot.group.visible = true;
+  }
+
+  private spawnBossMultiSlam(params: {
+    x: number;
+    z: number;
+    radius: number;
+    delaySec: number;
+    duration: number;
+    damage: number;
+    colorHex: number;
+    hazardKind?: BossHazardKind;
+    hazardDurationSec?: number;
+    ownerName: string;
+  }): void {
+    const slot = this.bossMultiSlamPool.find((m) => !m.active);
+    if (!slot) return;
+    slot.active = true;
+    slot.x = params.x;
+    slot.z = params.z;
+    slot.radius = params.radius;
+    slot.delayTimer = Math.max(0, params.delaySec);
+    slot.timer = Math.max(0.45, params.duration);
+    slot.duration = slot.timer;
+    slot.damage = params.damage;
+    slot.colorHex = params.colorHex;
+    slot.hazardKind = params.hazardKind;
+    slot.hazardDurationSec = params.hazardDurationSec;
+    slot.ownerName = params.ownerName;
+    slot.group.position.set(slot.x, 0.085, slot.z);
+    slot.group.scale.setScalar(slot.radius);
+    slot.group.visible = slot.delayTimer <= 0;
+  }
+
+  private updateBossGroundHazardsAndMultiSlams(dt: number): void {
+    const budget = getBossPerformanceBudget(this.lowEndGpu);
+
+    // Tick persistent boss ground hazards (fire / poison / frost / whirlpool)
+    for (const h of this.bossHazardPool) {
+      if (!h.active) continue;
+      h.life -= dt;
+      if (h.life <= 0) {
+        h.active = false;
+        h.group.visible = false;
+        continue;
+      }
+      const fade = Math.min(1, h.life / 0.7);
+      const pulse = 0.92 + Math.sin(this.elapsed * 6.5 + h.x) * 0.06;
+      h.group.scale.setScalar(h.radius * pulse);
+      h.ring.rotation.z += dt * (h.kind === 'whirlpool' ? 2.4 : 0.9);
+      (h.disc.material as THREE.MeshBasicMaterial).opacity = 0.3 * fade;
+      (h.ring.material as THREE.MeshBasicMaterial).opacity = 0.82 * fade;
+
+      const dist = Math.hypot(this.px - h.x, this.pz - h.z);
+      if (dist <= h.radius + 0.25) {
+        if (h.kind === 'frost') {
+          this.playerFrostSlowTimer = Math.max(this.playerFrostSlowTimer, 0.65);
+        } else if (h.kind === 'whirlpool' && dist > 0.35) {
+          const pull = 2.1 * dt;
+          this.px = THREE.MathUtils.clamp(this.px + ((h.x - this.px) / dist) * pull, -ARENA_HALF_W + 0.6, ARENA_HALF_W - 0.6);
+          this.pz = THREE.MathUtils.clamp(this.pz + ((h.z - this.pz) / dist) * pull, -ARENA_HALF_D + 0.6, ARENA_HALF_D - 0.6);
+        }
+        h.tickTimer -= dt;
+        if (h.tickTimer <= 0) {
+          h.tickTimer = 0.65;
+          const labelMap: Record<BossHazardKind, string> = {
+            fire: 'Vùng Dung Nham Cháy',
+            poison: 'Vũng Độc Hoàng Đạo',
+            frost: 'Băng Phong Tỏa Trận',
+            whirlpool: 'Xoáy Nước Nguyệt Triều',
+          };
+          this.damagePlayer(
+            h.damagePerTick,
+            {
+              code: 'boss_slam',
+              label: `${labelMap[h.kind]} của ${h.ownerName}`,
+              tip: 'Di chuyển rời khỏi vùng địa hình nguy hiểm đang phát sáng trên mặt sân.',
+              killerName: h.ownerName,
+            },
+            h.x,
+            h.z
+          );
+        }
+      }
+    }
+
+    // Tick staggered multi-slam meteor / frost-pillar / rune circles
+    const tp = resolveTelegraphPalette(this.highContrastTelegraphs);
+    for (const m of this.bossMultiSlamPool) {
+      if (!m.active) continue;
+      if (m.delayTimer > 0) {
+        m.delayTimer -= dt;
+        if (m.delayTimer <= 0) {
+          m.group.visible = true;
+        }
+        continue;
+      }
+      m.timer -= dt;
+      const progress = Math.min(1, 1 - m.timer / Math.max(0.01, m.duration));
+      const isImminent = m.timer <= 0.12;
+      m.fill.scale.setScalar(0.15 + progress * 0.85);
+      (m.fill.material as THREE.MeshBasicMaterial).color.setHex(isImminent ? tp.ringHex : m.colorHex);
+      (m.fill.material as THREE.MeshBasicMaterial).opacity = isImminent ? 0.74 : 0.28 + progress * 0.34;
+      (m.outerRing.material as THREE.MeshBasicMaterial).color.setHex(isImminent ? tp.imminentHex : tp.ringHex);
+      const cd = computeCountdownRingScale(progress);
+      m.countdownRing.scale.setScalar(cd.scale);
+      (m.countdownRing.material as THREE.MeshBasicMaterial).color.setHex(cd.isImminent ? tp.imminentHex : tp.ringHex);
+
+      if (m.timer <= 0) {
+        m.active = false;
+        m.group.visible = false;
+        const pan = computeSpatialPan(m.x, ARENA_HALF_W);
+        soundEngine.playMeteorImpact(pan);
+        this.spawnShockwave(m.x, m.z, m.colorHex, m.radius + 0.5, 0.36);
+        this.spawnImpactDecal(m.x, m.z, m.colorHex, m.radius * 0.85, 1.4);
+        this.spawnParticles(m.x, 0.4, m.z, m.colorHex, Math.max(5, Math.round(14 * budget.particleScale)));
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
+        if (Math.hypot(this.px - m.x, this.pz - m.z) <= m.radius + 0.3) {
+          this.damagePlayer(
+            m.damage,
+            {
+              code: 'boss_slam',
+              label: `Mưa Chiêu Thức của ${m.ownerName}`,
+              tip: 'Bẻ ngoặt hướng chạy hoặc Lướt (Space) khỏi chuỗi vòng nổ nối tiếp!',
+              killerName: m.ownerName,
+            },
+            m.x,
+            m.z
+          );
+        }
+        if (m.hazardKind) {
+          this.spawnBossHazardZone({
+            kind: m.hazardKind,
+            x: m.x,
+            z: m.z,
+            radius: m.radius * 0.82,
+            durationSec: m.hazardDurationSec ?? 4.0,
+            damagePerTick: Math.max(11, Math.round(m.damage * 0.36)),
+            ownerName: m.ownerName,
+          });
+        }
       }
     }
   }
@@ -16016,6 +17207,10 @@ export class GameEngine {
       if (hasTotems) {
         mult *= 0.7;
       }
+      if (e.bossAiState && e.bossAiState.guardDamageReduction > 0) {
+        mult *= 1 - e.bossAiState.guardDamageReduction;
+        if (!resolvedLabel) resolvedLabel = 'VỎ GIÁP!';
+      }
     }
     if (e.isBoss && !e.isArenaRival && e.stunTimer && e.stunTimer > 0) {
       mult *= 1.45;
@@ -16193,6 +17388,9 @@ export class GameEngine {
         e.telegraphType = 'none';
         e.telegraphGroup.visible = false;
         e.laserLine.visible = false;
+        if (e.bossAiState) {
+          clearBossAiTransientCombat(e.bossAiState);
+        }
         this.dangerLanePool.forEach((l) => {
           l.active = false;
           l.mesh.visible = false;
@@ -16336,6 +17534,9 @@ export class GameEngine {
       e.telegraphType = 'none';
       e.laserLine.visible = false;
       e.telegraphGroup.visible = false;
+      if (e.bossAiState) {
+        clearBossAiTransientCombat(e.bossAiState);
+      }
       this.dangerLanePool.forEach((l) => {
         l.active = false;
         l.mesh.visible = false;
@@ -16397,6 +17598,9 @@ export class GameEngine {
       e.telegraphType = 'none';
       e.laserLine.visible = false;
       e.telegraphGroup.visible = false;
+      if (e.bossAiState) {
+        clearBossAiTransientCombat(e.bossAiState);
+      }
       this.dangerLanePool.forEach((l) => {
         l.active = false;
         l.mesh.visible = false;
@@ -16790,6 +17994,14 @@ export class GameEngine {
         this.dangerLanePool.forEach((l) => {
           l.active = false;
           l.mesh.visible = false;
+        });
+        this.bossHazardPool?.forEach((h) => {
+          h.active = false;
+          h.group.visible = false;
+        });
+        this.bossMultiSlamPool?.forEach((m) => {
+          m.active = false;
+          m.group.visible = false;
         });
       } else if (e.isElite) {
         soundEngine.playShockwave(killPan);
@@ -19433,17 +20645,23 @@ export class GameEngine {
       ? this.towerFloor % 3 === 0
       : stage.isBossStage;
 
+    const guardAction =
+      boss?.bossAiState?.activeAction?.kind === 'guard' ? boss.bossAiState.activeAction : null;
     const activeBossTelegraph =
       boss && boss.spawnTimer <= 0 && (!boss.stunTimer || boss.stunTimer <= 0)
         ? mapBossTelegraphToHud({
-            telegraphType: boss.telegraphType,
-            telegraphTimer: boss.telegraphTimer,
-            telegraphDuration: boss.telegraphDuration,
+            telegraphType: guardAction ? 'spiral' : boss.telegraphType,
+            telegraphTimer: guardAction
+              ? Math.max(0, guardAction.duration - guardAction.elapsed)
+              : boss.telegraphTimer,
+            telegraphDuration: guardAction ? guardAction.duration : boss.telegraphDuration,
             bossPhase: boss.bossPhase ?? 1,
+            skillLabel: boss.bossAiState?.activeSkillLabel,
+            actionHint: boss.bossAiState?.activeActionHint,
           })
         : null;
     if (boss && activeBossTelegraph) {
-      const telegraphKey = `${boss.id}:${boss.telegraphType}:${Math.round(boss.telegraphDuration * 10)}`;
+      const telegraphKey = `${boss.id}:${guardAction ? 'guard' : boss.telegraphType}:${boss.bossAiState?.activeSkillId ?? ''}:${Math.round((guardAction ? guardAction.duration : boss.telegraphDuration) * 10)}`;
       if (telegraphKey !== this.lastBossTelegraphKey) {
         this.lastBossTelegraphKey = telegraphKey;
         const pan = computeSpatialPan(boss.x, this.px);

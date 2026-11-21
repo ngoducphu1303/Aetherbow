@@ -111,18 +111,22 @@ export function mapBossTelegraphToHud(params: {
   telegraphTimer: number;
   telegraphDuration: number;
   bossPhase: 1 | 2 | 3;
+  skillLabel?: string;
+  actionHint?: string;
 }): HudSnapshot['activeBossTelegraph'] {
   if (params.telegraphType === 'none' || params.telegraphTimer <= 0.02) {
     return null;
   }
   const durationSec = Math.max(0.25, params.telegraphDuration);
   const remainingSec = Math.max(0, Math.min(durationSec, params.telegraphTimer));
+  const customLabel = params.skillLabel?.trim();
+  const customHint = params.actionHint?.trim();
 
   if (params.telegraphType === 'slam') {
     return {
       kind: 'slam',
-      label: 'Đập Trời Chấn Động',
-      actionHint: 'Né Ra Ngoài Vòng Đỏ!',
+      label: customLabel || 'Đập Trời Chấn Động',
+      actionHint: customHint || 'Né Ra Ngoài Vòng Đỏ!',
       remainingSec: Number(remainingSec.toFixed(2)),
       durationSec: Number(durationSec.toFixed(2)),
       dangerLevel: 'critical',
@@ -131,8 +135,8 @@ export function mapBossTelegraphToHud(params: {
   if (params.telegraphType === 'lunge' || params.telegraphType === 'lane') {
     return {
       kind: 'charge',
-      label: params.telegraphType === 'lane' ? 'Xung Kích Tuyến Thẳng' : 'Lao Tới Hủy Diệt',
-      actionHint: 'Lướt Ngang Né Hoàn Hảo!',
+      label: customLabel || (params.telegraphType === 'lane' ? 'Xung Kích Tuyến Thẳng' : 'Lao Tới Hủy Diệt'),
+      actionHint: customHint || 'Lướt Ngang Né Hoàn Hảo!',
       remainingSec: Number(remainingSec.toFixed(2)),
       durationSec: Number(durationSec.toFixed(2)),
       dangerLevel: 'critical',
@@ -141,8 +145,8 @@ export function mapBossTelegraphToHud(params: {
   if (params.telegraphType === 'spiral') {
     return {
       kind: 'barrage',
-      label: 'Bão Đạn Tinh Giới',
-      actionHint: 'Giữ Cự Ly & Luồn Khe Đạn!',
+      label: customLabel || 'Bão Đạn Tinh Giới',
+      actionHint: customHint || 'Giữ Cự Ly & Luồn Khe Đạn!',
       remainingSec: Number(remainingSec.toFixed(2)),
       durationSec: Number(durationSec.toFixed(2)),
       dangerLevel: params.bossPhase >= 2 ? 'critical' : 'high',
@@ -150,8 +154,8 @@ export function mapBossTelegraphToHud(params: {
   }
   return {
     kind: 'sweep',
-    label: 'Quét Vòng Tụ Lực',
-    actionHint: 'Né Đúng Nhịp Phản Đòn!',
+    label: customLabel || 'Quét Vòng Tụ Lực',
+    actionHint: customHint || 'Né Đúng Nhịp Phản Đòn!',
     remainingSec: Number(remainingSec.toFixed(2)),
     durationSec: Number(durationSec.toFixed(2)),
     dangerLevel: 'high',
