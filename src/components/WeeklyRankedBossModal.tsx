@@ -42,10 +42,11 @@ import {
   subscribeSeasonStandings,
   subscribeWeeklyBossRace,
 } from '../services/playerCloudService';
+import { resolveSeasonRankTier } from '../engine/aaaFivePillarsDirector';
 import {
-  SEASON_RANK_TIERS,
-  resolveSeasonRankTier,
-} from '../engine/aaaFivePillarsDirector';
+  SEASON_LEAGUE_DIVISIONS,
+  computeSeasonalLeagueBracket,
+} from '../engine/wave9FivePillars';
 import {
   buildMergedWeeklyBossLeaderboard,
   buildMergedWeeklySeasonLeaderboard,
@@ -58,6 +59,8 @@ interface WeeklyRankedBossModalProps {
   isAuthenticated: boolean;
   playerDisplayName: string;
   currentUid?: string;
+  equalizedArenaWins?: number;
+  coopSyncRuns?: number;
   onStartVerifiedRun: (params: {
     attemptId: string;
     schedule: WeeklyBossSchedule;
@@ -108,6 +111,8 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
   isAuthenticated,
   playerDisplayName,
   currentUid,
+  equalizedArenaWins = 0,
+  coopSyncRuns = 0,
   onStartVerifiedRun,
   onStartWeekendBlitzRun,
   onStartPracticeRun,
@@ -444,6 +449,16 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
       currentUid,
     });
   }, [aiPlayers, boardFilter, currentUid, weekendState?.leaderboard]);
+
+  const seasonalLeague = useMemo(
+    () =>
+      computeSeasonalLeagueBracket({
+        weeklyBossSeasonPoints: seasonState?.player?.seasonPoints ?? 0,
+        equalizedArenaWins,
+        coopSyncRuns,
+      }),
+    [coopSyncRuns, equalizedArenaWins, seasonState?.player?.seasonPoints]
+  );
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-5 bg-[#040611]/92 overflow-y-auto">
@@ -1198,32 +1213,77 @@ export const WeeklyRankedBossModal: React.FC<WeeklyRankedBossModalProps> = ({
                   </div>
                 </div>
 
-                {/* Pillar 4: Competitive Season Rank Tiers Ladder */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {SEASON_RANK_TIERS.map((tier) => {
-                    const myCp = seasonState?.player?.seasonPoints ?? 0;
-                    const reached = myCp >= tier.minPoints;
-                    return (
-                      <div
-                        key={tier.id}
-                        className={`rounded-xl border px-2.5 py-2 text-center ${
-                          reached
-                            ? 'bg-[#0b1628] border-amber-300/60'
-                            : 'bg-[#060916] border-slate-800'
-                        }`}
-                      >
-                        <div className={`text-[11px] font-black truncate ${tier.colorClass}`}>
-                          {tier.label}
-                        </div>
-                        <div className="font-mono-nums text-[10px] text-slate-300 mt-0.5">
-                          ≥ {tier.minPoints} CP
-                        </div>
-                        <div className="font-mono-nums text-[10px] text-emerald-300 mt-0.5">
-                          +{tier.rewardGems} Ngọc · +{tier.rewardShards} Mảnh
-                        </div>
+                {/* Wave 9 Pillar 4: Equalized Seasonal League Bracket Standing */}
+                <div className="rounded-2xl border border-cyan-400/30 bg-[#06101f] p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-wider text-cyan-300">
+                        Bảng Chia Hạng Giải Đấu Mùa Cân Bằng
                       </div>
-                    );
-                  })}
+                      <div className={`font-display text-lg font-black mt-0.5 ${seasonalLeague.division.colorClass}`}>
+                        {seasonalLeague.division.badgeText} · {seasonalLeague.division.name}
+                      </div>
+                      <div className="text-[11px] font-mono-nums text-slate-300 mt-0.5">
+                        Boss Tuần {seasonalLeague.breakdown.weeklyBossCp}đ · Arena Công Bằng{' '}
+                        {seasonalLeague.breakdown.equalizedArenaPoints}đ ({equalizedArenaWins} thắng) · Co-op{' '}
+                        {seasonalLeague.breakdown.coopSyncPoints}đ
+                      </div>
+                    </div>
+                    <div className="text-left sm:text-right shrink-0">
+                      <div className="font-mono-nums text-lg font-black text-amber-300">
+                        {seasonalLeague.totalPoints.toLocaleString('vi-VN')} Điểm Mùa
+                      </div>
+                      <div className="text-[11px] font-mono-nums text-emerald-300">
+                        {seasonalLeague.nextDivision
+                          ? `Còn ${seasonalLeague.pointsToPromote}đ lên ${seasonalLeague.nextDivision.name}`
+                          : 'Đã đạt đỉnh Tinh Đế Tối Cao'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="h-2 rounded-full bg-slate-950 border border-cyan-400/30 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-cyan-400 via-amber-300 to-rose-400 transition-all duration-300"
+                        style={{ width: `${Math.max(4, seasonalLeague.progressToNextPct)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono-nums text-slate-400">
+                      <span>
+                        Sàn giữ hạng: ≥ {seasonalLeague.division.relegationFloor}đ (Dư +{seasonalLeague.relegationBuffer}đ)
+                      </span>
+                      <span>Tiến độ thăng hạng: {seasonalLeague.progressToNextPct}%</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {SEASON_LEAGUE_DIVISIONS.map((div) => {
+                      const isCurrent = div.id === seasonalLeague.division.id;
+                      const reached = seasonalLeague.totalPoints >= div.minSeasonPoints;
+                      return (
+                        <div
+                          key={div.id}
+                          className={`rounded-xl border px-2.5 py-2 text-center ${
+                            isCurrent
+                              ? `bg-[#0c1b30] ${div.borderClass} shadow-[0_0_16px_rgba(56,189,248,0.18)]`
+                              : reached
+                              ? 'bg-[#091426] border-amber-300/45'
+                              : 'bg-[#060916] border-slate-800'
+                          }`}
+                        >
+                          <div className={`text-[11px] font-black truncate ${div.colorClass}`}>
+                            {div.name}
+                          </div>
+                          <div className="font-mono-nums text-[10px] text-slate-300 mt-0.5">
+                            ≥ {div.minSeasonPoints}đ · Giữ {div.relegationFloor}đ
+                          </div>
+                          <div className="font-mono-nums text-[10px] text-emerald-300 mt-0.5">
+                            +{div.promotionRewardGems} Ngọc · +{div.promotionRewardShards} Mảnh
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Season Milestones (Idempotent Cosmetic Claims) */}

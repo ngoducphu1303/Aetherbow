@@ -1414,3 +1414,246 @@ export function simulate30DayFairProgression(options: {
     finalTalentLevels: last.talentLevels,
   };
 }
+
+// ============================================================================
+// 8. WAVE 9 — PILLAR 3: CAPPED DAILY CATCH-UP DEFICIT ENGINE
+// ============================================================================
+
+export interface FairCatchUpMission {
+  id: 'catchup_rift' | 'catchup_forge' | 'catchup_arena';
+  title: string;
+  desc: string;
+  progressText: string;
+  completed: boolean;
+  claimedToday: boolean;
+  rewardGold: number;
+  rewardStarDust: number;
+  rewardEpicShards: number;
+  actionTarget: FairActionTarget;
+  actionLabel: string;
+}
+
+export interface FairCatchUpEvaluation {
+  isBehind: boolean;
+  activeDay: number;
+  expectedChapter: number;
+  expectedPower: number;
+  chapterDeficit: number;
+  powerDeficit: number;
+  deficitScorePct: number;
+  lockReason: string | null;
+  missions: FairCatchUpMission[];
+}
+
+export function getExpected30DayBenchmark(activeDay: number): {
+  expectedChapter: number;
+  expectedPower: number;
+} {
+  const d = Math.max(1, Math.min(30, Math.round(activeDay)));
+  const expectedChapter = Math.min(12, Math.max(1, Math.floor((d + 1) / 2.4)));
+  const expectedPower = Math.round(4500 + (d - 1) * 9500);
+  return { expectedChapter, expectedPower };
+}
+
+export function evaluateFairCatchUpMissions(
+  save: SaveData,
+  stats?: ComputedPlayerStats,
+  todayKey = getTodayKey()
+): FairCatchUpEvaluation {
+  const computed = stats ?? computePlayerStats(save);
+  const activeDay = Math.max(1, save.fairActiveDays?.count ?? 1);
+  const { expectedChapter, expectedPower } = getExpected30DayBenchmark(activeDay);
+  const actualChapter = Math.max(0, save.highestChapterCleared ?? 0);
+  const chapterDeficit = Math.max(0, expectedChapter - actualChapter);
+  const powerDeficit = Math.max(0, expectedPower - computed.powerRating);
+
+  // Strict Day-1 anti-exploit guard: catch-up only unlocks once player has progressed past Day 1
+  // AND genuinely lags behind either expected chapter or expected power (>= 12% behind).
+  const powerBehind = activeDay >= 2 && computed.powerRating < expectedPower * 0.88;
+  const chapterBehind = activeDay >= 2 && chapterDeficit >= 1;
+  const isBehind = powerBehind || chapterBehind;
+
+  if (!isBehind) {
+    return {
+      isBehind: false,
+      activeDay,
+      expectedChapter,
+      expectedPower,
+      chapterDeficit,
+      powerDeficit,
+      deficitScorePct: 0,
+      lockReason:
+        activeDay <= 1
+          ? 'Đang ở Ngày 1 — Nhiệm vụ Bắt Kịp chỉ mở từ Ngày 2 trở đi nếu bị tụt nhịp.'
+          : 'Tiến độ của bạn đang bám sát hoặc vượt chuẩn Lộ Trình 30 Ngày!',
+      missions: [],
+    };
+  }
+
+  const deficitRatio = Math.min(
+    1,
+    Math.max(
+      chapterDeficit / 4,
+      powerDeficit / Math.max(1, expectedPower * 0.65)
+    )
+  );
+  const scale = 0.65 + deficitRatio * 0.75;
+  const ledger =
+    save.fairCatchUp?.claimedDateKey === todayKey
+      ? save.fairCatchUp
+      : {
+          claimedDateKey: todayKey,
+          claimedMissionIdsToday: [],
+          totalMissionsClaimed: save.fairCatchUp?.totalMissionsClaimed ?? 0,
+        };
+  const claimedSet = new Set(ledger.claimedMissionIdsToday);
+
+  const riftRunsLeft =
+    save.dailyRift?.date === todayKey ? (save.dailyRift.runsRemaining ?? 2) : 2;
+  const riftDone = riftRunsLeft < 2 || (save.career?.totalRuns ?? 0) >= 2;
+
+  const avgGearLv = (() => {
+    const slots = Object.values(GearSlot);
+    let total = 0;
+    for (const sl of slots) {
+      const uid = save.equipped[sl];
+      const item = save.inventory.find((g) => g.uid === uid);
+      if (item) total += item.level;
+    }
+    return Math.round(total / Math.max(1, slots.length));
+  })();
+  const forgeDone = avgGearLv >= Math.min(20, 2 + activeDay);
+
+  const arenaPlayedToday =
+    save.arena?.ticketsDate === todayKey && (save.arena?.ticketsRemaining ?? 5) < 5;
+  const arenaDone = arenaPlayedToday || (save.fairProgression?.equalizedArenaWins ?? 0) >= 1;
+
+  const capGold = Math.min(3600, Math.round(1400 * scale));
+  const capDust = Math.min(340, Math.round(140 * scale));
+  const capShards = Math.min(18, Math.max(5, Math.round(7 * scale)));
+
+  const missions: FairCatchUpMission[] = [
+    {
+      id: 'catchup_rift',
+      title: 'Khôi Phục Nhịp Bí Cảnh',
+      desc: 'Tham gia 1 lượt Bí Cảnh Hằng Ngày hoặc hoàn thành 2 trận leo ải để bù tài nguyên.',
+      progressText: riftDone ? 'Đã đạt điều kiện hôm nay' : 'Cần 1 lượt Bí Cảnh / leo ải',
+      completed: riftDone,
+      claimedToday: claimedSet.has('catchup_rift'),
+      rewardGold: capGold,
+      rewardStarDust: capDust,
+      rewardEpicShards: capShards,
+      actionTarget: 'daily_rift',
+      actionLabel: 'Đi Bí Cảnh',
+    },
+    {
+      id: 'catchup_forge',
+      title: 'Cường Hóa Bám Chuẩn Trang Bị',
+      desc: `Đưa cấp trang bị trung bình đạt tối thiểu +${Math.min(20, 2 + activeDay)}.`,
+      progressText: `Hiện tại TB +${avgGearLv}/${Math.min(20, 2 + activeDay)}`,
+      completed: forgeDone,
+      claimedToday: claimedSet.has('catchup_forge'),
+      rewardGold: Math.round(capGold * 0.9),
+      rewardStarDust: Math.round(capDust * 1.15),
+      rewardEpicShards: capShards,
+      actionTarget: 'gear',
+      actionLabel: 'Mở Trang Bị',
+    },
+    {
+      id: 'catchup_arena',
+      title: 'Thử Sức Đấu Trường Công Bằng',
+      desc: 'Đánh 1 trận Đấu Trường 1v1 hoặc sở hữu ít nhất 1 trận Thắng Công Bằng.',
+      progressText: arenaDone ? 'Đã tham chiến hôm nay' : 'Cần 1 trận Arena 1v1',
+      completed: arenaDone,
+      claimedToday: claimedSet.has('catchup_arena'),
+      rewardGold: Math.round(capGold * 0.85),
+      rewardStarDust: capDust,
+      rewardEpicShards: Math.max(4, Math.round(capShards * 0.8)),
+      actionTarget: 'arena',
+      actionLabel: 'Vào Arena',
+    },
+  ];
+
+  return {
+    isBehind: true,
+    activeDay,
+    expectedChapter,
+    expectedPower,
+    chapterDeficit,
+    powerDeficit,
+    deficitScorePct: Math.round(deficitRatio * 100),
+    lockReason: null,
+    missions,
+  };
+}
+
+export function claimFairCatchUpMission(
+  save: SaveData,
+  missionId: FairCatchUpMission['id'],
+  stats?: ComputedPlayerStats,
+  todayKey = getTodayKey()
+): {
+  ok: boolean;
+  reason?: string;
+  mission?: FairCatchUpMission;
+  nextSave: SaveData;
+} {
+  const evalRes = evaluateFairCatchUpMissions(save, stats, todayKey);
+  if (!evalRes.isBehind) {
+    return {
+      ok: false,
+      reason: evalRes.lockReason ?? 'Hiện không có nhiệm vụ Bắt Kịp khả dụng.',
+      nextSave: save,
+    };
+  }
+  const mission = evalRes.missions.find((m) => m.id === missionId);
+  if (!mission) {
+    return { ok: false, reason: 'Không tìm thấy nhiệm vụ Bắt Kịp.', nextSave: save };
+  }
+  if (mission.claimedToday) {
+    return {
+      ok: false,
+      reason: 'Nhiệm vụ Bắt Kịp này đã được nhận hôm nay.',
+      nextSave: save,
+    };
+  }
+  if (!mission.completed) {
+    return {
+      ok: false,
+      reason: `Chưa hoàn thành điều kiện: ${mission.desc}`,
+      nextSave: save,
+    };
+  }
+
+  const prevLedger =
+    save.fairCatchUp?.claimedDateKey === todayKey
+      ? save.fairCatchUp
+      : {
+          claimedDateKey: todayKey,
+          claimedMissionIdsToday: [],
+          totalMissionsClaimed: save.fairCatchUp?.totalMissionsClaimed ?? 0,
+        };
+  const fp = normalizeEarlyForgeProgress(save.earlyForgeProgress);
+
+  const nextSave: SaveData = {
+    ...save,
+    gold: save.gold + mission.rewardGold,
+    starDust: (save.starDust ?? 0) + mission.rewardStarDust,
+    earlyForgeProgress: {
+      ...fp,
+      epicShards: fp.epicShards + mission.rewardEpicShards,
+    },
+    fairCatchUp: {
+      claimedDateKey: todayKey,
+      claimedMissionIdsToday: [...prevLedger.claimedMissionIdsToday, mission.id],
+      totalMissionsClaimed: (prevLedger.totalMissionsClaimed ?? 0) + 1,
+    },
+  };
+
+  return {
+    ok: true,
+    mission: { ...mission, claimedToday: true },
+    nextSave,
+  };
+}
+

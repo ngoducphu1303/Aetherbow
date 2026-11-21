@@ -71,7 +71,17 @@ import {
 import { computeWeeklyFairnessSummary } from '../data/progressionAdvisor';
 import { HEROES, HERO_MAP, getHeroStarUpgradeCost } from '../data/heroesData';
 import { getTodayKey } from '../data/questsData';
-import { RUNES_CATALOG } from '../data/runesData';
+import {
+  ANCIENT_RUNE_EXCHANGE_COST,
+  CRAFTABLE_RUNES_LIST,
+  RUNES_CATALOG,
+} from '../data/runesData';
+import {
+  computeAncientRunePitySummary,
+  RUNE_EPIC_PITY_MAX,
+  RUNE_LEGENDARY_PITY_MAX,
+  RUNE_LEGENDARY_SOFT_PITY_START,
+} from '../engine/wave10FivePillars';
 import {
   HERO_SKINS,
   PETS_CATALOG,
@@ -212,6 +222,7 @@ import {
   MysticCurrencyKind,
   PetId,
   Rarity,
+  RuneId,
   RuneInstance,
   SaveData,
   WeaponAuraId,
@@ -3411,6 +3422,7 @@ interface RunesPanelProps {
   onUnequipRune: (uid: string) => void;
   onFuseRune: (uid: string) => void;
   onBulkFuseRunes: () => void;
+  onCraftSelectedRune?: (runeId: RuneId) => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
   onGoShop: () => void;
@@ -3429,6 +3441,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   onUnequipRune,
   onFuseRune,
   onBulkFuseRunes,
+  onCraftSelectedRune,
   onRotateHero,
   onResetHeroRotation,
   onGoShop,
@@ -3437,7 +3450,9 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
     save.equippedRunes[0] || save.runeInventory[0]?.uid || ''
   );
   const [catFilter, setCatFilter] = useState<'ALL' | 'ability' | 'enhancement' | 'blessing'>('ALL');
+  const [showShardExchange, setShowShardExchange] = useState(false);
   const dragRef = useRef<{ active: boolean; lastX: number }>({ active: false, lastX: 0 });
+  const runePitySummary = computeAncientRunePitySummary(save.pity, true);
 
   const selectedRune =
     save.runeInventory.find((r) => r.uid === selectedRuneUid) || save.runeInventory[0];
@@ -3638,6 +3653,23 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                 </span>
               </button>
 
+              {onCraftSelectedRune && (
+                <button
+                  type="button"
+                  onClick={() => setShowShardExchange((v) => !v)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    runePitySummary.canDirectSelectRune
+                      ? 'a2-purple-btn'
+                      : 'bg-slate-900 border border-cyan-400/35 text-cyan-200 hover:border-cyan-300'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="font-mono-nums">
+                    Đổi Chọn Cổ Ngữ ({runePitySummary.ancientRuneShards}/{ANCIENT_RUNE_EXCHANGE_COST})
+                  </span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={onGoShop}
@@ -3647,6 +3679,64 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
               </button>
             </div>
           </div>
+
+          {onCraftSelectedRune && showShardExchange && (
+            <div className="cel-panel rounded-2xl p-3 border border-cyan-400/40 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div>
+                  <div className="font-display font-black text-cyan-200">
+                    Đổi Chọn Cổ Ngữ Minh Bạch · {runePitySummary.ancientRuneShards}/{ANCIENT_RUNE_EXCHANGE_COST} Mảnh Cổ Ngữ
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5 font-mono-nums">
+                    Bảo hiểm Sử Thi: {runePitySummary.epicCurrent}/{RUNE_EPIC_PITY_MAX} · Bảo hiểm Huyền Thoại: {runePitySummary.legendaryCurrent}/{RUNE_LEGENDARY_PITY_MAX}
+                    {runePitySummary.softPityActive
+                      ? ` · Soft Pity (Tỉ lệ HT ${runePitySummary.effectiveLegendaryRatePct}%)`
+                      : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowShardExchange(false)}
+                  className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto a2-scroll pr-1">
+                {CRAFTABLE_RUNES_LIST.map((def) => {
+                  const canCraft = runePitySummary.canDirectSelectRune;
+                  return (
+                    <button
+                      key={def.id}
+                      type="button"
+                      disabled={!canCraft}
+                      onClick={() => {
+                        onCraftSelectedRune(def.id);
+                      }}
+                      className={`text-left rounded-xl p-2 border transition-colors ${
+                        canCraft
+                          ? 'bg-slate-900/90 border-cyan-400/40 hover:border-amber-300 cursor-pointer'
+                          : 'bg-slate-950/70 border-slate-800 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: def.color }}
+                        />
+                        <span className="text-[11px] font-black text-white truncate">
+                          {def.name.split('(')[0].trim()}
+                        </span>
+                      </div>
+                      <div className="text-[9.5px] text-cyan-200 mt-0.5 truncate">
+                        {def.archetype} · Đổi {ANCIENT_RUNE_EXCHANGE_COST} Mảnh
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Selected Rune Inspector or Welcoming Empty CTA */}
           {selectedRune ? (
@@ -6204,6 +6294,15 @@ export const LobbyShopPanel: React.FC<ShopPanelProps> = ({
                     {earlyPolicy.allowSTier
                       ? `còn ${rollsUntilSTier}`
                       : `tích ${pity.mythicRollsSinceSTier}/25 (mở ở Ch.3)`}
+                  </span>
+                </div>
+                <span aria-hidden="true" className="text-amber-400/40">|</span>
+                <div>
+                  <span className="text-slate-400">Cổ Ngữ: </span>
+                  <span className="font-black text-cyan-300">
+                    {pity.runeRollsSinceEpic}/{RUNE_EPIC_PITY_MAX} ST · {pity.runeRollsSinceLegendary ?? 0}/{RUNE_LEGENDARY_PITY_MAX} HT
+                    {(pity.runeRollsSinceLegendary ?? 0) >= RUNE_LEGENDARY_SOFT_PITY_START ? ' (Soft+)' : ''}
+                    {' · '}{pity.ancientRuneShards ?? 0}/{ANCIENT_RUNE_EXCHANGE_COST} Mảnh
                   </span>
                 </div>
               </div>

@@ -252,13 +252,24 @@ export function computeTransparentPitySummary(
     variant === 'rune_bag' || variant === 'rune_rare'
       ? Math.max(0, pity?.runeRollsSinceEpic ?? 0)
       : Math.max(0, pity?.mythicRollsSinceEpic ?? 0);
-  const sCur = Math.max(0, pity?.mythicRollsSinceSTier ?? 0);
-
   const epicMax = 10;
-  const sMax = 50;
-  const softPityActive = variant === 'mythic' && sCur >= 35;
-  const softBoost = softPityActive ? (sCur - 34) * 2.5 : 0;
-  const baseSTier = variant === 'mythic' ? 3.5 : variant === 'rune_rare' ? 2.5 : 0.8;
+  const isRuneVariant = variant === 'rune_bag' || variant === 'rune_rare';
+  const sMax = isRuneVariant ? 30 : 50;
+  const sCur = Math.max(
+    0,
+    isRuneVariant
+      ? pity?.runeRollsSinceLegendary ?? 0
+      : pity?.mythicRollsSinceSTier ?? 0
+  );
+  const softPityActive =
+    (variant === 'mythic' && sCur >= 35) || (variant === 'rune_rare' && sCur >= 22);
+  const softBoost =
+    variant === 'mythic' && softPityActive
+      ? (sCur - 34) * 2.5
+      : variant === 'rune_rare' && softPityActive
+      ? (sCur - 21) * 5.0
+      : 0;
+  const baseSTier = variant === 'mythic' ? 3.5 : variant === 'rune_rare' ? 4.5 : 0.8;
   const effectiveSTierRatePct =
     sCur >= sMax - 1 ? 100 : Math.min(100, Number((baseSTier + softBoost).toFixed(1)));
 
@@ -295,8 +306,11 @@ export function computeTransparentPitySummary(
           {
             rarity: Rarity.LEGENDARY,
             label: 'Cổ Ngữ Huyền Thoại',
-            baseRatePct: variant === 'rune_rare' ? 4.5 : 1.0,
-            softPityNote: 'Nhận kèm +5 Tinh Mảnh Hoàng Đạo',
+            baseRatePct: variant === 'rune_rare' ? effectiveSTierRatePct : 1.0,
+            softPityNote:
+              variant === 'rune_rare'
+                ? 'Tăng +5%/lượt từ lượt 22 · Chắc chắn ở lượt 30 (+8 Mảnh Cổ Ngữ)'
+                : 'Nhận kèm +8 Mảnh Cổ Ngữ',
           },
           {
             rarity: Rarity.EPIC,
@@ -441,12 +455,19 @@ export const ASTRAL_SHARD_EXCHANGE_CATALOG: AstralShardExchangeItem[] = [
 export function normalizeFairProgression(
   fp?: Partial<FairProgressionState>
 ): FairProgressionState {
+  const validKits = ['assassin_counter', 'rapid_ranger', 'elemental_sage'] as const;
+  const kitId = validKits.includes(fp?.selectedTrialKitId as (typeof validKits)[number])
+    ? (fp?.selectedTrialKitId as (typeof validKits)[number])
+    : 'assassin_counter';
   return {
     astralShards: Math.max(0, Math.floor(fp?.astralShards ?? 12)),
     pullHistory: Array.isArray(fp?.pullHistory) ? fp.pullHistory.slice(0, 30) : [],
     totalExchanges: Math.max(0, Math.floor(fp?.totalExchanges ?? 0)),
     arenaEqualizedMode: fp?.arenaEqualizedMode ?? true,
     equalizedArenaWins: Math.max(0, Math.floor(fp?.equalizedArenaWins ?? 0)),
+    equalizedTrialRound: Math.max(1, Math.min(3, Math.floor(fp?.equalizedTrialRound ?? 1))),
+    equalizedTrialWins: Math.max(0, Math.floor(fp?.equalizedTrialWins ?? 0)),
+    selectedTrialKitId: kitId,
   };
 }
 

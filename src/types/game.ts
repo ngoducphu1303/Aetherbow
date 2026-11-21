@@ -571,12 +571,21 @@ export interface GachaPullHistoryEntry {
   shardsGained: number;
 }
 
+export interface FairCatchUpState {
+  claimedDateKey: string;
+  claimedMissionIdsToday: string[];
+  totalMissionsClaimed: number;
+}
+
 export interface FairProgressionState {
   astralShards: number;
   pullHistory: GachaPullHistoryEntry[];
   totalExchanges: number;
   arenaEqualizedMode: boolean;
   equalizedArenaWins: number;
+  equalizedTrialRound?: number;
+  equalizedTrialWins?: number;
+  selectedTrialKitId?: 'assassin_counter' | 'rapid_ranger' | 'elemental_sage';
 }
 
 export interface BattlePassProgress {
@@ -591,6 +600,8 @@ export interface PityState {
   mythicRollsSinceEpic: number;
   mythicRollsSinceSTier: number;
   runeRollsSinceEpic: number;
+  runeRollsSinceLegendary?: number;
+  ancientRuneShards?: number;
 }
 
 export interface CareerStats {
@@ -1261,6 +1272,7 @@ export interface SaveData {
   battlePass?: BattlePassProgress;
   pity?: PityState;
   fairProgression?: FairProgressionState;
+  fairCatchUp?: FairCatchUpState;
   career?: CareerStats;
   achievementsClaimed?: string[];
   settings?: GameSettings;
@@ -1532,12 +1544,17 @@ export interface AiLiveAuctionBidEvent {
   timestamp: number;
 }
 
-export type CoopTacticalOrder = 'focus_boss' | 'clear_adds' | 'hold_resonance';
+export type CoopTacticalOrder =
+  | 'focus_boss'
+  | 'clear_adds'
+  | 'hold_resonance'
+  | 'break_guard'
+  | 'protect_player';
 export type AdaptiveFpsTier = 'full' | 'balanced' | 'performance_guard';
 
 export interface AiLiveInvite {
   inviteId: string;
-  kind: 'coop_raid' | 'arena_duel';
+  kind: 'coop_raid' | 'arena_duel' | 'rival_revenge';
   aiPlayerId: string;
   aiDisplayName: string;
   aiHeroId: HeroId;
@@ -1545,6 +1562,8 @@ export interface AiLiveInvite {
   message: string;
   createdAt: number;
   expiresAt: number;
+  revengeBonusPct?: number;
+  revengeStreak?: number;
 }
 
 export type AiRivalTier = 'contender' | 'archrival' | 'nemesis';
@@ -1561,6 +1580,66 @@ export interface AiRivalRecord {
   lastEncounterReason: string;
   lastEncounterAt: number;
   bountyClaimedDateKey?: string;
+  vendettaPending?: boolean;
+  revengeStreak?: number;
+  revengeBonusPct?: number;
+  lastOutcome?: 'player_won' | 'ai_won';
+}
+
+export interface AiAdaptationSummarySnapshot {
+  playerName: string;
+  samplesAnalyzed: number;
+  dodgeBias: 'left' | 'right' | 'balanced';
+  dodgeBiasStrength: number;
+  rangeStyle: 'kiter' | 'midrange' | 'brawler';
+  avgEngageDistance: number;
+  dashFrequencyPer10s: number;
+  preferredElement: 'fire' | 'ice' | 'storm' | 'poison';
+  coopComplementaryElement: 'fire' | 'ice' | 'storm' | 'poison';
+  counterInsightLabel: string;
+  coopSynergyHint: string;
+  updatedAt: number;
+}
+
+export interface LiveGuildWarBastionSnapshot {
+  id: 'solar_spire' | 'astral_citadel' | 'void_shrine';
+  name: string;
+  bonusLabel: string;
+  controlScore: number;
+  owner: 'zodiac_guild' | 'contested' | 'dark_alliance';
+  allyAiCount: number;
+  enemyAiCount: number;
+  lastStrikeBy?: string;
+  lastStrikeAt?: number;
+}
+
+export interface LiveGuildWarContributionSnapshot {
+  id: string;
+  displayName: string;
+  isHuman: boolean;
+  heroId: HeroId;
+  points: number;
+  strikes: number;
+  lastActionAt: number;
+}
+
+export interface LiveGuildWarSnapshot {
+  warId: string;
+  dateKey: string;
+  zodiacGuildName: string;
+  rivalGuildName: string;
+  zodiacScore: number;
+  rivalScore: number;
+  targetScore: number;
+  status: 'active' | 'zodiac_victory' | 'rival_victory';
+  bastions: LiveGuildWarBastionSnapshot[];
+  contributors: LiveGuildWarContributionSnapshot[];
+  rewardGold: number;
+  rewardGems: number;
+  rewardGuildCoins: number;
+  rewardStarDust: number;
+  claimedByPlayer: boolean;
+  lastUpdatedAt: number;
 }
 
 export interface AiLiveHubSnapshot {
@@ -1578,6 +1657,8 @@ export interface AiLiveHubSnapshot {
   guildBossLive?: LiveGuildBossState;
   miniCup?: LiveMiniCupState | null;
   serverBounty?: LiveServerBountyState;
+  adaptationProfile?: AiAdaptationSummarySnapshot | null;
+  guildWarLive?: LiveGuildWarSnapshot | null;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm' | 'azure_dragon' | 'black_dragon';
@@ -2146,6 +2227,36 @@ export interface HudSnapshot {
   } | null;
   bossTotemsAlive?: number;
   ambushBossActive?: boolean;
+  // Wave 9: Boss Phase Counter Window, Execution Finisher, Interactive Arena Props & Co-op Rescue
+  phaseCounterWindowSec?: number;
+  phaseCounterWindowTotalSec?: number;
+  phaseCounterReady?: boolean;
+  finisherReadyTargetName?: string | null;
+  finisherTargetHpPct?: number | null;
+  arenaPropsRemaining?: number;
+  arenaPropBuffLabel?: string | null;
+  coopSanctuaryCooldownSec?: number;
+  coopSanctuaryActiveSec?: number;
+  coopPrimerBanner?: string | null;
+  // Wave 10: Boss Breakable Parts, Elemental Resonance Burst, Adaptive AI & Trial Gauntlet
+  bossParts?: Array<{
+    id: string;
+    label: string;
+    hp: number;
+    maxHp: number;
+    broken: boolean;
+    debuffLabel: string;
+  }>;
+  bossPartBrokenBanner?: string | null;
+  elementalResonance?: {
+    stack: number;
+    maxStack: number;
+    recentElements: string[];
+    burstBannerText: string | null;
+  };
+  aiAdaptationBadge?: string | null;
+  trialGauntletRound?: number | null;
+  guildWarBastionLabel?: string | null;
 }
 
 export interface EncounterOffer {

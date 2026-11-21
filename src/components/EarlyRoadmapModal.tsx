@@ -21,10 +21,12 @@ import {
   normalizeEarlyForgeProgress,
 } from '../data/earlyProgressionData';
 import {
+  evaluateFairCatchUpMissions,
   evaluateMaxStageReadiness,
   FAIR_30DAY_MILESTONES,
   FAIR_30DAY_WEEKS,
   FairActionTarget,
+  FairCatchUpMission,
   getDailyFairRoutine,
   simulate30DayFairProgression,
 } from '../data/fairProgression30Day';
@@ -38,6 +40,7 @@ interface EarlyRoadmapModalProps {
   onJumpToTab: (tab: LobbyTab) => void;
   onOpenMode?: (target: FairActionTarget) => void;
   onClaimFairMilestone?: (milestoneId: string) => void;
+  onClaimCatchUpMission?: (missionId: FairCatchUpMission['id']) => void;
   onCraftEarlyTargetGear?: (tier: 'rare' | 'epic' | 's_tier') => void;
 }
 
@@ -52,6 +55,7 @@ export const EarlyRoadmapModal: React.FC<EarlyRoadmapModalProps> = ({
   onJumpToTab,
   onOpenMode,
   onClaimFairMilestone,
+  onClaimCatchUpMission,
   onCraftEarlyTargetGear,
 }) => {
   const [activeTab, setActiveTab] = useState<RoadmapViewTab>('weeks');
@@ -65,6 +69,7 @@ export const EarlyRoadmapModal: React.FC<EarlyRoadmapModalProps> = ({
   );
   const readiness = useMemo(() => evaluateMaxStageReadiness(save, stats), [save, stats]);
   const dailyRoutine = useMemo(() => getDailyFairRoutine(save), [save]);
+  const catchUpEval = useMemo(() => evaluateFairCatchUpMissions(save, stats), [save, stats]);
   const claimedSet = useMemo(() => new Set(save.fairRoadmapClaimedIds ?? []), [save.fairRoadmapClaimedIds]);
 
   const simAverage = useMemo(
@@ -272,6 +277,30 @@ export const EarlyRoadmapModal: React.FC<EarlyRoadmapModalProps> = ({
                 )}
               </div>
 
+              {catchUpEval.isBehind && (
+                <div className="rounded-xl bg-[#1a1308] border border-amber-300/45 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="text-xs font-black text-amber-200 flex items-center gap-1.5">
+                      <Gift className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span>
+                        Nhiệm Vụ Bắt Kịp Ngày {catchUpEval.activeDay} Đã Mở ({catchUpEval.missions.filter((m) => m.completed && !m.claimedToday).length} mốc sẵn sàng nhận)
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-300">
+                      Chuẩn Ngày {catchUpEval.activeDay}: Chương {catchUpEval.expectedChapter} ·{' '}
+                      {catchUpEval.expectedPower.toLocaleString('vi-VN')} LC (Có giới hạn ngày chống cày quá mức).
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('daily')}
+                    className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 text-xs font-black whitespace-nowrap hover:brightness-110 shrink-0 cursor-pointer"
+                  >
+                    Xem Nhiệm Vụ Bắt Kịp
+                  </button>
+                </div>
+              )}
+
               {FAIR_30DAY_WEEKS.map((weekAct) => {
                 const weekMilestones = FAIR_30DAY_MILESTONES.filter((m) => m.week === weekAct.week);
                 return (
@@ -470,6 +499,92 @@ export const EarlyRoadmapModal: React.FC<EarlyRoadmapModalProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Wave 9 Pillar 3: Capped Daily Catch-Up Deficit Missions */}
+              <div className="rounded-xl border border-amber-300/35 bg-[#121423] p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-black text-amber-200 flex items-center gap-2">
+                      <Gift className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span>Nhiệm Vụ Bắt Kịp Ngày Chơi (Giới Hạn Chống Lạm Dụng)</span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-0.5">
+                      Tự động mở từ Ngày 2 trở đi nếu tài khoản bị tụt nhịp Chương hoặc Lực Chiến so với chuẩn Ngày {catchUpEval.activeDay}.
+                    </div>
+                  </div>
+                  <div className="text-right font-mono-nums text-[11px]">
+                    <div className="text-slate-400">Chuẩn Ngày {catchUpEval.activeDay}</div>
+                    <div className="font-bold text-amber-200">
+                      Chương {catchUpEval.expectedChapter} · {catchUpEval.expectedPower.toLocaleString('vi-VN')} LC
+                    </div>
+                  </div>
+                </div>
+
+                {!catchUpEval.isBehind ? (
+                  <div className="rounded-lg bg-slate-900/70 border border-white/10 px-3.5 py-2.5 text-xs text-slate-300 flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-emerald-300 shrink-0" />
+                    <span>{catchUpEval.lockReason}</span>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-white/10 rounded-xl border border-white/10 bg-slate-950/60 overflow-hidden">
+                    {catchUpEval.missions.map((mission) => {
+                      const canClaim = mission.completed && !mission.claimedToday;
+                      return (
+                        <div
+                          key={mission.id}
+                          className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              {mission.claimedToday ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              ) : (
+                                <Gift className="w-4 h-4 text-amber-300 shrink-0" />
+                              )}
+                              <span className="text-sm font-bold text-white truncate">
+                                {mission.title}
+                              </span>
+                              <span className="text-[11px] font-mono-nums text-sky-300 shrink-0">
+                                · {mission.progressText}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-300 pl-6">{mission.desc}</div>
+                            <div className="text-[11px] font-mono-nums text-amber-200 pl-6">
+                              Bù tiến độ: +{mission.rewardGold.toLocaleString('vi-VN')} Vàng · +
+                              {mission.rewardStarDust} Bụi · +{mission.rewardEpicShards} Mảnh Sử Thi
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pl-6 sm:pl-0 shrink-0">
+                            {mission.claimedToday ? (
+                              <span className="text-xs font-bold text-emerald-300 whitespace-nowrap">
+                                Đã Nhận Hôm Nay
+                              </span>
+                            ) : canClaim && onClaimCatchUpMission ? (
+                              <button
+                                type="button"
+                                onClick={() => onClaimCatchUpMission(mission.id)}
+                                className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 text-xs font-black whitespace-nowrap hover:brightness-110 cursor-pointer"
+                              >
+                                Nhận Bù Tiến Độ
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleNavigate(mission.actionTarget)}
+                                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-amber-300/35 text-amber-100 text-xs font-bold whitespace-nowrap flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>{mission.actionLabel}</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

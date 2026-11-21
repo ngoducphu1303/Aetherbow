@@ -24,6 +24,7 @@ import {
   computeAdaptiveAiEscalation,
   normalizeAiDuelDifficultyTier,
 } from '../engine/wave8LethalAiSystems';
+import type { GuildWarBastionId } from '../engine/wave10FivePillars';
 import { HERO_MAP } from '../data/heroesData';
 import { liveAiSocket, LiveSocketStatus } from '../services/liveAiSocket';
 import type {
@@ -52,6 +53,13 @@ interface LiveAiHubModalProps {
   onClaimServerBountyReward?: (reward: {
     rewardGold: number;
     rewardGems: number;
+    rewardStarDust: number;
+  }) => void;
+  onStartGuildWarBastion?: (bastionId: GuildWarBastionId, bastionName: string) => void;
+  onClaimGuildWarLiveReward?: (reward: {
+    rewardGold: number;
+    rewardGems: number;
+    rewardGuildCoins: number;
     rewardStarDust: number;
   }) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
@@ -91,6 +99,8 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   onStartMiniCupMatch,
   onClaimMiniCupPrize,
   onClaimServerBountyReward,
+  onStartGuildWarBastion,
+  onClaimGuildWarLiveReward,
   onInspectAiPlayer,
   onClose,
 }) => {
@@ -101,13 +111,14 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
     liveAiSocket.getStatus()
   );
   const [activeTab, setActiveTab] = useState<
-    'players' | 'bounty' | 'cup' | 'rivals' | 'feed' | 'autopilot'
+    'players' | 'guild_war' | 'bounty' | 'cup' | 'rivals' | 'feed' | 'autopilot'
   >('players');
   const [filterMode, setFilterMode] = useState<'all' | 'ready_duel'>('all');
   const [challengingId, setChallengingId] = useState<string | null>(null);
   const [claimingBountyId, setClaimingBountyId] = useState<string | null>(null);
   const [claimingCupPrize, setClaimingCupPrize] = useState(false);
   const [claimingServerBounty, setClaimingServerBounty] = useState(false);
+  const [claimingGuildWar, setClaimingGuildWar] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const coopSynergy = useMemo(() => computeCoopRoleSynergy(coopPartyRoles), [coopPartyRoles]);
@@ -159,14 +170,38 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
         });
       }
     });
+    const unsubGuildWar = liveAiSocket.subscribeGuildWarClaimAck((ack) => {
+      setClaimingGuildWar(false);
+      setFeedback(ack.message);
+      if (ack.ok && !ack.alreadyClaimed) {
+        onClaimGuildWarLiveReward?.({
+          rewardGold: ack.goldReward,
+          rewardGems: ack.gemsReward,
+          rewardGuildCoins: ack.guildCoinsReward,
+          rewardStarDust: ack.starDustReward,
+        });
+      }
+    });
+    const unsubRevenge = liveAiSocket.subscribeRivalRevengeChallenge((evt) => {
+      setFeedback(evt.invite.message);
+    });
+    liveAiSocket.syncGuildWar(playerDisplayName);
     return () => {
       unsubSnap();
       unsubDuel();
       unsubBounty();
       unsubCupPrize();
       unsubServerBounty();
+      unsubGuildWar();
+      unsubRevenge();
     };
-  }, [playerDisplayName, onChallengeAiPlayer, onClaimMiniCupPrize, onClaimServerBountyReward]);
+  }, [
+    playerDisplayName,
+    onChallengeAiPlayer,
+    onClaimMiniCupPrize,
+    onClaimServerBountyReward,
+    onClaimGuildWarLiveReward,
+  ]);
 
   const filteredPlayers = useMemo(() => {
     const list = snapshot?.players ?? [];
@@ -286,6 +321,21 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
               }`}
             >
               AI Live ({snapshot?.players.length ?? 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('guild_war');
+                liveAiSocket.syncGuildWar(playerDisplayName);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 ${
+                activeTab === 'guild_war'
+                  ? 'bg-amber-500/25 text-amber-200'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 shrink-0" />
+              <span>Chiến Trường Bang</span>
             </button>
             <button
               type="button"
@@ -725,9 +775,23 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
         {/* TAB 1B: Persistent Rival / Nemesis System */}
         {activeTab === 'rivals' && (
           <div className="space-y-3">
-            <p className="text-xs text-slate-300">
-              Các đối thủ <strong className="text-sky-200">[AI Live]</strong> bạn từng giao đấu 1v1 sẽ lưu lịch sử Thắng–Thua vĩnh viễn. Đánh bại Kỳ Phùng / Truyền Kiếp mỗi ngày để nhận Thưởng Đòi Nợ (Vàng &amp; Ngọc).
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-300">
+                Các đối thủ <strong className="text-sky-200">[AI Live]</strong> bạn từng giao đấu 1v1 sẽ lưu lịch sử Thắng–Thua vĩnh viễn. Đánh bại Kình Địch Phục Thù để nhận thưởng cộng dồn &amp; Thưởng Đòi Nợ!
+              </p>
+              {(snapshot?.rivals ?? []).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    liveAiSocket.requestRivalRevenge(undefined, playerDisplayName);
+                    setFeedback('Đang gọi Kình Địch gửi chiến thư phục thù…');
+                  }}
+                  className="a2-slate-btn px-3 py-1.5 rounded-xl text-[11px] font-bold text-rose-200 border border-rose-400/45 whitespace-nowrap cursor-pointer"
+                >
+                  Khiêu Khích Kình Địch
+                </button>
+              )}
+            </div>
             {(snapshot?.rivals ?? []).length === 0 ? (
               <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
                 Chưa có lịch sử Truyền Kiếp nào. Hãy chọn một chiến binh [AI Live] ở tab Đối Thủ và bấm Thách Đấu 1v1 để khởi tạo duyên nợ!
@@ -739,6 +803,9 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                   const todayKey = new Date(snapshot?.serverNow ?? Date.now()).toISOString().slice(0, 10);
                   const dailyClaimed = r.bountyClaimedDateKey === todayKey;
                   const canClaimBounty = r.winsAgainst > 0 && !dailyClaimed;
+                  const vendettaPending = Boolean(r.vendettaPending);
+                  const revengeBonusPct = r.revengeBonusPct ?? 0;
+                  const revengeStreak = r.revengeStreak ?? 0;
                   const tierLabel =
                     r.rivalryTier === 'nemesis'
                       ? 'Truyền Kiếp'
@@ -754,10 +821,12 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                   return (
                     <div
                       key={r.aiPlayerId}
-                      className="py-3 px-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className={`py-3 px-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        vendettaPending ? 'bg-rose-950/20' : ''
+                      }`}
                     >
                       <div className="min-w-0 space-y-0.5">
-                        <div className="flex items-center gap-2 text-sm font-bold text-white">
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-white">
                           <span className={tierColor}>{tierLabel}</span>
                           <span aria-hidden="true" className="text-slate-600">·</span>
                           {onInspectAiPlayer ? (
@@ -771,6 +840,16 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                           ) : (
                             <span className="truncate">{r.aiDisplayName}</span>
                           )}
+                          {vendettaPending && (
+                            <span className="text-[10px] font-black text-rose-300 font-mono-nums">
+                              · Phục Thù +{revengeBonusPct}% Thưởng
+                            </span>
+                          )}
+                          {!vendettaPending && revengeStreak > 0 && (
+                            <span className="text-[10px] font-bold text-amber-300 font-mono-nums">
+                              · Chuỗi Kình Địch ×{revengeStreak}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs font-mono-nums text-slate-300">
                           Tỷ số của bạn:{' '}
@@ -779,7 +858,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
                         {canClaimBounty ? (
                           <button
                             type="button"
@@ -802,10 +881,12 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                             type="button"
                             disabled={challengingId === aiProfile.id}
                             onClick={() => handleChallenge(aiProfile)}
-                            className="a2-yellow-btn px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50"
+                            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-50 ${
+                              vendettaPending ? 'bg-gradient-to-r from-rose-500 to-amber-400 text-slate-950' : 'a2-yellow-btn'
+                            }`}
                           >
                             <Swords className="w-3.5 h-3.5" />
-                            <span>Tái Đấu 1v1</span>
+                            <span>{vendettaPending ? `Chấp Nhận Phục Thù (+${revengeBonusPct}%)` : 'Tái Đấu 1v1'}</span>
                           </button>
                         )}
                       </div>
@@ -1181,9 +1262,220 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Wave 10 Pillar 5A: Adaptive AI Playstyle Learning Telemetry */}
+              <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-black text-rose-200">
+                    Hồ Sơ AI Học Lối Đánh Người Chơi
+                  </span>
+                  {snapshot?.adaptationProfile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        liveAiSocket.resetAiAdaptation(playerDisplayName);
+                        setFeedback('Đã đặt lại dữ liệu học lối đánh AI.');
+                      }}
+                      className="px-2 py-0.5 rounded-lg border border-slate-700 text-[10px] font-bold text-slate-300 hover:text-white cursor-pointer"
+                    >
+                      Đặt Lại Học AI
+                    </button>
+                  )}
+                </div>
+                {snapshot?.adaptationProfile ? (
+                  <div className="rounded-xl bg-[#090d20] border border-rose-400/35 p-3 space-y-1.5 text-[11px]">
+                    <div className="flex flex-wrap items-center justify-between gap-2 font-bold">
+                      <span className="text-amber-200">
+                        {snapshot.adaptationProfile.counterInsightLabel}
+                      </span>
+                      <span className="font-mono-nums text-sky-300">
+                        {snapshot.adaptationProfile.samplesAnalyzed} trận phân tích
+                      </span>
+                    </div>
+                    <div className="text-slate-300 font-mono-nums">
+                      Cự ly TB: {snapshot.adaptationProfile.avgEngageDistance.toFixed(1)}m · Né:{' '}
+                      {snapshot.adaptationProfile.dodgeBias === 'left'
+                        ? 'Hay né Trái'
+                        : snapshot.adaptationProfile.dodgeBias === 'right'
+                        ? 'Hay né Phải'
+                        : 'Cân bằng'}
+                    </div>
+                    <div className="text-emerald-300 font-semibold">
+                      {snapshot.adaptationProfile.coopSynergyHint}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-[#070b1a] border border-slate-800 p-2.5 text-[11px] text-slate-400">
+                    Sau mỗi trận 1v1 hoặc Co-op, AI server tự ghi nhận hướng né, cự ly giữ khoảng và nguyên tố chủ lực của bạn để thích nghi đối kháng &amp; tự bồi nguyên tố Hợp Kích.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
+
+        {/* TAB: WAVE 10 PILLAR 5B — REAL-TIME 3-BASTION GUILD WAR BATTLEFIELD */}
+        {activeTab === 'guild_war' && (() => {
+          const war = snapshot?.guildWarLive;
+          if (!war) {
+            return (
+              <div className="p-6 text-center text-xs text-slate-400">
+                Đang đồng bộ Chiến Trường Bang Hội Real-Time từ server...
+              </div>
+            );
+          }
+          const zodiacPct = Math.min(100, Math.round((war.zodiacScore / Math.max(1, war.targetScore)) * 100));
+          const rivalPct = Math.min(100, Math.round((war.rivalScore / Math.max(1, war.targetScore)) * 100));
+          const canClaimWar =
+            !war.claimedByPlayer &&
+            (war.status !== 'active' || war.zodiacScore >= 600);
+
+          return (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-amber-400/35 bg-[#080d22] p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-black text-amber-200">
+                      Chiến Trường Bang Hội Real-Time (3 Pháo Đài · [AI Live] Tham Chiến)
+                    </div>
+                    <div className="text-[11px] text-slate-300">
+                      Chiếm giữ Tháp Thái Dương, Thành Cổ Tinh Giới &amp; Đền Hư Không để cán mốc {war.targetScore.toLocaleString('vi-VN')} điểm trước Hắc Ám!
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!canClaimWar || claimingGuildWar}
+                    onClick={() => {
+                      setClaimingGuildWar(true);
+                      liveAiSocket.claimGuildWarReward(war.warId, playerDisplayName);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                      war.claimedByPlayer
+                        ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                        : canClaimWar
+                        ? 'a2-emerald-btn'
+                        : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {war.claimedByPlayer
+                      ? 'Đã Nhận Rương Hôm Nay'
+                      : claimingGuildWar
+                      ? 'Đang Nhận...'
+                      : `Nhận Rương Bang (${war.rewardGems} Ngọc)`}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono-nums">
+                  <div className="rounded-xl bg-[#071521] border border-emerald-400/40 p-2.5">
+                    <div className="flex items-center justify-between font-black text-emerald-200 mb-1">
+                      <span>{war.zodiacGuildName} (Ta)</span>
+                      <span>
+                        {war.zodiacScore}/{war.targetScore} ({zodiacPct}%)
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-950 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-cyan-300 transition-all"
+                        style={{ width: `${zodiacPct}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-[#1b0915] border border-rose-400/40 p-2.5">
+                    <div className="flex items-center justify-between font-black text-rose-200 mb-1">
+                      <span>{war.rivalGuildName}</span>
+                      <span>
+                        {war.rivalScore}/{war.targetScore} ({rivalPct}%)
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-950 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-rose-600 to-amber-400 transition-all"
+                        style={{ width: `${rivalPct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {war.bastions.map((b) => {
+                  const controlPct = Math.round(((b.controlScore + 100) / 200) * 100);
+                  const ownerLabel =
+                    b.owner === 'zodiac_guild'
+                      ? 'Hoàng Đạo Giữ'
+                      : b.owner === 'dark_alliance'
+                      ? 'Hắc Ám Giữ'
+                      : 'Đang Tranh Chấp';
+                  const ownerColor =
+                    b.owner === 'zodiac_guild'
+                      ? 'text-emerald-300'
+                      : b.owner === 'dark_alliance'
+                      ? 'text-rose-300'
+                      : 'text-amber-300';
+
+                  return (
+                    <div
+                      key={b.id}
+                      className="rounded-2xl border border-amber-400/30 bg-[#070b1a] p-3.5 flex flex-col justify-between gap-2.5"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-display text-sm font-black text-white">
+                            {b.name}
+                          </span>
+                          <span className={`text-[10px] font-black ${ownerColor}`}>
+                            {ownerLabel}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-amber-200 font-bold">{b.bonusLabel}</div>
+                        <div className="text-[10px] font-mono-nums text-slate-400">
+                          {b.allyAiCount} AI Đồng Minh vs {b.enemyAiCount} AI Địch · Điểm kiểm soát {b.controlScore > 0 ? `+${b.controlScore}` : b.controlScore}
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-950 border border-slate-800 overflow-hidden mt-1">
+                          <div
+                            className="h-full bg-gradient-to-r from-rose-500 via-amber-300 to-emerald-400 transition-all"
+                            style={{ width: `${controlPct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onStartGuildWarBastion) {
+                              onClose();
+                              onStartGuildWarBastion(b.id, b.name);
+                            }
+                          }}
+                          className="a2-yellow-btn py-2 px-2 rounded-xl text-[11px] font-black cursor-pointer whitespace-nowrap"
+                        >
+                          Xung Kích 3D
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            liveAiSocket.strikeGuildWarBastion({
+                              bastionId: b.id,
+                              mode: 'quick_strike',
+                              heroId: playerHeroId,
+                              playerName: playerDisplayName,
+                            });
+                            setFeedback(`Đã tung Chi Viện Nhanh vào ${b.name}!`);
+                          }}
+                          className="a2-slate-btn py-2 px-2 rounded-xl text-[11px] font-black text-sky-200 border border-sky-400/40 hover:border-amber-300 cursor-pointer whitespace-nowrap"
+                        >
+                          Chi Viện Nhanh
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

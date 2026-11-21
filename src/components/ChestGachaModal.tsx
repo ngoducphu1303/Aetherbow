@@ -10,11 +10,13 @@ import {
   computeTransparentPitySummary,
   normalizeFairProgression,
 } from '../engine/aaaFivePillarsDirector';
+import { ANCIENT_RUNE_EXCHANGE_COST } from '../engine/wave10FivePillars';
 import {
   FairProgressionState,
   GearInstance,
   PityState,
   Rarity,
+  RuneId,
   RuneInstance,
 } from '../types/game';
 import { ChestSvg, GearSlotSvg, RARITY_FRAME_CLASS } from './GameIcons';
@@ -32,6 +34,7 @@ interface ChestGachaModalProps {
   pity?: PityState;
   fairProgression?: FairProgressionState;
   onExchangeAstralShard?: (itemId: string) => void;
+  onCraftSelectedRune?: (runeId: RuneId) => void;
   onClose: () => void;
   onEquipGear: (uid: string) => void;
   onEquipRune: (uid: string) => void;
@@ -53,6 +56,7 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
   pity,
   fairProgression,
   onExchangeAstralShard,
+  onCraftSelectedRune,
   onClose,
   onEquipGear,
   onEquipRune,
@@ -746,7 +750,9 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                 </span>
                 <span className="text-slate-600">·</span>
                 <span className="font-bold text-amber-300">
-                  S-Tier {pitySummary.sTierPityCurrent}/{pitySummary.sTierPityMax}
+                  {reveal.chestVariant === 'rune_bag' || reveal.chestVariant === 'rune_rare'
+                    ? `Huyền Thoại ${pitySummary.sTierPityCurrent}/${pitySummary.sTierPityMax}`
+                    : `S-Tier ${pitySummary.sTierPityCurrent}/${pitySummary.sTierPityMax}`}
                 </span>
                 {pitySummary.softPityActive && (
                   <>
@@ -759,6 +765,10 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                 <span className="text-slate-600">·</span>
                 <span className="font-bold text-cyan-300">
                   Tinh Mảnh: {fairState.astralShards}
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="font-bold text-purple-300">
+                  Mảnh Cổ Ngữ: {pity?.ancientRuneShards ?? 0}/{ANCIENT_RUNE_EXCHANGE_COST}
                 </span>
               </div>
 
@@ -897,6 +907,49 @@ export const ChestGachaModal: React.FC<ChestGachaModalProps> = ({
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Wave 10 Pillar 3: 35-Shard Direct Ancient Rune Selector */}
+                <div className="pt-2.5 border-t border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-black text-purple-200">
+                      Bảo Hiểm Rớt Ngọc Cổ Ngữ · Tự Chọn Trực Tiếp ({ANCIENT_RUNE_EXCHANGE_COST} Mảnh Cổ Ngữ)
+                    </span>
+                    <span className="font-mono-nums font-black text-purple-300">
+                      {pity?.ancientRuneShards ?? 0}/{ANCIENT_RUNE_EXCHANGE_COST} Mảnh
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {Object.values(RUNES_CATALOG).slice(0, 9).map((runeDef) => {
+                      const canCraftRune =
+                        Boolean(onCraftSelectedRune) &&
+                        (pity?.ancientRuneShards ?? 0) >= ANCIENT_RUNE_EXCHANGE_COST;
+                      return (
+                        <button
+                          key={runeDef.id}
+                          type="button"
+                          disabled={!canCraftRune}
+                          onClick={() => {
+                            if (!onCraftSelectedRune) return;
+                            soundEngine.playLevelUp();
+                            onCraftSelectedRune(runeDef.id);
+                          }}
+                          className={`rounded-lg p-2 border text-left transition-colors ${
+                            canCraftRune
+                              ? 'bg-[#0b1228] border-purple-400/55 hover:border-amber-300 cursor-pointer'
+                              : 'bg-[#070b18] border-slate-800/80 opacity-65 cursor-not-allowed'
+                          }`}
+                        >
+                          <div className="text-[11px] font-black text-white truncate">
+                            {runeDef.name}
+                          </div>
+                          <div className="text-[10px] text-purple-300 font-mono-nums">
+                            {canCraftRune ? `Đổi · ${ANCIENT_RUNE_EXCHANGE_COST} Mảnh` : `${runeDef.archetype}`}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}

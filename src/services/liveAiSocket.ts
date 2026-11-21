@@ -1,4 +1,5 @@
 import type {
+  AiAdaptationSummarySnapshot,
   AiLiveActivityEvent,
   AiLiveAuctionBidEvent,
   AiLiveAuctionSyncLot,
@@ -10,9 +11,14 @@ import type {
   AiRivalRecord,
   HeroId,
   LiveGuildBossState,
+  LiveGuildWarSnapshot,
   LiveMiniCupState,
   LiveServerBountyState,
 } from '../types/game';
+import type {
+  GuildWarBastionId,
+  PlayerCombatTelemetryInput,
+} from '../engine/wave10FivePillars';
 import type { WeeklyBossLeaderboardEntry } from '../data/weeklyBossData';
 
 export type LiveSocketStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
@@ -90,6 +96,17 @@ export interface LiveServerBountyClaimAckPayload {
   state: LiveServerBountyState;
 }
 
+export interface LiveGuildWarClaimAckPayload {
+  ok: boolean;
+  alreadyClaimed: boolean;
+  goldReward: number;
+  gemsReward: number;
+  guildCoinsReward: number;
+  starDustReward: number;
+  message: string;
+  state: LiveGuildWarSnapshot;
+}
+
 type SnapshotListener = (snapshot: AiLiveHubSnapshot, status: LiveSocketStatus) => void;
 type WeeklyRankListener = (update: WeeklyBossLiveRankUpdate) => void;
 type DuelAcceptedListener = (payload: LiveDuelAcceptedPayload) => void;
@@ -99,9 +116,15 @@ type ChatListener = (channels: { lobby: AiLiveChatMessage[]; guild: AiLiveChatMe
 type InviteListener = (invite: AiLiveInvite) => void;
 type InviteAckListener = (ack: LiveInviteAckPayload) => void;
 type RivalBountyAckListener = (ack: LiveRivalBountyAckPayload) => void;
+type RivalRevengeChallengeListener = (payload: {
+  invite: AiLiveInvite;
+  rival: AiRivalRecord | null;
+  rivals?: AiRivalRecord[];
+}) => void;
 type GuildBossClaimAckListener = (ack: LiveGuildBossClaimAckPayload) => void;
 type MiniCupPrizeAckListener = (ack: LiveMiniCupPrizeAckPayload) => void;
 type ServerBountyClaimAckListener = (ack: LiveServerBountyClaimAckPayload) => void;
+type GuildWarClaimAckListener = (ack: LiveGuildWarClaimAckPayload) => void;
 
 class LiveAiSocketClient {
   private ws: WebSocket | null = null;
@@ -126,9 +149,11 @@ class LiveAiSocketClient {
   private inviteListeners = new Set<InviteListener>();
   private inviteAckListeners = new Set<InviteAckListener>();
   private rivalBountyAckListeners = new Set<RivalBountyAckListener>();
+  private rivalRevengeListeners = new Set<RivalRevengeChallengeListener>();
   private guildBossClaimAckListeners = new Set<GuildBossClaimAckListener>();
   private miniCupPrizeAckListeners = new Set<MiniCupPrizeAckListener>();
   private serverBountyClaimAckListeners = new Set<ServerBountyClaimAckListener>();
+  private guildWarClaimAckListeners = new Set<GuildWarClaimAckListener>();
 
   public getStatus(): LiveSocketStatus {
     return this.status;
@@ -292,6 +317,65 @@ class LiveAiSocketClient {
               this.emitSnapshot();
             }
             for (const cb of this.rivalBountyAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'rival:revenge_challenge' && msg.payload) {
+            const data = msg.payload as {
+              invite: AiLiveInvite;
+              rival: AiRivalRecord | null;
+              rivals?: AiRivalRecord[];
+            };
+            if (data.rivals && this.snapshot) {
+              this.snapshot = { ...this.snapshot, rivals: data.rivals };
+              this.emitSnapshot();
+            }
+            for (const cb of this.rivalRevengeListeners) cb(data);
+            return;
+          }
+          if (msg.type === 'ai:adaptation_update' && msg.payload) {
+            const data = msg.payload as {
+              adaptationProfile: AiAdaptationSummarySnapshot | null;
+            };
+            if (this.snapshot) {
+              this.snapshot = {
+                ...this.snapshot,
+                adaptationProfile: data.adaptationProfile ?? null,
+              };
+              this.emitSnapshot();
+            }
+            return;
+          }
+          if (msg.type === 'guild_war:update' && msg.payload) {
+            const data = msg.payload as {
+              guildWarLive: LiveGuildWarSnapshot;
+              event?: AiLiveActivityEvent;
+            };
+            if (this.snapshot && data.guildWarLive) {
+              const dedupedActivities = data.event
+                ? [
+                    data.event,
+                    ...this.snapshot.activities.filter((a) => a.id !== data.event!.id),
+                  ].slice(0, 20)
+                : this.snapshot.activities;
+              this.snapshot = {
+                ...this.snapshot,
+                guildWarLive: data.guildWarLive,
+                activities: dedupedActivities,
+              };
+              this.emitSnapshot();
+            }
+            return;
+          }
+          if (msg.type === 'guild_war:claim_ack' && msg.payload) {
+            const ack = msg.payload as LiveGuildWarClaimAckPayload;
+            if (this.snapshot && ack.state) {
+              this.snapshot = {
+                ...this.snapshot,
+                guildWarLive: ack.state,
+              };
+              this.emitSnapshot();
+            }
+            for (const cb of this.guildWarClaimAckListeners) cb(ack);
             return;
           }
           if (msg.type === 'guild_boss:update' && msg.payload) {
@@ -623,6 +707,24 @@ class LiveAiSocketClient {
     });
   }
 
+  public subscribeRivalRevengeChallenge(cb: RivalRevengeChallengeListener): () => void {
+    this.rivalRevengeListeners.add(cb);
+    return () => {
+      this.rivalRevengeListeners.delete(cb);
+    };
+  }
+
+  public requestRivalRevenge(aiPlayerId?: string, playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'rival:request_revenge',
+      payload: {
+        aiPlayerId,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
   public subscribeGuildBossClaimAck(cb: GuildBossClaimAckListener): () => void {
     this.guildBossClaimAckListeners.add(cb);
     return () => {
@@ -763,6 +865,78 @@ class LiveAiSocketClient {
       type: 'bounty:claim_reward',
       payload: {
         bountyId,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public submitCombatTelemetry(
+    telemetry: PlayerCombatTelemetryInput,
+    playerName?: string
+  ): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'ai:learn_telemetry',
+      payload: {
+        playerName: playerName || this.announcedDisplayName,
+        telemetry,
+      },
+    });
+  }
+
+  public resetAiAdaptation(playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'ai:reset_adaptation',
+      payload: {
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public subscribeGuildWarClaimAck(cb: GuildWarClaimAckListener): () => void {
+    this.guildWarClaimAckListeners.add(cb);
+    return () => {
+      this.guildWarClaimAckListeners.delete(cb);
+    };
+  }
+
+  public syncGuildWar(playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'guild_war:sync',
+      payload: {
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public strikeGuildWarBastion(params: {
+    bastionId: GuildWarBastionId;
+    mode: 'assault_3d' | 'quick_strike';
+    heroId: HeroId;
+    scoreGain?: number;
+    playerName?: string;
+  }): boolean {
+    this.ensureConnected(params.playerName);
+    return this.send({
+      type: 'guild_war:capture_strike',
+      payload: {
+        playerName: params.playerName || this.announcedDisplayName,
+        bastionId: params.bastionId,
+        mode: params.mode,
+        heroId: params.heroId,
+        scoreGain: params.scoreGain,
+      },
+    });
+  }
+
+  public claimGuildWarReward(warId?: string, playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'guild_war:claim_reward',
+      payload: {
+        warId,
         playerName: playerName || this.announcedDisplayName,
       },
     });

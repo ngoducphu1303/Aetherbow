@@ -695,6 +695,7 @@ export function computeAiCompanionDecision(params: {
   obstacles?: AiObstacleSnapshot[];
   bossWeakPoint?: AiWeakPointSnapshot | null;
   bossEnraged?: boolean;
+  tacticalOrder?: import('../types/game').CoopTacticalOrder;
 }): { steerX: number; steerZ: number; evading: boolean; tacticalHint?: string } {
   const cfg = AI_COMPANION_ROLES[params.role];
   const avoidance = computeDangerAvoidanceVector({
@@ -749,14 +750,29 @@ export function computeAiCompanionDecision(params: {
   }
 
   let tacticalHint: string | undefined;
-  if (params.role === 'vanguard') {
-    const guardBias = params.bossEnraged ? 0.42 : 0.52;
+  if (params.tacticalOrder === 'protect_player') {
+    const flankSide = params.slotIndex % 2 === 0 ? -1.8 : 1.8;
+    const anchorX = params.playerX + flankSide;
+    const anchorZ = params.playerZ - 1.1;
+    const toPlayerAnchor = normalizeVec(anchorX - params.x, anchorZ - params.z);
+    const distAnchor = Math.hypot(anchorX - params.x, anchorZ - params.z);
+    if (distAnchor > 1.25) {
+      sx += toPlayerAnchor.x * 1.15;
+      sz += toPlayerAnchor.z * 1.15;
+    }
+    tacticalHint = 'Hộ vệ quanh người chơi!';
+  } else if (params.role === 'vanguard' || params.tacticalOrder === 'break_guard') {
+    const guardBias = params.tacticalOrder === 'break_guard' ? 0.74 : params.bossEnraged ? 0.42 : 0.52;
     const midX = params.playerX * (1 - guardBias) + params.target.x * guardBias;
     const midZ = params.playerZ * (1 - guardBias) + params.target.z * guardBias;
     const toGuard = normalizeVec(midX - params.x, midZ - params.z);
     sx += toGuard.x * 0.82;
     sz += toGuard.z * 0.82;
-    if (params.bossEnraged) tacticalHint = 'Chắn tuyến trước Boss cuồng nộ!';
+    if (params.tacticalOrder === 'break_guard') {
+      tacticalHint = 'Đang ép Phá Giáp Boss!';
+    } else if (params.bossEnraged) {
+      tacticalHint = 'Chắn tuyến trước Boss cuồng nộ!';
+    }
   } else if (params.role === 'ranger' && params.bossWeakPoint?.active) {
     tacticalHint = 'Tập trung phá Điểm Yếu Boss!';
     sx += toTarget.x * 0.45;

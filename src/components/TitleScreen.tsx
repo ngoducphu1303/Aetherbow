@@ -166,6 +166,7 @@ import {
   PantheonBlessingId,
   PetId,
   PhotoLightingPreset,
+  RuneId,
   SanctuaryFloorId,
   SaveData,
   WeaponAuraId,
@@ -381,6 +382,7 @@ interface TitleScreenProps {
   onUnequipRune: (uid: string) => void;
   onFuseRune: (uid: string) => void;
   onBulkFuseRunes: () => void;
+  onCraftSelectedRune?: (runeId: RuneId) => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
   photoMode?: boolean;
@@ -598,6 +600,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUnequipRune,
   onFuseRune,
   onBulkFuseRunes,
+  onCraftSelectedRune,
   onRotateHero,
   onResetHeroRotation,
   photoMode = false,
@@ -2162,6 +2165,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               onUnequipRune={onUnequipRune}
               onFuseRune={onFuseRune}
               onBulkFuseRunes={onBulkFuseRunes}
+              onCraftSelectedRune={onCraftSelectedRune}
               onRotateHero={onRotateHero}
               onResetHeroRotation={onResetHeroRotation}
               onGoShop={() => onOpenShopSection('gacha')}

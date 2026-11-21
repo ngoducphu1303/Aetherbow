@@ -64,6 +64,12 @@ import { getNextTargetGoal, normalizeAiPreferences } from './data/earlyProgressi
 import { getAiDifficultyTierConfig, normalizeAiDuelDifficultyTier } from './engine/wave8LethalAiSystems';
 import { computeNextUpgradeRecommendation } from './data/progressionAdvisor';
 import { getStyleRewardBonusPct } from './engine/wave7CombatSystems';
+import {
+  EQUALIZED_TRIAL_KITS,
+  EQUALIZED_TRIAL_ROUNDS,
+  type EqualizedTrialKitId,
+  type GuildWarBastionId,
+} from './engine/wave10FivePillars';
 
 // Lazy-loaded non-startup event, shop, and progression modals to minimize initial JS payload
 const ArenaModal = lazy(() =>
@@ -229,6 +235,7 @@ import {
 } from './data/earlyProgressionData';
 import {
   FairActionTarget,
+  claimFairCatchUpMission,
   claimFairRoadmapMilestone,
   touchFairActiveDays,
 } from './data/fairProgression30Day';
@@ -256,7 +263,7 @@ import {
   normalizeCheckIn,
   normalizeDailyQuests,
 } from './data/questsData';
-import { RUNES_CATALOG, rollRuneChestBatch } from './data/runesData';
+import { RUNES_CATALOG, craftSelectedRuneFromShards, rollRuneChestBatch } from './data/runesData';
 import { rollSkillChoices } from './data/skillsData';
 import {
   TALENT_MAP,
@@ -562,6 +569,7 @@ import {
   Rarity,
   RunCombatHighlights,
   RunHistoryEntry,
+  RuneId,
   RuneInstance,
   SaveData,
   SkillDefinition,
@@ -1063,9 +1071,19 @@ export default function App() {
         .sort((a, b) => b.powerRating - a.powerRating)
         .slice(0, 4);
       setLiveAiOnlineTeammates(onlineSquad);
+      engineRef.current?.setAiAdaptationProfile(snap.adaptationProfile ?? null);
     });
     const unsubInvite = liveAiSocket.subscribeInvites((invite) => {
       setPendingLiveInvite(invite);
+    });
+    const unsubRivalRevenge = liveAiSocket.subscribeRivalRevengeChallenge((evt) => {
+      setPendingLiveInvite(evt.invite);
+      if (evt.rival) {
+        setLiveAiRivals((prev) => {
+          const filtered = prev.filter((r) => r.aiPlayerId !== evt.rival!.aiPlayerId);
+          return [evt.rival!, ...filtered];
+        });
+      }
     });
     const unsubRivalBounty = liveAiSocket.subscribeRivalBountyAck((ack) => {
       if (!ack.ok || ack.alreadyClaimed) return;
@@ -1122,6 +1140,7 @@ export default function App() {
     return () => {
       unsubSnap();
       unsubInvite();
+      unsubRivalRevenge();
       unsubRivalBounty();
       unsubAuction();
     };
@@ -2276,6 +2295,26 @@ export default function App() {
           });
           setPhase(victory ? GamePhase.VICTORY : GamePhase.GAME_OVER);
 
+          if (summary.combatTelemetry && summary.combatTelemetry.durationSec >= 4) {
+            liveAiSocket.submitCombatTelemetry(
+              summary.combatTelemetry,
+              displayNameRef.current || 'Chiến Binh Tinh Giới'
+            );
+          }
+
+          if (summary.guildWarBastionId) {
+            liveAiSocket.strikeGuildWarBastion({
+              bastionId: summary.guildWarBastionId,
+              mode: 'assault_3d',
+              heroId: saveRef.current.selectedHeroId,
+              scoreGain: Math.max(
+                85,
+                Math.min(240, Math.round((summary.guildWarScore ?? 0) / 3) + (victory ? 60 : 25))
+              ),
+              playerName: displayNameRef.current || 'Chiến Binh Tinh Giới',
+            });
+          }
+
           if (isGuildBoss && guildBossDamage > 0) {
             liveAiSocket.submitGuildBossLiveAttack({
               playerName: displayNameRef.current || 'Chiến Binh Tinh Giới',
@@ -2988,20 +3027,36 @@ export default function App() {
             if (isArena) {
               const ar = normalizeArena(prev.arena);
               const fp = normalizeFairProgression(prev.fairProgression);
+              const trialRoundNum = summary.trialGauntletRound;
+              const trialRoundDef = trialRoundNum
+                ? EQUALIZED_TRIAL_ROUNDS.find((r) => r.round === trialRoundNum)
+                : undefined;
               const nextRating = Math.max(900, ar.rating + arenaRatingDelta);
               const isEqWin = victory && fp.arenaEqualizedMode;
-              const finalArenaCoins = isEqWin
-                ? Math.round(arenaCoinsGain * 1.35)
-                : arenaCoinsGain;
+              const trialCoinBonus = trialRoundDef && victory ? trialRoundDef.arenaCoins : 0;
+              const trialGemBonus = trialRoundDef && victory ? trialRoundDef.gems : 0;
+              const trialStarDustBonus = trialRoundDef && victory ? trialRoundDef.starDust : 0;
+              const finalArenaCoins =
+                (isEqWin ? Math.round(arenaCoinsGain * 1.35) : arenaCoinsGain) + trialCoinBonus;
               const nextEqWins = fp.equalizedArenaWins + (isEqWin ? 1 : 0);
+              const nextTrialWins = (fp.equalizedTrialWins ?? 0) + (trialRoundDef && victory ? 1 : 0);
+              const nextTrialRound =
+                trialRoundDef && victory
+                  ? trialRoundDef.round === 1
+                    ? 2
+                    : trialRoundDef.round === 2
+                    ? 3
+                    : 1
+                  : fp.equalizedTrialRound ?? 1;
 
-              if (isEqWin && auth.currentUser) {
+              if ((isEqWin || (trialRoundDef && victory)) && auth.currentUser) {
                 const activeSeason = getActiveCompetitiveSeason();
                 const seasonPts = Math.max(
                   0,
                   Math.round(
                     (ar.wins + 1) * 18 +
                       nextEqWins * 24 +
+                      nextTrialWins * 28 +
                       (prev.bestTowerFloor ?? 0) * 6 +
                       (prev.highestChapterCleared ?? 0) * 20
                   )
@@ -3021,7 +3076,8 @@ export default function App() {
               return {
                 ...prev,
                 gold: prev.gold + totalGold,
-                gems: prev.gems + totalGems,
+                gems: prev.gems + totalGems + trialGemBonus,
+                starDust: (prev.starDust ?? 0) + trialStarDustBonus,
                 arena: {
                   ...ar,
                   rating: nextRating,
@@ -3034,6 +3090,8 @@ export default function App() {
                 fairProgression: {
                   ...fp,
                   equalizedArenaWins: nextEqWins,
+                  equalizedTrialRound: nextTrialRound,
+                  equalizedTrialWins: nextTrialWins,
                 },
                 battlePass: nextBp,
                 career: nextCareer,
@@ -3609,6 +3667,81 @@ export default function App() {
     [guardFeatureUnlock, save.arena, save.fairProgression, playerStats]
   );
 
+  const handleStartEqualizedTrial = useCallback(
+    (kitId: EqualizedTrialKitId, round: 1 | 2 | 3) => {
+      if (!guardFeatureUnlock('arena')) return;
+      const kit = EQUALIZED_TRIAL_KITS[kitId] ?? EQUALIZED_TRIAL_KITS.assassin_counter;
+      const roundDef =
+        EQUALIZED_TRIAL_ROUNDS.find((r) => r.round === round) ?? EQUALIZED_TRIAL_ROUNDS[0];
+      soundEngine.unlock();
+      setSave((prev) => {
+        const fp = normalizeFairProgression(prev.fairProgression);
+        return {
+          ...prev,
+          fairProgression: {
+            ...fp,
+            selectedTrialKitId: kitId,
+            equalizedTrialRound: round,
+          },
+        };
+      });
+      const trialOppHero: HeroId =
+        round === 1 ? 'wukong' : round === 2 ? 'thor' : 'dracoola';
+      const oppHeroDef = HERO_MAP[trialOppHero] ?? HERO_MAP.artemis;
+      const opp: ArenaOpponent = {
+        id: `trial_r${round}_${kitId}`,
+        name: roundDef.opponentTitle,
+        title: roundDef.title,
+        heroId: trialOppHero,
+        rating: 1200 + round * 140,
+        powerRating: 18500,
+        maxHp: kit.baseMaxHp,
+        attack: kit.baseAttack,
+        speedMult: round === 3 ? 1.08 : 1.0,
+        weaponArchetype:
+          trialOppHero === 'wukong' || trialOppHero === 'dracoola' ? 'claw' : 'bow',
+        accentHex: oppHeroDef.accentHex,
+        cloakHex: oppHeroDef.cloakHex,
+        hairHex: oppHeroDef.hairHex,
+        rewardPoints: roundDef.seasonPoints,
+        rewardArenaCoins: roundDef.arenaCoins,
+      };
+      activeArenaOpponentRef.current = opp;
+      setActiveArenaOpponent(opp);
+      setEnteredGame(true);
+      setRewardsModalTab(null);
+      setTalentsModalOpen(false);
+      setMailModalOpen(false);
+      setVipModalOpen(false);
+      setForgeConfig((prev) => ({ ...prev, open: false }));
+      setGuildModalOpen(false);
+      setDestinyWheelOpen(false);
+      setNightMarketOpen(false);
+      setArenaModalOpen(false);
+      setGachaReveal(null);
+      setPreviewHeroId(null);
+      setRunSummary(null);
+      setDamages([]);
+      setTransitionState({
+        chapterId: 4,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isArenaMode: true,
+        isArenaEqualized: true,
+        arenaOpponentName: opp.name,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startEqualizedTrialDuel(playerStats, opp, kitId, round);
+    },
+    [guardFeatureUnlock, playerStats]
+  );
+
   const handleStartCoopRaid = useCallback(
     (difficulty: CoopRaidDifficulty) => {
       if (!guardFeatureUnlock('coop_raid')) return;
@@ -4028,6 +4161,72 @@ export default function App() {
       triggerUpgradeCelebration(
         'Rương Truy Nã Toàn Server!',
         `+${reward.rewardGold.toLocaleString('vi-VN')} Vàng · +${reward.rewardGems} Ngọc · +${reward.rewardStarDust} Bụi Tinh Tú`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleStartGuildWarBastion = useCallback(
+    (bastionId: GuildWarBastionId, bastionName: string) => {
+      soundEngine.unlock();
+      setEnteredGame(true);
+      setRewardsModalTab(null);
+      setTalentsModalOpen(false);
+      setConstellationModalOpen(false);
+      setMailModalOpen(false);
+      setVipModalOpen(false);
+      setForgeConfig((prev) => ({ ...prev, open: false }));
+      setGuildModalOpen(false);
+      setDestinyWheelOpen(false);
+      setNightMarketOpen(false);
+      setArenaModalOpen(false);
+      setLiveAiHubOpen(false);
+      setGachaReveal(null);
+      setPreviewHeroId(null);
+      setRunSummary(null);
+      setDamages([]);
+      setTransitionState({
+        chapterId: 9,
+        isTowerMode: false,
+        isBossRushMode: false,
+        isGuildWarMode: true,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 560);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startGuildWarBastionSkirmish(playerStats, bastionId, bastionName);
+    },
+    [playerStats]
+  );
+
+  const handleClaimGuildWarLiveReward = useCallback(
+    (reward: {
+      rewardGold: number;
+      rewardGems: number;
+      rewardGuildCoins: number;
+      rewardStarDust: number;
+    }) => {
+      soundEngine.playVictory();
+      setSave((prev) => {
+        const g = normalizeGuild(prev.guild);
+        return {
+          ...prev,
+          gold: prev.gold + Math.max(0, reward.rewardGold),
+          gems: prev.gems + Math.max(0, reward.rewardGems),
+          starDust: (prev.starDust ?? 0) + Math.max(0, reward.rewardStarDust),
+          guild: {
+            ...g,
+            guildCoins: g.guildCoins + Math.max(0, reward.rewardGuildCoins),
+          },
+        };
+      });
+      triggerUpgradeCelebration(
+        'Rương Chiến Trường Bang Hội!',
+        `+${reward.rewardGold.toLocaleString('vi-VN')} Vàng · +${reward.rewardGems} Ngọc · +${reward.rewardGuildCoins} Xu Bang`
       );
     },
     [triggerUpgradeCelebration]
@@ -7652,6 +7851,32 @@ export default function App() {
     });
   }, []);
 
+  const handleCraftSelectedRune = useCallback(
+    (runeId: RuneId) => {
+      let craftedName: string | null = null;
+      setSave((prev) => {
+        const res = craftSelectedRuneFromShards(prev.pity, runeId, {
+          policy: getEarlyProgressionPolicy(prev),
+        });
+        if (!res.ok || !res.rune) return prev;
+        craftedName = RUNES_CATALOG[res.rune.runeId]?.name ?? res.rune.runeId;
+        soundEngine.playLevelUp();
+        return {
+          ...prev,
+          runeInventory: [...prev.runeInventory, res.rune],
+          pity: res.nextPity,
+        };
+      });
+      if (craftedName) {
+        triggerUpgradeCelebration(
+          'Đổi Chọn Cổ Ngữ Thành Công',
+          `Đã khắc trực tiếp Cổ Ngữ Sử Thi: ${craftedName}`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
   // Flash Sale & Mail Inbox Handlers
   const handleBuyFlashDeal = useCallback((deal: FlashDealItem) => {
     setSave((prev) => {
@@ -11042,6 +11267,7 @@ export default function App() {
           onUnequipRune={handleUnequipRune}
           onFuseRune={handleFuseRune}
           onBulkFuseRunes={handleBulkFuseRunes}
+          onCraftSelectedRune={handleCraftSelectedRune}
           onRotateHero={(deltaRad) => engineRef.current?.rotateLobbyHero(deltaRad)}
           onResetHeroRotation={() => engineRef.current?.resetLobbyHeroRotation()}
           photoMode={photoMode}
@@ -11616,8 +11842,10 @@ export default function App() {
           playerDisplayName={playerDisplayName}
           currentUid={currentUser?.uid ?? null}
           equalizedMode={normalizeFairProgression(save.fairProgression).arenaEqualizedMode}
+          rivals={liveAiRivals}
           onToggleEqualizedMode={handleToggleArenaEqualizedMode}
           onStartDuel={handleStartArenaDuel}
+          onStartEqualizedTrial={handleStartEqualizedTrial}
           onChallengeLiveAi={handleChallengeLiveAiById}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onBuyTicket={handleBuyArenaTicket}
@@ -11753,6 +11981,19 @@ export default function App() {
               `+${res.milestone.rewardGold.toLocaleString('vi-VN')} Vàng · +${res.milestone.rewardGems} Ngọc · +${res.milestone.rewardStarDust.toLocaleString('vi-VN')} Bụi`
             );
           }}
+          onClaimCatchUpMission={(missionId) => {
+            const res = claimFairCatchUpMission(save, missionId, playerStats);
+            if (!res.ok || !res.mission) {
+              soundEngine.playUiClick(0.75);
+              return;
+            }
+            setSave(res.nextSave);
+            soundEngine.playVictory();
+            triggerUpgradeCelebration(
+              `Bắt Kịp Tiến Độ · ${res.mission.title}`,
+              `+${res.mission.rewardGold.toLocaleString('vi-VN')} Vàng · +${res.mission.rewardStarDust} Bụi · +${res.mission.rewardEpicShards} Mảnh Sử Thi`
+            );
+          }}
           onCraftEarlyTargetGear={handleCraftEarlyTargetGear}
         />
       )}
@@ -11771,6 +12012,7 @@ export default function App() {
           pity={save.pity}
           fairProgression={save.fairProgression}
           onExchangeAstralShard={handleExchangeAstralShard}
+          onCraftSelectedRune={handleCraftSelectedRune}
           onClose={() => setGachaReveal(null)}
           onEquipGear={handleEquip}
           onEquipRune={handleEquipRune}
@@ -11850,6 +12092,8 @@ export default function App() {
           isAuthenticated={Boolean(currentUser)}
           playerDisplayName={playerDisplayName}
           currentUid={currentUser?.uid}
+          equalizedArenaWins={normalizeFairProgression(save.fairProgression).equalizedArenaWins}
+          coopSyncRuns={save.coopRaid?.totalClears ?? 0}
           onStartVerifiedRun={handleStartWeeklyRankedBoss}
           onStartWeekendBlitzRun={handleStartWeekendBlitz}
           onStartPracticeRun={handleStartWeeklyBossPractice}
@@ -11878,6 +12122,8 @@ export default function App() {
           onStartMiniCupMatch={handleStartMiniCupMatch}
           onClaimMiniCupPrize={handleClaimMiniCupPrize}
           onClaimServerBountyReward={handleClaimServerBountyReward}
+          onStartGuildWarBastion={handleStartGuildWarBastion}
+          onClaimGuildWarLiveReward={handleClaimGuildWarLiveReward}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onClose={() => setLiveAiHubOpen(false)}
         />
@@ -11942,9 +12188,15 @@ export default function App() {
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[10px] font-black uppercase tracking-wider text-sky-300">
+                <div
+                  className={`text-[10px] font-black uppercase tracking-wider ${
+                    pendingLiveInvite.kind === 'rival_revenge' ? 'text-rose-300' : 'text-sky-300'
+                  }`}
+                >
                   {pendingLiveInvite.kind === 'coop_raid'
                     ? 'Lời Mời Tổ Đội Co-op 3D'
+                    : pendingLiveInvite.kind === 'rival_revenge'
+                    ? `Kình Địch Phục Thù (+${pendingLiveInvite.revengeBonusPct ?? 25}% Thưởng)`
                     : 'Thách Đấu 1v1 Real-Time'}
                 </div>
                 <div className="text-xs font-black text-white truncate mt-0.5">
@@ -11971,7 +12223,11 @@ export default function App() {
                 onClick={() => handleAcceptLiveInvite(pendingLiveInvite)}
                 className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer"
               >
-                {pendingLiveInvite.kind === 'coop_raid' ? 'Vào Co-op Ngay' : 'Nhận Thách Đấu'}
+                {pendingLiveInvite.kind === 'coop_raid'
+                  ? 'Vào Co-op Ngay'
+                  : pendingLiveInvite.kind === 'rival_revenge'
+                  ? 'Đáp Trả Phục Thù'
+                  : 'Nhận Thách Đấu'}
               </button>
             </div>
           </div>

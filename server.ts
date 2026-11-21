@@ -368,6 +368,8 @@ export function attachLiveAiWebSocketServer(
         guildBossLive: liveAiService.getLiveGuildBossState(playerName),
         miniCup: liveAiService.getMiniCupForPlayer(playerName),
         serverBounty: liveAiService.getServerBountyState(playerName),
+        adaptationProfile: liveAiService.getAdaptationForPlayer(playerName),
+        guildWarLive: liveAiService.getLiveGuildWarState(playerName),
       },
     });
   };
@@ -569,6 +571,22 @@ export function attachLiveAiWebSocketServer(
                 onlineHumanCount: Math.max(1, wss.clients.size),
               },
             });
+            if (res.rival?.vendettaPending) {
+              const rev = liveAiService.issueRivalRevengeChallenge({
+                playerName: challengerName,
+                aiPlayerId: res.rival.aiPlayerId,
+              });
+              if (rev.ok && rev.invite) {
+                sendJson(ws, {
+                  type: 'rival:revenge_challenge',
+                  payload: {
+                    invite: rev.invite,
+                    rival: rev.rival,
+                    rivals: liveAiService.getRivalsForPlayer(challengerName),
+                  },
+                });
+              }
+            }
           }
           return;
         }
@@ -591,6 +609,33 @@ export function attachLiveAiWebSocketServer(
             type: 'invite:received',
             payload: invite,
           });
+          return;
+        }
+
+        if (type === 'rival:request_revenge') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const aiPlayerId =
+            typeof payload.aiPlayerId === 'string' ? payload.aiPlayerId.trim() : undefined;
+          const rev = liveAiService.issueRivalRevengeChallenge({
+            playerName,
+            aiPlayerId,
+          });
+          if (rev.ok && rev.invite) {
+            sendJson(ws, {
+              type: 'rival:revenge_challenge',
+              payload: {
+                invite: rev.invite,
+                rival: rev.rival,
+                rivals: liveAiService.getRivalsForPlayer(playerName),
+              },
+            });
+            sendJson(ws, {
+              type: 'invite:received',
+              payload: rev.invite,
+            });
+          }
           return;
         }
 
@@ -851,6 +896,113 @@ export function attachLiveAiWebSocketServer(
             type: 'bounty:claim_ack',
             payload: claimed,
           });
+          return;
+        }
+
+        if (type === 'ai:learn_telemetry') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const rawTel = (payload.telemetry ?? payload) as Record<string, unknown>;
+          const rawEl = String(rawTel.dominantElement ?? 'fire');
+          const dominantElement =
+            rawEl === 'ice' || rawEl === 'storm' || rawEl === 'poison' ? rawEl : 'fire';
+          const profile = liveAiService.recordPlayerCombatTelemetry({
+            playerName,
+            telemetry: {
+              leftDodges: Math.max(0, Math.min(200, Math.round(Number(rawTel.leftDodges ?? 0)))),
+              rightDodges: Math.max(0, Math.min(200, Math.round(Number(rawTel.rightDodges ?? 0)))),
+              avgDistance: Math.max(1.5, Math.min(14, Number(rawTel.avgDistance ?? 6.2))),
+              dashCount: Math.max(0, Math.min(200, Math.round(Number(rawTel.dashCount ?? 0)))),
+              durationSec: Math.max(4, Math.min(300, Number(rawTel.durationSec ?? 20))),
+              dominantElement,
+              elementalReactions: Math.max(
+                0,
+                Math.min(200, Math.round(Number(rawTel.elementalReactions ?? 0)))
+              ),
+              won: typeof rawTel.won === 'boolean' ? rawTel.won : undefined,
+            },
+          });
+          sendJson(ws, {
+            type: 'ai:adaptation_update',
+            payload: { adaptationProfile: profile },
+          });
+          return;
+        }
+
+        if (type === 'ai:reset_adaptation') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          liveAiService.resetPlayerAdaptation(playerName);
+          sendJson(ws, {
+            type: 'ai:adaptation_update',
+            payload: { adaptationProfile: null },
+          });
+          return;
+        }
+
+        if (type === 'guild_war:sync') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          sendJson(ws, {
+            type: 'guild_war:update',
+            payload: {
+              guildWarLive: liveAiService.getLiveGuildWarState(playerName),
+            },
+          });
+          return;
+        }
+
+        if (type === 'guild_war:capture_strike') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const rawBastion = String(payload.bastionId ?? 'solar_spire');
+          const bastionId =
+            rawBastion === 'astral_citadel' || rawBastion === 'void_shrine'
+              ? rawBastion
+              : 'solar_spire';
+          const mode = payload.mode === 'assault_3d' ? 'assault_3d' : 'quick_strike';
+          const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
+          const scoreGain = Number(payload.scoreGain ?? (mode === 'assault_3d' ? 145 : 65));
+          const res = liveAiService.strikeGuildWarBastion({
+            playerName,
+            heroId: heroId as any,
+            bastionId,
+            mode,
+            scoreGain: Number.isFinite(scoreGain) ? scoreGain : undefined,
+          });
+          for (const client of wss.clients) {
+            if (client.readyState === WebSocket.OPEN) {
+              const pName = clientNames.get(client);
+              sendJson(client, {
+                type: 'guild_war:update',
+                payload: {
+                  guildWarLive: liveAiService.getLiveGuildWarState(pName),
+                  event: res.event,
+                },
+              });
+            }
+          }
+          return;
+        }
+
+        if (type === 'guild_war:claim_reward') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const warId =
+            typeof payload.warId === 'string' ? payload.warId.trim() : undefined;
+          const claimed = liveAiService.claimLiveGuildWarReward({
+            playerName,
+            warId,
+          });
+          sendJson(ws, {
+            type: 'guild_war:claim_ack',
+            payload: claimed,
+          });
         }
       } catch {
         // Ignore malformed frames safely
@@ -899,6 +1051,19 @@ export function attachLiveAiWebSocketServer(
               type: 'bounty:update',
               payload: {
                 serverBounty: liveAiService.getServerBountyState(pName),
+              },
+            });
+          }
+        }
+      }
+      if ((tick as { guildWarUpdated?: boolean }).guildWarUpdated) {
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            const pName = clientNames.get(client);
+            sendJson(client, {
+              type: 'guild_war:update',
+              payload: {
+                guildWarLive: liveAiService.getLiveGuildWarState(pName),
               },
             });
           }

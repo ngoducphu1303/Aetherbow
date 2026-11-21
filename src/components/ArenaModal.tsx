@@ -24,7 +24,12 @@ import {
   EQUALIZED_ARENA_BASELINE,
   normalizeFairProgression,
 } from '../engine/aaaFivePillarsDirector';
-import { AiLivePlayerProfile, ArenaOpponent, SaveData } from '../types/game';
+import {
+  EQUALIZED_TRIAL_KIT_LIST,
+  EQUALIZED_TRIAL_ROUNDS,
+  type EqualizedTrialKitId,
+} from '../engine/wave10FivePillars';
+import { AiLivePlayerProfile, AiRivalRecord, ArenaOpponent, SaveData } from '../types/game';
 import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon } from './GameIcons';
 
 interface ArenaModalProps {
@@ -33,8 +38,10 @@ interface ArenaModalProps {
   playerDisplayName?: string;
   currentUid?: string | null;
   equalizedMode?: boolean;
+  rivals?: AiRivalRecord[];
   onToggleEqualizedMode?: (enabled: boolean) => void;
   onStartDuel: (opponent: ArenaOpponent) => void;
+  onStartEqualizedTrial?: (kitId: EqualizedTrialKitId, round: 1 | 2 | 3) => void;
   onChallengeLiveAi?: (aiPlayerId: string) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
   onBuyTicket: () => void;
@@ -49,8 +56,10 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
   playerDisplayName,
   currentUid = null,
   equalizedMode,
+  rivals = [],
   onToggleEqualizedMode,
   onStartDuel,
+  onStartEqualizedTrial,
   onChallengeLiveAi,
   onInspectAiPlayer,
   onBuyTicket,
@@ -58,7 +67,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
   onOpenArenaShop,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<'duel' | 'ranks' | 'ladder'>('duel');
+  const [subTab, setSubTab] = useState<'duel' | 'trial' | 'ranks' | 'ladder'>('duel');
   const [ladderFilter, setLadderFilter] = useState<LeaderboardFilterMode>('all');
   const [imgErr, setImgErr] = useState(false);
   const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
@@ -68,6 +77,15 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
 
   const arena = normalizeArena(save.arena);
   const fairProg = normalizeFairProgression(save.fairProgression);
+  const [selectedKitId, setSelectedKitId] = useState<EqualizedTrialKitId>(
+    (fairProg.selectedTrialKitId as EqualizedTrialKitId) || 'assassin_counter'
+  );
+  const trialRound: 1 | 2 | 3 =
+    fairProg.equalizedTrialRound === 2
+      ? 2
+      : fairProg.equalizedTrialRound === 3
+      ? 3
+      : 1;
   const isEqualized = equalizedMode ?? fairProg.arenaEqualizedMode;
   const rankInfo = getArenaRankInfo(arena.rating);
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
@@ -218,8 +236,8 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
           </div>
         </div>
 
-        {/* 3 Sub-Tabs */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
+        {/* 4 Sub-Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           <button
             type="button"
             onClick={() => {
@@ -230,8 +248,21 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
               subTab === 'duel' ? 'a2-yellow-btn shadow-lg' : 'a2-slate-btn text-slate-300'
             }`}
           >
-            <Swords className="w-4 h-4" />
+            <Swords className="w-4 h-4 shrink-0" />
             <span>Khiêu Chiến 3D</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              setSubTab('trial');
+            }}
+            className={`py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+              subTab === 'trial' ? 'a2-emerald-btn shadow-lg' : 'a2-slate-btn text-slate-300'
+            }`}
+          >
+            <Shield className="w-4 h-4 shrink-0" />
+            <span>Thử Nghiệm Đồng Bộ</span>
           </button>
           <button
             type="button"
@@ -243,7 +274,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
               subTab === 'ranks' ? 'a2-emerald-btn shadow-lg' : 'a2-slate-btn text-slate-300'
             }`}
           >
-            <Award className="w-4 h-4" />
+            <Award className="w-4 h-4 shrink-0" />
             <span>Thưởng Bậc Hạng</span>
           </button>
           <button
@@ -256,7 +287,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
               subTab === 'ladder' ? 'a2-purple-btn shadow-lg' : 'a2-slate-btn text-slate-300'
             }`}
           >
-            <Trophy className="w-4 h-4" />
+            <Trophy className="w-4 h-4 shrink-0" />
             <span>Bảng Xếp Hạng</span>
           </button>
         </div>
@@ -312,6 +343,40 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
                 </div>
               )}
             </div>
+
+            {(() => {
+              const pendingVendetta = rivals.find((r) => r.vendettaPending);
+              if (!pendingVendetta || !onChallengeLiveAi) return null;
+              return (
+                <div className="rounded-2xl border border-rose-400/55 bg-[#1b0914]/95 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="text-xs font-black text-rose-200 flex items-center gap-1.5">
+                      <Swords className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                      <span className="truncate">
+                        Kình Địch Phục Thù: {pendingVendetta.aiDisplayName} [AI Live]
+                      </span>
+                      <span className="font-mono-nums text-amber-300 shrink-0">
+                        +{pendingVendetta.revengeBonusPct ?? 25}% Thưởng
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-mono-nums text-slate-300">
+                      Tỷ số {pendingVendetta.winsAgainst}T–{pendingVendetta.lossesAgainst}B · {pendingVendetta.lastEncounterReason}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.1);
+                      onClose();
+                      onChallengeLiveAi(pendingVendetta.aiPlayerId);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-amber-400 text-slate-950 text-xs font-black whitespace-nowrap cursor-pointer shrink-0"
+                  >
+                    Đáp Trả Phục Thù 1v1
+                  </button>
+                </div>
+              );
+            })()}
 
             {liveOpponents.length > 0 && (
               <div className="text-[11px] text-sky-200/90 flex items-center gap-2 px-1">
@@ -631,6 +696,113 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {subTab === 'trial' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-emerald-400/40 bg-[#061420]/95 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-black text-emerald-300 uppercase tracking-wider">
+                  Đấu Trường Thử Nghiệm Đồng Bộ · Kỹ Năng Thuần Túy
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  Toàn bộ người chơi dùng chỉ số chuẩn hóa ngang nhau — chọn 1 trong 3 Bộ Mẫu và chinh phục 3 Vòng leo thưởng Mùa Giải!
+                </p>
+              </div>
+              <div className="rounded-xl bg-[#070b1a] border border-emerald-400/35 px-3 py-1.5 text-right font-mono-nums">
+                <div className="text-[10px] text-slate-400">Vòng Hiện Tại</div>
+                <div className="text-sm font-black text-amber-300">
+                  Vòng {trialRound}/3 · Thắng {fairProg.equalizedTrialWins ?? 0} trận
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {EQUALIZED_TRIAL_KIT_LIST.map((kit) => {
+                const selected = selectedKitId === kit.id;
+                const hero = HERO_MAP[kit.heroId] ?? HERO_MAP.artemis;
+                return (
+                  <button
+                    key={kit.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      setSelectedKitId(kit.id);
+                    }}
+                    className={`rounded-2xl p-3.5 text-left border transition-colors cursor-pointer flex flex-col justify-between gap-2 ${
+                      selected
+                        ? 'bg-emerald-500/15 border-emerald-300 ring-1 ring-emerald-300/60'
+                        : 'bg-[#070b1a] border-slate-800 hover:border-emerald-400/45'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-[10px] font-black ${kit.accentClass}`}>
+                          {kit.badge}
+                        </span>
+                        {selected && <Check className="w-4 h-4 text-emerald-300 shrink-0" />}
+                      </div>
+                      <div className="text-sm font-black text-white mt-0.5">{kit.name}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">Mẫu Tướng: {hero.name}</div>
+                      <p className="text-[11px] text-slate-300 mt-1.5 leading-snug">{kit.desc}</p>
+                    </div>
+                    <div className="pt-2 border-t border-slate-800/80 text-[10px] font-mono-nums text-amber-200 space-y-0.5">
+                      <div>
+                        HP {kit.baseMaxHp.toLocaleString('vi-VN')} · Công {kit.baseAttack} · CM {Math.round(kit.baseCritChance * 100)}%
+                      </div>
+                      <div className="text-emerald-300 font-bold">{kit.perkSummary}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {EQUALIZED_TRIAL_ROUNDS.map((r) => {
+                const isCurrent = trialRound === r.round;
+                const isDone = trialRound > r.round;
+                return (
+                  <div
+                    key={r.round}
+                    className={`rounded-2xl p-3 border ${
+                      isCurrent
+                        ? 'bg-amber-400/12 border-amber-300/80'
+                        : isDone
+                        ? 'bg-emerald-950/35 border-emerald-500/40'
+                        : 'bg-[#070b1a] border-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-xs font-black">
+                      <span className={isCurrent ? 'text-amber-200' : 'text-white'}>{r.title}</span>
+                      <span className="font-mono-nums text-[10px] text-emerald-300">
+                        {isDone ? 'Đã Vượt' : isCurrent ? 'Sẵn Sàng' : 'Khóa'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{r.opponentTitle}</div>
+                    <div className="mt-2 text-[11px] font-mono-nums font-bold text-sky-200">
+                      +{r.seasonPoints} Điểm Mùa · +{r.arenaCoins} Xu Arena · +{r.gems} Ngọc
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              disabled={!onStartEqualizedTrial}
+              onClick={() => {
+                if (!onStartEqualizedTrial) return;
+                soundEngine.playVictory();
+                onStartEqualizedTrial(selectedKitId, trialRound);
+              }}
+              className="a2-emerald-btn w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+            >
+              <Swords className="w-4 h-4" />
+              <span>
+                Vào Đấu Thử Nghiệm Đồng Bộ · Vòng {trialRound}/3 (Miễn Phí Vé)
+              </span>
+            </button>
           </div>
         )}
       </div>

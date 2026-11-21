@@ -253,6 +253,30 @@ export const COOP_TACTICAL_ORDERS: CoopTacticalOrderMeta[] = [
   },
 ];
 
+export const WAVE9_COOP_QUICK_ORDERS: CoopTacticalOrderMeta[] = [
+  {
+    id: 'focus_boss',
+    hotkey: '1',
+    shortLabel: 'Tập Trung Boss',
+    callout: 'Lệnh Tổ Đội: Dồn toàn lực hạ Boss!',
+    desc: 'Đồng đội khóa mục tiêu Boss và xoay góc tránh vùng đỏ.',
+  },
+  {
+    id: 'break_guard',
+    hotkey: '2',
+    shortLabel: 'Phá Giáp',
+    callout: 'Lệnh Tổ Đội: Tập trung phá giáp & mồi Liên Kích!',
+    desc: 'Đồng đội ưu tiên bào thanh giáp Boss/Tinh Anh và hô lệnh khi sắp tung Tuyệt Kỹ.',
+  },
+  {
+    id: 'protect_player',
+    hotkey: '3',
+    shortLabel: 'Hộ Vệ',
+    callout: 'Lệnh Tổ Đội: Hộ Vệ & Sẵn sàng thả Vòng Hộ Mệnh!',
+    desc: 'Đồng đội áp sát bảo vệ bạn, hạ quái áp sát và mở Vòng Hộ Mệnh sớm hơn (<50% HP).',
+  },
+];
+
 export interface CoopTargetCandidate {
   id: string | number;
   x: number;
@@ -267,14 +291,32 @@ export function selectCoopAllyTarget<T extends CoopTargetCandidate>(
   enemies: readonly T[],
   allyX: number,
   allyZ: number,
-  order: CoopTacticalOrder
+  order: CoopTacticalOrder,
+  playerX = 0,
+  playerZ = 0
 ): T | null {
   const living = enemies.filter((e) => e.alive && e.hp > 0);
   if (living.length === 0) return null;
 
-  if (order === 'focus_boss') {
+  if (order === 'focus_boss' || order === 'break_guard') {
     const boss = living.find((e) => e.isBoss);
     if (boss) return boss;
+    if (order === 'break_guard') {
+      const elite = living.find((e) => e.isElite);
+      if (elite) return elite;
+    }
+  } else if (order === 'protect_player') {
+    let closestToPlayer = living[0];
+    let bestDistSq =
+      (closestToPlayer.x - playerX) ** 2 + (closestToPlayer.z - playerZ) ** 2;
+    for (let i = 1; i < living.length; i++) {
+      const dSq = (living[i].x - playerX) ** 2 + (living[i].z - playerZ) ** 2;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        closestToPlayer = living[i];
+      }
+    }
+    return closestToPlayer;
   } else if (order === 'clear_adds') {
     const adds = living.filter((e) => !e.isBoss);
     if (adds.length > 0) {

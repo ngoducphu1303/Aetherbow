@@ -5,6 +5,15 @@ import {
   clampRarityToPolicy,
 } from './earlyProgressionData';
 import { normalizePity } from './liveOpsData';
+import {
+  ANCIENT_RUNE_EXCHANGE_COST,
+  RUNE_EPIC_PITY_MAX,
+  RUNE_LEGENDARY_PITY_MAX,
+  RUNE_LEGENDARY_SOFT_PITY_START,
+  getAncientRuneShardsFromRarity,
+} from '../engine/wave10FivePillars';
+
+export { ANCIENT_RUNE_EXCHANGE_COST };
 
 export const RUNES_CATALOG: Record<RuneId, RuneDefinition> = {
   rune_flame: {
@@ -142,10 +151,12 @@ export const RUNES_CATALOG: Record<RuneId, RuneDefinition> = {
 };
 
 export const ALL_RUNES_LIST = Object.values(RUNES_CATALOG);
+export const CRAFTABLE_RUNES_LIST = ALL_RUNES_LIST;
 
 export interface RollRuneOptions {
   maxRarity?: Rarity;
   rng?: () => number;
+  legendaryBonusChance?: number;
 }
 
 export function rollRuneChest(
@@ -157,9 +168,10 @@ export function rollRuneChest(
   const def = ALL_RUNES_LIST[Math.floor(rng() * ALL_RUNES_LIST.length)];
   const r = rng();
   let rarity = Rarity.COMMON;
+  const legChance = (isPremium ? 0.14 : 0) + Math.max(0, options?.legendaryBonusChance ?? 0);
   if (isPremium) {
-    if (r < 0.14) rarity = Rarity.LEGENDARY;
-    else if (r < 0.5) rarity = Rarity.EPIC;
+    if (r < Math.min(0.95, legChance)) rarity = Rarity.LEGENDARY;
+    else if (r < Math.max(0.5, legChance + 0.36)) rarity = Rarity.EPIC;
     else rarity = Rarity.RARE;
   } else {
     if (r < 0.08) rarity = Rarity.EPIC;
@@ -187,31 +199,66 @@ export function rollRuneChestBatch(
   count: number,
   currentPity?: Partial<PityState>,
   options?: { policy?: EarlyProgressionPolicy; rng?: () => number }
-): { items: RuneInstance[]; nextPity: PityState } {
+): { items: RuneInstance[]; nextPity: PityState; ancientRuneShardsGained: number } {
   const pity = normalizePity(currentPity);
   const items: RuneInstance[] = [];
   let hasRarePlus = false;
+  let ancientRuneShardsGained = 0;
   const maxRarity = options?.policy?.maxRuneRarity;
   const canRollEpic = !maxRarity || RARITY_RANK[maxRarity] >= RARITY_RANK[Rarity.EPIC];
+  const canRollLegendary = !maxRarity || RARITY_RANK[maxRarity] >= RARITY_RANK[Rarity.LEGENDARY];
   const canRollRare = !maxRarity || RARITY_RANK[maxRarity] >= RARITY_RANK[Rarity.RARE];
+  const epicCap = RUNE_EPIC_PITY_MAX - 1;
+  const legCap = RUNE_LEGENDARY_PITY_MAX - 1;
 
   for (let i = 0; i < count; i++) {
     if (isPremium) {
-      const needEpic = canRollEpic && pity.runeRollsSinceEpic >= 9;
-      const item = rollRuneChest(true, needEpic ? Rarity.EPIC : undefined, {
+      const currentLeg = pity.runeRollsSinceLegendary ?? 0;
+      const needLegendary = canRollLegendary && currentLeg >= legCap;
+      const needEpic = canRollEpic && pity.runeRollsSinceEpic >= epicCap;
+      const forceMin = needLegendary
+        ? Rarity.LEGENDARY
+        : needEpic
+        ? Rarity.EPIC
+        : undefined;
+      const softBonus =
+        canRollLegendary && currentLeg >= RUNE_LEGENDARY_SOFT_PITY_START
+          ? (currentLeg - RUNE_LEGENDARY_SOFT_PITY_START + 1) * 0.05
+          : 0;
+
+      const item = rollRuneChest(true, forceMin, {
         maxRarity,
         rng: options?.rng,
+        legendaryBonusChance: softBonus,
       });
+
       if (canRollEpic) {
-        if (item.rarity === Rarity.EPIC || item.rarity === Rarity.LEGENDARY || item.rarity === Rarity.MYTHIC) {
+        if (
+          item.rarity === Rarity.EPIC ||
+          item.rarity === Rarity.LEGENDARY ||
+          item.rarity === Rarity.MYTHIC
+        ) {
           pity.runeRollsSinceEpic = 0;
         } else {
           pity.runeRollsSinceEpic++;
         }
       } else {
-        // Preserve Epic Rune pity until Chapter 1 clear unlocks Epic Runes
-        pity.runeRollsSinceEpic = Math.min(9, pity.runeRollsSinceEpic + 1);
+        pity.runeRollsSinceEpic = Math.min(epicCap, pity.runeRollsSinceEpic + 1);
       }
+
+      if (canRollLegendary) {
+        if (item.rarity === Rarity.LEGENDARY || item.rarity === Rarity.MYTHIC) {
+          pity.runeRollsSinceLegendary = 0;
+        } else {
+          pity.runeRollsSinceLegendary = currentLeg + 1;
+        }
+      } else {
+        pity.runeRollsSinceLegendary = Math.min(legCap, currentLeg + 1);
+      }
+
+      const gained = getAncientRuneShardsFromRarity(item.rarity);
+      ancientRuneShardsGained += gained;
+      pity.ancientRuneShards = (pity.ancientRuneShards ?? 0) + gained;
       items.push(item);
     } else {
       const forceRare = canRollRare && count >= 10 && i === count - 1 && !hasRarePlus;
@@ -220,9 +267,53 @@ export function rollRuneChestBatch(
         rng: options?.rng,
       });
       if (item.rarity !== Rarity.COMMON) hasRarePlus = true;
+      const gained = getAncientRuneShardsFromRarity(item.rarity);
+      ancientRuneShardsGained += gained;
+      pity.ancientRuneShards = (pity.ancientRuneShards ?? 0) + gained;
       items.push(item);
     }
   }
 
-  return { items, nextPity: pity };
+  return { items, nextPity: pity, ancientRuneShardsGained };
+}
+
+export function craftSelectedRuneFromShards(
+  currentPity: Partial<PityState> | undefined,
+  runeId: RuneId,
+  options?: { policy?: EarlyProgressionPolicy; rng?: () => number }
+): { ok: boolean; rune: RuneInstance | null; nextPity: PityState; reason?: string } {
+  const pity = normalizePity(currentPity);
+  const available = pity.ancientRuneShards ?? 0;
+  if (available < ANCIENT_RUNE_EXCHANGE_COST) {
+    return {
+      ok: false,
+      rune: null,
+      nextPity: pity,
+      reason: `Cần ${ANCIENT_RUNE_EXCHANGE_COST} Mảnh Cổ Ngữ (hiện có ${available}).`,
+    };
+  }
+  const def = RUNES_CATALOG[runeId];
+  if (!def) {
+    return { ok: false, rune: null, nextPity: pity, reason: 'Ngọc Cổ Ngữ không hợp lệ.' };
+  }
+  const rng = options?.rng ?? Math.random;
+  let rarity = Rarity.LEGENDARY;
+  if (options?.policy?.maxRuneRarity) {
+    rarity = clampRarityToPolicy(Rarity.LEGENDARY, options.policy.maxRuneRarity);
+    // Guarantee at least EPIC once Epic is unlocked, or RARE if early Ch.1
+    if (RARITY_RANK[rarity] < RARITY_RANK[Rarity.EPIC] && RARITY_RANK[options.policy.maxRuneRarity] >= RARITY_RANK[Rarity.EPIC]) {
+      rarity = Rarity.EPIC;
+    }
+  }
+  const rune: RuneInstance = {
+    uid: `rune_craft_${Date.now()}_${Math.floor(rng() * 1e9).toString(36)}`,
+    runeId: def.id,
+    rarity,
+  };
+  pity.ancientRuneShards = available - ANCIENT_RUNE_EXCHANGE_COST;
+  return {
+    ok: true,
+    rune,
+    nextPity: pity,
+  };
 }

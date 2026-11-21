@@ -304,6 +304,28 @@ export const COOP_TACTICAL_PINGS: Record<CoopTacticalOrder, CoopTacticalPingSpec
       'Ult đã nạp đầy, ra hiệu là nổ ngay!',
     ],
   },
+  break_guard: {
+    order: 'break_guard',
+    hotkey: '2',
+    label: 'Phá Giáp',
+    calloutLine: 'Tập trung bào Giáp Boss & mồi Liên Kích!',
+    aiReplyPool: [
+      'Đang Phá Giáp Boss — Bấm F hoặc Q Liên Kích!',
+      'Rõ! Dồn toàn lực bào thanh giáp Boss ngay!',
+      'Giáp Boss sắp vỡ — chuẩn bị đòn Kết Liễu!',
+    ],
+  },
+  protect_player: {
+    order: 'protect_player',
+    hotkey: '3',
+    label: 'Hộ Vệ',
+    calloutLine: 'Áp sát Hộ Vệ & sẵn sàng thả Vòng Hộ Mệnh!',
+    aiReplyPool: [
+      'Đang lùi về Hộ Vệ quanh bạn!',
+      'Vòng Hộ Mệnh sẵn sàng — đừng ngại áp sát!',
+      'Đã khóa tuyến bảo vệ, để tôi đỡ đòn cho bạn!',
+    ],
+  },
 };
 
 export function pickCoopPingAiReply(

@@ -26,6 +26,16 @@ import type {
   LiveServerBountyContributor,
   LiveServerBountyState,
 } from '../types/game.ts';
+import {
+  applyGuildWarBastionStrike,
+  createInitialLiveGuildWarState,
+  derivePlayerAdaptationProfile,
+  tickLiveGuildWarAiSkirmish,
+  type AiPlayerAdaptationProfile,
+  type GuildWarBastionId,
+  type LiveGuildWarState,
+  type PlayerCombatTelemetryInput,
+} from '../engine/wave10FivePillars.ts';
 
 interface LiveAiStoreData {
   version: 1;
@@ -43,6 +53,9 @@ interface LiveAiStoreData {
   miniCupsByPlayer?: Record<string, LiveMiniCupState>;
   serverBounty?: LiveServerBountyState;
   serverBountyClaimsByPlayer?: Record<string, boolean>;
+  adaptationByPlayer?: Record<string, AiPlayerAdaptationProfile>;
+  guildWarLive?: LiveGuildWarState;
+  guildWarClaimsByPlayer?: Record<string, boolean>;
 }
 
 const MAX_CHAT_PER_CHANNEL = 40;
@@ -410,6 +423,16 @@ export class LiveAiPlayersService {
             typeof parsed.serverBountyClaimsByPlayer === 'object'
               ? parsed.serverBountyClaimsByPlayer
               : {},
+          adaptationByPlayer:
+            parsed.adaptationByPlayer && typeof parsed.adaptationByPlayer === 'object'
+              ? parsed.adaptationByPlayer
+              : {},
+          guildWarLive: parsed.guildWarLive,
+          guildWarClaimsByPlayer:
+            parsed.guildWarClaimsByPlayer &&
+            typeof parsed.guildWarClaimsByPlayer === 'object'
+              ? parsed.guildWarClaimsByPlayer
+              : {},
         };
       }
       return this.createSeededInitialStore(nowMs);
@@ -457,6 +480,7 @@ export class LiveAiPlayersService {
       },
       guildBossLive: this.getLiveGuildBossState(undefined, nowMs),
       serverBounty: this.getServerBountyState(undefined, nowMs),
+      guildWarLive: this.getLiveGuildWarState(undefined, nowMs),
     };
   }
 
@@ -700,11 +724,31 @@ export class LiveAiPlayersService {
       });
     }
 
+    let guildWarUpdated = false;
+    if (actionKind === 'guild' || this.tickCounter % 2 === 0) {
+      const war = this.ensureLiveGuildWar(nowMs);
+      if (war.status === 'active') {
+        const skirmish = tickLiveGuildWarAiSkirmish(war, {
+          aiId: player.id,
+          aiDisplayName: player.displayName,
+          heroId: player.heroId,
+          tickSeed: this.tickCounter,
+          nowMs,
+        });
+        this.store.guildWarLive = skirmish.nextState;
+        guildWarUpdated = true;
+      }
+    }
+
     if (this.tickCounter % 4 === 0) {
       this.persistStore();
     }
 
-    return { updatedPlayer: player, event };
+    return { updatedPlayer: player, event, guildWarUpdated } as {
+      updatedPlayer: AiLivePlayerProfile;
+      event: AiLiveActivityEvent;
+      guildWarUpdated?: boolean;
+    };
   }
 
   /**
@@ -944,6 +988,30 @@ export class LiveAiPlayersService {
     const baseDelta = params.scoreDelta ?? (params.playerWon === false ? 30 : 25);
     const rivalryScore = Math.min(250, (prev?.rivalryScore ?? 0) + baseDelta);
 
+    let revengeStreak = prev?.revengeStreak ?? 0;
+    let vendettaPending = Boolean(prev?.vendettaPending);
+    let revengeBonusPct = prev?.revengeBonusPct ?? 0;
+    let lastOutcome = prev?.lastOutcome;
+
+    if (params.playerWon === false) {
+      revengeStreak = Math.min(4, revengeStreak + 1);
+      vendettaPending = true;
+      revengeBonusPct = Math.min(60, 15 + revengeStreak * 15);
+      lastOutcome = 'ai_won';
+    } else if (params.playerWon === true) {
+      lastOutcome = 'player_won';
+      if (prev?.vendettaPending) {
+        // Player settled the pending revenge duel -> reset active vendetta
+        vendettaPending = false;
+        revengeStreak = 0;
+        revengeBonusPct = 0;
+      } else if (winsAgainst >= 2) {
+        revengeStreak = Math.min(3, Math.max(1, revengeStreak + 1));
+        vendettaPending = true;
+        revengeBonusPct = Math.min(60, 15 + Math.floor(rivalryScore / 45) * 15);
+      }
+    }
+
     const updated: AiRivalRecord = {
       aiPlayerId: opponent.id,
       aiDisplayName: opponent.displayName,
@@ -956,11 +1024,103 @@ export class LiveAiPlayersService {
       lastEncounterReason: params.reason,
       lastEncounterAt: nowMs,
       bountyClaimedDateKey: prev?.bountyClaimedDateKey,
+      vendettaPending,
+      revengeStreak,
+      revengeBonusPct,
+      lastOutcome,
     };
 
     this.store.rivalsByPlayer[pKey][opponent.id] = updated;
     this.persistStore();
     return updated;
+  }
+
+  public issueRivalRevengeChallenge(params: {
+    playerName: string;
+    aiPlayerId?: string;
+    nowMs?: number;
+  }): {
+    ok: boolean;
+    invite: AiLiveInvite | null;
+    rival: AiRivalRecord | null;
+    event?: AiLiveActivityEvent;
+  } {
+    const nowMs = params.nowMs ?? Date.now();
+    const pKey = this.normalizePlayerKey(params.playerName);
+    let rivals = this.getRivalsForPlayer(params.playerName);
+
+    let targetRival: AiRivalRecord | undefined;
+    if (params.aiPlayerId) {
+      targetRival = rivals.find((r) => r.aiPlayerId === params.aiPlayerId);
+    }
+    if (!targetRival) {
+      targetRival =
+        rivals.find((r) => r.vendettaPending) ??
+        rivals[0];
+    }
+
+    // If the player hasn't encountered any rival yet, promote top ready contender into an active rival
+    if (!targetRival) {
+      const seedProfile =
+        this.store.players.find((p) => p.id === params.aiPlayerId) ??
+        this.store.players[0];
+      if (!seedProfile) {
+        return { ok: false, invite: null, rival: null };
+      }
+      targetRival =
+        this.recordRivalEncounter({
+          playerName: params.playerName,
+          aiPlayerId: seedProfile.id,
+          playerWon: false,
+          reason: 'Thư Chiến Phục Thù Sảnh Chính',
+          scoreDelta: 30,
+          nowMs,
+        }) ?? undefined;
+      rivals = this.getRivalsForPlayer(params.playerName);
+    }
+
+    if (!targetRival) {
+      return { ok: false, invite: null, rival: null };
+    }
+
+    const aiProfile = this.getPlayerById(targetRival.aiPlayerId) ?? this.store.players[0];
+    const streak = Math.max(1, targetRival.revengeStreak ?? 1);
+    const bonusPct = Math.min(60, Math.max(20, targetRival.revengeBonusPct ?? 20));
+    targetRival.vendettaPending = true;
+    targetRival.revengeStreak = streak;
+    targetRival.revengeBonusPct = bonusPct;
+
+    if (!this.store.rivalsByPlayer) this.store.rivalsByPlayer = {};
+    if (!this.store.rivalsByPlayer[pKey]) this.store.rivalsByPlayer[pKey] = {};
+    this.store.rivalsByPlayer[pKey][targetRival.aiPlayerId] = targetRival;
+
+    const inviteId = `rev_${nowMs}_${crypto.randomBytes(4).toString('hex')}`;
+    const invite: AiLiveInvite = {
+      inviteId,
+      kind: 'rival_revenge',
+      aiPlayerId: targetRival.aiPlayerId,
+      aiDisplayName: targetRival.aiDisplayName,
+      aiHeroId: targetRival.aiHeroId,
+      aiPowerRating: aiProfile?.powerRating ?? targetRival.aiPowerRating,
+      message: `Kình Địch Phục Thù (Chuỗi ×${streak}): Vào 1v1 thanh toán duyên nợ để nhận +${bonusPct}% Thưởng Vàng & Xu Arena!`,
+      createdAt: nowMs,
+      expiresAt: nowMs + 60_000,
+      revengeBonusPct: bonusPct,
+      revengeStreak: streak,
+    };
+    this.activeInvites.set(inviteId, invite);
+
+    const event = this.pushActivity({
+      id: `evt_${inviteId}`,
+      timestamp: nowMs,
+      kind: 'duel_result',
+      actorName: `${targetRival.aiDisplayName} [AI Live]`,
+      summary: `gửi Thư Chiến Phục Thù tới ${params.playerName} (+${bonusPct}% thưởng truy nã)!`,
+      accent: 'rose',
+    });
+
+    this.persistStore();
+    return { ok: true, invite, rival: targetRival, event };
   }
 
   public getRivalsForPlayer(playerName: string): AiRivalRecord[] {
@@ -1117,7 +1277,7 @@ export class LiveAiPlayersService {
     }
 
     const opponent = this.getPlayerById(invite.aiPlayerId) ?? undefined;
-    if (invite.kind === 'arena_duel' && opponent) {
+    if ((invite.kind === 'arena_duel' || invite.kind === 'rival_revenge') && opponent) {
       const started = this.startDuelChallenge(opponent.id, params.playerName, nowMs);
       this.persistStore();
       return {
@@ -1946,6 +2106,207 @@ export class LiveAiPlayersService {
       starDustReward: bounty.rewardStarDust,
       message: `Nhận Rương Truy Nã Server: +${bounty.rewardGold} Vàng · +${bounty.rewardGems} Ngọc · +${bounty.rewardStarDust} Bụi Tinh Tú!`,
       state: this.getServerBountyState(params.playerName, nowMs),
+    };
+  }
+
+  // ============================================================================
+  // WAVE 10 — PILLAR 5A: ADAPTIVE AI PLAYSTYLE LEARNING
+  // ============================================================================
+
+  public getAdaptationForPlayer(playerName: string): AiPlayerAdaptationProfile | null {
+    const pKey = this.normalizePlayerKey(playerName);
+    const prof = this.store.adaptationByPlayer?.[pKey] ?? null;
+    return prof ? { ...prof } : null;
+  }
+
+  public recordPlayerCombatTelemetry(params: {
+    playerName: string;
+    telemetry: PlayerCombatTelemetryInput;
+    nowMs?: number;
+  }): AiPlayerAdaptationProfile {
+    const nowMs = params.nowMs ?? Date.now();
+    const pKey = this.normalizePlayerKey(params.playerName);
+    if (!this.store.adaptationByPlayer) {
+      this.store.adaptationByPlayer = {};
+    }
+    const prev = this.store.adaptationByPlayer[pKey] ?? null;
+    const updated = derivePlayerAdaptationProfile(
+      prev,
+      params.playerName,
+      params.telemetry,
+      nowMs
+    );
+    this.store.adaptationByPlayer[pKey] = updated;
+    this.persistStore();
+    return { ...updated };
+  }
+
+  public resetPlayerAdaptation(playerName: string): void {
+    const pKey = this.normalizePlayerKey(playerName);
+    if (this.store.adaptationByPlayer && this.store.adaptationByPlayer[pKey]) {
+      delete this.store.adaptationByPlayer[pKey];
+      this.persistStore();
+    }
+  }
+
+  // ============================================================================
+  // WAVE 10 — PILLAR 5B: REAL-TIME 3-BASTION GUILD WAR BATTLEFIELD
+  // ============================================================================
+
+  private ensureLiveGuildWar(nowMs = Date.now()): LiveGuildWarState {
+    const dateKey = new Date(nowMs).toISOString().slice(0, 10);
+    if (!this.store.guildWarLive || this.store.guildWarLive.dateKey !== dateKey) {
+      this.store.guildWarLive = createInitialLiveGuildWarState(dateKey, nowMs);
+      this.store.guildWarClaimsByPlayer = {};
+    }
+    return this.store.guildWarLive;
+  }
+
+  public getLiveGuildWarState(playerName?: string, nowMs = Date.now()): LiveGuildWarState {
+    const war = this.ensureLiveGuildWar(nowMs);
+    const pKey = playerName ? this.normalizePlayerKey(playerName) : null;
+    const claimedByPlayer = pKey
+      ? Boolean(this.store.guildWarClaimsByPlayer?.[pKey])
+      : false;
+    return {
+      ...war,
+      claimedByPlayer,
+      bastions: war.bastions.map((b) => ({ ...b })),
+      contributors: war.contributors.map((c) => ({ ...c })),
+    };
+  }
+
+  public strikeGuildWarBastion(params: {
+    playerName: string;
+    heroId?: HeroId;
+    bastionId: GuildWarBastionId;
+    mode: 'assault_3d' | 'quick_strike';
+    scoreGain?: number;
+    nowMs?: number;
+  }): {
+    state: LiveGuildWarState;
+    pointsAwarded: number;
+    bastionName: string;
+    flippedOwner: boolean;
+    event: AiLiveActivityEvent;
+  } {
+    const nowMs = params.nowMs ?? Date.now();
+    const war = this.ensureLiveGuildWar(nowMs);
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const res = applyGuildWarBastionStrike(war, {
+      actorId: `human_${pKey}`,
+      actorName: params.playerName,
+      heroId: params.heroId ?? 'artemis',
+      isHuman: true,
+      faction: 'zodiac_guild',
+      bastionId: params.bastionId,
+      mode: params.mode,
+      scoreGain: params.scoreGain,
+      nowMs,
+    });
+    this.store.guildWarLive = res.nextState;
+    const event = this.pushActivity({
+      id: `evt_gwar_${nowMs}_${crypto.randomBytes(3).toString('hex')}`,
+      timestamp: nowMs,
+      kind: 'guild',
+      actorName: params.playerName,
+      summary:
+        params.mode === 'assault_3d'
+          ? `xung kích 3D tại ${res.bastion.name} (+${res.pointsAwarded} điểm Bang)!`
+          : `chi viện nhanh ${res.bastion.name} (+${res.pointsAwarded} điểm Bang)!`,
+      accent: res.flippedOwner ? 'amber' : 'emerald',
+    });
+    this.persistStore();
+    return {
+      state: this.getLiveGuildWarState(params.playerName, nowMs),
+      pointsAwarded: res.pointsAwarded,
+      bastionName: res.bastion.name,
+      flippedOwner: res.flippedOwner,
+      event,
+    };
+  }
+
+  public claimLiveGuildWarReward(params: {
+    playerName: string;
+    warId?: string;
+    nowMs?: number;
+  }): {
+    ok: boolean;
+    alreadyClaimed: boolean;
+    goldReward: number;
+    gemsReward: number;
+    guildCoinsReward: number;
+    starDustReward: number;
+    message: string;
+    state: LiveGuildWarState;
+  } {
+    const nowMs = params.nowMs ?? Date.now();
+    const war = this.ensureLiveGuildWar(nowMs);
+    const pKey = this.normalizePlayerKey(params.playerName);
+
+    if (params.warId && params.warId !== war.warId) {
+      return {
+        ok: false,
+        alreadyClaimed: false,
+        goldReward: 0,
+        gemsReward: 0,
+        guildCoinsReward: 0,
+        starDustReward: 0,
+        message: 'Chiến Trường Bang đã chuyển sang ngày mới.',
+        state: this.getLiveGuildWarState(params.playerName, nowMs),
+      };
+    }
+
+    if (!this.store.guildWarClaimsByPlayer) {
+      this.store.guildWarClaimsByPlayer = {};
+    }
+    if (this.store.guildWarClaimsByPlayer[pKey]) {
+      return {
+        ok: true,
+        alreadyClaimed: true,
+        goldReward: 0,
+        gemsReward: 0,
+        guildCoinsReward: 0,
+        starDustReward: 0,
+        message: 'Bạn đã nhận Rương Chiến Trường Bang hôm nay.',
+        state: this.getLiveGuildWarState(params.playerName, nowMs),
+      };
+    }
+
+    const wonOrParticipated =
+      war.status === 'zodiac_victory' ||
+      war.status === 'rival_victory' ||
+      war.zodiacScore >= 600;
+    if (!wonOrParticipated) {
+      return {
+        ok: false,
+        alreadyClaimed: false,
+        goldReward: 0,
+        gemsReward: 0,
+        guildCoinsReward: 0,
+        starDustReward: 0,
+        message: `Cần Bang đạt tối thiểu 600 điểm Chiến Trường hoặc phân định thắng bại (hiện ${war.zodiacScore}/${war.targetScore}).`,
+        state: this.getLiveGuildWarState(params.playerName, nowMs),
+      };
+    }
+
+    const winMult = war.status === 'zodiac_victory' ? 1.0 : 0.7;
+    const goldReward = Math.round(war.rewardGold * winMult);
+    const gemsReward = Math.round(war.rewardGems * winMult);
+    const guildCoinsReward = Math.round(war.rewardGuildCoins * winMult);
+    const starDustReward = Math.round(war.rewardStarDust * winMult);
+
+    this.store.guildWarClaimsByPlayer[pKey] = true;
+    this.persistStore();
+    return {
+      ok: true,
+      alreadyClaimed: false,
+      goldReward,
+      gemsReward,
+      guildCoinsReward,
+      starDustReward,
+      message: `Nhận Rương Chiến Trường Bang: +${goldReward} Vàng · +${gemsReward} Ngọc · +${guildCoinsReward} Xu Bang · +${starDustReward} Bụi!`,
+      state: this.getLiveGuildWarState(params.playerName, nowMs),
     };
   }
 }

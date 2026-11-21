@@ -125,6 +125,25 @@ import {
 } from './wave8LethalAiSystems';
 import type { AiDuelDifficultyTier, CombatStyleGrade } from '../types/game';
 import {
+  advanceElementalResonance,
+  AiDominantElement,
+  AiPlayerAdaptationProfile,
+  applyBossPartDamage,
+  BossBreakablePart,
+  BossPartId,
+  computeAdaptiveAiCounterAdjustments,
+  computeDynamicSkyShaderTargets,
+  createBossBreakableParts,
+  createInitialElementalResonanceState,
+  ElementalResonanceState,
+  EQUALIZED_TRIAL_KITS,
+  EqualizedTrialKitId,
+  GuildWarBastionId,
+  mapReactionToResonanceElement,
+  PlayerCombatTelemetryInput,
+  tickElementalResonanceTimers,
+} from './wave10FivePillars';
+import {
   computePowerPressure,
   getTowerRecommendedPower,
   PowerPressureEvaluation,
@@ -170,7 +189,23 @@ import {
   sampleAdaptiveFpsFrame,
   selectCoopAllyTarget,
   shouldCoopAllyHoldUlt,
+  WAVE9_COOP_QUICK_ORDERS,
 } from './wave5CombatSystems';
+import {
+  ARENA_PROP_CONFIGS,
+  ArenaPropKind,
+  BOSS_PHASE_2_HP_RATIO,
+  BOSS_PHASE_3_HP_RATIO,
+  BOSS_PHASE_COUNTER_WINDOW_SEC,
+  computeBossPhaseCounterPresentation,
+  computeCoopPrimerCallout,
+  computeExecutionFinisherPresentation,
+  computeWave9ArenaPropPlacements,
+  evaluateCoopSanctuaryRescue,
+  EXECUTION_FINISHER_DURATION_SEC,
+  isExecutionFinisherEligible,
+  resolveArenaPropActivation,
+} from './wave9FivePillars';
 import {
   BossPaceTrackerState,
   COOP_AI_ROLE_DEFS,
@@ -388,6 +423,8 @@ const _keyCol = new THREE.Color();
 const _hemiSkyCol = new THREE.Color();
 const _hemiGndCol = new THREE.Color();
 const _starCol = new THREE.Color();
+const _nebulaCol = new THREE.Color();
+const _auroraCol = new THREE.Color();
 
 const ARENA_HALF_W = 10.5;
 const ARENA_HALF_D = 12.2;
@@ -452,6 +489,8 @@ interface EnemyEntity {
   stunTimer?: number;
   punishWindowTimer?: number;
   punishWindowMax?: number;
+  bossParts?: BossBreakablePart[];
+  bossPartMeshes?: Partial<Record<BossPartId, THREE.Mesh[]>>;
   isVaultPillar?: boolean;
   isGoldenPillar?: boolean;
   isTrainingDummy?: boolean;
@@ -740,6 +779,10 @@ export interface EngineCallbacks {
       arenaRivalRemainingHpPct?: number;
       consolationStarDust?: number;
       coachingNote?: string;
+      trialGauntletRound?: 1 | 2 | 3;
+      trialGauntletKitId?: EqualizedTrialKitId;
+      guildWarBastionId?: GuildWarBastionId;
+      combatTelemetry?: PlayerCombatTelemetryInput;
     }
   ) => void;
   onProgressEvent?: (ev: {
@@ -1098,6 +1141,31 @@ export class GameEngine {
   private trapTriggerToast: string | null = null;
   private trapTriggerToastTimer = 0;
   private windBeaconSpeedTimer = 0;
+  // Wave 9: Interactive 3D Composite Arena Props, Boss Phase Counter, Execution Finisher & Co-op Sanctuary
+  private wave9Props: Array<{
+    x: number;
+    z: number;
+    radius: number;
+    kind: ArenaPropKind;
+    alive: boolean;
+    group: THREE.Group;
+    core: THREE.Mesh;
+    ring: THREE.Mesh;
+  }> = [];
+  private wave9PropBuffTimer = 0;
+  private wave9PropAtkBonusPct = 0;
+  private wave9PropAspdBonusPct = 0;
+  private wave9PropBuffLabel: string | null = null;
+  private bossPhaseCounterTimer = 0;
+  private bossPhaseCounterLevel: 2 | 3 | null = null;
+  private executionFinisherTimer = 0;
+  private executionFinisherFocusX = 0;
+  private executionFinisherFocusZ = 0;
+  private coopSanctuaryCooldown = 0;
+  private coopSanctuaryActiveTimer = 0;
+  private coopSanctuaryRing: THREE.Mesh | null = null;
+  private coopPrimerBanner: string | null = null;
+  private coopPrimerBannerTimer = 0;
   private chapterWeatherPoints: THREE.Points | null = null;
   private chapterWeatherProfile: ChapterWeatherProfile | null = null;
   private footstepRipplePool: Array<{
@@ -1119,6 +1187,31 @@ export class GameEngine {
   private runBountiesCompleted = 0;
   private runBossBreaksCount = 0;
   private runDamageTakenCount = 0;
+  // Wave 10: Dynamic Sky Shader, Boss Breakable Parts, Elemental Resonance, Trial Gauntlet, Adaptive AI & Live Guild War Skirmish
+  private skyDomeMesh: THREE.Mesh | null = null;
+  private skyDomeMat: THREE.ShaderMaterial | null = null;
+  private elementalResonance: ElementalResonanceState = createInitialElementalResonanceState();
+  private elementalResonanceChargeAccum = 0;
+  private bossPartBrokenBanner: string | null = null;
+  private bossPartBrokenBannerTimer = 0;
+  private runBossPartStarDust = 0;
+  private aiAdaptationProfile: AiPlayerAdaptationProfile | null = null;
+  private trialGauntletRound: 1 | 2 | 3 | null = null;
+  private trialGauntletKitId: EqualizedTrialKitId | null = null;
+  private guildWarBastionId: GuildWarBastionId | null = null;
+  private guildWarBastionLabel: string | null = null;
+  private runLeftDodges = 0;
+  private runRightDodges = 0;
+  private runDashCount = 0;
+  private runDistSum = 0;
+  private runDistSamples = 0;
+  private runDistSampleTimer = 0;
+  private runElemCounts: Record<AiDominantElement, number> = {
+    fire: 0,
+    ice: 0,
+    storm: 0,
+    poison: 0,
+  };
 
   private phase: GamePhase = GamePhase.TITLE;
   private lobbyViewMode: 'battle' | 'gear' | 'heroes' | 'runes' | 'vault' = 'battle';
@@ -3532,6 +3625,8 @@ export class GameEngine {
     this.constellationGroup = null;
     this.chapterWeatherPoints = null;
     this.chapterWeatherProfile = null;
+    this.skyDomeMesh = null;
+    this.skyDomeMat = null;
     while (this.arenaGroup.children.length > 0) {
       this.releaseObject(this.arenaGroup.children[0]);
     }
@@ -3548,6 +3643,75 @@ export class GameEngine {
       const dustMat = this.arenaDustMesh.material as THREE.MeshBasicMaterial;
       if (dustMat && 'color' in dustMat) dustMat.color.setHex(themeSpec.dustHex);
     }
+
+    // Wave 10: Dynamic 3D Procedural GLSL Sky Dome (biome + boss phase + resonance reactive)
+    const skyTargets = computeDynamicSkyShaderTargets({
+      skyHex: chapter.skyHex,
+      fogHex: chapter.fogHex,
+      rimLightHex: themeSpec.rimLightHex,
+      bossPhase: 1,
+      resonanceRatio: 0,
+    });
+    this.skyDomeMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uZenithColor: { value: new THREE.Color(skyTargets.zenithHex) },
+        uHorizonColor: { value: new THREE.Color(skyTargets.horizonHex) },
+        uNebulaColor: { value: new THREE.Color(skyTargets.nebulaHex) },
+        uAuroraColor: { value: new THREE.Color(skyTargets.auroraHex) },
+        uTurbulence: { value: skyTargets.turbulence },
+        uPhaseIntensity: { value: skyTargets.phaseIntensity },
+        uSimpleMode: { value: this.isSoftwareGl || this.lowEndGpu ? 1.0 : 0.0 },
+      },
+      vertexShader: `
+        varying vec3 vWorldDir;
+        void main() {
+          vWorldDir = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uZenithColor;
+        uniform vec3 uHorizonColor;
+        uniform vec3 uNebulaColor;
+        uniform vec3 uAuroraColor;
+        uniform float uTurbulence;
+        uniform float uPhaseIntensity;
+        uniform float uSimpleMode;
+        varying vec3 vWorldDir;
+
+        void main() {
+          float h = smoothstep(-0.08, 0.74, vWorldDir.y);
+          vec3 col = mix(uHorizonColor, uZenithColor, h);
+          float angle = atan(vWorldDir.z, vWorldDir.x);
+
+          if (uSimpleMode > 0.5) {
+            float band = sin(angle * 3.0 + uTime * 0.28) * 0.5 + 0.5;
+            float ribbon = smoothstep(0.05, 0.45, vWorldDir.y) * (1.0 - smoothstep(0.45, 0.85, vWorldDir.y));
+            col += uAuroraColor * band * ribbon * (0.12 + uPhaseIntensity * 0.16);
+          } else {
+            float waveA = sin(angle * 4.0 + uTime * 0.35 * uTurbulence + vWorldDir.y * 5.0);
+            float waveB = cos(angle * 7.0 - uTime * 0.48 * uTurbulence + vWorldDir.y * 8.0);
+            float nebulaBand = smoothstep(-0.2, 0.65, waveA * 0.55 + waveB * 0.45);
+            float horizonMask = smoothstep(0.02, 0.36, vWorldDir.y) * (1.0 - smoothstep(0.55, 0.96, vWorldDir.y));
+            col += uNebulaColor * nebulaBand * horizonMask * (0.14 + uPhaseIntensity * 0.24);
+            float aurora = pow(max(0.0, sin(angle * 2.0 + vWorldDir.y * 4.5 - uTime * 0.4)), 3.0) * horizonMask;
+            col += uAuroraColor * aurora * (0.18 + uPhaseIntensity * 0.22);
+            float starSeed = fract(sin(dot(floor(vWorldDir * 68.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+            float starMask = step(0.992, starSeed) * smoothstep(0.18, 0.75, vWorldDir.y);
+            col += vec3(0.95, 0.97, 1.0) * starMask * (0.55 + 0.45 * sin(uTime * 2.2 + starSeed * 31.4));
+          }
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    });
+    this.skyDomeMesh = new THREE.Mesh(new THREE.SphereGeometry(92, 32, 20), this.skyDomeMat);
+    this.skyDomeMesh.renderOrder = -10;
+    this.arenaGroup.add(this.skyDomeMesh);
 
     const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     const floorTex = createStoneTileTexture(
@@ -4679,6 +4843,58 @@ export class GameEngine {
     this.pveChallengeEnabled = pveChallengeEnabled;
   }
 
+  public setAiAdaptationProfile(profile: AiPlayerAdaptationProfile | null): void {
+    this.aiAdaptationProfile = profile;
+  }
+
+  public startEqualizedTrialDuel(
+    stats: ComputedPlayerStats,
+    opponent: ArenaOpponent,
+    kitId: EqualizedTrialKitId,
+    round: 1 | 2 | 3
+  ): void {
+    const kit = EQUALIZED_TRIAL_KITS[kitId] ?? EQUALIZED_TRIAL_KITS.assassin_counter;
+    const eqStats: ComputedPlayerStats = {
+      ...stats,
+      heroId: kit.heroId,
+      maxHp: kit.baseMaxHp,
+      attack: kit.baseAttack,
+      attackSpeedMult: kit.attackSpeedMult,
+      moveSpeed: kit.moveSpeed,
+      critChance: kit.baseCritChance,
+      critDamage: kit.baseCritDamage,
+      damageReduction: 0.1,
+    };
+    const tier: AiDuelDifficultyTier =
+      round === 3 ? 'mythic' : round === 2 ? 'master' : 'challenger';
+    const eqOpponent: ArenaOpponent = {
+      ...opponent,
+      maxHp: kit.baseMaxHp,
+      attack: Math.round(kit.baseAttack * (round === 3 ? 1.06 : round === 2 ? 1.0 : 0.94)),
+      speedMult: round === 3 ? 1.08 : 1.0,
+    };
+    this.startArenaDuel(eqStats, eqOpponent, true, tier);
+    this.trialGauntletRound = round;
+    this.trialGauntletKitId = kit.id;
+    this.stageBannerText = `THỬ NGHIỆM ĐỒNG BỘ · VÒNG ${round}/3 · ${kit.name.toUpperCase()}`;
+    this.stageBannerTimer = 2.8;
+    this.syncHudImmediate();
+  }
+
+  public startGuildWarBastionSkirmish(
+    stats: ComputedPlayerStats,
+    bastionId: GuildWarBastionId,
+    bastionLabel: string
+  ): void {
+    this.startGuildWarBattle(stats);
+    this.guildWarBastionId = bastionId;
+    this.guildWarBastionLabel = bastionLabel;
+    this.guildWarTimeLeft = 36;
+    this.stageBannerText = `CHIẾN TRƯỜNG BANG HỘI · XUNG KÍCH ${bastionLabel.toUpperCase()}`;
+    this.stageBannerTimer = 2.8;
+    this.syncHudImmediate();
+  }
+
   public startArenaDuel(
     stats: ComputedPlayerStats,
     opponent: ArenaOpponent,
@@ -4726,6 +4942,10 @@ export class GameEngine {
     this.liveAiPlayerId = null;
     this.liveAiPersonality = 'tactical';
     this.liveAiRivalTag = null;
+    this.trialGauntletRound = null;
+    this.trialGauntletKitId = null;
+    this.guildWarBastionId = null;
+    this.guildWarBastionLabel = null;
     this.currentChapter = CHAPTERS[9] ?? CHAPTERS[CHAPTERS.length - 1] ?? CHAPTERS[0];
     this.baseStats = effectiveStats;
 
@@ -6433,7 +6653,25 @@ export class GameEngine {
       this.liveAiPlayerId = null;
       this.liveAiPersonality = null;
       this.liveAiRivalTag = null;
+      this.trialGauntletRound = null;
+      this.trialGauntletKitId = null;
     }
+    if (!this.isGuildWarMode) {
+      this.guildWarBastionId = null;
+      this.guildWarBastionLabel = null;
+    }
+    this.elementalResonance = createInitialElementalResonanceState();
+    this.elementalResonanceChargeAccum = 0;
+    this.bossPartBrokenBanner = null;
+    this.bossPartBrokenBannerTimer = 0;
+    this.runBossPartStarDust = 0;
+    this.runLeftDodges = 0;
+    this.runRightDodges = 0;
+    this.runDashCount = 0;
+    this.runDistSum = 0;
+    this.runDistSamples = 0;
+    this.runDistSampleTimer = 0;
+    this.runElemCounts = { fire: 0, ice: 0, storm: 0, poison: 0 };
     this.alexOverdriveTimer = 0;
     this.wukongOverdriveTimer = 0;
     this.activeSkillCooldown = 0;
@@ -7024,6 +7262,23 @@ export class GameEngine {
     });
     this.resonanceTraps?.forEach((t) => this.releaseObject(t.group));
     this.resonanceTraps = [];
+    this.wave9Props?.forEach((p) => this.releaseObject(p.group));
+    this.wave9Props = [];
+    this.wave9PropBuffTimer = 0;
+    this.wave9PropAtkBonusPct = 0;
+    this.wave9PropAspdBonusPct = 0;
+    this.wave9PropBuffLabel = null;
+    this.bossPhaseCounterTimer = 0;
+    this.bossPhaseCounterLevel = null;
+    this.executionFinisherTimer = 0;
+    this.coopSanctuaryCooldown = 0;
+    this.coopSanctuaryActiveTimer = 0;
+    this.coopPrimerBanner = null;
+    this.coopPrimerBannerTimer = 0;
+    if (this.coopSanctuaryRing) {
+      this.releaseObject(this.coopSanctuaryRing);
+      this.coopSanctuaryRing = null;
+    }
     this.trapTriggerToast = null;
     this.trapTriggerToastTimer = 0;
     this.windBeaconSpeedTimer = 0;
@@ -7610,6 +7865,117 @@ export class GameEngine {
           ring: groundRing,
         });
       });
+
+      // Wave 9: Interactive 3D Destructible/Activatable Composite PBR Arena Props along flanks
+      const propPlacements = computeWave9ArenaPropPlacements(
+        urnSeed + 43,
+        ARENA_HALF_W,
+        ARENA_HALF_D,
+        [
+          ...this.obstacles.map((o) => ({ x: o.x, z: o.z, r: o.radius })),
+          ...this.resonanceTraps.map((t) => ({ x: t.x, z: t.z, r: t.radius })),
+        ],
+        isBossStage
+      );
+      propPlacements.forEach((pp) => {
+        const cfg = ARENA_PROP_CONFIGS[pp.kind];
+        const propGroup = new THREE.Group();
+        propGroup.position.set(pp.x, 0, pp.z);
+
+        // Part 1: Matte stone hexagonal plinth grounded cleanly at y = 0
+        const plinth = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.46, 0.56, 0.24, 6),
+          new THREE.MeshStandardMaterial({
+            color: cfg.stoneHex,
+            roughness: 0.86,
+            metalness: 0.14,
+          })
+        );
+        plinth.position.y = 0.12;
+        plinth.castShadow = true;
+        plinth.receiveShadow = true;
+
+        // Part 2: Mid-column or relic chest body
+        const bodyGeo =
+          pp.kind === 'relic_crate'
+            ? new THREE.BoxGeometry(0.68, 0.54, 0.56)
+            : new THREE.CylinderGeometry(0.28, 0.36, 0.72, 8);
+        const body = new THREE.Mesh(
+          bodyGeo,
+          new THREE.MeshStandardMaterial({
+            color: cfg.stoneHex,
+            roughness: 0.78,
+            metalness: 0.18,
+          })
+        );
+        body.position.y = pp.kind === 'relic_crate' ? 0.51 : 0.6;
+        body.castShadow = true;
+
+        // Part 3: Polished metallic trim band
+        const trimMesh = new THREE.Mesh(
+          pp.kind === 'relic_crate'
+            ? new THREE.BoxGeometry(0.74, 0.1, 0.62)
+            : new THREE.TorusGeometry(0.35, 0.045, 8, 18),
+          new THREE.MeshStandardMaterial({
+            color: cfg.metalHex,
+            roughness: 0.22,
+            metalness: 0.88,
+          })
+        );
+        if (pp.kind !== 'relic_crate') {
+          trimMesh.rotation.x = Math.PI / 2;
+          trimMesh.position.y = 0.82;
+        } else {
+          trimMesh.position.y = 0.64;
+        }
+
+        // Part 4: Emissive celestial core
+        const coreGeo =
+          pp.kind === 'celestial_obelisk'
+            ? new THREE.OctahedronGeometry(0.26, 0)
+            : pp.kind === 'crimson_brazier'
+            ? new THREE.DodecahedronGeometry(0.24, 0)
+            : new THREE.OctahedronGeometry(0.2, 0);
+        const core = new THREE.Mesh(
+          coreGeo,
+          new THREE.MeshStandardMaterial({
+            color: cfg.accentHex,
+            emissive: cfg.primaryHex,
+            emissiveIntensity: 1.55,
+            roughness: 0.16,
+            metalness: 0.42,
+          })
+        );
+        core.position.y = pp.kind === 'relic_crate' ? 1.02 : 1.24;
+
+        // Part 5: Ground locator halo ring
+        const groundBeacon = new THREE.Mesh(
+          new THREE.RingGeometry(0.72, 0.86, 24),
+          new THREE.MeshBasicMaterial({
+            color: cfg.primaryHex,
+            transparent: true,
+            opacity: 0.58,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          })
+        );
+        groundBeacon.rotation.x = -Math.PI / 2;
+        groundBeacon.position.y = 0.03;
+
+        propGroup.add(plinth, body, trimMesh, core, groundBeacon);
+        this.entitiesGroup.add(propGroup);
+        this.wave9Props.push({
+          x: pp.x,
+          z: pp.z,
+          radius: pp.radius,
+          kind: pp.kind,
+          alive: true,
+          group: propGroup,
+          core,
+          ring: groundBeacon,
+        });
+      });
     }
   }
 
@@ -8180,6 +8546,62 @@ export class GameEngine {
       this.entitiesGroup.add(hpBarGroup);
     }
 
+    let bossParts: BossBreakablePart[] | undefined;
+    let bossPartMeshes: Partial<Record<BossPartId, THREE.Mesh[]>> | undefined;
+    if (isBoss && !this.isTrainingMode) {
+      const isMajor = kind === EnemyKind.ZODIAC_BOSS || kind === EnemyKind.TITAN_BOSS;
+      bossParts = createBossBreakableParts(finalHp, isMajor);
+      bossPartMeshes = {};
+      const hornMat = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        emissive: 0xd97706,
+        emissiveIntensity: 0.75,
+        roughness: 0.22,
+        metalness: 0.78,
+      });
+      const hornMeshes: THREE.Mesh[] = [];
+      for (const side of [-1, 1]) {
+        const hMesh = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.56, 6), hornMat);
+        hMesh.position.set(side * 0.44, 2.02, 0.24);
+        hMesh.rotation.z = side * -0.42;
+        hMesh.rotation.x = 0.28;
+        model.bodyGroup.add(hMesh);
+        hornMeshes.push(hMesh);
+      }
+      bossPartMeshes.armor_horn = hornMeshes;
+
+      const coreMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x0284c7,
+        emissiveIntensity: 1.45,
+        roughness: 0.14,
+        metalness: 0.45,
+      });
+      const coreMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), coreMat);
+      coreMesh.position.set(0, 1.32, 0.62);
+      model.bodyGroup.add(coreMesh);
+      bossPartMeshes.arcane_core = [coreMesh];
+
+      if (isMajor) {
+        const wingMat = new THREE.MeshStandardMaterial({
+          color: 0xc084fc,
+          emissive: 0x7e22ce,
+          emissiveIntensity: 0.85,
+          roughness: 0.22,
+          metalness: 0.6,
+        });
+        const wingMeshes: THREE.Mesh[] = [];
+        for (const side of [-1, 1]) {
+          const wMesh = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.14, 0.34), wingMat);
+          wMesh.position.set(side * 0.92, 1.56, -0.24);
+          wMesh.rotation.z = side * 0.38;
+          model.bodyGroup.add(wMesh);
+          wingMeshes.push(wMesh);
+        }
+        bossPartMeshes.astral_wing = wingMeshes;
+      }
+    }
+
     this.enemies.push({
       id: this.nextEntityId++,
       kind,
@@ -8223,6 +8645,8 @@ export class GameEngine {
       bossPhase: 1,
       phaseTransitioned: false,
       phaseThreeTransitioned: false,
+      bossParts,
+      bossPartMeshes,
       burnTimer: 0,
       burnDps: 0,
       poisonDps: 0,
@@ -8625,13 +9049,13 @@ export class GameEngine {
       this.triggerHeroActiveSkill();
     } else if (code === kb.cycleCamera && !this.keys[code]) {
       this.quickCycleCombatCamera();
-    } else if (this.isCoopRaidMode && !this.keys[code]) {
+    } else if ((this.isCoopRaidMode || this.coopAllies.length > 0) && !this.keys[code]) {
       if (code === 'Digit1') {
         this.setCoopTacticalOrder('focus_boss');
       } else if (code === 'Digit2') {
-        this.setCoopTacticalOrder('clear_adds');
+        this.setCoopTacticalOrder('break_guard');
       } else if (code === 'Digit3') {
-        this.setCoopTacticalOrder('hold_resonance');
+        this.setCoopTacticalOrder('protect_player');
       }
     }
     this.keys[code] = true;
@@ -8639,8 +9063,10 @@ export class GameEngine {
 
   public setCoopTacticalOrder(order: CoopTacticalOrder): void {
     this.coopTacticalOrder = order;
-    const meta = COOP_TACTICAL_ORDERS.find((o) => o.id === order);
-    if (meta && this.isCoopRaidMode) {
+    const meta =
+      WAVE9_COOP_QUICK_ORDERS.find((o) => o.id === order) ??
+      COOP_TACTICAL_ORDERS.find((o) => o.id === order);
+    if (meta && (this.isCoopRaidMode || this.coopAllies.length > 0)) {
       soundEngine.playCoopTacticalPing();
       for (const ally of this.coopAllies) {
         ally.calloutText = meta.shortLabel;
@@ -8650,6 +9076,8 @@ export class GameEngine {
         this.coopAllies[0]?.name ?? 'Đồng Đội [AI Live]';
       this.coopPingToast = pickCoopPingAiReply(order, responder);
       this.coopPingToastTimer = 3.2;
+      this.coopPrimerBanner = meta.callout;
+      this.coopPrimerBannerTimer = 2.6;
       this.emitFloatingNumber(
         this.px,
         2.45,
@@ -8898,6 +9326,7 @@ export class GameEngine {
         );
       }
     }
+    this.tryTriggerExecutionFinisherFromStrike(strikeX, strikeZ, 4.4);
     this.syncHudImmediate();
   }
 
@@ -9182,6 +9611,7 @@ export class GameEngine {
     this.spawnShockwave(this.px, this.pz, 0xfde047, 3.8, 0.36);
     this.spawnParticles(this.px, 1.1, this.pz, this.weaponAccentHex, 30);
     this.triggerCompanionSynergyStrike();
+    this.tryTriggerExecutionFinisherFromStrike(this.px, this.pz, 9.5);
     if (this.isCoopRaidMode) {
       const resonance = onPlayerUltimateCastInCoop(this.coopSynergyClock);
       if (resonance.triggeredResonance) {
@@ -10214,7 +10644,9 @@ export class GameEngine {
             ? Math.round((this.runGold + 160) * bonusMult)
             : this.runGold + (defeatReport?.consolationGold ?? 60),
           gems: this.runGems + (victory ? Math.round(12 * bonusMult) : 2),
-          starDust: victory ? Math.round(10 * bonusMult) : defeatReport?.consolationStarDust ?? 3,
+          starDust:
+            (victory ? Math.round(10 * bonusMult) : defeatReport?.consolationStarDust ?? 3) +
+            this.runBossPartStarDust,
           isArenaMode: true,
           arenaOpponentName: this.arenaOpponentName,
           liveAiDuelId: this.liveAiDuelId ?? undefined,
@@ -10226,6 +10658,9 @@ export class GameEngine {
           consolationStarDust: defeatReport?.consolationStarDust,
           coachingNote: defeatReport?.coachingNote,
           defeatCause: defeatReport?.cause,
+          trialGauntletRound: this.trialGauntletRound ?? undefined,
+          trialGauntletKitId: this.trialGauntletKitId ?? undefined,
+          combatTelemetry: this.getCombatTelemetrySnapshot(),
           maxCombo: this.maxRunCombo,
           damageBreakdown: this.getDamageBreakdownSnapshot(),
         });
@@ -10376,12 +10811,15 @@ export class GameEngine {
           kills: this.kills,
           gold: this.runGold + 240 + Math.floor(finalScore * 0.25),
           gems: this.runGems + 18 + this.guildWarNodesCaptured * 5,
+          starDust: this.runBossPartStarDust > 0 ? this.runBossPartStarDust : undefined,
           isGuildWarMode: true,
           guildWarScore: finalScore,
           guildWarNodes: this.guildWarNodesCaptured,
           guildCoins,
           artifactShards,
           mysticTokens,
+          guildWarBastionId: this.guildWarBastionId ?? undefined,
+          combatTelemetry: this.getCombatTelemetrySnapshot(),
           maxCombo: this.maxRunCombo,
           damageBreakdown: this.getDamageBreakdownSnapshot(),
         });
@@ -10680,6 +11118,13 @@ export class GameEngine {
         this.bossFinisherName = null;
       }
     }
+    if (this.executionFinisherTimer > 0) {
+      this.executionFinisherTimer = Math.max(0, this.executionFinisherTimer - dt);
+    }
+    const execFinisher = computeExecutionFinisherPresentation(
+      this.executionFinisherTimer,
+      EXECUTION_FINISHER_DURATION_SEC
+    );
     const finisherKinematics = computeBossKillSlowMoState(
       this.bossFinisherTimer,
       this.bossFinisherDuration
@@ -10688,18 +11133,30 @@ export class GameEngine {
       this.bossFinisherTimer,
       this.bossFinisherDuration
     );
-    if (finisherKinematics.active || wave5Finisher.active) {
+    if (finisherKinematics.active || wave5Finisher.active || execFinisher.active) {
       const prefersReducedMotion =
         typeof window !== 'undefined' &&
         Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
       if (!prefersReducedMotion) {
-        timeScale = Math.min(
-          timeScale,
-          wave5Finisher.active ? wave5Finisher.visualTimeScale : finisherKinematics.timeScale
-        );
+        if (execFinisher.active) {
+          timeScale = Math.min(timeScale, execFinisher.visualTimeScale);
+        }
+        if (finisherKinematics.active || wave5Finisher.active) {
+          timeScale = Math.min(
+            timeScale,
+            wave5Finisher.active ? wave5Finisher.visualTimeScale : finisherKinematics.timeScale
+          );
+        }
       }
     }
     const simDt = dt * timeScale;
+    this.elementalResonance = tickElementalResonanceTimers(this.elementalResonance, simDt);
+    if (this.bossPartBrokenBannerTimer > 0) {
+      this.bossPartBrokenBannerTimer = Math.max(0, this.bossPartBrokenBannerTimer - dt);
+      if (this.bossPartBrokenBannerTimer <= 0) {
+        this.bossPartBrokenBanner = null;
+      }
+    }
     // Dynamic Arena Rim Lighting shift per Boss Phase (Pillar 1 visual polish)
     const activePhaseBoss = this.enemies.find((en) => en.isBoss && !en.isArenaRival && !en.isTrainingDummy);
     if (activePhaseBoss && this.hemiLight) {
@@ -10709,7 +11166,8 @@ export class GameEngine {
           : activePhaseBoss.bossPhase === 2
           ? 0xfcd34d
           : 0x9ec5ff;
-      this.hemiLight.color.lerp(new THREE.Color(targetHex), Math.min(1, dt * 2.5));
+      _keyCol.setHex(targetHex);
+      this.hemiLight.color.lerp(_keyCol, Math.min(1, dt * 2.5));
     }
     if (this.perfectDodgeBannerTimer > 0) {
       this.perfectDodgeBannerTimer = Math.max(0, this.perfectDodgeBannerTimer - dt);
@@ -10735,6 +11193,20 @@ export class GameEngine {
       this.bossPhaseShiftTimer = Math.max(0, this.bossPhaseShiftTimer - dt);
       if (this.bossPhaseShiftTimer <= 0) {
         this.bossPhaseShiftLevel = null;
+      }
+    }
+    if (this.bossPhaseCounterTimer > 0) {
+      this.bossPhaseCounterTimer = Math.max(0, this.bossPhaseCounterTimer - dt);
+      if (this.bossPhaseCounterTimer <= 0) {
+        this.bossPhaseCounterLevel = null;
+      }
+    }
+    if (this.wave9PropBuffTimer > 0) {
+      this.wave9PropBuffTimer = Math.max(0, this.wave9PropBuffTimer - dt);
+      if (this.wave9PropBuffTimer <= 0) {
+        this.wave9PropAtkBonusPct = 0;
+        this.wave9PropAspdBonusPct = 0;
+        this.wave9PropBuffLabel = null;
       }
     }
     if (this.arenaEntryFlyTimer > 0) {
@@ -11074,6 +11546,46 @@ export class GameEngine {
       this.lastBossAudioPhase = bossPhase;
       soundEngine.setBossIntensity(bossPhase);
     }
+    if (this.skyDomeMat) {
+      const resonanceRatio = Math.min(
+        1,
+        Math.max(
+          this.elementalResonance.stack / Math.max(1, this.elementalResonance.maxStack),
+          this.elementalResonance.burstBannerTimerSec > 0 ? 1 : 0
+        )
+      );
+      const skyTargets = computeDynamicSkyShaderTargets({
+        skyHex: biome.skyHex,
+        fogHex: biome.fogHex,
+        rimLightHex: biome.rimLightHex,
+        bossPhase,
+        resonanceRatio,
+      });
+      const u = this.skyDomeMat.uniforms;
+      u.uTime.value = this.elapsed;
+      _skyCol.setHex(skyTargets.zenithHex);
+      (u.uZenithColor.value as THREE.Color).lerp(_skyCol, alpha);
+      _fogCol.setHex(skyTargets.horizonHex);
+      (u.uHorizonColor.value as THREE.Color).lerp(_fogCol, alpha);
+      _nebulaCol.setHex(skyTargets.nebulaHex);
+      (u.uNebulaColor.value as THREE.Color).lerp(_nebulaCol, alpha);
+      _auroraCol.setHex(skyTargets.auroraHex);
+      (u.uAuroraColor.value as THREE.Color).lerp(_auroraCol, alpha);
+      u.uTurbulence.value = THREE.MathUtils.damp(
+        Number(u.uTurbulence.value ?? 1),
+        skyTargets.turbulence,
+        3.0,
+        dt
+      );
+      u.uPhaseIntensity.value = THREE.MathUtils.damp(
+        Number(u.uPhaseIntensity.value ?? 0.35),
+        skyTargets.phaseIntensity,
+        3.0,
+        dt
+      );
+      u.uSimpleMode.value =
+        this.isSoftwareGl || this.lowEndGpu || this.graphicsQuality === 'low' ? 1.0 : 0.0;
+    }
     for (let si = 0; si < this.arenaLightShafts.length; si++) {
       const smat = this.arenaLightShafts[si].material as THREE.MeshBasicMaterial;
       if (smat?.color) {
@@ -11194,6 +11706,9 @@ export class GameEngine {
     }
     if (this.perfectDodgeBuffTimer > 0) {
       mult *= 1 + PERFECT_DODGE_DAMAGE_BONUS;
+    }
+    if (this.wave9PropBuffTimer > 0 && this.wave9PropAtkBonusPct > 0) {
+      mult *= 1 + this.wave9PropAtkBonusPct / 100;
     }
     return mult;
   }
@@ -11422,6 +11937,18 @@ export class GameEngine {
         this.dashDirX = Math.sin(this.pFacing);
         this.dashDirZ = Math.cos(this.pFacing);
       }
+      this.runDashCount += 1;
+      const dodgeThreat = this.findNearestEnemy(this.px, this.pz);
+      if (dodgeThreat) {
+        const toThreatX = dodgeThreat.x - this.px;
+        const toThreatZ = dodgeThreat.z - this.pz;
+        const cross = toThreatX * this.dashDirZ - toThreatZ * this.dashDirX;
+        if (cross >= 0) {
+          this.runRightDodges += 1;
+        } else {
+          this.runLeftDodges += 1;
+        }
+      }
       const isVanTichDash = this.baseStats.heroId === 'van_tich';
       const dashAccentHex = isVanTichDash ? 0x5eead4 : this.weaponAccentHex;
       if (isVanTichDash) {
@@ -11470,6 +11997,13 @@ export class GameEngine {
       if (Math.random() < 0.65) {
         const sparkHex = this.baseStats.heroId === 'van_tich' ? 0x99f6e4 : this.weaponAccentHex;
         this.spawnParticles(this.px, 0.6, this.pz, sparkHex, 1);
+      }
+      // Wave 9: Dashing into an Interactive 3D Arena Prop activates & shatters it
+      for (const prop of this.wave9Props) {
+        if (!prop.alive) continue;
+        if (Math.hypot(this.px - prop.x, this.pz - prop.z) <= prop.radius + 0.92) {
+          this.triggerWave9ArenaProp(prop);
+        }
       }
     } else {
       const targetVx = moveX * effectiveMoveSpeed;
@@ -11535,6 +12069,14 @@ export class GameEngine {
     }
 
     const nearest = this.findNearestEnemy(this.px, this.pz);
+    this.runDistSampleTimer += dt;
+    if (this.runDistSampleTimer >= 0.5) {
+      this.runDistSampleTimer = 0;
+      if (nearest && !nearest.isTrainingDummy) {
+        this.runDistSum += Math.hypot(nearest.x - this.px, nearest.z - this.pz);
+        this.runDistSamples += 1;
+      }
+    }
     this.updateTargetLockReticle(nearest, dt);
 
     const onDragon = this.hasDragonRide();
@@ -12776,9 +13318,77 @@ export class GameEngine {
     if (this.isCoopRaidMode) {
       stepCoopSynergyClock(this.coopSynergyClock, dt);
     }
+    if (this.coopSanctuaryCooldown > 0) {
+      this.coopSanctuaryCooldown = Math.max(0, this.coopSanctuaryCooldown - dt);
+    }
+    if (this.coopSanctuaryActiveTimer > 0) {
+      this.coopSanctuaryActiveTimer = Math.max(0, this.coopSanctuaryActiveTimer - dt);
+      if (this.coopSanctuaryRing) {
+        this.coopSanctuaryRing.visible = this.coopSanctuaryActiveTimer > 0;
+        this.coopSanctuaryRing.position.set(this.px, 0.04, this.pz);
+        this.coopSanctuaryRing.rotation.z += dt * 1.4;
+      }
+    } else if (this.coopSanctuaryRing && this.coopSanctuaryRing.visible) {
+      this.coopSanctuaryRing.visible = false;
+    }
+    if (this.coopPrimerBannerTimer > 0) {
+      this.coopPrimerBannerTimer = Math.max(0, this.coopPrimerBannerTimer - dt);
+      if (this.coopPrimerBannerTimer <= 0) this.coopPrimerBanner = null;
+    }
+
     if (this.coopAllies.length === 0) return;
     if (!this.isCoopRaidMode && !this.aiSquadAssistEnabled) return;
     const nearest = this.findNearestEnemy(this.px, this.pz);
+
+    // Wave 9 Pillar 5: Co-op AI Emergency <35% HP Sanctuary Rescue
+    const rescue = evaluateCoopSanctuaryRescue({
+      playerHp: this.hp,
+      playerMaxHp: this.maxHp,
+      cooldownSec: this.coopSanctuaryCooldown,
+      order: this.coopTacticalOrder,
+      allyName: this.coopAllies[0]?.name,
+    });
+    if (rescue.triggered) {
+      this.coopSanctuaryCooldown = rescue.nextCooldownSec;
+      this.coopSanctuaryActiveTimer = 3.2;
+      this.hp = Math.min(this.maxHp, this.hp + rescue.healAmount);
+      this.shield = Math.min(Math.round(this.maxHp * 0.55), this.shield + rescue.shieldAmount);
+      this.coopPrimerBanner = rescue.calloutText;
+      this.coopPrimerBannerTimer = 2.6;
+      if (this.coopAllies[0]) {
+        this.coopAllies[0].calloutText = 'Vòng Hộ Mệnh!';
+        this.coopAllies[0].calloutTimer = 2.6;
+      }
+      if (!this.coopSanctuaryRing) {
+        const ringGeo = new THREE.RingGeometry(1.75, 2.15, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          transparent: true,
+          opacity: 0.72,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        this.coopSanctuaryRing = new THREE.Mesh(ringGeo, ringMat);
+        this.coopSanctuaryRing.rotation.x = -Math.PI / 2;
+        this.entitiesGroup.add(this.coopSanctuaryRing);
+      }
+      this.coopSanctuaryRing.visible = true;
+      this.coopSanctuaryRing.position.set(this.px, 0.04, this.pz);
+      soundEngine.playCoopResonanceChord();
+      this.spawnShockwave(this.px, this.pz, 0x34d399, 3.6, 0.44);
+      this.spawnParticles(this.px, 0.9, this.pz, 0x6ee7b7, 16);
+      this.emitFloatingNumber(
+        this.px,
+        2.15,
+        this.pz,
+        rescue.healAmount,
+        true,
+        true,
+        undefined,
+        'VÒNG HỘ MỆNH!'
+      );
+    }
 
     const activeTelegraphs = this.enemies
       .filter((e) => e.spawnTimer <= 0 && (e.telegraphType === 'slam' || e.telegraphType === 'lunge' || e.telegraphType === 'spiral'))
@@ -12807,9 +13417,17 @@ export class GameEngine {
 
     for (let idx = 0; idx < this.coopAllies.length; idx++) {
       const ally = this.coopAllies[idx];
-      const orderedPick = this.isCoopRaidMode
-        ? selectCoopAllyTarget(coopCandidates, ally.x, ally.z, this.coopTacticalOrder)?.ref ?? null
-        : null;
+      const orderedPick =
+        this.isCoopRaidMode || this.coopAllies.length > 0
+          ? selectCoopAllyTarget(
+              coopCandidates,
+              ally.x,
+              ally.z,
+              this.coopTacticalOrder,
+              this.px,
+              this.pz
+            )?.ref ?? null
+          : null;
       const target = orderedPick ?? (nearest ? this.findNearestEnemy(ally.x, ally.z) ?? nearest : null);
       const role = ally.role ?? (idx === 0 ? 'ranger' : 'mystic');
       const roleCfg = AI_COMPANION_ROLES[role];
@@ -12877,11 +13495,33 @@ export class GameEngine {
           .map((o) => ({ x: o.x, z: o.z, radius: o.radius })),
         bossWeakPoint: allyBossWp,
         bossEnraged: Boolean(target?.isBoss && (target.bossPhase ?? 1) >= 2),
+        tacticalOrder: this.coopTacticalOrder,
       });
 
       if ((steerDecision.evading || steerDecision.tacticalHint) && (!ally.calloutTimer || ally.calloutTimer <= 0)) {
         ally.calloutText = steerDecision.tacticalHint ?? 'Né vùng Boss!';
         ally.calloutTimer = 1.6;
+      }
+      if (
+        idx === 0 &&
+        target?.isBoss &&
+        !this.coopPrimerBanner &&
+        this.coopPrimerBannerTimer <= 0
+      ) {
+        const shieldRatio =
+          target.maxBreakShield && target.maxBreakShield > 0
+            ? (target.breakShield ?? 0) / target.maxBreakShield
+            : 0;
+        const primer = computeCoopPrimerCallout({
+          order: this.coopTacticalOrder,
+          bossShieldRatio: shieldRatio,
+          allyUltCharge: ally.ultCharge,
+          allyName: ally.name,
+        });
+        if (primer) {
+          this.coopPrimerBanner = primer;
+          this.coopPrimerBannerTimer = 2.4;
+        }
       }
 
       const allySpeed = roleCfg.moveSpeed;
@@ -12943,9 +13583,11 @@ export class GameEngine {
           }
           const yaw = Math.atan2(target.x - ally.x, target.z - ally.z);
           const dmg = this.baseStats.attack * (0.78 + idx * 0.08);
-          const isFire = ally.heroId === 'cleo';
-          const isIce = ally.heroId === 'rolla';
-          const isStorm = ally.heroId === 'thor';
+          const adaptCounters = computeAdaptiveAiCounterAdjustments(this.aiAdaptationProfile);
+          const compElem = idx === 0 ? adaptCounters.complementaryCoopElement : null;
+          const isFire = compElem ? compElem === 'fire' : ally.heroId === 'cleo';
+          const isIce = compElem ? compElem === 'ice' : ally.heroId === 'rolla';
+          const isStorm = compElem ? compElem === 'storm' : ally.heroId === 'thor';
 
           // Trigger Ally Ultimate when ready (respecting Co-op Tactical Order 'hold_resonance')
           const holdUltForResonance =
@@ -13588,6 +14230,7 @@ export class GameEngine {
             isTelegraphing: false,
             escalation: this.aiRivalMatchConfig?.escalation,
           });
+          const adaptCounters = computeAdaptiveAiCounterAdjustments(this.aiAdaptationProfile);
           if (brainStep.triggeredDash) {
             this.spawnParticles(e.x, 0.9, e.z, 0x38bdf8, 12);
             this.emitFloatingNumber(e.x, 2.25, e.z, 0, false, false, 'ice', 'AI LƯỚT NÉ!');
@@ -13601,20 +14244,37 @@ export class GameEngine {
             soundEngine.playBossAlarm();
             this.shakeIntensity = Math.max(this.shakeIntensity, 0.3);
           }
-          e.vx = brainStep.moveX * e.speed * brainStep.speedMult * slowMult;
-          e.vz = brainStep.moveZ * e.speed * brainStep.speedMult * slowMult;
+          const rangeAdjustBias = Math.max(
+            -1,
+            Math.min(1, (distToHero - adaptCounters.preferredSpacingDist) * 0.25)
+          );
+          e.vx =
+            (brainStep.moveX + dirX * rangeAdjustBias * 0.14) *
+            e.speed *
+            brainStep.speedMult *
+            slowMult;
+          e.vz =
+            (brainStep.moveZ + dirZ * rangeAdjustBias * 0.14) *
+            e.speed *
+            brainStep.speedMult *
+            slowMult;
           if (brainStep.patternPlan) {
             const plan = brainStep.patternPlan;
             this.aiRivalActivePattern = plan.pattern;
             this.aiRivalActiveProjSpeed = plan.projectileSpeed;
             this.aiRivalActiveDmgMult = plan.damageMult;
-            this.aiRivalNextCooldown = plan.nextCooldown;
+            this.aiRivalNextCooldown = Math.max(
+              0.38,
+              plan.nextCooldown * adaptCounters.dashInterceptCooldownMult
+            );
             e.telegraphType = plan.telegraphType;
             e.telegraphDuration = plan.telegraphDuration;
             e.telegraphTimer = plan.telegraphDuration;
-            e.aimX = plan.aimDirX;
-            e.aimZ = plan.aimDirZ;
-            const baseYaw = Math.atan2(plan.aimDirX, plan.aimDirZ);
+            const rawYaw = Math.atan2(plan.aimDirX, plan.aimDirZ);
+            const adaptedYaw = rawYaw + adaptCounters.shotLeadAngleOffsetRad;
+            e.aimX = Math.sin(adaptedYaw);
+            e.aimZ = Math.cos(adaptedYaw);
+            const baseYaw = adaptedYaw;
             if (plan.telegraphType === 'lane') {
               e.laneAngles = [baseYaw - 0.24, baseYaw, baseYaw + 0.24];
             } else if (plan.telegraphType === 'slam') {
@@ -14056,6 +14716,14 @@ export class GameEngine {
       }
     } else if (e.telegraphType === 'shot') {
       const baseYaw = Math.atan2(e.aimX, e.aimZ);
+      const partSlowPct =
+        e.isBoss && e.bossParts
+          ? Math.min(
+              0.4,
+              e.bossParts.reduce((s, bp) => s + (bp.broken ? bp.barrageSlowPct : 0), 0)
+            )
+          : 0;
+      const bossProjMult = pveSpdMult * (1 - partSlowPct);
       if (e.isBoss) {
         const count =
           e.kind === EnemyKind.ZODIAC_BOSS
@@ -14072,8 +14740,8 @@ export class GameEngine {
           this.fireEnemyOrb(
             e.x,
             e.z,
-            Math.sin(a) * 11.2 * pveSpdMult,
-            Math.cos(a) * 11.2 * pveSpdMult,
+            Math.sin(a) * 11.2 * bossProjMult,
+            Math.cos(a) * 11.2 * bossProjMult,
             e.damage,
             e.kind === EnemyKind.ZODIAC_BOSS ? this.currentChapter.trimHex : 0xa855f7,
             'boss_projectile'
@@ -14118,9 +14786,17 @@ export class GameEngine {
     } else if (e.telegraphType === 'lane') {
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
       soundEngine.playMeteorImpact();
+      const laneSlowPct =
+        e.isBoss && e.bossParts
+          ? Math.min(
+              0.4,
+              e.bossParts.reduce((s, bp) => s + (bp.broken ? bp.barrageSlowPct : 0), 0)
+            )
+          : 0;
+      const laneProjMult = pveSpdMult * (1 - laneSlowPct);
       e.laneAngles.forEach((ang) => {
         for (let b = 0; b < (isEnraged ? 3 : 2); b++) {
-          const speed = (13.5 + b * 2.2) * pveSpdMult;
+          const speed = (13.5 + b * 2.2) * laneProjMult;
           this.fireEnemyOrb(
             e.x + Math.sin(ang) * 0.6,
             e.z + Math.cos(ang) * 0.6,
@@ -14182,6 +14858,14 @@ export class GameEngine {
           );
         }
       }
+      const spiralSlowPct =
+        e.isBoss && e.bossParts
+          ? Math.min(
+              0.4,
+              e.bossParts.reduce((s, bp) => s + (bp.broken ? bp.barrageSlowPct : 0), 0)
+            )
+          : 0;
+      const spiralSpd = 8.4 * (1 - spiralSlowPct);
       const ringCount = e.isBoss
         ? e.kind === EnemyKind.ZODIAC_BOSS
           ? isEnraged
@@ -14200,8 +14884,8 @@ export class GameEngine {
         this.fireEnemyOrb(
           e.x,
           e.z,
-          Math.sin(a) * 8.4,
-          Math.cos(a) * 8.4,
+          Math.sin(a) * spiralSpd,
+          Math.cos(a) * spiralSpd,
           e.damage * 0.85,
           e.kind === EnemyKind.ZODIAC_BOSS ? this.currentChapter.trimHex : 0xf97316,
           e.isBoss ? 'boss_projectile' : 'ranged_barrage'
@@ -14320,6 +15004,15 @@ export class GameEngine {
         if (trap.cooldown > 0) continue;
         if (Math.hypot(p.x - trap.x, p.z - trap.z) < trap.radius + p.radius + 0.18) {
           this.detonateResonanceTrap(trap);
+          break;
+        }
+      }
+
+      // Wave 9: Shootable Interactive 3D Arena Props (Obelisk, Brazier, Relic Crate)
+      for (const prop of this.wave9Props) {
+        if (!prop.alive) continue;
+        if (Math.hypot(p.x - prop.x, p.z - prop.z) < prop.radius + p.radius + 0.22) {
+          this.triggerWave9ArenaProp(prop);
           break;
         }
       }
@@ -14712,6 +15405,13 @@ export class GameEngine {
       this.elementalImpactVfxCd = 0.09;
     }
 
+    if (coopAllyIndex === undefined && !e.isTrainingDummy) {
+      if (blaze) this.runElemCounts.fire += 1;
+      if (frost) this.runElemCounts.ice += 1;
+      if (storm) this.runElemCounts.storm += 1;
+      if (poison) this.runElemCounts.poison += 1;
+    }
+
     // Wave 7: Deterministic Boss Stagger / Guard-Break Mechanic (4.0s Guard Break & +45% Vulnerability)
     if (e.isBoss && e.hp > 0 && !e.isTrainingDummy) {
       if (this.bossStaggerOwnerId !== e.id || !this.bossStaggerState) {
@@ -14734,6 +15434,61 @@ export class GameEngine {
       e.breakShield = isBossBroken
         ? 0
         : Math.max(0, Math.round(this.bossStaggerState.max - this.bossStaggerState.current));
+      // Wave 10: Breakable 3D Boss Parts (Armor Horn / Arcane Core / Astral Wing)
+      if (!e.isArenaRival && e.bossParts && e.bossParts.length > 0 && coopAllyIndex === undefined) {
+        const partHit = applyBossPartDamage(e.bossParts, finalDmg, {
+          isCrit,
+          isBreakerSkill:
+            dmgSource === 'ultimate' || Boolean(resolvedLabel && resolvedLabel.includes('PHẢN')),
+        });
+        e.bossParts = partHit.parts;
+        if (partHit.brokenPartNow) {
+          const bp = partHit.brokenPartNow;
+          const partMeshes = e.bossPartMeshes?.[bp.id];
+          if (partMeshes) {
+            partMeshes.forEach((m) => {
+              m.visible = false;
+            });
+          }
+          if (bp.atkReductionPct > 0) {
+            e.damage = Math.max(4, Math.round(e.damage * (1 - bp.atkReductionPct)));
+          }
+          if (bp.staggerSpikePct > 0 && e.maxBreakShield && e.breakShield > 0) {
+            const spike = Math.round(e.maxBreakShield * bp.staggerSpikePct);
+            this.bossStaggerState.current = Math.min(
+              this.bossStaggerState.max,
+              this.bossStaggerState.current + spike
+            );
+            e.breakShield = Math.max(0, e.breakShield - spike);
+          }
+          this.runGold += bp.bonusGold;
+          this.runBossPartStarDust += bp.bonusStarDust;
+          this.bossPartBrokenBanner = `PHÁ VỠ ${bp.label.toUpperCase()} · ${bp.debuffLabel}`;
+          this.bossPartBrokenBannerTimer = 2.8;
+          this.hitstopTimer = Math.max(this.hitstopTimer, 0.055);
+          this.shakeIntensity = Math.max(this.shakeIntensity, 0.45);
+          const partPan = computeSpatialPan(e.x, ARENA_HALF_W);
+          soundEngine.playBossBreakShatter(partPan);
+          soundEngine.playImpactScorchThump(partPan);
+          const partColorHex =
+            bp.id === 'armor_horn' ? 0xf59e0b : bp.id === 'arcane_core' ? 0xa855f7 : 0x38bdf8;
+          this.spawnArmorShards(e.x, 1.45, e.z, partColorHex, 14);
+          this.spawnShockwave(e.x, e.z, partColorHex, 5.4, 0.44);
+          this.spawnParticles(e.x, 1.35, e.z, partColorHex, 26);
+          this.emitFloatingNumber(
+            e.x,
+            2.45,
+            e.z,
+            0,
+            true,
+            false,
+            'fire',
+            `VỠ ${bp.label.toUpperCase()}!`,
+            true
+          );
+          recordStyleAction(this.styleMomentum, 'guard_break');
+        }
+      }
       if (staggerRes.triggeredBreak) {
         e.stunTimer = GUARD_BREAK_DURATION_SEC;
         e.punishWindowTimer = 0;
@@ -14844,8 +15599,39 @@ export class GameEngine {
       }
     }
 
-    // Boss Phase II Transition (<= 50% HP)
-    if (e.isBoss && !e.phaseTransitioned && e.hp > 0 && e.hp <= e.maxHp * 0.5) {
+    // Wave 9: Boss Phase Counter Window amplification when striking boss during active 2.5s phase shift window
+    if (e.isBoss && this.bossPhaseCounterTimer > 0 && coopAllyIndex === undefined && (isCrit || dmgSource === 'ultimate')) {
+      const counterPres = computeBossPhaseCounterPresentation(
+        this.bossPhaseCounterTimer,
+        this.bossPhaseCounterLevel
+      );
+      if (counterPres.active) {
+        this.bossPhaseCounterTimer = 0;
+        this.bossPhaseCounterLevel = null;
+        const bonusCounterDmg = Math.round(finalDmg * (counterPres.counterMultiplier - 1));
+        if (!e.isTrainingDummy) {
+          e.hp -= bonusCounterDmg;
+        }
+        if (e.maxBreakShield && e.breakShield && e.breakShield > 0) {
+          e.breakShield = Math.max(0, e.breakShield - e.maxBreakShield * counterPres.guardBreakBonusRatio);
+        }
+        this.spawnShockwave(e.x, e.z, 0xfde047, 5.2, 0.38);
+        this.emitFloatingNumber(
+          e.x,
+          2.65,
+          e.z,
+          bonusCounterDmg,
+          true,
+          false,
+          'storm',
+          'PHẢN ĐÒN CHUYỂN PHA!',
+          true
+        );
+      }
+    }
+
+    // Boss Phase II Transition (<= 65% HP)
+    if (e.isBoss && !e.phaseTransitioned && e.hp > 0 && e.hp <= e.maxHp * BOSS_PHASE_2_HP_RATIO) {
       e.phaseTransitioned = true;
       e.bossPhase = 2;
       e.punishWindowTimer = 0;
@@ -14861,6 +15647,8 @@ export class GameEngine {
       this.bossPhaseTwoBannerTimer = 2.6;
       this.bossPhaseShiftTimer = 0.65;
       this.bossPhaseShiftLevel = 2;
+      this.bossPhaseCounterTimer = BOSS_PHASE_COUNTER_WINDOW_SEC;
+      this.bossPhaseCounterLevel = 2;
       const reducedMotion =
         typeof window !== 'undefined' &&
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -14885,15 +15673,15 @@ export class GameEngine {
       }
       this.spawnBattleScar(e.x, e.z, 1.38);
       this.spawnParticles(e.x, 1.2, e.z, 0xf43f5e, 34);
-      this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', 'PHA II · CUỒNG NỘ!', true);
+      this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', 'PHA II · CHUYỂN CẢNH!', true);
       this.triggerBossWarning(
         e.bossTitle || this.currentChapter.bossName,
-        'PHA II CUỒNG NỘ · CẢNH BÁO TĂNG TỐC ĐÒN ĐÁNH'
+        'PHA II CUỒNG NỘ · CỬA SỔ PHẢN CÔNG 2.5S!'
       );
       this.spawnBossPhase2Totems(e);
     }
 
-    // Phase 4: Boss Phase III Transition (<= 25% HP) for Ch.10–12 final bosses & Tower Floor 20+
+    // Phase 4: Boss Phase III Transition (<= 30% HP) for Ch.10–12 final bosses & Tower Floor 20+
     const canEnterPhaseThree =
       (!this.isTowerMode && this.currentChapter.id >= 10) ||
       (this.isTowerMode && this.towerFloor >= 20);
@@ -14903,7 +15691,7 @@ export class GameEngine {
       !e.phaseThreeTransitioned &&
       canEnterPhaseThree &&
       e.hp > 0 &&
-      e.hp <= e.maxHp * 0.25
+      e.hp <= e.maxHp * BOSS_PHASE_3_HP_RATIO
     ) {
       e.phaseThreeTransitioned = true;
       e.bossPhase = 3;
@@ -14920,6 +15708,8 @@ export class GameEngine {
       this.bossPhaseThreeBannerTimer = 2.8;
       this.bossPhaseShiftTimer = 0.65;
       this.bossPhaseShiftLevel = 3;
+      this.bossPhaseCounterTimer = BOSS_PHASE_COUNTER_WINDOW_SEC;
+      this.bossPhaseCounterLevel = 3;
       const reducedMotion =
         typeof window !== 'undefined' &&
         window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -14947,7 +15737,7 @@ export class GameEngine {
       this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHA III · TỐI THƯỢNG!', true);
       this.triggerBossWarning(
         e.bossTitle || this.currentChapter.bossName,
-        'PHA III TỐI THƯỢNG · PHẢN ĐÒN +24% SÁT THƯƠNG'
+        'PHA III TỐI THƯỢNG · CỬA SỔ PHẢN CÔNG 2.5S!'
       );
     }
 
@@ -15086,6 +15876,78 @@ export class GameEngine {
         reaction.label,
         true
       );
+    }
+
+    // Wave 10: Tam Nguyên Hợp Kích (3-Stack Elemental Resonance Convergence Burst)
+    let resonanceElem: 'fire' | 'ice' | 'storm' | 'poison' | null = reaction
+      ? mapReactionToResonanceElement(reaction.id)
+      : null;
+    if (!resonanceElem && incomingElement) {
+      this.elementalResonanceChargeAccum += 1;
+      if (this.elementalResonanceChargeAccum >= 4) {
+        this.elementalResonanceChargeAccum = 0;
+        resonanceElem = incomingElement;
+      }
+    }
+    if (resonanceElem) {
+      const resAdvance = advanceElementalResonance(
+        this.elementalResonance,
+        resonanceElem,
+        Math.max(finalDmg, this.baseStats.attack)
+      );
+      this.elementalResonance = resAdvance.nextState;
+      if (resAdvance.burstTriggered && !e.isTrainingDummy) {
+        const resKillTargets: EnemyEntity[] = [];
+        for (const other of [...this.enemies]) {
+          if (!other || other.dead || other.spawnTimer > 0) continue;
+          const rdist = Math.hypot(other.x - e.x, other.z - e.z);
+          if (rdist <= resAdvance.aoeRadius) {
+            if (!other.isTrainingDummy) {
+              other.hp -= resAdvance.burstDamage;
+            }
+            this.dmgElemental += resAdvance.burstDamage;
+            other.hitFlashTimer = 0.14;
+            if (other.isBoss && other.maxBreakShield && other.breakShield && other.breakShield > 0) {
+              const br = Math.round(other.maxBreakShield * resAdvance.breakShieldRatio);
+              other.breakShield = Math.max(0, other.breakShield - br);
+              if (this.bossStaggerOwnerId === other.id && this.bossStaggerState) {
+                this.bossStaggerState.current = Math.min(
+                  this.bossStaggerState.max,
+                  this.bossStaggerState.current + br
+                );
+              }
+            }
+            if (other.hp <= 0) {
+              resKillTargets.push(other);
+            }
+          }
+        }
+        for (const victim of resKillTargets) {
+          const rIdx = this.enemies.indexOf(victim);
+          if (rIdx !== -1 && !victim.dead) {
+            this.killEnemy(rIdx, true);
+          }
+        }
+        this.spawnShockwave(e.x, e.z, 0xfde047, resAdvance.aoeRadius, 0.48);
+        this.spawnShockwave(e.x, e.z, 0x38bdf8, resAdvance.aoeRadius * 0.78, 0.36);
+        this.spawnShockwave(e.x, e.z, 0xf97316, resAdvance.aoeRadius * 0.56, 0.28);
+        this.spawnImpactLight(e.x, 1.8, e.z, 'super_crit');
+        this.spawnParticles(e.x, 1.25, e.z, 0xfde047, 28);
+        this.emitFloatingNumber(
+          e.x,
+          2.6,
+          e.z,
+          resAdvance.burstDamage,
+          true,
+          false,
+          'storm',
+          resAdvance.calloutText ?? 'TAM NGUYÊN HỢP KÍCH!',
+          true
+        );
+        soundEngine.playCoopResonanceChord();
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.48);
+        recordStyleAction(this.styleMomentum, 'ultimate');
+      }
     }
     soundEngine.playHit(isCrit, this.comboCount, hitPan);
     this.spawnParticles(
@@ -15630,6 +16492,28 @@ export class GameEngine {
     }
   }
 
+  private getCombatTelemetrySnapshot(): PlayerCombatTelemetryInput {
+    const entries: Array<[AiDominantElement, number]> = [
+      ['fire', this.runElemCounts.fire],
+      ['ice', this.runElemCounts.ice],
+      ['storm', this.runElemCounts.storm],
+      ['poison', this.runElemCounts.poison],
+    ];
+    entries.sort((a, b) => b[1] - a[1]);
+    const dominantElement: AiDominantElement = entries[0][1] > 0 ? entries[0][0] : 'fire';
+    const avgDistance =
+      this.runDistSamples > 0 ? this.runDistSum / this.runDistSamples : 5.5;
+    return {
+      leftDodges: this.runLeftDodges,
+      rightDodges: this.runRightDodges,
+      avgDistance,
+      dashCount: this.runDashCount,
+      durationSec: Math.max(1, Math.round(this.runElapsedSeconds)),
+      dominantElement,
+      elementalReactions: this.elementalReactionsCount,
+    };
+  }
+
   private getDamageBreakdownSnapshot(): DamageBreakdown {
     const basic = Math.round(this.dmgBasic);
     const ultimate = Math.round(this.dmgUltimate);
@@ -15692,7 +16576,7 @@ export class GameEngine {
         kills: 1,
         gold: Math.round((this.runGold + 160) * bonusMult),
         gems: this.runGems + Math.round(12 * bonusMult),
-        starDust: Math.round(10 * bonusMult),
+        starDust: Math.round(10 * bonusMult) + this.runBossPartStarDust,
         isArenaMode: true,
         arenaOpponentName: this.arenaOpponentName,
         liveAiDuelId: this.liveAiDuelId ?? undefined,
@@ -15701,6 +16585,9 @@ export class GameEngine {
         aiDuelTier: this.aiDuelTier,
         aiRewardBonusPct: bonusPct,
         arenaRivalRemainingHpPct: 0,
+        trialGauntletRound: this.trialGauntletRound ?? undefined,
+        trialGauntletKitId: this.trialGauntletKitId ?? undefined,
+        combatTelemetry: this.getCombatTelemetrySnapshot(),
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
       });
@@ -16044,7 +16931,9 @@ export class GameEngine {
         kills: this.kills,
         gold: this.runGold,
         gems: this.runGems,
+        starDust: this.runBossPartStarDust > 0 ? this.runBossPartStarDust : undefined,
         isTowerMode: false,
+        combatTelemetry: this.getCombatTelemetrySnapshot(),
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
         activeSynergies: evaluateActiveSynergies(this.activeSkills),
@@ -16244,6 +17133,10 @@ export class GameEngine {
         liveAiDuelId: this.isArenaMode ? this.liveAiDuelId ?? undefined : undefined,
         liveAiPlayerId: this.isArenaMode ? this.liveAiPlayerId ?? undefined : undefined,
         liveAiDurationSec: this.isArenaMode ? Math.max(1, Math.round(this.runElapsedSeconds)) : undefined,
+        trialGauntletRound: this.isArenaMode ? this.trialGauntletRound ?? undefined : undefined,
+        trialGauntletKitId: this.isArenaMode ? this.trialGauntletKitId ?? undefined : undefined,
+        guildWarBastionId: this.isGuildWarMode ? this.guildWarBastionId ?? undefined : undefined,
+        combatTelemetry: this.getCombatTelemetrySnapshot(),
         isBloodMoonMode: this.isBloodMoonMode,
         bloodMoonScore: this.isBloodMoonMode ? Math.round(this.bloodMoonScore) : undefined,
         bloodMoonWave: this.isBloodMoonMode ? this.bloodMoonWave : undefined,
@@ -17248,6 +18141,20 @@ export class GameEngine {
       }
     }
 
+    // 3b. Wave 9 Interactive 3D Composite Arena Props pulse & rotation
+    if (this.wave9Props) {
+      for (let i = 0; i < this.wave9Props.length; i++) {
+        const prop = this.wave9Props[i];
+        if (!prop.alive) continue;
+        prop.core.rotation.y += simDt * 2.2;
+        prop.core.position.y =
+          (prop.kind === 'relic_crate' ? 1.02 : 1.24) +
+          Math.sin(this.elapsed * 3.4 + i * 1.7) * 0.08;
+        const rMat = prop.ring.material as THREE.MeshBasicMaterial;
+        rMat.opacity = 0.52 + Math.sin(this.elapsed * 4.6 + i) * 0.16;
+      }
+    }
+
     // 4. Pooled Elemental Footstep Ripples expand & fade
     if (this.footstepRipplePool) {
       for (let i = 0; i < this.footstepRipplePool.length; i++) {
@@ -17427,6 +18334,14 @@ export class GameEngine {
       this.bossFinisherTimer,
       this.bossFinisherDuration
     );
+    const wave9PhaseCounterCam = computeBossPhaseCounterPresentation(
+      this.bossPhaseCounterTimer,
+      this.bossPhaseCounterLevel
+    );
+    const wave9ExecCam = computeExecutionFinisherPresentation(
+      this.executionFinisherTimer,
+      EXECUTION_FINISHER_DURATION_SEC
+    );
     const camRig = resolveCombatCameraConfig(this.combatCameraPreset);
     const ridingVisibleMount = Boolean(this.hero?.mountGroup && this.hero.mountGroup.visible);
     const mountCamYOffset = ridingVisibleMount ? 1.15 : 0;
@@ -17457,12 +18372,15 @@ export class GameEngine {
 
     const effectiveFinisherBlend = Math.max(
       finisherKin.cameraBlend,
-      wave5FinisherCam.cameraZoomBlend * 0.85
+      wave5FinisherCam.cameraZoomBlend * 0.85,
+      wave9ExecCam.cameraZoomBlend * 0.75
     );
     if (effectiveFinisherBlend > 0.001) {
-      targetCamX = THREE.MathUtils.lerp(targetCamX, finisherCamX, effectiveFinisherBlend);
+      const fxFocusX = wave9ExecCam.active ? this.executionFinisherFocusX : finisherCamX;
+      const fxFocusZ = wave9ExecCam.active ? this.executionFinisherFocusZ + 7.2 : finisherCamZ;
+      targetCamX = THREE.MathUtils.lerp(targetCamX, THREE.MathUtils.clamp(fxFocusX, -5.4, 5.4), effectiveFinisherBlend);
       targetCamY = THREE.MathUtils.lerp(targetCamY, finisherCamY, effectiveFinisherBlend);
-      targetCamZ = THREE.MathUtils.lerp(targetCamZ, finisherCamZ, effectiveFinisherBlend);
+      targetCamZ = THREE.MathUtils.lerp(targetCamZ, THREE.MathUtils.clamp(fxFocusZ, 3.4, 15.6), effectiveFinisherBlend);
     }
 
     if (entryFlyBlend > 0.001) {
@@ -17512,6 +18430,8 @@ export class GameEngine {
       this.cameraFovOffset -
       introBlend * 3.5 +
       (wave5FinisherCam.active ? wave5FinisherCam.fovDelta : finisherKin.fovBoost) +
+      wave9PhaseCounterCam.fovPulseDelta +
+      (wave9ExecCam.active ? wave9ExecCam.fovDelta : 0) +
       ultCutin.fovPunch;
     if (Math.abs(this.camera.fov - desiredFov) > 0.015) {
       this.camera.fov = THREE.MathUtils.damp(this.camera.fov, desiredFov, 7.5, dt);
@@ -17525,6 +18445,10 @@ export class GameEngine {
       desiredLookX = THREE.MathUtils.lerp(desiredLookX, this.bossFinisherFocusX, finisherKin.cameraBlend);
       desiredLookZ = THREE.MathUtils.lerp(desiredLookZ, this.bossFinisherFocusZ, finisherKin.cameraBlend);
       desiredLookY = THREE.MathUtils.lerp(desiredLookY, 1.25, finisherKin.cameraBlend);
+    } else if (wave9ExecCam.active) {
+      desiredLookX = THREE.MathUtils.lerp(desiredLookX, this.executionFinisherFocusX, wave9ExecCam.cameraZoomBlend);
+      desiredLookZ = THREE.MathUtils.lerp(desiredLookZ, this.executionFinisherFocusZ, wave9ExecCam.cameraZoomBlend);
+      desiredLookY = THREE.MathUtils.lerp(desiredLookY, 1.15, wave9ExecCam.cameraZoomBlend);
     }
     if (entryFlyBlend > 0.001) {
       this.smoothLookX = THREE.MathUtils.lerp(desiredLookX, this.arenaEntryStartLook.x, entryFlyBlend);
@@ -17558,6 +18482,162 @@ export class GameEngine {
       }
     }
     return best;
+  }
+
+  private triggerWave9ArenaProp(prop: {
+    x: number;
+    z: number;
+    radius: number;
+    kind: ArenaPropKind;
+    alive: boolean;
+    group: THREE.Group;
+    core: THREE.Mesh;
+    ring: THREE.Mesh;
+  }): void {
+    if (!prop.alive) return;
+    prop.alive = false;
+    const cfg = ARENA_PROP_CONFIGS[prop.kind];
+    const atkPower = this.baseStats.attack * this.getCurrentAtkMultiplier();
+    const reward = resolveArenaPropActivation(prop.kind, this.maxHp, atkPower);
+
+    const pan = computeSpatialPan(prop.x, ARENA_HALF_W);
+    soundEngine.playResonanceTrapDetonate(
+      prop.kind === 'celestial_obelisk' ? 'storm_pylon' : 'ember_crucible',
+      pan
+    );
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.28);
+    this.spawnShockwave(prop.x, prop.z, cfg.primaryHex, reward.aoeRadius, 0.45);
+    this.spawnArmorShards(prop.x, 1.0, prop.z, cfg.metalHex, 10);
+    this.spawnParticles(prop.x, 1.1, prop.z, cfg.accentHex, 22);
+    this.spawnImpactLight(prop.x, 1.4, prop.z, 'super_crit');
+
+    if (reward.healAmount > 0) {
+      this.hp = Math.min(this.maxHp, this.hp + reward.healAmount);
+      this.emitFloatingNumber(this.px, 2.0, this.pz, reward.healAmount, false, true);
+    }
+    if (reward.shieldAmount > 0) {
+      this.shield = Math.min(Math.round(this.maxHp * 0.55), this.shield + reward.shieldAmount);
+    }
+    if (reward.ultGain > 0) {
+      this.ultCharge = Math.min(100, this.ultCharge + reward.ultGain);
+    }
+    if (reward.goldBonus > 0) {
+      this.runGold += reward.goldBonus;
+    }
+    if (reward.aspdBonusPct > 0 || reward.atkBonusPct > 0) {
+      this.wave9PropBuffTimer = reward.buffDurationSec;
+      this.wave9PropAtkBonusPct = Math.max(this.wave9PropAtkBonusPct, reward.atkBonusPct);
+      this.wave9PropAspdBonusPct = Math.max(this.wave9PropAspdBonusPct, reward.aspdBonusPct);
+      this.wave9PropBuffLabel = reward.calloutText;
+      if (reward.aspdBonusPct > 0) {
+        this.windBeaconSpeedTimer = Math.max(this.windBeaconSpeedTimer, reward.buffDurationSec);
+      }
+    } else {
+      this.wave9PropBuffTimer = 2.6;
+      this.wave9PropBuffLabel = reward.calloutText;
+    }
+
+    this.emitFloatingNumber(
+      prop.x,
+      2.1,
+      prop.z,
+      0,
+      true,
+      false,
+      'fire',
+      `${reward.label.toUpperCase()}!`,
+      true
+    );
+
+    for (const en of [...this.enemies]) {
+      if (!en || en.dead || en.spawnTimer > 0) continue;
+      if (Math.hypot(en.x - prop.x, en.z - prop.z) <= reward.aoeRadius + en.radius) {
+        this.damageEnemy(
+          en,
+          reward.aoeDamage,
+          true,
+          prop.kind === 'crimson_brazier',
+          false,
+          prop.kind === 'celestial_obelisk',
+          false,
+          reward.label.toUpperCase(),
+          'elemental'
+        );
+      }
+    }
+
+    this.releaseObject(prop.group);
+    this.syncHudImmediate();
+  }
+
+  private tryTriggerExecutionFinisherFromStrike(
+    centerX: number,
+    centerZ: number,
+    maxRange: number
+  ): void {
+    const eligible = this.enemies.find((en) => {
+      if (!en || en.dead || en.spawnTimer > 0) return false;
+      if (Math.hypot(en.x - centerX, en.z - centerZ) > maxRange + en.radius) return false;
+      const guardBroken = Boolean(
+        (en.stunTimer && en.stunTimer > 0) ||
+          (this.bossStaggerState &&
+            this.bossStaggerOwnerId === en.id &&
+            this.bossStaggerState.brokenRemainingSec > 0)
+      );
+      return isExecutionFinisherEligible({
+        hp: en.hp,
+        maxHp: en.maxHp,
+        isBoss: en.isBoss,
+        isElite: en.isElite,
+        isTrainingDummy: en.isTrainingDummy,
+        isVaultPillar: en.isVaultPillar,
+        guardBroken,
+      });
+    });
+    if (!eligible) return;
+
+    this.executionFinisherTimer = EXECUTION_FINISHER_DURATION_SEC;
+    this.executionFinisherFocusX = eligible.x;
+    this.executionFinisherFocusZ = eligible.z;
+
+    const pan = computeSpatialPan(eligible.x, ARENA_HALF_W);
+    soundEngine.playBossFinisherBoom(pan);
+    soundEngine.playBossBreakShatter(pan);
+    this.hitstopTimer = Math.max(this.hitstopTimer, 0.085);
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.56);
+    this.spawnImpactLight(eligible.x, 2.0, eligible.z, 'ultimate');
+    this.spawnCritStar(eligible.x, 1.5, eligible.z, 0xfde047, 2.6);
+
+    // 5 converging Golden Star-Spear beams from overhead arc radii
+    for (let i = 0; i < 5; i++) {
+      const ang = (i / 5) * Math.PI * 2;
+      const sx = eligible.x + Math.cos(ang) * 3.8;
+      const sz = eligible.z + Math.sin(ang) * 3.8;
+      this.spawnLightningArc(sx, 7.6, sz, eligible.x, 0.65, eligible.z);
+    }
+    this.spawnUltColumn(eligible.x, eligible.z, 0xfbbf24, 0.65);
+    this.spawnShockwave(eligible.x, eligible.z, 0xfde047, 6.2, 0.5);
+    this.spawnArmorShards(eligible.x, 1.2, eligible.z, 0x38bdf8, 14);
+    this.spawnParticles(eligible.x, 1.2, eligible.z, 0xfde047, 28);
+
+    const execDmg =
+      eligible.hp <= eligible.maxHp * 0.18
+        ? Math.max(eligible.hp + 999, this.baseStats.attack * 4.5)
+        : this.baseStats.attack * this.getCurrentAtkMultiplier() * 3.8;
+
+    this.damageEnemy(
+      eligible,
+      execDmg,
+      true,
+      true,
+      false,
+      true,
+      false,
+      'KẾT LIỄU TINH GIỚI!',
+      'ultimate',
+      undefined,
+      { attackerX: this.px, attackerZ: this.pz, bypassShield: true }
+    );
   }
 
   private lerpAngle(a: number, b: number, t: number): number {
@@ -18226,6 +19306,97 @@ export class GameEngine {
         : null,
       bossTotemsAlive: this.enemies.filter((en) => en.isBossTotem && en.hp > 0).length,
       ambushBossActive: this.enemies.some((en) => Boolean(en.ambushBounty) && en.hp > 0),
+      phaseCounterWindowSec:
+        this.bossPhaseCounterTimer > 0 ? Number(this.bossPhaseCounterTimer.toFixed(1)) : undefined,
+      phaseCounterWindowTotalSec: BOSS_PHASE_COUNTER_WINDOW_SEC,
+      phaseCounterReady: this.bossPhaseCounterTimer > 0,
+      finisherReadyTargetName: (() => {
+        const execCand = this.enemies.find((en) => {
+          if (!en || en.dead || en.spawnTimer > 0) return false;
+          const gb = Boolean(
+            (en.stunTimer && en.stunTimer > 0) ||
+              (this.bossStaggerState &&
+                this.bossStaggerOwnerId === en.id &&
+                this.bossStaggerState.brokenRemainingSec > 0)
+          );
+          return isExecutionFinisherEligible({
+            hp: en.hp,
+            maxHp: en.maxHp,
+            isBoss: en.isBoss,
+            isElite: en.isElite,
+            isTrainingDummy: en.isTrainingDummy,
+            isVaultPillar: en.isVaultPillar,
+            guardBroken: gb,
+          });
+        });
+        return execCand
+          ? execCand.bossTitle || (execCand.isBoss ? 'Thủ Lĩnh' : 'Tinh Anh')
+          : null;
+      })(),
+      finisherTargetHpPct: (() => {
+        const execCand = this.enemies.find((en) => {
+          if (!en || en.dead || en.spawnTimer > 0) return false;
+          const gb = Boolean(
+            (en.stunTimer && en.stunTimer > 0) ||
+              (this.bossStaggerState &&
+                this.bossStaggerOwnerId === en.id &&
+                this.bossStaggerState.brokenRemainingSec > 0)
+          );
+          return isExecutionFinisherEligible({
+            hp: en.hp,
+            maxHp: en.maxHp,
+            isBoss: en.isBoss,
+            isElite: en.isElite,
+            isTrainingDummy: en.isTrainingDummy,
+            isVaultPillar: en.isVaultPillar,
+            guardBroken: gb,
+          });
+        });
+        return execCand ? Math.max(1, Math.round((execCand.hp / Math.max(1, execCand.maxHp)) * 100)) : null;
+      })(),
+      arenaPropsRemaining: this.wave9Props.filter((p) => p.alive).length,
+      arenaPropBuffLabel: this.wave9PropBuffTimer > 0 ? this.wave9PropBuffLabel : null,
+      coopSanctuaryCooldownSec:
+        this.coopSanctuaryCooldown > 0 ? Number(this.coopSanctuaryCooldown.toFixed(1)) : 0,
+      coopSanctuaryActiveSec:
+        this.coopSanctuaryActiveTimer > 0 ? Number(this.coopSanctuaryActiveTimer.toFixed(1)) : 0,
+      coopPrimerBanner: this.coopPrimerBannerTimer > 0 ? this.coopPrimerBanner : null,
+      bossParts: (() => {
+        const activeBoss = this.enemies.find(
+          (en) => en.isBoss && !en.isArenaRival && !en.isTrainingDummy && en.hp > 0
+        );
+        if (!activeBoss?.bossParts || activeBoss.bossParts.length === 0) return undefined;
+        return activeBoss.bossParts.map((bp) => ({
+          id: bp.id,
+          label: bp.label,
+          hp: Math.max(0, Math.round(bp.hp)),
+          maxHp: Math.max(1, Math.round(bp.maxHp)),
+          broken: bp.broken,
+          debuffLabel: bp.debuffLabel,
+        }));
+      })(),
+      bossPartBrokenBanner:
+        this.bossPartBrokenBannerTimer > 0 ? this.bossPartBrokenBanner : null,
+      elementalResonance: {
+        stack: this.elementalResonance.stack,
+        maxStack: this.elementalResonance.maxStack,
+        recentElements: [...this.elementalResonance.recentElements],
+        burstBannerText:
+          this.elementalResonance.burstBannerTimerSec > 0
+            ? this.elementalResonance.burstBannerText
+            : null,
+      },
+      aiAdaptationBadge: this.aiAdaptationProfile
+        ? `${this.aiAdaptationProfile.counterInsightLabel} · né ${
+            this.aiAdaptationProfile.dodgeBias === 'left'
+              ? 'Trái'
+              : this.aiAdaptationProfile.dodgeBias === 'right'
+              ? 'Phải'
+              : 'Cân bằng'
+          }`
+        : null,
+      trialGauntletRound: this.trialGauntletRound,
+      guildWarBastionLabel: this.guildWarBastionLabel,
     });
   }
 

@@ -57,7 +57,10 @@ import {
   SkillId,
   TrainingTargetMode,
 } from '../types/game';
-import { COOP_TACTICAL_ORDERS } from '../engine/wave5CombatSystems';
+import {
+  COOP_TACTICAL_ORDERS,
+  WAVE9_COOP_QUICK_ORDERS,
+} from '../engine/wave5CombatSystems';
 import { getStyleRewardBonusPct } from '../engine/wave7CombatSystems';
 import {
   BossPortraitBadge,
@@ -961,6 +964,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   <span>Cân Bằng Chỉ Số</span>
                 </span>
               )}
+              {hud.trialGauntletRound ? (
+                <span className="text-cyan-300 font-mono-nums">
+                  · THỬ NGHIỆM VÒNG {hud.trialGauntletRound}/3
+                </span>
+              ) : null}
               {hud.arenaAiEnraged && (
                 <span className="text-rose-400">· CUỒNG NỘ PHASE 2</span>
               )}
@@ -1039,6 +1047,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 {hud.arenaAiIntentLabel}
               </div>
             )}
+            {hud.aiAdaptationBadge && (
+              <div className="mt-1 pt-1 border-t border-cyan-500/25 text-center text-[10px] font-bold text-cyan-200 truncate">
+                AI Học Lối Đánh · {hud.aiAdaptationBadge}
+              </div>
+            )}
           </div>
         )}
 
@@ -1093,9 +1106,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         {hud.isGuildWarMode && (
           <div className="w-full max-w-md mx-auto rounded-2xl px-4 py-2 bg-[#06181a]/95 border border-emerald-400/75 shadow-2xl">
             <div className="flex items-center justify-between gap-2 text-xs font-black mb-1">
-              <span className="flex items-center gap-1.5 text-emerald-200">
-                <Shield className="w-3.5 h-3.5 text-emerald-300" />
-                <span>Chiến Trường Bang · Trụ {hud.guildWarNodes ?? 0}/3</span>
+              <span className="flex items-center gap-1.5 text-emerald-200 truncate">
+                <Shield className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                <span className="truncate">
+                  {hud.guildWarBastionLabel
+                    ? `${hud.guildWarBastionLabel} · Trụ ${hud.guildWarNodes ?? 0}/3`
+                    : `Chiến Trường Bang · Trụ ${hud.guildWarNodes ?? 0}/3`}
+                </span>
               </span>
               <span className="font-mono-nums text-amber-300">
                 {(hud.guildWarScore ?? 0).toLocaleString('vi-VN')} Điểm · {hud.guildWarTimeLeft ?? 75}s
@@ -1435,9 +1452,54 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   </div>
                 );
               })()}
+              {/* Wave 10: Breakable 3D Boss Parts Micro-Bars */}
+              {hud.bossParts && hud.bossParts.length > 0 && (
+                <div className="mt-1 grid grid-cols-3 gap-1">
+                  {hud.bossParts.map((part) => {
+                    const partPct = Math.max(
+                      0,
+                      Math.min(100, (part.hp / Math.max(1, part.maxHp)) * 100)
+                    );
+                    return (
+                      <div
+                        key={part.id}
+                        className={`rounded px-1.5 py-0.5 border text-[8.5px] leading-tight ${
+                          part.broken
+                            ? 'bg-emerald-950/90 border-emerald-400/50 text-emerald-200'
+                            : 'bg-slate-950/90 border-amber-400/30 text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 font-bold truncate">
+                          <span className="truncate">{part.label}</span>
+                          <span className="font-mono-nums shrink-0">
+                            {part.broken ? part.debuffLabel : `${Math.round(partPct)}%`}
+                          </span>
+                        </div>
+                        {!part.broken && (
+                          <div className="mt-0.5 h-0.5 w-full rounded-full bg-slate-900 overflow-hidden">
+                            <div
+                              className="h-full bg-amber-300 transition-all duration-100"
+                              style={{ width: `${Math.max(4, partPct)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })()}
+
+        {/* Wave 10: Broken Boss Part Notification */}
+        {hud.bossPartBrokenBanner && (
+          <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#251205]/95 border border-amber-300 text-center">
+            <div className="font-display text-[10.5px] font-black text-amber-200 truncate">
+              {hud.bossPartBrokenBanner}
+            </div>
+          </div>
+        )}
 
         {/* Slim Boss Guard-Break / Phase Transition Strips */}
         {(hud.bossBrokenBannerTimer ?? 0) > 0 && (
@@ -1465,6 +1527,42 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div className="font-display text-[11px] font-black text-amber-200 flex items-center justify-center gap-1.5">
               <Flame className="w-3 h-3 text-rose-400 shrink-0" />
               <span>PHA II CUỒNG NỘ · BOSS TĂNG TỐC</span>
+            </div>
+          </div>
+        )}
+
+        {/* Wave 9 Pillar 1 & 2: Boss Phase Transition 2.5s Counter Window */}
+        {hud.phaseCounterReady && (hud.phaseCounterWindowSec ?? 0) > 0 && (() => {
+          const rem = hud.phaseCounterWindowSec ?? 0;
+          const total = Math.max(0.5, hud.phaseCounterWindowTotalSec ?? 2.5);
+          const ratioPct = Math.max(4, Math.min(100, Math.round((rem / total) * 100)));
+          return (
+            <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#071828]/95 border border-cyan-300/85 shadow-lg">
+              <div className="flex items-center justify-between gap-2 text-[10px] font-black text-cyan-100">
+                <span className="flex items-center gap-1 truncate">
+                  <Zap className="w-3 h-3 text-amber-300 shrink-0" />
+                  <span className="truncate">CỬA SỔ PHẢN CÔNG PHA · BẮN CHÍ MẠNG / Q</span>
+                </span>
+                <span className="font-mono-nums text-amber-300 shrink-0">{rem.toFixed(1)}s</span>
+              </div>
+              <div className="mt-0.5 h-1 w-full rounded-full bg-slate-950 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-amber-300 transition-all duration-75"
+                  style={{ width: `${ratioPct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Wave 9 Pillar 2: Interactive Execution Finisher Readiness Strip */}
+        {hud.finisherReadyTargetName && (
+          <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#231205]/95 border border-amber-300/90 text-center">
+            <div className="font-display text-[10px] font-black text-amber-200 flex items-center justify-center gap-1.5">
+              <Crosshair className="w-3 h-3 text-amber-300 shrink-0" />
+              <span className="truncate">
+                KẾT LIỄU: {hud.finisherReadyTargetName} ({hud.finisherTargetHpPct ?? 18}% HP) · BẤM F HOẶC Q
+              </span>
             </div>
           </div>
         )}
@@ -1703,6 +1801,20 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
+        {hud.arenaPropBuffLabel && (
+          <div className="rounded-lg px-2.5 py-1 bg-[#0a1826]/95 border border-amber-300/75 text-[10px] font-black text-amber-100 flex items-center gap-1.5 max-w-full">
+            <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
+            <span className="truncate">{hud.arenaPropBuffLabel}</span>
+          </div>
+        )}
+
+        {(hud.arenaPropsRemaining ?? 0) > 0 && !isCompact && !hud.isTrainingMode && (
+          <div className="inline-flex items-center gap-1.5 bg-[#060a18]/90 border border-sky-400/35 rounded-lg px-2.5 py-0.5 text-[10px] font-bold text-sky-200">
+            <Gem className="w-3 h-3 text-cyan-300 shrink-0" />
+            <span className="font-mono-nums">{hud.arenaPropsRemaining} Vật Thể Sân 3D</span>
+          </div>
+        )}
+
         {/* Co-op & 3D AI Squad Companion Live Strip (Pinned Left) */}
         {((hud.isCoopRaidMode && hud.coopAllies && hud.coopAllies.length > 0) ||
           (!hud.isCoopRaidMode && hud.aiSquadAllies && hud.aiSquadAllies.length > 0)) && (
@@ -1737,13 +1849,34 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </div>
               );
             })}
-            {hud.isCoopRaidMode && onSetCoopTacticalOrder && (
+            {(hud.coopSanctuaryActiveSec ?? 0) > 0 ? (
+              <div className="rounded-lg px-2 py-1 bg-[#061f18]/95 border border-emerald-400/80 text-[9px] font-black text-emerald-200 flex items-center gap-1.5">
+                <Shield className="w-3 h-3 text-emerald-300 shrink-0" />
+                <span className="font-mono-nums truncate">
+                  VÒNG HỘ MỆNH ({(hud.coopSanctuaryActiveSec ?? 0).toFixed(1)}s)
+                </span>
+              </div>
+            ) : (hud.coopSanctuaryCooldownSec ?? 0) > 0 && !isCompact ? (
+              <div className="rounded-lg px-2 py-0.5 bg-[#060a18]/90 border border-slate-700/70 text-[9px] font-bold text-slate-300 flex items-center gap-1.5">
+                <Heart className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span className="font-mono-nums truncate">
+                  Hộ Mệnh hồi: {(hud.coopSanctuaryCooldownSec ?? 0).toFixed(0)}s
+                </span>
+              </div>
+            ) : null}
+            {hud.coopPrimerBanner && (
+              <div className="rounded-lg px-2 py-1 bg-[#1b1105]/95 border border-amber-300/75 text-[9px] font-black text-amber-100 flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
+                <span className="truncate">{hud.coopPrimerBanner}</span>
+              </div>
+            )}
+            {onSetCoopTacticalOrder && (
               <div
                 className="pointer-events-auto flex flex-wrap items-center gap-1 rounded-lg bg-[#060a18]/92 border border-sky-400/40 p-1"
                 role="group"
                 aria-label="Lệnh chiến thuật tổ đội Co-op"
               >
-                {COOP_TACTICAL_ORDERS.map((ord) => {
+                {(hud.isCoopRaidMode ? WAVE9_COOP_QUICK_ORDERS : COOP_TACTICAL_ORDERS).map((ord) => {
                   const active = (hud.coopTacticalOrder ?? 'focus_boss') === ord.id;
                   return (
                     <button
@@ -2340,6 +2473,36 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           )}
 
+          {/* Wave 10: 3-Stack Elemental Resonance Meter */}
+          {hud.elementalResonance && (hud.elementalResonance.stack > 0 || hud.elementalResonance.burstBannerText) && (
+            <div className="pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0d1226]/95 border border-cyan-400/45 text-[10px] shadow-md">
+              <Sparkles className="w-3 h-3 text-cyan-300 shrink-0" />
+              <span className="font-black text-cyan-200 whitespace-nowrap">
+                {hud.elementalResonance.burstBannerText
+                  ? hud.elementalResonance.burstBannerText
+                  : `Cộng Hưởng ${hud.elementalResonance.stack}/${hud.elementalResonance.maxStack}`}
+              </span>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: hud.elementalResonance.maxStack }).map((_, idx) => {
+                  const filled = idx < (hud.elementalResonance?.stack ?? 0);
+                  const el = hud.elementalResonance?.recentElements[idx];
+                  return (
+                    <span
+                      key={idx}
+                      className={`px-1 py-0.5 rounded text-[8.5px] font-black font-mono-nums ${
+                        filled
+                          ? 'bg-cyan-400 text-slate-950'
+                          : 'bg-slate-800 text-slate-500 border border-slate-700'
+                      }`}
+                    >
+                      {el ? el.slice(0, 1).toUpperCase() : idx + 1}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-end gap-2 sm:gap-3 shrink-0">
             {(() => {
               const circ = 2 * Math.PI * 29;
@@ -2491,6 +2654,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
                   {onHeavyBreakClick && (
                     <div className="relative flex flex-col items-center shrink-0">
+                      {Boolean(hud.finisherReadyTargetName) && breakReady && (
+                        <>
+                          <span className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-gradient-to-r from-rose-500 to-amber-400 border border-amber-100 text-[9px] font-black text-slate-950 whitespace-nowrap shadow-lg">
+                            KẾT LIỄU
+                          </span>
+                          <span
+                            aria-hidden="true"
+                            className="a2-ult-ready-ring absolute -inset-1 rounded-full border-2 border-dashed border-amber-300 pointer-events-none"
+                          />
+                        </>
+                      )}
                       <button
                         type="button"
                         tabIndex={-1}
@@ -2499,10 +2673,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           e.currentTarget.blur();
                           onHeavyBreakClick();
                         }}
-                        title="Phá Giáp Trảm (F / Chuột Phải): Lao chém phá khiên & đẩy lùi"
+                        title="Phá Giáp Trảm / Kết Liễu (F / Chuột Phải): Lao chém phá khiên hoặc kết liễu Boss/Tinh Anh dưới 18% HP"
                         className={`pointer-events-auto relative overflow-hidden w-[56px] h-[56px] sm:w-[62px] sm:h-[62px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
                           breakReady
-                            ? 'bg-gradient-to-b from-amber-500/95 to-orange-700/95 border border-amber-200/85 text-white shadow-[0_0_20px_rgba(251,146,60,0.55)] cursor-pointer hover:scale-105'
+                            ? hud.finisherReadyTargetName
+                              ? 'bg-gradient-to-b from-rose-500/95 to-amber-600/95 border border-yellow-200 text-white shadow-[0_0_24px_rgba(251,191,36,0.7)] cursor-pointer hover:scale-105'
+                              : 'bg-gradient-to-b from-amber-500/95 to-orange-700/95 border border-amber-200/85 text-white shadow-[0_0_20px_rgba(251,146,60,0.55)] cursor-pointer hover:scale-105'
                             : 'hv2-panel text-slate-400 cursor-not-allowed'
                         }`}
                       >
@@ -2530,7 +2706,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           }`}
                         />
                         <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                          {breakReady ? 'PHÁ GIÁP' : `${breakCdSec.toFixed(1)}s`}
+                          {breakReady
+                            ? hud.finisherReadyTargetName
+                              ? 'KẾT LIỄU'
+                              : 'PHÁ GIÁP'
+                            : `${breakCdSec.toFixed(1)}s`}
                         </span>
                       </button>
                       <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/60 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
