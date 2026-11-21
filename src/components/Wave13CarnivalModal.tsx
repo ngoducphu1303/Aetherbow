@@ -60,7 +60,7 @@ export const Wave13CarnivalModal: React.FC<Wave13CarnivalModalProps> = ({
     ];
     if (tierDef.unlockSteedId) {
       items.unshift({
-        label: tierDef.unlockSteedId === 'galaxy_pegasus' ? 'Thú Cưỡi 3D: Thiên Mã Ngân Hà' : 'Thú Cưỡi 3D: Phượng Hoàng Nhật Thực',
+        label: 'Thú Cưỡi 3D: Hắc Long',
         quantity: 'Mở Khóa Vĩnh Viễn',
         rarity: 'mythic',
       });
@@ -373,11 +373,7 @@ export const Wave13CarnivalModal: React.FC<Wave13CarnivalModalProps> = ({
                         {tierDef.unlockSteedId && (
                           <div className="font-black text-amber-200 flex items-center gap-1.5">
                             <Star className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                            <span>
-                              {tierDef.unlockSteedId === 'galaxy_pegasus'
-                                ? 'Thú Cưỡi 3D: Thiên Mã Ngân Hà'
-                                : 'Thú Cưỡi 3D: Phượng Hoàng Nhật Thực'}
-                            </span>
+                            <span>Thú Cưỡi 3D: Hắc Long</span>
                           </div>
                         )}
                         {tierDef.unlockVipFrameId && (

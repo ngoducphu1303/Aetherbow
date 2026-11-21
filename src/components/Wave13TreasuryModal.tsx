@@ -236,10 +236,10 @@ export const Wave13TreasuryModal: React.FC<Wave13TreasuryModalProps> = ({
                     Hiển thị trực tiếp dưới chân Anh Hùng tại Sảnh Chính 3D &amp; Chiến Đấu
                   </div>
                   <h3 className="font-display text-lg sm:text-xl font-black text-white">
-                    Thú Cưỡi Tinh Giới 3D &amp; Đường Đua Ánh Sao
+                    Hắc Long 3D &amp; Đường Đua Ánh Sao
                   </h3>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    Nâng sao bằng Cỏ Tinh Tú để bứt phá tốc độ di chuyển, tỷ lệ Bạo Kích và kỷ lục Đường Đua Ánh Sao.
+                    Cưỡi Hắc Long bứt phá trên Đường Đua Ánh Sao để nhận Vàng, Ngọc và Cỏ Tinh Tú mỗi ngày.
                   </p>
                 </div>
 
@@ -281,7 +281,8 @@ export const Wave13TreasuryModal: React.FC<Wave13TreasuryModalProps> = ({
               </div>
             )}
 
-            {/* 4 Astral Steed Cards */}
+            {/* Astral Steed Cards (only shown if any Astral Steeds are defined) */}
+            {ASTRAL_STEED_DEFS.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {ASTRAL_STEED_DEFS.map((steed) => {
                 const isUnlocked = unlockedSteeds.has(steed.id);
@@ -397,6 +398,7 @@ export const Wave13TreasuryModal: React.FC<Wave13TreasuryModalProps> = ({
                 );
               })}
             </div>
+            )}
 
             {/* Starlight Race Cumulative Milestones */}
             <div className="rounded-2xl bg-[#090f22] border border-slate-700/70 p-4">

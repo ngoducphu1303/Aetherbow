@@ -1176,7 +1176,7 @@ function createLisaHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
 }
 
 export function createHeroModel(cfg: HeroVisualConfig): HeroModelRefs {
-  if (cfg.heroId === 'lisa' || cfg.crownStyle === 'witch_hat') {
+  if (cfg.crownStyle === 'witch_hat') {
     return createLisaHeroModel(cfg);
   }
 
@@ -3076,35 +3076,16 @@ function createZodiacMountModel(
     group.add(eye);
   }
 
-  // Species-specific horns / mane / crests
-  if (mountId === 'aries_steed') {
-    for (const side of [-1, 1] as const) {
-      const horn = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.042, 6, 14, Math.PI * 1.3), armorMat);
-      horn.position.set(side * 0.2, 1.34, 0.72);
-      horn.rotation.y = side * (Math.PI / 2);
-      group.add(horn);
-    }
-  } else if (mountId === 'celestial_leo') {
-    const lionMane = new THREE.Mesh(new THREE.DodecahedronGeometry(0.34, 0), maneMat);
-    lionMane.position.set(0, 1.15, 0.65);
-    lionMane.scale.set(1.15, 1.15, 0.95);
-    group.add(lionMane);
-  } else if (mountId === 'frost_unicorn') {
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.44, 8), glowMat);
-    horn.position.set(0, 1.48, 0.96);
-    horn.rotation.x = 0.45;
-    group.add(horn);
-  } else if (mountId === 'crimson_wyrm') {
-    for (const side of [-1, 1] as const) {
-      const drakeHorn = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.42, 6), armorMat);
-      drakeHorn.position.set(side * 0.14, 1.46, 0.72);
-      drakeHorn.rotation.x = -0.5;
-      drakeHorn.rotation.z = -side * 0.25;
-      const fin = new THREE.Mesh(makeBeveledWingGeo(0.45, 0.48, 0.03), glowMat);
-      fin.position.set(side * 0.45, 0.94, 0.05);
-      fin.rotation.y = side > 0 ? -0.3 : Math.PI + 0.3;
-      group.add(drakeHorn, fin);
-    }
+  // Dragon horns & fins for Hắc Long fallback geometry
+  for (const side of [-1, 1] as const) {
+    const drakeHorn = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.42, 6), armorMat);
+    drakeHorn.position.set(side * 0.14, 1.46, 0.72);
+    drakeHorn.rotation.x = -0.5;
+    drakeHorn.rotation.z = -side * 0.25;
+    const fin = new THREE.Mesh(makeBeveledWingGeo(0.45, 0.48, 0.03), glowMat);
+    fin.position.set(side * 0.45, 0.94, 0.05);
+    fin.rotation.y = side > 0 ? -0.3 : Math.PI + 0.3;
+    group.add(drakeHorn, fin);
   }
 
   // Mane crest & tail
@@ -3938,30 +3919,29 @@ export function createSoulRingsGroup(
 }
 
 export function createAstralSteedModel(
-  steedId: AstralSteedId,
+  _steedId: AstralSteedId,
   star = 1
 ): { group: THREE.Group; legs: THREE.Group[]; wingPivots: THREE.Group[] } {
-  const def = ASTRAL_STEED_MAP[steedId] ?? ASTRAL_STEED_MAP.galaxy_pegasus;
   const scaleBoost = 1 + Math.min(4, Math.max(0, star - 1)) * 0.045;
   const group = new THREE.Group();
   const legs: THREE.Group[] = [];
   const wingPivots: THREE.Group[] = [];
 
   const bodyMat = new THREE.MeshStandardMaterial({
-    color: def.bodyHex,
+    color: 0x20202a,
     roughness: 0.44,
     metalness: 0.22,
   });
   const armorMat = new THREE.MeshStandardMaterial({
-    color: def.armorHex,
-    emissive: def.armorHex,
+    color: 0x444153,
+    emissive: 0x444153,
     emissiveIntensity: 0.28 + star * 0.06,
     roughness: 0.18,
     metalness: 0.92,
   });
   const glowMat = new THREE.MeshStandardMaterial({
-    color: def.glowHex,
-    emissive: def.glowHex,
+    color: 0xc46db1,
+    emissive: 0xc46db1,
     emissiveIntensity: 1.35 + star * 0.15,
     roughness: 0.12,
     metalness: 0.35,
@@ -4022,38 +4002,24 @@ export function createAstralSteedModel(
   tail.rotation.x = -Math.PI / 2.6;
   tail.position.set(0, 0.66, -0.88);
 
-  // 6. Steed-specific silhouette extensions (Wings / Dorsal Spikes / Dragon Horns)
-  if (
-    steedId === 'galaxy_pegasus' ||
-    steedId === 'eclipse_phoenix' ||
-    steedId === 'golden_sovereign_dragon'
-  ) {
-    const wingW = steedId === 'galaxy_pegasus' ? 0.92 : 1.05;
-    const wingH = steedId === 'eclipse_phoenix' ? 0.82 : 0.74;
-    const wingGeo = makeBeveledWingGeo(wingW, wingH, 0.04);
-    for (const side of [-1, 1] as const) {
-      const pivot = new THREE.Group();
-      pivot.position.set(side * 0.3, 0.88, 0.12);
-      const wingMesh = new THREE.Mesh(wingGeo, side === 1 ? armorMat : armorMat);
-      wingMesh.position.set(side * (wingW * 0.48), 0.18, -0.1);
-      wingMesh.rotation.y = side > 0 ? -0.25 : Math.PI + 0.25;
-      const featherTrim = new THREE.Mesh(
-        new THREE.BoxGeometry(wingW * 0.86, 0.07, 0.06),
-        glowMat
-      );
-      featherTrim.position.set(side * (wingW * 0.42), 0.42, -0.1);
-      pivot.add(wingMesh, featherTrim);
-      group.add(pivot);
-      wingPivots.push(pivot);
-    }
-  } else {
-    // Frost Starwolf crystalline dorsal ridge + ice collar
-    for (let i = 0; i < 4; i++) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36 - i * 0.04, 5), glowMat);
-      spike.position.set(0, 1.05 - i * 0.06, 0.32 - i * 0.28);
-      spike.rotation.x = -0.35;
-      group.add(spike);
-    }
+  // 6. Generic winged fallback silhouette
+  const wingW = 0.98;
+  const wingH = 0.76;
+  const wingGeo = makeBeveledWingGeo(wingW, wingH, 0.04);
+  for (const side of [-1, 1] as const) {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.3, 0.88, 0.12);
+    const wingMesh = new THREE.Mesh(wingGeo, armorMat);
+    wingMesh.position.set(side * (wingW * 0.48), 0.18, -0.1);
+    wingMesh.rotation.y = side > 0 ? -0.25 : Math.PI + 0.25;
+    const featherTrim = new THREE.Mesh(
+      new THREE.BoxGeometry(wingW * 0.86, 0.07, 0.06),
+      glowMat
+    );
+    featherTrim.position.set(side * (wingW * 0.42), 0.42, -0.1);
+    pivot.add(wingMesh, featherTrim);
+    group.add(pivot);
+    wingPivots.push(pivot);
   }
 
   // 7. Ground Starlight Aura Ring underneath steed

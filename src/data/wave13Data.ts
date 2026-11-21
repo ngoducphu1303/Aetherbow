@@ -32,113 +32,15 @@ import { getTodayKey } from './questsData';
 
 export const ASTRAL_STEED_MAX_STAR = 5;
 
-export const ASTRAL_STEED_DEFS: AstralSteedDef[] = [
-  {
-    id: 'galaxy_pegasus',
-    name: 'Thiên Mã Ngân Hà',
-    badge: 'SỬ THI · TỐC ĐỘ SAO',
-    rarity: 'Sử Thi',
-    desc: 'Chiến mã có cánh bằng vàng tinh tú lướt đi trên dải ngân hà, tăng tốc độ di chuyển và Công Kích toàn đội.',
-    bodyHex: 0xf8fafc,
-    armorHex: 0xfbbf24,
-    accentHex: 0x38bdf8,
-    glowHex: 0xfde047,
-    baseAtkPct: 0.06,
-    baseHpPct: 0.05,
-    baseMoveSpeed: 0.08,
-    baseCrit: 0.02,
-    atkPctPerStar: 0.025,
-    hpPctPerStar: 0.02,
-    raceSpeedRating: 112,
-    unlockGrass: 18,
-    unlockGems: 0,
-  },
-  {
-    id: 'frost_starwolf',
-    name: 'Chiến Lang Băng Lam',
-    badge: 'HUYỀN THOẠI · BẠO KÍCH',
-    rarity: 'Huyền Thoại',
-    desc: 'Linh lang khoác giáp pha lê băng tinh, bứt tốc cực nhanh trên Đường Đua Ánh Sao và tăng Bạo Kích.',
-    bodyHex: 0x1e3a8a,
-    armorHex: 0x38bdf8,
-    accentHex: 0xe0f2fe,
-    glowHex: 0x67e8f9,
-    baseAtkPct: 0.09,
-    baseHpPct: 0.08,
-    baseMoveSpeed: 0.11,
-    baseCrit: 0.035,
-    atkPctPerStar: 0.032,
-    hpPctPerStar: 0.028,
-    raceSpeedRating: 128,
-    unlockGrass: 30,
-    unlockGems: 60,
-  },
-  {
-    id: 'eclipse_phoenix',
-    name: 'Phượng Hoàng Nhật Thực',
-    badge: 'THẦN THOẠI · HỎA DỰC',
-    rarity: 'Thần Thoại',
-    desc: 'Thần điểu rực lửa sao chổi sải cánh giữa tinh không, cường hóa mạnh cả Công Kích lẫn Sinh Lực.',
-    bodyHex: 0x9a3412,
-    armorHex: 0xf59e0b,
-    accentHex: 0xfb7185,
-    glowHex: 0xf97316,
-    baseAtkPct: 0.13,
-    baseHpPct: 0.11,
-    baseMoveSpeed: 0.13,
-    baseCrit: 0.05,
-    atkPctPerStar: 0.04,
-    hpPctPerStar: 0.035,
-    raceSpeedRating: 142,
-    unlockGrass: 48,
-    unlockGems: 110,
-  },
-  {
-    id: 'golden_sovereign_dragon',
-    name: 'Thánh Long Hoàng Kim',
-    badge: 'CHÍ TÔN · BÁ CHỦ TINH GIỚI',
-    rarity: 'Chí Tôn',
-    desc: 'Cổ long hoàng kim khoác giáp hắc diện thạch, đỉnh cao tối thượng cho Sảnh 3D và Đường Đua Ánh Sao.',
-    bodyHex: 0x18181b,
-    armorHex: 0xfacc15,
-    accentHex: 0xfef08a,
-    glowHex: 0xfde047,
-    baseAtkPct: 0.18,
-    baseHpPct: 0.15,
-    baseMoveSpeed: 0.16,
-    baseCrit: 0.065,
-    atkPctPerStar: 0.05,
-    hpPctPerStar: 0.042,
-    raceSpeedRating: 160,
-    unlockGrass: 75,
-    unlockGems: 165,
-  },
-];
+export const ASTRAL_STEED_DEFS: AstralSteedDef[] = [];
 
-export const ASTRAL_STEED_MAP: Record<AstralSteedId, AstralSteedDef> = ASTRAL_STEED_DEFS.reduce(
-  (acc, item) => {
-    acc[item.id] = item;
-    return acc;
-  },
-  {} as Record<AstralSteedId, AstralSteedDef>
-);
+export const ASTRAL_STEED_MAP: Partial<Record<AstralSteedId, AstralSteedDef>> = {};
 
 export function getAstralSteedStats(
-  steedId: AstralSteedId | null | undefined,
-  star: number
+  _steedId: AstralSteedId | null | undefined,
+  _star: number
 ): { atkPct: number; hpPct: number; moveSpeed: number; crit: number; raceSpeed: number } {
-  if (!steedId || !ASTRAL_STEED_MAP[steedId]) {
-    return { atkPct: 0, hpPct: 0, moveSpeed: 0, crit: 0, raceSpeed: 100 };
-  }
-  const def = ASTRAL_STEED_MAP[steedId];
-  const s = Math.max(1, Math.min(ASTRAL_STEED_MAX_STAR, Math.floor(star || 1)));
-  return {
-    atkPct: def.baseAtkPct + (s - 1) * def.atkPctPerStar,
-    hpPct: def.baseHpPct + (s - 1) * def.hpPctPerStar,
-    moveSpeed: def.baseMoveSpeed + (s - 1) * 0.015,
-    crit: def.baseCrit + (s - 1) * 0.01,
-    raceSpeed: def.raceSpeedRating + (s - 1) * 14,
-  };
+  return { atkPct: 0, hpPct: 0, moveSpeed: 0, crit: 0, raceSpeed: 100 };
 }
 
 export function getAstralSteedStarUpCost(currentStar: number): { grass: number; gold: number } {
@@ -972,8 +874,8 @@ export const CARNIVAL_7DAY_TASKS: CarnivalDayTaskDef[] = [
   {
     id: 'c7_d3_steed',
     day: 3,
-    title: 'Thuần Hóa Thú Cưỡi 3D',
-    desc: 'Sở hữu ít nhất 1 Thú Cưỡi Tinh Giới 3D',
+    title: 'Thuần Hóa Hắc Long 3D',
+    desc: 'Sở hữu Thú Cưỡi Hắc Long trong đội hình',
     metric: 'steed_count',
     target: 1,
     points: 25,
@@ -1070,11 +972,10 @@ export const CARNIVAL_7DAY_MILESTONES: CarnivalPointMilestone[] = [
   },
   {
     pointsTarget: 75,
-    title: 'Tặng Thú Cưỡi Thiên Mã 75đ',
-    rewardGems: 65,
-    rewardGrass: 20,
+    title: 'Kho Báu Hắc Long 75đ',
+    rewardGems: 95,
+    rewardGrass: 24,
     rewardBlindBoxTickets: 2,
-    unlockSteedId: 'galaxy_pegasus',
   },
   {
     pointsTarget: 130,
@@ -1085,11 +986,10 @@ export const CARNIVAL_7DAY_MILESTONES: CarnivalPointMilestone[] = [
   },
   {
     pointsTarget: 200,
-    title: 'Đại Thưởng 7 Ngày · Chiến Lang 3D',
-    rewardGems: 180,
+    title: 'Đại Thưởng 7 Ngày · Tinh Giới 200đ',
+    rewardGems: 220,
     rewardGrass: 48,
     rewardBlindBoxTickets: 4,
-    unlockSteedId: 'frost_starwolf',
   },
 ];
 
@@ -1130,7 +1030,7 @@ export function getCarnivalTaskProgress(save: SaveData, task: CarnivalDayTaskDef
     case 'soul_ring_lv':
       return sr.totalLevel;
     case 'steed_count':
-      return (save.unlockedAstralSteeds ?? []).length;
+      return (save.unlockedMounts ?? []).length;
     case 'dragon_scales':
       return dl.totalScalesEarned + (save.dragonScales ?? 0);
     case 'blind_boxes':
@@ -1171,7 +1071,7 @@ export const EVOLVING_FIRST_TOPUP_TIERS: EvolvingFirstTopUpTierDef[] = [
     tier: 1,
     id: 'tier_origin',
     title: 'Mốc I · Nạp Đầu Khởi Nguyên',
-    subtitle: 'Tặng ngay Thiên Mã Ngân Hà 3D + 120 Ngọc Hồn & Linh Ngọc',
+    subtitle: 'Tặng ngay 120 Ngọc Hồn, Linh Ngọc & Tài Nguyên Hắc Long',
     badge: 'GIÁ TRỊ x12 · HOT',
     valueLabel: 'x12 GIÁ TRỊ',
     costGems: 30,
@@ -1182,7 +1082,6 @@ export const EVOLVING_FIRST_TOPUP_TIERS: EvolvingFirstTopUpTierDef[] = [
     rewardBlindBoxTickets: 2,
     rewardJadeT2: 3,
     rewardMythicShards: 12,
-    unlockSteedId: 'galaxy_pegasus',
     topUpPoints: 180,
   },
   {
@@ -1206,8 +1105,8 @@ export const EVOLVING_FIRST_TOPUP_TIERS: EvolvingFirstTopUpTierDef[] = [
   {
     tier: 3,
     id: 'tier_sovereign',
-    title: 'Mốc III · Chí Tôn Thánh Long',
-    subtitle: 'Triệu hồi Phượng Hoàng Nhật Thực 3D + 520 Ngọc + 8 Vé Hộp Mù',
+    title: 'Mốc III · Chí Tôn Hắc Long',
+    subtitle: 'Mở Khung VIP Vương Miện + 520 Ngọc + 8 Vé Hộp Mù',
     badge: 'GIÁ TRỊ x18 · TỐI THƯỢNG',
     valueLabel: 'x18 GIÁ TRỊ',
     costGems: 140,
@@ -1218,7 +1117,6 @@ export const EVOLVING_FIRST_TOPUP_TIERS: EvolvingFirstTopUpTierDef[] = [
     rewardBlindBoxTickets: 8,
     rewardJadeT2: 12,
     rewardMythicShards: 36,
-    unlockSteedId: 'eclipse_phoenix',
     unlockVipFrameId: 'vip_diamond_crown',
     topUpPoints: 720,
   },
@@ -1239,30 +1137,30 @@ export function normalizeEvolvingFirstTopUp(
 export const TOP_SERVER_PROFILES: TopPlayerBuildProfile[] = [
   {
     rank: 1,
-    name: 'Thiên Đế · Bạch Dương',
+    name: 'Nguyệt Thần · Alice',
     guild: 'Hoàng Đạo Chí Tôn',
     titleBadge: 'TOP 1 LIÊN SERVER',
     powerRating: 24800,
-    heroId: 'wukong',
+    heroId: 'artemis',
     heroStar: 5,
-    astralSteedId: 'golden_sovereign_dragon',
-    steedStar: 5,
+    astralSteedId: null,
+    steedStar: 0,
     warBannerId: 'banner_phoenix',
     vipFrameId: 'vip_dragon_soul',
     mythicWeaponTier: 5,
     soulRingTotalLv: 46,
-    signatureQuote: 'Ngũ Hồn Hoàn cộng hưởng cùng Thánh Long Hoàng Kim phá vỡ mọi giới hạn Lực Chiến!',
+    signatureQuote: 'Alice cùng Hắc Long và Ngũ Hồn Hoàn phá vỡ mọi giới hạn Lực Chiến!',
   },
   {
     rank: 2,
-    name: 'Nguyệt Thần · Artemis',
+    name: 'Thanh Âm · Hatsune Miku',
     guild: 'Tinh Vân Vô Cực',
     titleBadge: 'Á QUÂN TINH GIỚI',
     powerRating: 21400,
-    heroId: 'artemis',
+    heroId: 'hatsune_miku',
     heroStar: 5,
-    astralSteedId: 'eclipse_phoenix',
-    steedStar: 4,
+    astralSteedId: null,
+    steedStar: 0,
     warBannerId: 'banner_solar',
     vipFrameId: 'vip_diamond_crown',
     mythicWeaponTier: 4,
@@ -1271,18 +1169,18 @@ export const TOP_SERVER_PROFILES: TopPlayerBuildProfile[] = [
   },
   {
     rank: 3,
-    name: 'Lôi Đế · Song Tử',
+    name: 'Trăng Bạc · Tinh Tú',
     guild: 'Thiên Lôi Hội',
     titleBadge: 'HẠNG 3 ĐỈNH CAO',
     powerRating: 18900,
-    heroId: 'thor',
+    heroId: 'artemis',
     heroStar: 4,
-    astralSteedId: 'frost_starwolf',
-    steedStar: 4,
+    astralSteedId: null,
+    steedStar: 0,
     warBannerId: 'banner_storm',
     vipFrameId: 'vip_nebula_flow',
     mythicWeaponTier: 4,
     soulRingTotalLv: 31,
-    signatureQuote: 'Chiến Lang Băng Lam và Cờ Lôi Đình tối ưu hóa lối đánh cơ động né Hơi Thở Rồng.',
+    signatureQuote: 'Hắc Long và Cờ Lôi Đình tối ưu hóa lối đánh cơ động né Hơi Thở Rồng.',
   },
 ];

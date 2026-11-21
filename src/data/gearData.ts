@@ -810,10 +810,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   let attack = Math.round(hero.bonusAtk * starScale);
   let maxHp = Math.round(hero.bonusHp * starScale) + 80;
   let critChance = 0.08 + heroStar * 0.015;
-  let critDamage = hero.id === 'wukong' ? 2.01 : 1.85;
+  let critDamage = 1.85;
   let attackSpeedMult = 1.0 + heroStar * 0.03;
   let moveSpeedMult = 1.0;
-  let damageReduction = hero.id === 'wukong' ? 0.08 : 0;
+  let damageReduction = 0;
   let arrowSpeed = 24;
   let innatePierce = false;
   let innateHoming = false;
@@ -1199,7 +1199,7 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     heroId: hero.id,
     heroName: hero.name,
     heroStar,
-    weaponArchetype: hero.id === 'van_tich' ? 'staff' : weaponArchetype,
+    weaponArchetype,
     attack,
     maxHp,
     critChance,
@@ -1282,17 +1282,10 @@ export function createInitialSaveData(): SaveData {
     bestStagePerChapter: {},
     selectedHeroId: 'artemis',
     aliceDefaultMigrated: true,
-    unlockedHeroes: ['artemis', 'alex'],
+    unlockedHeroes: ['artemis', 'hatsune_miku'],
     heroStars: {
       artemis: 0,
-      alex: 0,
-      thor: 0,
-      wukong: 0,
-      cleo: 0,
-      rolla: 0,
-      atreus: 0,
-      dracoola: 0,
-      lisa: 0,
+      hatsune_miku: 0,
     },
     equipped: {
       [GearSlot.WEAPON]: starterWeapon.uid,
@@ -1336,7 +1329,7 @@ export function createInitialSaveData(): SaveData {
     runHistory: [],
     pets: [],
     equippedPetId: null,
-    unlockedSkins: ['default'],
+    unlockedSkins: [],
     equippedSkinByHero: {},
     unlockedAuras: ['zodiac_gold'],
     equippedAuraId: 'zodiac_gold',
@@ -1379,8 +1372,8 @@ export function createInitialSaveData(): SaveData {
     mountShards: 0,
     awakeningCrystals: 0,
     wishTickets: 0,
-    unlockedMounts: [],
-    mountLevels: {},
+    unlockedMounts: ['black_dragon'],
+    mountLevels: { black_dragon: 1 },
     equippedMountId: null,
     unlockedWeaponAuras: ['none'],
     weaponAuraLevels: {},

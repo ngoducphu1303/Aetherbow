@@ -1030,7 +1030,7 @@ export function createLiveSpectatorMatch(
           {
             id: 'ai_te_thien',
             displayName: 'Tề Thiên',
-            heroId: 'wukong',
+            heroId: 'hatsune_miku',
             powerRating: 5650,
             personality: 'aggressive',
           },

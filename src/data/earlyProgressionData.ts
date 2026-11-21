@@ -344,15 +344,30 @@ export function migrateSaveData(raw: SaveData): SaveData {
     }
   }
 
-  // Ensure Alice ('artemis') is always unlocked, while preserving any valid unlocked hero
-  // selected in legacy saves across version updates.
-  const normalizedUnlockedHeroes = Array.isArray(raw.unlockedHeroes)
-    ? Array.from(new Set([...raw.unlockedHeroes, 'artemis'])) as SaveData['unlockedHeroes']
-    : (['artemis', 'alex'] as SaveData['unlockedHeroes']);
-  const resolvedHeroId: SaveData['selectedHeroId'] =
-    raw.selectedHeroId && normalizedUnlockedHeroes.includes(raw.selectedHeroId)
+  // Restrict heroes strictly to Alice ('artemis') and Hatsune Miku ('hatsune_miku'), both unlocked.
+  const VALID_HERO_IDS = new Set<HeroId>(['artemis', 'hatsune_miku']);
+  const filteredHeroes = (Array.isArray(raw.unlockedHeroes) ? raw.unlockedHeroes : []).filter(
+    (id): id is HeroId => VALID_HERO_IDS.has(id as HeroId)
+  );
+  const normalizedUnlockedHeroes: HeroId[] = Array.from(
+    new Set<HeroId>(['artemis', 'hatsune_miku', ...filteredHeroes])
+  );
+  const resolvedHeroId: HeroId =
+    raw.selectedHeroId && VALID_HERO_IDS.has(raw.selectedHeroId as HeroId)
       ? raw.selectedHeroId
       : 'artemis';
+  const normalizedHeroStars: Partial<Record<HeroId, number>> = {
+    artemis: Math.max(0, Math.floor(raw.heroStars?.artemis ?? 0)),
+    hatsune_miku: Math.max(0, Math.floor(raw.heroStars?.hatsune_miku ?? 0)),
+  };
+
+  // Restrict mounts strictly to Hắc Long ('black_dragon') and remove all Astral Steeds & Hero Skins.
+  const normalizedUnlockedMounts: SaveData['unlockedMounts'] = ['black_dragon'];
+  const normalizedMountLevels: SaveData['mountLevels'] = {
+    black_dragon: Math.max(1, Math.floor(raw.mountLevels?.black_dragon ?? 1)),
+  };
+  const resolvedEquippedMountId: SaveData['equippedMountId'] =
+    raw.equippedMountId === null ? null : 'black_dragon';
 
   // Build synchronized visible inbox (never respawning deleted mails, always reflecting claimedMailIds)
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -373,6 +388,16 @@ export function migrateSaveData(raw: SaveData): SaveData {
     selectedHeroId: resolvedHeroId,
     aliceDefaultMigrated: true,
     unlockedHeroes: normalizedUnlockedHeroes,
+    heroStars: normalizedHeroStars,
+    unlockedSkins: [],
+    equippedSkinByHero: {},
+    unlockedMounts: normalizedUnlockedMounts,
+    mountLevels: normalizedMountLevels,
+    equippedMountId: resolvedEquippedMountId,
+    mountAppearance: 'zodiac',
+    unlockedAstralSteeds: [],
+    astralSteedStars: {},
+    equippedAstralSteedId: null,
     progressionSchemaVersion: PROGRESSION_SCHEMA_VERSION,
     claimedMailIds: Array.from(existingClaimed),
     deletedMailIds: Array.from(existingDeleted),

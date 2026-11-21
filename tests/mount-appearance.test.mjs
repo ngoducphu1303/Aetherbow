@@ -2,37 +2,28 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getMountAppearance } from '../src/data/wave8Data.ts';
 
-const mixedSave = {
-  equippedMountId: 'azure_dragon',
-  unlockedMounts: ['azure_dragon'],
-  equippedAstralSteedId: 'galaxy_pegasus',
-  unlockedAstralSteeds: ['galaxy_pegasus'],
+const hắcLongSave = {
+  equippedMountId: 'black_dragon',
+  unlockedMounts: ['black_dragon'],
+  equippedAstralSteedId: null,
+  unlockedAstralSteeds: [],
 };
-const dragon = { mountId: 'azure_dragon', astralSteedId: null };
-const astral = { mountId: null, astralSteedId: 'galaxy_pegasus' };
+const blackDragon = { mountId: 'black_dragon', astralSteedId: null };
+const noMount = { mountId: null, astralSteedId: null };
 
-test('Thanh Long hiện trên save cũ có cả hai thú cưỡi', () => {
-  assert.deepEqual(getMountAppearance(mixedSave), dragon);
-  assert.deepEqual(getMountAppearance({ ...mixedSave, equippedMountId: null }), astral);
+test('Hắc Long là thú cưỡi duy nhất còn lại trong hệ thống', () => {
+  assert.deepEqual(getMountAppearance(hắcLongSave), blackDragon);
+  assert.deepEqual(getMountAppearance({ ...hắcLongSave, equippedMountId: null }), noMount);
+  assert.deepEqual(getMountAppearance({ ...hắcLongSave, unlockedMounts: [] }), noMount);
 });
 
-test('mặc thử và chọn ngoại hình tôn trọng thú cưỡi được chọn', () => {
-  const prefersAstral = { ...mixedSave, mountAppearance: 'astral' };
-  assert.deepEqual(getMountAppearance(prefersAstral), astral);
-  assert.deepEqual(getMountAppearance(prefersAstral, 'azure_dragon'), dragon);
-  assert.deepEqual(getMountAppearance(prefersAstral, null), { mountId: null, astralSteedId: null });
-  assert.deepEqual(getMountAppearance(prefersAstral, undefined, null), {
-    mountId: null,
-    astralSteedId: null,
-  });
-  assert.deepEqual(getMountAppearance(mixedSave, undefined, 'frost_starwolf'), {
-    mountId: null,
-    astralSteedId: 'frost_starwolf',
-  });
-  assert.deepEqual(getMountAppearance({ ...prefersAstral, mountAppearance: 'zodiac' }), dragon);
-  assert.deepEqual(getMountAppearance({ ...prefersAstral, unlockedAstralSteeds: [] }), dragon);
+test('mặc thử và chọn ngoại hình chỉ cho phép Hắc Long hoặc tháo thú cưỡi', () => {
+  assert.deepEqual(getMountAppearance(hắcLongSave, 'black_dragon'), blackDragon);
+  assert.deepEqual(getMountAppearance(hắcLongSave, null), noMount);
+  assert.deepEqual(getMountAppearance(hắcLongSave, undefined, null), noMount);
+  assert.deepEqual(getMountAppearance({ ...hắcLongSave, mountAppearance: 'zodiac' }), blackDragon);
   assert.deepEqual(
-    getMountAppearance({ ...prefersAstral, equippedMountId: null, equippedAstralSteedId: null }),
-    { mountId: null, astralSteedId: null }
+    getMountAppearance({ ...hắcLongSave, equippedMountId: null, equippedAstralSteedId: null }),
+    noMount
   );
 });

@@ -3048,11 +3048,11 @@ export class GameEngine {
 
   private wantsRiggedHeroModel(): boolean {
     const visualHeroId = this.heroVisualCfg?.heroId ?? this.baseStats.heroId;
-    return visualHeroId === 'artemis' || visualHeroId === 'van_tich' || visualHeroId === 'hatsune_miku';
+    return visualHeroId === 'artemis' || visualHeroId === 'hatsune_miku';
   }
 
   private wantsDragonMount(): boolean {
-    return this.heroVisualCfg.mountId === 'azure_dragon' && !this.heroVisualCfg.astralSteedId;
+    return false;
   }
 
   private hasDragonRide(): boolean {
@@ -3065,15 +3065,17 @@ export class GameEngine {
     const asset = this.getRiggedHeroAsset();
     const artemisPending = this.wantsRiggedHeroModel() &&
       (this.artemisLoadedAsset !== asset || this.artemisModel?.parent !== this.hero.bodyGroup);
-    const dragonPending = this.wantsDragonMount() &&
-      (!this.dragonMount || this.dragonMount.parent !== this.hero.mountGroup);
+    const blackDragonPending =
+      this.heroVisualCfg.mountId === 'black_dragon' &&
+      !this.heroVisualCfg.astralSteedId &&
+      !this.blackDragonFailed &&
+      (!this.blackDragon || this.blackDragon.model.parent !== this.hero.mountGroup);
 
-    this.appearanceBlocked = artemisPending || dragonPending;
+    this.appearanceBlocked = artemisPending || blackDragonPending;
     this.hero.root.visible = !this.appearanceBlocked;
     if (this.heroShadow) this.heroShadow.visible = !this.appearanceBlocked;
     if (this.appearanceBlocked) {
-      const failed = (artemisPending && this.artemisFailedAsset === asset) ||
-        (dragonPending && this.dragonMountFailed);
+      const failed = artemisPending && this.artemisFailedAsset === asset;
       this.setAppearanceStatus(failed ? 'error' : 'loading');
     } else if (this.appearanceStatus === 'error') {
       this.setAppearanceStatus('loading');
@@ -3083,8 +3085,9 @@ export class GameEngine {
   public retryAppearance(): void {
     this.artemisFailedAsset = undefined;
     this.dragonMountFailed = false;
+    this.blackDragonFailed = false;
     if (this.wantsRiggedHeroModel()) this.useArtemisModel();
-    this.useDragonMount();
+    this.useBlackDragonMount();
     this.refreshAppearanceGate();
   }
 
@@ -3100,16 +3103,12 @@ export class GameEngine {
   }
 
   private get hasCadencePassive(): boolean {
-    return this.baseStats.heroId === 'alex' || this.baseStats.heroId === 'hatsune_miku';
+    return this.baseStats.heroId === 'hatsune_miku';
   }
 
   private getRiggedHeroAsset(): ModelAsset {
     const heroId = this.heroVisualCfg.heroId ?? this.baseStats.heroId;
-    if (heroId === 'van_tich') return 'heroes/van-tich.glb';
     if (heroId === 'hatsune_miku') return 'heroes/hatsune-miku.glb';
-    if (heroId === 'artemis' && this.heroVisualCfg.skinId === 'alice_ao_dai') {
-      return 'heroes/alice-ao-dai-hoa-mai.glb';
-    }
     return 'heroes/golden-dress-girl.glb';
   }
 
@@ -3266,6 +3265,7 @@ export class GameEngine {
         }
       } finally {
         this.blackDragonRequest = undefined;
+        if (!this.disposed) this.refreshAppearanceGate();
       }
     })();
   }
@@ -3398,15 +3398,6 @@ export class GameEngine {
   private rebuildCompanions(): void {
     this.companionModels.forEach((c) => this.releaseObject(c));
     this.companionModels = [];
-
-    if (this.baseStats.heroId === 'wukong') {
-      for (let i = 0; i < 2; i++) {
-        const clone = createCompanionModel('wukong');
-        clone.visible = this.phase !== GamePhase.TITLE;
-        this.entitiesGroup.add(clone);
-        this.companionModels.push(clone);
-      }
-    }
 
     const spriteCount =
       (this.activeSkills.bomb_sprite ?? 0) +
@@ -4762,12 +4753,7 @@ export class GameEngine {
         roleKey === 'guardian' ? 'vanguard' : roleKey === 'control' ? 'mystic' : 'ranger';
       const ax = idx === 0 ? -4.2 : 4.2;
       const az = 5.4;
-      const allyWeaponArchetype =
-        allyDef.id === 'cleo' || allyDef.id === 'rolla'
-          ? 'staff'
-          : allyDef.id === 'wukong' || allyDef.id === 'dracoola'
-          ? 'claw'
-          : 'bow';
+      const allyWeaponArchetype = 'bow' as const;
       const allyModel = createHeroModel({
         weaponAccentHex: roleDef.accentHex,
         cloakColorHex: allyDef.cloakHex,
@@ -5557,7 +5543,7 @@ export class GameEngine {
       maxHp: Math.round(stats.maxHp * 2.1 * powerRatio),
       attack: Math.round(stats.attack * 1.15 * powerRatio),
       speedMult: opponent.personality === 'assassin' ? 1.16 : opponent.personality === 'aggressive' ? 1.08 : 1.03,
-      weaponArchetype: opponent.heroId === 'rolla' || opponent.heroId === 'cleo' || opponent.heroId === 'van_tich' ? 'staff' : opponent.heroId === 'wukong' || opponent.heroId === 'dracoola' ? 'claw' : 'bow',
+      weaponArchetype: 'bow',
       accentHex: oppHero.accentHex,
       cloakHex: oppHero.cloakHex,
       hairHex: oppHero.hairHex,
@@ -6284,7 +6270,7 @@ export class GameEngine {
     this.spawnShockwave(hx, hz, 0xfbbf24, 3.2, 0.42);
     this.spawnParticles(hx, 1.25, hz, heroDef.accentHex, 34);
     this.spawnParticles(hx, 1.85, hz, 0xfde047, 16);
-    if (heroId === 'artemis' || heroId === 'thor' || heroId === 'atreus' || heroId === 'lisa') {
+    if (heroId === 'artemis') {
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * Math.PI * 2 + 0.4;
         const tx = hx + Math.cos(a) * 2.1;
@@ -7818,9 +7804,6 @@ export class GameEngine {
     this.companionModels.forEach((c) => (c.visible = true));
 
     let stageShield = 0;
-    if (this.baseStats.heroId === 'atreus') {
-      stageShield += Math.round(this.maxHp * 0.32);
-    }
     if (this.hasRune('rootguard')) {
       stageShield += Math.round(this.maxHp * 0.2);
     }
@@ -7861,9 +7844,7 @@ export class GameEngine {
         (this.activeSkills.fire_arrow ?? 0) > 0 ||
         (this.activeSkills.ice_arrow ?? 0) > 0 ||
         (this.activeSkills.lightning_arrow ?? 0) > 0 ||
-        (this.activeSkills.venom_arrow ?? 0) > 0 ||
-        this.baseStats.heroId === 'cleo' ||
-        this.baseStats.heroId === 'rolla';
+        (this.activeSkills.venom_arrow ?? 0) > 0;
       const bountySeed =
         this.currentChapter.id * 17 + this.stageIndex * 5 + (this.towerFloor || 0) * 3;
       this.roomBounty = createRoomBounty(bountySeed, isBossStage, hasElemental);
@@ -9942,8 +9923,7 @@ export class GameEngine {
         });
         break;
       }
-      case 'hatsune_miku':
-      case 'alex': {
+      case 'hatsune_miku': {
         this.alexOverdriveTimer = 5.0;
         this.spawnShockwave(this.px, this.pz, heroDef.accentHex, 6.2, 0.48);
         for (const e of [...this.enemies]) {
@@ -9958,109 +9938,6 @@ export class GameEngine {
             }
             this.damageEnemy(e, atkPower * 2.1, true, false, false, false, false, undefined, 'ultimate');
           }
-        }
-        break;
-      }
-      case 'van_tich': {
-        this.artemisMotion?.cast(0.85);
-        const target = this.findNearestEnemy(this.px, this.pz);
-        const x = target?.x ?? this.px;
-        const z = target?.z ?? this.pz;
-        this.stormChart = { x, z, damage: atkPower * 0.78, pulses: 3, nextPulse: this.elapsed, pulseIndex: 0 };
-        this.stormChartFadeTimer = 0;
-        this.stormChartPulseFlash = 1.0;
-        if (this.stormChartVisual) {
-          this.stormChartVisual.group.position.set(x, 0.075, z);
-          this.stormChartVisual.group.scale.setScalar(0.55);
-          this.stormChartVisual.group.visible = true;
-        }
-        soundEngine.playVanTichStormChartStart(computeSpatialPan(x, ARENA_HALF_W));
-        this.spawnSummonPortal(x, z, 4.2, 0x5eead4, 0.65);
-        this.spawnWindRing(x, z, 0x5eead4, 4.1, 0.18);
-        this.spawnShockwave(x, z, 0x5eead4, 4.2, 0.75);
-        this.spawnUltColumn(x, z, 0x5eead4, 0.28);
-        break;
-      }
-      case 'thor': {
-        const targets = liveEnemies.slice(0, 6);
-        for (let i = 0; i < 6; i++) {
-          const target = targets[i % Math.max(1, targets.length)];
-          if (!target || target.dead) continue;
-          this.spawnLightningArc(target.x, 9.5, target.z, target.x, 0.3, target.z);
-          this.spawnShockwave(target.x, target.z, 0x38bdf8, 2.6, 0.38);
-          target.chillTimer = Math.max(target.chillTimer, 2.4);
-          this.damageEnemy(target, atkPower * 2.6, true, false, true, true, false, 'MJOLNIR!', 'ultimate');
-        }
-        break;
-      }
-      case 'wukong': {
-        this.wukongOverdriveTimer = 4.5;
-        this.spawnShockwave(this.px, this.pz, 0xf59e0b, 6.4, 0.48);
-        for (const e of [...this.enemies]) {
-          if (!e || e.dead || e.spawnTimer > 0) continue;
-          if (Math.hypot(e.x - this.px, e.z - this.pz) <= 6.2) {
-            this.damageEnemy(e, atkPower * 2.75, true, true, false, false, false, 'KIM CÔ!', 'ultimate');
-          }
-        }
-        break;
-      }
-      case 'cleo': {
-        for (let i = 0; i < 5; i++) {
-          const target = liveEnemies[i % Math.max(1, liveEnemies.length)];
-          const tx = target ? target.x : (Math.random() - 0.5) * 8;
-          const tz = target ? target.z : (Math.random() - 0.5) * 8;
-          this.spawnMeteor(tx, tz, false);
-        }
-        break;
-      }
-      case 'rolla': {
-        this.spawnShockwave(this.px, this.pz, 0x67e8f9, 8.5, 0.55);
-        for (const e of [...this.enemies]) {
-          if (!e || e.dead || e.spawnTimer > 0) continue;
-          e.chillTimer = Math.max(e.chillTimer, 4.2);
-          this.damageEnemy(e, atkPower * 1.9, true, false, true, false, false, 'ĐÓNG BĂNG!', 'ultimate');
-        }
-        for (let i = 0; i < 4; i++) {
-          const target = liveEnemies[i % Math.max(1, liveEnemies.length)];
-          const tx = target ? target.x : (Math.random() - 0.5) * 8;
-          const tz = target ? target.z : (Math.random() - 0.5) * 8;
-          this.spawnMeteor(tx, tz, true);
-        }
-        break;
-      }
-      case 'atreus': {
-        this.shield += Math.round(this.maxHp * 0.35);
-        this.spawnShockwave(this.px, this.pz, 0xf43f5e, 5.2, 0.45);
-        for (let i = 0; i < 12; i++) {
-          const yaw = (i / 12) * Math.PI * 2;
-          this.firePlayerArrow(yaw, 0, true, 'ultimate');
-        }
-        break;
-      }
-      case 'dracoola': {
-        this.spawnShockwave(this.px, this.pz, 0xfb7185, 7.2, 0.5);
-        let hitCount = 0;
-        for (const e of [...this.enemies]) {
-          if (!e || e.dead || e.spawnTimer > 0) continue;
-          if (Math.hypot(e.x - this.px, e.z - this.pz) <= 7.2) {
-            hitCount++;
-            this.damageEnemy(e, atkPower * 2.45, true, false, false, false, true, 'HUYẾT NGUYỆT!', 'ultimate');
-          }
-        }
-        const healAmt = Math.round(this.maxHp * Math.min(0.35, 0.14 + hitCount * 0.04));
-        this.hp = Math.min(this.maxHp, this.hp + healAmt);
-        this.emitFloatingNumber(this.px, 2.0, this.pz, healAmt, false, true);
-        break;
-      }
-      case 'lisa': {
-        this.spawnShockwave(this.px, this.pz, 0xa855f7, 8.0, 0.54);
-        const stormTargets = liveEnemies.slice(0, 6);
-        for (let i = 0; i < 6; i++) {
-          const target = stormTargets[i % Math.max(1, stormTargets.length)];
-          if (!target || target.dead) continue;
-          this.spawnLightningArc(target.x, 9.2, target.z, target.x, 0.3, target.z);
-          this.spawnShockwave(target.x, target.z, 0xc084fc, 2.5, 0.36);
-          this.damageEnemy(target, atkPower * 2.55, true, false, false, true, false, 'LÔI NGỤC!', 'ultimate');
         }
         break;
       }
@@ -12026,9 +11903,6 @@ export class GameEngine {
     if (this.isDailyRiftMode && this.dailyRiftPair) {
       mult *= this.dailyRiftPair.atkMult;
     }
-    if (this.baseStats.heroId === 'dracoola' && this.hp >= this.maxHp * 0.9) {
-      mult *= 1.18;
-    }
     if (this.hasRune('star_of_fury') && this.hp < this.maxHp * 0.6) {
       mult *= 1.25;
     }
@@ -12283,19 +12157,11 @@ export class GameEngine {
           this.runLeftDodges += 1;
         }
       }
-      const isVanTichDash = this.baseStats.heroId === 'van_tich';
-      const dashAccentHex = isVanTichDash ? 0x5eead4 : this.weaponAccentHex;
-      if (isVanTichDash) {
-        soundEngine.playVanTichWindDash(computeSpatialPan(this.px, ARENA_HALF_W));
-      } else {
-        soundEngine.playDash();
-      }
+      const dashAccentHex = this.weaponAccentHex;
+      soundEngine.playDash();
       this.heroSquashY = 1.18;
       this.cameraFovOffset = Math.max(this.cameraFovOffset, 3.2);
       this.spawnShockwave(this.px, this.pz, dashAccentHex, 1.65, 0.22);
-      if (isVanTichDash) {
-        this.spawnWindRing(this.px, this.pz, 0x5eead4, 2.25, 0.26);
-      }
       this.spawnParticles(this.px, 0.7, this.pz, dashAccentHex, 12);
       this.dashGhostEmitTimer = 0;
       this.spawnDashGhost(this.px, this.pz, this.pFacing, dashAccentHex);
@@ -12321,16 +12187,12 @@ export class GameEngine {
       this.dashGhostEmitTimer -= dt;
       if (this.dashGhostEmitTimer <= 0) {
         this.dashGhostEmitTimer = 0.045;
-        const trailHex = this.baseStats.heroId === 'van_tich' ? 0x5eead4 : this.weaponAccentHex;
+        const trailHex = this.weaponAccentHex;
         this.spawnDashGhost(this.px, this.pz, this.pFacing, trailHex);
         this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), trailHex);
-        if (this.baseStats.heroId === 'van_tich') {
-          this.spawnWindRing(this.px, this.pz, 0x99f6e4, 1.7, 0.34);
-        }
       }
       if (Math.random() < 0.65) {
-        const sparkHex = this.baseStats.heroId === 'van_tich' ? 0x99f6e4 : this.weaponAccentHex;
-        this.spawnParticles(this.px, 0.6, this.pz, sparkHex, 1);
+        this.spawnParticles(this.px, 0.6, this.pz, this.weaponAccentHex, 1);
       }
       // Wave 9: Dashing into an Interactive 3D Arena Prop activates & shatters it
       for (const prop of this.wave9Props) {
@@ -12387,7 +12249,7 @@ export class GameEngine {
     const travelDist = Math.hypot(this.px - beforeMoveX, this.pz - beforeMoveZ);
     const speedMag = Math.hypot(this.pvx, this.pvz);
     const isMoving = inputLen > 0.12 || this.dashTimer > 0;
-    const isThor = this.baseStats.heroId === 'thor';
+    const isThor = false;
 
     // AAA Wave 7: Emit pooled elemental footstep ripples along movement path
     if (travelDist > 0.004) {
@@ -12432,7 +12294,7 @@ export class GameEngine {
       stridePhase: this.stridePhase,
     });
 
-    const isVanTichHero = this.baseStats.heroId === 'van_tich';
+    const isVanTichHero = false;
     if (isMoving) {
       if (speedMag > 0.3) {
         const moveYaw = Math.atan2(this.pvx, this.pvz);
@@ -12810,20 +12672,16 @@ export class GameEngine {
 
     const blaze =
       (this.activeSkills.fire_arrow ?? 0) > 0 ||
-      (this.activeSkills.super_blaze ?? 0) > 0 ||
-      this.baseStats.heroId === 'cleo';
+      (this.activeSkills.super_blaze ?? 0) > 0;
     const frost =
       (this.activeSkills.ice_arrow ?? 0) > 0 ||
-      (this.activeSkills.super_freeze ?? 0) > 0 ||
-      this.baseStats.heroId === 'rolla';
+      (this.activeSkills.super_freeze ?? 0) > 0;
     const storm =
       (this.activeSkills.lightning_arrow ?? 0) > 0 ||
-      (this.activeSkills.super_bolt ?? 0) > 0 ||
-      (this.baseStats.heroId === 'lisa' && this.atreusShotCount % 3 === 0);
+      (this.activeSkills.super_bolt ?? 0) > 0;
     const poison = (this.activeSkills.venom_arrow ?? 0) > 0;
 
-    const isAtreusOrb =
-      bonusShadow || (this.baseStats.heroId === 'atreus' && this.atreusShotCount % 4 === 0);
+    const isAtreusOrb = bonusShadow;
 
     const wave6Counter =
       isPrimary && dmgSource === 'basic'
@@ -12950,7 +12808,7 @@ export class GameEngine {
     proj.storm = storm;
     proj.poison = poison;
 
-    const isVanTich = this.baseStats.heroId === 'van_tich';
+    const isVanTich = false;
     const mat = proj.mesh.material as THREE.MeshStandardMaterial;
     const color = isCounterShot
       ? 0xfde047
@@ -13560,23 +13418,6 @@ export class GameEngine {
     }
 
     if (nearest && nearest.spawnTimer <= 0) {
-      const cloneInterval = this.wukongOverdriveTimer > 0 ? 0.48 : 1.25;
-      if (this.baseStats.heroId === 'wukong' && this.wukongFireTimer >= cloneInterval) {
-        this.wukongFireTimer = 0;
-        for (let i = 0; i < Math.min(2, count); i++) {
-          const comp = this.companionModels[i];
-          const yaw = Math.atan2(nearest.x - comp.position.x, nearest.z - comp.position.z);
-          this.spawnCompanionShot(
-            comp.position.x,
-            comp.position.z,
-            yaw,
-            this.baseStats.attack * this.getCurrentAtkMultiplier() * 0.56,
-            0xfbbf24,
-            this.wukongOverdriveTimer > 0,
-            'basic'
-          );
-        }
-      }
 
       const hasSprites =
         (this.activeSkills.bomb_sprite ?? 0) > 0 ||
@@ -13920,9 +13761,9 @@ export class GameEngine {
           const dmg = this.baseStats.attack * (0.78 + idx * 0.08);
           const adaptCounters = computeAdaptiveAiCounterAdjustments(this.aiAdaptationProfile);
           const compElem = idx === 0 ? adaptCounters.complementaryCoopElement : null;
-          const isFire = compElem ? compElem === 'fire' : ally.heroId === 'cleo';
-          const isIce = compElem ? compElem === 'ice' : ally.heroId === 'rolla';
-          const isStorm = compElem ? compElem === 'storm' : ally.heroId === 'thor';
+          const isFire = compElem === 'fire';
+          const isIce = compElem === 'ice';
+          const isStorm = compElem === 'storm';
 
           // Trigger Ally Ultimate when ready (respecting Co-op Tactical Order 'hold_resonance')
           const holdUltForResonance =
@@ -15475,9 +15316,6 @@ export class GameEngine {
           }
 
           let critMult = this.baseStats.critDamage + critStacks * 0.35;
-          if (this.baseStats.heroId === 'atreus' && this.shield > 0) {
-            critMult += 0.18;
-          }
           const activeSynergies = evaluateActiveSynergies(this.activeSkills);
           if (e.chillTimer > 0 && activeSynergies.includes('frost_shatter')) {
             critMult += 0.25;
@@ -15521,10 +15359,6 @@ export class GameEngine {
             }
           );
 
-          if (this.baseStats.heroId === 'van_tich' && p.source === 'basic' && e.hp > 0 && e.hp < hpBeforeHit) {
-            e.stormMarkUntil = this.elapsed + 6;
-          }
-
           // AAA Wave 7: Lodge pooled arrow visibly into Boss / Elite / large enemy armor
           if (!p.isSword && (e.isBoss || e.isElite || e.radius >= 0.72) && e.hp > 0) {
             this.spawnStuckArrow(e, Math.atan2(p.vx, p.vz));
@@ -15539,23 +15373,6 @@ export class GameEngine {
           if (!p.isSword) {
             if (this.baseStats.heroId === 'artemis') {
               this.markedEnemyIds.add(e.id);
-            }
-            if (this.baseStats.heroId === 'cleo') {
-              this.cleoHitCount++;
-              if (this.cleoHitCount % 8 === 0) {
-                const novaDmg = this.baseStats.attack * this.getCurrentAtkMultiplier() * 2.0;
-                this.spawnShockwave(e.x, e.z, 0xf97316, 3.6, 0.35);
-                this.spawnParticles(e.x, 1.0, e.z, 0xf97316, 26);
-                soundEngine.playMeteorImpact();
-                for (const o of [...this.enemies]) {
-                  if (o && !o.dead && Math.hypot(o.x - e.x, o.z - e.z) <= 3.5) {
-                    this.damageEnemy(o, novaDmg, true, true, false, false, false, 'LỬA THÁNH!', 'elemental');
-                  }
-                }
-              }
-            }
-            if (this.baseStats.heroId === 'rolla' && e.chillTimer > 0 && Math.random() < 0.35) {
-              this.spawnMeteor(e.x, e.z, true);
             }
             if (
               (this.activeSkills.meteor_shower ?? 0) > 0 &&
@@ -15708,11 +15525,11 @@ export class GameEngine {
 
     if (this.isElementalTowerMode) {
       const fireMatch =
-        blaze || this.baseStats.heroId === 'cleo' || this.baseStats.equippedPetId === 'solar_phoenix';
+        blaze || this.baseStats.equippedPetId === 'solar_phoenix';
       const iceMatch =
-        frost || this.baseStats.heroId === 'rolla' || this.baseStats.equippedPetId === 'frost_owl';
+        frost || this.baseStats.equippedPetId === 'frost_owl';
       const stormMatch =
-        storm || this.baseStats.heroId === 'thor' || this.baseStats.equippedPetId === 'storm_dragonet';
+        storm || this.baseStats.equippedPetId === 'storm_dragonet';
       const isMatch =
         (this.elementalTowerId === 'fire' && fireMatch) ||
         (this.elementalTowerId === 'ice' && iceMatch) ||
@@ -16166,9 +15983,8 @@ export class GameEngine {
       );
     }
 
-    // Dracoola + Wave 12 Mythic Golden Stat Lifesteal
-    const totalLifesteal =
-      (this.baseStats.heroId === 'dracoola' ? 0.03 : 0) + (this.baseStats.lifeStealPct ?? 0);
+    // Wave 12 Mythic Golden Stat Lifesteal
+    const totalLifesteal = this.baseStats.lifeStealPct ?? 0;
     if (totalLifesteal > 0 && this.hp < this.maxHp && coopAllyIndex === undefined) {
       const leach = Math.max(1, Math.round(finalDmg * totalLifesteal));
       this.hp = Math.min(this.maxHp, this.hp + leach);
@@ -16215,10 +16031,7 @@ export class GameEngine {
 
     const hitPan = computeSpatialPan(e.x, ARENA_HALF_W);
     if (reaction) {
-      const reactionDmg =
-        this.baseStats.heroId === 'lisa'
-          ? Math.round(reaction.bonusDamage * 1.14)
-          : reaction.bonusDamage;
+      const reactionDmg = reaction.bonusDamage;
       e.reactionCd = reaction.cooldownSec;
       this.elementalReactionsCount += 1;
       this.advanceRoomBounty({ type: 'elemental_reaction' });
@@ -16437,15 +16250,12 @@ export class GameEngine {
       isSuperCrit
     );
 
-    // Chain Lightning (Storm Skill or Thor Crit Passive + Storm Chain Synergy)
-    const shouldChain =
-      storm || (isCrit && this.baseStats.heroId === 'thor');
+    // Chain Lightning (Storm Skill + Storm Chain Synergy)
+    const shouldChain = storm;
     if (shouldChain) {
       const hasStormChain = activeSynergies.includes('storm_chain');
       const maxChains =
-        (this.baseStats.heroId === 'thor' || (this.activeSkills.super_bolt ?? 0) > 0
-          ? 3
-          : 1) + (hasStormChain ? 1 : 0);
+        ((this.activeSkills.super_bolt ?? 0) > 0 ? 3 : 1) + (hasStormChain ? 1 : 0);
       const chainExclude = new Set<number>([e.id]);
       let currX = e.x;
       let currZ = e.z;
@@ -16464,9 +16274,6 @@ export class GameEngine {
         nearby.hp -= arcDmg;
         this.dmgElemental += arcDmg;
         nearby.hitFlashTimer = 0.08;
-        if (this.baseStats.heroId === 'thor') {
-          nearby.chillTimer = Math.max(nearby.chillTimer, 0.7);
-        }
         this.spawnLightningArc(currX, 1.0, currZ, nearby.x, 1.0, nearby.z);
         this.emitFloatingNumber(nearby.x, 1.5, nearby.z, arcDmg, false, false, 'storm');
         currX = nearby.x;

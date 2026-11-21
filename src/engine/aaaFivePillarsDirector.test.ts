@@ -148,7 +148,7 @@ test('Pillar 3: Equalized Fair-Play PvP normalizes both player and rival to iden
     id: 'rival_1',
     name: 'Kình Địch',
     title: 'Chiến Thần',
-    heroId: 'thor',
+    heroId: 'hatsune_miku',
     rating: 1400,
     powerRating: 12000,
     maxHp: 5500,

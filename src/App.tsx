@@ -1275,14 +1275,14 @@ export default function App() {
 
     return {
       heroId: hero.id,
-      skinId: skinDef.id,
-      weaponAccentHex: skinDef?.accentHex ?? (hero.id === 'van_tich' ? hero.accentHex : wTpl?.visualAccentHex ?? hero.accentHex),
+      skinId: skinDef?.id ?? 'default',
+      weaponAccentHex: skinDef?.accentHex ?? wTpl?.visualAccentHex ?? hero.accentHex,
       cloakColorHex: skinDef?.cloakHex ?? aTpl?.cloakColorHex ?? hero.cloakHex,
       hairColorHex: skinDef?.hairHex ?? hero.hairHex,
       eyeColor: hero.eyeColor,
       cheekColor: hero.cheekColor,
       crownStyle: hero.crownStyle,
-      weaponArchetype: hero.id === 'van_tich' ? 'staff' : wTpl?.weaponArchetype ?? 'bow',
+      weaponArchetype: wTpl?.weaponArchetype ?? 'bow',
       auraPrimaryHex: auraDef.primaryHex,
       auraSecondaryHex: auraDef.secondaryHex,
       pedestalTintHex: selCh.trimHex,
@@ -3715,8 +3715,7 @@ export default function App() {
           },
         };
       });
-      const trialOppHero: HeroId =
-        round === 1 ? 'wukong' : round === 2 ? 'thor' : 'dracoola';
+      const trialOppHero: HeroId = round === 2 ? 'hatsune_miku' : 'artemis';
       const oppHeroDef = HERO_MAP[trialOppHero] ?? HERO_MAP.artemis;
       const opp: ArenaOpponent = {
         id: `trial_r${round}_${kitId}`,
@@ -3728,8 +3727,7 @@ export default function App() {
         maxHp: kit.baseMaxHp,
         attack: kit.baseAttack,
         speedMult: round === 3 ? 1.08 : 1.0,
-        weaponArchetype:
-          trialOppHero === 'wukong' || trialOppHero === 'dracoola' ? 'claw' : 'bow',
+        weaponArchetype: 'bow',
         accentHex: oppHeroDef.accentHex,
         cloakHex: oppHeroDef.cloakHex,
         hairHex: oppHeroDef.hairHex,
@@ -6341,40 +6339,9 @@ export default function App() {
     }
   }, []);
 
-  const handleUnlockSteed = useCallback(
-    (steedId: AstralSteedId) => {
-      const def = ASTRAL_STEED_MAP[steedId];
-      if (!def) return;
-      let unlockedNow = false;
-      setSave((prev) => {
-        const owned = prev.unlockedAstralSteeds ?? [];
-        if (owned.includes(steedId)) return prev;
-        const hasGrass = (prev.starlightGrass ?? 0) >= def.unlockGrass;
-        const hasGems = prev.gems >= def.unlockGems;
-        if (!hasGrass && !hasGems) return prev;
-        unlockedNow = true;
-        return {
-          ...prev,
-          starlightGrass: hasGrass ? (prev.starlightGrass ?? 0) - def.unlockGrass : prev.starlightGrass ?? 0,
-          gems: hasGrass ? prev.gems : prev.gems - def.unlockGems,
-          unlockedAstralSteeds: [...owned, steedId],
-          astralSteedStars: { ...(prev.astralSteedStars ?? {}), [steedId]: 1 },
-          equippedAstralSteedId: steedId,
-          mountAppearance: 'astral',
-          honorFeed: appendHonorEntry(
-            prev.honorFeed,
-            'THÚ CƯỠI TINH GIỚI 3D',
-            `vừa triệu hồi thành công ${def.name} (1★) tại Sảnh 3D!`,
-            'gold'
-          ),
-        };
-      });
-      if (unlockedNow) {
-        triggerUpgradeCelebration(`Triệu Hồi ${def.name}!`, 'Đã tự động trang bị dưới chân Anh Hùng 3D!');
-      }
-    },
-    [triggerUpgradeCelebration]
-  );
+  const handleUnlockSteed = useCallback((_steedId: AstralSteedId) => {
+    // Astral steeds removed; Hắc Long is the sole active mount.
+  }, []);
 
   const handleEquipSteed = useCallback((steedId: AstralSteedId | null) => {
     soundEngine.playUiClick(1.08);
@@ -6387,36 +6354,13 @@ export default function App() {
           mountAppearance: undefined,
         };
       }
-      if (!(prev.unlockedAstralSteeds ?? []).includes(steedId)) return prev;
-      return { ...prev, equippedAstralSteedId: steedId, mountAppearance: 'astral' };
+      return prev;
     });
   }, []);
 
-  const handleStarUpSteed = useCallback(
-    (steedId: AstralSteedId) => {
-      const def = ASTRAL_STEED_MAP[steedId];
-      if (!def) return;
-      let nextStarRes = 0;
-      setSave((prev) => {
-        if (!(prev.unlockedAstralSteeds ?? []).includes(steedId)) return prev;
-        const curStar = Math.max(1, prev.astralSteedStars?.[steedId] ?? 1);
-        if (curStar >= ASTRAL_STEED_MAX_STAR) return prev;
-        const cost = getAstralSteedStarUpCost(curStar);
-        if ((prev.starlightGrass ?? 0) < cost.grass || prev.gold < cost.gold) return prev;
-        nextStarRes = curStar + 1;
-        return {
-          ...prev,
-          starlightGrass: (prev.starlightGrass ?? 0) - cost.grass,
-          gold: prev.gold - cost.gold,
-          astralSteedStars: { ...(prev.astralSteedStars ?? {}), [steedId]: nextStarRes },
-        };
-      });
-      if (nextStarRes > 0) {
-        triggerUpgradeCelebration(`Thăng Sao ${def.name} → ${nextStarRes}★!`, 'Tăng mạnh ATK, HP & Tốc Độ Đường Đua Ánh Sao!');
-      }
-    },
-    [triggerUpgradeCelebration]
-  );
+  const handleStarUpSteed = useCallback((_steedId: AstralSteedId) => {
+    // Astral steeds removed; Hắc Long is the sole active mount.
+  }, []);
 
   const handleRunStarlightRace = useCallback(() => {
     const steedId = save.equippedAstralSteedId ?? (save.unlockedAstralSteeds ?? [])[0] ?? null;
@@ -6831,10 +6775,10 @@ export default function App() {
       setSave((prev) => {
         const next = { ...prev };
         // Never silently switch the player's active hero when copying a Top leaderboard build.
-        if ((prev.unlockedAstralSteeds ?? []).includes(profile.astralSteedId)) {
-          next.equippedAstralSteedId = profile.astralSteedId;
-          next.mountAppearance = 'astral';
-          syncedParts.push(ASTRAL_STEED_MAP[profile.astralSteedId]?.name ?? 'Thú Cưỡi 3D');
+        if ((prev.unlockedMounts ?? []).includes('black_dragon')) {
+          next.equippedMountId = 'black_dragon';
+          next.mountAppearance = 'zodiac';
+          syncedParts.push('Hắc Long');
         }
         if ((prev.unlockedWarBanners ?? []).includes(profile.warBannerId)) {
           next.equippedWarBannerId = profile.warBannerId;
@@ -12517,7 +12461,7 @@ export default function App() {
             setWardrobePreview((prev) => ({ ...prev, skinId: undefined }));
           }}
           onUnlockSkin={(skinId) => {
-            handleUnlockSkin(skinId, SKIN_MAP[skinId]?.unlockGems > 0 ? 'gems' : 'gold');
+            handleUnlockSkin(skinId, (SKIN_MAP[skinId]?.unlockGems ?? 0) > 0 ? 'gems' : 'gold');
             setWardrobePreview((prev) => ({ ...prev, skinId: undefined }));
           }}
           onEquipWing={handleEquipWing}

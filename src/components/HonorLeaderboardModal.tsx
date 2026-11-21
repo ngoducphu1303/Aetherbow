@@ -380,7 +380,6 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                 {podiumOrder.map((profile) => {
                   const pHero = HERO_MAP[profile.heroId] ?? HERO_MAP.artemis;
-                  const pSteed = ASTRAL_STEED_MAP[profile.astralSteedId];
                   const pVipFrame = VIP_AVATAR_FRAME_MAP[profile.vipFrameId];
                   const isRank1 = profile.rank === 1;
                   return (
@@ -427,7 +426,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                         {profile.powerRating.toLocaleString('vi-VN')} LC
                       </div>
                       <div className="text-[10px] text-cyan-200 font-bold mt-0.5 truncate max-w-full">
-                        {pSteed?.name ?? 'Thú Cưỡi 3D'} · Hồn Hoàn Lv.{profile.soulRingTotalLv}
+                        Hắc Long · Hồn Hoàn Lv.{profile.soulRingTotalLv}
                       </div>
 
                       <button
@@ -1086,7 +1085,6 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
       {/* Wave 13: Top Player Build Inspector Drawer */}
       {inspectedProfile && (() => {
         const heroDef = HERO_MAP[inspectedProfile.heroId] ?? HERO_MAP.artemis;
-        const steedDef = ASTRAL_STEED_MAP[inspectedProfile.astralSteedId];
         const bannerDef = WAR_BANNER_MAP[inspectedProfile.warBannerId];
         const vipFrameDef = VIP_AVATAR_FRAME_MAP[inspectedProfile.vipFrameId];
         const copied = copiedRank === inspectedProfile.rank;
@@ -1144,11 +1142,11 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                   <div className="text-[10px] text-sky-300 mt-0.5">{heroDef.title}</div>
                 </div>
                 <div className="rounded-xl bg-[#070b1a] border border-slate-800 p-3">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Thú Cưỡi Tinh Giới 3D</div>
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Thú Cưỡi 3D</div>
                   <div className="text-xs font-black text-amber-200 mt-0.5">
-                    {steedDef?.name ?? 'Thánh Long'} · {inspectedProfile.steedStar}★
+                    Hắc Long
                   </div>
-                  <div className="text-[10px] text-cyan-300 mt-0.5">{steedDef?.badge}</div>
+                  <div className="text-[10px] text-cyan-300 mt-0.5">Tọa Kỵ Huyền Thoại</div>
                 </div>
                 <div className="rounded-xl bg-[#070b1a] border border-slate-800 p-3">
                   <div className="text-[10px] font-bold uppercase text-slate-400">Cờ Hiệu &amp; Khung VIP</div>

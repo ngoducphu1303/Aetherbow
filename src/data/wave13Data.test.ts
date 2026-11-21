@@ -30,18 +30,15 @@ import {
   simulateStarlightSprint,
 } from './wave13Data';
 
-test('Wave 13: Astral Steeds scale cleanly by star and boost Starlight Race sprint speed', () => {
-  assert.equal(ASTRAL_STEED_DEFS.length, 4);
-  const star1 = getAstralSteedStats('galaxy_pegasus', 1);
-  const star5 = getAstralSteedStats('galaxy_pegasus', 5);
-  assert.ok(star5.atkPct > star1.atkPct);
-  assert.ok(star5.hpPct > star1.hpPct);
-  assert.ok(star5.raceSpeed > star1.raceSpeed);
+test('Wave 13: Astral Steeds are pruned and Starlight Race sprint runs cleanly with Hắc Long', () => {
+  assert.equal(ASTRAL_STEED_DEFS.length, 0);
+  const zeroStats = getAstralSteedStats(null, 1);
+  assert.equal(zeroStats.atkPct, 0);
+  assert.equal(zeroStats.hpPct, 0);
 
-  const slowSprint = simulateStarlightSprint(null, 1, 0.5);
-  const fastSprint = simulateStarlightSprint('golden_sovereign_dragon', 5, 0.5);
-  assert.ok(fastSprint.lapTimeSec < slowSprint.lapTimeSec);
-  assert.ok(fastSprint.pointsEarned > slowSprint.pointsEarned);
+  const sprint = simulateStarlightSprint(null, 1, 0.5);
+  assert.ok(sprint.lapTimeSec > 0);
+  assert.ok(sprint.pointsEarned > 0);
 });
 
 test('Wave 13: 3->1 Spirit Jade Fusion & Multi-Tier Soul Rings Resonance compute accurately', () => {
@@ -112,14 +109,11 @@ test('Wave 13: 9-Box Royal Blind Box guarantees Mythic Grand Prize at grandPrize
   assert.equal(state.totalBoxesOpened, 9);
 });
 
-test('Wave 13: Astral Steed, Soul Rings, and Animated VIP Frames raise computePlayerStats & CP breakdown', () => {
+test('Wave 13: Soul Rings and Animated VIP Frames raise computePlayerStats & CP breakdown', () => {
   const base = createInitialSaveData();
   const baseStats = computePlayerStats(base);
 
   const boosted = createInitialSaveData();
-  boosted.unlockedAstralSteeds = ['golden_sovereign_dragon'];
-  boosted.astralSteedStars = { golden_sovereign_dragon: 4 };
-  boosted.equippedAstralSteedId = 'golden_sovereign_dragon';
   boosted.unlockedVipFrames = ['vip_royal_gold', 'vip_dragon_soul'];
   boosted.equippedVipFrameId = 'vip_dragon_soul';
   boosted.soulRings = {

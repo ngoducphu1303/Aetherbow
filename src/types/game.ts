@@ -29,18 +29,7 @@ export enum Rarity {
   MYTHIC = 'MYTHIC',
 }
 
-export type HeroId =
-  | 'artemis'
-  | 'alex'
-  | 'thor'
-  | 'wukong'
-  | 'cleo'
-  | 'rolla'
-  | 'atreus'
-  | 'dracoola'
-  | 'lisa'
-  | 'van_tich'
-  | 'hatsune_miku';
+export type HeroId = 'artemis' | 'hatsune_miku';
 
 export type CrownStyle =
   | 'crescent'
@@ -793,21 +782,7 @@ export interface PetInstance {
   level: number; // 1..30
 }
 
-export type HeroSkinId =
-  | 'default'
-  | 'celestial_gold'
-  | 'blood_moon'
-  | 'jade_nebula'
-  | 'arctic_frost'
-  | 'thunder_empress'
-  | 'crimson_phoenix'
-  | 'astral_archon'
-  | 'abyss_duelist'
-  | 'jade_adeptus'
-  | 'lunar_sovereign'
-  | 'verdant_ranger'
-  | 'twilight_raven'
-  | 'alice_ao_dai';
+export type HeroSkinId = 'default';
 
 export interface HeroSkinDefinition {
   id: HeroSkinId;
@@ -1715,7 +1690,7 @@ export interface AiLiveHubSnapshot {
   spectatorMatch?: LiveSpectatorMatchSnapshot | null;
 }
 
-export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm' | 'azure_dragon' | 'black_dragon';
+export type MountId = 'black_dragon';
 
 export interface MountDefinition {
   id: MountId;
@@ -2796,11 +2771,7 @@ export interface ClaimAllPreview {
 // 3D LOBBY WEATHER & ANIMATED VIP FRAMES, 7-DAY CARNIVAL & 3-TIER FIRST TOP-UP
 // ============================================================================
 
-export type AstralSteedId =
-  | 'galaxy_pegasus'
-  | 'frost_starwolf'
-  | 'eclipse_phoenix'
-  | 'golden_sovereign_dragon';
+export type AstralSteedId = never;
 
 export interface AstralSteedDef {
   id: AstralSteedId;
@@ -3041,7 +3012,7 @@ export interface TopPlayerBuildProfile {
   powerRating: number;
   heroId: HeroId;
   heroStar: number;
-  astralSteedId: AstralSteedId;
+  astralSteedId: AstralSteedId | null;
   steedStar: number;
   warBannerId: WarBannerId;
   vipFrameId: VipAvatarFrameId;

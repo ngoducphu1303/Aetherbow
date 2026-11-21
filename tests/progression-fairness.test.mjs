@@ -80,26 +80,26 @@ test('Progression Advisor: always tells player what to upgrade, what is missing,
 
 test('Save Migration: preserves valid unlocked selectedHeroId across version updates', () => {
   const base = createInitialSaveData();
-  const legacyThorSave = {
+  const legacyMikuSave = {
     ...base,
     saveSchemaVersion: 1,
-    unlockedHeroes: ['artemis', 'thor'],
-    selectedHeroId: 'thor',
+    unlockedHeroes: ['artemis', 'hatsune_miku'],
+    selectedHeroId: 'hatsune_miku',
   };
 
-  const migratedThor = migrateSaveData(legacyThorSave);
+  const migratedMiku = migrateSaveData(legacyMikuSave);
   assert.equal(
-    migratedThor.selectedHeroId,
-    'thor',
+    migratedMiku.selectedHeroId,
+    'hatsune_miku',
     'Valid unlocked hero selection from old save must NOT be reset to artemis'
   );
 
-  // Invalid / locked hero id should safely fall back to artemis
+  // Removed or invalid hero id should safely fall back to artemis
   const corruptedHeroSave = {
     ...base,
     saveSchemaVersion: 1,
     unlockedHeroes: ['artemis'],
-    selectedHeroId: 'nonexistent_hero_xyz',
+    selectedHeroId: 'thor',
   };
   const migratedFallback = migrateSaveData(corruptedHeroSave);
   assert.equal(migratedFallback.selectedHeroId, 'artemis');

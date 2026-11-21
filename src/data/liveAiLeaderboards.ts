@@ -402,12 +402,7 @@ export function buildLiveArenaOpponents(
     const scale = 0.92 + idx * 0.14;
     const effectivePower = Math.max(400, ai.powerRating);
     const ratio = Math.max(0.75, Math.min(1.45, effectivePower / Math.max(800, playerPower)));
-    const weaponArchetype =
-      ai.heroId === 'rolla' || ai.heroId === 'cleo'
-        ? 'staff'
-        : ai.heroId === 'wukong' || ai.heroId === 'dracoola'
-        ? 'claw'
-        : 'bow';
+    const weaponArchetype = 'bow' as const;
     return {
       aiProfile: ai,
       opponent: {

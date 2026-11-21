@@ -30,13 +30,11 @@ test('Codex Collection ranks compute points accurately and permanently boost com
 
   // Add heroes, evolved pet, wings, artifacts, halos, and sky theme to climb Codex ranks
   const richSave = createInitialSaveData();
-  richSave.unlockedHeroes = ['artemis', 'alex', 'thor', 'wukong'];
+  richSave.unlockedHeroes = ['artemis', 'hatsune_miku'];
   richSave.heroStars = {
     ...richSave.heroStars,
-    artemis: 3,
-    alex: 2,
-    thor: 2,
-    wukong: 2,
+    artemis: 5,
+    hatsune_miku: 5,
   };
   richSave.pets = [
     { petId: 'solar_phoenix', level: 4 },

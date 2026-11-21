@@ -585,6 +585,17 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
             })}
 
           {tab === 'skins' &&
+            HERO_SKINS.filter((sk) => !sk.heroId || sk.heroId === save.selectedHeroId).length === 0 && (
+              <div className="col-span-full rounded-2xl border border-purple-400/25 bg-[#080d1e] px-4 py-6 text-center">
+                <Sparkles className="w-6 h-6 text-purple-300/75 mx-auto mb-2" />
+                <div className="text-sm font-black text-white">Chưa có trang phục nào</div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Hệ thống trang phục hiện đang trống và sẵn sàng để thêm trang phục mới sau này.
+                </p>
+              </div>
+            )}
+
+          {tab === 'skins' &&
             HERO_SKINS.filter((sk) => !sk.heroId || sk.heroId === save.selectedHeroId).map((sk) => {
               const owned = unlockedSkins.has(sk.id);
               const equipped = equippedSkin === sk.id;

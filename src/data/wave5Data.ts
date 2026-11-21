@@ -398,12 +398,7 @@ export function generateArenaOpponents(playerRating: number, playerPower: number
 
   return tiers.map((tier, idx) => {
     const hero = HEROES[(Math.floor(playerRating / 25) + idx * 2) % HEROES.length] ?? HERO_MAP.artemis;
-    const weaponArchetype: ArenaOpponent['weaponArchetype'] =
-      hero.id === 'cleo' || hero.id === 'rolla' || hero.id === 'van_tich'
-        ? 'staff'
-        : hero.id === 'wukong' || hero.id === 'dracoola'
-        ? 'claw'
-        : 'bow';
+    const weaponArchetype: ArenaOpponent['weaponArchetype'] = 'bow';
     const oppPower = Math.max(420, Math.round(playerPower * tier.powerMult));
     const oppRating = Math.max(920, playerRating + tier.ratingDelta);
     const maxHp = Math.round((560 + oppPower * 0.42) * tier.hpScale);

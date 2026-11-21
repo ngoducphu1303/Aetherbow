@@ -2022,6 +2022,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   </span>
                 </div>
 
+                {HERO_SKINS.filter((skin) => !skin.heroId || skin.heroId === hero.id).length === 0 ? (
+                  <div className="rounded-2xl border border-amber-400/25 bg-[#080d1e] px-4 py-6 text-center">
+                    <Sparkles className="w-6 h-6 text-amber-300/70 mx-auto mb-2" />
+                    <div className="text-sm font-black text-amber-100">Chưa có trang phục nào</div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Tất cả trang phục cũ đã được dọn sạch. Các bộ trang phục mới sẽ được bổ sung sau.
+                    </p>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {HERO_SKINS.filter((skin) => !skin.heroId || skin.heroId === hero.id).map((skin) => {
                     const isOwned = unlockedSkins.includes(skin.id);
@@ -2137,6 +2146,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     );
                   })}
                 </div>
+                )}
               </div>
 
               <div className="pt-2 border-t border-amber-400/20">
@@ -2516,11 +2526,9 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   <div className="text-xs font-black text-amber-100">
                     Đang cưỡi 3D:{' '}
                     <span className="text-amber-300">
-                      {equippedAstralSteedId
-                        ? ASTRAL_STEED_MAP[equippedAstralSteedId]?.name ?? equippedAstralSteedId
-                        : equippedMountId
-                          ? MOUNT_MAP[equippedMountId]?.name ?? equippedMountId
-                          : ''}
+                      {equippedMountId
+                        ? MOUNT_MAP[equippedMountId]?.name ?? 'Hắc Long'
+                        : 'Hắc Long'}
                     </span>
                   </div>
                   <button
@@ -2697,6 +2705,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               {/* Astral Steeds 3D */}
+              {ASTRAL_STEED_DEFS.length > 0 && (
               <div className="pt-2 border-t border-sky-400/20">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                   <h4 className="font-display text-sm sm:text-base font-black text-sky-200">
@@ -2798,6 +2807,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   })}
                 </div>
               </div>
+              )}
 
               {/* Awakened Weapon Auras */}
               <div className="pt-2 border-t border-amber-400/20">

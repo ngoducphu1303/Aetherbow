@@ -35,8 +35,12 @@ function assertAssetFileExists(publicPath: string, contextLabel: string) {
   );
 }
 
-test('Every Hero resolves to existing non-empty character, skill, and burst assets', () => {
-  assert.ok(HEROES.length >= 8, 'Expected at least 8 heroes');
+test('Hero roster contains only Alice and Hatsune Miku with valid non-empty assets', () => {
+  assert.deepEqual(
+    HEROES.map((h) => h.id),
+    ['artemis', 'hatsune_miku'],
+    'Expected strictly Alice (artemis) and Hatsune Miku (hatsune_miku)'
+  );
   for (const hero of HEROES) {
     const pack = getHeroAssetPack(hero.id);
     assertAssetFileExists(pack.icon, `Hero ${hero.id} icon`);
@@ -46,15 +50,12 @@ test('Every Hero resolves to existing non-empty character, skill, and burst asse
   }
 });
 
-test('Every Skin in HERO_SKINS resolves to existing non-empty character, skill, and burst assets', () => {
-  assert.ok(HERO_SKINS.length >= 13, 'Expected original 5 + 8 new skins');
-  for (const skin of HERO_SKINS) {
-    const pack = getSkinAssetPack(skin.id, 'artemis');
-    assertAssetFileExists(pack.icon, `Skin ${skin.id} icon`);
-    assertAssetFileExists(pack.portrait, `Skin ${skin.id} portrait`);
-    assertAssetFileExists(pack.skill, `Skin ${skin.id} skill`);
-    assertAssetFileExists(pack.burst, `Skin ${skin.id} burst`);
-  }
+test('HERO_SKINS is completely cleared while getSkinAssetPack falls back safely to hero assets', () => {
+  assert.equal(HERO_SKINS.length, 0, 'Expected zero hero skins');
+  const fallbackAlice = getSkinAssetPack('default', 'artemis');
+  const fallbackMiku = getSkinAssetPack('default', 'hatsune_miku');
+  assertAssetFileExists(fallbackAlice.portrait, 'Alice fallback skin portrait');
+  assertAssetFileExists(fallbackMiku.portrait, 'Hatsune Miku fallback skin portrait');
 });
 
 test('Every EnemyKind in ENEMY_CODEX_LIST resolves to existing non-empty icon and portrait assets', () => {

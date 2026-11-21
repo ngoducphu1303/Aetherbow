@@ -89,7 +89,7 @@ test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và t
     hero,
     heroShadow: {visible: true},
     baseStats: {heroId: 'artemis'},
-    heroVisualCfg: {mountId: 'azure_dragon'},
+    heroVisualCfg: {mountId: 'black_dragon'},
     appearanceStatus: 'loading',
     callbacks: {onAppearanceStatusChange(status) {events.push(status);}},
     renderer: {render() {events.push(hero.root.visible ? 'rider' : 'arena');}},
@@ -110,7 +110,7 @@ test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và t
     next();
     assert.deepEqual(events, ['update', 'arena', 'arena']);
 
-    engine.dragonMount = {parent: mount};
+    engine.blackDragon = {model: {parent: mount}};
     engine.refreshAppearanceGate();
     next();
     assert.deepEqual(events, ['update', 'arena', 'arena', 'update', 'rider', 'ready']);
@@ -120,26 +120,27 @@ test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và t
   }
 });
 
-test('đổi áo dài của Alice chỉ hiện nhân vật khi đúng mô hình đã gắn vào sảnh', () => {
+test('đổi giữa Alice và Hatsune Miku chỉ hiện nhân vật khi đúng mô hình đã gắn vào sảnh', () => {
   const body = {};
   const engine = Object.create(GameEngine.prototype);
   Object.assign(engine, {
     hero: {root: {visible: true}, bodyGroup: body},
     artemisModel: {parent: body},
     artemisLoadedAsset: 'heroes/golden-dress-girl.glb',
-    baseStats: {heroId: 'artemis'},
-    heroVisualCfg: {skinId: 'alice_ao_dai'},
+    baseStats: {heroId: 'hatsune_miku'},
+    heroVisualCfg: {heroId: 'hatsune_miku', skinId: 'default'},
     callbacks: {},
   });
 
   engine.refreshAppearanceGate();
   assert.equal(engine.hero.root.visible, false);
 
-  engine.artemisLoadedAsset = 'heroes/alice-ao-dai-hoa-mai.glb';
+  engine.artemisLoadedAsset = 'heroes/hatsune-miku.glb';
   engine.refreshAppearanceGate();
   assert.equal(engine.hero.root.visible, true);
 
-  engine.heroVisualCfg.skinId = 'default';
+  engine.baseStats.heroId = 'artemis';
+  engine.heroVisualCfg.heroId = 'artemis';
   engine.refreshAppearanceGate();
   assert.equal(engine.hero.root.visible, false);
 });

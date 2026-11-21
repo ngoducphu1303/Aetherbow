@@ -264,22 +264,9 @@ const HeroCrestFallbackSvg: React.FC<{
       <ellipse cx="36.5" cy="31" rx="2.3" ry="2.8" fill={accent} />
       <circle cx="28" cy="30" r="0.9" fill="#ffffff" />
       <circle cx="37" cy="30" r="0.9" fill="#ffffff" />
-      {heroId === 'artemis' && (
+      {heroId === 'artemis' ? (
         <path d="M23 18 C25 10, 39 10, 41 18 C36 14, 28 14, 23 18 Z" fill="#e2e8f0" stroke="#10b981" strokeWidth="1.5" />
-      )}
-      {heroId === 'thor' && (
-        <path d="M16 20 L22 12 L25 20 M48 20 L42 12 L39 20" fill="#fef08a" stroke="#38bdf8" strokeWidth="1.5" />
-      )}
-      {heroId === 'wukong' && (
-        <path d="M20 20 Q32 13 44 20" fill="none" stroke="#fbbf24" strokeWidth="3.5" strokeLinecap="round" />
-      )}
-      {heroId === 'atreus' && (
-        <path d="M18 22 L15 10 L24 18 M46 22 L49 10 L40 18" fill="#f43f5e" />
-      )}
-      {heroId === 'lisa' && (
-        <path d="M12 20 Q32 16 52 20 L36 6 L28 14 Z" fill="#2d1e68" stroke="#fcd34d" strokeWidth="1.4" />
-      )}
-      {heroId !== 'artemis' && heroId !== 'thor' && heroId !== 'wukong' && heroId !== 'atreus' && heroId !== 'lisa' && (
+      ) : (
         <polygon points="32,10 36,18 28,18" fill={accent} stroke="#fef08a" strokeWidth="1.2" />
       )}
     </svg>

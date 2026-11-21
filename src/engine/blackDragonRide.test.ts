@@ -9,11 +9,13 @@ import { BLACK_DRAGON_ASSET, createBlackDragonRide } from './blackDragonRide';
 
 const asset = new URL('../../public/assets/mounts/black-dragon.glb', import.meta.url);
 
-test('Hắc Long is a distinct free mount in the release roster and saved equipment', () => {
+test('Hắc Long is the sole free mount in the release roster and saved equipment', () => {
   assert.equal(MOUNT_MAP.black_dragon.name, 'Hắc Long');
-  assert.ok(ZODIAC_MOUNTS.some((mount) => mount.id === 'black_dragon' && mount.unlockGems === 0 && mount.unlockShards === 0));
-  assert.deepEqual(getMountStats('black_dragon', 1), getMountStats('azure_dragon', 1));
-  assert.ok(ZODIAC_MOUNTS.some((mount) => mount.id === 'azure_dragon'));
+  assert.equal(ZODIAC_MOUNTS.length, 1);
+  assert.equal(ZODIAC_MOUNTS[0].id, 'black_dragon');
+  assert.ok(ZODIAC_MOUNTS[0].unlockGems === 0 && ZODIAC_MOUNTS[0].unlockShards === 0);
+  const stats = getMountStats('black_dragon', 1);
+  assert.ok(stats.atk > 0 && stats.hp > 0 && stats.moveSpeed > 0);
   const saved = { equippedMountId: 'black_dragon', unlockedMounts: ['black_dragon'], mountAppearance: 'zodiac' } as SaveData;
   assert.equal(getMountAppearance(saved).mountId, 'black_dragon');
   assert.equal(getMountAppearance({ ...saved, unlockedMounts: [] }).mountId, null);

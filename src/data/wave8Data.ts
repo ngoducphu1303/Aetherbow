@@ -23,101 +23,6 @@ export const MAX_WEAPON_AURA_LEVEL = 10;
 
 export const ZODIAC_MOUNTS: MountDefinition[] = [
   {
-    id: 'azure_dragon',
-    name: 'Thanh Long',
-    badge: 'HIẾM · RỒNG XANH',
-    rarity: 'Hiếm',
-    desc: 'Rồng vảy xanh với sừng ngà. Nhận miễn phí để cưỡi trong sảnh và khi ra trận.',
-    bodyHex: 0x37647f,
-    armorHex: 0xd8b990,
-    maneHex: 0x9c4936,
-    glowHex: 0x93d8ef,
-    baseAtk: 34,
-    baseHp: 220,
-    baseMoveSpeed: 0.1,
-    baseDr: 0.03,
-    atkPerLv: 9,
-    hpPerLv: 55,
-    unlockGems: 0,
-    unlockShards: 0,
-  },
-  {
-    id: 'aries_steed',
-    name: 'Chiến Mã Bạch Dương',
-    badge: 'HIẾM · TỐC ĐỘ',
-    rarity: 'Hiếm',
-    desc: 'Tuấn mã giáp vàng chòm Bạch Dương giúp tăng tốc độ di chuyển và công lực cơ bản.',
-    bodyHex: 0xf1f5f9,
-    armorHex: 0xf59e0b,
-    maneHex: 0xfbbf24,
-    glowHex: 0xfde047,
-    baseAtk: 34,
-    baseHp: 220,
-    baseMoveSpeed: 0.1,
-    baseDr: 0.03,
-    atkPerLv: 9,
-    hpPerLv: 55,
-    unlockGems: 90,
-    unlockShards: 18,
-  },
-  {
-    id: 'celestial_leo',
-    name: 'Sư Tử Tinh Quân',
-    badge: 'SỬ THI · HỎA KIM',
-    rarity: 'Sử Thi',
-    desc: 'Hùng sư rực lửa Tinh Giới mang giáp hoàng kim, tăng mạnh Công Kích và Giảm Sát Thương.',
-    bodyHex: 0xd97706,
-    armorHex: 0xfef08a,
-    maneHex: 0xf97316,
-    glowHex: 0xfb923c,
-    baseAtk: 68,
-    baseHp: 420,
-    baseMoveSpeed: 0.14,
-    baseDr: 0.05,
-    atkPerLv: 15,
-    hpPerLv: 92,
-    unlockGems: 165,
-    unlockShards: 32,
-  },
-  {
-    id: 'frost_unicorn',
-    name: 'Kỳ Lân Băng Thiên',
-    badge: 'HUYỀN THOẠI · BĂNG NGỌC',
-    rarity: 'Huyền Thoại',
-    desc: 'Thần thú một sừng kết tinh từ Băng Tinh Cực Bắc, gia tăng Sinh Lực dồi dào và tốc biến.',
-    bodyHex: 0xe0f2fe,
-    armorHex: 0x38bdf8,
-    maneHex: 0x7dd3fc,
-    glowHex: 0x22d3ee,
-    baseAtk: 108,
-    baseHp: 680,
-    baseMoveSpeed: 0.18,
-    baseDr: 0.07,
-    atkPerLv: 22,
-    hpPerLv: 135,
-    unlockGems: 260,
-    unlockShards: 48,
-  },
-  {
-    id: 'crimson_wyrm',
-    name: 'Huyết Long Trăng Máu',
-    badge: 'THẦN THOẠI · ĐẾ VƯƠNG',
-    rarity: 'Thần Thoại',
-    desc: 'Cổ long thức tỉnh từ Đêm Trăng Máu, bùng phát uy áp công kích hủy diệt toàn chiến trường.',
-    bodyHex: 0x7f1d1d,
-    armorHex: 0xfbbf24,
-    maneHex: 0xf43f5e,
-    glowHex: 0xfb7185,
-    baseAtk: 165,
-    baseHp: 1020,
-    baseMoveSpeed: 0.22,
-    baseDr: 0.1,
-    atkPerLv: 30,
-    hpPerLv: 185,
-    unlockGems: 380,
-    unlockShards: 68,
-  },
-  {
     id: 'black_dragon',
     name: 'Hắc Long',
     badge: 'HIẾM · RỒNG ĐEN',
@@ -151,20 +56,13 @@ export function getMountAppearance(
   previewMountId?: MountId | null,
   previewAstralSteedId?: AstralSteedId | null
 ) {
-  if (previewAstralSteedId !== undefined) {
-    return { mountId: null, astralSteedId: previewAstralSteedId };
-  }
   if (previewMountId !== undefined) return { mountId: previewMountId, astralSteedId: null };
+  if (previewAstralSteedId === null) return { mountId: null, astralSteedId: null };
 
   const mountId = save.equippedMountId && save.unlockedMounts?.includes(save.equippedMountId)
     ? save.equippedMountId
     : null;
-  const astralSteedId = save.equippedAstralSteedId && save.unlockedAstralSteeds?.includes(save.equippedAstralSteedId)
-    ? save.equippedAstralSteedId
-    : null;
-  const showZodiac = mountId && (!astralSteedId || save.mountAppearance === 'zodiac' ||
-    (save.mountAppearance !== 'astral' && mountId === 'azure_dragon'));
-  return showZodiac ? { mountId, astralSteedId: null } : { mountId: null, astralSteedId };
+  return { mountId, astralSteedId: null };
 }
 
 export function getMountStats(mountId: MountId, level: number) {
@@ -286,13 +184,13 @@ export const WISH_PITY_LIMIT = 30;
 
 export const WISH_TARGET_CATALOG: WishTargetItem[] = [
   {
-    id: 'wish_crimson_wyrm',
+    id: 'wish_black_dragon',
     kind: 'mount',
-    refId: 'crimson_wyrm',
-    name: 'Huyết Long Trăng Máu',
-    badge: 'THÚ CƯỠI THẦN THOẠI · RATE-UP',
-    desc: 'Tăng +165 ATK, +1020 HP, +22% Tốc Độ. Nếu đã sở hữu sẽ hoàn +30 Mảnh Thú Cưỡi.',
-    accentColor: '#fb7185',
+    refId: 'black_dragon',
+    name: 'Hắc Long',
+    badge: 'THÚ CƯỠI HẮC LONG · RATE-UP',
+    desc: 'Cường hóa Thú Cưỡi Hắc Long (+30 Mảnh Thú Cưỡi nếu đã sở hữu).',
+    accentColor: '#c084fc',
   },
   {
     id: 'wish_seraph_wing',
@@ -304,13 +202,13 @@ export const WISH_TARGET_CATALOG: WishTargetItem[] = [
     accentColor: '#fbbf24',
   },
   {
-    id: 'wish_dracoola',
+    id: 'wish_hatsune_miku',
     kind: 'hero',
-    refId: 'dracoola',
-    name: 'Chúa Tể Dracoola',
+    refId: 'hatsune_miku',
+    name: 'Hatsune Miku',
     badge: 'ANH HÙNG SSR · RATE-UP',
-    desc: 'Chiêu mộ hoặc thăng sao ngay Anh Hùng Hút Máu Dracoola.',
-    accentColor: '#c084fc',
+    desc: 'Thăng sao ngay cho Anh Hùng Hatsune Miku.',
+    accentColor: '#39c5bb',
   },
   {
     id: 'wish_s_gear',
@@ -449,7 +347,7 @@ export const FIRST_TOPUP_TIERS: FirstTopUpTier[] = [
   {
     id: 'topup_tier_60',
     title: 'Túi Tinh Thạch Khởi Hành',
-    subtitle: 'Nạp lần đầu nhận X2 thành 120 Ngọc Hồn + Mảnh Chiến Mã',
+    subtitle: 'Nạp lần đầu nhận X2 thành 120 Ngọc Hồn + Mảnh Hắc Long',
     badge: 'X2 NẠP ĐẦU · MỐC 1',
     priceLabel: '22.000đ',
     baseGems: 60,
@@ -493,8 +391,8 @@ export const FIRST_TOPUP_TIERS: FirstTopUpTier[] = [
 export const HOT_FLASH_BUNDLES: HotFlashBundle[] = [
   {
     id: 'hot_bundle_mount_starter',
-    title: 'Gói Kỵ Sĩ Bạch Dương (-65%)',
-    subtitle: 'Mảnh Thú Cưỡi, Vé Ước Nguyện & Tinh Thể mở khóa Kỵ Sĩ nhanh!',
+    title: 'Gói Kỵ Sĩ Hắc Long (-65%)',
+    subtitle: 'Mảnh Thú Cưỡi Hắc Long, Vé Ước Nguyện & Tinh Thể nâng cấp nhanh!',
     badge: 'GIẢM SỐC -65%',
     discountLabel: 'GIÁ GỐC 160 NGỌC',
     originalGemsLabel: '160 Ngọc',

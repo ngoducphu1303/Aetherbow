@@ -2486,7 +2486,7 @@ export const LobbyEventsHubDrawer: React.FC<LobbyEventsHubDrawerProps> = ({
                 renderTile({
                   key: 'w13_steeds',
                   label: 'Thú Cưỡi 3D & Đường Đua',
-                  sub: 'Thanh Long & Tọa Kỵ Hoàng Đạo',
+                  sub: 'Hắc Long & Đường Đua Ánh Sao',
                   icon: <Sparkles className="w-4 h-4 text-cyan-300" />,
                   badge: starlightRaceClaimCount > 0 ? `+${starlightRaceClaimCount}` : undefined,
                   onClick: () => onOpenWave13Treasury('steeds'),

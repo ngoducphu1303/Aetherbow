@@ -486,7 +486,7 @@ test('Chapter 1 Build Archetypes: SKILLS_CATALOG exposes distinct AoE and Boss b
 });
 
 test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DPS of Artemis on identical Ch.1 loadout', () => {
-  assert.equal(HEROES.length, 11);
+  assert.equal(HEROES.length, 2);
   const fresh = createInitialSaveData();
   const artemisDps = computeExpectedDps(
     computePlayerStats({ ...fresh, selectedHeroId: 'artemis' })
@@ -927,8 +927,8 @@ test('Phase 4 · 3 Saved Loadout Presets: capture, 1-click apply, and graceful s
   };
   const save1: SaveData = {
     ...base,
-    unlockedHeroes: [...new Set([...base.unlockedHeroes, 'lyra', 'wukong'])] as SaveData['unlockedHeroes'],
-    selectedHeroId: 'wukong',
+    unlockedHeroes: ['artemis', 'hatsune_miku'],
+    selectedHeroId: 'hatsune_miku',
     inventory: [...base.inventory, extraWeapon, extraArmor],
     equipped: {
       ...base.equipped,
@@ -937,7 +937,7 @@ test('Phase 4 · 3 Saved Loadout Presets: capture, 1-click apply, and graceful s
     },
   };
 
-  // Capture preset_1 with Wukong + Dragon Knight Crossbow + Dragon Plate
+  // Capture preset_1 with Hatsune Miku + Dragon Knight Crossbow + Dragon Plate
   const withPresets: SaveData = {
     ...save1,
     loadoutPresets: captureLoadoutPreset(save1, 'preset_1'),
@@ -1088,7 +1088,7 @@ test('Phase 4 · Ch.7–12 Smart Valkyrie Drafting & Boss Phase III Punish Windo
 });
 
 test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
-  assert.equal(HEROES.length, 11);
+  assert.equal(HEROES.length, 2);
   const effectKinds = new Set<string>();
   for (const hero of HEROES) {
     const skill = getHeroActiveSkill(hero.id);
@@ -1393,25 +1393,35 @@ test('Alice Default Hero: default hero displays as Alice, restores legacy saves 
   assert.equal(fresh.selectedHeroId, 'artemis');
   assert.equal(fresh.aliceDefaultMigrated, true);
 
-  // Legacy save that was previously auto-switched to another hero (no aliceDefaultMigrated flag)
-  const legacySwitched: SaveData = {
+  // Legacy save that referenced removed heroes, removed mounts, and old skins
+  const legacySwitched = {
     ...fresh,
     selectedHeroId: 'alex',
     aliceDefaultMigrated: undefined,
     unlockedHeroes: ['alex', 'thor'],
-  };
+    unlockedSkins: ['default', 'alice_ao_dai'],
+    unlockedMounts: ['azure_dragon', 'aries_steed'],
+    equippedMountId: 'azure_dragon',
+    unlockedAstralSteeds: ['galaxy_pegasus'],
+    equippedAstralSteedId: 'galaxy_pegasus',
+  } as unknown as SaveData;
   const restored = migrateSaveData(legacySwitched);
   assert.equal(restored.selectedHeroId, 'artemis');
   assert.equal(restored.aliceDefaultMigrated, true);
-  assert.ok(restored.unlockedHeroes.includes('artemis'));
+  assert.deepEqual(restored.unlockedHeroes, ['artemis', 'hatsune_miku']);
+  assert.deepEqual(restored.unlockedSkins, []);
+  assert.deepEqual(restored.unlockedMounts, ['black_dragon']);
+  assert.equal(restored.equippedMountId, 'black_dragon');
+  assert.deepEqual(restored.unlockedAstralSteeds, []);
+  assert.equal(restored.equippedAstralSteedId, null);
 
-  // Subsequent load after the player deliberately chooses another hero must honor their choice
+  // Subsequent load after the player deliberately chooses Hatsune Miku must honor their choice
   const deliberateChoice: SaveData = {
     ...restored,
-    selectedHeroId: 'thor',
+    selectedHeroId: 'hatsune_miku',
   };
   const afterReload = migrateSaveData(deliberateChoice);
-  assert.equal(afterReload.selectedHeroId, 'thor');
+  assert.equal(afterReload.selectedHeroId, 'hatsune_miku');
 });
 
 

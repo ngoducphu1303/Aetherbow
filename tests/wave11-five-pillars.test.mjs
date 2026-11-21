@@ -231,7 +231,7 @@ test('Wave 11 Pillar 5B: Live AI Championship Spectator Arena simulates server-a
   let simMatch = createLiveSpectatorMatch(
     [
       { id: 'ai_1', displayName: 'Kael', heroId: 'artemis', powerRating: 19200, personality: 'tactical' },
-      { id: 'ai_2', displayName: 'Nyx', heroId: 'thor', powerRating: 19600, personality: 'aggressive' },
+      { id: 'ai_2', displayName: 'Nyx', heroId: 'hatsune_miku', powerRating: 19600, personality: 'aggressive' },
     ],
     Date.now(),
     1

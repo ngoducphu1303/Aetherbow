@@ -39,7 +39,7 @@ function makeMockOpponent(overrides = {}) {
     id: 'ai_te_thien',
     name: 'Tề Thiên [AI Live]',
     title: 'Sát Thủ Real-Time',
-    heroId: 'wukong',
+    heroId: 'hatsune_miku',
     rating: 1620,
     powerRating: 19200,
     maxHp: 8000,
