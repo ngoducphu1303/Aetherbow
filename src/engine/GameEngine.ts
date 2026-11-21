@@ -201,6 +201,7 @@ import {
   shouldTriggerSurpriseAmbush,
 } from './funCombatOverhaul';
 import { createDragonMountMotion } from './dragonMountMotion';
+import { BLACK_DRAGON_ASSET, createBlackDragonRide } from './blackDragonRide';
 import { discardModelDownload, downloadModel, getModelAssetUrl, type ModelAsset } from './modelAssets';
 import { soundEngine } from '../audio/soundEngine';
 import { CHAPTERS } from '../data/chaptersData';
@@ -804,6 +805,9 @@ export class GameEngine {
   private readonly dragonSeat = new THREE.Vector3();
   private dragonMountLoading = false;
   private dragonMountFailed = false;
+  private blackDragon?: ReturnType<typeof createBlackDragonRide>;
+  private blackDragonRequest?: AbortController;
+  private blackDragonFailed = false;
   private appearanceBlocked = false;
   private appearanceStatus: AppearanceStatus = 'loading';
   private heroShadow!: THREE.Mesh;
@@ -2904,6 +2908,11 @@ export class GameEngine {
     return this.heroVisualCfg.mountId === 'azure_dragon' && !this.heroVisualCfg.astralSteedId;
   }
 
+  private hasDragonRide(): boolean {
+    const mount = this.hero.mountGroup;
+    return !!mount && (this.dragonMount?.parent === mount || this.blackDragon?.model.parent === mount);
+  }
+
   private refreshAppearanceGate(): void {
     if (!this.hero) return;
     const asset = this.getRiggedHeroAsset();
@@ -3072,11 +3081,54 @@ export class GameEngine {
       });
   }
 
-  private updateDragonRide(dt: number, speed: number): number {
-    if (!this.dragonMotion) return 0.68;
+  private useBlackDragonMount(): void {
+    const mount = this.hero.mountGroup;
+    if (!mount || this.heroVisualCfg.mountId !== 'black_dragon' || this.heroVisualCfg.astralSteedId) return;
+    if (this.blackDragon) {
+      const model = this.blackDragon.model;
+      for (const part of mount.children) part.visible = part === model;
+      if (model.parent !== mount) mount.add(model);
+      return;
+    }
+    if (this.blackDragonRequest || this.blackDragonFailed) return;
+    const request = new AbortController();
+    this.blackDragonRequest = request;
+    const url = new URL(`${import.meta.env.BASE_URL}${BLACK_DRAGON_ASSET}`, document.baseURI);
+    void (async () => {
+      try {
+        const response = await fetch(url, { signal: request.signal });
+        if (!response.ok || response.headers.get('content-type')?.includes('text/html')) {
+          throw new Error('Không tìm thấy mô hình Hắc Long.');
+        }
+        const data = await response.arrayBuffer();
+        if (this.disposed) return;
+        const { scene, animations } = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
+        if (this.disposed) { this.releaseObject(scene); return; }
+        try {
+          this.blackDragon = createBlackDragonRide(scene, animations);
+        } catch (error) {
+          this.releaseObject(scene);
+          throw error;
+        }
+        this.useBlackDragonMount();
+      } catch (error) {
+        if (!this.disposed) {
+          this.blackDragonFailed = true;
+          console.warn('Không tải được Hắc Long; dùng mô hình thú cưỡi dự phòng.', error);
+        }
+      } finally {
+        this.blackDragonRequest = undefined;
+      }
+    })();
+  }
 
-    this.dragonMotion.update(dt, this.elapsed, speed);
-    this.dragonMotion.saddle.getWorldPosition(this.dragonSeat);
+  private updateDragonRide(dt: number, speed: number): number {
+    const black = this.blackDragon?.model.parent === this.hero.mountGroup ? this.blackDragon : undefined;
+    if (black) black.update(dt, speed);
+    else if (this.dragonMotion) this.dragonMotion.update(dt, this.elapsed, speed);
+    const saddle = black?.saddle ?? this.dragonMotion?.saddle;
+    if (!saddle) return 0.68;
+    saddle.getWorldPosition(this.dragonSeat);
     this.hero.root.worldToLocal(this.dragonSeat);
     this.hero.bodyGroup.position.z = this.dragonSeat.z + 0.04;
 
@@ -3092,6 +3144,7 @@ export class GameEngine {
     if (this.hero) {
       this.artemisModel?.removeFromParent();
       this.dragonMount?.removeFromParent();
+      this.blackDragon?.model.removeFromParent();
       this.releaseObject(this.hero.root);
       this.releaseObject(this.heroShadow);
     }
@@ -3101,6 +3154,7 @@ export class GameEngine {
     this.entitiesGroup.add(this.hero.root);
     if (this.wantsRiggedHeroModel()) this.useArtemisModel();
     this.useDragonMount();
+    this.useBlackDragonMount();
 
     this.heroShadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.3, 1.3),
@@ -9549,7 +9603,7 @@ export class GameEngine {
         this.lobbyEmoteTimer = Math.max(0, this.lobbyEmoteTimer - dt);
       }
       const emotePose = computeLobbyEmotePose(this.lobbyEmoteTimer, this.lobbyEmoteDuration);
-      const onDragon = Boolean(this.dragonMount && this.dragonMount.parent === this.hero.mountGroup);
+      const onDragon = this.hasDragonRide();
       const mountOffset = onDragon ? this.updateDragonRide(dt, walk) : this.hero.mountGroup ? 0.68 : 0;
       const poseFloatY =
         (this.lobbyHeroPose === 'astral_float'
@@ -11467,7 +11521,7 @@ export class GameEngine {
     const nearest = this.findNearestEnemy(this.px, this.pz);
     this.updateTargetLockReticle(nearest, dt);
 
-    const onDragon = Boolean(this.dragonMount && this.dragonMount.parent === this.hero.mountGroup);
+    const onDragon = this.hasDragonRide();
     const mountOffset = this.hero.mountGroup ? 0.68 : 0;
 
     if (this.dashTimer > 0) {
@@ -18158,6 +18212,7 @@ export class GameEngine {
     if (this.disposed) return;
     this.disposed = true;
     this.lobbyCityRequest.abort();
+    this.blackDragonRequest?.abort();
     delete this.container.dataset.lobbyCity;
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
@@ -18190,6 +18245,11 @@ export class GameEngine {
       this.releaseObject(this.dragonMount);
       this.dragonMount = undefined;
       this.dragonMotion = undefined;
+    }
+    if (this.blackDragon) {
+      this.blackDragon.dispose();
+      this.releaseObject(this.blackDragon.model);
+      this.blackDragon = undefined;
     }
     this.releaseObject(this.scene);
     this.disposePostProcessing();

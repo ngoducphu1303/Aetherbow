@@ -117,6 +117,25 @@ export const ZODIAC_MOUNTS: MountDefinition[] = [
     unlockGems: 380,
     unlockShards: 68,
   },
+  {
+    id: 'black_dragon',
+    name: 'Hắc Long',
+    badge: 'HIẾM · RỒNG ĐEN',
+    rarity: 'Hiếm',
+    desc: 'Rồng đen cánh rộng. Nhận miễn phí để cưỡi khi dạo phố và khi ra trận. Mô hình: 3DHaupt.',
+    bodyHex: 0x20202a,
+    armorHex: 0x444153,
+    maneHex: 0x5e365a,
+    glowHex: 0xc46db1,
+    baseAtk: 34,
+    baseHp: 220,
+    baseMoveSpeed: 0.1,
+    baseDr: 0.03,
+    atkPerLv: 9,
+    hpPerLv: 55,
+    unlockGems: 0,
+    unlockShards: 0,
+  },
 ];
 
 export const MOUNT_MAP: Record<MountId, MountDefinition> = ZODIAC_MOUNTS.reduce(
