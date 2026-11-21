@@ -25,6 +25,10 @@ import {
   normalizeAiDuelDifficultyTier,
 } from '../engine/wave8LethalAiSystems';
 import type { GuildWarBastionId } from '../engine/wave10FivePillars';
+import {
+  AI_SQUAD_FORMATION_LIST,
+  normalizeAiSquadFormation,
+} from '../engine/wave11FivePillars';
 import { HERO_MAP } from '../data/heroesData';
 import { liveAiSocket, LiveSocketStatus } from '../services/liveAiSocket';
 import type {
@@ -61,6 +65,12 @@ interface LiveAiHubModalProps {
     rewardGems: number;
     rewardGuildCoins: number;
     rewardStarDust: number;
+  }) => void;
+  onClaimSpectatorReward?: (reward: {
+    goldReward: number;
+    gemsReward: number;
+    starDustReward: number;
+    predictedCorrectly: boolean;
   }) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
   onClose: () => void;
@@ -101,6 +111,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   onClaimServerBountyReward,
   onStartGuildWarBastion,
   onClaimGuildWarLiveReward,
+  onClaimSpectatorReward,
   onInspectAiPlayer,
   onClose,
 }) => {
@@ -111,7 +122,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
     liveAiSocket.getStatus()
   );
   const [activeTab, setActiveTab] = useState<
-    'players' | 'guild_war' | 'bounty' | 'cup' | 'rivals' | 'feed' | 'autopilot'
+    'players' | 'spectator' | 'guild_war' | 'bounty' | 'cup' | 'rivals' | 'feed' | 'autopilot'
   >('players');
   const [filterMode, setFilterMode] = useState<'all' | 'ready_duel'>('all');
   const [challengingId, setChallengingId] = useState<string | null>(null);
@@ -119,6 +130,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   const [claimingCupPrize, setClaimingCupPrize] = useState(false);
   const [claimingServerBounty, setClaimingServerBounty] = useState(false);
   const [claimingGuildWar, setClaimingGuildWar] = useState(false);
+  const [claimingSpectator, setClaimingSpectator] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const coopSynergy = useMemo(() => computeCoopRoleSynergy(coopPartyRoles), [coopPartyRoles]);
@@ -185,7 +197,23 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
     const unsubRevenge = liveAiSocket.subscribeRivalRevengeChallenge((evt) => {
       setFeedback(evt.invite.message);
     });
+    const unsubSpecCheer = liveAiSocket.subscribeSpectatorCheerAck((ack) => {
+      setFeedback(ack.message);
+    });
+    const unsubSpecClaim = liveAiSocket.subscribeSpectatorClaimAck((ack) => {
+      setClaimingSpectator(false);
+      setFeedback(ack.message);
+      if (ack.ok && !ack.alreadyClaimed) {
+        onClaimSpectatorReward?.({
+          goldReward: ack.goldReward,
+          gemsReward: ack.gemsReward,
+          starDustReward: ack.starDustReward,
+          predictedCorrectly: ack.predictedCorrectly,
+        });
+      }
+    });
     liveAiSocket.syncGuildWar(playerDisplayName);
+    liveAiSocket.syncSpectatorMatch(playerDisplayName);
     return () => {
       unsubSnap();
       unsubDuel();
@@ -194,6 +222,8 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
       unsubServerBounty();
       unsubGuildWar();
       unsubRevenge();
+      unsubSpecCheer();
+      unsubSpecClaim();
     };
   }, [
     playerDisplayName,
@@ -201,6 +231,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
     onClaimMiniCupPrize,
     onClaimServerBountyReward,
     onClaimGuildWarLiveReward,
+    onClaimSpectatorReward,
   ]);
 
   const filteredPlayers = useMemo(() => {
@@ -321,6 +352,21 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
               }`}
             >
               AI Live ({snapshot?.players.length ?? 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('spectator');
+                liveAiSocket.syncSpectatorMatch(playerDisplayName);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1.5 ${
+                activeTab === 'spectator'
+                  ? 'bg-purple-500/25 text-purple-200'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 shrink-0" />
+              <span>Khán Đài AI</span>
             </button>
             <button
               type="button"
@@ -1203,6 +1249,49 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                 })}
               </div>
 
+              {/* Wave 11 Pillar 5: Tactical AI Squad Formation Selector */}
+              <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-black text-sky-200">
+                    Đội Hình Chiến Thuật Tổ Đội AI (Phím 4 · 5 · 6)
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {AI_SQUAD_FORMATION_LIST.map((fm, idx) => {
+                    const activeFormation = normalizeAiSquadFormation(aiPreferences.squadFormation);
+                    const isSelected = activeFormation === fm.id;
+                    const hotkey = 4 + idx;
+                    return (
+                      <button
+                        key={fm.id}
+                        type="button"
+                        onClick={() =>
+                          onUpdateAiPreferences({
+                            ...aiPreferences,
+                            squadFormation: fm.id,
+                          })
+                        }
+                        className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'border-sky-300 bg-sky-500/18 text-white'
+                            : 'border-slate-800 bg-slate-950/60 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px] font-black">
+                          <span>
+                            [{hotkey}] {fm.name}
+                          </span>
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-sky-300 shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                          {fm.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Wave 6 Pillar 5: Co-op 3D AI Party Role Presets & Live Team Synergy */}
               {onUpdateCoopPartyRoles && (
                 <div className="pt-3 border-t border-slate-800/80 space-y-2.5">
@@ -1472,6 +1561,224 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* TAB 8: Wave 11 Pillar 5 — Real-Time AI Championship Spectator Arena */}
+        {activeTab === 'spectator' && (() => {
+          const match = snapshot?.spectatorMatch;
+          if (!match) {
+            return (
+              <div className="rounded-2xl border border-purple-400/30 bg-[#070b1a] p-5 text-center space-y-3">
+                <div className="text-sm font-black text-purple-200">
+                  Đang kết nối Khán Đài AI Đấu Giải Trực Tiếp…
+                </div>
+                <button
+                  type="button"
+                  onClick={() => liveAiSocket.syncSpectatorMatch(playerDisplayName)}
+                  className="a2-purple-btn px-4 py-2 rounded-xl text-xs font-black cursor-pointer"
+                >
+                  Tải Trận Đang Diễn Ra
+                </button>
+              </div>
+            );
+          }
+
+          const renderFighterCard = (f: typeof match.fighterA, side: 'A' | 'B') => {
+            const hpPct = Math.max(0, Math.min(100, (f.hp / Math.max(1, f.maxHp)) * 100));
+            const isCheered = match.playerCheeredFighterId === f.aiPlayerId;
+            const isWinner = match.status === 'finished' && match.winnerId === f.aiPlayerId;
+            const hero = HERO_MAP[f.heroId] ?? HERO_MAP.artemis;
+            const accent = side === 'A' ? 'border-sky-400/50' : 'border-rose-400/50';
+            return (
+              <div
+                className={`rounded-2xl border p-4 bg-[#070b1a] space-y-3 ${
+                  isWinner ? 'border-amber-300 ring-1 ring-amber-300/60' : accent
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      {side === 'A' ? 'Góc Tinh Lam (A)' : 'Góc Huyết Viêm (B)'} · {hero.name}
+                    </div>
+                    <div className="font-display text-base font-black text-white mt-0.5">
+                      {f.displayName}
+                    </div>
+                    <div className="text-[11px] font-mono-nums text-amber-300 font-bold">
+                      {PERSONALITY_LABEL[f.personality]} · {f.powerRating.toLocaleString('vi-VN')} LC
+                    </div>
+                  </div>
+                  <div className="text-right font-mono-nums">
+                    <div className="text-xs font-black text-purple-300">
+                      Hạng {f.styleGrade}
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Khí Thế {f.momentum}%
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-mono-nums mb-1">
+                    <span className="text-slate-300 font-bold">
+                      HP {f.hp.toLocaleString('vi-VN')} / {f.maxHp.toLocaleString('vi-VN')}
+                    </span>
+                    <span className="text-emerald-300 font-black">{Math.round(hpPct)}%</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${
+                        side === 'A'
+                          ? 'bg-gradient-to-r from-sky-500 to-cyan-300'
+                          : 'bg-gradient-to-r from-rose-600 to-amber-400'
+                      }`}
+                      style={{ width: `${hpPct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums text-slate-300">
+                  <span>
+                    Tổng ST: {f.damageDealt.toLocaleString('vi-VN')} · CM: {f.critsLanded} · Né: {f.dodgesLanded}
+                  </span>
+                  <span className="text-amber-300 font-bold">
+                    {f.cheersCount} cổ vũ
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={match.status !== 'live' || isCheered}
+                  onClick={() => {
+                    liveAiSocket.cheerSpectatorFighter({
+                      matchId: match.matchId,
+                      fighterId: f.aiPlayerId,
+                      playerName: playerDisplayName,
+                    });
+                  }}
+                  className={`w-full py-2 rounded-xl text-xs font-black cursor-pointer disabled:cursor-not-allowed transition-colors ${
+                    isCheered
+                      ? 'bg-emerald-500/20 border border-emerald-400/60 text-emerald-200'
+                      : match.status === 'live'
+                      ? side === 'A'
+                        ? 'a2-slate-btn border border-sky-400/60 text-sky-200 hover:border-amber-300'
+                        : 'a2-slate-btn border border-rose-400/60 text-rose-200 hover:border-amber-300'
+                      : 'bg-slate-900 border border-slate-800 text-slate-500'
+                  }`}
+                >
+                  {isWinner
+                    ? 'CHIẾN THẮNG TRẬN NÀY'
+                    : isCheered
+                    ? `Đang Cổ Vũ ${f.displayName}`
+                    : `Cổ Vũ ${f.displayName} (Miễn Phí)`}
+                </button>
+              </div>
+            );
+          };
+
+          const winnerName =
+            match.winnerId === match.fighterA.aiPlayerId
+              ? match.fighterA.displayName
+              : match.fighterB.displayName;
+          const predictedCorrectly =
+            Boolean(match.playerCheeredFighterId) && match.playerCheeredFighterId === match.winnerId;
+
+          return (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-purple-400/40 bg-[#0d0a24] p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black text-purple-300 uppercase tracking-wider">
+                    {match.roundLabel} · Khán Đài AI Đấu Giải Real-Time
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Server mô phỏng trực tiếp AI vs AI theo thời gian thực — cổ vũ miễn phí cho tuyển thủ bạn chọn để nhận Vàng, Bụi Sao &amp; Ngọc Hồn khi trận kết thúc!
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 font-mono-nums">
+                  <span className="px-3 py-1.5 rounded-xl bg-[#070b1a] border border-purple-400/35 text-xs font-black text-amber-200">
+                    {match.status === 'live'
+                      ? `Đang Đấu · Hiệp ${match.tickCount}/${match.maxTicks}`
+                      : `Kết Thúc · Hiệp ${match.tickCount}/${match.maxTicks}`}
+                  </span>
+                  {match.status === 'finished' && (
+                    <button
+                      type="button"
+                      onClick={() => liveAiSocket.requestNextSpectatorMatch(playerDisplayName)}
+                      className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-black text-sky-200 border border-sky-400/45 cursor-pointer whitespace-nowrap"
+                    >
+                      Trận Kế Tiếp
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {renderFighterCard(match.fighterA, 'A')}
+                {renderFighterCard(match.fighterB, 'B')}
+              </div>
+
+              {match.status === 'finished' && (
+                <div className="rounded-2xl border border-amber-400/50 bg-[#171206] p-3.5 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-black text-amber-300">
+                      Trận Đấu Đã Phân Định — Thắng Cuộc: {winnerName}
+                    </div>
+                    <div className="text-[11px] text-slate-300">
+                      {match.playerCheeredFighterId
+                        ? predictedCorrectly
+                          ? 'Dự đoán CHÍNH XÁC! Bạn nhận 100% phần thưởng Khán Đài AI.'
+                          : 'Bạn vẫn nhận 50% thưởng cổ vũ tham gia từ Khán Đài AI.'
+                        : 'Cổ vũ trận tiếp theo khi đang thi đấu để nhận thưởng Khán Đài AI.'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={
+                      Boolean(match.playerClaimedReward) ||
+                      !match.playerCheeredFighterId ||
+                      claimingSpectator
+                    }
+                    onClick={() => {
+                      setClaimingSpectator(true);
+                      liveAiSocket.claimSpectatorReward(match.matchId, playerDisplayName);
+                    }}
+                    className="a2-yellow-btn px-4 py-2 rounded-xl text-xs font-black cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {match.playerClaimedReward
+                      ? 'Đã Nhận Thưởng Trận Này'
+                      : claimingSpectator
+                      ? 'Đang Nhận…'
+                      : 'Nhận Thưởng Cổ Vũ'}
+                  </button>
+                </div>
+              )}
+
+              {/* Live Match Play-by-Play Ticker */}
+              <div className="rounded-2xl border border-slate-800 bg-[#060917] p-3.5 space-y-2">
+                <div className="text-[11px] font-black text-sky-300 uppercase tracking-wider">
+                  Tường Thuật Trực Tiếp Server
+                </div>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto a2-scroll">
+                  {match.tickerLog.map((line) => (
+                    <div
+                      key={line.id}
+                      className={`text-xs flex items-start justify-between gap-2 px-2.5 py-1.5 rounded-lg border ${
+                        line.accent === 'amber'
+                          ? 'bg-amber-400/10 border-amber-400/35 text-amber-100'
+                          : line.accent === 'rose'
+                          ? 'bg-rose-500/10 border-rose-400/35 text-rose-100'
+                          : 'bg-[#090f22] border-slate-800/80 text-slate-200'
+                      }`}
+                    >
+                      <span>{line.text}</span>
+                      <span className="font-mono-nums text-[10px] text-slate-400 shrink-0">
+                        H{line.tick}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           );

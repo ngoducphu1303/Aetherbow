@@ -183,6 +183,9 @@ export function normalizePity(p?: Partial<PityState>): PityState {
     runeRollsSinceEpic: p?.runeRollsSinceEpic ?? 0,
     runeRollsSinceLegendary: Math.max(0, Math.floor(p?.runeRollsSinceLegendary ?? 0)),
     ancientRuneShards: Math.max(0, Math.floor(p?.ancientRuneShards ?? 0)),
+    forgeRollsSinceEpic: Math.max(0, Math.floor(p?.forgeRollsSinceEpic ?? 0)),
+    forgeRollsSinceLegendary: Math.max(0, Math.floor(p?.forgeRollsSinceLegendary ?? 0)),
+    forgeRelicShards: Math.max(0, Math.floor(p?.forgeRelicShards ?? 0)),
   };
 }
 

@@ -370,6 +370,7 @@ export function attachLiveAiWebSocketServer(
         serverBounty: liveAiService.getServerBountyState(playerName),
         adaptationProfile: liveAiService.getAdaptationForPlayer(playerName),
         guildWarLive: liveAiService.getLiveGuildWarState(playerName),
+        spectatorMatch: liveAiService.getLiveSpectatorMatch(playerName),
       },
     });
   };
@@ -1003,6 +1004,82 @@ export function attachLiveAiWebSocketServer(
             type: 'guild_war:claim_ack',
             payload: claimed,
           });
+          return;
+        }
+
+        if (type === 'spectator:sync') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          sendJson(ws, {
+            type: 'spectator:update',
+            payload: {
+              spectatorMatch: liveAiService.getLiveSpectatorMatch(playerName),
+            },
+          });
+          return;
+        }
+
+        if (type === 'spectator:cheer') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const fighterId = String(payload.fighterId ?? '').trim();
+          const matchId =
+            typeof payload.matchId === 'string' ? payload.matchId.trim() : undefined;
+          const res = liveAiService.cheerSpectatorFighter({
+            playerName,
+            matchId,
+            fighterId,
+          });
+          sendJson(ws, {
+            type: 'spectator:cheer_ack',
+            payload: res,
+          });
+          for (const client of wss.clients) {
+            if (client.readyState === WebSocket.OPEN) {
+              const pName = clientNames.get(client);
+              sendJson(client, {
+                type: 'spectator:update',
+                payload: {
+                  spectatorMatch: liveAiService.getLiveSpectatorMatch(pName),
+                },
+              });
+            }
+          }
+          return;
+        }
+
+        if (type === 'spectator:claim_reward') {
+          const playerName = sanitizeServerDisplayName(
+            payload.playerName ?? clientNames.get(ws)
+          );
+          const matchId =
+            typeof payload.matchId === 'string' ? payload.matchId.trim() : undefined;
+          const claimed = liveAiService.claimSpectatorReward({
+            playerName,
+            matchId,
+          });
+          sendJson(ws, {
+            type: 'spectator:claim_ack',
+            payload: claimed,
+          });
+          return;
+        }
+
+        if (type === 'spectator:next_match') {
+          liveAiService.startNextSpectatorMatch();
+          for (const client of wss.clients) {
+            if (client.readyState === WebSocket.OPEN) {
+              const pName = clientNames.get(client);
+              sendJson(client, {
+                type: 'spectator:update',
+                payload: {
+                  spectatorMatch: liveAiService.getLiveSpectatorMatch(pName),
+                },
+              });
+            }
+          }
         }
       } catch {
         // Ignore malformed frames safely
@@ -1064,6 +1141,19 @@ export function attachLiveAiWebSocketServer(
               type: 'guild_war:update',
               payload: {
                 guildWarLive: liveAiService.getLiveGuildWarState(pName),
+              },
+            });
+          }
+        }
+      }
+      if ((tick as { spectatorUpdated?: boolean }).spectatorUpdated) {
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            const pName = clientNames.get(client);
+            sendJson(client, {
+              type: 'spectator:update',
+              payload: {
+                spectatorMatch: liveAiService.getLiveSpectatorMatch(pName),
               },
             });
           }

@@ -36,6 +36,12 @@ import {
   type LiveGuildWarState,
   type PlayerCombatTelemetryInput,
 } from '../engine/wave10FivePillars.ts';
+import {
+  computeSpectatorCheerReward,
+  createLiveSpectatorMatch,
+  stepLiveSpectatorMatch,
+  type LiveSpectatorMatchState,
+} from '../engine/wave11FivePillars.ts';
 
 interface LiveAiStoreData {
   version: 1;
@@ -56,6 +62,10 @@ interface LiveAiStoreData {
   adaptationByPlayer?: Record<string, AiPlayerAdaptationProfile>;
   guildWarLive?: LiveGuildWarState;
   guildWarClaimsByPlayer?: Record<string, boolean>;
+  spectatorMatch?: LiveSpectatorMatchState;
+  spectatorMatchSeq?: number;
+  spectatorCheersByMatch?: Record<string, Record<string, string>>;
+  spectatorClaimsByMatch?: Record<string, Record<string, boolean>>;
 }
 
 const MAX_CHAT_PER_CHANNEL = 40;
@@ -433,6 +443,18 @@ export class LiveAiPlayersService {
             typeof parsed.guildWarClaimsByPlayer === 'object'
               ? parsed.guildWarClaimsByPlayer
               : {},
+          spectatorMatch: parsed.spectatorMatch,
+          spectatorMatchSeq: Number(parsed.spectatorMatchSeq ?? 1),
+          spectatorCheersByMatch:
+            parsed.spectatorCheersByMatch &&
+            typeof parsed.spectatorCheersByMatch === 'object'
+              ? parsed.spectatorCheersByMatch
+              : {},
+          spectatorClaimsByMatch:
+            parsed.spectatorClaimsByMatch &&
+            typeof parsed.spectatorClaimsByMatch === 'object'
+              ? parsed.spectatorClaimsByMatch
+              : {},
         };
       }
       return this.createSeededInitialStore(nowMs);
@@ -481,6 +503,7 @@ export class LiveAiPlayersService {
       guildBossLive: this.getLiveGuildBossState(undefined, nowMs),
       serverBounty: this.getServerBountyState(undefined, nowMs),
       guildWarLive: this.getLiveGuildWarState(undefined, nowMs),
+      spectatorMatch: this.getLiveSpectatorMatch(undefined, nowMs),
     };
   }
 
@@ -740,14 +763,27 @@ export class LiveAiPlayersService {
       }
     }
 
+    let spectatorUpdated = false;
+    const specMatch = this.ensureLiveSpectatorMatch(nowMs);
+    if (specMatch.status === 'live') {
+      const stepped = stepLiveSpectatorMatch(specMatch, nowMs);
+      this.store.spectatorMatch = stepped.nextMatch;
+      spectatorUpdated = true;
+    } else if (nowMs - specMatch.updatedAt >= 24_000) {
+      // Auto-rotate to next live AI Championship bout after players had time to claim
+      this.startNextSpectatorMatch(nowMs);
+      spectatorUpdated = true;
+    }
+
     if (this.tickCounter % 4 === 0) {
       this.persistStore();
     }
 
-    return { updatedPlayer: player, event, guildWarUpdated } as {
+    return { updatedPlayer: player, event, guildWarUpdated, spectatorUpdated } as {
       updatedPlayer: AiLivePlayerProfile;
       event: AiLiveActivityEvent;
       guildWarUpdated?: boolean;
+      spectatorUpdated?: boolean;
     };
   }
 
@@ -2307,6 +2343,221 @@ export class LiveAiPlayersService {
       starDustReward,
       message: `Nhận Rương Chiến Trường Bang: +${goldReward} Vàng · +${gemsReward} Ngọc · +${guildCoinsReward} Xu Bang · +${starDustReward} Bụi!`,
       state: this.getLiveGuildWarState(params.playerName, nowMs),
+    };
+  }
+
+  // ==========================================================================
+  // WAVE 11 — PILLAR 5B: LIVE AI CHAMPIONSHIP SPECTATOR ARENA
+  // ==========================================================================
+
+  private ensureLiveSpectatorMatch(nowMs = Date.now()): LiveSpectatorMatchState {
+    if (!this.store.spectatorMatch) {
+      const seq = Math.max(1, Math.floor(this.store.spectatorMatchSeq ?? 1));
+      this.store.spectatorMatchSeq = seq;
+      this.store.spectatorMatch = createLiveSpectatorMatch(
+        this.store.players.map((p) => ({
+          id: p.id,
+          displayName: p.displayName,
+          heroId: p.heroId,
+          powerRating: p.powerRating,
+          personality: p.personality,
+        })),
+        nowMs,
+        seq
+      );
+    }
+    return this.store.spectatorMatch;
+  }
+
+  public startNextSpectatorMatch(nowMs = Date.now()): LiveSpectatorMatchState {
+    const nextSeq = Math.max(1, Math.floor(this.store.spectatorMatchSeq ?? 1)) + 1;
+    this.store.spectatorMatchSeq = nextSeq;
+    const match = createLiveSpectatorMatch(
+      this.store.players.map((p) => ({
+        id: p.id,
+        displayName: p.displayName,
+        heroId: p.heroId,
+        powerRating: p.powerRating,
+        personality: p.personality,
+      })),
+      nowMs,
+      nextSeq
+    );
+    this.store.spectatorMatch = match;
+    this.persistStore();
+    return match;
+  }
+
+  public getLiveSpectatorMatch(
+    playerName?: string,
+    nowMs = Date.now()
+  ): LiveSpectatorMatchState {
+    const match = this.ensureLiveSpectatorMatch(nowMs);
+    const pKey = playerName ? this.normalizePlayerKey(playerName) : null;
+    const cheeredFighterId =
+      pKey && this.store.spectatorCheersByMatch?.[match.matchId]?.[pKey]
+        ? this.store.spectatorCheersByMatch[match.matchId][pKey]
+        : null;
+    const claimed = Boolean(
+      pKey && this.store.spectatorClaimsByMatch?.[match.matchId]?.[pKey]
+    );
+    return {
+      ...match,
+      fighterA: { ...match.fighterA },
+      fighterB: { ...match.fighterB },
+      tickerLog: match.tickerLog.map((t) => ({ ...t })),
+      playerCheeredFighterId: cheeredFighterId,
+      playerClaimedReward: claimed,
+    };
+  }
+
+  public cheerSpectatorFighter(params: {
+    playerName: string;
+    matchId?: string;
+    fighterId: string;
+    nowMs?: number;
+  }): {
+    ok: boolean;
+    message: string;
+    state: LiveSpectatorMatchState;
+  } {
+    const nowMs = params.nowMs ?? Date.now();
+    const match = this.ensureLiveSpectatorMatch(nowMs);
+    if (params.matchId && params.matchId !== match.matchId) {
+      return {
+        ok: false,
+        message: 'Khán đài đã chuyển sang trận đấu mới.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+    if (match.status === 'finished') {
+      return {
+        ok: false,
+        message: 'Trận đấu AI đã kết thúc, hãy chờ trận kế tiếp để cổ vũ.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+    const isA = match.fighterA.aiPlayerId === params.fighterId;
+    const isB = match.fighterB.aiPlayerId === params.fighterId;
+    if (!isA && !isB) {
+      return {
+        ok: false,
+        message: 'Tuyển thủ AI không hợp lệ.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+
+    const pKey = this.normalizePlayerKey(params.playerName);
+    if (!this.store.spectatorCheersByMatch) this.store.spectatorCheersByMatch = {};
+    if (!this.store.spectatorCheersByMatch[match.matchId]) {
+      this.store.spectatorCheersByMatch[match.matchId] = {};
+    }
+    const existing = this.store.spectatorCheersByMatch[match.matchId][pKey];
+    if (existing) {
+      return {
+        ok: true,
+        message: 'Bạn đã gửi phiếu cổ vũ cho trận đấu này rồi.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+
+    this.store.spectatorCheersByMatch[match.matchId][pKey] = params.fighterId;
+    if (isA) match.fighterA.cheersCount += 1;
+    else match.fighterB.cheersCount += 1;
+    const pickedName = isA ? match.fighterA.displayName : match.fighterB.displayName;
+    this.persistStore();
+    return {
+      ok: true,
+      message: `Đã cổ vũ ${pickedName}! Dự đoán đúng sẽ nhận thưởng đầy đủ khi kết thúc.`,
+      state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+    };
+  }
+
+  public claimSpectatorReward(params: {
+    playerName: string;
+    matchId?: string;
+    nowMs?: number;
+  }): {
+    ok: boolean;
+    alreadyClaimed: boolean;
+    predictedCorrectly: boolean;
+    goldReward: number;
+    gemsReward: number;
+    starDustReward: number;
+    message: string;
+    state: LiveSpectatorMatchState;
+  } {
+    const nowMs = params.nowMs ?? Date.now();
+    const match = this.ensureLiveSpectatorMatch(nowMs);
+    if (params.matchId && params.matchId !== match.matchId) {
+      return {
+        ok: false,
+        alreadyClaimed: false,
+        predictedCorrectly: false,
+        goldReward: 0,
+        gemsReward: 0,
+        starDustReward: 0,
+        message: 'Trận đấu đã hết hiệu lực nhận thưởng.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+    if (match.status !== 'finished') {
+      return {
+        ok: false,
+        alreadyClaimed: false,
+        predictedCorrectly: false,
+        goldReward: 0,
+        gemsReward: 0,
+        starDustReward: 0,
+        message: 'Trận đấu AI đang diễn ra, hãy chờ kết quả cuối cùng.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const cheeredFighterId = this.store.spectatorCheersByMatch?.[match.matchId]?.[pKey];
+    if (!cheeredFighterId) {
+      return {
+        ok: false,
+        alreadyClaimed: false,
+        predictedCorrectly: false,
+        goldReward: 0,
+        gemsReward: 0,
+        starDustReward: 0,
+        message: 'Bạn chưa gửi phiếu cổ vũ cho trận đấu này.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+    if (!this.store.spectatorClaimsByMatch) this.store.spectatorClaimsByMatch = {};
+    if (!this.store.spectatorClaimsByMatch[match.matchId]) {
+      this.store.spectatorClaimsByMatch[match.matchId] = {};
+    }
+    if (this.store.spectatorClaimsByMatch[match.matchId][pKey]) {
+      return {
+        ok: true,
+        alreadyClaimed: true,
+        predictedCorrectly: match.winnerId === cheeredFighterId,
+        goldReward: 0,
+        gemsReward: 0,
+        starDustReward: 0,
+        message: 'Bạn đã nhận thưởng cổ vũ trận này rồi.',
+        state: this.getLiveSpectatorMatch(params.playerName, nowMs),
+      };
+    }
+
+    const reward = computeSpectatorCheerReward(match, cheeredFighterId);
+    this.store.spectatorClaimsByMatch[match.matchId][pKey] = true;
+    this.persistStore();
+    return {
+      ok: true,
+      alreadyClaimed: false,
+      predictedCorrectly: reward.predictedCorrectly,
+      goldReward: reward.goldReward,
+      gemsReward: reward.gemsReward,
+      starDustReward: reward.starDustReward,
+      message: reward.predictedCorrectly
+        ? `Dự đoán chính xác! Nhận +${reward.goldReward} Vàng · +${reward.gemsReward} Ngọc · +${reward.starDustReward} Bụi!`
+        : `Quà cổ vũ Khán Đài: +${reward.goldReward} Vàng · +${reward.gemsReward} Ngọc · +${reward.starDustReward} Bụi!`,
+      state: this.getLiveSpectatorMatch(params.playerName, nowMs),
     };
   }
 }

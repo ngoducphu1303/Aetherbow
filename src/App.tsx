@@ -70,6 +70,16 @@ import {
   type EqualizedTrialKitId,
   type GuildWarBastionId,
 } from './engine/wave10FivePillars';
+import {
+  EQUALIZED_RIFT_MILESTONES,
+  consumeForgeShardsForDirectCraft,
+  getUtcDateKeyWave11,
+  normalizeAiSquadFormation,
+  normalizeEqualizedRiftState,
+  recordEqualizedRiftClear,
+  rollProtectedForgeGear,
+  type AiSquadFormationId,
+} from './engine/wave11FivePillars';
 
 // Lazy-loaded non-startup event, shop, and progression modals to minimize initial JS payload
 const ArenaModal = lazy(() =>
@@ -1149,6 +1159,7 @@ export default function App() {
   useEffect(() => {
     engineRef.current?.setAutoPilot(currentAiPrefs.autoPilotEnabled, currentAiPrefs.tactic);
     engineRef.current?.setAiSquadConfig(currentAiPrefs.squadAssistEnabled, currentAiPrefs.squadRoles);
+    engineRef.current?.setSquadFormation(normalizeAiSquadFormation(currentAiPrefs.squadFormation));
     engineRef.current?.setAiChallengeConfig(
       normalizeAiDuelDifficultyTier(currentAiPrefs.aiDuelTier),
       currentAiPrefs.aiWinStreak ?? 0,
@@ -1159,6 +1170,7 @@ export default function App() {
     currentAiPrefs.tactic,
     currentAiPrefs.squadAssistEnabled,
     currentAiPrefs.squadRoles,
+    currentAiPrefs.squadFormation,
     currentAiPrefs.aiDuelTier,
     currentAiPrefs.aiWinStreak,
     currentAiPrefs.pveChallengeEnabled,
@@ -3156,12 +3168,30 @@ export default function App() {
             }
 
             if (isTower) {
+              const isEqRift = Boolean(summary.isEqualizedRiftMode);
+              const eqRiftFloor = Math.max(0, Math.floor(summary.equalizedRiftFloor ?? 0));
+              const fpCur = normalizeFairProgression(prev.fairProgression);
+              const todayKey = getUtcDateKeyWave11();
+              const nextFairProg =
+                isEqRift && eqRiftFloor > 0
+                  ? {
+                      ...fpCur,
+                      equalizedRift: recordEqualizedRiftClear(
+                        normalizeEqualizedRiftState(fpCur.equalizedRift, todayKey),
+                        eqRiftFloor,
+                        todayKey
+                      ),
+                    }
+                  : prev.fairProgression;
               return withMastery({
                 ...prev,
                 gold: prev.gold + totalGold,
                 gems: prev.gems + totalGems,
                 starDust: (prev.starDust ?? 0) + starDustGain,
-                bestTowerFloor: Math.max(prev.bestTowerFloor ?? 0, towerFloor),
+                bestTowerFloor: isEqRift
+                  ? prev.bestTowerFloor ?? 0
+                  : Math.max(prev.bestTowerFloor ?? 0, towerFloor),
+                fairProgression: nextFairProg,
                 battlePass: nextBp,
                 career: nextCareer,
                 runHistory: nextHistory,
@@ -3742,6 +3772,98 @@ export default function App() {
     [guardFeatureUnlock, playerStats]
   );
 
+  const handleStartEqualizedRift = useCallback(
+    (kitId: EqualizedTrialKitId) => {
+      if (!guardFeatureUnlock('arena')) return;
+      soundEngine.unlock();
+      setSave((prev) => {
+        const fp = normalizeFairProgression(prev.fairProgression);
+        return {
+          ...prev,
+          fairProgression: {
+            ...fp,
+            selectedTrialKitId: kitId,
+          },
+        };
+      });
+      setEnteredGame(true);
+      setRewardsModalTab(null);
+      setTalentsModalOpen(false);
+      setMailModalOpen(false);
+      setVipModalOpen(false);
+      setForgeConfig((prev) => ({ ...prev, open: false }));
+      setGuildModalOpen(false);
+      setDestinyWheelOpen(false);
+      setNightMarketOpen(false);
+      setArenaModalOpen(false);
+      setGachaReveal(null);
+      setPreviewHeroId(null);
+      setRunSummary(null);
+      setDamages([]);
+      setTransitionState({
+        chapterId: 3,
+        isTowerMode: true,
+        isBossRushMode: false,
+        isArenaMode: false,
+        isArenaEqualized: true,
+      });
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current);
+      }
+      transitionTimerRef.current = window.setTimeout(() => {
+        setTransitionState(null);
+      }, 520);
+      setPhase(GamePhase.PLAYING);
+      engineRef.current?.startEqualizedRiftRun(playerStats, kitId, getUtcDateKeyWave11());
+    },
+    [guardFeatureUnlock, playerStats]
+  );
+
+  const handleClaimEqualizedRiftMilestone = useCallback(
+    (floor: number) => {
+      const milestone = EQUALIZED_RIFT_MILESTONES.find((m) => m.floor === floor);
+      if (!milestone) return;
+      setSave((prev) => {
+        const fp = normalizeFairProgression(prev.fairProgression);
+        const rift = normalizeEqualizedRiftState(fp.equalizedRift, getUtcDateKeyWave11());
+        if (rift.seasonBestFloor < floor || rift.claimedMilestones.includes(floor)) {
+          return prev;
+        }
+        const curPity: NonNullable<SaveData['pity']> = prev.pity ?? {
+          mythicRollsSinceEpic: 0,
+          mythicRollsSinceSTier: 0,
+          runeRollsSinceEpic: 0,
+          forgeRollsSinceEpic: 0,
+          forgeRollsSinceLegendary: 0,
+          forgeRelicShards: 0,
+        };
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(
+          `Mốc Tháp Đồng Bộ Tầng ${floor}!`,
+          `+${milestone.gold.toLocaleString('vi-VN')} Vàng · +${milestone.gems} Ngọc · +${milestone.forgeRelicShards} Mảnh Thánh Lò`
+        );
+        return {
+          ...prev,
+          gold: prev.gold + milestone.gold,
+          gems: prev.gems + milestone.gems,
+          starDust: (prev.starDust ?? 0) + milestone.starDust,
+          pity: {
+            ...curPity,
+            forgeRelicShards: (curPity.forgeRelicShards ?? 0) + milestone.forgeRelicShards,
+          },
+          fairProgression: {
+            ...fp,
+            equalizedRift: {
+              ...rift,
+              claimedMilestones: [...rift.claimedMilestones, floor].sort((a, b) => a - b),
+            },
+          },
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
   const handleStartCoopRaid = useCallback(
     (difficulty: CoopRaidDifficulty) => {
       if (!guardFeatureUnlock('coop_raid')) return;
@@ -4038,11 +4160,24 @@ export default function App() {
     setSave((prev) => ({ ...prev, aiPreferences: next }));
     engineRef.current?.setAutoPilot(next.autoPilotEnabled, next.tactic);
     engineRef.current?.setAiSquadConfig(next.squadAssistEnabled, next.squadRoles);
+    engineRef.current?.setSquadFormation(normalizeAiSquadFormation(next.squadFormation));
     engineRef.current?.setAiChallengeConfig(
       normalizeAiDuelDifficultyTier(next.aiDuelTier),
       next.aiWinStreak ?? 0,
       next.pveChallengeEnabled ?? true
     );
+  }, []);
+
+  const handleSelectSquadFormation = useCallback((formationId: AiSquadFormationId) => {
+    const normalized = normalizeAiSquadFormation(formationId);
+    engineRef.current?.setSquadFormation(normalized);
+    setSave((prev) => {
+      const cur = normalizeAiPreferences(prev.aiPreferences);
+      return {
+        ...prev,
+        aiPreferences: { ...cur, squadFormation: normalized },
+      };
+    });
   }, []);
 
   const handleToggleAutoPilotInCombat = useCallback(() => {
@@ -4227,6 +4362,28 @@ export default function App() {
       triggerUpgradeCelebration(
         'Rương Chiến Trường Bang Hội!',
         `+${reward.rewardGold.toLocaleString('vi-VN')} Vàng · +${reward.rewardGems} Ngọc · +${reward.rewardGuildCoins} Xu Bang`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimSpectatorReward = useCallback(
+    (reward: {
+      goldReward: number;
+      gemsReward: number;
+      starDustReward: number;
+      predictedCorrectly: boolean;
+    }) => {
+      soundEngine.playVictory();
+      setSave((prev) => ({
+        ...prev,
+        gold: prev.gold + Math.max(0, reward.goldReward),
+        gems: prev.gems + Math.max(0, reward.gemsReward),
+        starDust: (prev.starDust ?? 0) + Math.max(0, reward.starDustReward),
+      }));
+      triggerUpgradeCelebration(
+        reward.predictedCorrectly ? 'Dự Đoán Chính Xác Khán Đài AI!' : 'Thưởng Cổ Vũ Khán Đài AI!',
+        `+${reward.goldReward.toLocaleString('vi-VN')} Vàng · +${reward.gemsReward} Ngọc · +${reward.starDustReward} Bụi Sao`
       );
     },
     [triggerUpgradeCelebration]
@@ -7330,6 +7487,79 @@ export default function App() {
           nextMetrics = recordPlaytestMilestone(nextMetrics, 'firstSTier');
         }
         return { ...res.nextSave, playtestMetrics: nextMetrics };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleProtectedForgeGear = useCallback(
+    (targetSlot: GearSlot) => {
+      const GOLD_COST = 120;
+      const DUST_COST = 18;
+      setSave((prev) => {
+        if (prev.gold < GOLD_COST || (prev.starDust ?? 0) < DUST_COST) return prev;
+        const policy = getEarlyProgressionPolicy(prev);
+        const rolled = rollProtectedForgeGear(prev.pity, {
+          maxRarity: policy.maxGearRarity,
+        });
+        const slotPool = ALL_TEMPLATE_LIST.filter((t) => t.slot === targetSlot);
+        const chosenTpl =
+          slotPool[Math.floor(Math.random() * slotPool.length)] ?? ALL_TEMPLATE_LIST[0];
+        const crafted: GearInstance = {
+          uid: `w11_forge_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          templateId: chosenTpl.templateId,
+          rarity: rolled.rarity,
+          level: 1,
+        };
+        soundEngine.playForgeCraft();
+        triggerUpgradeCelebration(
+          rolled.hitLegendaryPity
+            ? 'Nổ Bảo Hiểm Huyền Thoại!'
+            : rolled.hitEpicPity
+            ? 'Nổ Bảo Hiểm Sử Thi!'
+            : 'Rèn Bảo Hiểm Thành Công',
+          `${chosenTpl.name} (${RARITY_META[rolled.rarity].label}) · +${rolled.shardsGained} Mảnh Thánh Lò`
+        );
+        return {
+          ...prev,
+          gold: prev.gold - GOLD_COST,
+          starDust: (prev.starDust ?? 0) - DUST_COST,
+          pity: rolled.nextPity,
+          inventory: [...prev.inventory, crafted],
+        };
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleDirectCraftForgeShardGear = useCallback(
+    (targetSlot: GearSlot) => {
+      setSave((prev) => {
+        const policy = getEarlyProgressionPolicy(prev);
+        const res = consumeForgeShardsForDirectCraft(prev.pity, targetSlot, {
+          maxRarity: policy.maxGearRarity,
+        });
+        if (!res.ok) return prev;
+        const slotPool = ALL_TEMPLATE_LIST.filter((t) => t.slot === targetSlot);
+        const sPool = slotPool.filter((t) => t.isSTier);
+        const pool = sPool.length > 0 ? sPool : slotPool;
+        const chosenTpl = pool[Math.floor(Math.random() * pool.length)] ?? ALL_TEMPLATE_LIST[0];
+        const crafted: GearInstance = {
+          uid: `w11_direct_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          templateId: chosenTpl.templateId,
+          rarity: res.rarity,
+          level: 1,
+        };
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(
+          'Đúc Đích Danh 25 Mảnh Thánh Lò!',
+          `${chosenTpl.name} (${RARITY_META[res.rarity].label})`
+        );
+        return {
+          ...prev,
+          pity: res.nextPity,
+          inventory: [...prev.inventory, crafted],
+        };
       });
     },
     [triggerUpgradeCelebration]
@@ -11341,9 +11571,11 @@ export default function App() {
           onHeavyBreakClick={() => engineRef.current?.triggerHeavyBreakStrike()}
           onActiveSkillClick={() => engineRef.current?.triggerHeroActiveSkill()}
           onUltimateClick={() => engineRef.current?.triggerHeroUltimate()}
+          onTriggerWeaponOverdrive={() => engineRef.current?.triggerWeaponOverdrive()}
           onToggleAutoPilot={handleToggleAutoPilotInCombat}
           onSelectAutoPilotTactic={handleSelectAutoPilotTactic}
           onSetCoopTacticalOrder={handleSetCoopTacticalOrder}
+          onSelectSquadFormation={handleSelectSquadFormation}
           onSelectChampionshipTactic={handleSelectChampionshipTactic}
           loadoutPresets={normalizeLoadoutPresets(save.loadoutPresets)}
           activeLoadoutPresetId={save.activeLoadoutPresetId ?? null}
@@ -11785,6 +12017,8 @@ export default function App() {
           onSalvageGear={handleSalvageGear}
           onSafeSalvageExcess={handleSafeSalvageExcess}
           onCraftTargetSlotGear={handleCraftEarlyTargetGear}
+          onProtectedForgeGear={handleProtectedForgeGear}
+          onDirectCraftForgeShardGear={handleDirectCraftForgeShardGear}
           onCraftForgeRecipe={handleCraftForgeRecipe}
           onReforgeGear={handleReforgeGear}
           onAwakenGear={handleAwakenGear}
@@ -11846,6 +12080,8 @@ export default function App() {
           onToggleEqualizedMode={handleToggleArenaEqualizedMode}
           onStartDuel={handleStartArenaDuel}
           onStartEqualizedTrial={handleStartEqualizedTrial}
+          onStartEqualizedRift={handleStartEqualizedRift}
+          onClaimEqualizedRiftMilestone={handleClaimEqualizedRiftMilestone}
           onChallengeLiveAi={handleChallengeLiveAiById}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onBuyTicket={handleBuyArenaTicket}
@@ -12124,6 +12360,7 @@ export default function App() {
           onClaimServerBountyReward={handleClaimServerBountyReward}
           onStartGuildWarBastion={handleStartGuildWarBastion}
           onClaimGuildWarLiveReward={handleClaimGuildWarLiveReward}
+          onClaimSpectatorReward={handleClaimSpectatorReward}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onClose={() => setLiveAiHubOpen(false)}
         />

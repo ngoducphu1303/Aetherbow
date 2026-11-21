@@ -144,6 +144,29 @@ import {
   tickElementalResonanceTimers,
 } from './wave10FivePillars';
 import {
+  activateWeaponOverdrive,
+  AI_SQUAD_FORMATIONS,
+  AiSquadFormationId,
+  chargeWeaponOverdrive,
+  CinematicCameraState,
+  computeEqualizedRiftModifiers,
+  createIdleCinematicCameraState,
+  createInitialWeaponOverdriveState,
+  damageInteractiveHazard,
+  formatSquadPingBanner,
+  generateInteractiveBattlefieldHazards,
+  getDailyRiftMutators,
+  getUtcDateKeyWave11,
+  InteractiveHazardSpec,
+  normalizeAiSquadFormation,
+  OverdriveWeaponArchetype,
+  stepCinematicCamera,
+  stepWeaponOverdrive,
+  triggerCinematicCamera,
+  WeaponOverdriveBuffs,
+  WeaponOverdriveState,
+} from './wave11FivePillars';
+import {
   computePowerPressure,
   getTowerRecommendedPower,
   PowerPressureEvaluation,
@@ -415,6 +438,7 @@ import {
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
+const _scaleOne = new THREE.Vector3(1, 1, 1);
 const _mat4 = new THREE.Matrix4();
 const _dummy = new THREE.Object3D();
 const _skyCol = new THREE.Color();
@@ -783,6 +807,8 @@ export interface EngineCallbacks {
       trialGauntletKitId?: EqualizedTrialKitId;
       guildWarBastionId?: GuildWarBastionId;
       combatTelemetry?: PlayerCombatTelemetryInput;
+      isEqualizedRiftMode?: boolean;
+      equalizedRiftFloor?: number;
     }
   ) => void;
   onProgressEvent?: (ev: {
@@ -1212,6 +1238,28 @@ export class GameEngine {
     storm: 0,
     poison: 0,
   };
+  // Wave 11: Weapon Overdrive, 3D Interactive Battlefield Hazards, Cinematic Camera, Equalized Rift & Squad Formation
+  private weaponOverdrive: WeaponOverdriveState = createInitialWeaponOverdriveState('bow');
+  private weaponOverdriveBuffs: WeaponOverdriveBuffs = {
+    atkMult: 1,
+    aspdMult: 1,
+    critChanceBonus: 0,
+    pierceBonus: 0,
+  };
+  private weaponOverdriveRingMesh: THREE.Mesh | null = null;
+  private wave11Hazards: Array<{
+    spec: InteractiveHazardSpec;
+    group: THREE.Group;
+    core: THREE.Mesh;
+    ring: THREE.Mesh;
+  }> = [];
+  private cinematicCamera: CinematicCameraState = createIdleCinematicCameraState(false);
+  private isEqualizedRiftMode = false;
+  private equalizedRiftMutatorsLabel: string | null = null;
+  private equalizedRiftOverdriveMult = 1.0;
+  private squadFormationId: AiSquadFormationId = 'break_focus';
+  private squadPingBanner: string | null = null;
+  private squadPingBannerTimer = 0;
 
   private phase: GamePhase = GamePhase.TITLE;
   private lobbyViewMode: 'battle' | 'gear' | 'heroes' | 'runes' | 'vault' = 'battle';
@@ -4895,6 +4943,112 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
+  public startEqualizedRiftRun(
+    stats: ComputedPlayerStats,
+    kitId: EqualizedTrialKitId,
+    dateKey = getUtcDateKeyWave11()
+  ): void {
+    const kit = EQUALIZED_TRIAL_KITS[kitId] ?? EQUALIZED_TRIAL_KITS.assassin_counter;
+    const mutators = getDailyRiftMutators(dateKey);
+    const mods = computeEqualizedRiftModifiers(1, mutators);
+    const eqStats: ComputedPlayerStats = {
+      ...stats,
+      heroId: kit.heroId,
+      maxHp: kit.baseMaxHp,
+      attack: Math.round(kit.baseAttack * mods.playerAtkMult),
+      attackSpeedMult: Number((kit.attackSpeedMult * mods.playerAspdMult).toFixed(3)),
+      moveSpeed: kit.moveSpeed,
+      critChance: kit.baseCritChance,
+      critDamage: kit.baseCritDamage,
+      damageReduction: 0.1,
+    };
+    this.startEndlessTower(eqStats, 3);
+    this.isEqualizedRiftMode = true;
+    this.equalizedRiftMutatorsLabel = mods.summaryLabel;
+    this.equalizedRiftOverdriveMult = mods.overdriveChargeMult;
+    this.stageBannerText = `THÁP VÔ HẠN ĐỒNG BỘ · TẦNG 1 · ${mods.summaryLabel.toUpperCase()}`;
+    this.stageBannerTimer = 3.2;
+    this.syncHudImmediate();
+  }
+
+  public triggerWeaponOverdrive(): boolean {
+    if (this.phase !== GamePhase.PLAYING) return false;
+    const arch: OverdriveWeaponArchetype =
+      this.baseStats.weaponArchetype === 'staff'
+        ? 'staff'
+        : this.baseStats.weaponArchetype === 'claw'
+        ? 'claw'
+        : 'bow';
+    const res = activateWeaponOverdrive(this.weaponOverdrive, arch);
+    if (!res.activated) return false;
+    this.weaponOverdrive = res.nextState;
+    this.weaponOverdriveBuffs = {
+      atkMult: 1.28,
+      aspdMult: 1.32,
+      critChanceBonus: 0.18,
+      pierceBonus: 2,
+    };
+    this.shakeIntensity = Math.max(this.shakeIntensity, 0.36);
+    this.spawnShockwave(this.px, this.pz, this.weaponOverdrive.auraHex, 5.2, 0.44);
+    this.spawnParticles(this.px, 1.1, this.pz, this.weaponOverdrive.auraHex, 24);
+    this.spawnImpactLight(this.px, 1.5, this.pz, 'ultimate');
+    soundEngine.playCoopResonanceChord();
+    if (res.calloutText) {
+      this.emitFloatingNumber(this.px, 2.55, this.pz, 0, true, false, 'storm', res.calloutText, true);
+    }
+    if (!this.weaponOverdriveRingMesh) {
+      this.weaponOverdriveRingMesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.92, 1.26, 32),
+        new THREE.MeshBasicMaterial({
+          color: this.weaponOverdrive.auraHex,
+          transparent: true,
+          opacity: 0.78,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        })
+      );
+      this.weaponOverdriveRingMesh.rotation.x = -Math.PI / 2;
+      this.entitiesGroup.add(this.weaponOverdriveRingMesh);
+    } else {
+      (this.weaponOverdriveRingMesh.material as THREE.MeshBasicMaterial).color.setHex(
+        this.weaponOverdrive.auraHex
+      );
+      this.weaponOverdriveRingMesh.visible = true;
+    }
+    this.syncHudImmediate();
+    return true;
+  }
+
+  public setSquadFormation(formationId: AiSquadFormationId): void {
+    const safeId = normalizeAiSquadFormation(formationId);
+    this.squadFormationId = safeId;
+    const mappedOrder: CoopTacticalOrder =
+      safeId === 'guard_sustain'
+        ? 'protect_player'
+        : safeId === 'elemental_chain'
+        ? 'focus_boss'
+        : 'break_guard';
+    this.coopTacticalOrder = mappedOrder;
+    const allyName = this.coopAllies[0]?.name ?? 'Tổ Đội AI';
+    this.squadPingBanner = formatSquadPingBanner(safeId, allyName);
+    this.squadPingBannerTimer = 3.0;
+    if (this.phase === GamePhase.PLAYING) {
+      soundEngine.playCoopTacticalPing();
+      this.emitFloatingNumber(
+        this.px,
+        2.35,
+        this.pz,
+        0,
+        true,
+        false,
+        undefined,
+        `ĐỘI HÌNH: ${AI_SQUAD_FORMATIONS[safeId].shortLabel.toUpperCase()}`
+      );
+      this.syncHudImmediate();
+    }
+  }
+
   public startArenaDuel(
     stats: ComputedPlayerStats,
     opponent: ArenaOpponent,
@@ -6665,6 +6819,28 @@ export class GameEngine {
     this.bossPartBrokenBanner = null;
     this.bossPartBrokenBannerTimer = 0;
     this.runBossPartStarDust = 0;
+    const initOverdriveArch: OverdriveWeaponArchetype =
+      stats.weaponArchetype === 'staff'
+        ? 'staff'
+        : stats.weaponArchetype === 'claw'
+        ? 'claw'
+        : 'bow';
+    this.weaponOverdrive = createInitialWeaponOverdriveState(initOverdriveArch);
+    this.weaponOverdriveBuffs = { atkMult: 1, aspdMult: 1, critChanceBonus: 0, pierceBonus: 0 };
+    if (this.weaponOverdriveRingMesh) {
+      this.weaponOverdriveRingMesh.visible = false;
+    }
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    this.cinematicCamera = createIdleCinematicCameraState(reducedMotion);
+    if (!this.isTowerMode) {
+      this.isEqualizedRiftMode = false;
+      this.equalizedRiftMutatorsLabel = null;
+      this.equalizedRiftOverdriveMult = 1.0;
+    }
+    this.squadPingBanner = null;
+    this.squadPingBannerTimer = 0;
     this.runLeftDodges = 0;
     this.runRightDodges = 0;
     this.runDashCount = 0;
@@ -7264,6 +7440,12 @@ export class GameEngine {
     this.resonanceTraps = [];
     this.wave9Props?.forEach((p) => this.releaseObject(p.group));
     this.wave9Props = [];
+    this.wave11Hazards?.forEach((h) => this.releaseObject(h.group));
+    this.wave11Hazards = [];
+    if (this.weaponOverdriveRingMesh) {
+      this.releaseObject(this.weaponOverdriveRingMesh);
+      this.weaponOverdriveRingMesh = null;
+    }
     this.wave9PropBuffTimer = 0;
     this.wave9PropAtkBonusPct = 0;
     this.wave9PropAspdBonusPct = 0;
@@ -7975,6 +8157,104 @@ export class GameEngine {
           core,
           ring: groundBeacon,
         });
+      });
+    }
+
+    // Wave 11: Composite 5-part PBR 3D Interactive Battlefield Hazards (Frost Crystal / Magma Brazier / Volt Obelisk)
+    if (!this.isTrainingMode && !this.isArenaMode) {
+      const hazardSpecs = generateInteractiveBattlefieldHazards(
+        this.currentChapter.id,
+        this.stageIndex,
+        {
+          isBossRoom:
+            this.isTowerMode
+              ? this.towerFloor % 3 === 0
+              : this.stageIndex >= this.currentChapter.stages.length - 1,
+          arenaHalfW: ARENA_HALF_W,
+          arenaHalfD: ARENA_HALF_D,
+        }
+      );
+      hazardSpecs.forEach((spec) => {
+        const group = new THREE.Group();
+        group.position.set(spec.x, 0, spec.z);
+
+        // Part 1: Grounded hexagonal stone pedestal (matte stone, high roughness)
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.54, 0.72, 0.24, 6),
+          new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.88,
+            metalness: 0.14,
+          })
+        );
+        base.position.y = 0.12;
+        base.castShadow = true;
+        base.receiveShadow = true;
+
+        // Part 2: Metallic collar trim (high metalness, low roughness for >= 0.25 delta)
+        const collar = new THREE.Mesh(
+          new THREE.TorusGeometry(0.46, 0.06, 8, 18),
+          new THREE.MeshStandardMaterial({
+            color: 0x94a3b8,
+            roughness: 0.24,
+            metalness: 0.86,
+          })
+        );
+        collar.rotation.x = Math.PI / 2;
+        collar.position.y = 0.28;
+
+        // Part 3: Reactive elemental spire/vessel
+        const coreGeo =
+          spec.kind === 'frost_crystal'
+            ? new THREE.ConeGeometry(0.38, 1.15, 6)
+            : spec.kind === 'magma_brazier'
+            ? new THREE.DodecahedronGeometry(0.42, 0)
+            : new THREE.OctahedronGeometry(0.42, 0);
+        const core = new THREE.Mesh(
+          coreGeo,
+          new THREE.MeshStandardMaterial({
+            color: spec.primaryHex,
+            emissive: spec.primaryHex,
+            emissiveIntensity: 1.4,
+            roughness: 0.2,
+            metalness: 0.35,
+          })
+        );
+        core.position.y = 0.92;
+        core.castShadow = true;
+
+        // Part 4: Floating crown ring
+        const crown = new THREE.Mesh(
+          new THREE.TorusGeometry(0.32, 0.035, 8, 16),
+          new THREE.MeshStandardMaterial({
+            color: spec.accentHex,
+            emissive: spec.accentHex,
+            emissiveIntensity: 1.15,
+            roughness: 0.22,
+            metalness: 0.72,
+          })
+        );
+        crown.rotation.x = Math.PI / 2;
+        crown.position.y = 1.48;
+
+        // Part 5: Ground blast indicator ring
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(0.78, 0.96, 24),
+          new THREE.MeshBasicMaterial({
+            color: spec.primaryHex,
+            transparent: true,
+            opacity: 0.54,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.03;
+
+        group.add(base, collar, core, crown, ring);
+        this.entitiesGroup.add(group);
+        this.wave11Hazards.push({ spec, group, core, ring });
       });
     }
   }
@@ -8700,6 +8980,7 @@ export class GameEngine {
       this.bossIntroFocusZ = z;
       if (!reducedMotion) {
         this.bossIntroTimer = this.bossIntroDuration;
+        this.cinematicCamera = triggerCinematicCamera('boss_intro', x, z, false);
       }
       this.spawnUltColumn(x, z, this.currentChapter.trimHex, 0.92);
       this.spawnShockwave(x, z, 0xfbbf24, 5.2, 0.55);
@@ -9049,6 +9330,8 @@ export class GameEngine {
       this.triggerHeroActiveSkill();
     } else if (code === kb.cycleCamera && !this.keys[code]) {
       this.quickCycleCombatCamera();
+    } else if (code === 'KeyX' && !this.keys[code]) {
+      this.triggerWeaponOverdrive();
     } else if ((this.isCoopRaidMode || this.coopAllies.length > 0) && !this.keys[code]) {
       if (code === 'Digit1') {
         this.setCoopTacticalOrder('focus_boss');
@@ -9056,6 +9339,12 @@ export class GameEngine {
         this.setCoopTacticalOrder('break_guard');
       } else if (code === 'Digit3') {
         this.setCoopTacticalOrder('protect_player');
+      } else if (code === 'Digit4') {
+        this.setSquadFormation('break_focus');
+      } else if (code === 'Digit5') {
+        this.setSquadFormation('guard_sustain');
+      } else if (code === 'Digit6') {
+        this.setSquadFormation('elemental_chain');
       }
     }
     this.keys[code] = true;
@@ -11151,6 +11440,48 @@ export class GameEngine {
     }
     const simDt = dt * timeScale;
     this.elementalResonance = tickElementalResonanceTimers(this.elementalResonance, simDt);
+    const odStep = stepWeaponOverdrive(this.weaponOverdrive, simDt);
+    this.weaponOverdrive = odStep.nextState;
+    this.weaponOverdriveBuffs = odStep.buffs;
+    if (this.weaponOverdriveRingMesh) {
+      this.weaponOverdriveRingMesh.visible = this.weaponOverdrive.active;
+      if (this.weaponOverdrive.active) {
+        this.weaponOverdriveRingMesh.position.set(this.px, 0.08, this.pz);
+        this.weaponOverdriveRingMesh.rotation.z += simDt * 3.8;
+        const pulse = 1 + Math.sin(this.elapsed * 9) * 0.1;
+        this.weaponOverdriveRingMesh.scale.setScalar(pulse);
+      }
+    }
+    if (odStep.finisherSurgeTriggered) {
+      const surgeDmg = Math.max(85, Math.round(this.baseStats.attack * 2.4));
+      this.spawnShockwave(this.px, this.pz, this.weaponOverdrive.auraHex, 6.2, 0.46);
+      this.spawnParticles(this.px, 1.15, this.pz, this.weaponOverdrive.auraHex, 26);
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.34);
+      this.emitFloatingNumber(
+        this.px,
+        2.5,
+        this.pz,
+        surgeDmg,
+        true,
+        false,
+        'storm',
+        'XUNG KÍCH THỨC TỈNH!',
+        true
+      );
+      soundEngine.playImpactScorchThump(computeSpatialPan(this.px, ARENA_HALF_W));
+      for (const en of [...this.enemies]) {
+        if (!en || en.dead || en.spawnTimer > 0) continue;
+        if (Math.hypot(en.x - this.px, en.z - this.pz) <= 6.2 + en.radius) {
+          this.damageEnemy(en, surgeDmg, true, false, false, true, false, 'XUNG KÍCH', 'ultimate');
+        }
+      }
+    }
+    if (this.squadPingBannerTimer > 0) {
+      this.squadPingBannerTimer = Math.max(0, this.squadPingBannerTimer - dt);
+      if (this.squadPingBannerTimer <= 0) {
+        this.squadPingBanner = null;
+      }
+    }
     if (this.bossPartBrokenBannerTimer > 0) {
       this.bossPartBrokenBannerTimer = Math.max(0, this.bossPartBrokenBannerTimer - dt);
       if (this.bossPartBrokenBannerTimer <= 0) {
@@ -11709,6 +12040,9 @@ export class GameEngine {
     }
     if (this.wave9PropBuffTimer > 0 && this.wave9PropAtkBonusPct > 0) {
       mult *= 1 + this.wave9PropAtkBonusPct / 100;
+    }
+    if (this.weaponOverdriveBuffs.atkMult > 1) {
+      mult *= this.weaponOverdriveBuffs.atkMult;
     }
     return mult;
   }
@@ -12277,13 +12611,14 @@ export class GameEngine {
     }
 
     const speedBonus =
-      1 +
-      (this.activeSkills.aspd_boost ?? 0) * 0.24 +
-      (this.activeSkills.power_trio ?? 0) * 0.2 +
-      (this.alexAspdBuffTimer > 0 ? 0.15 : 0) +
-      (this.alexCadenceTimer > 0 ? 0.28 : 0) +
-      (this.alexOverdriveTimer > 0 ? 0.45 : 0) +
-      (this.activeRoomChaosEvent?.id === 'wind_frenzy' ? 0.35 : 0);
+      (1 +
+        (this.activeSkills.aspd_boost ?? 0) * 0.24 +
+        (this.activeSkills.power_trio ?? 0) * 0.2 +
+        (this.alexAspdBuffTimer > 0 ? 0.15 : 0) +
+        (this.alexCadenceTimer > 0 ? 0.28 : 0) +
+        (this.alexOverdriveTimer > 0 ? 0.45 : 0) +
+        (this.activeRoomChaosEvent?.id === 'wind_frenzy' ? 0.35 : 0)) *
+      this.weaponOverdriveBuffs.aspdMult;
     const baseAttackInterval = Math.max(
       0.13,
       0.56 / (this.baseStats.attackSpeedMult * speedBonus)
@@ -15017,6 +15352,90 @@ export class GameEngine {
         }
       }
 
+      // Wave 11: Shootable 3D Interactive Battlefield Hazards (Frost Crystal / Magma Brazier / Volt Obelisk)
+      let detonatedHazard = false;
+      for (const hz of this.wave11Hazards) {
+        if (hz.spec.detonated) continue;
+        if (Math.hypot(p.x - hz.spec.x, p.z - hz.spec.z) < hz.spec.hitRadius + p.radius + 0.16) {
+          const hitRes = damageInteractiveHazard(hz.spec, p.damage, this.baseStats.attack);
+          hz.spec = hitRes.nextHazard;
+          if (hitRes.overdriveChargeGain > 0) {
+            this.weaponOverdrive = chargeWeaponOverdrive(
+              this.weaponOverdrive,
+              hitRes.overdriveChargeGain,
+              {
+                styleGrade: this.styleMomentum.grade,
+                mutatorMult: this.equalizedRiftOverdriveMult,
+              }
+            );
+          }
+          if (hitRes.detonatedNow) {
+            hz.group.visible = false;
+            detonatedHazard = true;
+            const hzPan = computeSpatialPan(hz.spec.x, ARENA_HALF_W);
+            soundEngine.playBossBreakShatter(hzPan);
+            soundEngine.playImpactScorchThump(hzPan);
+            this.shakeIntensity = Math.max(this.shakeIntensity, 0.42);
+            this.spawnArmorShards(hz.spec.x, 1.15, hz.spec.z, hz.spec.primaryHex, 14);
+            this.spawnShockwave(hz.spec.x, hz.spec.z, hz.spec.primaryHex, hitRes.blastRadius, 0.46);
+            this.spawnParticles(hz.spec.x, 1.1, hz.spec.z, hz.spec.accentHex, 24);
+            this.emitFloatingNumber(
+              hz.spec.x,
+              2.35,
+              hz.spec.z,
+              hitRes.blastDamage,
+              true,
+              false,
+              hitRes.element,
+              hitRes.calloutText ?? 'KÍCH NỔ MÔI TRƯỜNG!',
+              true
+            );
+            const resAdv = advanceElementalResonance(
+              this.elementalResonance,
+              hitRes.element,
+              hitRes.blastDamage
+            );
+            this.elementalResonance = resAdv.nextState;
+            for (const en of [...this.enemies]) {
+              if (!en || en.dead || en.spawnTimer > 0) continue;
+              if (Math.hypot(en.x - hz.spec.x, en.z - hz.spec.z) <= hitRes.blastRadius + en.radius) {
+                if (hitRes.stunSec > 0 && !en.isBoss) {
+                  en.stunTimer = Math.max(en.stunTimer ?? 0, hitRes.stunSec);
+                }
+                if (en.isBoss && en.maxBreakShield && en.breakShield && en.breakShield > 0) {
+                  const brk = Math.round(en.maxBreakShield * hitRes.breakShieldRatio);
+                  en.breakShield = Math.max(0, en.breakShield - brk);
+                  if (this.bossStaggerOwnerId === en.id && this.bossStaggerState) {
+                    this.bossStaggerState.current = Math.min(
+                      this.bossStaggerState.max,
+                      this.bossStaggerState.current + brk
+                    );
+                  }
+                }
+                this.damageEnemy(
+                  en,
+                  hitRes.blastDamage,
+                  true,
+                  hitRes.element === 'fire',
+                  hitRes.element === 'ice',
+                  hitRes.element === 'storm',
+                  false,
+                  hz.spec.label,
+                  'elemental'
+                );
+              }
+            }
+          } else {
+            this.spawnParticles(hz.spec.x, 0.95, hz.spec.z, hz.spec.accentHex, 6);
+            hz.core.scale.setScalar(1.18);
+          }
+          p.active = false;
+          p.mesh.visible = false;
+          break;
+        }
+      }
+      if (detonatedHazard || !p.active) continue;
+
       // AAA Wave 7: Orbiting Boss Weak-Point Crystal hit check
       if (this.bossWeakPointState && this.bossWeakPointState.active && this.bossWeakPointEnemyId !== null) {
         const wpBoss = this.enemies.find((en) => en.id === this.bossWeakPointEnemyId);
@@ -15035,10 +15454,11 @@ export class GameEngine {
 
           const critStacks = this.activeSkills.crit_mastery ?? 0;
           let critChance = Math.min(
-            0.9,
+            0.95,
             this.baseStats.critChance +
               critStacks * 0.12 +
               (this.alexOverdriveTimer > 0 ? 0.25 : 0) +
+              this.weaponOverdriveBuffs.critChanceBonus +
               (this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.critBonus : 0)
           );
           if (this.hasRune('rune_flame') && (e.burnTimer > 0 || e.poisonDps > 0)) {
@@ -15410,6 +15830,11 @@ export class GameEngine {
       if (frost) this.runElemCounts.ice += 1;
       if (storm) this.runElemCounts.storm += 1;
       if (poison) this.runElemCounts.poison += 1;
+      const overdriveGain = isCrit ? 6.5 : 3.8;
+      this.weaponOverdrive = chargeWeaponOverdrive(this.weaponOverdrive, overdriveGain, {
+        styleGrade: this.styleMomentum.grade,
+        mutatorMult: this.equalizedRiftOverdriveMult,
+      });
     }
 
     // Wave 7: Deterministic Boss Stagger / Guard-Break Mechanic (4.0s Guard Break & +45% Vulnerability)
@@ -17137,6 +17562,8 @@ export class GameEngine {
         trialGauntletKitId: this.isArenaMode ? this.trialGauntletKitId ?? undefined : undefined,
         guildWarBastionId: this.isGuildWarMode ? this.guildWarBastionId ?? undefined : undefined,
         combatTelemetry: this.getCombatTelemetrySnapshot(),
+        isEqualizedRiftMode: this.isEqualizedRiftMode || undefined,
+        equalizedRiftFloor: this.isEqualizedRiftMode ? Math.max(0, this.towerFloor - 1) : undefined,
         isBloodMoonMode: this.isBloodMoonMode,
         bloodMoonScore: this.isBloodMoonMode ? Math.round(this.bloodMoonScore) : undefined,
         bloodMoonWave: this.isBloodMoonMode ? this.bloodMoonWave : undefined,
@@ -18155,6 +18582,18 @@ export class GameEngine {
       }
     }
 
+    // 3c. Wave 11 Interactive 3D Battlefield Hazards animation
+    if (this.wave11Hazards) {
+      for (let i = 0; i < this.wave11Hazards.length; i++) {
+        const hz = this.wave11Hazards[i];
+        if (hz.spec.detonated) continue;
+        hz.core.rotation.y += simDt * 1.9;
+        hz.core.scale.lerp(_scaleOne, Math.min(1, realDt * 8));
+        const rMat = hz.ring.material as THREE.MeshBasicMaterial;
+        rMat.opacity = 0.44 + Math.sin(this.elapsed * 3.8 + i * 1.3) * 0.14;
+      }
+    }
+
     // 4. Pooled Elemental Footstep Ripples expand & fade
     if (this.footstepRipplePool) {
       for (let i = 0; i < this.footstepRipplePool.length; i++) {
@@ -18383,6 +18822,18 @@ export class GameEngine {
       targetCamZ = THREE.MathUtils.lerp(targetCamZ, THREE.MathUtils.clamp(fxFocusZ, 3.4, 15.6), effectiveFinisherBlend);
     }
 
+    const cinCam = stepCinematicCamera(this.cinematicCamera, dt);
+    this.cinematicCamera = cinCam.nextState;
+    if (cinCam.active) {
+      targetCamX = THREE.MathUtils.lerp(
+        targetCamX,
+        THREE.MathUtils.clamp(this.cinematicCamera.focusX + Math.sin(cinCam.orbitYawOffset) * 2.6, -6.2, 6.2),
+        cinCam.focusBlend
+      );
+      targetCamY += cinCam.heightOffset;
+      targetCamZ = THREE.MathUtils.clamp(targetCamZ + cinCam.zoomOffset, 4.2, 24.6);
+    }
+
     if (entryFlyBlend > 0.001) {
       this.camera.position.x = THREE.MathUtils.lerp(targetCamX, this.arenaEntryStartCam.x, entryFlyBlend);
       this.camera.position.y = THREE.MathUtils.lerp(targetCamY, this.arenaEntryStartCam.y, entryFlyBlend);
@@ -18432,6 +18883,7 @@ export class GameEngine {
       (wave5FinisherCam.active ? wave5FinisherCam.fovDelta : finisherKin.fovBoost) +
       wave9PhaseCounterCam.fovPulseDelta +
       (wave9ExecCam.active ? wave9ExecCam.fovDelta : 0) +
+      (cinCam.active ? cinCam.fovDelta : 0) +
       ultCutin.fovPunch;
     if (Math.abs(this.camera.fov - desiredFov) > 0.015) {
       this.camera.fov = THREE.MathUtils.damp(this.camera.fov, desiredFov, 7.5, dt);
@@ -18599,6 +19051,15 @@ export class GameEngine {
     this.executionFinisherTimer = EXECUTION_FINISHER_DURATION_SEC;
     this.executionFinisherFocusX = eligible.x;
     this.executionFinisherFocusZ = eligible.z;
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    this.cinematicCamera = triggerCinematicCamera(
+      'execution_finisher',
+      eligible.x,
+      eligible.z,
+      prefersReducedMotion
+    );
 
     const pan = computeSpatialPan(eligible.x, ARENA_HALF_W);
     soundEngine.playBossFinisherBoom(pan);
@@ -19397,6 +19858,18 @@ export class GameEngine {
         : null,
       trialGauntletRound: this.trialGauntletRound,
       guildWarBastionLabel: this.guildWarBastionLabel,
+      weaponOverdrive: {
+        charge: Math.round(this.weaponOverdrive.charge),
+        active: this.weaponOverdrive.active,
+        remainingSec: Number(this.weaponOverdrive.activeRemainingSec.toFixed(1)),
+        maxDurationSec: this.weaponOverdrive.maxDurationSec,
+        stanceLabel: this.weaponOverdrive.stanceLabel,
+      },
+      activeRiftMutators: this.isEqualizedRiftMode ? this.equalizedRiftMutatorsLabel : null,
+      equalizedRiftFloor: this.isEqualizedRiftMode ? this.towerFloor : null,
+      squadFormationId: this.squadFormationId,
+      squadPingBanner: this.squadPingBannerTimer > 0 ? this.squadPingBanner : null,
+      interactiveHazardsRemaining: this.wave11Hazards.filter((h) => !h.spec.detonated).length,
     });
   }
 

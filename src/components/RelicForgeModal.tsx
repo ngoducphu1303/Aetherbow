@@ -10,9 +10,16 @@ import {
   RARITY_ORDER,
   getGearPowerScore,
 } from '../data/gearData';
-import { normalizeEarlyForgeProgress } from '../data/earlyProgressionData';
+import {
+  getEarlyProgressionPolicy,
+  normalizeEarlyForgeProgress,
+} from '../data/earlyProgressionData';
 import { computeDropRateCodex } from '../data/progressionAdvisor';
 import { FORGE_RECIPES, getSalvageValue } from '../data/wave3Data';
+import {
+  computeForgePitySummary,
+  FORGE_SHARD_EXCHANGE_COST,
+} from '../engine/wave11FivePillars';
 
 const TARGET_SLOT_LABELS: Record<GearSlot, string> = {
   [GearSlot.WEAPON]: 'Vũ Khí',
@@ -52,6 +59,8 @@ interface RelicForgeModalProps {
   onSalvageGear: (uids: string[]) => void;
   onSafeSalvageExcess?: () => void;
   onCraftTargetSlotGear?: (tier: 'rare' | 'epic' | 's_tier', targetSlot: GearSlot) => void;
+  onProtectedForgeGear?: (targetSlot: GearSlot) => void;
+  onDirectCraftForgeShardGear?: (targetSlot: GearSlot) => void;
   onCraftForgeRecipe: (recipe: ForgeRecipe) => void;
   onReforgeGear: (uid: string, lockedIds: string[]) => void;
   onAwakenGear: (uid: string) => void;
@@ -69,6 +78,8 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   onSalvageGear,
   onSafeSalvageExcess,
   onCraftTargetSlotGear,
+  onProtectedForgeGear,
+  onDirectCraftForgeShardGear,
   onCraftForgeRecipe,
   onReforgeGear,
   onAwakenGear,
@@ -465,6 +476,99 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Pillar 3 Wave 11: Lò Đúc Bảo Hiểm Trang Bị (6 Sử Thi / 15 Huyền Thoại / Đúc 25 Mảnh Thánh Lò) */}
+            {(onProtectedForgeGear || onDirectCraftForgeShardGear) && (() => {
+              const policy = getEarlyProgressionPolicy(save);
+              const canRollLeg =
+                RARITY_ORDER.indexOf(policy.maxGearRarity) >= RARITY_ORDER.indexOf(Rarity.LEGENDARY);
+              const pitySummary = computeForgePitySummary(save.pity, canRollLeg);
+              const canAffordForge = save.gold >= 120 && (save.starDust ?? 0) >= 18;
+              return (
+                <div className="rounded-2xl bg-[#091026]/95 border border-amber-400/45 p-3.5 mb-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span>Lò Đúc Bảo Hiểm Trang Bị · Minh Bạch 100%</span>
+                      </div>
+                      <div className="text-[11px] text-slate-300 mt-0.5">
+                        Chắc chắn Sử Thi ở lần {pitySummary.epicMax} · Chắc chắn Huyền Thoại ở lần {pitySummary.legendaryMax} · Tích Mảnh Thánh Lò để đúc chọn ô không lệch!
+                      </div>
+                    </div>
+                    <div className="font-mono-nums tabular-nums text-[11px] font-black text-amber-200 text-right">
+                      <div>
+                        Sử Thi: {pitySummary.epicCurrent}/{pitySummary.epicMax} · Huyền Thoại:{' '}
+                        {pitySummary.legendaryCurrent}/{pitySummary.legendaryMax}
+                      </div>
+                      <div className="text-sky-300">
+                        Tỷ lệ HT: {pitySummary.effectiveLegendaryRatePct}%
+                        {pitySummary.isSoftPityActive ? ' (Bảo Hiểm Mềm BẬT)' : ''} · Mảnh Thánh Lò:{' '}
+                        {pitySummary.forgeRelicShards}/{FORGE_SHARD_EXCHANGE_COST}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    {(Object.values(GearSlot) as GearSlot[]).map((slot) => {
+                      const active = selectedTargetSlot === slot;
+                      return (
+                        <button
+                          key={`w11-${slot}`}
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setSelectedTargetSlot(slot);
+                          }}
+                          className={`px-2 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer border transition-colors ${
+                            active
+                              ? 'bg-amber-400/20 border-amber-300 text-amber-100'
+                              : 'bg-[#070b1a] border-slate-800 text-slate-300 hover:border-slate-600'
+                          }`}
+                        >
+                          {TARGET_SLOT_LABELS[slot]}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {onProtectedForgeGear && (
+                      <button
+                        type="button"
+                        disabled={!canAffordForge}
+                        onClick={() => {
+                          soundEngine.playUiClick(1.1);
+                          onProtectedForgeGear(selectedTargetSlot);
+                        }}
+                        className="a2-yellow-btn py-2.5 px-3.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                      >
+                        <Hammer className="w-4 h-4 shrink-0" />
+                        <span>
+                          Rèn Bảo Hiểm [{TARGET_SLOT_LABELS[selectedTargetSlot]}] · 120 Vàng + 18 Bụi
+                        </span>
+                      </button>
+                    )}
+                    {onDirectCraftForgeShardGear && (
+                      <button
+                        type="button"
+                        disabled={!pitySummary.canDirectCraftGear}
+                        onClick={() => {
+                          soundEngine.playVictory();
+                          onDirectCraftForgeShardGear(selectedTargetSlot);
+                        }}
+                        className="a2-emerald-btn py-2.5 px-3.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                      >
+                        <Crown className="w-4 h-4 shrink-0" />
+                        <span>
+                          Đúc Đích Danh [{TARGET_SLOT_LABELS[selectedTargetSlot]}] ({pitySummary.forgeRelicShards}/{FORGE_SHARD_EXCHANGE_COST} Mảnh)
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Pillar 3 Wave 5: Target-Slot Forge (Pick exact 1 of 6 slots) + Transparent Drop-Rate Codex */}
             {onCraftTargetSlotGear && (

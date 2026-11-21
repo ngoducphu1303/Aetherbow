@@ -29,6 +29,12 @@ import {
   EQUALIZED_TRIAL_ROUNDS,
   type EqualizedTrialKitId,
 } from '../engine/wave10FivePillars';
+import {
+  EQUALIZED_RIFT_MILESTONES,
+  getDailyRiftMutators,
+  getUtcDateKeyWave11,
+  normalizeEqualizedRiftState,
+} from '../engine/wave11FivePillars';
 import { AiLivePlayerProfile, AiRivalRecord, ArenaOpponent, SaveData } from '../types/game';
 import { GoldCoinIcon, HeroCrestSvg, SoulGemIcon } from './GameIcons';
 
@@ -42,6 +48,8 @@ interface ArenaModalProps {
   onToggleEqualizedMode?: (enabled: boolean) => void;
   onStartDuel: (opponent: ArenaOpponent) => void;
   onStartEqualizedTrial?: (kitId: EqualizedTrialKitId, round: 1 | 2 | 3) => void;
+  onStartEqualizedRift?: (kitId: EqualizedTrialKitId) => void;
+  onClaimEqualizedRiftMilestone?: (floor: number) => void;
   onChallengeLiveAi?: (aiPlayerId: string) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
   onBuyTicket: () => void;
@@ -60,6 +68,8 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
   onToggleEqualizedMode,
   onStartDuel,
   onStartEqualizedTrial,
+  onStartEqualizedRift,
+  onClaimEqualizedRiftMilestone,
   onChallengeLiveAi,
   onInspectAiPlayer,
   onBuyTicket,
@@ -67,7 +77,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
   onOpenArenaShop,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<'duel' | 'trial' | 'ranks' | 'ladder'>('duel');
+  const [subTab, setSubTab] = useState<'duel' | 'trial' | 'rift' | 'ranks' | 'ladder'>('duel');
   const [ladderFilter, setLadderFilter] = useState<LeaderboardFilterMode>('all');
   const [imgErr, setImgErr] = useState(false);
   const [aiPlayers, setAiPlayers] = useState<AiLivePlayerProfile[]>(
@@ -236,8 +246,8 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
           </div>
         </div>
 
-        {/* 4 Sub-Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        {/* 5 Sub-Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
           <button
             type="button"
             onClick={() => {
@@ -262,7 +272,20 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
             }`}
           >
             <Shield className="w-4 h-4 shrink-0" />
-            <span>Thử Nghiệm Đồng Bộ</span>
+            <span>Thử Nghiệm</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              setSubTab('rift');
+            }}
+            className={`py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+              subTab === 'rift' ? 'a2-purple-btn shadow-lg' : 'a2-slate-btn text-slate-300'
+            }`}
+          >
+            <Zap className="w-4 h-4 shrink-0" />
+            <span>Tháp Đồng Bộ</span>
           </button>
           <button
             type="button"
@@ -805,6 +828,148 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
             </button>
           </div>
         )}
+
+        {subTab === 'rift' && (() => {
+          const todayKey = getUtcDateKeyWave11();
+          const dailyMutators = getDailyRiftMutators(todayKey);
+          const riftState = normalizeEqualizedRiftState(fairProg.equalizedRift, todayKey);
+          return (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-purple-400/45 bg-[#0e0b24]/95 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black text-purple-300 uppercase tracking-wider">
+                    Tháp Vô Hạn Đồng Bộ Mutator · Công Bằng 100%
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Chuẩn hóa hoàn toàn sức mạnh nhân vật · 2 Biến Số (Mutator) xoay vòng mỗi ngày · Càng leo cao thưởng Mảnh Thánh Lò &amp; Ngọc Hồn càng lớn!
+                  </p>
+                </div>
+                <div className="rounded-xl bg-[#070b1a] border border-purple-400/35 px-3 py-1.5 text-right font-mono-nums tabular-nums">
+                  <div className="text-[10px] text-slate-400">Kỷ Lục Mùa · Hôm Nay ({todayKey})</div>
+                  <div className="text-sm font-black text-amber-300">
+                    Tầng {riftState.seasonBestFloor} · Hôm nay: Tầng {riftState.bestFloorToday}
+                  </div>
+                </div>
+              </div>
+
+              {/* Today's 2 Daily Rotating Mutators */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {dailyMutators.map((mut) => (
+                  <div
+                    key={mut.id}
+                    className="rounded-2xl border border-sky-400/35 bg-[#070b1a] p-3.5 space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-black text-amber-200">{mut.name}</span>
+                      <span className="text-[10px] font-bold text-sky-300 uppercase">
+                        Biến Số Hôm Nay
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-snug">{mut.desc}</p>
+                    <div className="text-[10px] font-mono-nums text-emerald-300 font-bold pt-0.5">
+                      ATK ×{mut.playerAtkMult.toFixed(2)} · Thức Tỉnh ×{mut.overdriveChargeMult.toFixed(2)} · Quái HP ×{mut.enemyHpMult.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Kit Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {EQUALIZED_TRIAL_KIT_LIST.map((kit) => {
+                  const selected = selectedKitId === kit.id;
+                  return (
+                    <button
+                      key={`rift-kit-${kit.id}`}
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.05);
+                        setSelectedKitId(kit.id);
+                      }}
+                      className={`rounded-xl p-3 text-left border transition-colors cursor-pointer ${
+                        selected
+                          ? 'bg-purple-500/20 border-purple-300 ring-1 ring-purple-300/60'
+                          : 'bg-[#070b1a] border-slate-800 hover:border-purple-400/45'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-white">{kit.name}</span>
+                        {selected && <Check className="w-3.5 h-3.5 text-purple-300 shrink-0" />}
+                      </div>
+                      <div className="text-[10px] text-slate-300 mt-1">{kit.perkSummary}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 5 Seasonal Floor Milestones */}
+              <div className="space-y-2">
+                <div className="text-xs font-black text-amber-200">
+                  Mốc Thưởng Tháp Vô Hạn Đồng Bộ (Nhận 1 lần/Mùa)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                  {EQUALIZED_RIFT_MILESTONES.map((ms) => {
+                    const reached = riftState.seasonBestFloor >= ms.floor;
+                    const claimed = riftState.claimedMilestones.includes(ms.floor);
+                    return (
+                      <div
+                        key={ms.floor}
+                        className={`rounded-xl p-2.5 border flex flex-col justify-between gap-2 ${
+                          claimed
+                            ? 'bg-emerald-950/35 border-emerald-500/45'
+                            : reached
+                            ? 'bg-amber-400/15 border-amber-300/80'
+                            : 'bg-[#070b1a] border-slate-800'
+                        }`}
+                      >
+                        <div>
+                          <div className="text-xs font-black text-white">Tầng {ms.floor}</div>
+                          <div className="text-[10px] text-slate-300 mt-0.5 leading-snug">
+                            +{ms.gems} Ngọc · +{ms.forgeRelicShards} Mảnh Lò
+                          </div>
+                          <div className="text-[10px] font-mono-nums text-amber-200">
+                            +{ms.gold.toLocaleString('vi-VN')} Vàng
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!reached || claimed || !onClaimEqualizedRiftMilestone}
+                          onClick={() => {
+                            soundEngine.playVictory();
+                            onClaimEqualizedRiftMilestone?.(ms.floor);
+                          }}
+                          className={`w-full py-1.5 rounded-lg text-[10px] font-black cursor-pointer disabled:cursor-not-allowed ${
+                            claimed
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                              : reached
+                              ? 'a2-yellow-btn text-slate-950'
+                              : 'bg-slate-900 text-slate-500 border border-slate-800'
+                          }`}
+                        >
+                          {claimed ? 'Đã Nhận' : reached ? 'Nhận Thưởng' : `Đạt T${ms.floor}`}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={!onStartEqualizedRift}
+                onClick={() => {
+                  if (!onStartEqualizedRift) return;
+                  soundEngine.playVictory();
+                  onClose();
+                  onStartEqualizedRift(selectedKitId);
+                }}
+                className="a2-purple-btn w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+              >
+                <Zap className="w-4 h-4" />
+                <span>Vào Tháp Vô Hạn Đồng Bộ (Miễn Phí · Chuẩn Hóa Chỉ Số)</span>
+              </button>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

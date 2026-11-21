@@ -14,6 +14,7 @@ import type {
   LiveGuildWarSnapshot,
   LiveMiniCupState,
   LiveServerBountyState,
+  LiveSpectatorMatchSnapshot,
 } from '../types/game';
 import type {
   GuildWarBastionId,
@@ -107,6 +108,23 @@ export interface LiveGuildWarClaimAckPayload {
   state: LiveGuildWarSnapshot;
 }
 
+export interface LiveSpectatorCheerAckPayload {
+  ok: boolean;
+  message: string;
+  state: LiveSpectatorMatchSnapshot;
+}
+
+export interface LiveSpectatorClaimAckPayload {
+  ok: boolean;
+  alreadyClaimed: boolean;
+  predictedCorrectly: boolean;
+  goldReward: number;
+  gemsReward: number;
+  starDustReward: number;
+  message: string;
+  state: LiveSpectatorMatchSnapshot;
+}
+
 type SnapshotListener = (snapshot: AiLiveHubSnapshot, status: LiveSocketStatus) => void;
 type WeeklyRankListener = (update: WeeklyBossLiveRankUpdate) => void;
 type DuelAcceptedListener = (payload: LiveDuelAcceptedPayload) => void;
@@ -125,6 +143,8 @@ type GuildBossClaimAckListener = (ack: LiveGuildBossClaimAckPayload) => void;
 type MiniCupPrizeAckListener = (ack: LiveMiniCupPrizeAckPayload) => void;
 type ServerBountyClaimAckListener = (ack: LiveServerBountyClaimAckPayload) => void;
 type GuildWarClaimAckListener = (ack: LiveGuildWarClaimAckPayload) => void;
+type SpectatorCheerAckListener = (ack: LiveSpectatorCheerAckPayload) => void;
+type SpectatorClaimAckListener = (ack: LiveSpectatorClaimAckPayload) => void;
 
 class LiveAiSocketClient {
   private ws: WebSocket | null = null;
@@ -154,6 +174,8 @@ class LiveAiSocketClient {
   private miniCupPrizeAckListeners = new Set<MiniCupPrizeAckListener>();
   private serverBountyClaimAckListeners = new Set<ServerBountyClaimAckListener>();
   private guildWarClaimAckListeners = new Set<GuildWarClaimAckListener>();
+  private spectatorCheerAckListeners = new Set<SpectatorCheerAckListener>();
+  private spectatorClaimAckListeners = new Set<SpectatorClaimAckListener>();
 
   public getStatus(): LiveSocketStatus {
     return this.status;
@@ -376,6 +398,43 @@ class LiveAiSocketClient {
               this.emitSnapshot();
             }
             for (const cb of this.guildWarClaimAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'spectator:update' && msg.payload) {
+            const data = msg.payload as {
+              spectatorMatch: LiveSpectatorMatchSnapshot;
+            };
+            if (this.snapshot && data.spectatorMatch) {
+              this.snapshot = {
+                ...this.snapshot,
+                spectatorMatch: data.spectatorMatch,
+              };
+              this.emitSnapshot();
+            }
+            return;
+          }
+          if (msg.type === 'spectator:cheer_ack' && msg.payload) {
+            const ack = msg.payload as LiveSpectatorCheerAckPayload;
+            if (this.snapshot && ack.state) {
+              this.snapshot = {
+                ...this.snapshot,
+                spectatorMatch: ack.state,
+              };
+              this.emitSnapshot();
+            }
+            for (const cb of this.spectatorCheerAckListeners) cb(ack);
+            return;
+          }
+          if (msg.type === 'spectator:claim_ack' && msg.payload) {
+            const ack = msg.payload as LiveSpectatorClaimAckPayload;
+            if (this.snapshot && ack.state) {
+              this.snapshot = {
+                ...this.snapshot,
+                spectatorMatch: ack.state,
+              };
+              this.emitSnapshot();
+            }
+            for (const cb of this.spectatorClaimAckListeners) cb(ack);
             return;
           }
           if (msg.type === 'guild_boss:update' && msg.payload) {
@@ -937,6 +996,67 @@ class LiveAiSocketClient {
       type: 'guild_war:claim_reward',
       payload: {
         warId,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public subscribeSpectatorCheerAck(cb: SpectatorCheerAckListener): () => void {
+    this.spectatorCheerAckListeners.add(cb);
+    return () => {
+      this.spectatorCheerAckListeners.delete(cb);
+    };
+  }
+
+  public subscribeSpectatorClaimAck(cb: SpectatorClaimAckListener): () => void {
+    this.spectatorClaimAckListeners.add(cb);
+    return () => {
+      this.spectatorClaimAckListeners.delete(cb);
+    };
+  }
+
+  public syncSpectatorMatch(playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'spectator:sync',
+      payload: {
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public cheerSpectatorFighter(params: {
+    matchId?: string;
+    fighterId: string;
+    playerName?: string;
+  }): boolean {
+    this.ensureConnected(params.playerName);
+    return this.send({
+      type: 'spectator:cheer',
+      payload: {
+        matchId: params.matchId,
+        fighterId: params.fighterId,
+        playerName: params.playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public claimSpectatorReward(matchId?: string, playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'spectator:claim_reward',
+      payload: {
+        matchId,
+        playerName: playerName || this.announcedDisplayName,
+      },
+    });
+  }
+
+  public requestNextSpectatorMatch(playerName?: string): boolean {
+    this.ensureConnected(playerName);
+    return this.send({
+      type: 'spectator:next_match',
+      payload: {
         playerName: playerName || this.announcedDisplayName,
       },
     });

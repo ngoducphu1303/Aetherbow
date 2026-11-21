@@ -468,6 +468,17 @@ export function normalizeFairProgression(
     equalizedTrialRound: Math.max(1, Math.min(3, Math.floor(fp?.equalizedTrialRound ?? 1))),
     equalizedTrialWins: Math.max(0, Math.floor(fp?.equalizedTrialWins ?? 0)),
     selectedTrialKitId: kitId,
+    equalizedRift: fp?.equalizedRift
+      ? {
+          dateKey: String(fp.equalizedRift.dateKey ?? ''),
+          bestFloorToday: Math.max(0, Math.floor(fp.equalizedRift.bestFloorToday ?? 0)),
+          seasonBestFloor: Math.max(0, Math.floor(fp.equalizedRift.seasonBestFloor ?? 0)),
+          claimedMilestones: Array.isArray(fp.equalizedRift.claimedMilestones)
+            ? fp.equalizedRift.claimedMilestones
+            : [],
+          totalRiftClears: Math.max(0, Math.floor(fp.equalizedRift.totalRiftClears ?? 0)),
+        }
+      : undefined,
   };
 }
 

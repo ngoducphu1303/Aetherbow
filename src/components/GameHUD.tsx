@@ -61,6 +61,10 @@ import {
   COOP_TACTICAL_ORDERS,
   WAVE9_COOP_QUICK_ORDERS,
 } from '../engine/wave5CombatSystems';
+import {
+  AI_SQUAD_FORMATION_LIST,
+  type AiSquadFormationId,
+} from '../engine/wave11FivePillars';
 import { getStyleRewardBonusPct } from '../engine/wave7CombatSystems';
 import {
   BossPortraitBadge,
@@ -88,9 +92,11 @@ interface GameHUDProps {
   onHeavyBreakClick?: () => void;
   onActiveSkillClick?: () => void;
   onUltimateClick: () => void;
+  onTriggerWeaponOverdrive?: () => void;
   onToggleAutoPilot?: () => void;
   onSelectAutoPilotTactic?: (tactic: AiAutoPilotTactic) => void;
   onSetCoopTacticalOrder?: (order: CoopTacticalOrder) => void;
+  onSelectSquadFormation?: (formationId: AiSquadFormationId) => void;
   onSelectChampionshipTactic?: (tacticId: ChampionshipTacticId) => void;
   loadoutPresets?: LoadoutPreset[];
   activeLoadoutPresetId?: LoadoutPresetSlotId | null;
@@ -117,9 +123,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onHeavyBreakClick,
   onActiveSkillClick,
   onUltimateClick,
+  onTriggerWeaponOverdrive,
   onToggleAutoPilot,
   onSelectAutoPilotTactic,
   onSetCoopTacticalOrder,
+  onSelectSquadFormation,
   onSelectChampionshipTactic,
   loadoutPresets,
   activeLoadoutPresetId,
@@ -640,6 +648,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   ? `Bí Cảnh · Ải ${hud.stage}/${hud.totalStages}`
                   : hud.isBossRushMode
                   ? `Săn Boss · Vòng ${hud.bossRushRound}/${hud.bossRushTotalRounds ?? 5}`
+                  : (hud.equalizedRiftFloor ?? 0) > 0
+                  ? `Tháp Đồng Bộ · Tầng ${hud.equalizedRiftFloor}`
                   : hud.isTowerMode
                   ? `Tháp Vô Tận · Tầng ${hud.towerFloor}`
                   : `${hud.chapterName} · Phòng ${hud.stage}/${hud.totalStages}`}
@@ -651,6 +661,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   ? hud.trainingTargetMode === 'aoe'
                     ? '3 Mục Tiêu (AoE)'
                     : '1 Mục Tiêu (Boss)'
+                  : (hud.equalizedRiftFloor ?? 0) > 0 && hud.activeRiftMutators
+                  ? `${hud.activeRiftMutators} · Còn ${hud.enemiesRemaining} quái`
                   : hud.isSkyCitadelMode
                   ? `Đợt ${hud.skyCitadelWave ?? 1}/3 · +${hud.skyCitadelFeathersLooted ?? 0} Lông Vũ`
                   : hud.isDragonLairMode
@@ -681,6 +693,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   ? `Tổ Đội · Còn ${hud.enemiesRemaining} mục tiêu`
                   : hud.isElementalTowerMode
                   ? `Còn ${hud.enemiesRemaining} mục tiêu`
+                  : (hud.interactiveHazardsRemaining ?? 0) > 0
+                  ? `Còn ${hud.enemiesRemaining} mục tiêu · ${hud.interactiveHazardsRemaining} Trụ Tương Tác`
                   : `Còn ${hud.enemiesRemaining} mục tiêu`}
               </div>
             )}
@@ -1896,6 +1910,43 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 })}
               </div>
             )}
+            {onSelectSquadFormation && (
+              <div
+                className="pointer-events-auto flex flex-wrap items-center gap-1 rounded-lg bg-[#060a18]/95 border border-amber-400/40 p-1"
+                role="group"
+                aria-label="Đội hình chiến thuật tổ đội AI"
+              >
+                {AI_SQUAD_FORMATION_LIST.map((fm, idx) => {
+                  const active = (hud.squadFormationId ?? 'break_focus') === fm.id;
+                  const hotkey = 4 + idx;
+                  return (
+                    <button
+                      key={fm.id}
+                      type="button"
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onSelectSquadFormation(fm.id);
+                      }}
+                      title={`${fm.name}: ${fm.desc}`}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-black whitespace-nowrap cursor-pointer transition-colors ${
+                        active
+                          ? 'bg-sky-400/25 text-sky-100 border border-sky-300/75'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      [{hotkey}] {fm.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {hud.squadPingBanner && (
+              <div className="rounded-lg px-2 py-1 bg-[#0a132b]/95 border border-sky-400/70 text-[9px] font-black text-sky-200 flex items-center gap-1.5">
+                <Users className="w-3 h-3 text-sky-300 shrink-0" />
+                <span className="truncate">{hud.squadPingBanner}</span>
+              </div>
+            )}
             {hud.isCoopRaidMode && hud.coopSynergy && (
               (hud.coopSynergy.resonanceRemainingSec > 0 ||
                 hud.coopSynergy.windowRemainingSec > 0 ||
@@ -2502,6 +2553,66 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </div>
             </div>
           )}
+
+          {/* Wave 11: Weapon Overdrive Interactive Gauge & Trigger (Key X, zero backdrop-blur) */}
+          {hud.weaponOverdrive && !hud.portalOpen && (() => {
+            const od = hud.weaponOverdrive;
+            const odReady = !od.active && od.charge >= 100;
+            return (
+              <button
+                type="button"
+                tabIndex={-1}
+                disabled={!odReady || !onTriggerWeaponOverdrive}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onTriggerWeaponOverdrive?.();
+                }}
+                title={`${od.stanceLabel} — Phím X khi đầy 100%`}
+                className={`pointer-events-auto flex items-center gap-2 px-2.5 py-1 rounded-lg border text-[10px] font-black transition-colors ${
+                  od.active
+                    ? 'bg-[#2a1704]/95 border-amber-300 text-amber-200 shadow-[0_0_16px_rgba(251,191,36,0.45)]'
+                    : odReady
+                    ? 'bg-[#261605]/95 border-amber-300 text-amber-100 cursor-pointer hover:bg-[#382108]/95 shadow-[0_0_16px_rgba(245,158,11,0.4)]'
+                    : 'bg-[#091024]/95 border-amber-400/30 text-slate-300 cursor-default'
+                }`}
+              >
+                <Flame
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    od.active || odReady ? 'text-amber-300' : 'text-amber-500/70'
+                  }`}
+                />
+                <span className="whitespace-nowrap">
+                  {od.active
+                    ? `${od.stanceLabel} · ${od.remainingSec.toFixed(1)}s`
+                    : odReady
+                    ? `[X] THỨC TỈNH VŨ KHÍ!`
+                    : `Thức Tỉnh ${Math.round(od.charge)}%`}
+                </span>
+                <span className="w-12 h-1.5 rounded-full bg-slate-950 border border-slate-700 overflow-hidden shrink-0">
+                  <span
+                    className={`block h-full transition-all duration-100 ${
+                      od.active
+                        ? 'bg-gradient-to-r from-amber-300 to-yellow-200'
+                        : 'bg-gradient-to-r from-amber-500 to-amber-300'
+                    }`}
+                    style={{
+                      width: `${
+                        od.active
+                          ? Math.max(
+                              0,
+                              Math.min(
+                                100,
+                                (od.remainingSec / Math.max(1, od.maxDurationSec)) * 100
+                              )
+                            )
+                          : Math.max(0, Math.min(100, od.charge))
+                      }%`,
+                    }}
+                  />
+                </span>
+              </button>
+            );
+          })()}
 
           <div className="flex items-end gap-2 sm:gap-3 shrink-0">
             {(() => {

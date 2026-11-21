@@ -577,6 +577,14 @@ export interface FairCatchUpState {
   totalMissionsClaimed: number;
 }
 
+export interface EqualizedRiftProgressSnapshot {
+  dateKey: string;
+  bestFloorToday: number;
+  seasonBestFloor: number;
+  claimedMilestones: number[];
+  totalRiftClears: number;
+}
+
 export interface FairProgressionState {
   astralShards: number;
   pullHistory: GachaPullHistoryEntry[];
@@ -586,6 +594,7 @@ export interface FairProgressionState {
   equalizedTrialRound?: number;
   equalizedTrialWins?: number;
   selectedTrialKitId?: 'assassin_counter' | 'rapid_ranger' | 'elemental_sage';
+  equalizedRift?: EqualizedRiftProgressSnapshot;
 }
 
 export interface BattlePassProgress {
@@ -602,6 +611,9 @@ export interface PityState {
   runeRollsSinceEpic: number;
   runeRollsSinceLegendary?: number;
   ancientRuneShards?: number;
+  forgeRollsSinceEpic?: number;
+  forgeRollsSinceLegendary?: number;
+  forgeRelicShards?: number;
 }
 
 export interface CareerStats {
@@ -1452,6 +1464,7 @@ export interface AiPreferencesState {
   aiDuelTier?: AiDuelDifficultyTier;
   aiWinStreak?: number;
   pveChallengeEnabled?: boolean;
+  squadFormation?: 'break_focus' | 'guard_sustain' | 'elemental_chain';
 }
 
 export interface AiLiveBuildSnapshot {
@@ -1642,6 +1655,46 @@ export interface LiveGuildWarSnapshot {
   lastUpdatedAt: number;
 }
 
+export interface LiveSpectatorFighterSnapshot {
+  aiPlayerId: string;
+  displayName: string;
+  heroId: HeroId;
+  powerRating: number;
+  personality: 'aggressive' | 'tactical' | 'assassin';
+  hp: number;
+  maxHp: number;
+  momentum: number;
+  styleGrade: 'B' | 'A' | 'S' | 'SS' | 'SSS';
+  damageDealt: number;
+  critsLanded: number;
+  dodgesLanded: number;
+  cheersCount: number;
+}
+
+export interface LiveSpectatorMatchSnapshot {
+  matchId: string;
+  roundLabel: string;
+  status: 'pre_match' | 'live' | 'finished';
+  startedAt: number;
+  updatedAt: number;
+  tickCount: number;
+  maxTicks: number;
+  fighterA: LiveSpectatorFighterSnapshot;
+  fighterB: LiveSpectatorFighterSnapshot;
+  winnerId: string | null;
+  tickerLog: Array<{
+    id: string;
+    tick: number;
+    text: string;
+    accent: 'sky' | 'amber' | 'rose' | 'emerald';
+  }>;
+  cheerRewardGold: number;
+  cheerRewardGems: number;
+  cheerRewardStarDust: number;
+  playerCheeredFighterId?: string | null;
+  playerClaimedReward?: boolean;
+}
+
 export interface AiLiveHubSnapshot {
   serverNow: number;
   onlineHumanCount: number;
@@ -1659,6 +1712,7 @@ export interface AiLiveHubSnapshot {
   serverBounty?: LiveServerBountyState;
   adaptationProfile?: AiAdaptationSummarySnapshot | null;
   guildWarLive?: LiveGuildWarSnapshot | null;
+  spectatorMatch?: LiveSpectatorMatchSnapshot | null;
 }
 
 export type MountId = 'aries_steed' | 'celestial_leo' | 'frost_unicorn' | 'crimson_wyrm' | 'azure_dragon' | 'black_dragon';
@@ -2257,6 +2311,18 @@ export interface HudSnapshot {
   aiAdaptationBadge?: string | null;
   trialGauntletRound?: number | null;
   guildWarBastionLabel?: string | null;
+  weaponOverdrive?: {
+    charge: number;
+    active: boolean;
+    remainingSec: number;
+    maxDurationSec: number;
+    stanceLabel: string;
+  };
+  activeRiftMutators?: string | null;
+  equalizedRiftFloor?: number | null;
+  squadFormationId?: 'break_focus' | 'guard_sustain' | 'elemental_chain';
+  squadPingBanner?: string | null;
+  interactiveHazardsRemaining?: number;
 }
 
 export interface EncounterOffer {
