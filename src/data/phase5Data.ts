@@ -280,12 +280,12 @@ export function getNightmareTierConfig(chapterId: number, rawTier: number): Nigh
     };
   }
 
-  // Smooth monotonic Ascension I..V curve
-  const hpTable = [1, 1.35, 1.7, 2.08, 2.46, 2.85];
-  const dmgTable = [1, 1.18, 1.34, 1.52, 1.7, 1.9];
-  const goldTable = [1, 1.25, 1.5, 1.75, 2.0, 2.25];
-  const dustTable = [1, 1.3, 1.6, 1.9, 2.2, 2.5];
-  const masteryTable = [1, 1.2, 1.4, 1.6, 1.8, 2.0];
+  // Smooth monotonic Ascension I..V curve (30-Day Fair Progression pinnacle challenge)
+  const hpTable = [1, 1.55, 2.2, 3.05, 4.1, 5.4];
+  const dmgTable = [1, 1.28, 1.56, 1.88, 2.24, 2.65];
+  const goldTable = [1, 1.28, 1.58, 1.9, 2.25, 2.65];
+  const dustTable = [1, 1.35, 1.72, 2.15, 2.6, 3.1];
+  const masteryTable = [1, 1.25, 1.5, 1.75, 2.05, 2.4];
 
   const primaryIdx = (Math.max(1, chapterId) + tier - 2) % CHALLENGE_MUTATOR_CYCLE.length;
   const primaryId = CHALLENGE_MUTATOR_CYCLE[primaryIdx];

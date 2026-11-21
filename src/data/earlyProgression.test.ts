@@ -325,19 +325,27 @@ test('Progression Gating Ch.1–3: rarity ceilings, feature locks, and progressi
   assert.equal(craftEpic.item?.rarity, Rarity.EPIC);
   assert.equal(Boolean(GEAR_TEMPLATES[craftEpic.item!.templateId].isSTier), false);
 
-  // Post Ch.2 Clear (Entering Ch.3): S-Tier & Mythic unlock, Starter Pack & Meta Events open, Wing 3D granted
+  // Post Ch.2 Clear (Entering Ch.3): Epic ceiling stays active while Meta Events & Arena & Wing 3D unlock
   const ch2Raw: SaveData = {
     ...craftEpic.nextSave!,
     highestChapterCleared: 2,
     bestStagePerChapter: { 1: 12, 2: 12 },
   };
   const { nextSave: ch2After, summary: sumCh2 } = applyEarlyRunMilestones(ch2Raw, 2, 12, true);
-  assert.equal(getEarlyProgressionPolicy(ch2After).maxGearRarity, Rarity.MYTHIC);
-  assert.equal(getEarlyProgressionPolicy(ch2After).allowSTier, true);
-  assert.equal(isEarlyFeatureUnlocked(ch2After, 'starter_pack').unlocked, true);
+  assert.equal(getEarlyProgressionPolicy(ch2After).maxGearRarity, Rarity.EPIC);
+  assert.equal(getEarlyProgressionPolicy(ch2After).allowSTier, false);
+  assert.equal(isEarlyFeatureUnlocked(ch2After, 'starter_pack').unlocked, false);
   assert.equal(isEarlyFeatureUnlocked(ch2After, 'meta_events').unlocked, true);
   assert.equal(sumCh2.unlockedCelestialWing, true);
   assert.ok(ch2After.unlockedCelestialWings?.includes('seraph_azure'));
+
+  // Post Ch.3 Clear (Entering Ch.4): S-Tier & Starter Pack & Co-op Raid open; Ch.4 clear opens Legendary; Ch.8 clear opens Mythic
+  const ch3After: SaveData = { ...ch2After, highestChapterCleared: 3, bestStagePerChapter: { 1: 12, 2: 12, 3: 12 } };
+  assert.equal(getEarlyProgressionPolicy(ch3After).maxGearRarity, Rarity.EPIC);
+  assert.equal(getEarlyProgressionPolicy(ch3After).allowSTier, true);
+  assert.equal(isEarlyFeatureUnlocked(ch3After, 'starter_pack').unlocked, true);
+  assert.equal(getEarlyProgressionPolicy({ highestChapterCleared: 4, bestStagePerChapter: { 4: 12 } }).maxGearRarity, Rarity.LEGENDARY);
+  assert.equal(getEarlyProgressionPolicy({ highestChapterCleared: 8, bestStagePerChapter: { 8: 12 } }).maxGearRarity, Rarity.MYTHIC);
 });
 
 test('Mythic Chest Pity Preservation: never loses accumulated pity when Epic or [S] pools are locked', () => {
@@ -380,12 +388,12 @@ test('Mythic Chest Pity Preservation: never loses accumulated pity when Epic or 
     assert.equal(Boolean(GEAR_TEMPLATES[item.templateId]?.isSTier), false);
   }
 
-  // 4) Unlock Ch.3 ([S] open) and roll 1 Mythic chest -> immediate [S] pity trigger!
-  const policyCh3 = getEarlyProgressionPolicy({
-    highestChapterCleared: 2,
-    bestStagePerChapter: { 1: 12, 2: 12 },
+  // 4) Unlock Ch.4 (Post Ch.3 Clear, [S] open) and roll 1 Mythic chest -> immediate [S] pity trigger!
+  const policyCh4 = getEarlyProgressionPolicy({
+    highestChapterCleared: 3,
+    bestStagePerChapter: { 1: 12, 2: 12, 3: 12 },
   });
-  const batch4 = rollChestGearBatch(true, 1, batch3.nextPity, { policy: policyCh3, rng });
+  const batch4 = rollChestGearBatch(true, 1, batch3.nextPity, { policy: policyCh4, rng });
   assert.equal(Boolean(GEAR_TEMPLATES[batch4.items[0].templateId]?.isSTier), true);
   assert.equal(batch4.nextPity.mythicRollsSinceSTier, 0);
 });
@@ -553,19 +561,19 @@ test('Phase 2 · Rune Chest Ch.2–3 Progression Policy & Pity Preservation', ()
     );
   }
 
-  // Ch.3 (Post Ch.2 Clear): maxRuneRarity = LEGENDARY -> Legendary runes unlocked
-  const policyCh3 = getEarlyProgressionPolicy({
-    highestChapterCleared: 2,
-    bestStagePerChapter: { 1: 12, 2: 12 },
+  // Ch.5 (Post Ch.4 Clear): maxRuneRarity = LEGENDARY -> Legendary runes unlocked
+  const policyCh5 = getEarlyProgressionPolicy({
+    highestChapterCleared: 4,
+    bestStagePerChapter: { 1: 12, 2: 12, 3: 12, 4: 12 },
   });
-  assert.equal(policyCh3.maxRuneRarity, Rarity.LEGENDARY);
-  const batchCh3 = rollRuneChestBatch(true, 80, batchCh2Many.nextPity, {
-    policy: policyCh3,
+  assert.equal(policyCh5.maxRuneRarity, Rarity.LEGENDARY);
+  const batchCh5 = rollRuneChestBatch(true, 80, batchCh2Many.nextPity, {
+    policy: policyCh5,
     rng,
   });
   assert.ok(
-    batchCh3.items.some((r) => r.rarity === Rarity.LEGENDARY),
-    'Expected at least 1 Legendary rune in 80 Rare Rune rolls at Ch.3'
+    batchCh5.items.some((r) => r.rarity === Rarity.LEGENDARY),
+    'Expected at least 1 Legendary rune in 80 Rare Rune rolls at Ch.5'
   );
 });
 
@@ -803,11 +811,11 @@ test('Phase 3 · 3 New Synergies (Aegis Sanctuary, Solar Orbit, Venom Eclipse) &
 });
 
 test('Phase 3 · Ch.1–12 Strictly Monotonic Chapter Curve & Boss Rush / Daily Rift Scaling', () => {
-  // Ch.1 remains untouched so Fresh baseline is preserved
+  // Ch.1 calibrated for 30-day Fair Progression opening challenge
   const ch1 = CHAPTERS[0];
-  assert.equal(ch1.hpScale, 1.0);
-  assert.equal(ch1.dmgScale, 1.0);
-  assert.equal(ch1.recommendedPower, 520);
+  assert.equal(ch1.hpScale, 1.35);
+  assert.equal(ch1.dmgScale, 1.2);
+  assert.equal(ch1.recommendedPower, 1350);
 
   // Ch.1 -> Ch.12 hpScale, dmgScale, recommendedPower strictly monotonic
   for (let i = 1; i < CHAPTERS.length; i++) {
@@ -1314,9 +1322,9 @@ test('AAA Ch.1–3 Seeded Economy Simulation: P10/P50/P90 Rare/Epic/S-Tier unloc
     highestChapterCleared: 1,
     bestStagePerChapter: { 1: 12, 2: 6 },
   });
-  const ch3Policy = getEarlyProgressionPolicy({
-    highestChapterCleared: 2,
-    bestStagePerChapter: { 1: 12, 2: 12, 3: 4 },
+  const ch4Policy = getEarlyProgressionPolicy({
+    highestChapterCleared: 3,
+    bestStagePerChapter: { 1: 12, 2: 12, 3: 12, 4: 4 },
   });
 
   for (let seed = 1; seed <= 120; seed++) {
@@ -1351,10 +1359,10 @@ test('AAA Ch.1–3 Seeded Economy Simulation: P10/P50/P90 Rare/Epic/S-Tier unloc
     }
     epicRolls.push(epicHit);
 
-    // 3) First S-Tier in Ch.3 (pity guarantees S-tier within <= 30 rolls, carried cleanly)
+    // 3) First S-Tier in Ch.4 (pity guarantees S-tier within <= 30 rolls, carried cleanly)
     let sHit = -1;
     for (let roll = 1; roll <= 35; roll++) {
-      const res = rollChestGearBatch(true, 1, pity, { policy: ch3Policy, rng });
+      const res = rollChestGearBatch(true, 1, pity, { policy: ch4Policy, rng });
       pity = res.nextPity;
       if (sHit === -1 && GEAR_TEMPLATES[res.items[0].templateId]?.isSTier) {
         sHit = roll;
@@ -1368,12 +1376,12 @@ test('AAA Ch.1–3 Seeded Economy Simulation: P10/P50/P90 Rare/Epic/S-Tier unloc
   epicRolls.sort((a, b) => a - b);
   sTierRolls.sort((a, b) => a - b);
 
-  // Every simulated player hits Rare in Ch.1, Epic immediately/fast in Ch.2, and S-tier in Ch.3
+  // Every simulated player hits Rare in Ch.1, Epic immediately/fast in Ch.2, and S-tier in Ch.4
   assert.ok(percentile(rareRolls, 0.5) <= 4, `Rare P50 expected <= 4 rolls, got ${percentile(rareRolls, 0.5)}`);
   assert.ok(percentile(epicRolls, 0.5) === 1, `Epic P50 after Ch.1 pity carryover expected 1, got ${percentile(epicRolls, 0.5)}`);
   assert.ok(percentile(epicRolls, 0.9) <= 10, `Epic P90 expected <= 10 rolls, got ${percentile(epicRolls, 0.9)}`);
-  assert.ok(sTierRolls.every((r) => r >= 1 && r <= 30), 'All Ch.3 players must hit S-tier within pity window');
-  assert.ok(percentile(sTierRolls, 0.5) <= 15, `S-tier P50 expected <= 15 rolls in Ch.3, got ${percentile(sTierRolls, 0.5)}`);
+  assert.ok(sTierRolls.every((r) => r >= 1 && r <= 30), 'All Ch.4 players must hit S-tier within pity window');
+  assert.ok(percentile(sTierRolls, 0.5) <= 15, `S-tier P50 expected <= 15 rolls in Ch.4, got ${percentile(sTierRolls, 0.5)}`);
 });
 
 test('Alice Default Hero: default hero displays as Alice, restores legacy saves once, and respects explicit selection thereafter', () => {

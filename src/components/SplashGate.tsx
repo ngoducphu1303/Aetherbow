@@ -26,7 +26,7 @@ import {
   formatAccountHandle,
 } from '../services/playerCloudService';
 import { SaveData } from '../types/game';
-import { AuthGatePanel } from './AuthGatePanel';
+import { AuthGatePanel, AuthSuccessMeta } from './AuthGatePanel';
 
 interface SplashGateProps {
   save: SaveData;
@@ -38,7 +38,9 @@ interface SplashGateProps {
   cloudSyncStatus: CloudSyncStatus;
   lastSyncedAt: number | null;
   guestModeSelected: boolean;
-  onAuthSuccess: (user: User, displayNameOverride?: string) => Promise<void>;
+  onAuthStart?: () => void;
+  onAuthAbort?: () => void;
+  onAuthSuccess: (user: User, meta?: AuthSuccessMeta) => Promise<void>;
   onContinueGuest: () => void;
   onSignOut: () => Promise<void>;
   onRetryModels: () => void;
@@ -71,6 +73,8 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   cloudSyncStatus,
   lastSyncedAt,
   guestModeSelected,
+  onAuthStart,
+  onAuthAbort,
   onAuthSuccess,
   onContinueGuest,
   onSignOut,
@@ -477,6 +481,8 @@ export const SplashGate: React.FC<SplashGateProps> = ({
             <AuthGatePanel
               compact
               allowGuest
+              onAuthStart={onAuthStart}
+              onAuthAbort={onAuthAbort}
               onAuthSuccess={onAuthSuccess}
               onContinueGuest={onContinueGuest}
             />

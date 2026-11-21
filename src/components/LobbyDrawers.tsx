@@ -45,6 +45,11 @@ import {
   normalizeLoadoutPresets,
 } from '../data/earlyProgressionData';
 import {
+  computePowerPressure,
+  countClaimableFairRoadmapMilestones,
+  evaluateMaxStageReadiness,
+} from '../data/fairProgression30Day';
+import {
   MAX_DAILY_SWEEPS,
   countClaimableBattlePass,
   getBattlePassLevelInfo,
@@ -168,6 +173,7 @@ import {
 import {
   ComputedPlayerStats,
   CoopRaidDifficulty,
+  EarlyFeatureId,
   ElementalTowerId,
   LobbySkyThemeId,
   LobbyWeatherId,
@@ -241,6 +247,8 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
   const dragonClaim = countClaimableDragonLairMilestones(save);
   const skyClaim = countClaimableSkyCitadelMilestones(save);
 
+  const arenaUnlock = isEarlyFeatureUnlocked(save, 'arena');
+
   const renderModeCard = (opts: {
     id: LobbyGameMode;
     label: string;
@@ -249,35 +257,49 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
     badge?: string;
     accentClass: string;
     openDetailOnPick?: boolean;
+    featureGate?: EarlyFeatureId;
   }) => {
     const active = gameMode === opts.id;
+    const gateStatus = opts.featureGate ? isEarlyFeatureUnlocked(save, opts.featureGate) : null;
+    const locked = gateStatus ? !gateStatus.unlocked : false;
+
     return (
       <button
         key={opts.id}
         type="button"
+        disabled={locked}
         onClick={() => {
+          if (locked) return;
           soundEngine.playUiClick(1.04);
           onSelectMode(opts.id, opts.openDetailOnPick);
           onClose();
         }}
-        className={`rounded-2xl p-2.5 text-left border transition-colors cursor-pointer flex items-center justify-between gap-2 ${
-          active
-            ? 'bg-amber-400/18 border-amber-300 shadow'
-            : 'bg-[#091026] border-amber-400/18 hover:border-amber-300/60'
+        className={`rounded-2xl p-2.5 text-left border transition-colors flex items-center justify-between gap-2 ${
+          locked
+            ? 'bg-slate-950/60 border-slate-700/50 opacity-60 cursor-not-allowed'
+            : active
+            ? 'bg-amber-400/18 border-amber-300 shadow cursor-pointer'
+            : 'bg-[#091026] border-amber-400/18 hover:border-amber-300/60 cursor-pointer'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <div
-            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border border-white/10 ${opts.accentClass}`}
+            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border border-white/10 ${
+              locked ? 'bg-slate-900/90' : opts.accentClass
+            }`}
           >
-            {opts.icon}
+            {locked ? <Lock className="w-4 h-4 text-slate-400" /> : opts.icon}
           </div>
           <div className="min-w-0">
-            <div className="text-xs font-black text-white truncate">{opts.label}</div>
-            <div className="text-[10px] text-slate-400 truncate font-mono-nums">{opts.sub}</div>
+            <div className={`text-xs font-black truncate ${locked ? 'text-slate-300' : 'text-white'}`}>
+              {opts.label}
+            </div>
+            <div className="text-[10px] text-slate-400 truncate font-mono-nums">
+              {locked && gateStatus ? gateStatus.requiredLabel : opts.sub}
+            </div>
           </div>
         </div>
-        {opts.badge && (
+        {!locked && opts.badge && (
           <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-mono-nums text-[9px] font-black shrink-0">
             {opts.badge}
           </span>
@@ -379,6 +401,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 sub: `Kỷ lục Tầng ${save.bestTowerFloor ?? 0}`,
                 icon: <Compass className="w-4 h-4 text-purple-300" />,
                 accentClass: 'bg-purple-500/20',
+                featureGate: 'endless_tower',
               })}
               {renderModeCard({
                 id: 'elemental_tower',
@@ -387,6 +410,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 icon: <Zap className="w-4 h-4 text-sky-300" />,
                 accentClass: 'bg-sky-500/20',
                 openDetailOnPick: true,
+                featureGate: 'elemental_towers',
               })}
               {renderModeCard({
                 id: 'daily_rift',
@@ -394,6 +418,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 sub: `${dailyRift.runsRemaining}/${MAX_DAILY_RIFT_RUNS} lượt · Bụi & Tinh Linh`,
                 icon: <Sparkles className="w-4 h-4 text-emerald-300" />,
                 accentClass: 'bg-emerald-500/20',
+                featureGate: 'daily_rift',
               })}
               {renderModeCard({
                 id: 'crystal_vault',
@@ -402,6 +427,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 icon: <Gem className="w-4 h-4 text-amber-300" />,
                 badge: vaultClaim > 0 ? `+${vaultClaim}` : undefined,
                 accentClass: 'bg-amber-500/20',
+                featureGate: 'crystal_vault',
               })}
             </div>
           </section>
@@ -426,6 +452,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 icon: <Users className="w-4 h-4 text-orange-300" />,
                 accentClass: 'bg-orange-500/20',
                 openDetailOnPick: true,
+                featureGate: 'coop_raid',
               })}
               {renderModeCard({
                 id: 'crystal_defense',
@@ -433,6 +460,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 sub: `${crystalState.runsRemaining}/${crystalMaxRuns} lượt · Rơi Lông Vũ`,
                 icon: <Gem className="w-4 h-4 text-cyan-300" />,
                 accentClass: 'bg-cyan-500/20',
+                featureGate: 'crystal_defense',
               })}
               {renderModeCard({
                 id: 'world_boss',
@@ -440,6 +468,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 sub: `${wbState.dailyRunsRemaining}/${WORLD_BOSS_MAX_DAILY_RUNS} lượt · 60s`,
                 icon: <Trophy className="w-4 h-4 text-amber-300" />,
                 accentClass: 'bg-amber-500/20',
+                featureGate: 'world_boss',
               })}
               {renderModeCard({
                 id: 'dragon_lair',
@@ -448,6 +477,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 icon: <Flame className="w-4 h-4 text-rose-400" />,
                 badge: dragonClaim > 0 ? `+${dragonClaim}` : undefined,
                 accentClass: 'bg-rose-600/25',
+                featureGate: 'dragon_lair',
               })}
             </div>
           </section>
@@ -460,25 +490,43 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               <button
                 type="button"
+                disabled={!arenaUnlock.unlocked}
                 onClick={() => {
+                  if (!arenaUnlock.unlocked) return;
                   soundEngine.playUiClick(1.05);
                   onClose();
                   onOpenArenaModal();
                 }}
-                className="rounded-2xl p-2.5 text-left border bg-[#091026] border-rose-400/30 hover:border-rose-300 cursor-pointer flex items-center justify-between gap-2"
+                className={`rounded-2xl p-2.5 text-left border flex items-center justify-between gap-2 ${
+                  arenaUnlock.unlocked
+                    ? 'bg-[#091026] border-rose-400/30 hover:border-rose-300 cursor-pointer'
+                    : 'bg-slate-950/60 border-slate-700/50 opacity-60 cursor-not-allowed'
+                }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 border border-white/10 flex items-center justify-center shrink-0">
-                    <Swords className="w-4 h-4 text-rose-300" />
+                  <div
+                    className={`w-8 h-8 rounded-xl border border-white/10 flex items-center justify-center shrink-0 ${
+                      arenaUnlock.unlocked ? 'bg-rose-500/20' : 'bg-slate-900/90'
+                    }`}
+                  >
+                    {arenaUnlock.unlocked ? (
+                      <Swords className="w-4 h-4 text-rose-300" />
+                    ) : (
+                      <Lock className="w-4 h-4 text-slate-400" />
+                    )}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs font-black text-rose-100 truncate">Đấu Trường Arena</div>
+                    <div className={`text-xs font-black truncate ${arenaUnlock.unlocked ? 'text-rose-100' : 'text-slate-300'}`}>
+                      Đấu Trường Arena
+                    </div>
                     <div className="text-[10px] text-slate-400 truncate font-mono-nums">
-                      Xếp hạng PvP · {arena.ticketsRemaining} vé
+                      {arenaUnlock.unlocked
+                        ? `Xếp hạng PvP · ${arena.ticketsRemaining} vé`
+                        : arenaUnlock.requiredLabel}
                     </div>
                   </div>
                 </div>
-                {arena.ticketsRemaining > 0 && (
+                {arenaUnlock.unlocked && arena.ticketsRemaining > 0 && (
                   <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono-nums text-[9px] font-black shrink-0">
                     {arena.ticketsRemaining}
                   </span>
@@ -491,6 +539,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 sub: `${bloodMoonState.dailyRunsRemaining}/${BLOOD_MOON_MAX_DAILY_RUNS} lượt · ${BLOOD_MOON_DURATION_SEC}s`,
                 icon: <Moon className="w-4 h-4 text-rose-300" />,
                 accentClass: 'bg-rose-500/20',
+                featureGate: 'blood_moon',
               })}
               {renderModeCard({
                 id: 'abyssal_gauntlet',
@@ -498,6 +547,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 sub: `${abyssalState.dailyRunsRemaining}/${ABYSSAL_GAUNTLET_MAX_DAILY_RUNS} lượt · ${ABYSSAL_GAUNTLET_TOTAL_WAVES} đợt`,
                 icon: <Skull className="w-4 h-4 text-purple-300" />,
                 accentClass: 'bg-purple-500/20',
+                featureGate: 'abyssal_gauntlet',
               })}
               {renderModeCard({
                 id: 'guild_war',
@@ -505,6 +555,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 sub: `${guildWarState.dailyRunsRemaining}/${GUILD_WAR_MAX_DAILY_RUNS} lượt · ${GUILD_WAR_DURATION_SEC}s`,
                 icon: <Shield className="w-4 h-4 text-emerald-300" />,
                 accentClass: 'bg-emerald-500/20',
+                featureGate: 'meta_events',
               })}
               {renderModeCard({
                 id: 'pantheon_expedition',
@@ -514,6 +565,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 badge: pantheonClaim > 0 ? `+${pantheonClaim}` : undefined,
                 accentClass: 'bg-amber-500/20',
                 openDetailOnPick: true,
+                featureGate: 'pantheon_expedition',
               })}
               {renderModeCard({
                 id: 'championship_3round',
@@ -522,6 +574,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 icon: <Trophy className="w-4 h-4 text-amber-200" />,
                 badge: champClaim > 0 ? `+${champClaim}` : undefined,
                 accentClass: 'bg-amber-500/20',
+                featureGate: 'meta_events',
               })}
               {renderModeCard({
                 id: 'sky_citadel',
@@ -530,6 +583,7 @@ export const LobbyModeDrawer: React.FC<LobbyModeDrawerProps> = ({
                 icon: <Feather className="w-4 h-4 text-sky-300" />,
                 badge: skyClaim > 0 ? `+${skyClaim}` : undefined,
                 accentClass: 'bg-sky-500/20',
+                featureGate: 'sky_citadel',
               })}
             </div>
           </section>
@@ -754,52 +808,59 @@ export const LobbyModeDetailModal: React.FC<LobbyModeDetailModalProps> = ({
                 })}
               </div>
 
-              <div className="rounded-2xl bg-[#080f24] border border-amber-400/25 p-3.5 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-display text-sm sm:text-base font-black text-white">
-                    {selectedChapter.zodiacIcon} {selectedChapter.name}
-                  </div>
-                  <span className="text-[11px] font-mono-nums font-bold text-amber-300">
-                    Kỷ lục {bestStage}/{selectedChapter.stages.length}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300">{selectedChapter.subtitle}</p>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums pt-1 border-t border-amber-400/15">
-                  <span className="text-rose-300 font-bold">Trùm: {selectedChapter.bossName}</span>
-                  <span
-                    className={
-                      stats.powerRating >= selectedChapter.recommendedPower
-                        ? 'text-emerald-300 font-bold'
-                        : 'text-orange-300 font-bold'
-                    }
-                  >
-                    Đề xuất LC {selectedChapter.recommendedPower} (Bạn: {stats.powerRating})
-                  </span>
-                </div>
-              </div>
-
-              {save.highestChapterCleared < 3 && (
-                <div className="rounded-2xl bg-[#081026] border border-amber-400/20 p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="font-black text-amber-200">{targetGoal.title}</span>
-                    {onOpenEarlyRoadmap && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClose();
-                          onOpenEarlyRoadmap();
-                        }}
-                        className="text-[11px] font-bold text-amber-300 hover:text-amber-100 underline cursor-pointer"
-                      >
-                        Lộ Trình Ch.1–3
-                      </button>
+              {(() => {
+                const effectiveRecPower = Math.round(
+                  selectedChapter.recommendedPower * (1 + (save.selectedNightmareTier ?? 0) * 0.35)
+                );
+                const pressure = computePowerPressure(stats.powerRating, effectiveRecPower);
+                return (
+                  <div className="rounded-2xl bg-[#080f24] border border-amber-400/25 p-3.5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-display text-sm sm:text-base font-black text-white">
+                        {selectedChapter.zodiacIcon} {selectedChapter.name}
+                      </div>
+                      <span className="text-[11px] font-mono-nums font-bold text-amber-300">
+                        Kỷ lục {bestStage}/{selectedChapter.stages.length}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">{selectedChapter.subtitle}</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums pt-1 border-t border-amber-400/15">
+                      <span className="text-rose-300 font-bold">Trùm: {selectedChapter.bossName}</span>
+                      <span className={`${pressure.textClass} font-bold`}>
+                        Đề xuất LC {effectiveRecPower.toLocaleString('vi-VN')} (Bạn:{' '}
+                        {stats.powerRating.toLocaleString('vi-VN')}) · {pressure.shortLabel}
+                      </span>
+                    </div>
+                    {pressure.tier !== 'ready' && (
+                      <div className={`text-[11px] leading-relaxed ${pressure.textClass}`}>
+                        {pressure.description}
+                      </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-[11px] font-mono-nums text-slate-300">
-                    <span>
-                      {targetGoal.current}/{targetGoal.target} · {earlyPolicy.stageLabel}
-                    </span>
-                  </div>
+                );
+              })()}
+
+              <div className="rounded-2xl bg-[#081026] border border-amber-400/20 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-black text-amber-200">{targetGoal.title}</span>
+                  {onOpenEarlyRoadmap && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenEarlyRoadmap();
+                      }}
+                      className="text-[11px] font-bold text-amber-300 hover:text-amber-100 underline cursor-pointer whitespace-nowrap"
+                    >
+                      Lộ Trình 30 Ngày
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[11px] font-mono-nums text-slate-300">
+                  <span>
+                    {targetGoal.current}/{targetGoal.target} · {earlyPolicy.stageLabel}
+                  </span>
+                </div>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
                       <div
@@ -819,12 +880,11 @@ export const LobbyModeDetailModal: React.FC<LobbyModeDetailModalProps> = ({
                         className="a2-emerald-btn px-3 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 cursor-pointer"
                       >
                         <Hammer className="w-3 h-3" />
-                        <span>Rèn Ngay</span>
-                      </button>
-                    )}
-                  </div>
+                      <span>Rèn Ngay</span>
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
 
               {savedLoadouts.length > 0 && onApplyLoadoutPreset && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#080f24] border border-amber-400/20 px-3.5 py-2.5">
@@ -1955,6 +2015,9 @@ export const LobbyEventsHubDrawer: React.FC<LobbyEventsHubDrawerProps> = ({
   const battlePassUnlock = isEarlyFeatureUnlocked(save, 'battle_pass');
   const forgeUnlock = isEarlyFeatureUnlocked(save, 'forge');
   const starterPackUnlock = isEarlyFeatureUnlocked(save, 'starter_pack');
+  const arenaUnlock = isEarlyFeatureUnlocked(save, 'arena');
+  const fairClaimable = countClaimableFairRoadmapMilestones(save, stats);
+  const fairReadiness = evaluateMaxStageReadiness(save, stats);
   const vip = normalizeVip(save.vip);
   const hasVip = isVipActive(vip);
   const vipDailyReady = canClaimVipDaily(vip);
@@ -2239,9 +2302,10 @@ export const LobbyEventsHubDrawer: React.FC<LobbyEventsHubDrawerProps> = ({
               {onOpenEarlyRoadmap &&
                 renderTile({
                   key: 'roadmap',
-                  label: 'Lộ Trình Tân Thủ Ch.1–3',
-                  sub: 'Rèn trang bị mục tiêu',
+                  label: 'Lộ Trình 30 Ngày · Fair Progression',
+                  sub: `Ngày ${fairReadiness.activeDay}/30 · ${fairReadiness.overallPercent}% Max Đồ`,
                   icon: <Map className="w-4 h-4 text-amber-300" />,
+                  badge: fairClaimable > 0 ? `+${fairClaimable}` : undefined,
                   onClick: () => onOpenEarlyRoadmap(),
                 })}
             </div>
@@ -2251,10 +2315,16 @@ export const LobbyEventsHubDrawer: React.FC<LobbyEventsHubDrawerProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {renderTile({
                 key: 'arena',
-                label: 'Đấu Trường Arena',
-                sub: `${arena.ticketsRemaining} vé khiêu chiến`,
+                label: arenaUnlock.unlocked ? 'Đấu Trường Arena' : 'Arena · Ch.3',
+                sub: arenaUnlock.unlocked
+                  ? `${arena.ticketsRemaining} vé khiêu chiến`
+                  : arenaUnlock.requiredLabel,
                 icon: <Swords className="w-4 h-4 text-rose-300" />,
-                badge: arena.ticketsRemaining > 0 ? `${arena.ticketsRemaining}` : undefined,
+                badge:
+                  arenaUnlock.unlocked && arena.ticketsRemaining > 0
+                    ? `${arena.ticketsRemaining}`
+                    : undefined,
+                disabled: !arenaUnlock.unlocked,
                 onClick: onOpenArenaModal,
               })}
               {onOpenDispatch &&

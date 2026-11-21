@@ -21,7 +21,7 @@ import {
   SkillSynergyId,
 } from '../types/game';
 
-export const PROGRESSION_SCHEMA_VERSION = 2;
+export const PROGRESSION_SCHEMA_VERSION = 3;
 export const PUNISH_WINDOW_DAMAGE_BONUS = 0.18;
 export const PUNISH_WINDOW_PHASE3_BONUS = 0.24;
 
@@ -34,9 +34,9 @@ export const RARITY_RANK: Record<Rarity, number> = {
 };
 
 export const EARLY_FORGE_COSTS = {
-  rareShards: 10,
-  epicShards: 15,
-  sTierBlueprints: 20,
+  rareShards: 12,
+  epicShards: 20,
+  sTierBlueprints: 30,
 } as const;
 
 export const SYSTEM_MAIL_TEMPLATES: Omit<MailItem, 'claimed'>[] = [
@@ -97,14 +97,34 @@ export function getEarlyProgressionPolicy(
   const highestChapterCleared = Math.max(0, Math.floor(save.highestChapterCleared ?? 0));
   const bestCh1Stage = getBestCh1Stage(save);
 
-  if (highestChapterCleared >= 2) {
+  if (highestChapterCleared >= 8) {
     return {
       highestChapterCleared,
       bestCh1Stage,
       maxGearRarity: Rarity.MYTHIC,
       allowSTier: true,
       maxRuneRarity: Rarity.LEGENDARY,
-      stageLabel: 'Chương 3+ · Mở Khóa Mẫu [S] & Huyền Thoại',
+      stageLabel: 'Chương 9–12 · Mở Khóa Thần Thoại (Mythic) & Đỉnh Cao [S]',
+    };
+  }
+  if (highestChapterCleared >= 4) {
+    return {
+      highestChapterCleared,
+      bestCh1Stage,
+      maxGearRarity: Rarity.LEGENDARY,
+      allowSTier: true,
+      maxRuneRarity: Rarity.LEGENDARY,
+      stageLabel: 'Chương 5–8 · Mở Khóa Huyền Thoại (Legendary) & Mẫu [S]',
+    };
+  }
+  if (highestChapterCleared >= 3) {
+    return {
+      highestChapterCleared,
+      bestCh1Stage,
+      maxGearRarity: Rarity.EPIC,
+      allowSTier: true,
+      maxRuneRarity: Rarity.EPIC,
+      stageLabel: 'Chương 4 · Mở Khóa Mẫu [S] Bậc Sử Thi',
     };
   }
   if (highestChapterCleared >= 1) {
@@ -114,7 +134,7 @@ export function getEarlyProgressionPolicy(
       maxGearRarity: Rarity.EPIC,
       allowSTier: false,
       maxRuneRarity: Rarity.EPIC,
-      stageLabel: 'Chương 2 · Mở Khóa Sử Thi (Epic)',
+      stageLabel: 'Chương 2–3 · Mở Khóa Sử Thi (Epic)',
     };
   }
   if (bestCh1Stage >= 4) {
@@ -181,20 +201,81 @@ export function isEarlyFeatureUnlocked(
       };
     case 'sweep':
     case 'runes':
+    case 'daily_rift':
+    case 'endless_tower':
       return {
         unlocked: ch >= 1,
         minChapterCleared: 1,
         minCh1Stage: 12,
         requiredLabel: 'Mở sau khi vượt Chương 1',
       };
-    case 'starter_pack':
+    case 'arena':
     case 'meta_events':
-    case 'late_modes':
       return {
         unlocked: ch >= 2,
         minChapterCleared: 2,
         minCh1Stage: 12,
         requiredLabel: 'Mở khi vào Chương 3 (Vượt Chương 2)',
+      };
+    case 'starter_pack':
+    case 'late_modes':
+    case 'coop_raid':
+      return {
+        unlocked: ch >= 3,
+        minChapterCleared: 3,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 4 (Vượt Chương 3)',
+      };
+    case 'elemental_towers':
+      return {
+        unlocked: ch >= 4,
+        minChapterCleared: 4,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 5 (Vượt Chương 4)',
+      };
+    case 'world_boss':
+    case 'crystal_defense':
+      return {
+        unlocked: ch >= 5,
+        minChapterCleared: 5,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 6 (Vượt Chương 5)',
+      };
+    case 'blood_moon':
+      return {
+        unlocked: ch >= 6,
+        minChapterCleared: 6,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 7 (Vượt Chương 6)',
+      };
+    case 'abyssal_gauntlet':
+      return {
+        unlocked: ch >= 7,
+        minChapterCleared: 7,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 8 (Vượt Chương 7)',
+      };
+    case 'pantheon_expedition':
+    case 'dragon_lair':
+      return {
+        unlocked: ch >= 8,
+        minChapterCleared: 8,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 9 (Vượt Chương 8)',
+      };
+    case 'crystal_vault':
+      return {
+        unlocked: ch >= 9,
+        minChapterCleared: 9,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 10 (Vượt Chương 9)',
+      };
+    case 'sky_citadel':
+      return {
+        unlocked: ch >= 10,
+        minChapterCleared: 10,
+        minCh1Stage: 12,
+        requiredLabel: 'Mở khi vào Chương 11 (Vượt Chương 10)',
       };
   }
 }
@@ -274,6 +355,19 @@ export function migrateSaveData(raw: SaveData): SaveData {
       : 'artemis';
 
   // Build synchronized visible inbox (never respawning deleted mails, always reflecting claimedMailIds)
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const rawActiveDays = raw.fairActiveDays;
+  const normalizedActiveDays =
+    rawActiveDays && typeof rawActiveDays.count === 'number' && rawActiveDays.count >= 1
+      ? {
+          count: Math.max(1, Math.floor(rawActiveDays.count)),
+          lastDate: typeof rawActiveDays.lastDate === 'string' && rawActiveDays.lastDate ? rawActiveDays.lastDate : todayIso,
+        }
+      : {
+          count: Math.max(1, Math.min(30, (raw.highestChapterCleared ?? 0) * 2 + 1)),
+          lastDate: todayIso,
+        };
+
   const migratedBase: SaveData = {
     ...raw,
     selectedHeroId: resolvedHeroId,
@@ -286,6 +380,8 @@ export function migrateSaveData(raw: SaveData): SaveData {
     earlyForgeProgress: normalizeEarlyForgeProgress(raw.earlyForgeProgress),
     playtestMetrics: normalizePlaytestMetrics(raw.playtestMetrics),
     aiPreferences: normalizeAiPreferences(raw.aiPreferences),
+    fairRoadmapClaimedIds: Array.isArray(raw.fairRoadmapClaimedIds) ? [...raw.fairRoadmapClaimedIds] : [],
+    fairActiveDays: normalizedActiveDays,
   };
 
   migratedBase.mailInbox = getVisibleMailInbox(migratedBase);
@@ -514,21 +610,28 @@ export function applyEarlyRunMilestones(
       summary.rareShardsGained += gained;
     }
     if (stageReached >= 8) {
-      const gained = victory ? 4 : 2;
+      const gained = victory ? 6 : 2;
       forge.epicShards += gained;
       summary.epicShardsGained += gained;
     }
   } else if (chapterId === 2) {
-    const gainedEpic = victory ? 5 : stageReached >= 4 ? 2 : 1;
+    const gainedEpic = victory ? 6 : stageReached >= 4 ? 3 : 1;
     forge.epicShards += gainedEpic;
     summary.epicShardsGained += gainedEpic;
     if (stageReached >= 8 || victory) {
-      const gainedS = victory ? 4 : 2;
+      const gainedS = victory ? 3 : 1;
       forge.sTierBlueprints += gainedS;
       summary.sTierBlueprintsGained += gainedS;
     }
-  } else if (chapterId >= 3) {
-    const gainedS = victory ? 6 : stageReached >= 4 ? 3 : 1;
+  } else if (chapterId === 3) {
+    const gainedEpic = victory ? 5 : stageReached >= 6 ? 2 : 1;
+    forge.epicShards += gainedEpic;
+    summary.epicShardsGained += gainedEpic;
+    const gainedS = victory ? 5 : stageReached >= 4 ? 2 : 1;
+    forge.sTierBlueprints += gainedS;
+    summary.sTierBlueprintsGained += gainedS;
+  } else if (chapterId >= 4) {
+    const gainedS = victory ? 6 + Math.min(4, Math.floor((chapterId - 3) / 2)) : stageReached >= 4 ? 3 : 1;
     forge.sTierBlueprints += gainedS;
     summary.sTierBlueprintsGained += gainedS;
   }
@@ -546,7 +649,7 @@ export function applyEarlyRunMilestones(
 
   if (chapterId === 1 && (stageReached >= 4 || victory) && !claimed.has('ms_ch1_ares')) {
     claimed.add('ms_ch1_ares');
-    forge.rareShards += 8; // Together with stage2 + run shards >= 10 -> guaranteed first Rare!
+    forge.rareShards += 8; // Together with stage2 + run shards >= 12 -> guaranteed first Rare!
     nextGold += 80;
     nextGems += 15;
     summary.rareShardsGained += 8;
@@ -558,22 +661,22 @@ export function applyEarlyRunMilestones(
 
   if (chapterId === 1 && (stageReached >= 8 || victory) && !claimed.has('ms_ch1_boreas')) {
     claimed.add('ms_ch1_boreas');
-    forge.epicShards += 5;
+    forge.epicShards += 6;
     nextGold += 120;
     nextGems += 20;
-    summary.epicShardsGained += 5;
+    summary.epicShardsGained += 6;
     summary.goldGained += 120;
     summary.gemsGained += 20;
     summary.milestoneIds.push('ms_ch1_boreas');
-    summary.titles.push('Hạ Phụ Boss Boreas · +5 Mảnh Sử Thi');
+    summary.titles.push('Hạ Phụ Boss Boreas · +6 Mảnh Sử Thi');
   }
 
   if (chapterId === 1 && victory && !claimed.has('ms_ch1_clear')) {
     claimed.add('ms_ch1_clear');
-    forge.epicShards += 6; // 5 + 6 + 4 = 15/15 -> guaranteed first Epic craft!
+    forge.epicShards += 8; // 6 + 8 + 6 = 20/20 -> guaranteed first Epic craft!
     nextGold += 180;
     nextGems += 30;
-    summary.epicShardsGained += 6;
+    summary.epicShardsGained += 8;
     summary.goldGained += 180;
     summary.gemsGained += 30;
     // Award moved Rare Rune (arrow_rain) on Chapter 1 Clear!
@@ -596,16 +699,16 @@ export function applyEarlyRunMilestones(
       summary.unlockedRoyalTitle = true;
     }
     summary.milestoneIds.push('ms_ch1_clear');
-    summary.titles.push('Vượt Chương 1 · Mở Khóa Sử Thi, Ngọc Khắc & Danh Hiệu 3D');
+    summary.titles.push('Vượt Chương 1 · Mở Khóa Sử Thi, Tháp Vô Tận, Bí Cảnh & Danh Hiệu 3D');
   }
 
   if (chapterId === 2 && victory && !claimed.has('ms_ch2_clear')) {
     claimed.add('ms_ch2_clear');
-    forge.sTierBlueprints += 10;
-    nextGold += 260;
+    forge.sTierBlueprints += 8;
+    nextGold += 280;
     nextGems += 40;
-    summary.sTierBlueprintsGained += 10;
-    summary.goldGained += 260;
+    summary.sTierBlueprintsGained += 8;
+    summary.goldGained += 280;
     summary.gemsGained += 40;
     // Award moved Celestial Wing 3D on Chapter 2 Clear (entering Chapter 3)!
     if (!nextCelWings.includes('seraph_azure')) {
@@ -615,7 +718,43 @@ export function applyEarlyRunMilestones(
       summary.unlockedCelestialWing = true;
     }
     summary.milestoneIds.push('ms_ch2_clear');
-    summary.titles.push('Vượt Chương 2 · Mở Khóa Mẫu [S] & Cánh Thần Quang 3D');
+    summary.titles.push('Vượt Chương 2 · Mở Khóa Đấu Trường, Sự Kiện & Cánh Thần Quang 3D');
+  }
+
+  if (chapterId === 3 && victory && !claimed.has('ms_ch3_clear')) {
+    claimed.add('ms_ch3_clear');
+    forge.sTierBlueprints += 12;
+    nextGold += 450;
+    nextGems += 55;
+    summary.sTierBlueprintsGained += 12;
+    summary.goldGained += 450;
+    summary.gemsGained += 55;
+    summary.milestoneIds.push('ms_ch3_clear');
+    summary.titles.push('Vượt Chương 3 · Mở Khóa Mẫu [S], Co-op Raid & Gói Khởi Nghiệp');
+  }
+
+  if (chapterId === 4 && victory && !claimed.has('ms_ch4_clear')) {
+    claimed.add('ms_ch4_clear');
+    forge.sTierBlueprints += 10;
+    nextGold += 680;
+    nextGems += 70;
+    summary.sTierBlueprintsGained += 10;
+    summary.goldGained += 680;
+    summary.gemsGained += 70;
+    summary.milestoneIds.push('ms_ch4_clear');
+    summary.titles.push('Vượt Chương 4 · Mở Khóa Huyền Thoại (Legendary) & Tháp Nguyên Tố');
+  }
+
+  if (chapterId === 8 && victory && !claimed.has('ms_ch8_clear')) {
+    claimed.add('ms_ch8_clear');
+    forge.sTierBlueprints += 15;
+    nextGold += 1400;
+    nextGems += 100;
+    summary.sTierBlueprintsGained += 15;
+    summary.goldGained += 1400;
+    summary.gemsGained += 100;
+    summary.milestoneIds.push('ms_ch8_clear');
+    summary.titles.push('Vượt Chương 8 · Mở Khóa Thần Thoại (Mythic), Hang Rồng & Viễn Chinh');
   }
 
   return {
@@ -687,8 +826,8 @@ export function getNextTargetGoal(save: SaveData): TargetGoalSnapshot {
     target: EARLY_FORGE_COSTS.sTierBlueprints,
     canCraftNow: policy.allowSTier && forge.sTierBlueprints >= EARLY_FORGE_COSTS.sTierBlueprints,
     unlocked: policy.allowSTier,
-    unlockRequirement: 'Tiến vào Chương 3 (Vượt Chương 2)',
-    dropSourceText: 'Nguồn: Boss Chương 2–3 · Bản Vẽ [S] · Rương Thần Thoại (Pity 25 bảo toàn)',
+    unlockRequirement: 'Tiến vào Chương 4 (Vượt Chương 3)',
+    dropSourceText: 'Nguồn: Boss Chương 3–12 · Bản Vẽ [S] · Rương Thần Thoại (Pity 25 bảo toàn)',
   };
 }
 
@@ -734,34 +873,34 @@ export const EARLY_REWARD_AUDIT_MATRIX: RewardChannelAuditRow[] = [
   },
   {
     channel: 'Gói Khởi Nghiệp (Starter Pack [S])',
-    earliestUnlock: 'Chương 3 (Vượt Chương 2)',
+    earliestUnlock: 'Chương 4 (Vượt Chương 3)',
     cost: '39 Ngọc Hồn',
     claimLimit: '1 lần / tài khoản',
     rarityCeiling: 'Sử Thi (Epic)',
-    canDropSTier: 'Có — chỉ khi đã mở Chương 3',
+    canDropSTier: 'Có — chỉ khi đã mở Chương 4',
   },
   {
     channel: 'Rương Sắt (Iron Chest)',
     earliestUnlock: 'Sau Ải 2 Chương 1',
     cost: '120 Vàng (x10: 1.080 Vàng)',
     claimLimit: 'Không giới hạn',
-    rarityCeiling: 'Ải 2–3: Common · Ải 4–11: Rare · Sau Ch.1: Epic',
-    canDropSTier: 'Không (loại toàn bộ mẫu S khỏi pool trước Ch.3)',
+    rarityCeiling: 'Ải 2–3: Common · Ải 4–11: Rare · Ch.2–4: Epic',
+    canDropSTier: 'Không (loại toàn bộ mẫu S khỏi pool trước Ch.4)',
   },
   {
     channel: 'Rương Thần Thoại (Mythic Chest)',
     earliestUnlock: 'Sau Phụ Boss Ares (Ải 4 Ch.1)',
     cost: '25 Ngọc (x10: 225 Ngọc)',
     claimLimit: 'Không giới hạn (Pity 10 Epic / 25 [S] bảo toàn khi chưa mở pool)',
-    rarityCeiling: 'Ải 4–11: Rare · Sau Ch.1: Epic · Từ Ch.3: Legendary',
-    canDropSTier: 'Chỉ từ Chương 3 (Vượt Chương 2)',
+    rarityCeiling: 'Ải 4–11: Rare · Ch.2–4: Epic · Ch.5–8: Legendary · Ch.9–12: Mythic',
+    canDropSTier: 'Chỉ từ Chương 4 (Vượt Chương 3)',
   },
   {
     channel: 'Quét Nhanh (Quick Sweep)',
     earliestUnlock: 'Sau khi vượt Chương 1 (Ch.2+)',
     cost: 'Miễn phí (3 lượt/ngày, VIP +2)',
     claimLimit: '3–5 lượt/ngày',
-    rarityCeiling: 'Ch.2: tối đa Rare · Từ Ch.3: theo trần chương',
+    rarityCeiling: 'Ch.2: tối đa Rare · Ch.3+: theo trần chương',
     canDropSTier: 'Không',
   },
   {
@@ -770,15 +909,15 @@ export const EARLY_REWARD_AUDIT_MATRIX: RewardChannelAuditRow[] = [
     cost: 'Miễn phí (Premium: 120 Ngọc)',
     claimLimit: '1 lần / bậc (20 bậc)',
     rarityCeiling: 'Bị chặn theo trần chương hiện tại',
-    canDropSTier: 'Chỉ khi mở Chương 3 (nếu nhận sớm sẽ giữ lại hoặc yêu cầu Ch.3)',
+    canDropSTier: 'Chỉ khi mở Chương 4 (nếu nhận sớm sẽ giữ lại hoặc yêu cầu Ch.4)',
   },
   {
     channel: 'Flash Sale & Cửa Hàng',
     earliestUnlock: 'Sau Phụ Boss Ares (Ải 4 Ch.1)',
     cost: 'Vàng / Ngọc (1 gói 0đ/ngày)',
     claimLimit: '1 lần / món / ngày',
-    rarityCeiling: 'Gói Epic mở sau Ch.1 · Gói [S] mở từ Ch.3',
-    canDropSTier: 'Chỉ từ Chương 3',
+    rarityCeiling: 'Gói Epic mở sau Ch.1 · Gói [S] mở từ Ch.4',
+    canDropSTier: 'Chỉ từ Chương 4',
   },
   {
     channel: 'Sự Kiện Sảnh Wave 3–14 (Vòng Quay, Hộp Mù, Đấu Giá, Bàn Cờ, Lễ Hội)',
@@ -786,7 +925,7 @@ export const EARLY_REWARD_AUDIT_MATRIX: RewardChannelAuditRow[] = [
     cost: 'Vé / Ngọc / Vàng sự kiện',
     claimLimit: 'Theo chu kỳ ngày / mùa',
     rarityCeiling: 'Khóa trước Ch.3 · Mọi handler đều qua rollProgressionGatedGear',
-    canDropSTier: 'Chỉ từ Chương 3',
+    canDropSTier: 'Chỉ từ Chương 4',
   },
 ];
 
@@ -1055,27 +1194,23 @@ export function resetPlaytestMetrics(now = Date.now()): PlaytestMetrics {
 export function getSideModeScaling(highestChapterCleared: number): SideModeScaling {
   const tier = Math.max(1, Math.min(12, Math.floor(highestChapterCleared ?? 0) + 1));
   const table: Record<number, Omit<SideModeScaling, 'chapterTier' | 'label'>> = {
-    1: { enemyHpScale: 1.0, enemyDmgScale: 1.0, goldRewardMult: 1.0, starDustBonus: 20 },
-    2: { enemyHpScale: 1.85, enemyDmgScale: 1.28, goldRewardMult: 1.35, starDustBonus: 36 },
-    3: { enemyHpScale: 2.8, enemyDmgScale: 1.56, goldRewardMult: 1.7, starDustBonus: 54 },
-    4: { enemyHpScale: 3.9, enemyDmgScale: 1.88, goldRewardMult: 2.1, starDustBonus: 74 },
-    5: { enemyHpScale: 5.1, enemyDmgScale: 2.22, goldRewardMult: 2.55, starDustBonus: 96 },
-    6: { enemyHpScale: 6.5, enemyDmgScale: 2.6, goldRewardMult: 3.05, starDustBonus: 120 },
+    1: { enemyHpScale: 1.25, enemyDmgScale: 1.12, goldRewardMult: 1.0, starDustBonus: 22 },
+    2: { enemyHpScale: 3.1, enemyDmgScale: 1.55, goldRewardMult: 1.35, starDustBonus: 38 },
+    3: { enemyHpScale: 5.4, enemyDmgScale: 2.05, goldRewardMult: 1.75, starDustBonus: 58 },
+    4: { enemyHpScale: 8.6, enemyDmgScale: 2.65, goldRewardMult: 2.2, starDustBonus: 82 },
+    5: { enemyHpScale: 12.8, enemyDmgScale: 3.35, goldRewardMult: 2.75, starDustBonus: 110 },
+    6: { enemyHpScale: 18.2, enemyDmgScale: 4.15, goldRewardMult: 3.4, starDustBonus: 142 },
+    7: { enemyHpScale: 24.8, enemyDmgScale: 5.05, goldRewardMult: 4.15, starDustBonus: 178 },
+    8: { enemyHpScale: 33.0, enemyDmgScale: 6.1, goldRewardMult: 5.0, starDustBonus: 220 },
+    9: { enemyHpScale: 43.0, enemyDmgScale: 7.3, goldRewardMult: 6.0, starDustBonus: 268 },
+    10: { enemyHpScale: 54.5, enemyDmgScale: 8.65, goldRewardMult: 7.15, starDustBonus: 320 },
+    11: { enemyHpScale: 68.0, enemyDmgScale: 10.2, goldRewardMult: 8.5, starDustBonus: 380 },
+    12: { enemyHpScale: 84.0, enemyDmgScale: 12.0, goldRewardMult: 10.0, starDustBonus: 450 },
   };
-  if (table[tier]) {
-    return {
-      chapterTier: tier,
-      ...table[tier],
-      label: `Bậc Ch.${tier}`,
-    };
-  }
-  const extra = tier - 6;
+  const row = table[tier] ?? table[12];
   return {
     chapterTier: tier,
-    enemyHpScale: Number((6.5 + extra * 1.65).toFixed(2)),
-    enemyDmgScale: Number((2.6 + extra * 0.42).toFixed(2)),
-    goldRewardMult: Number((3.05 + extra * 0.55).toFixed(2)),
-    starDustBonus: 120 + extra * 28,
+    ...row,
     label: `Bậc Ch.${tier}`,
   };
 }
@@ -1587,25 +1722,26 @@ export function getEndlessTowerScaling(
 ): EndlessTowerFloorScaling {
   const f = Math.max(1, Math.floor(floor || 1));
   const chTier = Math.max(0, Math.min(12, Math.floor(highestChapterCleared || 0)));
-  // Gentle anchor so early players can climb Floors 1–9 cleanly while Ch.7–12 veterans face real endgame pressure
-  const chapterAnchorHp = 1 + Math.min(chTier, 6) * 0.08 + Math.max(0, chTier - 6) * 0.14;
-  const chapterAnchorDmg = 1 + Math.min(chTier, 6) * 0.05 + Math.max(0, chTier - 6) * 0.08;
+  // 30-Day Fair Progression curve: Floors 1–10 Week 1, 11–22 Week 2, 23–36 Week 3, 37–50 Week 4
+  const chapterAnchorHp = 1 + Math.min(chTier, 6) * 0.1 + Math.max(0, chTier - 6) * 0.18;
+  const chapterAnchorDmg = 1 + Math.min(chTier, 6) * 0.06 + Math.max(0, chTier - 6) * 0.1;
 
-  const floorHpGrowth = 1 + (f - 1) * 0.24 + Math.pow(Math.max(0, f - 10), 1.25) * 0.09;
-  const floorDmgGrowth = 1 + (f - 1) * 0.11 + Math.pow(Math.max(0, f - 12), 1.15) * 0.04;
+  const floorHpGrowth = 1.2 + (f - 1) * 0.42 + Math.pow(Math.max(0, f - 8), 1.48) * 0.19;
+  const floorDmgGrowth = 1.12 + (f - 1) * 0.16 + Math.pow(Math.max(0, f - 10), 1.24) * 0.06;
 
   const enemyHpScale = Number((floorHpGrowth * chapterAnchorHp).toFixed(2));
   const enemyDmgScale = Number((floorDmgGrowth * chapterAnchorDmg).toFixed(2));
-  const goldReward = Math.round((42 + f * 18 + Math.floor(f / 5) * 35) * (1 + chTier * 0.08));
-  const starDustReward = Math.round(6 + f * 2.5 + (f % 5 === 0 ? 12 : 0));
-  const gemReward = f % 5 === 0 ? 10 + Math.floor(f / 5) * 4 : Math.max(2, Math.floor(f / 4) + 1);
+  const goldReward = Math.round((48 + f * 24 + Math.floor(f / 5) * 55) * (1 + chTier * 0.12));
+  const starDustReward = Math.round(8 + f * 3.5 + (f % 5 === 0 ? 18 : 0));
+  const gemReward = f % 5 === 0 ? 12 + Math.floor(f / 5) * 5 : Math.max(2, Math.floor(f / 4) + 1);
 
   const enableHazards = f >= 10;
   const enableDualAffixElites = f >= 12;
   const enableBossPhaseThree = f >= 20;
 
   let tierTitle = 'Khởi Hành';
-  if (f >= 20) tierTitle = 'Tối Thượng';
+  if (f >= 35) tierTitle = 'Thần Thoại';
+  else if (f >= 20) tierTitle = 'Tối Thượng';
   else if (f >= 12) tierTitle = 'Song Ấn';
   else if (f >= 10) tierTitle = 'Nguy Hiểm';
 

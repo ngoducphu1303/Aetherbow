@@ -649,7 +649,20 @@ export type EarlyFeatureId =
   | 'runes'
   | 'forge'
   | 'meta_events'
-  | 'late_modes';
+  | 'late_modes'
+  | 'daily_rift'
+  | 'endless_tower'
+  | 'arena'
+  | 'coop_raid'
+  | 'elemental_towers'
+  | 'world_boss'
+  | 'crystal_defense'
+  | 'blood_moon'
+  | 'abyssal_gauntlet'
+  | 'pantheon_expedition'
+  | 'dragon_lair'
+  | 'crystal_vault'
+  | 'sky_citadel';
 
 export interface EarlyForgeProgress {
   rareShards: number;
@@ -1392,6 +1405,12 @@ export interface SaveData {
   // Wave 6: Fair Progression Substat Gold Pity + Co-op AI Role Presets
   reforgeGoldPityCount?: number;
   coopPartyRoles?: [CoopAiRole, CoopAiRole];
+  // 30-Day Fair Progression Roadmap & Active Day Tracker (backwards-compatible)
+  fairRoadmapClaimedIds?: string[];
+  fairActiveDays?: {
+    count: number;
+    lastDate: string;
+  };
 }
 
 export type AiAutoPilotTactic = 'aggressive' | 'balanced' | 'evasive';

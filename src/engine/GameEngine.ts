@@ -125,6 +125,11 @@ import {
 } from './wave8LethalAiSystems';
 import type { AiDuelDifficultyTier, CombatStyleGrade } from '../types/game';
 import {
+  computePowerPressure,
+  getTowerRecommendedPower,
+  PowerPressureEvaluation,
+} from '../data/fairProgression30Day';
+import {
   BossWeakPointState,
   ChapterWeatherProfile,
   checkBossWeakPointHit,
@@ -1371,6 +1376,7 @@ export class GameEngine {
   private perfectDodgeCount = 0;
   private nightmareTier = 0;
   private nightmareConfig: NightmareTierConfig = getNightmareTierConfig(1, 0);
+  private activePowerPressure: PowerPressureEvaluation = computePowerPressure(1, 1);
   private isTrainingMode = false;
   private trainingTargetMode: TrainingTargetMode = 'single';
   private trainingDpsState: TrainingDpsState = createTrainingDpsState();
@@ -4042,6 +4048,8 @@ export class GameEngine {
 
     this.buildArena(ch);
     this.resetRunState(stats);
+    const chapterRecPower = Math.round(ch.recommendedPower * (1 + this.nightmareTier * 0.35));
+    this.activePowerPressure = computePowerPressure(stats.powerRating, chapterRecPower);
 
     this.rebuildCompanions();
     this.loadStage(0);
@@ -4505,6 +4513,7 @@ export class GameEngine {
 
     this.buildArena(this.currentChapter);
     this.resetRunState(stats);
+    this.activePowerPressure = computePowerPressure(stats.powerRating, diffCfg.recommendedPower);
     this.ultCharge = 80;
     this.rebuildCompanions();
 
@@ -6367,6 +6376,7 @@ export class GameEngine {
   }
 
   private resetRunState(stats: ComputedPlayerStats): void {
+    this.activePowerPressure = computePowerPressure(1, 1);
     this.isPantheonMode = false;
     this.isChampionshipMode = false;
     this.isCrystalVaultMode = false;
@@ -7152,6 +7162,10 @@ export class GameEngine {
     }
 
     this.towerFloor = floor;
+    this.activePowerPressure = computePowerPressure(
+      this.baseStats.powerRating,
+      getTowerRecommendedPower(floor)
+    );
     const isBossFloor = floor % 3 === 0;
     const presets: Array<'courtyard' | 'pillars' | 'cross' | 'gauntlet' | 'sanctum'> = [
       'courtyard',
@@ -14557,6 +14571,9 @@ export class GameEngine {
 
     const activeSynergies = evaluateActiveSynergies(this.activeSkills);
     let mult = 1.0;
+    if (!e.isArenaRival && !this.isTrainingMode && this.activePowerPressure.enemyDamageTakenMult !== 1.0) {
+      mult *= this.activePowerPressure.enemyDamageTakenMult;
+    }
     if (this.markedEnemyIds.has(e.id)) mult += 0.2;
     if (e.isBoss && !e.isArenaRival && (this.baseStats.bossDamageBonus ?? 0) > 0) {
       mult += this.baseStats.bossDamageBonus;
@@ -16104,7 +16121,9 @@ export class GameEngine {
         (this.isChampionshipMode ? this.championshipDrBonus : 0) +
         (this.isCoopRaidMode && this.coopRoleSynergy ? this.coopRoleSynergy.damageReductionBonus : 0)
     );
-    let dmg = Math.max(2, Math.round(rawAmount * (1 - effectiveDr)));
+    const powerPressureMult =
+      !this.isArenaMode && !this.isTrainingMode ? this.activePowerPressure.enemyDamageDealtMult : 1.0;
+    let dmg = Math.max(2, Math.round(rawAmount * powerPressureMult * (1 - effectiveDr)));
     if (this.shield > 0) {
       const absorbed = Math.min(this.shield, dmg);
       this.shield -= absorbed;

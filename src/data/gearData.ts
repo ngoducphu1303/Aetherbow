@@ -759,7 +759,8 @@ export function getGearStats(item: GearInstance) {
 
 export function getUpgradeCost(item: GearInstance): number {
   const rarityFactor = RARITY_ORDER.indexOf(item.rarity) + 1;
-  return Math.round(45 * item.level * (0.85 + rarityFactor * 0.25));
+  const quadraticTier = Math.pow(Math.max(0, item.level - 6), 1.48) * 11;
+  return Math.round((48 * item.level + quadraticTier) * (0.85 + rarityFactor * 0.28));
 }
 
 export function getGearPowerScore(
@@ -1265,6 +1266,8 @@ export function createInitialSaveData(): SaveData {
     claimedMailIds: [],
     deletedMailIds: [],
     earlyMilestonesClaimed: [],
+    fairRoadmapClaimedIds: [],
+    fairActiveDays: { count: 1, lastDate: getTodayKey() },
     earlyForgeProgress: {
       rareShards: 0,
       epicShards: 0,
@@ -1689,8 +1692,9 @@ export function craftEarlyTargetGear(
   }
 
   // tier === 's_tier'
-  if (ch < 2) {
-    return { ok: false, reason: 'Cần vượt Chương 2 (mở Chương 3) để chế tạo Trang Bị [S].' };
+  const policy = getEarlyProgressionPolicy(save);
+  if (!policy.allowSTier) {
+    return { ok: false, reason: 'Cần vượt Chương 3 (mở Chương 4) để chế tạo Trang Bị [S].' };
   }
   if (fp.sTierBlueprints < EARLY_FORGE_COSTS.sTierBlueprints) {
     return {
@@ -1703,7 +1707,7 @@ export function craftEarlyTargetGear(
   );
   const chosenSlot = targetSlot ?? (hasSWeapon ? undefined : GearSlot.WEAPON);
   const item = rollChestGear(true, Rarity.EPIC, true, {
-    maxRarity: Rarity.LEGENDARY,
+    maxRarity: policy.maxGearRarity,
     allowSTier: true,
     rng,
     preferredSlot: chosenSlot,

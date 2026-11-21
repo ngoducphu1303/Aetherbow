@@ -19,13 +19,21 @@ import {
   registerWithPassword,
 } from '../services/playerCloudService';
 
+export interface AuthSuccessMeta {
+  displayNameOverride?: string;
+  isNewRegistration?: boolean;
+  preserveGuestSave?: boolean;
+}
+
 interface AuthGatePanelProps {
   modeInitial?: 'login' | 'register';
   title?: string;
   subtitle?: string;
   allowGuest?: boolean;
   isGuestLinking?: boolean;
-  onAuthSuccess: (user: User, displayNameOverride?: string) => Promise<void> | void;
+  onAuthStart?: () => void;
+  onAuthAbort?: () => void;
+  onAuthSuccess: (user: User, meta?: AuthSuccessMeta) => Promise<void> | void;
   onContinueGuest?: () => void;
   onClose?: () => void;
   compact?: boolean;
@@ -58,6 +66,8 @@ export const AuthGatePanel: React.FC<AuthGatePanelProps> = ({
   subtitle = 'Lưu trữ toàn bộ anh hùng, trang bị và tiến trình lên đám mây Firebase',
   allowGuest = false,
   isGuestLinking = false,
+  onAuthStart,
+  onAuthAbort,
   onAuthSuccess,
   onContinueGuest,
   onClose,
@@ -91,13 +101,19 @@ export const AuthGatePanel: React.FC<AuthGatePanelProps> = ({
     }
 
     setSubmitting('password');
+    onAuthStart?.();
     try {
       const user =
         authTab === 'register'
           ? await registerWithPassword(accountInput, password, displayName)
           : await loginWithPassword(accountInput, password);
-      await onAuthSuccess(user, authTab === 'register' ? displayName.trim() : undefined);
+      await onAuthSuccess(user, {
+        displayNameOverride: authTab === 'register' ? displayName.trim() : undefined,
+        isNewRegistration: authTab === 'register',
+        preserveGuestSave: isGuestLinking,
+      });
     } catch (err) {
+      onAuthAbort?.();
       const code =
         typeof err === 'object' && err !== null && 'code' in err
           ? String((err as { code?: unknown }).code ?? '')
@@ -116,10 +132,15 @@ export const AuthGatePanel: React.FC<AuthGatePanelProps> = ({
     setErrorMsg(null);
     setShowProviderHelp(false);
     setSubmitting('google');
+    onAuthStart?.();
     try {
       const user = await loginWithGoogle();
-      await onAuthSuccess(user);
+      await onAuthSuccess(user, {
+        isNewRegistration: false,
+        preserveGuestSave: isGuestLinking,
+      });
     } catch (err) {
+      onAuthAbort?.();
       setErrorMsg(mapAuthError(err));
     } finally {
       setSubmitting(null);

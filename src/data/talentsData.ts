@@ -6,7 +6,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Cường Lực Chiến Binh',
     icon: '⚔️',
     desc: 'Tăng vĩnh viễn Sức Tấn Công cơ bản cho toàn bộ Anh Hùng.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 90,
     stepCost: 65,
     perLevelLabel: '+9 ATK / cấp',
@@ -16,7 +16,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Thể Phách Bất Diệt',
     icon: '❤️',
     desc: 'Gia tăng giới hạn Sinh Lực tối đa khi bước vào Thánh Điện.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 90,
     stepCost: 65,
     perLevelLabel: '+42 Max HP / cấp',
@@ -26,7 +26,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Nhịp Cung Thanh Phong',
     icon: '🏹',
     desc: 'Rút ngắn thời gian giãn cách giữa các phát bắn.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 110,
     stepCost: 75,
     perLevelLabel: '+3.5% Tốc Bắn / cấp',
@@ -36,7 +36,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Mắt Diều Hâu',
     icon: '🎯',
     desc: 'Tăng xác suất tung đòn Chí Mạng và xuyên giáp kẻ thù.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 110,
     stepCost: 75,
     perLevelLabel: '+1.8% Chí Mạng / cấp',
@@ -46,7 +46,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Thiết Bì Hộ Thân',
     icon: '🛡️',
     desc: 'Giảm sát thương gánh chịu từ đòn đánh và đạn của Boss.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 100,
     stepCost: 70,
     perLevelLabel: '+1.8% Giảm Thương / cấp',
@@ -56,7 +56,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Bước Chân Tinh Linh',
     icon: '💨',
     desc: 'Cải thiện tốc độ di chuyển giúp né vùng đỏ Boss mượt mà.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 95,
     stepCost: 65,
     perLevelLabel: '+2.5% Tốc Chạy / cấp',
@@ -66,7 +66,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Hồi Phục Linh Hồn',
     icon: '🌿',
     desc: 'Tự động hồi lại một phần Máu tối đa sau mỗi phòng hoặc tầng tháp.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 120,
     stepCost: 85,
     perLevelLabel: '+2.5% Hồi Máu/Phòng',
@@ -76,7 +76,7 @@ export const TALENTS: TalentDefinition[] = [
     name: 'Kho Báu Hoàng Đạo',
     icon: '🪙',
     desc: 'Gia tăng lượng Vàng rơi từ quái vật, rương vỡ và Boss.',
-    maxLevel: 10,
+    maxLevel: 20,
     baseCost: 100,
     stepCost: 70,
     perLevelLabel: '+8% Vàng Nhận / cấp',
@@ -96,7 +96,9 @@ export function getTalentLevel(
 
 export function getTalentUpgradeCost(id: TalentId, currentLevel: number): number {
   const def = TALENT_MAP[id];
-  return def.baseCost + currentLevel * def.stepCost;
+  const lv = Math.max(0, Math.floor(currentLevel));
+  const lateCurve = Math.pow(Math.max(0, lv - 3), 1.78) * 42;
+  return Math.round(def.baseCost + lv * def.stepCost * 1.25 + lateCurve);
 }
 
 export function getTotalTalentLevels(

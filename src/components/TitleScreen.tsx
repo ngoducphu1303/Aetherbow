@@ -46,6 +46,11 @@ import {
   countClaimableBattlePass,
 } from '../data/liveOpsData';
 import { isNightmareUnlocked } from '../data/phase5Data';
+import {
+  computePowerPressure,
+  countClaimableFairRoadmapMilestones,
+  evaluateMaxStageReadiness,
+} from '../data/fairProgression30Day';
 import { countClaimableWelfare, getTodayKey } from '../data/questsData';
 import {
   MAX_DAILY_RIFT_RUNS,
@@ -695,7 +700,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const heroStar = save.heroStars[activeHero.id] ?? 0;
   const bestStage = save.bestStagePerChapter[selectedChapter.id] ?? 0;
-  const powerMet = stats.powerRating >= selectedChapter.recommendedPower;
+  const effectiveChapterRecPower = Math.round(
+    selectedChapter.recommendedPower * (1 + (save.selectedNightmareTier ?? 0) * 0.35)
+  );
+  const chapterPowerPressure = computePowerPressure(stats.powerRating, effectiveChapterRecPower);
+  const fairRoadmapClaimable = countClaimableFairRoadmapMilestones(save, stats);
+  const fairReadiness = evaluateMaxStageReadiness(save, stats);
 
   const achClaimable = countClaimableAchievements(save);
   const unreadMailCount = countUnclaimedEligibleMail(save);
@@ -1469,6 +1479,31 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
         {/* Right: 2 Core Currencies + Conditional Quick-Claim + Clean Icon Controls */}
         <div className="flex items-center gap-1.5">
+          {onOpenEarlyRoadmap && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onOpenEarlyRoadmap();
+              }}
+              title="Lộ Trình 30 Ngày · Fair Progression (Chương 1–12 & Max Đồ)"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-black whitespace-nowrap cursor-pointer transition-colors ${
+                fairRoadmapClaimable > 0
+                  ? 'bg-amber-500/20 border-amber-300/75 text-amber-100 hover:bg-amber-500/30'
+                  : 'bg-[#080d1f]/92 border-amber-400/35 text-amber-200 hover:border-amber-300'
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span className="hidden md:inline">Lộ Trình</span>
+              <span className="font-mono-nums text-amber-300">N{fairReadiness.activeDay}/30</span>
+              {fairRoadmapClaimable > 0 && (
+                <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-mono-nums text-[10px] font-black">
+                  +{fairRoadmapClaimable}
+                </span>
+              )}
+            </button>
+          )}
+
           {onOpenClaimAllModal && claimAllPreview.totalClaimableCount > 0 && (
             <button
               type="button"
@@ -1973,18 +2008,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                               </span>
                             )}
                         </div>
-                        <div className="flex items-center justify-center gap-2 text-[10px] font-mono-nums text-slate-300 truncate">
-                          <span>
-                            {bestStage}/{selectedChapter.stages.length} phòng
+                        <div className="flex items-center justify-center gap-1.5 text-[10px] font-mono-nums text-slate-300 min-w-0">
+                          <span className="shrink-0">
+                            {bestStage}/{selectedChapter.stages.length}
                           </span>
-                          <span aria-hidden="true" className="text-amber-400/50">·</span>
-                          <span className={powerMet ? 'text-emerald-300 font-bold' : 'text-orange-300 font-bold'}>
-                            LC {selectedChapter.recommendedPower}
+                          <span aria-hidden="true" className="text-amber-400/50 shrink-0">·</span>
+                          <span className={`${chapterPowerPressure.textClass} font-bold truncate`}>
+                            LC {effectiveChapterRecPower.toLocaleString('vi-VN')} · {chapterPowerPressure.shortLabel}
                           </span>
                           {targetGoal.canCraftNow && (
                             <>
-                              <span aria-hidden="true" className="text-amber-400/50">·</span>
-                              <span className="text-emerald-300 font-black">Rèn đồ mới!</span>
+                              <span aria-hidden="true" className="text-amber-400/50 shrink-0">·</span>
+                              <span className="text-emerald-300 font-black shrink-0">Rèn đồ!</span>
                             </>
                           )}
                         </div>

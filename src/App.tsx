@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { soundEngine } from './audio/soundEngine';
 import { AchievementToast } from './components/AchievementToast';
-import { AuthGatePanel } from './components/AuthGatePanel';
+import { AuthGatePanel, AuthSuccessMeta } from './components/AuthGatePanel';
 import type { GachaRevealState } from './components/ChestGachaModal';
 import { CombatPowerToast, PowerToastData } from './components/CombatPowerToast';
 import { GameHUD } from './components/GameHUD';
@@ -34,10 +34,10 @@ import {
   CloudSyncStatus,
   fetchPlayerCloudDoc,
   formatAccountHandle,
-  hasMeaningfulLocalProgress,
   logoutPlayer,
   mapAuthError,
   PlayerCloudSummary,
+  resolveAccountHydrationAction,
   sanitizeDisplayName,
   SaveConflictSnapshot,
   savePlayerCloudState,
@@ -225,6 +225,11 @@ import {
   recordPlaytestRunStart,
   resetPlaytestMetrics,
 } from './data/earlyProgressionData';
+import {
+  FairActionTarget,
+  claimFairRoadmapMilestone,
+  touchFairActiveDays,
+} from './data/fairProgression30Day';
 import { getNightmareTierConfig, isNightmareUnlocked } from './data/phase5Data';
 import { HERO_MAP, getHeroStarUpgradeCost } from './data/heroesData';
 import {
@@ -518,6 +523,7 @@ import {
   DamageBreakdown,
   DestinyWheelPrize,
   DynamicTitleId,
+  EarlyFeatureId,
   ElementalTowerId,
   EncounterOffer,
   FlashDealItem,
@@ -580,6 +586,16 @@ import {
 } from './types/game';
 
 const STORAGE_KEY = 'artemis_3d_save_v1';
+const GUEST_STORAGE_KEY = 'artemis_3d_guest_save_v1';
+const STORAGE_OWNER_KEY = 'artemis_3d_save_owner_v1';
+
+function getUserStorageKey(uid: string): string {
+  return `artemis_3d_save_uid_${uid}`;
+}
+
+function createFreshSaveData(): SaveData {
+  return touchFairActiveDays(createInitialSaveData());
+}
 
 function appendHonorEntry(
   prevFeed: HonorMarqueeEntry[] | undefined,
@@ -610,10 +626,9 @@ function addTopUpPoints(prev: SaveData, pts: number) {
   return { ...tu, points: tu.points + pts };
 }
 
-function loadSaveData(): SaveData {
+function parseStoredSave(raw: string | null): SaveData | null {
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createInitialSaveData();
     const parsed = JSON.parse(raw) as SaveData;
     if (
       !parsed ||
@@ -622,11 +637,35 @@ function loadSaveData(): SaveData {
       !Array.isArray(parsed.unlockedHeroes) ||
       !Array.isArray(parsed.runeInventory)
     ) {
-      return createInitialSaveData();
+      return null;
     }
-    return migrateSaveData(parsed);
+    return touchFairActiveDays(migrateSaveData(parsed));
   } catch {
-    return createInitialSaveData();
+    return null;
+  }
+}
+
+function loadGuestSaveData(): SaveData {
+  try {
+    const dedicated = parseStoredSave(localStorage.getItem(GUEST_STORAGE_KEY));
+    if (dedicated) return dedicated;
+    // Only fall back to legacy shared STORAGE_KEY if it wasn't owned by a signed-in cloud account
+    const owner = localStorage.getItem(STORAGE_OWNER_KEY);
+    if (owner !== 'cloud') {
+      const legacy = parseStoredSave(localStorage.getItem(STORAGE_KEY));
+      if (legacy) return legacy;
+    }
+    return createFreshSaveData();
+  } catch {
+    return createFreshSaveData();
+  }
+}
+
+function loadUserCachedSaveData(uid: string): SaveData | null {
+  try {
+    return parseStoredSave(localStorage.getItem(getUserStorageKey(uid)));
+  } catch {
+    return null;
   }
 }
 
@@ -688,7 +727,7 @@ export default function App() {
   const prevPowerRef = useRef<number | null>(null);
   const activeArenaOpponentRef = useRef<ArenaOpponent | null>(null);
 
-  const [save, setSave] = useState<SaveData>(() => loadSaveData());
+  const [save, setSave] = useState<SaveData>(() => createFreshSaveData());
   const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
   const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
@@ -823,6 +862,8 @@ export default function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [cloudErrorMessage, setCloudErrorMessage] = useState<string | null>(null);
   const [guestModeSelected, setGuestModeSelected] = useState<boolean>(false);
+  const guestModeSelectedRef = useRef<boolean>(false);
+  guestModeSelectedRef.current = guestModeSelected;
   const [authLinkModalOpen, setAuthLinkModalOpen] = useState<boolean>(false);
   const [saveConflict, setSaveConflict] = useState<SaveConflictSnapshot | null>(null);
   const [conflictBusy, setConflictBusy] = useState<boolean>(false);
@@ -1375,7 +1416,7 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [auctionModalOpen]);
 
-  // Persist save to localStorage + sync audio volumes + keep VIP ref fresh
+  // Persist save to owner-scoped localStorage + sync audio volumes + keep VIP ref fresh
   useEffect(() => {
     vipActiveRef.current = isVipActive(save.vip);
     highestChapterClearedRef.current = save.highestChapterCleared ?? 0;
@@ -1386,11 +1427,17 @@ export default function App() {
       currentSettings.sfxVol
     );
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(save));
+      if (currentUser && cloudHydratedUidRef.current === currentUser.uid) {
+        localStorage.setItem(getUserStorageKey(currentUser.uid), JSON.stringify(save));
+        localStorage.setItem(STORAGE_OWNER_KEY, 'cloud');
+      } else if (!currentUser && guestModeSelected) {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(save));
+        localStorage.setItem(STORAGE_OWNER_KEY, 'guest');
+      }
     } catch {
       // ignore quota errors
     }
-  }, [save, currentSettings]);
+  }, [save, currentSettings, currentUser, guestModeSelected]);
 
   const buildCloudSummary = useCallback((targetSave: SaveData): PlayerCloudSummary => {
     const computed = computePlayerStats(targetSave);
@@ -1442,7 +1489,14 @@ export default function App() {
   );
 
   const hydrateSignedInUser = useCallback(
-    async (user: User, options?: { displayNameOverride?: string; allowConflictPrompt?: boolean }) => {
+    async (
+      user: User,
+      options?: {
+        displayNameOverride?: string;
+        isNewRegistration?: boolean;
+        preserveGuestSave?: boolean;
+      }
+    ) => {
       const uid = user.uid;
       setCloudSyncStatus('loading');
       setCloudErrorMessage(null);
@@ -1452,34 +1506,66 @@ export default function App() {
       );
       setPlayerDisplayName(fallbackName);
 
+      // Only preserve local progress if the user explicitly linked an active Guest session
+      const canPreserveGuest = Boolean(options?.preserveGuestSave && guestModeSelectedRef.current);
+
       try {
         const cloudRecord = await fetchPlayerCloudDoc(uid);
         const localSave = saveRef.current;
+        const action = resolveAccountHydrationAction({
+          cloudRecord,
+          localSave,
+          isNewRegistration: options?.isNewRegistration,
+          preserveGuestSave: canPreserveGuest,
+        });
 
-        if (!cloudRecord) {
-          // First-time cloud account: upload current local progress seamlessly
+        if (action === 'fresh_initial') {
+          // Brand-new account: ALWAYS start from clean initial data (never copy a previous account's save)
+          const freshSave = createFreshSaveData();
+          skipNextAutoSyncRef.current = true;
           cloudHydratedUidRef.current = uid;
+          saveRef.current = freshSave;
+          unlockedToastIdsRef.current = null;
+          prevPowerRef.current = null;
+          setSelectedChapterId(1);
+          setGameMode('chapter');
+          setActiveLobbyTab('battle');
+          setSave(freshSave);
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.setItem(getUserStorageKey(uid), JSON.stringify(freshSave));
+            localStorage.setItem(STORAGE_OWNER_KEY, 'cloud');
+          } catch {
+            // ignore storage errors
+          }
+          await performCloudSave(user, freshSave, fallbackName);
+          return;
+        }
+
+        if (action === 'upload_guest') {
+          // Active Guest explicitly chose "Tạo Tài Khoản & Giữ Tiến Trình"
+          cloudHydratedUidRef.current = uid;
+          try {
+            localStorage.setItem(getUserStorageKey(uid), JSON.stringify(localSave));
+            localStorage.setItem(STORAGE_OWNER_KEY, 'cloud');
+          } catch {
+            // ignore storage errors
+          }
           await performCloudSave(user, localSave, fallbackName);
           return;
         }
 
+        // cloudRecord is guaranteed non-null for 'prompt_conflict' and 'load_cloud'
         const resolvedName = sanitizeDisplayName(
-          options?.displayNameOverride || cloudRecord.displayName || fallbackName,
+          options?.displayNameOverride || cloudRecord!.displayName || fallbackName,
           'Chiến Binh'
         );
         setPlayerDisplayName(resolvedName);
 
-        const localHasProgress = hasMeaningfulLocalProgress(localSave);
-        const cloudIsDifferent =
-          cloudRecord.highestChapterCleared !== localSave.highestChapterCleared ||
-          (cloudRecord.saveData?.gold ?? 0) !== localSave.gold ||
-          (cloudRecord.saveData?.gems ?? 0) !== localSave.gems ||
-          (cloudRecord.saveData?.career?.totalRuns ?? 0) !== (localSave.career?.totalRuns ?? 0);
-
-        if (options?.allowConflictPrompt && localHasProgress && cloudIsDifferent) {
+        if (action === 'prompt_conflict') {
           setSaveConflict({
             user,
-            cloudRecord,
+            cloudRecord: cloudRecord!,
             localSave,
             localPower: computePlayerStats(localSave).powerRating,
           });
@@ -1488,14 +1574,25 @@ export default function App() {
         }
 
         // Load cloud save seamlessly
-        const migrated = migrateSaveData(cloudRecord.saveData);
+        const migrated = touchFairActiveDays(migrateSaveData(cloudRecord!.saveData));
         skipNextAutoSyncRef.current = true;
         cloudHydratedUidRef.current = uid;
+        saveRef.current = migrated;
+        unlockedToastIdsRef.current = null;
+        prevPowerRef.current = null;
+        setSelectedChapterId(Math.min(CHAPTERS.length, Math.max(1, migrated.highestChapterCleared + 1)));
         setSave(migrated);
-        setLastSyncedAt(cloudRecord.updatedAtMs);
+        setLastSyncedAt(cloudRecord!.updatedAtMs);
         setCloudSyncStatus('synced');
       } catch (err) {
-        cloudHydratedUidRef.current = uid;
+        // Fallback only to THIS account's own local cache (never another account's in-memory save)
+        const cached = loadUserCachedSaveData(uid);
+        const safeFallback = cached ?? createFreshSaveData();
+        skipNextAutoSyncRef.current = true;
+        saveRef.current = safeFallback;
+        setSave(safeFallback);
+        // Keep cloudHydratedUidRef null on fetch failure so auto-sync never overwrites cloud data with a fallback
+        cloudHydratedUidRef.current = null;
         setCloudSyncStatus('error');
         setCloudErrorMessage(mapAuthError(err));
       }
@@ -1518,7 +1615,7 @@ export default function App() {
       }
       if (authFlowInProgressRef.current) return;
       if (cloudHydratedUidRef.current !== user.uid) {
-        void hydrateSignedInUser(user, { allowConflictPrompt: false });
+        void hydrateSignedInUser(user, { preserveGuestSave: false });
       }
     });
     return () => unsub();
@@ -1566,17 +1663,26 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisChange);
   }, [currentUser, saveConflict, performCloudSave]);
 
+  const handleAuthStart = useCallback(() => {
+    authFlowInProgressRef.current = true;
+  }, []);
+
+  const handleAuthAbort = useCallback(() => {
+    authFlowInProgressRef.current = false;
+  }, []);
+
   const handleAuthSuccess = useCallback(
-    async (user: User, displayNameOverride?: string) => {
+    async (user: User, meta?: AuthSuccessMeta) => {
       authFlowInProgressRef.current = true;
       setCurrentUser(user);
-      setGuestModeSelected(false);
       setAuthLinkModalOpen(false);
       try {
         await hydrateSignedInUser(user, {
-          displayNameOverride,
-          allowConflictPrompt: true,
+          displayNameOverride: meta?.displayNameOverride,
+          isNewRegistration: meta?.isNewRegistration,
+          preserveGuestSave: meta?.preserveGuestSave,
         });
+        setGuestModeSelected(false);
       } finally {
         authFlowInProgressRef.current = false;
       }
@@ -1587,7 +1693,7 @@ export default function App() {
   const handleChooseCloudConflict = useCallback(() => {
     if (!saveConflict || conflictBusy) return;
     const { user, cloudRecord } = saveConflict;
-    const migrated = migrateSaveData(cloudRecord.saveData);
+    const migrated = touchFairActiveDays(migrateSaveData(cloudRecord.saveData));
     skipNextAutoSyncRef.current = true;
     cloudHydratedUidRef.current = user.uid;
     setPlayerDisplayName(cloudRecord.displayName);
@@ -1650,7 +1756,23 @@ export default function App() {
       }
     }
     await logoutPlayer();
+    const freshSave = createFreshSaveData();
     cloudHydratedUidRef.current = null;
+    skipNextAutoSyncRef.current = true;
+    saveRef.current = freshSave;
+    unlockedToastIdsRef.current = null;
+    prevPowerRef.current = null;
+    try {
+      // Remove legacy shared localStorage key so previous account data can never leak into a new account
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_OWNER_KEY, 'cloud');
+    } catch {
+      // ignore storage errors
+    }
+    setSave(freshSave);
+    setSelectedChapterId(1);
+    setGameMode('chapter');
+    setActiveLobbyTab('battle');
     setCurrentUser(null);
     setGuestModeSelected(false);
     setAuthLinkModalOpen(false);
@@ -3247,7 +3369,22 @@ export default function App() {
     setSelectedChapterId(Math.min(CHAPTERS.length, Math.max(1, nextSave.highestChapterCleared + 1)));
   }, []);
 
+  const guardFeatureUnlock = useCallback(
+    (feature: EarlyFeatureId): boolean => {
+      const status = isEarlyFeatureUnlocked(save, feature);
+      if (status.unlocked) return true;
+      soundEngine.playUiClick(0.75);
+      triggerUpgradeCelebration(
+        'Tính Năng Chưa Mở Khóa',
+        `Cần ${status.requiredLabel} để mở chế độ này theo Lộ Trình 30 Ngày.`
+      );
+      return false;
+    },
+    [save, triggerUpgradeCelebration]
+  );
+
   const handleStartTower = useCallback(() => {
+    if (!guardFeatureUnlock('endless_tower')) return;
     soundEngine.unlock();
     setEnteredGame(true);
     setRewardsModalTab(null);
@@ -3266,7 +3403,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startEndlessTower(playerStats, save.highestChapterCleared);
-  }, [playerStats, save.highestChapterCleared]);
+  }, [guardFeatureUnlock, playerStats, save.highestChapterCleared]);
 
   const handleStartBossRush = useCallback(() => {
     soundEngine.unlock();
@@ -3294,6 +3431,7 @@ export default function App() {
   }, [playerStats, save.highestChapterCleared]);
 
   const handleStartDailyRift = useCallback(() => {
+    if (!guardFeatureUnlock('daily_rift')) return;
     const riftState = normalizeDailyRift(save.dailyRift);
     if (riftState.runsRemaining <= 0) return;
 
@@ -3335,7 +3473,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startDailyRift(playerStats, todayPair, save.highestChapterCleared);
-  }, [save.dailyRift, save.highestChapterCleared, playerStats]);
+  }, [guardFeatureUnlock, save.dailyRift, save.highestChapterCleared, playerStats]);
 
   const handleStartGuildBoss = useCallback(() => {
     const guild = normalizeGuild(save.guild);
@@ -3381,6 +3519,7 @@ export default function App() {
 
   const handleStartArenaDuel = useCallback(
     (opponent: ArenaOpponent) => {
+      if (!guardFeatureUnlock('arena')) return;
       const ar = normalizeArena(save.arena);
       if (ar.ticketsRemaining <= 0) return;
 
@@ -3428,11 +3567,12 @@ export default function App() {
       setPhase(GamePhase.PLAYING);
       engineRef.current?.startArenaDuel(playerStats, opponent, isEqualized);
     },
-    [save.arena, save.fairProgression, playerStats]
+    [guardFeatureUnlock, save.arena, save.fairProgression, playerStats]
   );
 
   const handleStartCoopRaid = useCallback(
     (difficulty: CoopRaidDifficulty) => {
+      if (!guardFeatureUnlock('coop_raid')) return;
       soundEngine.unlock();
       setSelectedCoopDifficulty(difficulty);
       setEnteredGame(true);
@@ -3495,11 +3635,12 @@ export default function App() {
         save.coopPartyRoles ?? ['dps', 'guardian']
       );
     },
-    [playerStats, liveAiOnlineTeammates, pinnedCoopAiIds, save.coopPartyRoles]
+    [guardFeatureUnlock, playerStats, liveAiOnlineTeammates, pinnedCoopAiIds, save.coopPartyRoles]
   );
 
   const handleStartElementalTower = useCallback(
     (towerId: ElementalTowerId) => {
+      if (!guardFeatureUnlock('elemental_towers')) return;
       soundEngine.unlock();
       setSelectedElementalTower(towerId);
       setEnteredGame(true);
@@ -3534,10 +3675,11 @@ export default function App() {
       setPhase(GamePhase.PLAYING);
       engineRef.current?.startElementalTower(playerStats, towerId, 1);
     },
-    [playerStats]
+    [guardFeatureUnlock, playerStats]
   );
 
   const handleStartCrystalDefense = useCallback(() => {
+    if (!guardFeatureUnlock('crystal_defense')) return;
     const cd = normalizeCrystalDefense(save.crystalDefense);
     if (cd.runsRemaining <= 0) return;
 
@@ -3582,7 +3724,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startCrystalDefense(playerStats);
-  }, [save.crystalDefense, playerStats]);
+  }, [guardFeatureUnlock, save.crystalDefense, playerStats]);
 
   const handleStartWeeklyRankedBoss = useCallback(
     (params: {
@@ -4068,6 +4210,7 @@ export default function App() {
   );
 
   const handleStartWorldBoss = useCallback(() => {
+    if (!guardFeatureUnlock('world_boss')) return;
     const wb = normalizeWorldBoss(save.worldBoss);
     if (wb.dailyRunsRemaining <= 0) return;
 
@@ -4112,9 +4255,10 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startWorldBoss(playerStats);
-  }, [save.worldBoss, playerStats]);
+  }, [guardFeatureUnlock, save.worldBoss, playerStats]);
 
   const handleStartBloodMoon = useCallback(() => {
+    if (!guardFeatureUnlock('blood_moon')) return;
     const bm = normalizeBloodMoon(save.bloodMoon);
     if (bm.dailyRunsRemaining <= 0) return;
 
@@ -4162,9 +4306,10 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startBloodMoonSurvival(playerStats);
-  }, [save.bloodMoon, playerStats]);
+  }, [guardFeatureUnlock, save.bloodMoon, playerStats]);
 
   const handleStartAbyssalGauntlet = useCallback(() => {
+    if (!guardFeatureUnlock('abyssal_gauntlet')) return;
     const ab = normalizeAbyssalGauntlet(save.abyssalGauntlet);
     if (ab.dailyRunsRemaining <= 0) return;
 
@@ -4212,7 +4357,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startAbyssalGauntlet(playerStats);
-  }, [save.abyssalGauntlet, playerStats]);
+  }, [guardFeatureUnlock, save.abyssalGauntlet, playerStats]);
 
   const handleStartGuildWar = useCallback(() => {
     const gw = normalizeGuildWar(save.guildWar);
@@ -4265,6 +4410,7 @@ export default function App() {
   }, [save.guildWar, playerStats]);
 
   const handleStartPantheon = useCallback(() => {
+    if (!guardFeatureUnlock('pantheon_expedition')) return;
     const pe = normalizePantheonExpedition(save.pantheonExpedition);
     if (pe.dailyRunsRemaining <= 0) return;
     const blessing =
@@ -4314,7 +4460,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startPantheonExpedition(playerStats, blessing);
-  }, [save.pantheonExpedition, playerStats]);
+  }, [guardFeatureUnlock, save.pantheonExpedition, playerStats]);
 
   const handleStartChampionship = useCallback(() => {
     const hasVip = isVipActive(save.vip);
@@ -4380,6 +4526,7 @@ export default function App() {
   // =========================================================================
 
   const handleStartCrystalVault = useCallback(() => {
+    if (!guardFeatureUnlock('crystal_vault')) return;
     const hasSupreme = isSupremeMonthlyActive(save.supremeMonthly);
     const cv = normalizeCrystalVault(save.crystalVault, hasSupreme);
     if (cv.dailyRunsRemaining <= 0) return;
@@ -4434,7 +4581,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startCrystalVault(playerStats);
-  }, [save.crystalVault, save.supremeMonthly, playerStats]);
+  }, [guardFeatureUnlock, save.crystalVault, save.supremeMonthly, playerStats]);
 
   const handleClaimCrystalVaultMilestone = useCallback(
     (pillarsTarget: number) => {
@@ -5201,6 +5348,7 @@ export default function App() {
   // =========================================================================
 
   const handleStartDragonLair = useCallback(() => {
+    if (!guardFeatureUnlock('dragon_lair')) return;
     const dl = normalizeDragonLair(save.dragonLair);
     if (dl.dailyRunsRemaining <= 0) return;
 
@@ -5256,7 +5404,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startDragonLair(playerStats);
-  }, [save.dragonLair, playerStats]);
+  }, [guardFeatureUnlock, save.dragonLair, playerStats]);
 
   const handleClaimDragonLairMilestone = useCallback(
     (scalesTarget: number) => {
@@ -5298,6 +5446,7 @@ export default function App() {
   // =========================================================================
 
   const handleStartSkyCitadel = useCallback(() => {
+    if (!guardFeatureUnlock('sky_citadel')) return;
     const sc = normalizeSkyCitadel(save.skyCitadel);
     if (sc.dailyRunsRemaining <= 0) return;
 
@@ -5355,7 +5504,7 @@ export default function App() {
     }, 560);
     setPhase(GamePhase.PLAYING);
     engineRef.current?.startSkyCitadel(playerStats);
-  }, [save.skyCitadel, playerStats]);
+  }, [guardFeatureUnlock, save.skyCitadel, playerStats]);
 
   const handleClaimSkyCitadelMilestone = useCallback(
     (scoreTarget: number) => {
@@ -10619,8 +10768,18 @@ export default function App() {
           cloudSyncStatus={cloudSyncStatus}
           lastSyncedAt={lastSyncedAt}
           guestModeSelected={guestModeSelected}
+          onAuthStart={handleAuthStart}
+          onAuthAbort={handleAuthAbort}
           onAuthSuccess={handleAuthSuccess}
           onContinueGuest={() => {
+            const guestSave = loadGuestSaveData();
+            saveRef.current = guestSave;
+            unlockedToastIdsRef.current = null;
+            prevPowerRef.current = null;
+            setSave(guestSave);
+            setSelectedChapterId(
+              Math.min(CHAPTERS.length, Math.max(1, guestSave.highestChapterCleared + 1))
+            );
             setGuestModeSelected(true);
             if (canEnterGame) {
               soundEngine.unlock();
@@ -10746,7 +10905,10 @@ export default function App() {
           onOpenGuildModal={() => setGuildModalOpen(true)}
           onOpenDestinyWheelModal={() => setDestinyWheelOpen(true)}
           onOpenNightMarketModal={() => setNightMarketOpen(true)}
-          onOpenArenaModal={() => setArenaModalOpen(true)}
+          onOpenArenaModal={() => {
+            if (!guardFeatureUnlock('arena')) return;
+            setArenaModalOpen(true);
+          }}
           onOpenAuctionModal={() => setAuctionModalOpen(true)}
           onOpenHonorBoard={() => setHonorBoardOpen(true)}
           onOpenWeeklyBoss={() => setWeeklyBossModalOpen(true)}
@@ -11480,8 +11642,74 @@ export default function App() {
       {phase === GamePhase.TITLE && enteredGame && earlyRoadmapOpen && (
         <EarlyRoadmapModal
           save={save}
+          stats={playerStats}
           onClose={() => setEarlyRoadmapOpen(false)}
           onJumpToTab={(tab) => setActiveLobbyTab(tab)}
+          onOpenMode={(target: FairActionTarget) => {
+            switch (target) {
+              case 'battle':
+              case 'gear':
+              case 'runes':
+              case 'shop':
+                setActiveLobbyTab(target);
+                break;
+              case 'talents':
+                setTalentsModalOpen(true);
+                break;
+              case 'tower':
+                handleStartTower();
+                break;
+              case 'daily_rift':
+                handleStartDailyRift();
+                break;
+              case 'arena':
+                if (guardFeatureUnlock('arena')) setArenaModalOpen(true);
+                break;
+              case 'coop_raid':
+                handleStartCoopRaid(selectedCoopDifficulty);
+                break;
+              case 'elemental_towers':
+                handleStartElementalTower(selectedElementalTower);
+                break;
+              case 'world_boss':
+                handleStartWorldBoss();
+                break;
+              case 'crystal_defense':
+                handleStartCrystalDefense();
+                break;
+              case 'blood_moon':
+                handleStartBloodMoon();
+                break;
+              case 'abyssal_gauntlet':
+                handleStartAbyssalGauntlet();
+                break;
+              case 'pantheon':
+                handleStartPantheon();
+                break;
+              case 'dragon_lair':
+                handleStartDragonLair();
+                break;
+              case 'crystal_vault':
+                handleStartCrystalVault();
+                break;
+              case 'sky_citadel':
+                handleStartSkyCitadel();
+                break;
+            }
+          }}
+          onClaimFairMilestone={(milestoneId) => {
+            const res = claimFairRoadmapMilestone(save, milestoneId, playerStats);
+            if (!res.ok || !res.milestone) {
+              soundEngine.playUiClick(0.75);
+              return;
+            }
+            setSave(res.nextSave);
+            soundEngine.playLevelUp();
+            triggerUpgradeCelebration(
+              `Mốc ${res.milestone.stepNumber} · ${res.milestone.title}`,
+              `+${res.milestone.rewardGold.toLocaleString('vi-VN')} Vàng · +${res.milestone.rewardGems} Ngọc · +${res.milestone.rewardStarDust.toLocaleString('vi-VN')} Bụi`
+            );
+          }}
           onCraftEarlyTargetGear={handleCraftEarlyTargetGear}
         />
       )}
@@ -11712,6 +11940,8 @@ export default function App() {
             modeInitial="register"
             title="Liên Kết Tài Khoản Đám Mây"
             isGuestLinking
+            onAuthStart={handleAuthStart}
+            onAuthAbort={handleAuthAbort}
             onAuthSuccess={handleAuthSuccess}
             onClose={() => setAuthLinkModalOpen(false)}
           />

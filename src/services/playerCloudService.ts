@@ -853,20 +853,13 @@ export function subscribeSeasonStandings(
   );
 }
 
-/**
- * Determines whether local guest save data has meaningful progress worth offering a
- * Cloud vs. Local conflict resolution choice when logging into an existing cloud account.
- */
-export function hasMeaningfulLocalProgress(save: SaveData): boolean {
-  const kills = save.career?.totalKills ?? 0;
-  const runs = save.career?.totalRuns ?? 0;
-  return (
-    save.highestChapterCleared > 0 ||
-    (save.bestTowerFloor ?? 0) > 0 ||
-    kills >= 5 ||
-    runs >= 1 ||
-    save.unlockedHeroes.length > 1 ||
-    save.inventory.length > 6 ||
-    save.gold >= 1800
-  );
-}
+export {
+  hasMeaningfulLocalProgress,
+  resolveAccountHydrationAction,
+} from './accountHydrationPolicy';
+export type {
+  AccountCloudSaveHeader,
+  AccountHydrationAction,
+} from './accountHydrationPolicy';
+
+
