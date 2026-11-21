@@ -1269,16 +1269,34 @@ async function startServer() {
   // every HTTP/1.1 response stays safely under Cloud Run's 32 MiB response limit.
   const CHAPTER1_MAP_DEFAULT_CHUNK_BYTES = 6 * 1024 * 1024;
   const CHAPTER1_MAP_MAX_CHUNK_BYTES = 12 * 1024 * 1024;
-  const resolveChapter1MapFile = (): { filePath: string; stat: fs.Stats } | null => {
-    const candidates = [
-      path.resolve(__dirname, 'public', 'assets', 'Chương 1', 'Map mới', 'Chương 1.glb'),
-      path.resolve(__dirname, 'dist', 'assets', 'Chương 1', 'Map mới', 'Chương 1.glb'),
+  const resolveChapter1MapFile = (): {
+    filePath: string;
+    stat: fs.Stats;
+    variant: 'full' | 'lite-fallback';
+  } | null => {
+    const candidates: Array<{ filePath: string; variant: 'full' | 'lite-fallback' }> = [
+      {
+        filePath: path.resolve(__dirname, 'public', 'assets', 'Chương 1', 'Map mới', 'Chương 1.glb'),
+        variant: 'full',
+      },
+      {
+        filePath: path.resolve(__dirname, 'dist', 'assets', 'Chương 1', 'Map mới', 'Chương 1.glb'),
+        variant: 'full',
+      },
+      {
+        filePath: path.resolve(__dirname, 'public', 'assets', 'Chương 1', 'Map mới', 'Chương 1 Lite.glb'),
+        variant: 'lite-fallback',
+      },
+      {
+        filePath: path.resolve(__dirname, 'dist', 'assets', 'Chương 1', 'Map mới', 'Chương 1 Lite.glb'),
+        variant: 'lite-fallback',
+      },
     ];
-    for (const filePath of candidates) {
+    for (const candidate of candidates) {
       try {
-        const stat = fs.statSync(filePath);
+        const stat = fs.statSync(candidate.filePath);
         if (stat.isFile() && stat.size > 0) {
-          return { filePath, stat };
+          return { filePath: candidate.filePath, stat, variant: candidate.variant };
         }
       } catch {
         // Try next candidate
@@ -1300,6 +1318,7 @@ async function startServer() {
       size: resolved.stat.size,
       chunkSize: CHAPTER1_MAP_DEFAULT_CHUNK_BYTES,
       etag,
+      variant: resolved.variant,
     });
   });
 

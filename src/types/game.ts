@@ -491,6 +491,8 @@ export type GpuCapabilityTier = 'software' | 'integrated' | 'discrete';
 
 export type Chapter1MapVariant = 'none' | 'lite' | 'full';
 
+export type Boss3dModelVariant = 'none' | 'lite' | 'high';
+
 export type Chapter1MapMode = 'auto' | 'lite_3d' | 'light' | 'high_3d';
 
 export type LowEndSafetyMode = 'auto' | 'on' | 'off';

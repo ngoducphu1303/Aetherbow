@@ -218,12 +218,27 @@ export async function fetchChapter1MapArrayBuffer(
   // 2. Fallback path: Standard HTTP Range requests against the static GLB file
   const assetUrl = getChapter1MapAssetUrl(baseUrl, baseUri);
   const firstEnd = CHAPTER1_MAP_CHUNK_BYTES - 1;
-  const probeRes = await fetchWithRetry(fetchImpl, assetUrl, {
-    signal,
-    headers: { Range: `bytes=0-${firstEnd}` },
-  });
-  if (probeRes.headers.get('content-type')?.includes('text/html')) {
-    throw new Error(`Không tải được Map Chương 1 (HTTP ${probeRes.status}).`);
+  let probeRes: Response | null = null;
+  try {
+    probeRes = await fetchWithRetry(fetchImpl, assetUrl, {
+      signal,
+      headers: { Range: `bytes=0-${firstEnd}` },
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    probeRes = null;
+  }
+
+  if (!probeRes || probeRes.headers.get('content-type')?.includes('text/html')) {
+    // 3. Final fallback: Load bundled Chương 1 Lite.glb (~1.3 MB) when the full 90.3 MB file is absent
+    const liteUrl = getChapter1MapLiteAssetUrl(baseUrl, baseUri);
+    const liteRes = await fetchWithRetry(fetchImpl, liteUrl, { signal });
+    if (liteRes.headers.get('content-type')?.includes('text/html')) {
+      throw new Error(`Không tải được Map Chương 1 (HTTP ${probeRes?.status ?? liteRes.status}).`);
+    }
+    const liteBuf = await liteRes.arrayBuffer();
+    options.onProgress?.(liteBuf.byteLength, liteBuf.byteLength);
+    return liteBuf;
   }
 
   const contentRange = probeRes.headers.get('content-range');

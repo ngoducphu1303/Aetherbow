@@ -1,4 +1,5 @@
 import type {
+  Boss3dModelVariant,
   Chapter1MapMode,
   Chapter1MapVariant,
   GpuProfileSummary,
@@ -8,6 +9,7 @@ import { classifyGpuCapability } from './aaaVisualPipeline';
 
 export const GPU_CRASH_SENTINEL_KEY = 'aetherbow_gpu_safe_mode_v1';
 export const CH1_MAP_INFLIGHT_KEY = 'aetherbow_ch1_map_inflight_v1';
+export const BOSS_3D_INFLIGHT_KEY = 'aetherbow_boss_3d_inflight_v1';
 
 export interface GpuCrashSentinelState {
   tripped: boolean;
@@ -68,6 +70,7 @@ export function tripGpuCrashSentinel(
     try {
       store.setItem(GPU_CRASH_SENTINEL_KEY, JSON.stringify(next));
       store.removeItem(CH1_MAP_INFLIGHT_KEY);
+      store.removeItem(BOSS_3D_INFLIGHT_KEY);
     } catch {
       // Ignore quota/privacy errors
     }
@@ -82,6 +85,7 @@ export function resetGpuCrashSentinel(storage?: Storage | null): void {
     try {
       store.removeItem(GPU_CRASH_SENTINEL_KEY);
       store.removeItem(CH1_MAP_INFLIGHT_KEY);
+      store.removeItem(BOSS_3D_INFLIGHT_KEY);
     } catch {
       // Ignore storage errors
     }
@@ -115,9 +119,29 @@ export function clearChapter1MapLoadInFlight(storage?: Storage | null): void {
   }
 }
 
+export function markBoss3dLoadInFlight(storage?: Storage | null): void {
+  const store = getSafeStorage(storage);
+  if (!store) return;
+  try {
+    store.setItem(BOSS_3D_INFLIGHT_KEY, String(Date.now()));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearBoss3dLoadInFlight(storage?: Storage | null): void {
+  const store = getSafeStorage(storage);
+  if (!store) return;
+  try {
+    store.removeItem(BOSS_3D_INFLIGHT_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 /**
- * Checks whether a previous session aborted mid-load of Chương 1.glb (e.g.
- * Windows GPU TDR black screen or thermal shutdown) and promotes it into a
+ * Checks whether a previous session aborted mid-load of a heavy 3D map or Boss GLB
+ * (e.g. Windows GPU TDR black screen or thermal shutdown) and promotes it into a
  * persistent Safe Mode latch before any heavy asset is requested.
  */
 export function promoteUnfinishedChapter1MapCrash(
@@ -130,6 +154,13 @@ export function promoteUnfinishedChapter1MapCrash(
       if (inflight) {
         return tripGpuCrashSentinel(
           'Phát hiện máy bị gián đoạn khi nạp Bản Đồ 3D Chương 1 ở phiên trước · Đã tự bật Chế Độ An Toàn',
+          store
+        );
+      }
+      const bossInflight = store.getItem(BOSS_3D_INFLIGHT_KEY);
+      if (bossInflight) {
+        return tripGpuCrashSentinel(
+          'Phát hiện máy bị gián đoạn khi nạp Mô Hình Boss 3D ở phiên trước · Đã tự bật Chế Độ An Toàn',
           store
         );
       }
@@ -240,6 +271,26 @@ export function shouldUseHighDetailChapter1Map(
   mode: Chapter1MapMode = 'auto'
 ): boolean {
   return resolveChapter1MapVariant(profile, mode) === 'full';
+}
+
+export function resolveBoss3dModelVariant(
+  profile: GpuProfileSummary,
+  lowEndSafetyMode: LowEndSafetyMode = 'auto',
+  chapter1MapMode: Chapter1MapMode = 'auto'
+): Boss3dModelVariant {
+  if (profile.crashGuardTripped || profile.tier === 'software') return 'none';
+  if (chapter1MapMode === 'light') return 'none';
+  if (lowEndSafetyMode === 'on' || chapter1MapMode === 'lite_3d') return 'lite';
+  if (chapter1MapMode === 'high_3d') return 'high';
+  if (
+    profile.tier === 'discrete' &&
+    !profile.lowPowerLegacyGpu &&
+    profile.supportsHighDetailChapter1Map !== false
+  ) {
+    return 'high';
+  }
+  // Integrated/legacy GPUs (e.g. Dell Latitude E5430 / Intel HD 4000) always use the Lite GLB (< 1 MB)
+  return 'lite';
 }
 
 export function isLowEndSafetyModeActive(

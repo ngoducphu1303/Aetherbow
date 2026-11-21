@@ -275,13 +275,23 @@ import {
   prepareChapter1MapModel,
 } from './chapter1Map';
 import {
+  downloadChapter1BossArrayBuffer,
+  getChapter1BossAssetUrl,
+  isSolarLionBossEncounter,
+  prepareChapter1BossModel,
+  updateChapter1BossMotion,
+} from './chapter1Boss';
+import {
+  clearBoss3dLoadInFlight,
   clearChapter1MapLoadInFlight,
   detectStartupGpuProfile,
   isLowEndSafetyModeActive,
+  markBoss3dLoadInFlight,
   markChapter1MapLoadInFlight,
   readPersistedChapter1MapMode,
   refreshStartupGpuProfile,
   resetGpuCrashSentinel,
+  resolveBoss3dModelVariant,
   resolveChapter1MapVariant,
   tripGpuCrashSentinel,
 } from './gpuSafetyGuard';
@@ -586,6 +596,9 @@ interface EnemyEntity {
   chargerDirZ?: number;
   chargerDashing?: boolean;
   chargerDashTimer?: number;
+  solarLionVisualGroup?: THREE.Group;
+  solarLionBurstType?: 'none' | 'lunge' | 'slam' | 'roar';
+  solarLionBurstTimer?: number;
   dead?: boolean;
 }
 
@@ -3084,7 +3097,11 @@ export class GameEngine {
   }
 
   private wantsDragonMount(): boolean {
-    return false;
+    return (
+      this.heroVisualCfg.mountId === 'black_dragon' &&
+      !this.heroVisualCfg.astralSteedId &&
+      this.blackDragonFailed
+    );
   }
 
   private hasDragonRide(): boolean {
@@ -3295,7 +3312,8 @@ export class GameEngine {
       } catch (error) {
         if (!this.disposed) {
           this.blackDragonFailed = true;
-          console.warn('Không tải được Hắc Long; dùng mô hình thú cưỡi dự phòng.', error);
+          console.warn('Không tải được Hắc Long; dùng mô hình rồng 3D dự phòng.', error);
+          this.useDragonMount();
         }
       } finally {
         this.blackDragonRequest = undefined;
@@ -3699,6 +3717,123 @@ export class GameEngine {
 
   private getActiveChapter1MapVariant(): 'none' | 'lite' | 'full' {
     return resolveChapter1MapVariant(this.gpuProfile, this.chapter1MapMode);
+  }
+
+  private getActiveBoss3dModelVariant(): 'none' | 'lite' | 'high' {
+    return resolveBoss3dModelVariant(
+      this.gpuProfile,
+      this.lowEndSafetyMode,
+      this.chapter1MapMode
+    );
+  }
+
+  private isSideModeActiveForBossModel(): boolean {
+    return (
+      this.isTowerMode ||
+      this.isBossRushMode ||
+      this.isDailyRiftMode ||
+      this.isGuildBossMode ||
+      this.isArenaMode ||
+      this.isCoopRaidMode ||
+      this.isElementalTowerMode ||
+      this.isCrystalDefenseMode ||
+      this.isWorldBossMode ||
+      this.isBloodMoonMode ||
+      this.isAbyssalMode ||
+      this.isGuildWarMode ||
+      this.isPantheonMode ||
+      this.isChampionshipMode ||
+      this.isCrystalVaultMode ||
+      this.isDragonLairMode ||
+      this.isSkyCitadelMode ||
+      this.isTrainingMode ||
+      this.isEqualizedRiftMode
+    );
+  }
+
+  private prefetchSolarLionBossModel(): void {
+    const variant = this.getActiveBoss3dModelVariant();
+    if (variant === 'none') return;
+    const baseUrl =
+      (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+    void downloadChapter1BossArrayBuffer(variant, {
+      baseUrl,
+      baseUri: document.baseURI,
+    }).catch(() => {});
+  }
+
+  private attachSolarLionBossModel(entity: EnemyEntity): void {
+    const variant = this.getActiveBoss3dModelVariant();
+    if (variant === 'none') return;
+    const baseUrl =
+      (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+    const assetUrl = getChapter1BossAssetUrl(variant, baseUrl, document.baseURI);
+
+    void (async () => {
+      try {
+        const data = await downloadChapter1BossArrayBuffer(variant, {
+          baseUrl,
+          baseUri: document.baseURI,
+        });
+        if (this.disposed || entity.dead || entity.hp <= 0 || !this.enemies.includes(entity)) {
+          return;
+        }
+        markBoss3dLoadInFlight();
+        let gltfScene: THREE.Group | null = null;
+        try {
+          const gltf = await new GLTFLoader().parseAsync(data, new URL('.', assetUrl).href);
+          gltfScene = gltf.scene;
+        } finally {
+          clearBoss3dLoadInFlight();
+        }
+        if (
+          !gltfScene ||
+          this.disposed ||
+          entity.dead ||
+          entity.hp <= 0 ||
+          !this.enemies.includes(entity)
+        ) {
+          if (gltfScene) this.releaseObject(gltfScene);
+          return;
+        }
+
+        const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+        const prepared = prepareChapter1BossModel(gltfScene, maxAniso, {
+          liteMode: variant === 'lite',
+        });
+
+        // Keep breakable boss weak-point meshes visible while hiding the procedural body parts
+        const preservedPartMeshes = new Set<THREE.Object3D>();
+        if (entity.bossPartMeshes) {
+          for (const list of Object.values(entity.bossPartMeshes)) {
+            list?.forEach((m) => preservedPartMeshes.add(m));
+          }
+        }
+        if (entity.model.bossAuraRing) preservedPartMeshes.add(entity.model.bossAuraRing);
+
+        for (const child of entity.model.bodyGroup.children) {
+          if (!preservedPartMeshes.has(child)) {
+            child.visible = false;
+          }
+        }
+
+        entity.model.bodyGroup.add(prepared.group);
+        entity.solarLionVisualGroup = prepared.group;
+        entity.solarLionBurstType = 'roar';
+        entity.solarLionBurstTimer = 0.45;
+        if (prepared.hitMeshes.length > 0) {
+          entity.model.hitMeshes = prepared.hitMeshes;
+        }
+      } catch (error) {
+        clearBoss3dLoadInFlight();
+        if (!this.disposed) {
+          console.warn(
+            `Không tải được Boss Sư Tử 3D (${variant}); giữ mô hình Boss dự phòng.`,
+            error
+          );
+        }
+      }
+    })();
   }
 
   private unloadChapter1MapModel(): void {
@@ -4457,6 +4592,9 @@ export class GameEngine {
 
     this.buildArena(ch);
     this.resetRunState(stats);
+    if (ch.id === 1) {
+      this.prefetchSolarLionBossModel();
+    }
     const chapterRecPower = Math.round(ch.recommendedPower * (1 + this.nightmareTier * 0.35));
     this.activePowerPressure = computePowerPressure(stats.powerRating, chapterRecPower);
 
@@ -5813,6 +5951,16 @@ export class GameEngine {
     this.weeklyBossIsWeekendBlitz = Boolean(options?.isWeekendBlitz);
     this.weeklyBossAttemptId = isPractice ? null : attemptId;
     this.weeklyBossId = schedule.bossId;
+    if (
+      isSolarLionBossEncounter({
+        chapterId: 1,
+        enemyKind: EnemyKind.ZODIAC_BOSS,
+        isWeeklyRankedBossMode: true,
+        weeklyBossId: schedule.bossId,
+      })
+    ) {
+      this.prefetchSolarLionBossModel();
+    }
     this.weeklyBossSeed = schedule.seed;
     this.weeklyBossTimeLeft = schedule.timeLimitSec;
     this.weeklyBossTotalDamage = 0;
@@ -9144,6 +9292,20 @@ export class GameEngine {
       tacticalRole,
       chargerCooldown: tacticalRole === 'charger' ? 2.1 : undefined,
     });
+
+    const spawnedEntity = this.enemies[this.enemies.length - 1];
+    if (
+      spawnedEntity &&
+      isSolarLionBossEncounter({
+        chapterId: this.currentChapter.id,
+        enemyKind: kind,
+        isWeeklyRankedBossMode: this.isWeeklyRankedBossMode,
+        weeklyBossId: this.weeklyBossId,
+        isSideModeActive: this.isSideModeActiveForBossModel(),
+      })
+    ) {
+      this.attachSolarLionBossModel(spawnedEntity);
+    }
 
     // AAA Wave 5: Rotating Celestial Summon Portal underneath spawning enemies
     if (!this.isTrainingMode) {
@@ -14952,7 +15114,38 @@ export class GameEngine {
         });
       }
 
-      if (
+      if (e.solarLionVisualGroup) {
+        if (e.solarLionBurstTimer && e.solarLionBurstTimer > 0) {
+          e.solarLionBurstTimer = Math.max(0, e.solarLionBurstTimer - dt);
+          if (e.solarLionBurstTimer <= 0) {
+            e.solarLionBurstType = 'none';
+          }
+        }
+        const teleProgress =
+          e.telegraphType !== 'none'
+            ? Math.max(
+                0,
+                Math.min(1, 1 - e.telegraphTimer / Math.max(0.01, e.telegraphDuration))
+              )
+            : 0;
+        updateChapter1BossMotion(
+          e.solarLionVisualGroup,
+          {
+            elapsed: this.elapsed,
+            phaseAngle: e.phaseAngle,
+            speed: Math.hypot(e.vx, e.vz),
+            telegraphType: e.telegraphType,
+            telegraphProgress: teleProgress,
+            attackBurstType: e.solarLionBurstType ?? 'none',
+            attackBurstTimer: e.solarLionBurstTimer ?? 0,
+            bossPhase: e.bossPhase,
+            stunTimer: e.stunTimer ?? 0,
+            hitFlashTimer: e.hitFlashTimer,
+          },
+          dt
+        );
+        e.model.bodyGroup.position.y = 0;
+      } else if (
         e.kind === EnemyKind.WISP ||
         e.kind === EnemyKind.DRAGON_WHELP ||
         e.kind === EnemyKind.IMP_ARCHER
@@ -15116,6 +15309,10 @@ export class GameEngine {
         : 1.0;
 
     if (e.telegraphType === 'lunge') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'lunge';
+        e.solarLionBurstTimer = 0.38;
+      }
       if (e.tacticalRole === 'charger') {
         e.chargerDashing = true;
         e.chargerDashTimer = 0.62;
@@ -15151,6 +15348,10 @@ export class GameEngine {
           : 0;
       const bossProjMult = pveSpdMult * (1 - partSlowPct);
       if (e.isBoss) {
+        if (e.solarLionVisualGroup) {
+          e.solarLionBurstType = 'roar';
+          e.solarLionBurstTimer = 0.34;
+        }
         const count =
           e.kind === EnemyKind.ZODIAC_BOSS
             ? isEnraged
@@ -15250,6 +15451,10 @@ export class GameEngine {
         }
       });
     } else if (e.telegraphType === 'slam' || e.telegraphType === 'spiral') {
+      if (e.solarLionVisualGroup) {
+        e.solarLionBurstType = 'slam';
+        e.solarLionBurstTimer = 0.42;
+      }
       if (e.telegraphType === 'slam') {
         this.spawnShockwave(e.slamX, e.slamZ, 0xf97316, e.slamRadius + 0.6, 0.42);
         this.spawnImpactDecal(e.slamX, e.slamZ, 0xf97316, e.slamRadius * 0.95, 1.85);
