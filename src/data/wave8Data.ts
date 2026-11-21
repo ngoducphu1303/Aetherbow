@@ -1,4 +1,5 @@
 import {
+  AstralSteedId,
   BloodMoonMilestone,
   BloodMoonState,
   DispatchMissionDef,
@@ -126,7 +127,14 @@ export const MOUNT_MAP: Record<MountId, MountDefinition> = ZODIAC_MOUNTS.reduce(
   {} as Record<MountId, MountDefinition>
 );
 
-export function getMountAppearance(save: SaveData, previewMountId?: MountId | null) {
+export function getMountAppearance(
+  save: SaveData,
+  previewMountId?: MountId | null,
+  previewAstralSteedId?: AstralSteedId | null
+) {
+  if (previewAstralSteedId !== undefined) {
+    return { mountId: null, astralSteedId: previewAstralSteedId };
+  }
   if (previewMountId !== undefined) return { mountId: previewMountId, astralSteedId: null };
 
   const mountId = save.equippedMountId && save.unlockedMounts?.includes(save.equippedMountId)
@@ -142,6 +150,9 @@ export function getMountAppearance(save: SaveData, previewMountId?: MountId | nu
 
 export function getMountStats(mountId: MountId, level: number) {
   const def = MOUNT_MAP[mountId];
+  if (!def) {
+    return { atk: 0, hp: 0, moveSpeed: 0, dr: 0 };
+  }
   const lv = Math.max(1, Math.min(MAX_MOUNT_LEVEL, level));
   return {
     atk: def.baseAtk + (lv - 1) * def.atkPerLv,

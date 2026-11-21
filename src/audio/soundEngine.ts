@@ -1426,6 +1426,161 @@ class SoundEngine {
     });
   }
 
+  public playVanTichCompassShot(pitchShift = 1, pan = 0): void {
+    const dest = this.getSfxDest(pan, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Airy teal wind slice + crisp crystalline compass chime
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.07,
+      'bandpass',
+      1750 * pitchShift,
+      3400 * pitchShift,
+      0.048,
+      2.6
+    );
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(740 * pitchShift, now);
+    osc.frequency.exponentialRampToValueAtTime(1180 * pitchShift, now + 0.045);
+    osc.frequency.exponentialRampToValueAtTime(520 * pitchShift, now + 0.095);
+    gain.gain.setValueAtTime(0.072, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.105);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.11);
+  }
+
+  public playVanTichWindDash(pan = 0): void {
+    const dest = this.getSfxDest(pan, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Swirling breeze vortex sweep + dual wind-chime shimmer
+    this.playNoiseBurst(ctx, dest, now, 0.2, 'bandpass', 480, 2900, 0.09, 2.0);
+    [523.25, 783.99, 1046.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      const t = now + idx * 0.024;
+      osc.frequency.setValueAtTime(freq * 0.9, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.25, t + 0.14);
+      gain.gain.setValueAtTime(0.055, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.17);
+    });
+  }
+
+  public playVanTichConvergence(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Wind draw-in + crisp electric thunder snap + storm seal triad
+    this.playNoiseBurst(ctx, dest, now, 0.18, 'bandpass', 620, 3200, 0.095, 2.2);
+    this.playNoiseBurst(ctx, dest, now + 0.03, 0.09, 'highpass', 1800, 900, 0.075, 1.2);
+
+    const punch = ctx.createOscillator();
+    const punchGain = ctx.createGain();
+    punch.type = 'sine';
+    punch.frequency.setValueAtTime(165, now);
+    punch.frequency.exponentialRampToValueAtTime(52, now + 0.15);
+    punchGain.gain.setValueAtTime(0.13, now);
+    punchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    punch.connect(punchGain);
+    punchGain.connect(dest);
+    punch.start(now);
+    punch.stop(now + 0.17);
+
+    [554.37, 830.61, 1108.73].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx === 0 ? 'sawtooth' : 'triangle';
+      const t = now + idx * 0.028;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.12, t + 0.18);
+      gain.gain.setValueAtTime(idx === 0 ? 0.065 : 0.075, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.23);
+    });
+  }
+
+  public playVanTichStormChartStart(pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    // Compass chart unfurl: wide ascending gale + celestial storm chord
+    this.playNoiseBurst(ctx, dest, now, 0.28, 'bandpass', 420, 2600, 0.1, 1.8);
+    [369.99, 554.37, 739.99, 1108.73].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.032;
+      osc.frequency.setValueAtTime(freq * 0.88, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.15, t + 0.28);
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.34);
+    });
+  }
+
+  public playVanTichStormPulse(pulseIndex: number, pan = 0): void {
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const stepMult = 1 + Math.max(0, Math.min(2, pulseIndex)) * 0.14;
+
+    // Thunder strike rumble + sharp lightning crack + harmonic storm chime
+    this.playNoiseBurst(ctx, dest, now, 0.14, 'highpass', 1900 * stepMult, 750, 0.09, 1.1);
+    this.playNoiseBurst(ctx, dest, now, 0.22, 'lowpass', 420, 120, 0.085, 1.2);
+
+    const sub = ctx.createOscillator();
+    const sGain = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(145 * stepMult, now);
+    sub.frequency.exponentialRampToValueAtTime(46, now + 0.18);
+    sGain.gain.setValueAtTime(0.14, now);
+    sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+    sub.connect(sGain);
+    sGain.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.2);
+
+    const chime = ctx.createOscillator();
+    const cGain = ctx.createGain();
+    chime.type = 'triangle';
+    chime.frequency.setValueAtTime(659.25 * stepMult, now);
+    chime.frequency.exponentialRampToValueAtTime(987.77 * stepMult, now + 0.15);
+    cGain.gain.setValueAtTime(0.075, now);
+    cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    chime.connect(cGain);
+    cGain.connect(dest);
+    chime.start(now);
+    chime.stop(now + 0.19);
+  }
+
   public playPerfectDodge(): void {
     const dest = this.getSfxDest();
     const ctx = this.ctx;

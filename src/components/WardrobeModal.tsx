@@ -13,7 +13,9 @@ import { ZODIAC_AURAS, HERO_SKINS } from '../data/wave3Data';
 import { ZODIAC_WINGS } from '../data/wave7Data';
 import { getMountAppearance, WEAPON_AURAS, ZODIAC_MOUNTS } from '../data/wave8Data';
 import { DIVINE_HALO_CATALOG } from '../data/wave10Data';
+import { ASTRAL_STEED_DEFS, getAstralSteedStats } from '../data/wave13Data';
 import {
+  AstralSteedId,
   HaloId,
   HeroSkinId,
   LobbyCameraPreset,
@@ -40,6 +42,7 @@ interface WardrobeModalProps {
   onUnlockWing: (wingId: WingId) => void;
   onEquipMount: (mountId: MountId | null) => void;
   onUnlockMount: (mountId: MountId) => void;
+  onEquipSteed?: (steedId: AstralSteedId | null) => void;
   onEquipWeaponAura: (auraId: WeaponAuraId) => void;
   onUnlockWeaponAura: (auraId: WeaponAuraId) => void;
   onEquipHalo?: (haloId: HaloId | null) => void;
@@ -63,6 +66,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   onUnlockWing,
   onEquipMount,
   onUnlockMount,
+  onEquipSteed,
   onEquipWeaponAura,
   onUnlockWeaponAura,
   onEquipHalo,
@@ -74,8 +78,12 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   const equippedSkin = save.equippedSkinByHero?.[save.selectedHeroId] ?? 'default';
   const activeSkinPreview = preview.skinId ?? equippedSkin;
   const activeWingPreview = preview.wingId !== undefined ? preview.wingId : (save.equippedWingId ?? null);
-  const { mountId: equippedMountId } = getMountAppearance(save);
-  const activeMountPreview = getMountAppearance(save, preview.mountId).mountId;
+  const { mountId: equippedMountId, astralSteedId: equippedSteedId } = getMountAppearance(save);
+  const { mountId: activeMountPreview, astralSteedId: activeSteedPreview } = getMountAppearance(
+    save,
+    preview.mountId,
+    preview.astralSteedId
+  );
   const activeWeaponAuraPreview =
     preview.weaponAuraId !== undefined ? preview.weaponAuraId : (save.equippedWeaponAuraId ?? 'none');
   const activeHaloPreview =
@@ -84,6 +92,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   const unlockedSkins = new Set<HeroSkinId>(save.unlockedSkins ?? ['default']);
   const unlockedWings = new Set<WingId>(save.unlockedWings ?? []);
   const unlockedMounts = new Set<MountId>(save.unlockedMounts ?? []);
+  const unlockedAstralSteeds = new Set<AstralSteedId>(save.unlockedAstralSteeds ?? []);
   const unlockedWeaponAuras = new Set<WeaponAuraId>(save.unlockedWeaponAuras ?? ['none']);
   const unlockedHalos = new Set<HaloId>(save.unlockedHalos ?? []);
 
@@ -270,74 +279,184 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
               );
             })}
 
-          {tab === 'mounts' &&
-            ZODIAC_MOUNTS.map((m) => {
-              const owned = unlockedMounts.has(m.id);
-              const equipped = equippedMountId === m.id;
-              const isPreviewing = activeMountPreview === m.id;
-              const hasShards = (save.mountShards ?? 0) >= m.unlockShards;
-              const hasGems = save.gems >= m.unlockGems;
-              const canUnlock = hasShards || hasGems;
-              return (
-                <div
-                  key={m.id}
-                  className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
-                    isPreviewing
-                      ? 'bg-amber-400/10 border-amber-300'
-                      : 'bg-[#080d1e] border-slate-800'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                      <span className="text-amber-300">{m.badge}</span>
-                      {equipped && <span className="text-emerald-300">ĐANG CƯỠI</span>}
-                    </div>
-                    <div className="text-xs font-black text-white">{m.name}</div>
-                    <div className="text-[10px] text-slate-300 mt-1">
-                      +{m.baseAtk} ATK · +{m.baseHp} HP · +{Math.round(m.baseMoveSpeed * 100)}% Tốc
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onChangePreview({ ...preview, mountId: m.id })}
-                      className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
-                    >
-                      <Eye className="w-3 h-3" />
-                      <span>Mặc Thử</span>
-                    </button>
-                    {owned ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onEquipMount(equipped ? null : m.id);
-                          onChangePreview({ ...preview, mountId: undefined });
-                        }}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
-                          equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
-                        }`}
-                      >
-                        {equipped ? 'Tháo' : 'Trang Bị'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={!canUnlock}
-                        onClick={() => {
-                          onUnlockMount(m.id);
-                          onChangePreview({ ...preview, mountId: undefined });
-                        }}
-                        className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
-                      >
-                        {m.unlockShards === 0 && m.unlockGems === 0
-                          ? 'Nhận Miễn Phí'
-                          : hasShards ? `${m.unlockShards} Mảnh` : `${m.unlockGems} Ngọc`}
-                      </button>
+          {tab === 'mounts' && (
+            <>
+              <div
+                className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                  activeMountPreview === null && activeSteedPreview === null
+                    ? 'bg-amber-400/10 border-amber-300'
+                    : 'bg-[#080d1e] border-slate-800'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                    <span className="text-slate-300">MẶC ĐỊNH · ĐI BỘ</span>
+                    {!equippedMountId && !equippedSteedId && (
+                      <span className="text-emerald-300">ĐANG ÁP DỤNG</span>
                     )}
                   </div>
+                  <div className="text-xs font-black text-white">Không Đeo Thú Cưỡi</div>
+                  <div className="text-[10px] text-slate-300 mt-1">
+                    Xuống ngựa hoàn toàn để ngắm dáng đứng gốc của Anh Hùng 3D.
+                  </div>
                 </div>
-              );
-            })}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onChangePreview({ ...preview, mountId: null, astralSteedId: null })}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                  >
+                    <Eye className="w-3 h-3" />
+                    <span>Mặc Thử</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!equippedMountId && !equippedSteedId}
+                    onClick={() => {
+                      onEquipMount(null);
+                      onChangePreview({ ...preview, mountId: undefined, astralSteedId: undefined });
+                    }}
+                    className="flex-1 py-1.5 px-2 rounded-lg a2-slate-btn disabled:opacity-45 text-[11px] font-black whitespace-nowrap cursor-pointer"
+                  >
+                    {equippedMountId || equippedSteedId ? 'Xuống Ngựa' : 'Đã Tháo'}
+                  </button>
+                </div>
+              </div>
+
+              {ZODIAC_MOUNTS.map((m) => {
+                const owned = unlockedMounts.has(m.id);
+                const equipped = equippedMountId === m.id;
+                const isPreviewing = activeMountPreview === m.id && activeSteedPreview === null;
+                const hasShards = (save.mountShards ?? 0) >= m.unlockShards;
+                const hasGems = save.gems >= m.unlockGems;
+                const canUnlock = hasShards || hasGems;
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                      isPreviewing
+                        ? 'bg-amber-400/10 border-amber-300'
+                        : 'bg-[#080d1e] border-slate-800'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                        <span className="text-amber-300">{m.badge}</span>
+                        {equipped && <span className="text-emerald-300">ĐANG CƯỠI</span>}
+                      </div>
+                      <div className="text-xs font-black text-white">{m.name}</div>
+                      <div className="text-[10px] text-slate-300 mt-1">
+                        +{m.baseAtk} ATK · +{m.baseHp} HP · +{Math.round(m.baseMoveSpeed * 100)}% Tốc
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onChangePreview({ ...preview, mountId: m.id, astralSteedId: undefined })
+                        }
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Mặc Thử</span>
+                      </button>
+                      {owned ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onEquipMount(equipped ? null : m.id);
+                            onChangePreview({ ...preview, mountId: undefined, astralSteedId: undefined });
+                          }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                            equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                          }`}
+                        >
+                          {equipped ? 'Tháo' : 'Trang Bị'}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!canUnlock}
+                          onClick={() => {
+                            onUnlockMount(m.id);
+                            onChangePreview({ ...preview, mountId: undefined, astralSteedId: undefined });
+                          }}
+                          className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
+                        >
+                          {m.unlockShards === 0 && m.unlockGems === 0
+                            ? 'Nhận Miễn Phí'
+                            : hasShards ? `${m.unlockShards} Mảnh` : `${m.unlockGems} Ngọc`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {ASTRAL_STEED_DEFS.map((st) => {
+                const owned = unlockedAstralSteeds.has(st.id);
+                const equipped = equippedSteedId === st.id;
+                const isPreviewing = activeSteedPreview === st.id;
+                const starLv = Math.max(1, save.astralSteedStars?.[st.id] ?? 1);
+                const statsSt = getAstralSteedStats(st.id, starLv);
+                return (
+                  <div
+                    key={st.id}
+                    className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                      isPreviewing
+                        ? 'bg-sky-400/10 border-sky-300'
+                        : 'bg-[#080d1e] border-slate-800'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                        <span className="text-sky-300">{st.badge}</span>
+                        {equipped && <span className="text-emerald-300">ĐANG CƯỠI</span>}
+                      </div>
+                      <div className="text-xs font-black text-white">{st.name}</div>
+                      <div className="text-[10px] text-slate-300 mt-1">
+                        +{Math.round(statsSt.atkPct * 100)}% ATK · +{Math.round(statsSt.hpPct * 100)}% HP · +{Math.round(statsSt.moveSpeed * 100)}% Tốc
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onChangePreview({ ...preview, astralSteedId: st.id, mountId: undefined })
+                        }
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Mặc Thử</span>
+                      </button>
+                      {owned ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onEquipSteed) {
+                              onEquipSteed(equipped ? null : st.id);
+                            } else if (equipped) {
+                              onEquipMount(null);
+                            }
+                            onChangePreview({ ...preview, mountId: undefined, astralSteedId: undefined });
+                          }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                            equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                          }`}
+                        >
+                          {equipped ? 'Tháo' : 'Trang Bị'}
+                        </button>
+                      ) : (
+                        <span className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 text-center text-[10px] font-black text-slate-400 whitespace-nowrap">
+                          Mở ở Thánh Điện
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
 
           {tab === 'wings' &&
             ZODIAC_WINGS.map((w) => {

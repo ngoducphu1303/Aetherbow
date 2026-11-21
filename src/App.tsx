@@ -1109,7 +1109,8 @@ export default function App() {
 
     const { mountId: effectiveMountId, astralSteedId: effectiveAstralSteedId } = getMountAppearance(
       save,
-      isWardrobePreviewActive ? wardrobePreview.mountId : undefined
+      isWardrobePreviewActive ? wardrobePreview.mountId : undefined,
+      isWardrobePreviewActive ? wardrobePreview.astralSteedId : undefined
     );
     const mountLevel = effectiveMountId
       ? Math.max(1, save.mountLevels?.[effectiveMountId] ?? 1)
@@ -5830,9 +5831,18 @@ export default function App() {
   );
 
   const handleEquipSteed = useCallback((steedId: AstralSteedId | null) => {
+    soundEngine.playUiClick(1.08);
     setSave((prev) => {
-      if (steedId && !(prev.unlockedAstralSteeds ?? []).includes(steedId)) return prev;
-      return { ...prev, equippedAstralSteedId: steedId, mountAppearance: steedId ? 'astral' : prev.mountAppearance };
+      if (steedId === null) {
+        return {
+          ...prev,
+          equippedAstralSteedId: null,
+          equippedMountId: null,
+          mountAppearance: undefined,
+        };
+      }
+      if (!(prev.unlockedAstralSteeds ?? []).includes(steedId)) return prev;
+      return { ...prev, equippedAstralSteedId: steedId, mountAppearance: 'astral' };
     });
   }, []);
 
@@ -9341,7 +9351,14 @@ export default function App() {
   const handleEquipMount = useCallback((mountId: MountId | null) => {
     soundEngine.playUiClick(1.08);
     setSave((prev) => {
-      if (mountId === null) return { ...prev, equippedMountId: null };
+      if (mountId === null) {
+        return {
+          ...prev,
+          equippedMountId: null,
+          equippedAstralSteedId: null,
+          mountAppearance: undefined,
+        };
+      }
       if (!(prev.unlockedMounts ?? []).includes(mountId)) return prev;
       return { ...prev, equippedMountId: mountId, mountAppearance: 'zodiac' };
     });
@@ -10765,6 +10782,7 @@ export default function App() {
           onEquipAvatarFrame={handleEquipAvatarFrame}
           onUnlockMount={handleUnlockMount}
           onEquipMount={handleEquipMount}
+          onEquipSteed={handleEquipSteed}
           onUpgradeMount={handleUpgradeMount}
           onUnlockWeaponAura={handleUnlockWeaponAura}
           onEquipWeaponAura={handleEquipWeaponAura}
@@ -11738,7 +11756,14 @@ export default function App() {
                 : 'gems'
             )
           }
-          onEquipMount={handleEquipMount}
+          onEquipMount={(mountId) => {
+            handleEquipMount(mountId);
+            setWardrobePreview((prev) => ({ ...prev, mountId: undefined, astralSteedId: undefined }));
+          }}
+          onEquipSteed={(steedId) => {
+            handleEquipSteed(steedId);
+            setWardrobePreview((prev) => ({ ...prev, mountId: undefined, astralSteedId: undefined }));
+          }}
           onUnlockMount={(mountId) =>
             handleUnlockMount(
               mountId,

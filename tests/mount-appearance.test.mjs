@@ -21,6 +21,18 @@ test('mặc thử và chọn ngoại hình tôn trọng thú cưỡi được ch
   assert.deepEqual(getMountAppearance(prefersAstral), astral);
   assert.deepEqual(getMountAppearance(prefersAstral, 'azure_dragon'), dragon);
   assert.deepEqual(getMountAppearance(prefersAstral, null), { mountId: null, astralSteedId: null });
+  assert.deepEqual(getMountAppearance(prefersAstral, undefined, null), {
+    mountId: null,
+    astralSteedId: null,
+  });
+  assert.deepEqual(getMountAppearance(mixedSave, undefined, 'frost_starwolf'), {
+    mountId: null,
+    astralSteedId: 'frost_starwolf',
+  });
   assert.deepEqual(getMountAppearance({ ...prefersAstral, mountAppearance: 'zodiac' }), dragon);
   assert.deepEqual(getMountAppearance({ ...prefersAstral, unlockedAstralSteeds: [] }), dragon);
+  assert.deepEqual(
+    getMountAppearance({ ...prefersAstral, equippedMountId: null, equippedAstralSteedId: null }),
+    { mountId: null, astralSteedId: null }
+  );
 });

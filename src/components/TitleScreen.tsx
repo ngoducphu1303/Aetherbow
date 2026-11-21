@@ -137,6 +137,7 @@ import {
 } from '../data/wave14Data';
 import {
   ArtifactId,
+  AstralSteedId,
   AuraStyleId,
   AiLiveActivityEvent,
   AiLivePlayerProfile,
@@ -319,6 +320,7 @@ interface TitleScreenProps {
   onUnlockMount?: (mountId: MountId, currency: 'gems' | 'shards') => void;
   onEquipMount?: (mountId: MountId | null) => void;
   onUpgradeMount?: (mountId: MountId) => void;
+  onEquipSteed?: (steedId: AstralSteedId | null) => void;
   onUnlockWeaponAura?: (auraId: WeaponAuraId, currency: 'gems' | 'crystals') => void;
   onEquipWeaponAura?: (auraId: WeaponAuraId) => void;
   onUpgradeWeaponAura?: (auraId: WeaponAuraId) => void;
@@ -536,6 +538,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUnlockMount,
   onEquipMount,
   onUpgradeMount,
+  onEquipSteed,
   onUnlockWeaponAura,
   onEquipWeaponAura,
   onUpgradeWeaponAura,
@@ -2083,6 +2086,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               onUnlockMount={onUnlockMount}
               onEquipMount={onEquipMount}
               onUpgradeMount={onUpgradeMount}
+              onEquipSteed={onEquipSteed}
               onUnlockWeaponAura={onUnlockWeaponAura}
               onEquipWeaponAura={onEquipWeaponAura}
               onUpgradeWeaponAura={onUpgradeWeaponAura}

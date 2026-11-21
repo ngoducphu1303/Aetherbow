@@ -534,6 +534,7 @@ interface Projectile {
   isChainShot?: boolean;
   mesh: THREE.Mesh;
   trailMesh?: THREE.Mesh;
+  compassGroup?: THREE.Group;
 }
 
 interface CoopAllyEntity {
@@ -961,6 +962,33 @@ export class GameEngine {
     maxLife: number;
     mesh: THREE.Mesh;
   }> = [];
+  private windRingPool: Array<{
+    active: boolean;
+    life: number;
+    maxLife: number;
+    maxRadius: number;
+    group: THREE.Group;
+    ringMat: THREE.MeshBasicMaterial;
+    wispMat: THREE.MeshBasicMaterial;
+  }> = [];
+  private stormMarkPool: Array<{
+    active: boolean;
+    group: THREE.Group;
+  }> = [];
+  private stormChartVisual: {
+    group: THREE.Group;
+    outerRing: THREE.Mesh;
+    compassStar: THREE.Mesh;
+    innerRing: THREE.Mesh;
+    centerGlow: THREE.Mesh;
+    outerMat: THREE.MeshBasicMaterial;
+    starMat: THREE.MeshBasicMaterial;
+    innerMat: THREE.MeshBasicMaterial;
+    glowMat: THREE.MeshBasicMaterial;
+  } | null = null;
+  private stormChartFadeTimer = 0;
+  private stormChartPulseFlash = 0;
+  private prevHeroFacing = 0;
   private groundMistMesh!: THREE.InstancedMesh;
   private groundMistSeeds: Array<{
     x: number;
@@ -1330,7 +1358,7 @@ export class GameEngine {
 
   // Hero Passive & Skill Periodic Timers
   private markedEnemyIds = new Set<number>();
-  private stormChart: { x: number; z: number; damage: number; pulses: number; nextPulse: number } | null = null;
+  private stormChart: { x: number; z: number; damage: number; pulses: number; nextPulse: number; pulseIndex?: number } | null = null;
   private artemisMarkTimer = 0;
   private cleoHitCount = 0;
   private atreusShotCount = 0;
@@ -1727,6 +1755,10 @@ export class GameEngine {
     trailGeo.rotateX(-Math.PI / 2);
     trailGeo.translate(0, 0, -0.88);
     const arrowCoreRingGeo = new THREE.TorusGeometry(0.11, 0.02, 6, 12);
+    const compassDiscRingGeo = new THREE.TorusGeometry(0.26, 0.032, 6, 18);
+    compassDiscRingGeo.rotateX(Math.PI / 2);
+    const compassStarGeo = new THREE.OctahedronGeometry(0.19, 0);
+    compassStarGeo.scale(1.35, 0.16, 1.35);
     for (let i = 0; i < 85; i++) {
       const mat = new THREE.MeshStandardMaterial({
         color: 0xe0f2fe,
@@ -1746,7 +1778,30 @@ export class GameEngine {
       const trailMesh = new THREE.Mesh(trailGeo, trailMat);
       const collarRing = new THREE.Mesh(arrowCoreRingGeo, trailMat);
       collarRing.position.z = -0.14;
-      mesh.add(trailMesh, collarRing);
+
+      const compassGroup = new THREE.Group();
+      const compassRingMat = new THREE.MeshBasicMaterial({
+        color: 0x5eead4,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const compassStarMat = new THREE.MeshBasicMaterial({
+        color: 0xe0f2fe,
+        transparent: true,
+        opacity: 0.94,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const cRing = new THREE.Mesh(compassDiscRingGeo, compassRingMat);
+      const cStarA = new THREE.Mesh(compassStarGeo, compassStarMat);
+      const cStarB = new THREE.Mesh(compassStarGeo, compassStarMat);
+      cStarB.rotation.y = Math.PI / 4;
+      compassGroup.add(cRing, cStarA, cStarB);
+      compassGroup.visible = false;
+
+      mesh.add(trailMesh, collarRing, compassGroup);
       mesh.visible = false;
       this.projectilesGroup.add(mesh);
       this.arrowPool.push({
@@ -1773,6 +1828,7 @@ export class GameEngine {
         poison: false,
         mesh,
         trailMesh,
+        compassGroup,
       });
     }
 
@@ -2636,6 +2692,184 @@ export class GameEngine {
         mesh: rMesh,
       });
     }
+
+    // Van Tich Signature: Pooled 3D Wind Vortex Rings (10 slots, zero GC)
+    const vortexTorusGeo = new THREE.TorusGeometry(0.78, 0.058, 6, 28);
+    vortexTorusGeo.rotateX(Math.PI / 2);
+    const vortexWispGeo = new THREE.RingGeometry(0.42, 0.84, 22, 1, 0, Math.PI * 1.45);
+    vortexWispGeo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 10; i++) {
+      const group = new THREE.Group();
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x5eead4,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const wispMat = new THREE.MeshBasicMaterial({
+        color: 0x99f6e4,
+        transparent: true,
+        opacity: 0.78,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const outerTorus = new THREE.Mesh(vortexTorusGeo, ringMat);
+      const innerWisp = new THREE.Mesh(vortexWispGeo, wispMat);
+      innerWisp.position.y = 0.08;
+      group.add(outerTorus, innerWisp);
+      group.visible = false;
+      this.particlesGroup.add(group);
+      this.windRingPool.push({
+        active: false,
+        life: 0,
+        maxLife: 0.38,
+        maxRadius: 2.35,
+        group,
+        ringMat,
+        wispMat,
+      });
+    }
+
+    // Van Tich Signature: Pooled 3D Storm-Mark Ground Indicators (18 slots, zero GC)
+    const stormMarkOuterGeo = new THREE.RingGeometry(0.58, 0.72, 24);
+    stormMarkOuterGeo.rotateX(-Math.PI / 2);
+    const stormMarkDiamondGeo = new THREE.RingGeometry(0.34, 0.46, 4);
+    stormMarkDiamondGeo.rotateX(-Math.PI / 2);
+    const stormMarkOuterMat = new THREE.MeshBasicMaterial({
+      color: 0x5eead4,
+      transparent: true,
+      opacity: 0.82,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const stormMarkDiamondMat = new THREE.MeshBasicMaterial({
+      color: 0x99f6e4,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
+    });
+    for (let i = 0; i < 18; i++) {
+      const grp = new THREE.Group();
+      const ring = new THREE.Mesh(stormMarkOuterGeo, stormMarkOuterMat);
+      ring.renderOrder = 6;
+      const diamond = new THREE.Mesh(stormMarkDiamondGeo, stormMarkDiamondMat);
+      diamond.position.y = 0.008;
+      diamond.renderOrder = 7;
+      grp.add(ring, diamond);
+      grp.visible = false;
+      this.particlesGroup.add(grp);
+      this.stormMarkPool.push({ active: false, group: grp });
+    }
+
+    // Van Tich Signature Ultimate: Persistent 3D Storm Chart Compass Sigil (4.2m ground ritual chart)
+    const chartGroup = new THREE.Group();
+    const chartOuterMat = new THREE.MeshBasicMaterial({
+      color: 0x5eead4,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const outerRing = new THREE.Mesh(
+      new THREE.RingGeometry(3.86, 4.2, 48).rotateX(-Math.PI / 2),
+      chartOuterMat
+    );
+    outerRing.renderOrder = 8;
+
+    const chartStarMat = new THREE.MeshBasicMaterial({
+      color: 0x2dd4bf,
+      transparent: true,
+      opacity: 0.86,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
+    });
+    const compassStar = new THREE.Mesh(
+      new THREE.RingGeometry(2.45, 2.78, 8).rotateX(-Math.PI / 2),
+      chartStarMat
+    );
+    compassStar.position.y = 0.008;
+    compassStar.renderOrder = 9;
+    const needleGeo = new THREE.PlaneGeometry(0.18, 7.8);
+    needleGeo.rotateX(-Math.PI / 2);
+    const needleNS = new THREE.Mesh(needleGeo, chartStarMat);
+    const needleEW = new THREE.Mesh(needleGeo, chartStarMat);
+    needleEW.rotation.y = Math.PI / 2;
+    const starQuadGeo = new THREE.RingGeometry(1.75, 2.15, 4).rotateX(-Math.PI / 2);
+    const starQuadA = new THREE.Mesh(starQuadGeo, chartStarMat);
+    const starQuadB = new THREE.Mesh(starQuadGeo, chartStarMat);
+    starQuadB.rotation.y = Math.PI / 4;
+    compassStar.add(needleNS, needleEW, starQuadA, starQuadB);
+
+    const chartInnerMat = new THREE.MeshBasicMaterial({
+      color: 0x99f6e4,
+      transparent: true,
+      opacity: 0.94,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    });
+    const innerRing = new THREE.Mesh(
+      new THREE.RingGeometry(1.05, 1.42, 24).rotateX(-Math.PI / 2),
+      chartInnerMat
+    );
+    innerRing.position.y = 0.016;
+    innerRing.renderOrder = 10;
+
+    const chartGlowMat = new THREE.MeshBasicMaterial({
+      color: 0x2dd4bf,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const centerGlow = new THREE.Mesh(
+      new THREE.CircleGeometry(3.92, 32).rotateX(-Math.PI / 2),
+      chartGlowMat
+    );
+    centerGlow.position.y = -0.004;
+    centerGlow.renderOrder = 7;
+
+    chartGroup.add(centerGlow, outerRing, compassStar, innerRing);
+    chartGroup.position.set(0, 0.075, 0);
+    chartGroup.visible = false;
+    this.particlesGroup.add(chartGroup);
+    this.stormChartVisual = {
+      group: chartGroup,
+      outerRing,
+      compassStar,
+      innerRing,
+      centerGlow,
+      outerMat: chartOuterMat,
+      starMat: chartStarMat,
+      innerMat: chartInnerMat,
+      glowMat: chartGlowMat,
+    };
   }
 
   private setAppearanceStatus(status: AppearanceStatus): void {
@@ -6520,6 +6754,11 @@ export class GameEngine {
 
   private clearCombatEntities(): void {
     this.stormChart = null;
+    this.stormChartFadeTimer = 0;
+    this.stormChartPulseFlash = 0;
+    if (this.stormChartVisual) {
+      this.stormChartVisual.group.visible = false;
+    }
     this.obstacles.forEach((o) => this.releaseObject(o.mesh));
     this.obstacles = [];
 
@@ -6611,6 +6850,14 @@ export class GameEngine {
     this.battleScarPool?.forEach((sc) => {
       sc.active = false;
       sc.group.visible = false;
+    });
+    this.windRingPool?.forEach((wr) => {
+      wr.active = false;
+      wr.group.visible = false;
+    });
+    this.stormMarkPool?.forEach((sm) => {
+      sm.active = false;
+      sm.group.visible = false;
     });
     this.simClock = createFixedTimestepClock();
     this.astralOvercharge = 0;
@@ -8551,7 +8798,11 @@ export class GameEngine {
     const liveEnemies = this.enemies.filter((e) => e.spawnTimer <= 0);
     const nearest = this.findNearestEnemy(this.px, this.pz);
 
-    soundEngine.playHeroActiveSkill(this.baseStats.heroId);
+    if (skillDef.effectKind === 'storm_convergence') {
+      soundEngine.playVanTichConvergence(computeSpatialPan(this.px, ARENA_HALF_W));
+    } else {
+      soundEngine.playHeroActiveSkill(this.baseStats.heroId);
+    }
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
     this.spawnShockwave(this.px, this.pz, skillDef.accentHex, Math.min(5.2, skillDef.radius), 0.34);
     this.spawnParticles(this.px, 1.0, this.pz, skillDef.accentHex, 18);
@@ -8639,17 +8890,25 @@ export class GameEngine {
       }
       case 'storm_convergence': {
         if (!convergenceTarget) break;
-        this.artemisMotion?.cast(0.46);
+        this.artemisMotion?.cast(0.55);
         const center = convergenceTarget;
         center.stormMarkUntil = 0;
         const nearby = liveEnemies.filter((enemy) => enemy !== center && !enemy.dead &&
           Math.hypot(enemy.x - center.x, enemy.z - center.z) <= 3.8)
           .sort((a, b) => Math.hypot(a.x - center.x, a.z - center.z) - Math.hypot(b.x - center.x, b.z - center.z))
           .slice(0, 2);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 0.26);
+        this.spawnSummonPortal(center.x, center.z, 2.35, 0x5eead4, 0.72);
+        this.spawnWindRing(center.x, center.z, 0x5eead4, 2.8, 0.14);
+        this.spawnShockwave(center.x, center.z, 0x2dd4bf, 3.4, 0.36);
+        this.spawnUltColumn(center.x, center.z, 0x99f6e4, 0.24);
+        this.spawnParticles(center.x, 1.1, center.z, 0x5eead4, 20);
         this.spawnLightningArc(this.px, 1.4, this.pz, center.x, 0.8, center.z);
         this.damageEnemy(center, skillDmg, false, false, false, true, false, 'HỘI TỤ!', 'ultimate');
         for (const enemy of nearby) {
           this.spawnLightningArc(center.x, 0.8, center.z, enemy.x, 0.8, enemy.z);
+          this.spawnShockwave(enemy.x, enemy.z, 0x5eead4, 1.85, 0.26);
+          this.spawnParticles(enemy.x, 0.9, enemy.z, 0x99f6e4, 12);
           this.damageEnemy(enemy, skillDmg * 0.70, false, false, false, true, false, 'SÉT LAN!', 'ultimate');
         }
         break;
@@ -8805,11 +9064,21 @@ export class GameEngine {
         break;
       }
       case 'van_tich': {
-        this.artemisMotion?.cast(0.8);
+        this.artemisMotion?.cast(0.85);
         const target = this.findNearestEnemy(this.px, this.pz);
         const x = target?.x ?? this.px;
         const z = target?.z ?? this.pz;
-        this.stormChart = { x, z, damage: atkPower * 0.78, pulses: 3, nextPulse: this.elapsed };
+        this.stormChart = { x, z, damage: atkPower * 0.78, pulses: 3, nextPulse: this.elapsed, pulseIndex: 0 };
+        this.stormChartFadeTimer = 0;
+        this.stormChartPulseFlash = 1.0;
+        if (this.stormChartVisual) {
+          this.stormChartVisual.group.position.set(x, 0.075, z);
+          this.stormChartVisual.group.scale.setScalar(0.55);
+          this.stormChartVisual.group.visible = true;
+        }
+        soundEngine.playVanTichStormChartStart(computeSpatialPan(x, ARENA_HALF_W));
+        this.spawnSummonPortal(x, z, 4.2, 0x5eead4, 0.65);
+        this.spawnWindRing(x, z, 0x5eead4, 4.1, 0.18);
         this.spawnShockwave(x, z, 0x5eead4, 4.2, 0.75);
         this.spawnUltColumn(x, z, 0x5eead4, 0.28);
         break;
@@ -9236,7 +9505,9 @@ export class GameEngine {
           showWeaponInLobby,
           emotePose.active ? 0.35 + emotePose.drawProgress * 0.65 : 0.35,
           this.hero.bowGroup,
-          onDragon || (this.artemisLoadedAsset === 'heroes/van-tich.glb' && Boolean(this.hero.mountGroup))
+          onDragon || (this.artemisLoadedAsset === 'heroes/van-tich.glb' && Boolean(this.hero.mountGroup)),
+          false,
+          0
         );
       }
       if (this.lobbyHaloGroup) {
@@ -9535,17 +9806,67 @@ export class GameEngine {
     this.runElapsedSeconds += dt;
 
     const chart = this.stormChart;
+    if (this.stormChartVisual) {
+      if (chart) {
+        const sc = this.stormChartVisual;
+        sc.group.visible = true;
+        sc.group.position.set(chart.x, 0.075, chart.z);
+        const curScale = sc.group.scale.x;
+        const nextScale = THREE.MathUtils.damp(curScale, 1.0, 14, dt);
+        sc.group.scale.setScalar(nextScale);
+        sc.outerRing.rotation.y += dt * 1.45;
+        sc.compassStar.rotation.y -= dt * 2.2;
+        sc.innerRing.rotation.y += dt * 3.35;
+        this.stormChartPulseFlash = Math.max(0, this.stormChartPulseFlash - dt * 2.6);
+        sc.outerMat.opacity = 0.72 + this.stormChartPulseFlash * 0.28;
+        sc.starMat.opacity = 0.64 + this.stormChartPulseFlash * 0.34;
+        sc.innerMat.opacity = 0.75 + this.stormChartPulseFlash * 0.25;
+        sc.glowMat.opacity = 0.14 + this.stormChartPulseFlash * 0.22;
+      } else if (this.stormChartFadeTimer > 0) {
+        this.stormChartFadeTimer = Math.max(0, this.stormChartFadeTimer - dt);
+        const sc = this.stormChartVisual;
+        const fade = this.stormChartFadeTimer / 0.45;
+        sc.outerRing.rotation.y += dt * 2.0;
+        sc.compassStar.rotation.y -= dt * 2.8;
+        sc.group.scale.setScalar(0.85 + 0.15 * fade);
+        sc.outerMat.opacity = 0.75 * fade;
+        sc.starMat.opacity = 0.65 * fade;
+        sc.innerMat.opacity = 0.75 * fade;
+        sc.glowMat.opacity = 0.16 * fade;
+        if (this.stormChartFadeTimer <= 0) {
+          sc.group.visible = false;
+        }
+      }
+    }
     if (chart && this.elapsed >= chart.nextPulse) {
+      const pIdx = chart.pulseIndex ?? 0;
+      chart.pulseIndex = pIdx + 1;
       chart.nextPulse += 0.60;
       chart.pulses--;
-      this.spawnShockwave(chart.x, chart.z, 0x5eead4, 4.2, 0.36);
+      this.stormChartPulseFlash = 1.0;
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.22);
+      soundEngine.playVanTichStormPulse(pIdx, computeSpatialPan(chart.x, ARENA_HALF_W));
+      this.spawnShockwave(chart.x, chart.z, 0x5eead4, 4.2, 0.42);
+      this.spawnSummonPortal(chart.x, chart.z, 4.2, 0x5eead4, 0.52);
+      this.spawnWindRing(chart.x, chart.z, 0x99f6e4, 3.85, 0.22);
+      let hitAny = false;
       for (const enemy of [...this.enemies]) {
         if (enemy.dead || enemy.spawnTimer > 0 || (enemy.stormMarkUntil ?? 0) <= this.elapsed ||
             Math.hypot(enemy.x - chart.x, enemy.z - chart.z) > 4.2) continue;
-        this.spawnLightningArc(enemy.x, 5.0, enemy.z, enemy.x, 0.6, enemy.z);
+        hitAny = true;
+        this.spawnLightningArc(enemy.x, 5.8, enemy.z, enemy.x, 0.5, enemy.z);
+        this.spawnLightningArc(chart.x, 0.4, chart.z, enemy.x, 0.7, enemy.z);
+        this.spawnParticles(enemy.x, 0.9, enemy.z, 0x5eead4, 10);
         this.damageEnemy(enemy, chart.damage, false, false, false, true, false, 'BẢN ĐỒ GIÔNG!', 'ultimate');
       }
-      if (chart.pulses === 0) this.stormChart = null;
+      if (!hitAny) {
+        this.spawnLightningArc(chart.x, 6.8, chart.z, chart.x, 0.35, chart.z);
+        this.spawnParticles(chart.x, 0.75, chart.z, 0x99f6e4, 14);
+      }
+      if (chart.pulses === 0) {
+        this.stormChart = null;
+        this.stormChartFadeTimer = 0.45;
+      }
     }
 
     if (this.isWeeklyRankedBossMode) {
@@ -10866,14 +11187,23 @@ export class GameEngine {
         this.dashDirX = Math.sin(this.pFacing);
         this.dashDirZ = Math.cos(this.pFacing);
       }
-      soundEngine.playDash();
+      const isVanTichDash = this.baseStats.heroId === 'van_tich';
+      const dashAccentHex = isVanTichDash ? 0x5eead4 : this.weaponAccentHex;
+      if (isVanTichDash) {
+        soundEngine.playVanTichWindDash(computeSpatialPan(this.px, ARENA_HALF_W));
+      } else {
+        soundEngine.playDash();
+      }
       this.heroSquashY = 1.18;
       this.cameraFovOffset = Math.max(this.cameraFovOffset, 3.2);
-      this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 1.65, 0.22);
-      this.spawnParticles(this.px, 0.7, this.pz, this.weaponAccentHex, 12);
+      this.spawnShockwave(this.px, this.pz, dashAccentHex, 1.65, 0.22);
+      if (isVanTichDash) {
+        this.spawnWindRing(this.px, this.pz, 0x5eead4, 2.25, 0.26);
+      }
+      this.spawnParticles(this.px, 0.7, this.pz, dashAccentHex, 12);
       this.dashGhostEmitTimer = 0;
-      this.spawnDashGhost(this.px, this.pz, this.pFacing, this.weaponAccentHex);
-      this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), this.weaponAccentHex);
+      this.spawnDashGhost(this.px, this.pz, this.pFacing, dashAccentHex);
+      this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), dashAccentHex);
     }
 
     if (this.windBeaconSpeedTimer > 0) {
@@ -10895,11 +11225,16 @@ export class GameEngine {
       this.dashGhostEmitTimer -= dt;
       if (this.dashGhostEmitTimer <= 0) {
         this.dashGhostEmitTimer = 0.045;
-        this.spawnDashGhost(this.px, this.pz, this.pFacing, this.weaponAccentHex);
-        this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), this.weaponAccentHex);
+        const trailHex = this.baseStats.heroId === 'van_tich' ? 0x5eead4 : this.weaponAccentHex;
+        this.spawnDashGhost(this.px, this.pz, this.pFacing, trailHex);
+        this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), trailHex);
+        if (this.baseStats.heroId === 'van_tich') {
+          this.spawnWindRing(this.px, this.pz, 0x99f6e4, 1.7, 0.34);
+        }
       }
       if (Math.random() < 0.65) {
-        this.spawnParticles(this.px, 0.6, this.pz, this.weaponAccentHex, 1);
+        const sparkHex = this.baseStats.heroId === 'van_tich' ? 0x99f6e4 : this.weaponAccentHex;
+        this.spawnParticles(this.px, 0.6, this.pz, sparkHex, 1);
       }
     } else {
       const targetVx = moveX * effectiveMoveSpeed;
@@ -10986,6 +11321,7 @@ export class GameEngine {
       stridePhase: this.stridePhase,
     });
 
+    const isVanTichHero = this.baseStats.heroId === 'van_tich';
     if (isMoving) {
       if (speedMag > 0.3) {
         const moveYaw = Math.atan2(this.pvx, this.pvz);
@@ -11003,8 +11339,18 @@ export class GameEngine {
       const stride = Math.sin(this.stridePhase) * strideAmp;
       this.hero.leftLeg.rotation.x = stride;
       this.hero.rightLeg.rotation.x = -stride;
-      this.hero.bodyGroup.position.y = mountOffset + Math.abs(Math.sin(this.stridePhase)) * 0.085;
-      this.hero.bodyGroup.rotation.x = this.dashTimer > 0 ? 0.32 : 0.1;
+      if (isVanTichHero && !onDragon && !this.hero.mountGroup) {
+        this.hero.bodyGroup.position.y = mountOffset + 0.055 + Math.sin(this.elapsed * 6.2) * 0.025;
+        this.hero.bodyGroup.rotation.x = THREE.MathUtils.damp(
+          this.hero.bodyGroup.rotation.x,
+          this.dashTimer > 0 ? 0.26 : 0.11,
+          14,
+          dt
+        );
+      } else {
+        this.hero.bodyGroup.position.y = mountOffset + Math.abs(Math.sin(this.stridePhase)) * 0.085;
+        this.hero.bodyGroup.rotation.x = this.dashTimer > 0 ? 0.32 : 0.1;
+      }
       if (this.hero.mountLegs && !onDragon) {
         this.hero.mountLegs.forEach((leg, lIdx) => {
           const phaseOffset = lIdx === 0 || lIdx === 3 ? 0 : Math.PI;
@@ -11015,7 +11361,10 @@ export class GameEngine {
       this.footstepStrideAccum = 0;
       this.hero.leftLeg.rotation.x = THREE.MathUtils.damp(this.hero.leftLeg.rotation.x, 0, 14, dt);
       this.hero.rightLeg.rotation.x = THREE.MathUtils.damp(this.hero.rightLeg.rotation.x, 0, 14, dt);
-      this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, mountOffset, 14, dt);
+      const idleTargetY = isVanTichHero && !onDragon && !this.hero.mountGroup
+        ? mountOffset + 0.03 + Math.sin(this.elapsed * 2.2) * 0.018
+        : mountOffset;
+      this.hero.bodyGroup.position.y = THREE.MathUtils.damp(this.hero.bodyGroup.position.y, idleTargetY, 14, dt);
       this.hero.bodyGroup.rotation.x = THREE.MathUtils.damp(this.hero.bodyGroup.rotation.x, 0, 14, dt);
       if (this.hero.mountLegs && !onDragon) {
         this.hero.mountLegs.forEach((leg) => {
@@ -11028,6 +11377,13 @@ export class GameEngine {
         this.pFacing = this.lerpAngle(this.pFacing, aimYaw, 1 - Math.exp(-22 * dt));
       }
     }
+    const deltaFacing = ((this.pFacing - this.prevHeroFacing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const heroTurnRate = deltaFacing / Math.max(0.001, dt);
+    this.prevHeroFacing = this.pFacing;
+    const targetBodyBankZ = isVanTichHero && isMoving && !onDragon && !this.hero.mountGroup
+      ? THREE.MathUtils.clamp(-heroTurnRate * 0.045, -0.22, 0.22)
+      : 0;
+    this.hero.bodyGroup.rotation.z = THREE.MathUtils.damp(this.hero.bodyGroup.rotation.z, targetBodyBankZ, 12, dt);
     this.hero.capeTail.rotation.x = THREE.MathUtils.damp(this.hero.capeTail.rotation.x, cloakPose.rotX, 14, dt);
     this.hero.capeTail.rotation.z = THREE.MathUtils.damp(this.hero.capeTail.rotation.z, cloakPose.rotZ, 14, dt);
     this.hero.capeTail.scale.z = THREE.MathUtils.damp(this.hero.capeTail.scale.z, cloakPose.scaleZ, 12, dt);
@@ -11278,7 +11634,15 @@ export class GameEngine {
       const seated = onDragon ||
         (this.artemisLoadedAsset === 'heroes/van-tich.glb' && Boolean(this.hero.mountGroup));
       this.artemisMotion?.update(
-        dt, this.elapsed, isMoving && !seated ? 1 : 0, aimingBow, drawProgress, this.hero.bowGroup, seated
+        dt,
+        this.elapsed,
+        isMoving && !seated ? 1 : 0,
+        aimingBow,
+        drawProgress,
+        this.hero.bowGroup,
+        seated,
+        this.dashTimer > 0,
+        heroTurnRate
       );
     }
 
@@ -11474,6 +11838,7 @@ export class GameEngine {
     proj.storm = storm;
     proj.poison = poison;
 
+    const isVanTich = this.baseStats.heroId === 'van_tich';
     const mat = proj.mesh.material as THREE.MeshStandardMaterial;
     const color = isCounterShot
       ? 0xfde047
@@ -11489,12 +11854,16 @@ export class GameEngine {
       ? 0xa78bfa
       : poison
       ? 0x4ade80
+      : isVanTich
+      ? isComboFinisher
+        ? 0x99f6e4
+        : 0x5eead4
       : this.weaponAccentHex;
     mat.color.setHex(color);
     mat.emissive.setHex(color);
     if (proj.trailMesh) {
       const trailMat = proj.trailMesh.material as THREE.MeshBasicMaterial;
-      trailMat.color.setHex(isOvercharge ? 0x67e8f9 : color);
+      trailMat.color.setHex(isOvercharge ? 0x67e8f9 : isVanTich ? 0x2dd4bf : color);
       const isCharged =
         isCounterShot ||
         isOvercharge ||
@@ -11532,10 +11901,31 @@ export class GameEngine {
       proj.trailMesh.visible = true;
     }
 
+    if (proj.compassGroup) {
+      proj.compassGroup.visible = isVanTich;
+      if (isVanTich) {
+        proj.compassGroup.rotation.y = 0;
+        const cRingMesh = proj.compassGroup.children[0] as THREE.Mesh | undefined;
+        const cStarMesh = proj.compassGroup.children[1] as THREE.Mesh | undefined;
+        if (cRingMesh) {
+          (cRingMesh.material as THREE.MeshBasicMaterial).color.setHex(
+            isCounterShot ? 0xfde047 : isOvercharge ? 0x99f6e4 : color
+          );
+        }
+        if (cStarMesh) {
+          (cStarMesh.material as THREE.MeshBasicMaterial).color.setHex(
+            isCounterShot ? 0xfef08a : 0xe0f2fe
+          );
+        }
+      }
+    }
+
     if (isCounterShot) {
       proj.mesh.scale.set(1.52, 1.52, 1.82);
     } else if (isOvercharge) {
       proj.mesh.scale.set(1.38, 1.38, 1.72);
+    } else if (isVanTich) {
+      proj.mesh.scale.set(1.15, 0.72, 1.05);
     } else if (this.baseStats.weaponArchetype === 'claw') {
       proj.mesh.scale.set(1.85, 0.58, 1.15);
     } else if (this.baseStats.weaponArchetype === 'staff') {
@@ -11554,10 +11944,17 @@ export class GameEngine {
       this.heroSquashY = Math.min(this.heroSquashY, 0.94);
     }
 
-    soundEngine.playBowShoot(
-      0.95 + Math.random() * 0.12,
-      computeSpatialPan(this.px, ARENA_HALF_W)
-    );
+    if (isVanTich) {
+      soundEngine.playVanTichCompassShot(
+        0.95 + Math.random() * 0.14,
+        computeSpatialPan(this.px, ARENA_HALF_W)
+      );
+    } else {
+      soundEngine.playBowShoot(
+        0.95 + Math.random() * 0.12,
+        computeSpatialPan(this.px, ARENA_HALF_W)
+      );
+    }
 
     if (isComboFinisher && !isChainShot) {
       for (const offset of [-0.14, 0.14]) {
@@ -11679,6 +12076,7 @@ export class GameEngine {
           const mat = proj.mesh.material as THREE.MeshStandardMaterial;
           mat.color.setHex(0x22d3ee);
           mat.emissive.setHex(0x06b6d4);
+          if (proj.compassGroup) proj.compassGroup.visible = false;
           proj.mesh.scale.set(0.85, 0.85, 1.8);
           proj.mesh.position.set(proj.x, proj.y, proj.z);
           proj.mesh.rotation.set(0, yaw, 0);
@@ -12132,6 +12530,7 @@ export class GameEngine {
     const mat = proj.mesh.material as THREE.MeshStandardMaterial;
     mat.color.setHex(colorHex);
     mat.emissive.setHex(colorHex);
+    if (proj.compassGroup) proj.compassGroup.visible = false;
     proj.mesh.scale.set(0.95, 0.95, 1.15);
     proj.mesh.position.set(x, 1.05, z);
     proj.mesh.rotation.set(0, yaw, 0);
@@ -12430,6 +12829,7 @@ export class GameEngine {
     const mat = proj.mesh.material as THREE.MeshStandardMaterial;
     mat.color.setHex(colorHex);
     mat.emissive.setHex(colorHex);
+    if (proj.compassGroup) proj.compassGroup.visible = false;
     proj.mesh.scale.set(1.0, 1.0, 1.25);
     proj.mesh.position.set(proj.x, 1.02, proj.z);
     proj.mesh.rotation.set(0, yaw, 0);
@@ -13610,6 +14010,9 @@ export class GameEngine {
       p.x += p.vx * dt;
       p.z += p.vz * dt;
       p.mesh.position.set(p.x, p.y, p.z);
+      if (p.compassGroup?.visible) {
+        p.compassGroup.rotation.y += dt * 16;
+      }
 
       let bounced = false;
       if (Math.abs(p.x) >= ARENA_HALF_W) {
@@ -16150,6 +16553,29 @@ export class GameEngine {
     slot.mesh.visible = true;
   }
 
+  private spawnWindRing(
+    x: number,
+    z: number,
+    colorHex = 0x5eead4,
+    maxRadius = 2.2,
+    tiltAngle = 0.24
+  ): void {
+    const slot = this.windRingPool?.find((w) => !w.active);
+    if (!slot) return;
+    slot.active = true;
+    slot.maxLife = 0.34;
+    slot.life = 0.34;
+    slot.maxRadius = maxRadius;
+    slot.group.position.set(x, 0.72, z);
+    slot.group.rotation.set(tiltAngle, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.25);
+    slot.group.scale.setScalar(0.38);
+    slot.ringMat.color.setHex(colorHex);
+    slot.ringMat.opacity = 0.85;
+    slot.wispMat.color.setHex(0x99f6e4);
+    slot.wispMat.opacity = 0.72;
+    slot.group.visible = true;
+  }
+
   private shatterCrystalObstacle(obs: ObstacleBox): void {
     if (obs.intact === false) return;
     obs.intact = false;
@@ -16244,6 +16670,50 @@ export class GameEngine {
           this.groundMistMesh.setMatrixAt(i, _dummy.matrix);
         }
         this.groundMistMesh.instanceMatrix.needsUpdate = true;
+      }
+    }
+
+    // 5. Van Tich Signature Wind Vortex Rings
+    if (this.windRingPool) {
+      for (let i = 0; i < this.windRingPool.length; i++) {
+        const wr = this.windRingPool[i];
+        if (!wr.active) continue;
+        wr.life -= dt;
+        if (wr.life <= 0) {
+          wr.active = false;
+          wr.group.visible = false;
+          continue;
+        }
+        const t = 1 - wr.life / wr.maxLife;
+        const sc = 0.38 + t * (wr.maxRadius - 0.38);
+        wr.group.scale.setScalar(sc);
+        wr.group.rotation.y += dt * 11.5;
+        wr.ringMat.opacity = 0.85 * (1 - t);
+        wr.wispMat.opacity = 0.72 * (1 - t);
+      }
+    }
+
+    // 6. Van Tich Signature Storm-Mark Ground Indicators on Marked Enemies
+    if (this.stormMarkPool) {
+      let slotIdx = 0;
+      for (let i = 0; i < this.enemies.length && slotIdx < this.stormMarkPool.length; i++) {
+        const en = this.enemies[i];
+        if (!en || en.dead || en.spawnTimer > 0 || (en.stormMarkUntil ?? 0) <= this.elapsed) {
+          continue;
+        }
+        const slot = this.stormMarkPool[slotIdx++];
+        slot.active = true;
+        slot.group.visible = true;
+        slot.group.position.set(en.x, 0.058, en.z);
+        slot.group.scale.setScalar(Math.max(0.85, en.radius * 1.45));
+        slot.group.rotation.y += dt * 2.8;
+      }
+      for (; slotIdx < this.stormMarkPool.length; slotIdx++) {
+        const slot = this.stormMarkPool[slotIdx];
+        if (slot.active || slot.group.visible) {
+          slot.active = false;
+          slot.group.visible = false;
+        }
       }
     }
   }

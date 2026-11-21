@@ -1603,6 +1603,7 @@ export interface WardrobePreviewOverrides {
   skinId?: HeroSkinId;
   wingId?: WingId | null;
   mountId?: MountId | null;
+  astralSteedId?: AstralSteedId | null;
   weaponAuraId?: WeaponAuraId;
   haloId?: HaloId | null;
 }

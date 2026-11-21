@@ -125,6 +125,7 @@ import {
 import {
   FIRST_TOPUP_TIERS,
   HOT_FLASH_BUNDLES,
+  MOUNT_MAP,
   MAX_MOUNT_LEVEL,
   MAX_WEAPON_AURA_LEVEL,
   WEAPON_AURAS,
@@ -186,7 +187,14 @@ import {
   normalizeSupremeMonthly,
 } from '../data/wave12Data';
 import {
+  ASTRAL_STEED_DEFS,
+  ASTRAL_STEED_MAP,
+  ASTRAL_STEED_MAX_STAR,
+  getAstralSteedStats,
+} from '../data/wave13Data';
+import {
   ArtifactId,
+  AstralSteedId,
   AuraStyleId,
   AvatarFrameId,
   BundlePreviewPayload,
@@ -1174,6 +1182,7 @@ interface HeroesPanelProps {
   onUnlockMount?: (mountId: MountId, currency: 'gems' | 'shards') => void;
   onEquipMount?: (mountId: MountId | null) => void;
   onUpgradeMount?: (mountId: MountId) => void;
+  onEquipSteed?: (steedId: AstralSteedId | null) => void;
   onUnlockWeaponAura?: (auraId: WeaponAuraId, currency: 'gems' | 'crystals') => void;
   onEquipWeaponAura?: (auraId: WeaponAuraId) => void;
   onUpgradeWeaponAura?: (auraId: WeaponAuraId) => void;
@@ -1213,6 +1222,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onUnlockMount,
   onEquipMount,
   onUpgradeMount,
+  onEquipSteed,
   onUnlockWeaponAura,
   onEquipWeaponAura,
   onUpgradeWeaponAura,
@@ -1257,7 +1267,9 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const equippedFrameId = save.equippedAvatarFrameId ?? 'default_gold';
   const unlockedMounts = save.unlockedMounts ?? [];
   const mountLevels = save.mountLevels ?? {};
-  const { mountId: equippedMountId } = getMountAppearance(save);
+  const unlockedAstralSteeds = save.unlockedAstralSteeds ?? [];
+  const astralSteedStars = save.astralSteedStars ?? {};
+  const { mountId: equippedMountId, astralSteedId: equippedAstralSteedId } = getMountAppearance(save);
   const mountShards = save.mountShards ?? 0;
   const unlockedWeaponAuras = save.unlockedWeaponAuras ?? ['none'];
   const weaponAuraLevels = save.weaponAuraLevels ?? {};
@@ -1593,7 +1605,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 }`}
               >
                 <MountShardIcon className="w-3 h-3 shrink-0" />
-                <span>Thú Cưỡi ({unlockedMounts.length}/{ZODIAC_MOUNTS.length})</span>
+                <span>Thú Cưỡi ({unlockedMounts.length + unlockedAstralSteeds.length}/{ZODIAC_MOUNTS.length + ASTRAL_STEED_DEFS.length})</span>
               </button>
 
               <button
@@ -2488,6 +2500,35 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 </div>
               </div>
 
+              {(equippedMountId || equippedAstralSteedId) && (
+                <div className="rounded-2xl px-3.5 py-2.5 bg-amber-500/15 border border-amber-300/60 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-black text-amber-100">
+                    Đang cưỡi 3D:{' '}
+                    <span className="text-amber-300">
+                      {equippedAstralSteedId
+                        ? ASTRAL_STEED_MAP[equippedAstralSteedId]?.name ?? equippedAstralSteedId
+                        : equippedMountId
+                          ? MOUNT_MAP[equippedMountId]?.name ?? equippedMountId
+                          : ''}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      if (equippedAstralSteedId && onEquipSteed) {
+                        onEquipSteed(null);
+                      } else {
+                        onEquipMount?.(null);
+                      }
+                    }}
+                    className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+                  >
+                    Xuống Ngựa (Không Đeo)
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {ZODIAC_MOUNTS.map((m) => {
                   const isOwned = unlockedMounts.includes(m.id);
@@ -2642,6 +2683,109 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Astral Steeds 3D */}
+              <div className="pt-2 border-t border-sky-400/20">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                  <h4 className="font-display text-sm sm:text-base font-black text-sky-200">
+                    Thú Cưỡi Tinh Giới 3D ({unlockedAstralSteeds.length}/{ASTRAL_STEED_DEFS.length})
+                  </h4>
+                  <span className="text-[11px] text-slate-300">
+                    Mở thêm tại Thánh Điện Tinh Giới hoặc Quà Lễ Hội 7 Ngày
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {ASTRAL_STEED_DEFS.map((st) => {
+                    const isOwned = unlockedAstralSteeds.includes(st.id);
+                    const isEquipped = equippedAstralSteedId === st.id;
+                    const starLv = Math.max(1, astralSteedStars[st.id] ?? 1);
+                    const statsSt = getAstralSteedStats(st.id, starLv);
+                    const bColor = `#${st.bodyHex.toString(16).padStart(6, '0')}`;
+                    const gColor = `#${st.glowHex.toString(16).padStart(6, '0')}`;
+
+                    return (
+                      <div
+                        key={st.id}
+                        className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
+                          isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <div className="flex items-center gap-2.5">
+                              <span
+                                className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/40 shadow-inner shrink-0"
+                                style={{
+                                  background: `linear-gradient(135deg, ${bColor}55, ${gColor}44)`,
+                                }}
+                              >
+                                <Sparkles className="w-5 h-5 text-sky-200" />
+                              </span>
+                              <div>
+                                <span className="text-[10px] font-black uppercase text-sky-300">
+                                  {st.badge} {isOwned ? `· ${starLv}/${ASTRAL_STEED_MAX_STAR}★` : ''}
+                                </span>
+                                <h5 className="font-display text-sm sm:text-base font-black text-white">
+                                  {st.name}
+                                </h5>
+                              </div>
+                            </div>
+                            {isEquipped && (
+                              <span className="text-[10px] font-black text-emerald-300">ĐANG CƯỠI</span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-slate-300 leading-relaxed">{st.desc}</p>
+
+                          <div className="grid grid-cols-4 gap-1.5 mt-2.5 text-center rounded-xl bg-[#070b1a] border border-sky-400/20 p-2 text-[10px] font-mono-nums font-bold">
+                            <div>
+                              <div className="text-slate-400">ATK%</div>
+                              <div className="text-amber-300">+{Math.round(statsSt.atkPct * 100)}%</div>
+                            </div>
+                            <div>
+                              <div className="text-slate-400">HP%</div>
+                              <div className="text-emerald-300">+{Math.round(statsSt.hpPct * 100)}%</div>
+                            </div>
+                            <div>
+                              <div className="text-slate-400">Tốc</div>
+                              <div className="text-sky-300">+{Math.round(statsSt.moveSpeed * 100)}%</div>
+                            </div>
+                            <div>
+                              <div className="text-slate-400">Bạo</div>
+                              <div className="text-rose-300">+{Math.round(statsSt.crit * 100)}%</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {isOwned ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.05);
+                                if (onEquipSteed) {
+                                  onEquipSteed(isEquipped ? null : st.id);
+                                } else if (isEquipped) {
+                                  onEquipMount?.(null);
+                                }
+                              }}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                                isEquipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                              }`}
+                            >
+                              {isEquipped ? 'Xuống Ngựa' : 'Cưỡi Ra Trận'}
+                            </button>
+                          ) : (
+                            <div className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 border border-slate-700 text-center text-[11px] font-black text-slate-400">
+                              Chưa Sở Hữu · Nhận ở Thánh Điện / Quà 7 Ngày
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Awakened Weapon Auras */}

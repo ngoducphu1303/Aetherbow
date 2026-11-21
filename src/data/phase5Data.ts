@@ -144,7 +144,7 @@ export const HERO_ACTIVE_SKILLS: Record<HeroId, HeroActiveSkillDef> = {
     effectKind: 'storm_convergence',
     accentHex: 0x5eead4,
     accentCss: '#5eead4',
-    radius: 7.5,
+    radius: 10.5,
   },
 };
 
