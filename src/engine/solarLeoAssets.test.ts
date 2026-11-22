@@ -8,6 +8,7 @@ import {
   clearSolarLeoDownloadCache,
   disposeSolarLeoTemplateCache,
   downloadSolarLeoArrayBuffer,
+  evaluatePetPlayfulTrick,
   getSolarLeoAssetUrl,
   HUMANOID_HEAD_RIGID_START_NY,
   instantiateSolarLeoModel,
@@ -219,6 +220,12 @@ test('All 10 real Solar Leo Lite GLBs calibrate, auto-rig into valid SkinnedMesh
         assert.ok(Number.isFinite(instance.bones.wingL1.rotation.y));
         assert.ok(Number.isFinite(instance.bones.wingR1.rotation.y));
       } else if (spec.rigType === 'pet') {
+        assert.equal(Object.keys(instance.bones).length, 7, 'Astraeo should have 7 winged lion-cub bones');
+        assert.ok(instance.skinnedMeshes.length >= 1, 'Astraeo should instantiate a real SkinnedMesh');
+        assert.ok(instance.petAuraRig, 'Astraeo should mount a sparkling starlight aura rig');
+        assert.equal(instance.petAuraRig.moteCount, 8, 'Lite Astraeo must cap sparkle motes at 8');
+        assert.equal(instance.petAuraRig.orbitRing, undefined, 'Lite Astraeo must omit extra orbit halo ring');
+
         // Verify Astraeo head (top 35%) sits forward (+Z) relative to its tail (bottom 35%, -Z)
         const pos = template.parts[0].geometry.attributes.position;
         const y0 = template.bounds.min.y;
@@ -244,6 +251,8 @@ test('All 10 real Solar Leo Lite GLBs calibrate, auto-rig into valid SkinnedMesh
         );
         updateSolarLeoPetPose(instance, 1.4, 1 / 60, 0.85);
         assert.ok(Number.isFinite(instance.visualRoot.position.y));
+        assert.ok(Number.isFinite(instance.bones.wingL.rotation.z));
+        assert.ok(Number.isFinite(instance.bones.tail.rotation.y));
       } else if (spec.rigType === 'artifact') {
         updateSolarLeoArtifactPose(instance, 1.4, 1 / 60);
         assert.ok(Number.isFinite(instance.visualRoot.rotation.y));
@@ -645,4 +654,109 @@ test('Aurelia sculpted bow & arrow stay 100% rigid (zero bend) in riding/shootin
     }
   });
 });
+
+test('Astraeo playful pet choreographer cycles all 5 tricks, rigid-locks face vertices, animates wings/tail/paws, and respects High/Lite aura budgets', async () => {
+  // 1. Pure choreographer verifies all 5 distinct playful tricks over one full 23s cycle
+  const seenTricks = new Set<string>();
+  let maxSpinYaw = 0;
+  let maxBarrelRoll = 0;
+  for (let t = 0; t < 23.0; t += 0.25) {
+    const f = evaluatePetPlayfulTrick(t, 'lobby', false);
+    seenTricks.add(f.trick);
+    assert.ok(Number.isFinite(f.offsetX) && Number.isFinite(f.offsetY) && Number.isFinite(f.offsetZ));
+    assert.ok(Number.isFinite(f.yawOffset) && Number.isFinite(f.rollOffset) && Number.isFinite(f.squashY));
+    assert.ok(f.squashY >= 0.88 && f.squashY <= 1.15, `squashY out of organic bounds: ${f.squashY}`);
+    if (f.trick === 'happy_spin') maxSpinYaw = Math.max(maxSpinYaw, f.yawOffset);
+    if (f.trick === 'playful_barrel_roll') maxBarrelRoll = Math.max(maxBarrelRoll, f.rollOffset);
+  }
+  assert.deepEqual(
+    [...seenTricks].sort(),
+    ['curious_peek', 'figure_eight_swoop', 'happy_spin', 'joy_hop_bounce', 'playful_barrel_roll']
+  );
+  assert.ok(maxSpinYaw > Math.PI * 1.85, `happy_spin must execute full 360° twirl (maxYaw=${maxSpinYaw})`);
+  assert.ok(maxBarrelRoll > Math.PI * 1.85, `playful_barrel_roll must execute full 360° roll (maxRoll=${maxBarrelRoll})`);
+
+  // Celebratory mode triggers joyful high-energy spin-hop immediately
+  const celeb = evaluatePetPlayfulTrick(0.35, 'lobby', true);
+  assert.equal(celeb.trick, 'happy_spin');
+  assert.ok(celeb.sparkleBoost >= 1.5);
+  assert.ok(celeb.wingSpeedMult >= 1.7);
+
+  // Combat mode keeps crisp figure-8 weaving without spinning away from targets
+  const combat = evaluatePetPlayfulTrick(6.5, 'combat', false);
+  assert.equal(combat.trick, 'figure_eight_swoop');
+  assert.ok(Math.abs(combat.yawOffset) < 0.3);
+
+  // 2. Real Astraeo GLB check on both High and Lite: 7-bone rig, rigid face lock, bone articulation, aura budgets
+  await withNodeGlbLoader(async (loader) => {
+    const spec = SOLAR_LEO_SPECS.astraeo;
+    const litePath = path.join(PUBLIC_DIR, ...spec.litePathSegments);
+    const buf = fs.readFileSync(litePath);
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const gltf = await loader.parseAsync(ab, '');
+
+    const tpl = prepareSolarLeoTemplate('astraeo', gltf.scene, 4, { liteMode: false });
+    const headIdx = tpl.blueprints.findIndex((bp) => bp.name === 'head');
+    assert.ok(headIdx >= 0, 'Astraeo must have a head bone');
+
+    const geo = tpl.parts[0].geometry;
+    const pos = geo.attributes.position;
+    const si = geo.attributes.skinIndex;
+    const sw = geo.attributes.skinWeight;
+    let lockedFaceVerts = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const sum = sw.getX(i) + sw.getY(i) + sw.getZ(i) + sw.getW(i);
+      assert.ok(Math.abs(sum - 1) < 1e-3, `Astraeo skinWeight sum must equal 1 (got ${sum})`);
+      const px = pos.getX(i);
+      const py = pos.getY(i);
+      const pz = pos.getZ(i);
+      if (pz >= 0.30 && py >= 0.04 && Math.abs(px) <= 0.19) {
+        lockedFaceVerts++;
+        assert.equal(si.getX(i), headIdx, `Astraeo face vertex ${i} must bind strictly to head`);
+        assert.equal(sw.getX(i), 1, `Astraeo face vertex ${i} must have rigid weight 1.0`);
+        assert.equal(sw.getY(i), 0, `Astraeo face vertex ${i} must have zero secondary bleed`);
+      }
+    }
+    assert.ok(lockedFaceVerts > 50, `Astraeo should rigid-lock face vertices (got ${lockedFaceVerts})`);
+
+    const highRig = instantiateSolarLeoModel(tpl, { liteMode: false });
+    assert.ok(highRig.petAuraRig, 'High Astraeo must include starlight aura rig');
+    assert.equal(highRig.petAuraRig.moteCount, 14, 'High Astraeo must have 14 sparkle motes');
+    assert.ok(highRig.petAuraRig.orbitRing, 'High Astraeo must include translucent golden orbit halo');
+
+    const liteRig = instantiateSolarLeoModel(tpl, { liteMode: true });
+    assert.ok(liteRig.petAuraRig, 'Lite Astraeo must include starlight aura rig');
+    assert.equal(liteRig.petAuraRig.moteCount, 8, 'Lite Astraeo must cap sparkle motes at 8');
+    assert.equal(liteRig.petAuraRig.orbitRing, undefined, 'Lite Astraeo must omit extra orbit halo ring');
+
+    // Step across tricks & combat recoil, verifying genuine wing/head/tail/paw articulation & smooth exit from 360° spin
+    let maxWingAngle = 0;
+    let maxTailWag = 0;
+    let maxHeadTilt = 0;
+    let maxPawKick = 0;
+    for (let step = 0; step < 300; step++) {
+      const t = step * 0.04;
+      updateSolarLeoPetPose(highRig, t, 0.04, step % 80 === 0 ? 0.9 : 0, { mode: 'lobby' });
+      maxWingAngle = Math.max(maxWingAngle, Math.abs(highRig.bones.wingL.rotation.z));
+      maxTailWag = Math.max(maxTailWag, Math.abs(highRig.bones.tail.rotation.y));
+      maxHeadTilt = Math.max(maxHeadTilt, Math.abs(highRig.bones.head.rotation.z));
+      maxPawKick = Math.max(maxPawKick, Math.abs(highRig.bones.paws.rotation.x));
+    }
+    assert.ok(maxWingAngle > 0.25, `Astraeo wings must visibly flap (max=${maxWingAngle})`);
+    assert.ok(maxTailWag > 0.2, `Astraeo tail must visibly wag (max=${maxTailWag})`);
+    assert.ok(maxHeadTilt > 0.18, `Astraeo head must visibly tilt playfully (max=${maxHeadTilt})`);
+    assert.ok(maxPawKick > 0.15, `Astraeo paws must visibly kick/paddle (max=${maxPawKick})`);
+
+    // Clean disposal preserves cached shared geometries
+    disposeObjectResources(highRig.group);
+    disposeObjectResources(liteRig.group);
+    for (const sharedGeo of tpl.sharedGeometries) {
+      assert.equal(sharedGeo.userData.sharedCachedGeometry, true);
+    }
+    tpl.sharedGeometries.forEach((g) => g.dispose());
+    tpl.sharedTextures.forEach((t) => t.dispose());
+    tpl.parts.forEach((p) => p.material.dispose());
+  });
+});
+
 

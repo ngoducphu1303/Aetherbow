@@ -11549,12 +11549,19 @@ export class GameEngine {
       }
       if (this.petModel) {
         this.petModel.visible = true;
-        const petBob = Math.sin(this.elapsed * 3.0) * 0.11;
-        this.petModel.position.set(-1.14, 1.08 + petBob, 4.78);
-        // Keep pet head facing forward by default in Lobby (never drift out of phase with turntable spin)
-        this.petModel.rotation.y = Math.sin(this.elapsed * 1.4) * 0.08;
-        if (this.solarLeoPetRig?.group.parent === this.petModel) {
-          updateSolarLeoPetPose(this.solarLeoPetRig, this.elapsed, dt, 0);
+        const hasSolarPet = this.solarLeoPetRig?.group.parent === this.petModel;
+        if (hasSolarPet && this.solarLeoPetRig) {
+          // Anchor cleanly beside hero; visualRoot drives playful figure-8 swoops, hops, spins & wingbeats
+          this.petModel.position.set(-1.32, 1.32, 5.02);
+          this.petModel.rotation.y = Math.sin(this.elapsed * 1.1) * 0.08;
+          updateSolarLeoPetPose(this.solarLeoPetRig, this.elapsed, dt, 0, {
+            mode: 'lobby',
+            celebrating: this.lobbyEmoteTimer > 0.05,
+          });
+        } else {
+          const petBob = Math.sin(this.elapsed * 3.0) * 0.11;
+          this.petModel.position.set(-1.14, 1.08 + petBob, 4.78);
+          this.petModel.rotation.y = Math.sin(this.elapsed * 1.4) * 0.08;
         }
       }
       // Wave 11 & Wave 13: Smooth Lobby 3D Sky & Weather Theme Damping (zero allocations)
@@ -14546,6 +14553,9 @@ export class GameEngine {
     if (this.petModel && this.builtPetId) {
       this.petModel.visible = true;
       const pDef = PET_MAP[this.builtPetId];
+      const hasSolarPet = this.solarLeoPetRig?.group.parent === this.petModel;
+      const prevPetX = this.petModel.position.x;
+      const prevPetZ = this.petModel.position.z;
       if (synergyActive) {
         const pose = computeCompanionSynergyOrbit(
           synergyProgress,
@@ -14568,23 +14578,41 @@ export class GameEngine {
         }
       } else {
         this.petModel.scale.setScalar(1);
-        const targetX = this.px - Math.cos(this.pFacing) * 1.15 - Math.sin(this.pFacing) * 0.45;
-        const targetZ = this.pz + Math.sin(this.pFacing) * 1.15 - Math.cos(this.pFacing) * 0.45;
-        const petY = 1.18 + Math.sin(this.elapsed * 3.8) * 0.14;
+        // Playful flank weaving around the hero's shoulder
+        const weaveSide = Math.sin(this.elapsed * 2.1) * 0.28;
+        const weaveDepth = Math.cos(this.elapsed * 1.65) * 0.22;
+        const targetX =
+          this.px -
+          Math.cos(this.pFacing) * (1.15 + weaveSide) -
+          Math.sin(this.pFacing) * (0.45 + weaveDepth);
+        const targetZ =
+          this.pz +
+          Math.sin(this.pFacing) * (1.15 + weaveSide) -
+          Math.cos(this.pFacing) * (0.45 + weaveDepth);
+        const petY = hasSolarPet ? 1.18 : 1.18 + Math.sin(this.elapsed * 3.8) * 0.14;
         this.petModel.position.set(
-          THREE.MathUtils.damp(this.petModel.position.x, targetX, 9, dt),
+          THREE.MathUtils.damp(this.petModel.position.x, targetX, 8.5, dt),
           petY,
-          THREE.MathUtils.damp(this.petModel.position.z, targetZ, 9, dt)
+          THREE.MathUtils.damp(this.petModel.position.z, targetZ, 8.5, dt)
         );
       }
-      if (nearest) {
-        this.petModel.rotation.y = Math.atan2(
-          nearest.x - this.petModel.position.x,
-          nearest.z - this.petModel.position.z
-        );
-      } else {
-        this.petModel.rotation.y = this.pFacing;
-      }
+
+      const desiredPetYaw = nearest
+        ? Math.atan2(nearest.x - this.petModel.position.x, nearest.z - this.petModel.position.z)
+        : this.pFacing;
+      const yawDelta =
+        ((desiredPetYaw - this.petModel.rotation.y + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) -
+        Math.PI;
+      this.petModel.rotation.y += yawDelta * (1 - Math.exp(-12 * dt));
+
+      const invDt = dt > 1e-4 ? 1 / dt : 60;
+      const petVx = (this.petModel.position.x - prevPetX) * invDt;
+      const petVz = (this.petModel.position.z - prevPetZ) * invDt;
+      const petMoveSpeed = Math.min(12, Math.hypot(petVx, petVz));
+      const rightX = Math.cos(this.petModel.rotation.y);
+      const rightZ = -Math.sin(this.petModel.rotation.y);
+      const lateralVel = petVx * rightX + petVz * rightZ;
+      const bankAngle = THREE.MathUtils.clamp(-lateralVel * 0.085, -0.45, 0.45);
 
       this.solarLeoPetAttackRecoil = Math.max(0, this.solarLeoPetAttackRecoil - dt * 4.5);
       if (pDef && nearest && nearest.spawnTimer <= 0) {
@@ -14614,8 +14642,14 @@ export class GameEngine {
           );
         }
       }
-      if (this.solarLeoPetRig?.group.parent === this.petModel) {
-        updateSolarLeoPetPose(this.solarLeoPetRig, this.elapsed, dt, this.solarLeoPetAttackRecoil);
+      if (hasSolarPet && this.solarLeoPetRig) {
+        updateSolarLeoPetPose(this.solarLeoPetRig, this.elapsed, dt, this.solarLeoPetAttackRecoil, {
+          mode: 'combat',
+          speed: petMoveSpeed,
+          bankAngle,
+          dashing: this.dashTimer > 0,
+          celebrating: this.phase === GamePhase.VICTORY,
+        });
       }
     }
 

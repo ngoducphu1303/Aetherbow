@@ -91,6 +91,47 @@ export interface SolarLeoBowStringRig {
   currentPull: number;
 }
 
+export type SolarLeoPetTrickKind =
+  | 'curious_peek'
+  | 'happy_spin'
+  | 'playful_barrel_roll'
+  | 'figure_eight_swoop'
+  | 'joy_hop_bounce';
+
+export interface SolarLeoPetPoseOptions {
+  mode?: 'lobby' | 'combat';
+  speed?: number;
+  bankAngle?: number;
+  dashing?: boolean;
+  celebrating?: boolean;
+}
+
+export interface SolarLeoPetTrickFrame {
+  trick: SolarLeoPetTrickKind;
+  phase: number;
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
+  yawOffset: number;
+  pitchOffset: number;
+  rollOffset: number;
+  headTiltZ: number;
+  headYaw: number;
+  headPitch: number;
+  wingSpeedMult: number;
+  wingAmpMult: number;
+  tailWagSpeedMult: number;
+  squashY: number;
+  sparkleBoost: number;
+}
+
+export interface SolarLeoPetAuraRig {
+  group: THREE.Group;
+  motes: THREE.InstancedMesh;
+  moteCount: number;
+  orbitRing?: THREE.Mesh;
+}
+
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   aurelia: {
     id: 'aurelia',
@@ -438,6 +479,27 @@ function buildBoneBlueprints(
     ];
   }
 
+  if (rigType === 'pet') {
+    // Expressive 7-bone winged celestial lion-cub rig (Astraeo):
+    // flapping left/right wings, curious tilting head (rigid face lock), wagging tail, and kicking paws.
+    return [
+      // 0: root
+      { name: 'root', parent: -1, head: [0, 0, 0], tail: [0, sy * 0.05, 0], radius: sx * 0.14, sideBias: 'center', weightBoost: 0.12 },
+      // 1: torso (chest & body core)
+      { name: 'torso', parent: 0, head: [0, 0, 0.02], tail: [0, sy * 0.06, sz * 0.16], radius: sx * 0.24, sideBias: 'center', weightBoost: 1.35 },
+      // 2: head (cute lion cub head + mane, face vertices rigid-locked)
+      { name: 'head', parent: 1, head: [0, sy * 0.12, sz * 0.22], tail: [0, sy * 0.34, sz * 0.44], radius: sx * 0.24, sideBias: 'center', weightBoost: 1.65 },
+      // 3: wingL (+X feathered wing)
+      { name: 'wingL', parent: 1, head: [sx * 0.18, sy * 0.06, sz * 0.17], tail: [sx * 0.48, sy * 0.08, sz * 0.26], radius: sx * 0.18, sideBias: 'left', weightBoost: 1.8 },
+      // 4: wingR (-X feathered wing)
+      { name: 'wingR', parent: 1, head: [-sx * 0.18, sy * 0.02, sz * 0.08], tail: [-sx * 0.48, sy * 0.00, sz * 0.12], radius: sx * 0.18, sideBias: 'right', weightBoost: 1.8 },
+      // 5: tail (-Z curly celestial tail)
+      { name: 'tail', parent: 1, head: [-sx * 0.10, -sy * 0.20, -sz * 0.15], tail: [-sx * 0.20, -sy * 0.36, -sz * 0.48], radius: sx * 0.19, sideBias: 'back', weightBoost: 1.85 },
+      // 6: paws (lower floating paws)
+      { name: 'paws', parent: 1, head: [-sx * 0.05, -sy * 0.20, sz * 0.13], tail: [-sx * 0.10, -sy * 0.43, sz * 0.20], radius: sx * 0.20, sideBias: 'center', weightBoost: 1.5 },
+    ];
+  }
+
   return [];
 }
 
@@ -478,7 +540,12 @@ function bakeSkinWeightsOnGeometry(
   const torsoW = Math.min(sx, sy * 0.44);
   const headBoneIdx = blueprints.findIndex((bp) => bp.name === 'head');
   const chestBoneIdx = blueprints.findIndex((bp) => bp.name === 'chest');
+  const petWingLIdx = rigType === 'pet' ? blueprints.findIndex((bp) => bp.name === 'wingL') : -1;
+  const petWingRIdx = rigType === 'pet' ? blueprints.findIndex((bp) => bp.name === 'wingR') : -1;
+  const petTailIdx = rigType === 'pet' ? blueprints.findIndex((bp) => bp.name === 'tail') : -1;
+  const petPawsIdx = rigType === 'pet' ? blueprints.findIndex((bp) => bp.name === 'paws') : -1;
   const lockHumanoidHead = rigType === 'humanoid' && headBoneIdx >= 0 && chestBoneIdx >= 0;
+  const lockPetHead = rigType === 'pet' && headBoneIdx >= 0;
   const lockBowRigid = lockSculptedDrawnBow && rigType === 'humanoid' && chestBoneIdx >= 0;
 
   const topIdx = [0, 0, 0, 0];
@@ -489,6 +556,44 @@ function bakeSkinWeightsOnGeometry(
     const py = pos.getY(i);
     const pz = pos.getZ(i);
     const base = i * 4;
+
+    if (lockPetHead) {
+      // Rigid-lock Astraeo's adorable lion-cub face & golden eyes to `head` so cute head-tilts never warp his face
+      if (pz >= 0.30 && py >= 0.04 && Math.abs(px) <= 0.19) {
+        skinIndices[base] = headBoneIdx;
+        skinIndices[base + 1] = 0;
+        skinIndices[base + 2] = 0;
+        skinIndices[base + 3] = 0;
+        skinWeights[base] = 1;
+        skinWeights[base + 1] = 0;
+        skinWeights[base + 2] = 0;
+        skinWeights[base + 3] = 0;
+        continue;
+      }
+      // Clean outer wingtip isolation so rapid wingbeats flutter cleanly without pulling face/tail
+      if (petWingLIdx >= 0 && px >= 0.26 && py >= -0.22) {
+        skinIndices[base] = petWingLIdx;
+        skinIndices[base + 1] = 0;
+        skinIndices[base + 2] = 0;
+        skinIndices[base + 3] = 0;
+        skinWeights[base] = 1;
+        skinWeights[base + 1] = 0;
+        skinWeights[base + 2] = 0;
+        skinWeights[base + 3] = 0;
+        continue;
+      }
+      if (petWingRIdx >= 0 && px <= -0.26 && pz >= -0.14 && py >= -0.24) {
+        skinIndices[base] = petWingRIdx;
+        skinIndices[base + 1] = 0;
+        skinIndices[base + 2] = 0;
+        skinIndices[base + 3] = 0;
+        skinWeights[base] = 1;
+        skinWeights[base + 1] = 0;
+        skinWeights[base + 2] = 0;
+        skinWeights[base + 3] = 0;
+        continue;
+      }
+    }
 
     if (lockHumanoidHead) {
       const ny = (py - y0) / sy;
@@ -563,6 +668,13 @@ function bakeSkinWeightsOnGeometry(
     for (let b = 0; b < blueprints.length; b++) {
       // Never allow the humanoid head bone to pull shoulders, bow, or chest below the neck band
       if (lockHumanoidHead && b === headBoneIdx && ny < HUMANOID_NECK_BLEND_START_NY - 0.015) {
+        continue;
+      }
+      // Keep Astraeo's tail strictly isolated from head/wings/paws
+      if (lockPetHead && pz <= -0.22 && (b === headBoneIdx || b === petWingLIdx || b === petPawsIdx)) {
+        continue;
+      }
+      if (lockPetHead && pz >= 0.24 && b === petTailIdx) {
         continue;
       }
       const bp = blueprints[b];
@@ -644,6 +756,7 @@ export interface InstantiatedSolarLeoModel {
   saddle?: THREE.Object3D;
   hasSculptedDrawnBow?: boolean;
   bowStringRig?: SolarLeoBowStringRig;
+  petAuraRig?: SolarLeoPetAuraRig;
   bounds: THREE.Box3;
   size: THREE.Vector3;
   gaitPhase: number;
@@ -1096,6 +1209,12 @@ export function instantiateSolarLeoModel(
     bones.chest.add(bowStringRig.group);
   }
 
+  let petAuraRig: SolarLeoPetAuraRig | undefined;
+  if (template.rigType === 'pet') {
+    petAuraRig = createSolarLeoPetAuraRig(liteMode);
+    group.add(petAuraRig.group);
+  }
+
   return {
     assetId: template.assetId,
     rigType: template.rigType,
@@ -1108,6 +1227,7 @@ export function instantiateSolarLeoModel(
     saddle,
     hasSculptedDrawnBow: template.hasSculptedDrawnBow,
     bowStringRig,
+    petAuraRig,
     bounds: template.bounds.clone(),
     size: template.size.clone(),
     gaitPhase: 0,
@@ -1432,21 +1552,417 @@ export function updateSolarLeoWingsPose(
   rig.visualRoot.position.y = Math.sin(elapsed * 2.8) * 0.035;
 }
 
+const _petMoteDummy = new THREE.Object3D();
+const _petMoteColorGold = new THREE.Color(0xfef08a);
+const _petMoteColorCyan = new THREE.Color(0x7dd3fc);
+const _petMoteColorWhite = new THREE.Color(0xffffff);
+const _petMoteColorPeach = new THREE.Color(0xfdba74);
+
+const PET_TRICK_CYCLE: readonly SolarLeoPetTrickKind[] = [
+  'curious_peek',
+  'happy_spin',
+  'figure_eight_swoop',
+  'joy_hop_bounce',
+  'playful_barrel_roll',
+];
+
+const PET_TRICK_DURATION_SEC = 4.6;
+
+function createSolarLeoPetAuraRig(liteMode: boolean): SolarLeoPetAuraRig {
+  const group = new THREE.Group();
+  group.name = 'AstraeoStarlightAura';
+
+  // Single InstancedMesh = 1 draw call on both Lite (8 motes) and High (14 motes):
+  // front half orbits Astraeo as twinkling starlight diamonds; tail motes form a shimmering motion trail.
+  const moteCount = liteMode ? 8 : 14;
+  const moteGeo = new THREE.OctahedronGeometry(0.048, 0);
+  const moteMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.94,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const motes = new THREE.InstancedMesh(moteGeo, moteMat, moteCount);
+  motes.name = 'AstraeoSparkleMotes';
+  motes.frustumCulled = false;
+
+  for (let i = 0; i < moteCount; i++) {
+    const col =
+      i % 4 === 0
+        ? _petMoteColorGold
+        : i % 4 === 1
+          ? _petMoteColorCyan
+          : i % 4 === 2
+            ? _petMoteColorWhite
+            : _petMoteColorPeach;
+    motes.setColorAt(i, col);
+    _petMoteDummy.position.set(0, 0, 0);
+    _petMoteDummy.scale.setScalar(0.8);
+    _petMoteDummy.updateMatrix();
+    motes.setMatrixAt(i, _petMoteDummy.matrix);
+  }
+  if (motes.instanceColor) motes.instanceColor.needsUpdate = true;
+  motes.instanceMatrix.needsUpdate = true;
+  group.add(motes);
+
+  let orbitRing: THREE.Mesh | undefined;
+  if (!liteMode) {
+    const ringGeo = new THREE.TorusGeometry(0.48, 0.013, 6, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.52,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    orbitRing = new THREE.Mesh(ringGeo, ringMat);
+    orbitRing.name = 'AstraeoOrbitHalo';
+    orbitRing.rotation.x = Math.PI * 0.44;
+    group.add(orbitRing);
+  }
+
+  return { group, motes, moteCount, orbitRing };
+}
+
+function smoothstep01(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c * c * (3 - 2 * c);
+}
+
+/**
+ * Pure deterministic choreographer for Astraeo's playful tricks (curious head-tilt peek,
+ * 360° celebratory spin, infinity figure-8 swoop, double joy hop, and aerial barrel roll).
+ */
+export function evaluatePetPlayfulTrick(
+  elapsed: number,
+  mode: 'lobby' | 'combat' = 'lobby',
+  celebrating = false
+): SolarLeoPetTrickFrame {
+  const safeT = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0);
+
+  if (celebrating) {
+    const p = (safeT * 1.45) % 1;
+    const hop = Math.sin(p * Math.PI);
+    return {
+      trick: 'happy_spin',
+      phase: p,
+      offsetX: Math.sin(safeT * 5.2) * 0.14,
+      offsetY: 0.08 + hop * 0.28,
+      offsetZ: Math.cos(safeT * 5.2) * 0.1,
+      yawOffset: smoothstep01(p) * Math.PI * 2,
+      pitchOffset: -0.14 * hop,
+      rollOffset: Math.sin(safeT * 7.5) * 0.2,
+      headTiltZ: Math.sin(safeT * 6.0) * 0.24,
+      headYaw: 0,
+      headPitch: -0.18 * hop,
+      wingSpeedMult: 1.85,
+      wingAmpMult: 1.45,
+      tailWagSpeedMult: 2.2,
+      squashY: 1 + (hop - 0.35) * 0.09,
+      sparkleBoost: 1.65,
+    };
+  }
+
+  if (mode === 'combat') {
+    // In combat, focus on crisp figure-8 weaving & eager wing/tail energy without spinning away from targets
+    const p = (safeT / 3.8) % 1;
+    const a = safeT * 1.9;
+    return {
+      trick: 'figure_eight_swoop',
+      phase: p,
+      offsetX: Math.sin(a) * 0.16,
+      offsetY: Math.sin(a * 2) * 0.09,
+      offsetZ: Math.cos(a) * 0.08,
+      yawOffset: Math.sin(a) * 0.12,
+      pitchOffset: Math.cos(a * 2) * 0.08,
+      rollOffset: -Math.cos(a) * 0.22,
+      headTiltZ: Math.sin(a * 1.5) * 0.14,
+      headYaw: Math.sin(a * 1.1) * 0.1,
+      headPitch: -0.05,
+      wingSpeedMult: 1.35,
+      wingAmpMult: 1.2,
+      tailWagSpeedMult: 1.6,
+      squashY: 1 + Math.sin(a * 2) * 0.035,
+      sparkleBoost: 1.2,
+    };
+  }
+
+  const slot = Math.floor(safeT / PET_TRICK_DURATION_SEC) % PET_TRICK_CYCLE.length;
+  const trick = PET_TRICK_CYCLE[slot];
+  const p = (safeT % PET_TRICK_DURATION_SEC) / PET_TRICK_DURATION_SEC;
+  // Bell envelope so each trick enters & exits smoothly with zero snapping between slots
+  const env = smoothstep01(Math.min(p / 0.18, (1 - p) / 0.18));
+
+  switch (trick) {
+    case 'curious_peek': {
+      // Drifts inquisitively forward/inward, tilts head left then right, rapid cute tail wag
+      const tiltWave = Math.sin(p * Math.PI * 2);
+      return {
+        trick,
+        phase: p,
+        offsetX: 0.16 * env + Math.sin(p * Math.PI * 2) * 0.08 * env,
+        offsetY: 0.1 * env + Math.sin(p * Math.PI * 4) * 0.05 * env,
+        offsetZ: 0.22 * env,
+        yawOffset: 0.26 * env + tiltWave * 0.14 * env,
+        pitchOffset: 0.1 * env,
+        rollOffset: tiltWave * 0.14 * env,
+        headTiltZ: tiltWave * 0.4 * env,
+        headYaw: 0.22 * env,
+        headPitch: -0.12 * env + Math.abs(tiltWave) * 0.09 * env,
+        wingSpeedMult: 1.2,
+        wingAmpMult: 1.1,
+        tailWagSpeedMult: 2.0,
+        squashY: 1 + Math.sin(p * Math.PI * 4) * 0.035 * env,
+        sparkleBoost: 1.25,
+      };
+    }
+    case 'happy_spin': {
+      // Anticipation dip -> joyful 360° mid-air twirl with upward float -> soft settle
+      const spinWindow = smoothstep01((p - 0.16) / 0.56);
+      const lift = Math.sin(spinWindow * Math.PI);
+      return {
+        trick,
+        phase: p,
+        offsetX: Math.sin(spinWindow * Math.PI * 2) * 0.14 * env,
+        offsetY: -0.06 * (1 - lift) * env + lift * 0.34,
+        offsetZ: Math.sin(spinWindow * Math.PI) * 0.16,
+        yawOffset: spinWindow * Math.PI * 2,
+        pitchOffset: -0.18 * lift,
+        rollOffset: Math.sin(spinWindow * Math.PI * 2) * 0.22,
+        headTiltZ: Math.sin(spinWindow * Math.PI) * 0.26,
+        headYaw: 0,
+        headPitch: -0.2 * lift,
+        wingSpeedMult: 1.15 + lift * 1.0,
+        wingAmpMult: 1.05 + lift * 0.48,
+        tailWagSpeedMult: 1.6 + lift * 1.15,
+        squashY: 1 + (lift - 0.25) * 0.09 * env,
+        sparkleBoost: 1.1 + lift * 0.9,
+      };
+    }
+    case 'figure_eight_swoop': {
+      // Graceful infinity loop gliding beside the hero with playful banked turns
+      const theta = p * Math.PI * 2;
+      const sx = Math.sin(theta);
+      const s2 = Math.sin(theta * 2);
+      return {
+        trick,
+        phase: p,
+        offsetX: sx * 0.32 * env,
+        offsetY: s2 * 0.19 * env + 0.08 * env,
+        offsetZ: Math.cos(theta) * 0.18 * env,
+        yawOffset: Math.cos(theta) * 0.34 * env,
+        pitchOffset: -Math.cos(theta * 2) * 0.14 * env,
+        rollOffset: -Math.cos(theta) * 0.34 * env,
+        headTiltZ: -Math.cos(theta) * 0.22 * env,
+        headYaw: sx * 0.26 * env,
+        headPitch: -s2 * 0.14 * env,
+        wingSpeedMult: 1.4,
+        wingAmpMult: 1.28,
+        tailWagSpeedMult: 1.55,
+        squashY: 1 + s2 * 0.045 * env,
+        sparkleBoost: 1.45,
+      };
+    }
+    case 'joy_hop_bounce': {
+      // Two lively mid-air pounce hops with squash & stretch and happy wing burst
+      const hopPhase = Math.max(0, Math.min(1, (p - 0.12) / 0.76));
+      const doubleHop = Math.abs(Math.sin(hopPhase * Math.PI * 2));
+      const squash = doubleHop > 0.25 ? 1 + (doubleHop - 0.25) * 0.1 : 1 - (0.25 - doubleHop) * 0.16;
+      return {
+        trick,
+        phase: p,
+        offsetX: Math.sin(hopPhase * Math.PI * 2) * 0.14 * env,
+        offsetY: doubleHop * 0.34 * env,
+        offsetZ: doubleHop * 0.16 * env,
+        yawOffset: Math.sin(hopPhase * Math.PI * 2) * 0.22 * env,
+        pitchOffset: (doubleHop - 0.45) * -0.24 * env,
+        rollOffset: Math.cos(hopPhase * Math.PI * 2) * 0.19 * env,
+        headTiltZ: Math.sin(hopPhase * Math.PI * 4) * 0.26 * env,
+        headYaw: Math.sin(hopPhase * Math.PI * 2) * 0.18 * env,
+        headPitch: -doubleHop * 0.22 * env,
+        wingSpeedMult: 1.25 + doubleHop * 0.9,
+        wingAmpMult: 1.15 + doubleHop * 0.42,
+        tailWagSpeedMult: 2.2,
+        squashY: THREE.MathUtils.lerp(1, squash, env),
+        sparkleBoost: 1.2 + doubleHop * 0.75,
+      };
+    }
+    case 'playful_barrel_roll': {
+      // Cheeky corkscrew aerial barrel roll with tucked paws & celebratory sparkle flare
+      const rollWindow = smoothstep01((p - 0.18) / 0.54);
+      const peak = Math.sin(rollWindow * Math.PI);
+      return {
+        trick,
+        phase: p,
+        offsetX: Math.sin(rollWindow * Math.PI) * 0.28,
+        offsetY: peak * 0.28,
+        offsetZ: peak * 0.14,
+        yawOffset: Math.sin(rollWindow * Math.PI) * 0.26,
+        pitchOffset: -0.12 * peak,
+        rollOffset: rollWindow * Math.PI * 2,
+        headTiltZ: 0.18 * peak,
+        headYaw: 0.15 * peak,
+        headPitch: -0.16 * peak,
+        wingSpeedMult: 1.25 + peak * 0.95,
+        wingAmpMult: 1.1 + peak * 0.38,
+        tailWagSpeedMult: 1.95,
+        squashY: 1 + peak * 0.065,
+        sparkleBoost: 1.2 + peak * 0.95,
+      };
+    }
+  }
+}
+
 export function updateSolarLeoPetPose(
   rig: InstantiatedSolarLeoModel,
   elapsed: number,
   dt: number,
-  attackRecoil = 0
+  attackRecoil = 0,
+  options?: SolarLeoPetPoseOptions
 ): void {
+  const mode = options?.mode ?? 'lobby';
+  const speed = options?.speed ?? 0;
+  const bankAngle = options?.bankAngle ?? 0;
+  const dashing = Boolean(options?.dashing);
+  const celebrating = Boolean(options?.celebrating);
+  const recoil = THREE.MathUtils.clamp(attackRecoil, 0, 1);
+
+  const trick = evaluatePetPlayfulTrick(elapsed, mode, celebrating);
+  const speedFactor = Math.min(1, speed / 6.0);
+  const energy = 1 + speedFactor * 0.45 + (dashing ? 0.55 : 0) + recoil * 0.75;
+
+  rig.gaitPhase += dt * (7.2 * trick.wingSpeedMult * energy);
+  const wg = rig.gaitPhase;
+
   const lam = 12;
-  const bob = Math.sin(elapsed * 3.8) * 0.09;
-  const roll = Math.sin(elapsed * 2.3) * 0.1;
-  const pitch = 0.06 + Math.cos(elapsed * 3.1) * 0.06 + attackRecoil * 0.28;
-  const lungeZ = attackRecoil * 0.22;
-  rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, bob, lam, dt);
-  rig.visualRoot.position.z = THREE.MathUtils.damp(rig.visualRoot.position.z, lungeZ, lam, dt);
-  rig.visualRoot.rotation.x = THREE.MathUtils.damp(rig.visualRoot.rotation.x, pitch, lam, dt);
-  rig.visualRoot.rotation.z = THREE.MathUtils.damp(rig.visualRoot.rotation.z, roll, lam, dt);
+  const baseBob = Math.sin(elapsed * 3.6) * 0.085;
+  const baseRoll = Math.sin(elapsed * 2.2) * 0.08;
+  const basePitch = 0.05 + Math.cos(elapsed * 2.9) * 0.05;
+
+  const targetX = trick.offsetX;
+  const targetY = baseBob + trick.offsetY + recoil * 0.08;
+  const targetZ = trick.offsetZ + recoil * 0.28 + (dashing ? 0.1 : 0);
+
+  const targetPitch =
+    basePitch + trick.pitchOffset + speedFactor * 0.16 + (dashing ? 0.22 : 0) + recoil * 0.32;
+  const targetRoll = baseRoll + trick.rollOffset + THREE.MathUtils.clamp(bankAngle, -0.55, 0.55);
+  const targetYaw = trick.yawOffset;
+
+  rig.visualRoot.position.x = THREE.MathUtils.damp(rig.visualRoot.position.x, targetX, lam, dt);
+  rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, targetY, lam, dt);
+  rig.visualRoot.position.z = THREE.MathUtils.damp(rig.visualRoot.position.z, targetZ, lam, dt);
+  rig.visualRoot.rotation.x = THREE.MathUtils.damp(rig.visualRoot.rotation.x, targetPitch, lam, dt);
+  // Direct follow on full-revolution trick axes when spinning/rolling to avoid damp wrap-around jitter
+  if (trick.trick === 'happy_spin' || celebrating) {
+    rig.visualRoot.rotation.y = targetYaw;
+  } else {
+    const curY = ((rig.visualRoot.rotation.y + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    rig.visualRoot.rotation.y = THREE.MathUtils.damp(curY, targetYaw, lam, dt);
+  }
+  if (trick.trick === 'playful_barrel_roll') {
+    rig.visualRoot.rotation.z = targetRoll;
+  } else {
+    const curZ = ((rig.visualRoot.rotation.z + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    rig.visualRoot.rotation.z = THREE.MathUtils.damp(curZ, targetRoll, lam, dt);
+  }
+
+  // Organic volume-preserving squash & stretch
+  const sy = THREE.MathUtils.clamp(trick.squashY + recoil * 0.06, 0.92, 1.12);
+  const sxz = 1 / Math.sqrt(sy);
+  rig.visualRoot.scale.set(
+    THREE.MathUtils.damp(rig.visualRoot.scale.x, sxz, 14, dt),
+    THREE.MathUtils.damp(rig.visualRoot.scale.y, sy, 14, dt),
+    THREE.MathUtils.damp(rig.visualRoot.scale.z, sxz, 14, dt)
+  );
+
+  // Expressive 7-bone skeletal animation (flapping wings, curious head-tilt, wagging tail, kicking paws)
+  const b = rig.bones;
+  if (b.torso) {
+    b.torso.rotation.x = THREE.MathUtils.damp(b.torso.rotation.x, Math.sin(wg * 0.5) * 0.07 + recoil * 0.14, 14, dt);
+  }
+  if (b.head) {
+    const curiousRoll = trick.headTiltZ + Math.sin(elapsed * 2.1) * 0.08;
+    const headPitch = trick.headPitch - recoil * 0.16 + Math.sin(elapsed * 3.4) * 0.05;
+    const headYaw = trick.headYaw + Math.sin(elapsed * 1.65) * 0.12;
+    b.head.rotation.z = THREE.MathUtils.damp(b.head.rotation.z, curiousRoll, 12, dt);
+    b.head.rotation.x = THREE.MathUtils.damp(b.head.rotation.x, headPitch, 12, dt);
+    b.head.rotation.y = THREE.MathUtils.damp(b.head.rotation.y, headYaw, 12, dt);
+  }
+  if (b.wingL && b.wingR) {
+    // Double-harmonic lively feathered wingbeat (crisp downstroke + buoyant upstroke)
+    const flapWave = (Math.sin(wg) + Math.sin(wg * 2) * 0.18) * 0.54 * trick.wingAmpMult;
+    const sweepBack = 0.14 + speedFactor * 0.18 + (dashing ? 0.24 : 0) + recoil * 0.22;
+    b.wingL.rotation.z = THREE.MathUtils.damp(b.wingL.rotation.z, flapWave, 18, dt);
+    b.wingL.rotation.y = THREE.MathUtils.damp(b.wingL.rotation.y, -sweepBack - flapWave * 0.38, 18, dt);
+    b.wingR.rotation.z = THREE.MathUtils.damp(b.wingR.rotation.z, -flapWave, 18, dt);
+    b.wingR.rotation.y = THREE.MathUtils.damp(b.wingR.rotation.y, sweepBack + flapWave * 0.38, 18, dt);
+  }
+  if (b.tail) {
+    const wagFreq = 6.4 * trick.tailWagSpeedMult + recoil * 5.0;
+    const wagYaw = Math.sin(elapsed * wagFreq) * (0.42 + recoil * 0.22);
+    const wagPitch = 0.14 + Math.cos(elapsed * wagFreq * 0.5) * 0.16;
+    b.tail.rotation.y = THREE.MathUtils.damp(b.tail.rotation.y, wagYaw, 16, dt);
+    b.tail.rotation.x = THREE.MathUtils.damp(b.tail.rotation.x, wagPitch, 16, dt);
+  }
+  if (b.paws) {
+    const paddle = Math.sin(wg * 0.85) * 0.3 + recoil * 0.34;
+    b.paws.rotation.x = THREE.MathUtils.damp(b.paws.rotation.x, paddle, 15, dt);
+    b.paws.rotation.z = THREE.MathUtils.damp(b.paws.rotation.z, Math.cos(wg * 0.85) * 0.14, 15, dt);
+  }
+
+  // Update sparkling starlight motes, comet-tail fairy dust & celestial orbit halo (single InstancedMesh, zero GPU overhead)
+  if (rig.petAuraRig) {
+    const { motes, moteCount, orbitRing } = rig.petAuraRig;
+    const boost = trick.sparkleBoost + recoil * 0.8 + (dashing ? 0.6 : 0);
+    const orbitSpeed = 1.75 * boost;
+    const trailCount = moteCount >= 12 ? 5 : 3;
+    const orbitCount = moteCount - trailCount;
+    for (let i = 0; i < moteCount; i++) {
+      if (i < orbitCount) {
+        const a = elapsed * orbitSpeed + (i / orbitCount) * Math.PI * 2;
+        const layer = (i % 3) - 1;
+        const radius = 0.46 + Math.sin(elapsed * 2.5 + i * 1.7) * 0.11 + recoil * 0.14;
+        const mx = rig.visualRoot.position.x + Math.cos(a) * radius;
+        const my = rig.visualRoot.position.y + layer * 0.17 + Math.sin(a * 2.0 + i) * 0.14;
+        const mz = rig.visualRoot.position.z + Math.sin(a) * radius;
+        const twinkle = 0.55 + Math.abs(Math.sin(elapsed * 5.4 + i * 2.1)) * (0.75 * Math.min(1.65, boost));
+        _petMoteDummy.position.set(mx, my, mz);
+        _petMoteDummy.rotation.set(elapsed * 2.2 + i, elapsed * 3.1 + i, 0);
+        // Elongated star-diamond silhouette reads clearly as fairy starlight
+        _petMoteDummy.scale.set(twinkle * 0.78, twinkle * 1.38, twinkle * 0.78);
+      } else {
+        // Comet-tail fairy dust trailing behind Astraeo's swoop & spin trajectory
+        const tIdx = i - orbitCount + 1;
+        const lagT = Math.max(0, elapsed - tIdx * 0.11);
+        const lagTrick = evaluatePetPlayfulTrick(lagT, mode, celebrating);
+        const fade = Math.max(0.28, 1 - tIdx / (trailCount + 1));
+        const swirlA = elapsed * 4.5 + tIdx * 1.9;
+        const mx = lagTrick.offsetX + Math.cos(swirlA) * (0.06 * tIdx);
+        const my = Math.sin(lagT * 3.6) * 0.085 + lagTrick.offsetY - 0.06 + Math.sin(swirlA) * 0.05;
+        const mz = lagTrick.offsetZ - 0.22 - tIdx * 0.09;
+        const twinkle = fade * (0.65 + Math.abs(Math.sin(elapsed * 6.8 + tIdx * 1.6)) * 0.55);
+        _petMoteDummy.position.set(mx, my, mz);
+        _petMoteDummy.rotation.set(elapsed * 3.0 + tIdx, elapsed * 2.4, tIdx);
+        _petMoteDummy.scale.set(twinkle * 0.85, twinkle * 1.25, twinkle * 0.85);
+      }
+      _petMoteDummy.updateMatrix();
+      motes.setMatrixAt(i, _petMoteDummy.matrix);
+    }
+    motes.instanceMatrix.needsUpdate = true;
+
+    if (orbitRing) {
+      orbitRing.position.set(
+        rig.visualRoot.position.x,
+        rig.visualRoot.position.y - 0.14,
+        rig.visualRoot.position.z
+      );
+      orbitRing.rotation.z = elapsed * (1.3 * boost);
+      orbitRing.rotation.x = Math.PI * 0.44 + Math.sin(elapsed * 2.3) * 0.18;
+      const ringScale = 0.96 + Math.sin(elapsed * 3.4) * 0.07 + recoil * 0.18;
+      orbitRing.scale.setScalar(ringScale);
+    }
+  }
 }
 
 export function updateSolarLeoArtifactPose(
