@@ -3603,7 +3603,10 @@ export class GameEngine {
     if (cached) {
       this.solarLeoWingSeq++;
       if (this.solarLeoWingRig) this.releaseObject(this.solarLeoWingRig.group);
-      this.solarLeoWingRig = instantiateSolarLeoModel(cached, { liteMode: variant === 'lite' });
+      this.solarLeoWingRig = instantiateSolarLeoModel(cached, {
+        liteMode: variant === 'lite',
+        scaleMultiplier: 1.14,
+      });
       this.solarLeoWingVariant = variant;
       attachRig(this.solarLeoWingRig);
       return;
@@ -3616,7 +3619,10 @@ export class GameEngine {
         if (this.disposed || seq !== this.solarLeoWingSeq || !this.hero?.wingGroup) return;
         if (this.heroVisualCfg.wingId !== 'solar_zenith') return;
         if (this.solarLeoWingRig) this.releaseObject(this.solarLeoWingRig.group);
-        this.solarLeoWingRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+        this.solarLeoWingRig = instantiateSolarLeoModel(tpl, {
+          liteMode: variant === 'lite',
+          scaleMultiplier: 1.14,
+        });
         this.solarLeoWingVariant = variant;
         attachRig(this.solarLeoWingRig);
       })
@@ -3933,10 +3939,15 @@ export class GameEngine {
       });
   }
 
-  private updateDragonRide(dt: number, speed: number, sprint = false): number {
+  private updateDragonRide(
+    dt: number,
+    speed: number,
+    sprint = false,
+    mountOptions?: { mode?: 'lobby' | 'combat'; bankAngle?: number; celebrating?: boolean }
+  ): number {
     const solarius =
       this.solarLeoMountRig?.group.parent === this.hero.mountGroup ? this.solarLeoMountRig : undefined;
-    if (solarius) updateSolarLeoMountPose(solarius, this.elapsed, dt, speed, sprint);
+    if (solarius) updateSolarLeoMountPose(solarius, this.elapsed, dt, speed, sprint, mountOptions);
     const saddle = solarius?.saddle;
     if (!saddle) return 0.68;
     saddle.getWorldPosition(this.dragonSeat);
@@ -11352,7 +11363,14 @@ export class GameEngine {
       }
       const emotePose = computeLobbyEmotePose(this.lobbyEmoteTimer, this.lobbyEmoteDuration);
       const onDragon = this.hasDragonRide();
-      const mountOffset = onDragon ? this.updateDragonRide(dt, 0) : this.hero.mountGroup ? 0.68 : 0;
+      const mountOffset = onDragon
+        ? this.updateDragonRide(dt, 0, false, {
+            mode: 'lobby',
+            celebrating: emotePose.active || this.lobbyEmoteTimer > 0.05,
+          })
+        : this.hero.mountGroup
+        ? 0.68
+        : 0;
       const poseFloatY =
         (this.lobbyHeroPose === 'astral_float'
           ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1
@@ -11463,7 +11481,11 @@ export class GameEngine {
           dt,
           0,
           false,
-          emotePose.active ? 0.55 : 0
+          emotePose.active ? 0.65 : 0,
+          {
+            mode: 'lobby',
+            celebrating: emotePose.active || this.lobbyEmoteTimer > 0.05,
+          }
         );
       }
       if (this.hero.soulRingNodes) {
@@ -13575,9 +13597,14 @@ export class GameEngine {
       this.hero.bodyGroup.scale.set(1, 1, 1);
     }
 
+    const combatTurnBank = THREE.MathUtils.clamp(-heroTurnRate * 0.08, -0.38, 0.38);
     if (onDragon) {
       const travelSpeed = travelDist / dt;
-      this.hero.bodyGroup.position.y = this.updateDragonRide(dt, travelSpeed, this.dashTimer > 0);
+      this.hero.bodyGroup.position.y = this.updateDragonRide(dt, travelSpeed, this.dashTimer > 0, {
+        mode: 'combat',
+        bankAngle: combatTurnBank,
+        celebrating: this.phase === GamePhase.VICTORY,
+      });
       this.hero.bodyGroup.rotation.x = travelSpeed > 0.3 ? 0.07 : 0;
     } else if (this.hero.mountGroup) {
       // AAA Wave 6: Mount banking tilt on turns + subtle shock-trail accent on fast sprint/dash
@@ -13643,7 +13670,12 @@ export class GameEngine {
         dt,
         speedMag,
         this.dashTimer > 0,
-        this.solarLeoUltBurst
+        this.solarLeoUltBurst,
+        {
+          mode: 'combat',
+          bankAngle: combatTurnBank,
+          celebrating: this.phase === GamePhase.VICTORY,
+        }
       );
     } else if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
       const flapSpeed = isMoving ? 8.5 : 3.6;

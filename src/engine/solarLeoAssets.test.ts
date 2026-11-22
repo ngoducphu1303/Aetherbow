@@ -8,7 +8,9 @@ import {
   clearSolarLeoDownloadCache,
   disposeSolarLeoTemplateCache,
   downloadSolarLeoArrayBuffer,
+  evaluateMountRoyalAction,
   evaluatePetPlayfulTrick,
+  evaluateWingsShowcasePose,
   getSolarLeoAssetUrl,
   HUMANOID_HEAD_RIGID_START_NY,
   instantiateSolarLeoModel,
@@ -212,10 +214,15 @@ test('All 10 real Solar Leo Lite GLBs calibrate, auto-rig into valid SkinnedMesh
       } else if (spec.rigType === 'quadruped_mount') {
         assert.equal(Object.keys(instance.bones).length, 11, 'Solarius should have 11 quadruped bones');
         assert.ok(instance.saddle, 'Solarius should expose a saddle anchor');
+        assert.ok(instance.mountAuraRig, 'Solarius should mount solar ember aura rig');
+        assert.equal(instance.mountAuraRig.emberCount, 8, 'Lite Solarius must cap solar embers at 8');
+        assert.equal(instance.mountAuraRig.groundRing, undefined, 'Lite Solarius must omit extra ground seal ring');
         updateSolarLeoMountPose(instance, 1.8, 1 / 60, 5.2, true);
         assert.ok(Number.isFinite(instance.bones.legFL.rotation.x));
       } else if (spec.rigType === 'wings') {
         assert.equal(Object.keys(instance.bones).length, 5, 'Solar Zenith wings should have 5 bones');
+        assert.ok(instance.wingsAuraRig, 'Solar Zenith wings should mount feather-light aura rig');
+        assert.equal(instance.wingsAuraRig.featherCount, 8, 'Lite Solar Zenith must cap feather motes at 8');
         updateSolarLeoWingsPose(instance, 2.0, 1 / 60, 4.5, true, 0.7);
         assert.ok(Number.isFinite(instance.bones.wingL1.rotation.y));
         assert.ok(Number.isFinite(instance.bones.wingR1.rotation.y));
@@ -758,5 +765,111 @@ test('Astraeo playful pet choreographer cycles all 5 tricks, rigid-locks face ve
     tpl.parts.forEach((p) => p.material.dispose());
   });
 });
+
+test('Solarius mount royal choreographer and Solar Zenith wing choreographer cycle all showcase behaviors, articulate bones in Lobby idle, and enforce High/Lite GPU budgets', async () => {
+  // 1. Solarius pure choreographer covers all 4 distinct royal behaviors over one 22s Lobby cycle
+  const seenMountActions = new Set<string>();
+  let maxPawStompLift = 0;
+  let maxRoarHeadPitch = 0;
+  for (let t = 0; t < 22.0; t += 0.2) {
+    const f = evaluateMountRoyalAction(t, 'lobby', false);
+    seenMountActions.add(f.action);
+    assert.ok(Number.isFinite(f.bodyLiftY) && Number.isFinite(f.headPitch) && Number.isFinite(f.legFRPitch));
+    if (f.action === 'solar_paw_stomp') maxPawStompLift = Math.max(maxPawStompLift, Math.abs(f.legFRPitch));
+    if (f.action === 'majestic_roar') maxRoarHeadPitch = Math.max(maxRoarHeadPitch, Math.abs(f.headPitch));
+  }
+  assert.deepEqual(
+    [...seenMountActions].sort(),
+    ['majestic_roar', 'proud_prowl_shift', 'regal_breathe_survey', 'solar_paw_stomp']
+  );
+  assert.ok(maxPawStompLift > 0.55, `solar_paw_stomp must visibly lift front paw (max=${maxPawStompLift})`);
+  assert.ok(maxRoarHeadPitch > 0.22, `majestic_roar must tilt lion head upward (max=${maxRoarHeadPitch})`);
+
+  const mountCeleb = evaluateMountRoyalAction(0.45, 'lobby', true);
+  assert.equal(mountCeleb.action, 'majestic_roar');
+  assert.ok(mountCeleb.emberBoost >= 1.7);
+
+  // 2. Solar Zenith wings pure choreographer covers all 4 majestic showcase behaviors over one 21s Lobby cycle
+  const seenWingShowcases = new Set<string>();
+  let maxWingLiftZ = 0;
+  let maxWingAsym = 0;
+  for (let t = 0; t < 21.0; t += 0.2) {
+    const f = evaluateWingsShowcasePose(t, 'lobby', false);
+    seenWingShowcases.add(f.showcase);
+    assert.ok(Number.isFinite(f.sweepBase) && Number.isFinite(f.liftZ) && Number.isFinite(f.featherTwist));
+    maxWingLiftZ = Math.max(maxWingLiftZ, f.liftZ);
+    maxWingAsym = Math.max(maxWingAsym, f.asymmetry);
+  }
+  assert.deepEqual(
+    [...seenWingShowcases].sort(),
+    ['majestic_unfurl', 'radiant_flourish', 'seraphic_hover', 'sunburst_ripple']
+  );
+  assert.ok(maxWingLiftZ > 0.24, `Wings must lift grandly during unfurl/flourish (max=${maxWingLiftZ})`);
+  assert.ok(maxWingAsym > 0.45, `sunburst_ripple must introduce graceful asymmetric wave (max=${maxWingAsym})`);
+
+  // 3. Real Solarius & Solar Zenith GLBs: High vs Lite aura budgets, active Lobby idle articulation, and clean disposal
+  await withNodeGlbLoader(async (loader) => {
+    // Solarius check
+    const mBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.solarius.litePathSegments));
+    const mGltf = await loader.parseAsync(mBuf.buffer.slice(mBuf.byteOffset, mBuf.byteOffset + mBuf.byteLength), '');
+    const mTpl = prepareSolarLeoTemplate('solarius', mGltf.scene, 4, { liteMode: false });
+    const mHigh = instantiateSolarLeoModel(mTpl, { liteMode: false });
+    const mLite = instantiateSolarLeoModel(mTpl, { liteMode: true });
+
+    assert.ok(mHigh.mountAuraRig && mHigh.mountAuraRig.emberCount === 16 && mHigh.mountAuraRig.groundRing);
+    assert.ok(mLite.mountAuraRig && mLite.mountAuraRig.emberCount === 8 && mLite.mountAuraRig.groundRing === undefined);
+
+    let maxLobbyLegFR = 0;
+    let maxLobbyHeadYaw = 0;
+    let maxLobbyTailY = 0;
+    for (let step = 0; step < 300; step++) {
+      updateSolarLeoMountPose(mHigh, step * 0.06, 0.06, 0, false, { mode: 'lobby' });
+      maxLobbyLegFR = Math.max(maxLobbyLegFR, Math.abs(mHigh.bones.legFR.rotation.x));
+      maxLobbyHeadYaw = Math.max(maxLobbyHeadYaw, Math.abs(mHigh.bones.head.rotation.y));
+      maxLobbyTailY = Math.max(maxLobbyTailY, Math.abs(mHigh.bones.tail2.rotation.y));
+    }
+    assert.ok(maxLobbyLegFR > 0.35, `Solarius must lift paws during Lobby idle (max=${maxLobbyLegFR})`);
+    assert.ok(maxLobbyHeadYaw > 0.2, `Solarius must survey head in Lobby idle (max=${maxLobbyHeadYaw})`);
+    assert.ok(maxLobbyTailY > 0.3, `Solarius tail must swish vividly (max=${maxLobbyTailY})`);
+
+    disposeObjectResources(mHigh.group);
+    disposeObjectResources(mLite.group);
+    for (const g of mTpl.sharedGeometries) assert.equal(g.userData.sharedCachedGeometry, true);
+    mTpl.sharedGeometries.forEach((g) => g.dispose());
+    mTpl.sharedTextures.forEach((t) => t.dispose());
+    mTpl.parts.forEach((p) => p.material.dispose());
+
+    // Solar Zenith Wings check
+    const wBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.solar_zenith.litePathSegments));
+    const wGltf = await loader.parseAsync(wBuf.buffer.slice(wBuf.byteOffset, wBuf.byteOffset + wBuf.byteLength), '');
+    const wTpl = prepareSolarLeoTemplate('solar_zenith', wGltf.scene, 4, { liteMode: false });
+    const wHigh = instantiateSolarLeoModel(wTpl, { liteMode: false });
+    const wLite = instantiateSolarLeoModel(wTpl, { liteMode: true });
+
+    assert.ok(wHigh.wingsAuraRig && wHigh.wingsAuraRig.featherCount === 16);
+    assert.ok(wLite.wingsAuraRig && wLite.wingsAuraRig.featherCount === 8);
+
+    let maxWingYaw = 0;
+    let maxWingLift = 0;
+    let maxWingTwist = 0;
+    for (let step = 0; step < 300; step++) {
+      updateSolarLeoWingsPose(wHigh, step * 0.06, 0.06, 0, false, 0, { mode: 'lobby' });
+      maxWingYaw = Math.max(maxWingYaw, Math.abs(wHigh.bones.wingL1.rotation.y));
+      maxWingLift = Math.max(maxWingLift, Math.abs(wHigh.bones.wingL1.rotation.z));
+      maxWingTwist = Math.max(maxWingTwist, Math.abs(wHigh.bones.wingL1.rotation.x));
+    }
+    assert.ok(maxWingYaw > 0.45, `Solar Zenith must sweep wide in Lobby (max=${maxWingYaw})`);
+    assert.ok(maxWingLift > 0.25, `Solar Zenith must lift vertically along Z (max=${maxWingLift})`);
+    assert.ok(maxWingTwist > 0.12, `Solar Zenith must twist/cup feathers along X (max=${maxWingTwist})`);
+
+    disposeObjectResources(wHigh.group);
+    disposeObjectResources(wLite.group);
+    for (const g of wTpl.sharedGeometries) assert.equal(g.userData.sharedCachedGeometry, true);
+    wTpl.sharedGeometries.forEach((g) => g.dispose());
+    wTpl.sharedTextures.forEach((t) => t.dispose());
+    wTpl.parts.forEach((p) => p.material.dispose());
+  });
+});
+
 
 

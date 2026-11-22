@@ -132,6 +132,78 @@ export interface SolarLeoPetAuraRig {
   orbitRing?: THREE.Mesh;
 }
 
+export type SolarLeoMountActionKind =
+  | 'regal_breathe_survey'
+  | 'solar_paw_stomp'
+  | 'majestic_roar'
+  | 'proud_prowl_shift';
+
+export interface SolarLeoMountPoseOptions {
+  mode?: 'lobby' | 'combat';
+  bankAngle?: number;
+  celebrating?: boolean;
+}
+
+export interface SolarLeoMountActionFrame {
+  action: SolarLeoMountActionKind;
+  phase: number;
+  bodyLiftY: number;
+  pelvisPitch: number;
+  spinePitch: number;
+  chestPitch: number;
+  headPitch: number;
+  headYaw: number;
+  headRoll: number;
+  legFLPitch: number;
+  legFRPitch: number;
+  legBLPitch: number;
+  legBRPitch: number;
+  tailWagSpeedMult: number;
+  tailWagAmpMult: number;
+  emberBoost: number;
+  stompPulse: number;
+}
+
+export interface SolarLeoMountAuraRig {
+  group: THREE.Group;
+  embers: THREE.InstancedMesh;
+  emberCount: number;
+  groundRing?: THREE.Mesh;
+}
+
+export type SolarLeoWingShowcaseKind =
+  | 'majestic_unfurl'
+  | 'seraphic_hover'
+  | 'sunburst_ripple'
+  | 'radiant_flourish';
+
+export interface SolarLeoWingsPoseOptions {
+  mode?: 'lobby' | 'combat';
+  bankAngle?: number;
+  celebrating?: boolean;
+}
+
+export interface SolarLeoWingShowcaseFrame {
+  showcase: SolarLeoWingShowcaseKind;
+  phase: number;
+  flapSpeedMult: number;
+  innerAmpMult: number;
+  outerAmpMult: number;
+  sweepBase: number;
+  liftZ: number;
+  featherTwist: number;
+  asymmetry: number;
+  hoverY: number;
+  rollZ: number;
+  sparkleBoost: number;
+}
+
+export interface SolarLeoWingsAuraRig {
+  group: THREE.Group;
+  feathers: THREE.InstancedMesh;
+  featherCount: number;
+}
+
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   aurelia: {
     id: 'aurelia',
@@ -757,6 +829,8 @@ export interface InstantiatedSolarLeoModel {
   hasSculptedDrawnBow?: boolean;
   bowStringRig?: SolarLeoBowStringRig;
   petAuraRig?: SolarLeoPetAuraRig;
+  mountAuraRig?: SolarLeoMountAuraRig;
+  wingsAuraRig?: SolarLeoWingsAuraRig;
   bounds: THREE.Box3;
   size: THREE.Vector3;
   gaitPhase: number;
@@ -1215,6 +1289,18 @@ export function instantiateSolarLeoModel(
     group.add(petAuraRig.group);
   }
 
+  let mountAuraRig: SolarLeoMountAuraRig | undefined;
+  if (template.rigType === 'quadruped_mount') {
+    mountAuraRig = createSolarLeoMountAuraRig(liteMode);
+    group.add(mountAuraRig.group);
+  }
+
+  let wingsAuraRig: SolarLeoWingsAuraRig | undefined;
+  if (template.rigType === 'wings') {
+    wingsAuraRig = createSolarLeoWingsAuraRig(liteMode);
+    group.add(wingsAuraRig.group);
+  }
+
   return {
     assetId: template.assetId,
     rigType: template.rigType,
@@ -1228,6 +1314,8 @@ export function instantiateSolarLeoModel(
     hasSculptedDrawnBow: template.hasSculptedDrawnBow,
     bowStringRig,
     petAuraRig,
+    mountAuraRig,
+    wingsAuraRig,
     bounds: template.bounds.clone(),
     size: template.size.clone(),
     gaitPhase: 0,
@@ -1473,50 +1561,559 @@ export function updateSolarLeoHumanoidPose(
   }
 }
 
+const _mountEmberDummy = new THREE.Object3D();
+const _mountEmberGold = new THREE.Color(0xfef08a);
+const _mountEmberAmber = new THREE.Color(0xf59e0b);
+const _mountEmberFlare = new THREE.Color(0xfb923c);
+const _mountEmberWhite = new THREE.Color(0xfffbeb);
+
+const MOUNT_ACTION_CYCLE: readonly SolarLeoMountActionKind[] = [
+  'regal_breathe_survey',
+  'solar_paw_stomp',
+  'majestic_roar',
+  'proud_prowl_shift',
+];
+
+const MOUNT_ACTION_DURATION_SEC = 5.4;
+
+function createSolarLeoMountAuraRig(liteMode: boolean): SolarLeoMountAuraRig {
+  const group = new THREE.Group();
+  group.name = 'SolariusSolarEmberAura';
+
+  // Single InstancedMesh = 1 draw call (8 embers in Lite for Dell E5430, 16 embers in High)
+  const emberCount = liteMode ? 8 : 16;
+  const emberGeo = new THREE.OctahedronGeometry(0.052, 0);
+  const emberMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const embers = new THREE.InstancedMesh(emberGeo, emberMat, emberCount);
+  embers.name = 'SolariusManeEmbers';
+  embers.frustumCulled = false;
+
+  for (let i = 0; i < emberCount; i++) {
+    const col =
+      i % 4 === 0
+        ? _mountEmberGold
+        : i % 4 === 1
+          ? _mountEmberAmber
+          : i % 4 === 2
+            ? _mountEmberFlare
+            : _mountEmberWhite;
+    embers.setColorAt(i, col);
+    _mountEmberDummy.position.set(0, 0.5, 0);
+    _mountEmberDummy.scale.setScalar(0.6);
+    _mountEmberDummy.updateMatrix();
+    embers.setMatrixAt(i, _mountEmberDummy.matrix);
+  }
+  if (embers.instanceColor) embers.instanceColor.needsUpdate = true;
+  embers.instanceMatrix.needsUpdate = true;
+  group.add(embers);
+
+  let groundRing: THREE.Mesh | undefined;
+  if (!liteMode) {
+    const ringGeo = new THREE.TorusGeometry(0.95, 0.018, 6, 36);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      transparent: true,
+      opacity: 0.44,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    groundRing = new THREE.Mesh(ringGeo, ringMat);
+    groundRing.name = 'SolariusSolarGroundSeal';
+    groundRing.rotation.x = Math.PI * 0.5;
+    groundRing.position.y = 0.035;
+    group.add(groundRing);
+  }
+
+  return { group, embers, emberCount, groundRing };
+}
+
+/**
+ * Pure deterministic choreographer for Solarius's living lion behaviors:
+ * regal chest breathing & survey, proud front-paw solar stomp, majestic roaring mane flare,
+ * and feline shoulder-prowl shift (plus immediate celebratory roar-prance on tap/victory).
+ */
+export function evaluateMountRoyalAction(
+  elapsed: number,
+  mode: 'lobby' | 'combat' = 'lobby',
+  celebrating = false
+): SolarLeoMountActionFrame {
+  const safeT = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0);
+
+  if (celebrating) {
+    const p = (safeT * 1.15) % 1;
+    const arch = Math.sin(p * Math.PI);
+    const prance = Math.sin(safeT * 7.5);
+    return {
+      action: 'majestic_roar',
+      phase: p,
+      bodyLiftY: 0.07 + arch * 0.14,
+      pelvisPitch: -0.08 * arch,
+      spinePitch: -0.1 * arch,
+      chestPitch: -0.18 * arch,
+      headPitch: -0.26 * arch,
+      headYaw: Math.sin(safeT * 3.8) * 0.14,
+      headRoll: Math.sin(safeT * 5.2) * 0.08,
+      legFLPitch: -0.52 * arch + prance * 0.18,
+      legFRPitch: -0.52 * arch - prance * 0.18,
+      legBLPitch: 0.16 * arch,
+      legBRPitch: 0.16 * arch,
+      tailWagSpeedMult: 2.1,
+      tailWagAmpMult: 1.65,
+      emberBoost: 1.85,
+      stompPulse: arch,
+    };
+  }
+
+  if (mode === 'combat') {
+    const breathe = Math.sin(safeT * 3.1);
+    return {
+      action: 'regal_breathe_survey',
+      phase: (safeT / 3.0) % 1,
+      bodyLiftY: 0,
+      pelvisPitch: 0,
+      spinePitch: breathe * 0.025,
+      chestPitch: breathe * 0.03,
+      headPitch: -breathe * 0.03,
+      headYaw: Math.sin(safeT * 1.6) * 0.07,
+      headRoll: 0,
+      legFLPitch: 0,
+      legFRPitch: 0,
+      legBLPitch: 0,
+      legBRPitch: 0,
+      tailWagSpeedMult: 1.45,
+      tailWagAmpMult: 1.25,
+      emberBoost: 1.25,
+      stompPulse: 0,
+    };
+  }
+
+  const slot = Math.floor(safeT / MOUNT_ACTION_DURATION_SEC) % MOUNT_ACTION_CYCLE.length;
+  const action = MOUNT_ACTION_CYCLE[slot];
+  const p = (safeT % MOUNT_ACTION_DURATION_SEC) / MOUNT_ACTION_DURATION_SEC;
+  const env = smoothstep01(Math.min(p / 0.16, (1 - p) / 0.16));
+
+  switch (action) {
+    case 'regal_breathe_survey': {
+      // Deep lion breath, scanning majestically left & right with subtle regal head tilt
+      const scan = Math.sin(p * Math.PI * 2);
+      const breath = Math.sin(p * Math.PI * 4);
+      return {
+        action,
+        phase: p,
+        bodyLiftY: Math.max(0, breath) * 0.03 * env,
+        pelvisPitch: -0.02 * breath * env,
+        spinePitch: 0.045 * breath * env,
+        chestPitch: -0.05 * breath * env,
+        headPitch: -0.08 * env - 0.05 * breath * env,
+        headYaw: scan * 0.3 * env,
+        headRoll: -scan * 0.11 * env,
+        legFLPitch: 0.05 * Math.max(0, scan) * env,
+        legFRPitch: 0.05 * Math.max(0, -scan) * env,
+        legBLPitch: -0.03 * env,
+        legBRPitch: -0.03 * env,
+        tailWagSpeedMult: 1.15,
+        tailWagAmpMult: 1.35,
+        emberBoost: 1.1,
+        stompPulse: 0.15 * env,
+      };
+    }
+    case 'solar_paw_stomp': {
+      // Lifts front-right paw proudly high, holds briefly, then stomps down with golden shockwave pulse
+      const liftUp = smoothstep01((p - 0.1) / 0.26);
+      const stompDrop = smoothstep01((p - 0.44) / 0.14);
+      const pawHeight = Math.max(0, liftUp - stompDrop);
+      const impactRing = Math.sin(smoothstep01((p - 0.52) / 0.28) * Math.PI);
+      const secondPaw = Math.sin(smoothstep01((p - 0.6) / 0.28) * Math.PI);
+      return {
+        action,
+        phase: p,
+        bodyLiftY: pawHeight * 0.11 + impactRing * 0.035,
+        pelvisPitch: -0.07 * pawHeight,
+        spinePitch: -0.09 * pawHeight + 0.07 * impactRing,
+        chestPitch: -0.2 * pawHeight + 0.11 * impactRing,
+        headPitch: -0.2 * pawHeight + 0.14 * impactRing,
+        headYaw: -0.24 * pawHeight + 0.18 * secondPaw,
+        headRoll: 0.14 * pawHeight,
+        legFLPitch: -0.46 * secondPaw * env,
+        legFRPitch: -0.88 * pawHeight + 0.12 * impactRing,
+        legBLPitch: 0.15 * pawHeight,
+        legBRPitch: 0.17 * pawHeight,
+        tailWagSpeedMult: 1.65,
+        tailWagAmpMult: 1.6,
+        emberBoost: 1.3 + impactRing * 1.05,
+        stompPulse: impactRing,
+      };
+    }
+    case 'majestic_roar': {
+      // Shifts back onto haunches, lifts chest & front paws, roars skyward with blazing solar mane embers
+      const windup = smoothstep01((p - 0.08) / 0.16);
+      const roarPeak = Math.sin(smoothstep01((p - 0.2) / 0.58) * Math.PI);
+      const shake = Math.sin(p * Math.PI * 14) * roarPeak;
+      return {
+        action,
+        phase: p,
+        bodyLiftY: roarPeak * 0.16,
+        pelvisPitch: 0.1 * windup * (1 - roarPeak) - 0.09 * roarPeak,
+        spinePitch: -0.14 * roarPeak,
+        chestPitch: -0.26 * roarPeak,
+        headPitch: 0.12 * windup * (1 - roarPeak) - 0.36 * roarPeak,
+        headYaw: shake * 0.11,
+        headRoll: shake * 0.08,
+        legFLPitch: -0.62 * roarPeak,
+        legFRPitch: -0.54 * roarPeak,
+        legBLPitch: 0.24 * roarPeak,
+        legBRPitch: 0.24 * roarPeak,
+        tailWagSpeedMult: 2.35,
+        tailWagAmpMult: 1.85,
+        emberBoost: 1.25 + roarPeak * 1.45,
+        stompPulse: roarPeak * 0.95,
+      };
+    }
+    case 'proud_prowl_shift': {
+      // Sleek feline shoulder stretch & alternating front-paw weight shift with confident nod
+      const wave = Math.sin(p * Math.PI * 2);
+      const stretch = Math.sin(p * Math.PI);
+      return {
+        action,
+        phase: p,
+        bodyLiftY: -0.04 * stretch * env + Math.abs(wave) * 0.045 * env,
+        pelvisPitch: -0.09 * stretch * env,
+        spinePitch: 0.12 * stretch * env,
+        chestPitch: 0.1 * stretch * env,
+        headPitch: -0.14 * stretch * env + Math.sin(p * Math.PI * 4) * 0.07 * env,
+        headYaw: -wave * 0.22 * env,
+        headRoll: wave * 0.1 * env,
+        legFLPitch: Math.max(0, wave) * -0.42 * env + 0.14 * stretch * env,
+        legFRPitch: Math.max(0, -wave) * -0.42 * env + 0.14 * stretch * env,
+        legBLPitch: -0.14 * stretch * env,
+        legBRPitch: -0.14 * stretch * env,
+        tailWagSpeedMult: 1.45,
+        tailWagAmpMult: 1.55,
+        emberBoost: 1.25,
+        stompPulse: 0.25 * stretch * env,
+      };
+    }
+  }
+}
+
 export function updateSolarLeoMountPose(
   rig: InstantiatedSolarLeoModel,
   elapsed: number,
   dt: number,
   speed: number,
-  sprint = false
+  sprint = false,
+  options?: SolarLeoMountPoseOptions
 ): void {
   const b = rig.bones;
   if (!b.pelvis || !b.chest) return;
 
+  const mode = options?.mode ?? (speed > 0.15 ? 'combat' : 'lobby');
+  const bankAngle = THREE.MathUtils.clamp(options?.bankAngle ?? 0, -0.45, 0.45);
+  const celebrating = Boolean(options?.celebrating);
+
   const moveFactor = Math.min(1, speed / 5.2);
-  const tempo = sprint ? 1.32 : 1.0;
-  rig.gaitPhase += dt * (2.4 + moveFactor * 10.6 * tempo);
+  const tempo = sprint ? 1.38 : 1.0;
+  rig.gaitPhase += dt * (2.6 + moveFactor * 11.2 * tempo);
   const g = rig.gaitPhase;
-  const breath = Math.sin(elapsed * 2.4);
-  const lam = 13;
+  const breath = Math.sin(elapsed * 2.5);
+  const lam = 12;
 
-  // Rotary quadruped gallop (paired diagonal-offset front & rear legs)
-  const gallopBounce = moveFactor > 0.06 ? Math.abs(Math.sin(g)) * 0.13 * moveFactor : 0;
-  const spineFlex = moveFactor > 0.06 ? Math.cos(g) * 0.11 * moveFactor : breath * 0.02;
+  const royal = evaluateMountRoyalAction(elapsed, mode, celebrating);
+  const idleWeight = 1 - moveFactor;
 
-  const fl = moveFactor > 0.06 ? Math.sin(g) * 0.62 * moveFactor : 0;
-  const fr = moveFactor > 0.06 ? Math.sin(g + 0.65) * 0.62 * moveFactor : 0;
-  const bl = moveFactor > 0.06 ? Math.sin(g + Math.PI) * 0.58 * moveFactor : 0;
-  const br = moveFactor > 0.06 ? Math.sin(g + Math.PI + 0.65) * 0.58 * moveFactor : 0;
+  // Rotary quadruped gallop blended seamlessly with living royal lion behaviors when standing
+  const gallopBounce = moveFactor > 0.06 ? Math.abs(Math.sin(g)) * (sprint ? 0.17 : 0.14) * moveFactor : 0;
+  const spineFlex = moveFactor > 0.06 ? Math.cos(g) * (sprint ? 0.15 : 0.12) * moveFactor : 0;
+  const strideAmp = (sprint ? 0.78 : 0.66) * moveFactor;
 
-  rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, gallopBounce, lam, dt);
-  b.pelvis.rotation.x = THREE.MathUtils.damp(b.pelvis.rotation.x, spineFlex * 0.55, lam, dt);
-  if (b.spine) b.spine.rotation.x = THREE.MathUtils.damp(b.spine.rotation.x, -spineFlex * 0.75, lam, dt);
-  b.chest.rotation.x = THREE.MathUtils.damp(b.chest.rotation.x, spineFlex * 0.5 + breath * 0.025, lam, dt);
+  const gallopFL = moveFactor > 0.06 ? Math.sin(g) * strideAmp : 0;
+  const gallopFR = moveFactor > 0.06 ? Math.sin(g + 0.65) * strideAmp : 0;
+  const gallopBL = moveFactor > 0.06 ? Math.sin(g + Math.PI) * (strideAmp * 0.92) : 0;
+  const gallopBR = moveFactor > 0.06 ? Math.sin(g + Math.PI + 0.65) * (strideAmp * 0.92) : 0;
+
+  const targetY = gallopBounce + royal.bodyLiftY * idleWeight;
+  const targetPelvisX = spineFlex * 0.55 + royal.pelvisPitch * idleWeight;
+  const targetSpineX = -spineFlex * 0.78 + royal.spinePitch * idleWeight;
+  const targetChestX = spineFlex * 0.52 + breath * 0.025 + royal.chestPitch * idleWeight + (sprint ? 0.08 : 0);
+  const targetHeadX = -spineFlex * 0.36 - breath * 0.03 + royal.headPitch * idleWeight;
+  const targetHeadY = royal.headYaw * idleWeight + bankAngle * 0.45;
+  const targetHeadZ = royal.headRoll * idleWeight - bankAngle * 0.28;
+
+  rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, targetY, lam, dt);
+  rig.visualRoot.rotation.z = THREE.MathUtils.damp(rig.visualRoot.rotation.z, bankAngle * 0.55, lam, dt);
+
+  b.pelvis.rotation.x = THREE.MathUtils.damp(b.pelvis.rotation.x, targetPelvisX, lam, dt);
+  b.pelvis.rotation.z = THREE.MathUtils.damp(b.pelvis.rotation.z, Math.sin(g) * 0.04 * moveFactor, lam, dt);
+  if (b.spine) b.spine.rotation.x = THREE.MathUtils.damp(b.spine.rotation.x, targetSpineX, lam, dt);
+  b.chest.rotation.x = THREE.MathUtils.damp(b.chest.rotation.x, targetChestX, lam, dt);
   if (b.head) {
-    b.head.rotation.x = THREE.MathUtils.damp(b.head.rotation.x, -spineFlex * 0.35 - breath * 0.03, lam, dt);
-    b.head.rotation.y = THREE.MathUtils.damp(b.head.rotation.y, Math.sin(elapsed * 1.4) * 0.08 * (1 - moveFactor * 0.6), lam, dt);
+    b.head.rotation.x = THREE.MathUtils.damp(b.head.rotation.x, targetHeadX, lam, dt);
+    b.head.rotation.y = THREE.MathUtils.damp(b.head.rotation.y, targetHeadY, lam, dt);
+    b.head.rotation.z = THREE.MathUtils.damp(b.head.rotation.z, targetHeadZ, lam, dt);
   }
-  if (b.legFL) b.legFL.rotation.x = THREE.MathUtils.damp(b.legFL.rotation.x, fl, lam, dt);
-  if (b.legFR) b.legFR.rotation.x = THREE.MathUtils.damp(b.legFR.rotation.x, fr, lam, dt);
-  if (b.legBL) b.legBL.rotation.x = THREE.MathUtils.damp(b.legBL.rotation.x, bl, lam, dt);
-  if (b.legBR) b.legBR.rotation.x = THREE.MathUtils.damp(b.legBR.rotation.x, br, lam, dt);
+  if (b.legFL) b.legFL.rotation.x = THREE.MathUtils.damp(b.legFL.rotation.x, gallopFL + royal.legFLPitch * idleWeight, lam, dt);
+  if (b.legFR) b.legFR.rotation.x = THREE.MathUtils.damp(b.legFR.rotation.x, gallopFR + royal.legFRPitch * idleWeight, lam, dt);
+  if (b.legBL) b.legBL.rotation.x = THREE.MathUtils.damp(b.legBL.rotation.x, gallopBL + royal.legBLPitch * idleWeight, lam, dt);
+  if (b.legBR) b.legBR.rotation.x = THREE.MathUtils.damp(b.legBR.rotation.x, gallopBR + royal.legBRPitch * idleWeight, lam, dt);
+
+  const tailFreq = (3.4 + moveFactor * 4.5) * royal.tailWagSpeedMult;
+  const tailAmp = 0.28 * royal.tailWagAmpMult;
   if (b.tail1) {
-    b.tail1.rotation.y = THREE.MathUtils.damp(b.tail1.rotation.y, Math.sin(elapsed * (3.2 + moveFactor * 4)) * 0.24, lam, dt);
-    b.tail1.rotation.x = THREE.MathUtils.damp(b.tail1.rotation.x, 0.08 + moveFactor * 0.16, lam, dt);
+    b.tail1.rotation.y = THREE.MathUtils.damp(b.tail1.rotation.y, Math.sin(elapsed * tailFreq) * tailAmp, lam, dt);
+    b.tail1.rotation.x = THREE.MathUtils.damp(
+      b.tail1.rotation.x,
+      0.1 + moveFactor * 0.2 + royal.stompPulse * 0.16,
+      lam,
+      dt
+    );
   }
   if (b.tail2) {
-    b.tail2.rotation.y = THREE.MathUtils.damp(b.tail2.rotation.y, Math.sin(elapsed * (3.2 + moveFactor * 4) - 0.8) * 0.32, lam, dt);
+    b.tail2.rotation.y = THREE.MathUtils.damp(
+      b.tail2.rotation.y,
+      Math.sin(elapsed * tailFreq - 0.9) * (tailAmp * 1.35),
+      lam,
+      dt
+    );
+    b.tail2.rotation.x = THREE.MathUtils.damp(
+      b.tail2.rotation.x,
+      0.12 + Math.cos(elapsed * tailFreq - 0.5) * 0.12,
+      lam,
+      dt
+    );
+  }
+
+  // Update Solarius rising golden solar mane embers & ground stomp seal (single InstancedMesh, zero allocations)
+  if (rig.mountAuraRig) {
+    const { embers, emberCount, groundRing } = rig.mountAuraRig;
+    const energy = royal.emberBoost + moveFactor * 0.5 + (sprint ? 0.75 : 0);
+    const sz = rig.size.z;
+    const sy = rig.size.y;
+    for (let i = 0; i < emberCount; i++) {
+      const cycle = ((elapsed * (0.68 * energy) + i / emberCount) % 1 + 1) % 1;
+      const isMane = i % 3 !== 0;
+      const angle = elapsed * 1.8 + i * 2.17;
+      if (isMane) {
+        // Warm solar sparks rising off Solarius's fiery golden mane and streaming back when galloping
+        const radius = 0.34 + (1 - cycle) * 0.16;
+        const mx = Math.cos(angle) * radius;
+        const my = sy * 0.56 + cycle * 0.72 + rig.visualRoot.position.y;
+        const mz = sz * 0.24 + Math.sin(angle) * 0.22 - cycle * (0.28 + moveFactor * 0.85 + (sprint ? 0.45 : 0));
+        const sc = Math.sin(cycle * Math.PI) * (0.62 + Math.min(0.65, (energy - 1) * 0.45));
+        _mountEmberDummy.position.set(mx, my, mz);
+        _mountEmberDummy.rotation.set(elapsed * 2.5 + i, elapsed * 3.1, i);
+        _mountEmberDummy.scale.set(sc * 0.75, sc * 1.4, sc * 0.75);
+      } else {
+        // Golden pawstep embers flaring softly around Solarius's paws on stomps & gallop
+        const pawRingR = 0.48 + cycle * (0.36 + royal.stompPulse * 0.28);
+        const mx = Math.cos(angle * 1.3) * pawRingR;
+        const my = 0.08 + Math.sin(cycle * Math.PI) * (0.28 + royal.stompPulse * 0.24);
+        const mz = Math.sin(angle * 1.3) * (pawRingR * 1.15) - cycle * moveFactor * 0.65;
+        const sc = Math.sin(cycle * Math.PI) * (0.55 + royal.stompPulse * 0.55 + (sprint ? 0.35 : 0));
+        _mountEmberDummy.position.set(mx, my, mz);
+        _mountEmberDummy.rotation.set(elapsed * 2.0, elapsed * 2.8 + i, 0);
+        _mountEmberDummy.scale.set(sc, sc * 1.15, sc);
+      }
+      _mountEmberDummy.updateMatrix();
+      embers.setMatrixAt(i, _mountEmberDummy.matrix);
+    }
+    embers.instanceMatrix.needsUpdate = true;
+
+    if (groundRing) {
+      groundRing.rotation.z = elapsed * (0.8 + moveFactor * 1.4 + royal.stompPulse * 1.2);
+      const pulseScale = 0.94 + Math.sin(elapsed * 2.8) * 0.04 + royal.stompPulse * 0.22 + (sprint ? 0.12 : 0);
+      groundRing.scale.setScalar(pulseScale);
+      const ringMat = groundRing.material as THREE.MeshBasicMaterial;
+      ringMat.opacity = THREE.MathUtils.clamp(0.32 + royal.stompPulse * 0.38 + (sprint ? 0.2 : 0), 0.25, 0.85);
+    }
+  }
+}
+
+const _wingMoteDummy = new THREE.Object3D();
+const _wingMoteGold = new THREE.Color(0xfef08a);
+const _wingMoteAmber = new THREE.Color(0xfbbf24);
+const _wingMoteWhite = new THREE.Color(0xffffff);
+const _wingMoteRose = new THREE.Color(0xfde68a);
+
+const WING_SHOWCASE_CYCLE: readonly SolarLeoWingShowcaseKind[] = [
+  'majestic_unfurl',
+  'seraphic_hover',
+  'sunburst_ripple',
+  'radiant_flourish',
+];
+
+const WING_SHOWCASE_DURATION_SEC = 5.2;
+
+function createSolarLeoWingsAuraRig(liteMode: boolean): SolarLeoWingsAuraRig {
+  const group = new THREE.Group();
+  group.name = 'SolarZenithFeatherLightAura';
+
+  // Single InstancedMesh = 1 draw call (8 feather sparkles in Lite for Dell E5430, 16 in High)
+  const featherCount = liteMode ? 8 : 16;
+  const featherGeo = new THREE.OctahedronGeometry(0.046, 0);
+  const featherMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.92,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const feathers = new THREE.InstancedMesh(featherGeo, featherMat, featherCount);
+  feathers.name = 'SolarZenithFeatherMotes';
+  feathers.frustumCulled = false;
+
+  for (let i = 0; i < featherCount; i++) {
+    const col =
+      i % 4 === 0
+        ? _wingMoteGold
+        : i % 4 === 1
+          ? _wingMoteAmber
+          : i % 4 === 2
+            ? _wingMoteWhite
+            : _wingMoteRose;
+    feathers.setColorAt(i, col);
+    _wingMoteDummy.position.set(0, 0, 0);
+    _wingMoteDummy.scale.setScalar(0.7);
+    _wingMoteDummy.updateMatrix();
+    feathers.setMatrixAt(i, _wingMoteDummy.matrix);
+  }
+  if (feathers.instanceColor) feathers.instanceColor.needsUpdate = true;
+  feathers.instanceMatrix.needsUpdate = true;
+  group.add(feathers);
+
+  return { group, feathers, featherCount };
+}
+
+/**
+ * Pure deterministic choreographer for Wings of the Solar Zenith:
+ * majestic solar unfurl, seraphic deep hover-flap with feather pronation/supination,
+ * graceful alternating sunburst ripple, and radiant double-wingbeat flourish.
+ */
+export function evaluateWingsShowcasePose(
+  elapsed: number,
+  mode: 'lobby' | 'combat' = 'lobby',
+  celebrating = false
+): SolarLeoWingShowcaseFrame {
+  const safeT = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0);
+
+  if (celebrating) {
+    const p = (safeT * 1.4) % 1;
+    const surge = Math.sin(p * Math.PI);
+    return {
+      showcase: 'radiant_flourish',
+      phase: p,
+      flapSpeedMult: 1.85,
+      innerAmpMult: 1.5,
+      outerAmpMult: 1.65,
+      sweepBase: 0.04,
+      liftZ: 0.22 + surge * 0.18,
+      featherTwist: 0.22 * surge,
+      asymmetry: 0,
+      hoverY: 0.05 + surge * 0.08,
+      rollZ: Math.sin(safeT * 4.2) * 0.04,
+      sparkleBoost: 1.9,
+    };
+  }
+
+  if (mode === 'combat') {
+    return {
+      showcase: 'seraphic_hover',
+      phase: (safeT / 3.2) % 1,
+      flapSpeedMult: 1.25,
+      innerAmpMult: 1.2,
+      outerAmpMult: 1.35,
+      sweepBase: 0.16,
+      liftZ: 0.08,
+      featherTwist: 0.16,
+      asymmetry: 0,
+      hoverY: Math.sin(safeT * 3.4) * 0.04,
+      rollZ: 0,
+      sparkleBoost: 1.25,
+    };
+  }
+
+  const slot = Math.floor(safeT / WING_SHOWCASE_DURATION_SEC) % WING_SHOWCASE_CYCLE.length;
+  const showcase = WING_SHOWCASE_CYCLE[slot];
+  const p = (safeT % WING_SHOWCASE_DURATION_SEC) / WING_SHOWCASE_DURATION_SEC;
+  const env = smoothstep01(Math.min(p / 0.18, (1 - p) / 0.18));
+
+  switch (showcase) {
+    case 'majestic_unfurl': {
+      // Sweeps grandly wide open & forward like a golden sunburst, lifting outer feathers with proud poise
+      const spread = Math.sin(p * Math.PI);
+      return {
+        showcase,
+        phase: p,
+        flapSpeedMult: 0.95,
+        innerAmpMult: 1.05,
+        outerAmpMult: 1.28,
+        sweepBase: 0.14 - 0.34 * spread * env,
+        liftZ: 0.34 * spread * env,
+        featherTwist: 0.24 * spread * env,
+        asymmetry: 0,
+        hoverY: 0.08 * spread * env,
+        rollZ: Math.sin(p * Math.PI * 2) * 0.035 * env,
+        sparkleBoost: 1.25 + spread * 0.75,
+      };
+    }
+    case 'seraphic_hover': {
+      // Deep, majestic angelic hover beats with pronounced feather curl & trailing outer wingtips
+      return {
+        showcase,
+        phase: p,
+        flapSpeedMult: 1.38,
+        innerAmpMult: 1.55,
+        outerAmpMult: 1.7,
+        sweepBase: 0.08,
+        liftZ: 0.16 * env,
+        featherTwist: 0.26 * env,
+        asymmetry: 0,
+        hoverY: Math.sin(p * Math.PI * 4) * 0.065 * env,
+        rollZ: Math.cos(p * Math.PI * 2) * 0.045 * env,
+        sparkleBoost: 1.45,
+      };
+    }
+    case 'sunburst_ripple': {
+      // Elegant asymmetric breeze sway — left wing catches the golden current slightly before right
+      const sway = Math.sin(p * Math.PI * 2);
+      return {
+        showcase,
+        phase: p,
+        flapSpeedMult: 1.18,
+        innerAmpMult: 1.38,
+        outerAmpMult: 1.6,
+        sweepBase: 0.06,
+        liftZ: 0.14 * env,
+        featherTwist: 0.22 * env,
+        asymmetry: 0.72 * env,
+        hoverY: Math.sin(p * Math.PI * 4) * 0.05 * env,
+        rollZ: sway * 0.075 * env,
+        sparkleBoost: 1.5,
+      };
+    }
+    case 'radiant_flourish': {
+      // Crisp double wingbeat burst lifting luminous solar feather motes outward
+      const burstWave = Math.abs(Math.sin(smoothstep01((p - 0.12) / 0.76) * Math.PI * 2));
+      return {
+        showcase,
+        phase: p,
+        flapSpeedMult: 1.5 + burstWave * 0.8,
+        innerAmpMult: 1.35 + burstWave * 0.5,
+        outerAmpMult: 1.5 + burstWave * 0.6,
+        sweepBase: 0.12 - burstWave * 0.24 * env,
+        liftZ: (0.14 + burstWave * 0.28) * env,
+        featherTwist: (0.18 + burstWave * 0.16) * env,
+        asymmetry: 0,
+        hoverY: burstWave * 0.09 * env,
+        rollZ: Math.sin(p * Math.PI * 4) * 0.04 * env,
+        sparkleBoost: 1.35 + burstWave * 0.9,
+      };
+    }
   }
 }
 
@@ -1526,30 +2123,104 @@ export function updateSolarLeoWingsPose(
   dt: number,
   speed: number,
   dashing = false,
-  ultBurst = 0
+  ultBurst = 0,
+  options?: SolarLeoWingsPoseOptions
 ): void {
   const b = rig.bones;
   if (!b.wingL1 || !b.wingR1) return;
 
+  const mode = options?.mode ?? (speed > 0.15 || dashing ? 'combat' : 'lobby');
+  const bankAngle = THREE.MathUtils.clamp(options?.bankAngle ?? 0, -0.45, 0.45);
+  const celebrating = Boolean(options?.celebrating) || ultBurst > 0.25;
+  const ult = THREE.MathUtils.clamp(ultBurst, 0, 1);
+
+  const show = evaluateWingsShowcasePose(elapsed, mode, celebrating);
   const moveFactor = Math.min(1, speed / 5.5);
-  const boost = dashing ? 1.55 : ultBurst > 0.01 ? 1.45 : 1.0;
-  rig.gaitPhase += dt * (2.8 + moveFactor * 4.2) * boost;
-  const g = rig.gaitPhase;
+  const boost = (dashing ? 1.6 : ult > 0.01 ? 1.5 : 1.0) * show.flapSpeedMult;
+  rig.gaitPhase += dt * (2.9 + moveFactor * 4.4) * boost;
+  const gL = rig.gaitPhase;
+  const gR = rig.gaitPhase - show.asymmetry;
 
-  const innerFlap = Math.sin(g) * (0.24 + moveFactor * 0.18 + (dashing ? 0.16 : 0));
-  const outerFlap = Math.sin(g - 0.72) * (0.18 + moveFactor * 0.16);
-  const sweepBack = 0.18 + moveFactor * 0.16 + (dashing ? 0.22 : 0);
-  const lam = 14;
+  // Double-harmonic feathered wingbeat: crisp buoyant power stroke + graceful arched recovery
+  const innerAmp = (0.31 + moveFactor * 0.2 + (dashing ? 0.18 : 0) + ult * 0.16) * show.innerAmpMult;
+  const outerAmp = (0.26 + moveFactor * 0.2 + (dashing ? 0.16 : 0) + ult * 0.18) * show.outerAmpMult;
 
-  b.wingL1.rotation.y = THREE.MathUtils.damp(b.wingL1.rotation.y, -sweepBack - innerFlap, lam, dt);
-  b.wingL1.rotation.z = THREE.MathUtils.damp(b.wingL1.rotation.z, Math.cos(g) * 0.08, lam, dt);
-  if (b.wingL2) b.wingL2.rotation.y = THREE.MathUtils.damp(b.wingL2.rotation.y, -outerFlap, lam, dt);
+  const innerFlapL = (Math.sin(gL) + Math.sin(gL * 2) * 0.16) * innerAmp;
+  const innerFlapR = (Math.sin(gR) + Math.sin(gR * 2) * 0.16) * innerAmp;
+  const outerFlapL = Math.sin(gL - 0.85) * outerAmp;
+  const outerFlapR = Math.sin(gR - 0.85) * outerAmp;
 
-  b.wingR1.rotation.y = THREE.MathUtils.damp(b.wingR1.rotation.y, sweepBack + innerFlap, lam, dt);
-  b.wingR1.rotation.z = THREE.MathUtils.damp(b.wingR1.rotation.z, -Math.cos(g) * 0.08, lam, dt);
-  if (b.wingR2) b.wingR2.rotation.y = THREE.MathUtils.damp(b.wingR2.rotation.y, outerFlap, lam, dt);
+  const sweepBack = show.sweepBase + moveFactor * 0.18 + (dashing ? 0.3 : 0) - ult * 0.2;
+  const liftZ = show.liftZ + ult * 0.18 - (dashing ? 0.1 : 0);
+  const twistL = Math.cos(gL) * show.featherTwist;
+  const twistR = Math.cos(gR) * show.featherTwist;
+  const lam = 13;
 
-  rig.visualRoot.position.y = Math.sin(elapsed * 2.8) * 0.035;
+  b.wingL1.rotation.y = THREE.MathUtils.damp(b.wingL1.rotation.y, -sweepBack - innerFlapL, lam, dt);
+  b.wingL1.rotation.z = THREE.MathUtils.damp(b.wingL1.rotation.z, liftZ + Math.cos(gL) * 0.14 + bankAngle * 0.25, lam, dt);
+  b.wingL1.rotation.x = THREE.MathUtils.damp(b.wingL1.rotation.x, twistL, lam, dt);
+  if (b.wingL2) {
+    b.wingL2.rotation.y = THREE.MathUtils.damp(b.wingL2.rotation.y, -outerFlapL, lam, dt);
+    b.wingL2.rotation.z = THREE.MathUtils.damp(b.wingL2.rotation.z, Math.cos(gL - 0.85) * 0.15, lam, dt);
+    b.wingL2.rotation.x = THREE.MathUtils.damp(b.wingL2.rotation.x, Math.cos(gL - 0.7) * (show.featherTwist * 0.8), lam, dt);
+  }
+
+  b.wingR1.rotation.y = THREE.MathUtils.damp(b.wingR1.rotation.y, sweepBack + innerFlapR, lam, dt);
+  b.wingR1.rotation.z = THREE.MathUtils.damp(b.wingR1.rotation.z, -liftZ - Math.cos(gR) * 0.14 + bankAngle * 0.25, lam, dt);
+  b.wingR1.rotation.x = THREE.MathUtils.damp(b.wingR1.rotation.x, twistR, lam, dt);
+  if (b.wingR2) {
+    b.wingR2.rotation.y = THREE.MathUtils.damp(b.wingR2.rotation.y, outerFlapR, lam, dt);
+    b.wingR2.rotation.z = THREE.MathUtils.damp(b.wingR2.rotation.z, -Math.cos(gR - 0.85) * 0.15, lam, dt);
+    b.wingR2.rotation.x = THREE.MathUtils.damp(b.wingR2.rotation.x, Math.cos(gR - 0.7) * (show.featherTwist * 0.8), lam, dt);
+  }
+
+  rig.visualRoot.position.y = THREE.MathUtils.damp(
+    rig.visualRoot.position.y,
+    Math.sin(elapsed * 2.8) * 0.04 + show.hoverY,
+    lam,
+    dt
+  );
+  rig.visualRoot.rotation.z = THREE.MathUtils.damp(
+    rig.visualRoot.rotation.z,
+    show.rollZ + bankAngle * 0.22,
+    lam,
+    dt
+  );
+
+  // Subtle living solar radiance pulse on wing plumage during flourishes, dashes & Ultimates
+  const targetEmissive = 0.16 + Math.sin(elapsed * 3.1) * 0.05 + (show.sparkleBoost - 1) * 0.16 + ult * 0.35 + (dashing ? 0.18 : 0);
+  for (let m = 0; m < rig.skinnedMeshes.length; m++) {
+    const mat = rig.skinnedMeshes[m].material as THREE.MeshStandardMaterial;
+    if (mat && typeof mat.emissiveIntensity === 'number') {
+      mat.emissiveIntensity = THREE.MathUtils.clamp(targetEmissive, 0.1, 0.72);
+    }
+  }
+
+  // Update drifting golden feather-light sparkles shedding from left & right wingtips (1 InstancedMesh, zero allocations)
+  if (rig.wingsAuraRig) {
+    const { feathers, featherCount } = rig.wingsAuraRig;
+    const boostSparkle = show.sparkleBoost + (dashing ? 0.7 : 0) + ult * 0.9;
+    const spanX = Math.max(0.8, rig.size.x * 0.5);
+    const spanY = Math.max(0.6, rig.size.y * 0.45);
+    for (let i = 0; i < featherCount; i++) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const cycle = ((elapsed * (0.44 * boostSparkle) + i / featherCount) % 1 + 1) % 1;
+      const flutter = Math.sin(elapsed * 4.8 + i * 2.1);
+      const wingWave = Math.sin((side > 0 ? gL : gR) - 0.6);
+      const fx = side * (spanX * (0.38 + (i % 4) * 0.16) + cycle * 0.38 + flutter * 0.08);
+      const fy = spanY * 0.32 + wingWave * 0.16 - cycle * 0.78 + Math.cos(elapsed * 3.6 + i) * 0.07;
+      const fz = -0.14 - cycle * (0.32 + moveFactor * 0.55 + (dashing ? 0.5 : 0)) + wingWave * 0.12;
+      const fade = Math.sin(cycle * Math.PI);
+      const sc = fade * (0.65 + Math.min(0.7, (boostSparkle - 1) * 0.45));
+      _wingMoteDummy.position.set(fx, fy, fz);
+      _wingMoteDummy.rotation.set(elapsed * 2.4 + i, elapsed * 3.2 + side, flutter * 0.6);
+      // Graceful slender golden feather-spark silhouette
+      _wingMoteDummy.scale.set(sc * 0.62, sc * 1.58, sc * 0.48);
+      _wingMoteDummy.updateMatrix();
+      feathers.setMatrixAt(i, _wingMoteDummy.matrix);
+    }
+    feathers.instanceMatrix.needsUpdate = true;
+  }
 }
 
 const _petMoteDummy = new THREE.Object3D();
