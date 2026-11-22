@@ -12,6 +12,7 @@ export type TopCombatBannerKind =
   | 'boss_phase_2'
   | 'boss_punish'
   | 'boss_warning'
+  | 'boss_entrance'
   | 'boss_intro'
   | 'boss_part_broken'
   | 'ult_cutin';
@@ -78,6 +79,11 @@ export function resolveTopCombatBanner(
     | 'bossPunishRatio'
     | 'bossWarningTitle'
     | 'bossWarningSubtitle'
+    | 'bossEntranceActive'
+    | 'bossEntranceRemainingSec'
+    | 'bossEntranceTotalSec'
+    | 'bossEntranceBossName'
+    | 'bossEntranceStageLabel'
     | 'bossPartBrokenBanner'
     | 'ultCutinTimer'
     | 'ultCutinTitle'
@@ -87,6 +93,27 @@ export function resolveTopCombatBanner(
   bossIntroTitle: string | null,
   isCompact: boolean
 ): TopCombatBanner | null {
+  // 0. Boss Entrance sequence (5-10s arrival — player attacks are locked until Boss finishes appearing)
+  if (hud.bossEntranceActive && (hud.bossEntranceRemainingSec ?? 0) > 0) {
+    const rem = Math.max(0, hud.bossEntranceRemainingSec ?? 0);
+    const total = Math.max(1, hud.bossEntranceTotalSec ?? 6.0);
+    const stageText =
+      shortenBannerText(
+        hud.bossEntranceStageLabel || 'Boss đang giáng lâm · Khóa tấn công',
+        isCompact ? 28 : 42
+      ) ?? 'Boss đang giáng lâm · Khóa tấn công';
+    return {
+      id: 'boss_entrance_active',
+      kind: 'boss_entrance',
+      tone: 'crimson',
+      kicker: 'BOSS XUẤT HIỆN',
+      title: stageText,
+      timerText: `${rem.toFixed(1)}s`,
+      progressRatio: clamp01(1 - rem / total),
+      priority: 105,
+    };
+  }
+
   // 1. Urgent interactive window: Phase transition counter-attack
   if (hud.phaseCounterReady && (hud.phaseCounterWindowSec ?? 0) > 0) {
     const rem = Math.max(0, hud.phaseCounterWindowSec ?? 0);

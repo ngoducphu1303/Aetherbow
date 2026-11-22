@@ -522,6 +522,15 @@ import {
   ZodiacArenaThemeSpec,
 } from './zodiacArena';
 import {
+  BOSS_ENTRANCE_SUB_DURATION_SEC,
+  canDamageEnemyDuringEntrance,
+  canPlayerExecuteAttack,
+  computeBossEntranceCameraBlend,
+  evaluateBossEntranceState,
+  isBossEntranceAttackLocked,
+  resolveBossEntranceDurationSec,
+} from './bossEntrance';
+import {
   computeAimSightlineTransform,
   computeHitIndicatorAngleDeg,
   computeImpactDecalState,
@@ -607,6 +616,7 @@ interface EnemyEntity {
   goldValue: number;
   isBoss: boolean;
   spawnTimer: number;
+  spawnDuration?: number;
   attackTimer: number;
   telegraphTimer: number;
   telegraphDuration: number;
@@ -1082,6 +1092,11 @@ export class GameEngine {
   private bossIntroDuration = 1.55;
   private bossIntroFocusX = 0;
   private bossIntroFocusZ = -5;
+  private bossEntranceTimer = 0;
+  private bossEntranceDuration = BOSS_ENTRANCE_SUB_DURATION_SEC;
+  private bossEntranceBossName: string | null = null;
+  private bossEntranceLandingFired = false;
+  private bossEntranceHintCd = 0;
   private bossFinisherTimer = 0;
   private bossFinisherDuration = BOSS_FINISHER_DURATION_SEC;
   private bossFinisherFocusX = 0;
@@ -7684,9 +7699,11 @@ export class GameEngine {
       laserLine,
     });
 
-    this.spawnShockwave(0, -5.8, 0xf97316, 8.5, 0.62);
-    soundEngine.playBossPhaseRoar();
-    this.triggerBossWarning('CỔ LONG TINH GIỚI 3D', 'LÃNH ĐỊA RỒNG CỔ · NÉ HƠI THỞ ĐỎ RỰC');
+    const dragonEntity = this.enemies[this.enemies.length - 1];
+    this.triggerBossWarning('CỔ LONG TINH GIỚI 3D', 'LÃNH ĐỊA RỒNG CỔ · CHỜ THỦ LĨNH XUẤT HIỆN XONG');
+    if (dragonEntity) {
+      this.startBossEntranceSequence(dragonEntity, 'Cổ Long Tinh Giới 3D', 0xf97316);
+    }
     this.phase = GamePhase.PLAYING;
     this.syncHudImmediate();
   }
@@ -7830,9 +7847,11 @@ export class GameEngine {
         laserLine,
       });
 
-      this.spawnShockwave(0, -5.6, 0x38bdf8, 8.2, 0.58);
-      soundEngine.playBossPhaseRoar();
-      this.triggerBossWarning('THIÊN SỨ TRƯỞNG KHÔNG TRUNG', 'BOSS KHÔNG CHIẾN 3D · ĐỘT PHÁ LÔNG VŨ THẦN QUANG');
+      const seraphEntity = this.enemies[this.enemies.length - 1];
+      this.triggerBossWarning('THIÊN SỨ TRƯỞNG KHÔNG TRUNG', 'BOSS KHÔNG CHIẾN 3D · CHỜ THỦ LĨNH XUẤT HIỆN XONG');
+      if (seraphEntity) {
+        this.startBossEntranceSequence(seraphEntity, 'Thiên Sứ Trưởng Không Trung', 0x38bdf8);
+      }
     } else {
       this.stageBannerText = `KHÔNG CHIẾN TINH GIỚI · ĐỢT ${waveNum}/3`;
       this.stageBannerTimer = 2.0;
@@ -7853,6 +7872,11 @@ export class GameEngine {
     this.bossWarningTitle = null;
     this.bossWarningSubtitle = null;
     this.bossWarningTimer = 0;
+    this.bossEntranceTimer = 0;
+    this.bossEntranceDuration = BOSS_ENTRANCE_SUB_DURATION_SEC;
+    this.bossEntranceBossName = null;
+    this.bossEntranceLandingFired = false;
+    this.bossEntranceHintCd = 0;
     this.dragonTimeLeft = 0;
     this.dragonPhase = 1;
     this.dragonBreathCooldown = 6.0;
@@ -8400,6 +8424,11 @@ export class GameEngine {
     this.arenaHazards = [];
     this.arenaHazardSpawnTimer = 5.4;
     this.bossIntroTimer = 0;
+    this.bossEntranceTimer = 0;
+    this.bossEntranceDuration = BOSS_ENTRANCE_SUB_DURATION_SEC;
+    this.bossEntranceBossName = null;
+    this.bossEntranceLandingFired = false;
+    this.bossEntranceHintCd = 0;
     this.bossFinisherTimer = 0;
     this.bossFinisherName = null;
     this.synergyAwakenedTimer = 0;
@@ -10043,33 +10072,115 @@ export class GameEngine {
     }
 
     // AAA Wave 5: Rotating Celestial Summon Portal underneath spawning enemies
-    if (!this.isTrainingMode) {
-      const portalColor = isBoss ? 0xfbbf24 : isElite ? 0xc084fc : 0x38bdf8;
+    if (!this.isTrainingMode && !isBoss) {
+      const portalColor = isElite ? 0xc084fc : 0x38bdf8;
       this.spawnSummonPortal(
         x,
         z,
-        isBoss ? radius * 1.65 : radius * 1.35,
+        radius * 1.35,
         portalColor,
         0.56
       );
       soundEngine.playSummonPortalHum(computeSpatialPan(x, ARENA_HALF_W));
     }
 
-    // Cinematic 1.55s Boss Entrance Camera Sweep + Imperial Summoning Beam + Fanfare
-    if (isBoss && !this.isTrainingMode && !this.isArenaMode) {
-      const reducedMotion =
-        typeof window !== 'undefined' &&
-        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      this.bossIntroFocusX = x;
-      this.bossIntroFocusZ = z;
-      if (!reducedMotion) {
-        this.bossIntroTimer = this.bossIntroDuration;
-        this.cinematicCamera = triggerCinematicCamera('boss_intro', x, z, false);
-      }
-      this.spawnUltColumn(x, z, this.currentChapter.trimHex, 0.92);
-      this.spawnShockwave(x, z, 0xfbbf24, 5.2, 0.55);
-      soundEngine.playBossEntranceFanfare();
+    // Dramatic 6–7s Boss Entrance Sequence across all chapters & boss modes
+    // Player/pet/ally attacks & boss damage remain strictly locked until the Boss finishes appearing.
+    if (isBoss && !this.isTrainingMode && !this.isArenaMode && spawnedEntity) {
+      this.startBossEntranceSequence(
+        spawnedEntity,
+        bossTitle || this.currentChapter.bossName,
+        this.currentChapter.trimHex
+      );
     }
+  }
+
+  private isBossEntranceLocked(): boolean {
+    return isBossEntranceAttackLocked(this.bossEntranceTimer);
+  }
+
+  private notifyBossEntranceLockedHint(): void {
+    if (this.bossEntranceHintCd > 0) return;
+    this.bossEntranceHintCd = 0.85;
+    this.emitFloatingNumber(
+      this.px,
+      2.22,
+      this.pz,
+      0,
+      false,
+      false,
+      'fire',
+      'CHỜ BOSS XUẤT HIỆN!'
+    );
+  }
+
+  private startBossEntranceSequence(
+    bossEntity: EnemyEntity,
+    title: string,
+    accentHex: number
+  ): void {
+    const isMajor =
+      bossEntity.kind === EnemyKind.ZODIAC_BOSS ||
+      this.isDragonLairMode ||
+      this.isSkyCitadelMode ||
+      this.isWorldBossMode ||
+      this.isGuildBossMode ||
+      this.isWeeklyRankedBossMode;
+    const duration = resolveBossEntranceDurationSec(isMajor);
+    const baseScale = bossEntity.baseScale ?? 1;
+
+    bossEntity.spawnDuration = duration;
+    bossEntity.spawnTimer = duration;
+    bossEntity.model.root.position.set(bossEntity.x, 7.4, bossEntity.z);
+    bossEntity.model.root.scale.setScalar(0.22 * baseScale);
+    bossEntity.model.root.rotation.y = Math.atan2(
+      this.px - bossEntity.x,
+      this.pz - bossEntity.z
+    );
+
+    // Sync any existing boss in a dual-boss wave to the same entrance completion time
+    if (this.bossEntranceTimer < duration) {
+      this.bossEntranceDuration = duration;
+      this.bossEntranceTimer = duration;
+      this.bossEntranceBossName = title;
+      this.bossEntranceLandingFired = false;
+    }
+
+    // Clear queued player shots and active player projectiles so nothing hits an appearing Boss
+    this.volleyQueue.length = 0;
+    this.attackCooldown = Math.max(this.attackCooldown, 0.25);
+    for (let i = 0; i < this.arrowPool.length; i++) {
+      const p = this.arrowPool[i];
+      if (p.active && !p.isEnemy) {
+        p.active = false;
+        p.mesh.visible = false;
+        if (p.trailMesh) p.trailMesh.visible = false;
+      }
+    }
+
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.bossIntroFocusX = bossEntity.x;
+    this.bossIntroFocusZ = bossEntity.z;
+    this.bossIntroDuration = duration;
+    if (!reducedMotion) {
+      this.bossIntroTimer = duration;
+      this.cinematicCamera = triggerCinematicCamera('boss_intro', bossEntity.x, bossEntity.z, false);
+    }
+
+    this.spawnSummonPortal(
+      bossEntity.x,
+      bossEntity.z,
+      bossEntity.radius * 2.1,
+      0xfbbf24,
+      duration * 0.85
+    );
+    this.spawnUltColumn(bossEntity.x, bossEntity.z, accentHex, Math.min(2.2, duration * 0.35));
+    this.spawnShockwave(bossEntity.x, bossEntity.z, 0xfbbf24, 5.6, 0.65);
+    soundEngine.playSummonPortalHum(computeSpatialPan(bossEntity.x, ARENA_HALF_W));
+    soundEngine.playBossEntranceFanfare();
+    this.syncHudImmediate();
   }
 
   private spawnBossPhase2Totems(boss: EnemyEntity): void {
@@ -10691,6 +10802,10 @@ export class GameEngine {
 
   public triggerHeavyBreakStrike(): void {
     if (this.phase !== GamePhase.PLAYING || this.heavyBreakCooldown > 0) return;
+    if (this.isBossEntranceLocked()) {
+      this.notifyBossEntranceLockedHint();
+      return;
+    }
     const nearest = this.findNearestEnemy(this.px, this.pz);
     const atkPower = this.baseStats.attack * this.getCurrentAtkMultiplier();
     const spec = computeHeavyBreakStrikeSpec(atkPower, this.comboCount, Boolean(nearest?.isBoss));
@@ -10813,6 +10928,10 @@ export class GameEngine {
 
   public triggerHeroActiveSkill(): void {
     if (this.phase !== GamePhase.PLAYING) return;
+    if (this.isBossEntranceLocked()) {
+      this.notifyBossEntranceLockedHint();
+      return;
+    }
     if (this.activeSkillCooldown > 0) {
       queueBufferedAction(this.combatInputBuffer, 'activeSkill', performance.now());
       return;
@@ -11021,6 +11140,10 @@ export class GameEngine {
 
   public triggerHeroUltimate(): void {
     if (this.phase !== GamePhase.PLAYING) return;
+    if (this.isBossEntranceLocked()) {
+      this.notifyBossEntranceLockedHint();
+      return;
+    }
     if (this.ultCharge < 100) {
       queueBufferedAction(this.combatInputBuffer, 'ultimate', performance.now());
       return;
@@ -12068,7 +12191,7 @@ export class GameEngine {
       }
     }
 
-    if (this.isGuildBossMode) {
+    if (this.isGuildBossMode && !this.isBossEntranceLocked()) {
       this.guildBossTimeLeft = Math.max(0, this.guildBossTimeLeft - dt);
       if (this.guildBossTimeLeft <= 0) {
         soundEngine.playVictory();
@@ -12089,7 +12212,7 @@ export class GameEngine {
       }
     }
 
-    if (this.isWorldBossMode) {
+    if (this.isWorldBossMode && !this.isBossEntranceLocked()) {
       this.worldBossTimeLeft = Math.max(0, this.worldBossTimeLeft - dt);
       if (this.worldBossTimeLeft <= 0) {
         const totalDmg = Math.round(this.worldBossTotalDamage);
@@ -12330,7 +12453,7 @@ export class GameEngine {
     }
 
     // Wave 14: Sky Citadel Aerial Arena 3D Timer & Victory Resolution
-    if (this.isSkyCitadelMode) {
+    if (this.isSkyCitadelMode && !this.isBossEntranceLocked()) {
       this.skyCitadelTimeLeft = Math.max(0, this.skyCitadelTimeLeft - dt);
       if (this.skyCitadelTimeLeft <= 0) {
         const totalFeathers = Math.max(6, this.skyCitadelFeathersLooted + Math.floor(this.skyCitadelScore / 450));
@@ -12357,7 +12480,7 @@ export class GameEngine {
     }
 
     // Wave 13: Ancient Dragon Lair 3D Multi-Phase & Telegraphed Dragon Breath Cone
-    if (this.isDragonLairMode) {
+    if (this.isDragonLairMode && !this.isBossEntranceLocked()) {
       this.dragonTimeLeft = Math.max(0, this.dragonTimeLeft - dt);
       const dragonBoss = this.enemies.find((en) => en.isBoss);
       if (dragonBoss) {
@@ -12721,6 +12844,30 @@ export class GameEngine {
       if (!urn.alive || !urn.sealMesh) continue;
       urn.sealMesh.rotation.y += simDt * 2.4;
       urn.sealMesh.position.y = 1.48 + Math.sin(this.elapsed * 3.2 + ui * 1.9) * 0.08;
+    }
+    if (this.bossEntranceHintCd > 0) {
+      this.bossEntranceHintCd = Math.max(0, this.bossEntranceHintCd - dt);
+    }
+    if (this.bossEntranceTimer > 0) {
+      this.bossEntranceTimer = Math.max(0, this.bossEntranceTimer - dt);
+      if (this.bossEntranceTimer <= 0) {
+        this.bossEntranceBossName = null;
+        this.bossEntranceLandingFired = false;
+        soundEngine.playTargetLockTick(true);
+        this.spawnShockwave(this.px, this.pz, this.weaponAccentHex, 3.2, 0.34);
+        this.emitFloatingNumber(
+          this.px,
+          2.35,
+          this.pz,
+          0,
+          true,
+          false,
+          'storm',
+          'KHAI CHIẾN!',
+          true
+        );
+        this.syncHudImmediate();
+      }
     }
     if (this.bossIntroTimer > 0) {
       this.bossIntroTimer = Math.max(0, this.bossIntroTimer - dt);
@@ -13313,10 +13460,12 @@ export class GameEngine {
         if (decision.wantDash) {
           this.dashBufferTimer = 0.14;
         }
-        if (decision.wantUltimate && this.ultCharge >= 100) {
-          this.triggerHeroUltimate();
-        } else if (decision.wantActiveSkill && this.activeSkillCooldown <= 0.05) {
-          this.triggerHeroActiveSkill();
+        if (!this.isBossEntranceLocked()) {
+          if (decision.wantUltimate && this.ultCharge >= 100) {
+            this.triggerHeroUltimate();
+          } else if (decision.wantActiveSkill && this.activeSkillCooldown <= 0.05) {
+            this.triggerHeroActiveSkill();
+          }
         }
       }
     } else {
@@ -13325,11 +13474,13 @@ export class GameEngine {
 
     // Pillar 2: Drain 120ms buffered combat inputs for frame-perfect responsiveness
     const bufferNowMs = performance.now();
-    if (this.activeSkillCooldown <= 0 && consumeBufferedAction(this.combatInputBuffer, 'activeSkill', bufferNowMs)) {
-      this.triggerHeroActiveSkill();
-    }
-    if (this.ultCharge >= 100 && consumeBufferedAction(this.combatInputBuffer, 'ultimate', bufferNowMs)) {
-      this.triggerHeroUltimate();
+    if (!this.isBossEntranceLocked()) {
+      if (this.activeSkillCooldown <= 0 && consumeBufferedAction(this.combatInputBuffer, 'activeSkill', bufferNowMs)) {
+        this.triggerHeroActiveSkill();
+      }
+      if (this.ultCharge >= 100 && consumeBufferedAction(this.combatInputBuffer, 'ultimate', bufferNowMs)) {
+        this.triggerHeroUltimate();
+      }
     }
     if (this.dashCooldown <= 0 && this.dashTimer <= 0 && consumeBufferedAction(this.combatInputBuffer, 'dash', bufferNowMs)) {
       this.dashBufferTimer = Math.max(this.dashBufferTimer, 0.14);
@@ -13341,8 +13492,9 @@ export class GameEngine {
       moveZ /= inputLen;
     }
 
-    // Allow players to smoothly cancel Boss intro sweep or Lobby-to-Arena entry fly-through on move/dash
-    if (this.bossIntroTimer > 0.22 && (inputLen > 0.15 || this.dashBufferTimer > 0)) {
+    // Allow players to smoothly cancel non-entrance Boss intro sweep or Lobby-to-Arena entry fly-through on move/dash.
+    // During an active 5–10s Boss Entrance, the Boss must finish appearing before combat unlocks.
+    if (!this.isBossEntranceLocked() && this.bossIntroTimer > 0.22 && (inputLen > 0.15 || this.dashBufferTimer > 0)) {
       this.bossIntroTimer = 0.22;
     }
     if (this.arenaEntryFlyTimer > 0 && (inputLen > 0.15 || this.dashBufferTimer > 0)) {
@@ -13729,7 +13881,8 @@ export class GameEngine {
       mat.emissiveIntensity = flash ? 0.9 : 0;
     }
 
-    if (nearest && nearest.spawnTimer <= 0) {
+    const entranceLocked = this.isBossEntranceLocked();
+    if (nearest && nearest.spawnTimer <= 0 && !entranceLocked) {
       if (nearest.id !== this.lockedTargetId) {
         this.lockedTargetId = nearest.id;
         this.reticleSnapScale = 1.48;
@@ -13770,7 +13923,11 @@ export class GameEngine {
     );
     const attackInterval = baseAttackInterval * resolveMoveShootIntervalMult(isMoving);
 
-    const canFire = this.dashTimer <= 0;
+    const canFire = canPlayerExecuteAttack({
+      isPlaying: this.phase === GamePhase.PLAYING,
+      bossEntranceRemainingSec: this.bossEntranceTimer,
+      isDashing: this.dashTimer > 0,
+    });
     const aimingBow = canFire && nearest !== null && nearest.spawnTimer <= 0;
     let drawProgress = 0;
     const stringPose = computeBowStringPose(aimingBow ? drawProgress : 0);
@@ -13918,7 +14075,9 @@ export class GameEngine {
       });
     }
 
-    if (this.volleyQueue.length > 0 && nearest) {
+    if (entranceLocked) {
+      this.volleyQueue.length = 0;
+    } else if (this.volleyQueue.length > 0 && nearest) {
       const drained = drainReadyVolleyShots(this.volleyQueue, dt);
       this.volleyQueue = drained.remaining;
       for (let i = 0; i < drained.ready.length; i++) {
@@ -14236,7 +14395,7 @@ export class GameEngine {
 
   private updateRoomChaosEvent(dt: number): void {
     const evt = this.activeRoomChaosEvent;
-    if (!evt || this.portalOpen) return;
+    if (!evt || this.portalOpen || this.isBossEntranceLocked()) return;
     const live = this.enemies.filter((en) => !en.dead && en.spawnTimer <= 0 && !en.isBossTotem);
     if (live.length === 0) return;
     this.roomChaosTimer -= dt;
@@ -14281,6 +14440,7 @@ export class GameEngine {
   }
 
   private updatePassivesAndPeriodicSkills(dt: number): void {
+    if (this.isBossEntranceLocked()) return;
     const liveEnemies = this.enemies.filter((e) => e.spawnTimer <= 0);
     if (liveEnemies.length === 0) return;
 
@@ -14573,6 +14733,7 @@ export class GameEngine {
       mesh.position.set(bx, 1.0, bz);
       mesh.rotation.y += dt * 9;
 
+      if (this.isBossEntranceLocked()) continue;
       for (const e of [...this.enemies]) {
         if (!e || e.dead || e.spawnTimer > 0 || e.hitFlashTimer > 0) continue;
         if (Math.hypot(e.x - bx, e.z - bz) < e.radius + 0.5) {
@@ -14668,7 +14829,7 @@ export class GameEngine {
       const bankAngle = THREE.MathUtils.clamp(-lateralVel * 0.085, -0.45, 0.45);
 
       this.solarLeoPetAttackRecoil = Math.max(0, this.solarLeoPetAttackRecoil - dt * 4.5);
-      if (pDef && nearest && nearest.spawnTimer <= 0) {
+      if (pDef && nearest && nearest.spawnTimer <= 0 && !this.isBossEntranceLocked()) {
         this.petFireTimer += dt;
         const evolvedMult = getEvolvedPetMultiplier(Boolean(this.baseStats.equippedPetEvolved));
         const effectiveInterval = pDef.fireInterval * evolvedMult.fireRateMult;
@@ -14750,7 +14911,7 @@ export class GameEngine {
       }
     }
 
-    if (nearest && nearest.spawnTimer <= 0) {
+    if (nearest && nearest.spawnTimer <= 0 && !this.isBossEntranceLocked()) {
 
       const hasSprites =
         (this.activeSkills.bomb_sprite ?? 0) > 0 ||
@@ -15076,7 +15237,7 @@ export class GameEngine {
         ally.model.bodyGroup.position.y = THREE.MathUtils.damp(ally.model.bodyGroup.position.y, 0, 12, dt);
       }
 
-      if (target && target.spawnTimer <= 0) {
+      if (target && target.spawnTimer <= 0 && !this.isBossEntranceLocked()) {
         ally.attackTimer -= dt;
         if (ally.attackTimer <= 0) {
           ally.attackTimer = 0.52 + (idx % 2) * 0.08;
@@ -15261,9 +15422,137 @@ export class GameEngine {
 
       const baseScale = e.baseScale ?? 1;
       if (e.spawnTimer > 0) {
-        e.spawnTimer -= dt;
-        const p = 1 - Math.max(0, e.spawnTimer / 0.48);
-        e.model.root.scale.setScalar(Math.max(0.05, p) * baseScale);
+        e.spawnTimer = Math.max(0, e.spawnTimer - dt);
+        const totalSpawn = e.spawnDuration ?? 0.48;
+        if (e.isBoss && totalSpawn >= 3.0) {
+          const entrance = evaluateBossEntranceState(e.spawnTimer, totalSpawn);
+          e.model.root.position.set(e.x, entrance.elevationY, e.z);
+          e.model.root.scale.set(
+            baseScale * entrance.scaleXZ,
+            baseScale * entrance.scaleY,
+            baseScale * entrance.scaleXZ
+          );
+          e.model.root.rotation.y = Math.atan2(this.px - e.x, this.pz - e.z);
+          e.shadow.position.set(e.x, 0.02, e.z);
+          e.shadow.scale.setScalar(entrance.shadowScale);
+          const shMat = e.shadow.material as THREE.MeshBasicMaterial | undefined;
+          if (shMat) shMat.opacity = entrance.shadowOpacity;
+
+          // Subtle imperial summoning aura shimmer while appearing
+          for (let hmIdx = 0; hmIdx < e.model.hitMeshes.length; hmIdx++) {
+            const mat = e.model.hitMeshes[hmIdx].material as THREE.MeshStandardMaterial;
+            if (mat?.emissive) {
+              mat.emissive.setHex(0xfbbf24);
+              mat.emissiveIntensity = entrance.auraIntensity * 0.42;
+            }
+          }
+
+          // One-shot touchdown impact shockwave, camera shake & roar burst
+          if (entrance.hasLanded && !this.bossEntranceLandingFired) {
+            this.bossEntranceLandingFired = true;
+            this.shakeIntensity = Math.max(this.shakeIntensity, 0.48);
+            this.spawnShockwave(e.x, e.z, 0xfbbf24, Math.max(5.5, e.radius * 4.2), 0.65);
+            this.spawnShockwave(e.x, e.z, this.currentChapter.trimHex, Math.max(3.8, e.radius * 2.8), 0.48);
+            this.spawnParticles(e.x, 0.4, e.z, 0xfbbf24, this.lowEndGpu ? 10 : 24);
+            soundEngine.playBossPhaseRoar();
+            e.solarLionBurstType = 'roar';
+            e.solarLionBurstTimer = 1.45;
+            e.roster3dBurstType = 'roar';
+            e.roster3dBurstTimer = 1.45;
+          }
+
+          // Keep 3D boss skeletal/procedural models alive (wing flap / roar) during descent & landing
+          if (e.solarLionBurstTimer && e.solarLionBurstTimer > 0) {
+            e.solarLionBurstTimer = Math.max(0, e.solarLionBurstTimer - dt);
+            if (e.solarLionBurstTimer <= 0) e.solarLionBurstType = 'none';
+          }
+          if (e.roster3dBurstTimer && e.roster3dBurstTimer > 0) {
+            e.roster3dBurstTimer = Math.max(0, e.roster3dBurstTimer - dt);
+            if (e.roster3dBurstTimer <= 0) e.roster3dBurstType = 'none';
+          }
+          if (e.autoRig) {
+            updateAutoRigPose(e.autoRig, {
+              elapsed: this.elapsed,
+              dt,
+              phaseAngle: e.phaseAngle,
+              speed: entrance.hasLanded ? 0 : 2.6,
+              maxSpeed: e.speed,
+              lateralSpeed: 0,
+              facingYaw: e.model.root.rotation.y,
+              targetYaw: e.model.root.rotation.y,
+              telegraphType: entrance.stage === 'landing_roar' ? 'slam' : 'none',
+              telegraphProgress: entrance.progress,
+              burstType: e.roster3dBurstType ?? e.solarLionBurstType ?? 'none',
+              burstTimer: Math.max(e.roster3dBurstTimer ?? 0, e.solarLionBurstTimer ?? 0),
+              bossPhase: e.bossPhase,
+              stunTimer: 0,
+              hitFlashTimer: 0,
+              recoilPitch: 0,
+              recoilRoll: 0,
+              isDashing: false,
+            });
+          } else if (e.solarLionVisualGroup) {
+            updateChapter1BossMotion(
+              e.solarLionVisualGroup,
+              {
+                elapsed: this.elapsed,
+                phaseAngle: e.phaseAngle,
+                speed: entrance.hasLanded ? 0 : 2.4,
+                telegraphType: entrance.stage === 'landing_roar' ? 'slam' : 'none',
+                telegraphProgress: entrance.progress,
+                attackBurstType: e.solarLionBurstType ?? 'none',
+                attackBurstTimer: e.solarLionBurstTimer ?? 0,
+                bossPhase: e.bossPhase,
+                stunTimer: 0,
+                hitFlashTimer: 0,
+                lateralSpeed: 0,
+                recoilPitch: 0,
+                recoilRoll: 0,
+              },
+              dt
+            );
+          } else if (e.roster3dVisualGroup && e.roster3dAssetId) {
+            updateChapter1RosterMotion(
+              e.roster3dVisualGroup,
+              {
+                assetId: e.roster3dAssetId,
+                elapsed: this.elapsed,
+                phaseAngle: e.phaseAngle,
+                speed: entrance.hasLanded ? 0 : 2.4,
+                telegraphType: entrance.stage === 'landing_roar' ? 'slam' : 'none',
+                telegraphProgress: entrance.progress,
+                burstType: e.roster3dBurstType ?? 'none',
+                burstTimer: e.roster3dBurstTimer ?? 0,
+                bossPhase: e.bossPhase,
+                stunTimer: 0,
+                hitFlashTimer: 0,
+                isSubBossTitan: e.kind === EnemyKind.TITAN_BOSS,
+                lateralSpeed: 0,
+                recoilPitch: 0,
+                recoilRoll: 0,
+              },
+              e.roster3dBaseScale ?? 1.0,
+              dt
+            );
+          }
+          if (e.spawnTimer <= 0) {
+            e.model.root.position.set(e.x, 0, e.z);
+            e.model.root.scale.setScalar(baseScale);
+            e.shadow.scale.setScalar(1);
+            if (shMat) shMat.opacity = 0.45;
+          }
+        } else {
+          const p = 1 - Math.max(0, e.spawnTimer / Math.max(0.01, totalSpawn));
+          e.model.root.scale.setScalar(Math.max(0.05, p) * baseScale);
+        }
+        continue;
+      }
+      // While a Boss is in its 5–10s entrance sequence, hold non-boss wave enemies in standoff
+      // so the player is never unfairly attacked while their own attacks are locked.
+      if (this.isBossEntranceLocked() && !e.isBoss && !e.isTrainingDummy) {
+        e.vx = 0;
+        e.vz = 0;
+        e.model.root.rotation.y = Math.atan2(this.px - e.x, this.pz - e.z);
         continue;
       }
       // AAA Elastic Hit-Squash & Directional Knockback Recoil Recovery
@@ -18811,6 +19100,15 @@ export class GameEngine {
     }
   ): void {
     if (!e || e.dead) return;
+    if (
+      !canDamageEnemyDuringEntrance({
+        enemySpawnTimer: e.spawnTimer,
+        bossEntranceRemainingSec: this.bossEntranceTimer,
+        isTrainingDummy: e.isTrainingDummy,
+      })
+    ) {
+      return;
+    }
     // Wave 8: Lethal AI Rival Dash I-Frames, PvP Resilience & Opening Aegis Shield
     if (e.isArenaRival && this.aiRivalBrainState) {
       if (this.aiRivalBrainState.dashIFrameTimer > 0) {
@@ -21958,7 +22256,10 @@ export class GameEngine {
       Boolean(focusEnemy?.isBoss)
     );
 
-    const introBlend = computeBossIntroBlend(this.bossIntroTimer, this.bossIntroDuration);
+    const introBlend = Math.max(
+      computeBossIntroBlend(this.bossIntroTimer, this.bossIntroDuration),
+      computeBossEntranceCameraBlend(this.bossEntranceTimer, this.bossEntranceDuration)
+    );
     const entryFlyBlend = computeArenaEntryFlyBlend(
       this.arenaEntryFlyTimer,
       this.arenaEntryFlyDuration
@@ -22749,6 +23050,15 @@ export class GameEngine {
       bossWarningTitle: this.bossWarningTimer > 0 ? this.bossWarningTitle : null,
       bossWarningSubtitle: this.bossWarningTimer > 0 ? this.bossWarningSubtitle : null,
       bossWarningTimer: this.bossWarningTimer > 0 ? this.bossWarningTimer : undefined,
+      bossEntranceActive: this.isBossEntranceLocked(),
+      bossEntranceRemainingSec: this.isBossEntranceLocked()
+        ? Number(this.bossEntranceTimer.toFixed(1))
+        : 0,
+      bossEntranceTotalSec: this.bossEntranceDuration,
+      bossEntranceBossName: this.isBossEntranceLocked() ? this.bossEntranceBossName : null,
+      bossEntranceStageLabel: this.isBossEntranceLocked()
+        ? evaluateBossEntranceState(this.bossEntranceTimer, this.bossEntranceDuration).stageLabel
+        : null,
       activeSkills: { ...this.activeSkills },
       activeSynergies: evaluateActiveSynergies(this.activeSkills),
       stageBannerText: this.stageBannerText,
@@ -22784,7 +23094,7 @@ export class GameEngine {
       ),
       activeSkillCooldownSec:
         this.activeSkillCooldown > 0 ? Number(this.activeSkillCooldown.toFixed(1)) : 0,
-      activeSkillReady: this.activeSkillCooldown <= 0.05,
+      activeSkillReady: this.activeSkillCooldown <= 0.05 && !this.isBossEntranceLocked(),
       perfectDodgeBannerTimer:
         this.perfectDodgeBannerTimer > 0 ? this.perfectDodgeBannerTimer : undefined,
       perfectDodgeBuffTimer:
@@ -22795,6 +23105,7 @@ export class GameEngine {
         this.nightmareTier > 0 ? this.nightmareConfig.mutators.map((m) => m.name) : undefined,
       cinematicBarRatio: Math.max(
         computeBossIntroBlend(this.bossIntroTimer, this.bossIntroDuration),
+        computeBossEntranceCameraBlend(this.bossEntranceTimer, this.bossEntranceDuration),
         computeBossKillSlowMoState(this.bossFinisherTimer, this.bossFinisherDuration).letterboxRatio
       ),
       bossFinisherTimer: this.bossFinisherTimer > 0 ? this.bossFinisherTimer : undefined,

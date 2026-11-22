@@ -84,6 +84,29 @@ test('resolveTopCombatBanner collapses simultaneous Boss alerts into a single hi
   assert.equal(warnCompact?.kind, 'boss_warning');
   assert.equal(warnCompact?.detail, undefined);
 
+  // Boss Entrance active: takes highest priority and surfaces arrival countdown & progress ratio
+  const entranceBanner = resolveTopCombatBanner(
+    {
+      ...EMPTY_HUD,
+      bossEntranceActive: true,
+      bossEntranceRemainingSec: 4.2,
+      bossEntranceTotalSec: 7.0,
+      bossEntranceBossName: 'Sư Tử Thái Dương · Chí Tôn',
+      bossEntranceStageLabel: 'Thủ Lĩnh đang giáng lâm · Chờ xuất hiện xong',
+      bossWarningTitle: 'Sư Tử Thái Dương · Chí Tôn',
+    },
+    null,
+    false
+  );
+  assert.ok(entranceBanner);
+  assert.equal(entranceBanner.kind, 'boss_entrance');
+  assert.equal(entranceBanner.tone, 'crimson');
+  assert.equal(entranceBanner.timerText, '4.2s');
+  assert.ok(
+    Math.abs((entranceBanner.progressRatio ?? 0) - 0.4) < 0.01,
+    `Expected progressRatio ~0.4, got ${entranceBanner.progressRatio}`
+  );
+
   // Idle combat with no active alert returns null (zero clutter)
   assert.equal(resolveTopCombatBanner(EMPTY_HUD, null, false), null);
 });

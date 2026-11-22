@@ -238,10 +238,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const skillEntries = Object.entries(hud.activeSkills) as Array<[SkillId, number]>;
   const dashReady = hud.dashCooldownRatio <= 0.02;
   const activeSkillCdRatio = Math.max(0, Math.min(1, hud.activeSkillCooldownRatio ?? 0));
-  const activeSkillReady = hud.activeSkillReady ?? activeSkillCdRatio <= 0.01;
+  const bossEntranceLocked = Boolean(hud.bossEntranceActive && (hud.bossEntranceRemainingSec ?? 0) > 0);
+  const activeSkillReady = !bossEntranceLocked && (hud.activeSkillReady ?? activeSkillCdRatio <= 0.01);
   const activeSkillCdSec = Math.max(0, hud.activeSkillCooldownSec ?? 0);
   const ultPct = Math.max(0, Math.min(100, Math.floor(hud.ultCharge)));
-  const ultReady = ultPct >= 100;
+  const ultReady = !bossEntranceLocked && ultPct >= 100;
   const inspectedSkill = inspectedSkillId ? SKILLS_CATALOG[inspectedSkillId] : null;
   const hasTopBossBar = Boolean(hud.bossName && !hud.isArenaMode);
   const topHudSafeY = computeTopHudSafeZoneY(hasTopBossBar, isCompact);
@@ -260,7 +261,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const cinematicBarRatio = Math.max(0, Math.min(1, hud.cinematicBarRatio ?? 0));
 
   return (
-    <div className="fixed inset-0 z-10 pointer-events-none overflow-hidden">
+    <div
+      className="fixed inset-0 z-10 pointer-events-none overflow-hidden"
+      data-boss-entrance={bossEntranceLocked ? 'active' : 'ready'}
+    >
       {/* Slim Cinematic Letterbox Bars (disabled in Compact HUD to maximize arena visibility) */}
       {!isCompact && cinematicBarRatio > 0.01 && (
         <>
@@ -1310,7 +1314,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     {!isCompact && (
                       <>
                         <span aria-hidden="true" className="text-slate-600">·</span>
-                        {hud.bossPhase === 3 ? (
+                        {bossEntranceLocked ? (
+                          <span className="text-[9px] font-black text-amber-300 whitespace-nowrap">
+                            Đang xuất hiện ({(hud.bossEntranceRemainingSec ?? 0).toFixed(1)}s)
+                          </span>
+                        ) : hud.bossPhase === 3 ? (
                           <span className="text-[9px] font-black text-amber-200 whitespace-nowrap">
                             Pha III
                           </span>
@@ -2577,7 +2585,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         />
                       </svg>
                       <span className="font-mono-nums text-[10px] leading-tight mt-4 relative z-[3] drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)] text-white">
-                        {ultReady ? `CHIÊU ${ultKeyLabel}` : `${ultPct}%`}
+                        {bossEntranceLocked
+                          ? 'CHỜ'
+                          : ultReady
+                          ? `CHIÊU ${ultKeyLabel}`
+                          : `${ultPct}%`}
                       </span>
                     </button>
                     <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
@@ -2639,7 +2651,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           />
                         </svg>
                         <span className="font-mono-nums text-[10px] leading-tight mt-4 relative z-[3] drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)] text-white">
-                          {activeSkillReady ? `CHIÊU ${activeSkillKeyLabel}` : `${activeSkillCdSec.toFixed(1)}s`}
+                          {bossEntranceLocked
+                            ? 'CHỜ'
+                            : activeSkillReady
+                            ? `CHIÊU ${activeSkillKeyLabel}`
+                            : `${activeSkillCdSec.toFixed(1)}s`}
                         </span>
                       </button>
                       <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-sky-300/55 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-sky-200">
@@ -2664,14 +2680,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       <button
                         type="button"
                         tabIndex={-1}
-                        disabled={!breakReady}
+                        disabled={!breakReady || bossEntranceLocked}
                         onClick={(e) => {
                           e.currentTarget.blur();
                           onHeavyBreakClick();
                         }}
                         title="Phá Giáp Trảm / Kết Liễu (F / Chuột Phải): Lao chém phá khiên hoặc kết liễu Boss/Tinh Anh dưới 18% HP"
                         className={`pointer-events-auto relative overflow-hidden w-[56px] h-[56px] sm:w-[62px] sm:h-[62px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
-                          breakReady
+                          breakReady && !bossEntranceLocked
                             ? hud.finisherReadyTargetName
                               ? 'bg-gradient-to-b from-rose-500/95 to-amber-600/95 border border-yellow-200 text-white shadow-[0_0_24px_rgba(251,191,36,0.7)] cursor-pointer hover:scale-105'
                               : 'bg-gradient-to-b from-amber-500/95 to-orange-700/95 border border-amber-200/85 text-white shadow-[0_0_20px_rgba(251,146,60,0.55)] cursor-pointer hover:scale-105'
@@ -2689,7 +2705,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                             cy="32"
                             r="29"
                             fill="none"
-                            stroke={breakReady ? '#fde047' : '#fb923c'}
+                            stroke={breakReady && !bossEntranceLocked ? '#fde047' : '#fb923c'}
                             strokeWidth="2.8"
                             strokeLinecap="round"
                             strokeDasharray={circ}
@@ -2698,11 +2714,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         </svg>
                         <Swords
                           className={`w-4 h-4 relative z-[1] ${
-                            breakReady ? 'text-amber-100' : 'text-slate-400'
+                            breakReady && !bossEntranceLocked ? 'text-amber-100' : 'text-slate-400'
                           }`}
                         />
                         <span className="font-mono-nums text-[10px] leading-tight mt-0.5 relative z-[1]">
-                          {breakReady
+                          {bossEntranceLocked
+                            ? 'CHỜ'
+                            : breakReady
                             ? hud.finisherReadyTargetName
                               ? 'KẾT LIỄU'
                               : 'PHÁ GIÁP'

@@ -2190,6 +2190,11 @@ export interface HudSnapshot {
   bossWarningTitle?: string | null;
   bossWarningSubtitle?: string | null;
   bossWarningTimer?: number;
+  bossEntranceActive?: boolean;
+  bossEntranceRemainingSec?: number;
+  bossEntranceTotalSec?: number;
+  bossEntranceBossName?: string | null;
+  bossEntranceStageLabel?: string | null;
   activeSkills: Partial<Record<SkillId, number>>;
   stageBannerText: string | null;
   comboCount: number;
