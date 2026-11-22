@@ -53,6 +53,44 @@ export const SOLAR_LEO_ARTIFACT_OFFSET = {
 export const HUMANOID_HEAD_RIGID_START_NY = 0.785;
 export const HUMANOID_NECK_BLEND_START_NY = 0.745;
 
+/**
+ * Spatial predicate identifying Aurelia's sculpted forward drawn bow, arrow shaft,
+ * arrowhead, and outstretched bow-holding forearm in canonical normalized coordinates.
+ * Locking this entire assembly 100% rigidly to `chest` prevents cross-bone shear from
+ * `head`, `legR`, `pelvis`, and `handR` from bending the bow limbs or arrow shaft.
+ */
+export function isAureliaSculptedBowOrArrowVertex(px: number, py: number, pz: number): boolean {
+  // 1. Entire bow (upper limb, riser/grip, lower limb) + front arrow shaft + arrowhead
+  if (pz >= 0.37 && py >= 0.77) return true;
+  // 2. Rear arrow shaft & drawing hand fingers (below chin y<=1.60, in front of torso z>=0.28)
+  if (pz >= 0.28 && py >= 1.44 && py <= 1.60 && px <= 0.09) return true;
+  // 3. Outstretched right bow-arm connecting shoulder to bow grip
+  if (pz >= 0.16 && py >= 1.32 && py <= 1.60 && px <= -0.14) return true;
+  return false;
+}
+
+export interface SculptedBowStringAnchors {
+  /** Upper bow tip nock in `chest` bone local space */
+  upperNockLocal: THREE.Vector3;
+  /** Lower bow tip nock in `chest` bone local space */
+  lowerNockLocal: THREE.Vector3;
+  /** Drawn arrow rear nock (inside drawing hand) in `chest` bone local space */
+  drawnNockLocal: THREE.Vector3;
+  /** Straight brace chord midpoint (at shot release) in `chest` bone local space */
+  braceNockLocal: THREE.Vector3;
+}
+
+export interface SolarLeoBowStringRig {
+  group: THREE.Group;
+  upperCore: THREE.Mesh;
+  lowerCore: THREE.Mesh;
+  upperGlow?: THREE.Mesh;
+  lowerGlow?: THREE.Mesh;
+  nockSpark: THREE.Mesh;
+  anchors: SculptedBowStringAnchors;
+  currentPull: number;
+}
+
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   aurelia: {
     id: 'aurelia',
@@ -426,7 +464,8 @@ function bakeSkinWeightsOnGeometry(
   geometry: THREE.BufferGeometry,
   blueprints: BoneBlueprint[],
   rigType: SolarLeoRigType,
-  bounds: THREE.Box3
+  bounds: THREE.Box3,
+  lockSculptedDrawnBow = false
 ): void {
   const pos = geometry.attributes.position;
   const count = pos.count;
@@ -440,6 +479,7 @@ function bakeSkinWeightsOnGeometry(
   const headBoneIdx = blueprints.findIndex((bp) => bp.name === 'head');
   const chestBoneIdx = blueprints.findIndex((bp) => bp.name === 'chest');
   const lockHumanoidHead = rigType === 'humanoid' && headBoneIdx >= 0 && chestBoneIdx >= 0;
+  const lockBowRigid = lockSculptedDrawnBow && rigType === 'humanoid' && chestBoneIdx >= 0;
 
   const topIdx = [0, 0, 0, 0];
   const topW = [0, 0, 0, 0];
@@ -471,6 +511,19 @@ function bakeSkinWeightsOnGeometry(
         continue;
       }
 
+      if (lockBowRigid && isAureliaSculptedBowOrArrowVertex(px, py, pz)) {
+        // 100% rigid chest lock for sculpted bow limbs, grip, and arrow shaft so head/legR/handR never bend them
+        skinIndices[base] = chestBoneIdx;
+        skinIndices[base + 1] = 0;
+        skinIndices[base + 2] = 0;
+        skinIndices[base + 3] = 0;
+        skinWeights[base] = 1;
+        skinWeights[base + 1] = 0;
+        skinWeights[base + 2] = 0;
+        skinWeights[base + 3] = 0;
+        continue;
+      }
+
       if (inHeadColumn && ny >= HUMANOID_NECK_BLEND_START_NY) {
         // Clean narrow neck hinge strictly between chest & head
         const t = Math.max(
@@ -491,6 +544,16 @@ function bakeSkinWeightsOnGeometry(
         skinWeights[base + 3] = 0;
         continue;
       }
+    } else if (lockBowRigid && isAureliaSculptedBowOrArrowVertex(px, py, pz)) {
+      skinIndices[base] = chestBoneIdx;
+      skinIndices[base + 1] = 0;
+      skinIndices[base + 2] = 0;
+      skinIndices[base + 3] = 0;
+      skinWeights[base] = 1;
+      skinWeights[base + 1] = 0;
+      skinWeights[base + 2] = 0;
+      skinWeights[base + 3] = 0;
+      continue;
     }
 
     topIdx[0] = 0; topIdx[1] = 0; topIdx[2] = 0; topIdx[3] = 0;
@@ -565,6 +628,8 @@ export interface PreparedSolarLeoTemplate {
   size: THREE.Vector3;
   sharedGeometries: Set<THREE.BufferGeometry>;
   sharedTextures: Set<THREE.Texture>;
+  hasSculptedDrawnBow?: boolean;
+  bowStringAnchors?: SculptedBowStringAnchors;
 }
 
 export interface InstantiatedSolarLeoModel {
@@ -577,9 +642,196 @@ export interface InstantiatedSolarLeoModel {
   skinnedMeshes: THREE.SkinnedMesh[];
   hitMeshes: THREE.Mesh[];
   saddle?: THREE.Object3D;
+  hasSculptedDrawnBow?: boolean;
+  bowStringRig?: SolarLeoBowStringRig;
   bounds: THREE.Box3;
   size: THREE.Vector3;
   gaitPhase: number;
+}
+
+/**
+ * Calibrates exact upper nock, lower nock, drawn arrow nock, and brace chord midpoint
+ * directly from Aurelia's normalized mesh vertices and converts them into `chest`-local space.
+ */
+function calibrateSculptedBowStringAnchors(
+  parts: PreparedSolarLeoPart[],
+  chestHead: [number, number, number]
+): SculptedBowStringAnchors {
+  let maxUpperY = -Infinity;
+  let minLowerY = Infinity;
+
+  for (const part of parts) {
+    const pos = part.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      if (z > 0.60 && y > maxUpperY) maxUpperY = y;
+      if (z > 0.45 && x < -0.05 && y > 0.77 && y < minLowerY) minLowerY = y;
+    }
+  }
+
+  let ux = 0, uy = 0, uz = 0, uCount = 0;
+  let lx = 0, ly = 0, lz = 0, lCount = 0;
+  for (const part of parts) {
+    const pos = part.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      if (z > 0.60 && y >= maxUpperY - 0.04) {
+        ux += x; uy += y; uz += z; uCount++;
+      }
+      if (z > 0.45 && x < -0.05 && y >= minLowerY && y <= minLowerY + 0.05) {
+        lx += x; ly += y; lz += z; lCount++;
+      }
+    }
+  }
+
+  // Fallback to canonical measured Aurelia High coordinates if mesh bounds are degenerate
+  const upperWorld = uCount > 0
+    ? new THREE.Vector3(ux / uCount, uy / uCount - 0.022, uz / uCount - 0.008)
+    : new THREE.Vector3(-0.180, 2.002, 0.764);
+  // Seat lower nock squarely inside the solid lower recurve horn (above the thin decorative tail tip)
+  const lowerWorld = lCount > 0
+    ? new THREE.Vector3(lx / lCount - 0.014, ly / lCount + 0.072, lz / lCount + 0.024)
+    : new THREE.Vector3(-0.161, 0.892, 0.561);
+
+  const arrowY = 1.546;
+  const spanY = Math.max(0.1, upperWorld.y - lowerWorld.y);
+  const tArrow = THREE.MathUtils.clamp((arrowY - lowerWorld.y) / spanY, 0.25, 0.75);
+  const braceWorld = new THREE.Vector3().lerpVectors(lowerWorld, upperWorld, tArrow);
+  // Exact rear arrow nock seated inside Aurelia's left drawing hand relative to the bow chord
+  const drawnWorld = braceWorld.clone().add(new THREE.Vector3(0.162, 0.0, -0.314));
+
+  const chestOrigin = new THREE.Vector3(chestHead[0], chestHead[1], chestHead[2]);
+  return {
+    upperNockLocal: upperWorld.sub(chestOrigin),
+    lowerNockLocal: lowerWorld.sub(chestOrigin),
+    drawnNockLocal: drawnWorld.sub(chestOrigin),
+    braceNockLocal: braceWorld.sub(chestOrigin),
+  };
+}
+
+const _bsUp = new THREE.Vector3(0, 1, 0);
+const _bsDir = new THREE.Vector3();
+const _bsMid = new THREE.Vector3();
+const _bsActiveNock = new THREE.Vector3();
+
+function orientStringSegment(mesh: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3): void {
+  _bsMid.addVectors(a, b).multiplyScalar(0.5);
+  _bsDir.subVectors(b, a);
+  const len = _bsDir.length();
+  mesh.position.copy(_bsMid);
+  if (len > 1e-5) {
+    _bsDir.divideScalar(len);
+    mesh.quaternion.setFromUnitVectors(_bsUp, _bsDir);
+    mesh.scale.set(1, len, 1);
+  }
+}
+
+function updateSolarLeoBowStringGeometry(rig: SolarLeoBowStringRig, pullFactor: number, twangOffset = 0): void {
+  const { upperNockLocal, lowerNockLocal, drawnNockLocal, braceNockLocal } = rig.anchors;
+  const clampedPull = THREE.MathUtils.clamp(pullFactor, 0, 1.05);
+  _bsActiveNock.lerpVectors(braceNockLocal, drawnNockLocal, clampedPull);
+  if (twangOffset !== 0) {
+    _bsActiveNock.x += twangOffset * 0.018;
+    _bsActiveNock.z += twangOffset * 0.024;
+  }
+  orientStringSegment(rig.upperCore, upperNockLocal, _bsActiveNock);
+  orientStringSegment(rig.lowerCore, lowerNockLocal, _bsActiveNock);
+  if (rig.upperGlow) orientStringSegment(rig.upperGlow, upperNockLocal, _bsActiveNock);
+  if (rig.lowerGlow) orientStringSegment(rig.lowerGlow, lowerNockLocal, _bsActiveNock);
+  rig.nockSpark.position.copy(_bsActiveNock);
+  rig.currentPull = clampedPull;
+}
+
+function createSolarLeoBowStringRig(
+  anchors: SculptedBowStringAnchors,
+  liteMode: boolean
+): SolarLeoBowStringRig {
+  const group = new THREE.Group();
+  group.name = 'AureliaBowStringRig';
+
+  const radialSegs = liteMode ? 6 : 8;
+  // Unit-length cylinder along +Y scaled dynamically to exact nock-to-nock distance
+  const coreGeo = new THREE.CylinderGeometry(0.0068, 0.0068, 1, radialSegs, 1, false);
+  const coreMat = new THREE.MeshStandardMaterial({
+    color: 0xfffbeb,
+    emissive: new THREE.Color(0xfde68a),
+    emissiveIntensity: liteMode ? 0.95 : 1.15,
+    roughness: 0.22,
+    metalness: 0.15,
+  });
+
+  const upperCore = new THREE.Mesh(coreGeo, coreMat);
+  upperCore.name = 'bowStringUpperCore';
+  upperCore.castShadow = false;
+  upperCore.receiveShadow = false;
+
+  const lowerCore = new THREE.Mesh(coreGeo, coreMat);
+  lowerCore.name = 'bowStringLowerCore';
+  lowerCore.castShadow = false;
+  lowerCore.receiveShadow = false;
+
+  group.add(upperCore, lowerCore);
+
+  let upperGlow: THREE.Mesh | undefined;
+  let lowerGlow: THREE.Mesh | undefined;
+  if (!liteMode) {
+    const glowGeo = new THREE.CylinderGeometry(0.0135, 0.0135, 1, 6, 1, true);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.28,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    upperGlow = new THREE.Mesh(glowGeo, glowMat);
+    upperGlow.name = 'bowStringUpperGlow';
+    lowerGlow = new THREE.Mesh(glowGeo, glowMat);
+    lowerGlow.name = 'bowStringLowerGlow';
+    group.add(upperGlow, lowerGlow);
+  }
+
+  // Subtle golden nock-fastener knots at both recurve bow tips + starlight nock glint at arrow tail
+  const tipKnotGeo = new THREE.SphereGeometry(0.015, 6, 6);
+  const tipKnotMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    emissive: new THREE.Color(0xf59e0b),
+    emissiveIntensity: 0.6,
+    roughness: 0.3,
+    metalness: 0.75,
+  });
+  const upperKnot = new THREE.Mesh(tipKnotGeo, tipKnotMat);
+  upperKnot.position.copy(anchors.upperNockLocal);
+  const lowerKnot = new THREE.Mesh(tipKnotGeo, tipKnotMat);
+  lowerKnot.position.copy(anchors.lowerNockLocal);
+
+  const nockSpark = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.017, 0),
+    new THREE.MeshBasicMaterial({
+      color: 0xfffbeb,
+      transparent: true,
+      opacity: 0.85,
+    })
+  );
+  nockSpark.name = 'bowStringArrowNock';
+
+  group.add(upperKnot, lowerKnot, nockSpark);
+
+  const rig: SolarLeoBowStringRig = {
+    group,
+    upperCore,
+    lowerCore,
+    upperGlow,
+    lowerGlow,
+    nockSpark,
+    anchors,
+    currentPull: 1,
+  };
+  updateSolarLeoBowStringGeometry(rig, 1, 0);
+  return rig;
 }
 
 function configureTextureForQuality(
@@ -728,11 +980,18 @@ export function prepareSolarLeoTemplate(
   });
 
   const blueprints = buildBoneBlueprints(spec.rigType, normalizedBox);
+  const hasSculptedDrawnBow = assetId === 'aurelia' && normalizedBox.max.z > 0.95;
   if (blueprints.length > 0) {
     for (const part of parts) {
-      bakeSkinWeightsOnGeometry(part.geometry, blueprints, spec.rigType, normalizedBox);
+      bakeSkinWeightsOnGeometry(part.geometry, blueprints, spec.rigType, normalizedBox, hasSculptedDrawnBow);
     }
   }
+
+  const chestBp = blueprints.find((bp) => bp.name === 'chest');
+  const bowStringAnchors =
+    hasSculptedDrawnBow && chestBp
+      ? calibrateSculptedBowStringAnchors(parts, chestBp.head)
+      : undefined;
 
   const size = new THREE.Vector3();
   normalizedBox.getSize(size);
@@ -747,6 +1006,8 @@ export function prepareSolarLeoTemplate(
     size,
     sharedGeometries,
     sharedTextures,
+    hasSculptedDrawnBow,
+    bowStringAnchors,
   };
 }
 
@@ -829,6 +1090,12 @@ export function instantiateSolarLeoModel(
     }
   }
 
+  let bowStringRig: SolarLeoBowStringRig | undefined;
+  if (template.hasSculptedDrawnBow && template.bowStringAnchors && bones.chest) {
+    bowStringRig = createSolarLeoBowStringRig(template.bowStringAnchors, liteMode);
+    bones.chest.add(bowStringRig.group);
+  }
+
   return {
     assetId: template.assetId,
     rigType: template.rigType,
@@ -839,6 +1106,8 @@ export function instantiateSolarLeoModel(
     skinnedMeshes,
     hitMeshes,
     saddle,
+    hasSculptedDrawnBow: template.hasSculptedDrawnBow,
+    bowStringRig,
     bounds: template.bounds.clone(),
     size: template.size.clone(),
     gaitPhase: 0,
@@ -1029,6 +1298,18 @@ export function updateSolarLeoHumanoidPose(
     cloakPitch += 0.35 * u;
   }
 
+  // For Aurelia's sculpted full-draw bow GLB, keep arm/hand bones strictly aligned with `chest`
+  // so her arms, bow limbs, riser, arrow shaft, and bowstring move as one rigid archer assembly
+  // without ever bending the bow or curving the arrow.
+  if (rig.hasSculptedDrawnBow) {
+    armLPitch = 0;
+    armRPitch = 0;
+    armLRoll = 0;
+    armRRoll = 0;
+    handLPitch = 0;
+    handRPitch = 0;
+  }
+
   rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, rootY, lam, dt);
   b.pelvis.rotation.x = THREE.MathUtils.damp(b.pelvis.rotation.x, pelvisPitch, lam, dt);
   b.pelvis.rotation.z = THREE.MathUtils.damp(b.pelvis.rotation.z, pelvisRoll, lam, dt);
@@ -1060,6 +1341,15 @@ export function updateSolarLeoHumanoidPose(
   if (b.cloak) {
     b.cloak.rotation.x = THREE.MathUtils.damp(b.cloak.rotation.x, cloakPitch, lam, dt);
     b.cloak.rotation.z = THREE.MathUtils.damp(b.cloak.rotation.z, cloakRoll, lam, dt);
+  }
+
+  if (rig.bowStringRig) {
+    const recoil = Math.min(1, Math.max(0, shootRecoil));
+    // Taut full-draw (1.0) at rest/aim; snaps forward toward brace chord on shot release with damped twang
+    const targetPull = recoil > 0.02 ? Math.max(0.08, 1 - recoil * 0.92) : 1.0;
+    const nextPull = THREE.MathUtils.damp(rig.bowStringRig.currentPull, targetPull, recoil > 0.02 ? 28 : 14, dt);
+    const twang = recoil > 0.02 ? Math.sin(elapsed * 55) * recoil * 0.65 : 0;
+    updateSolarLeoBowStringGeometry(rig.bowStringRig, nextPull, twang);
   }
 }
 

@@ -503,3 +503,146 @@ test('Solar Zenith suppresses duplicate blue Celestial Wings, Astrolabe sits far
     }
   }
 });
+
+test('Aurelia sculpted bow & arrow stay 100% rigid (zero bend) in riding/shooting poses and mount a calibrated 3D bowstring on both High and Lite', async () => {
+  await withNodeGlbLoader(async (loader) => {
+    for (const variant of ['lite', 'high'] as const) {
+      const spec = SOLAR_LEO_SPECS.aurelia;
+      const glbPath = path.join(
+        PUBLIC_DIR,
+        ...(variant === 'lite' ? spec.litePathSegments : spec.highPathSegments)
+      );
+      const buf = fs.readFileSync(glbPath);
+      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      const gltf = await loader.parseAsync(ab, '');
+
+      const tpl = prepareSolarLeoTemplate('aurelia', gltf.scene, 4, {
+        liteMode: variant === 'lite',
+      });
+      assert.equal(tpl.hasSculptedDrawnBow, true, `${variant} Aurelia must detect sculpted drawn bow`);
+      assert.ok(tpl.bowStringAnchors, `${variant} Aurelia must calibrate bowstring anchors`);
+
+      const rig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+      assert.ok(rig.bowStringRig, `${variant} Aurelia must mount a 3D bowstring rig`);
+      assert.equal(
+        rig.bowStringRig.group.parent,
+        rig.bones.chest,
+        `${variant} bowstring must attach directly to chest bone`
+      );
+      assert.ok(rig.bowStringRig.upperCore.scale.y > 0.45, 'Upper bowstring length must be realistic');
+      assert.ok(rig.bowStringRig.lowerCore.scale.y > 0.55, 'Lower bowstring length must be realistic');
+
+      const mesh = rig.skinnedMeshes[0];
+      const pos = mesh.geometry.attributes.position;
+      const si = mesh.geometry.attributes.skinIndex;
+      const sw = mesh.geometry.attributes.skinWeight;
+      const chestIdx = tpl.blueprints.findIndex((bp) => bp.name === 'chest');
+      assert.ok(chestIdx >= 0);
+
+      const findNearest = (tx: number, ty: number, tz: number) => {
+        let bestI = 0;
+        let bestD = Infinity;
+        for (let i = 0; i < pos.count; i++) {
+          const dx = pos.getX(i) - tx;
+          const dy = pos.getY(i) - ty;
+          const dz = pos.getZ(i) - tz;
+          const d = dx * dx + dy * dy + dz * dz;
+          if (d < bestD) {
+            bestD = d;
+            bestI = i;
+          }
+        }
+        return bestI;
+      };
+
+      const idxUpperTip = findNearest(-0.18, 2.02, 0.77);
+      const idxGrip = findNearest(-0.31, 1.50, 0.85);
+      const idxLowerTip = findNearest(-0.15, 0.84, 0.54);
+      const idxArrowRear = findNearest(-0.04, 1.54, 0.45);
+      const idxArrowFront = findNearest(-0.27, 1.52, 1.08);
+      const idxArrowTip = findNearest(-0.37, 1.51, 1.30);
+
+      for (const idx of [idxUpperTip, idxGrip, idxLowerTip, idxArrowRear, idxArrowFront, idxArrowTip]) {
+        assert.equal(si.getX(idx), chestIdx, `${variant} bow/arrow vertex ${idx} must bind rigidly to chest`);
+        assert.equal(sw.getX(idx), 1, `${variant} bow/arrow vertex ${idx} must have rigid weight 1.0`);
+        assert.equal(sw.getY(idx), 0, `${variant} bow/arrow vertex ${idx} must have zero secondary bleed`);
+      }
+
+      const bindVec = (i: number) => new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+      const bindUpperToLower = bindVec(idxUpperTip).distanceTo(bindVec(idxLowerTip));
+      const bindUpperToGrip = bindVec(idxUpperTip).distanceTo(bindVec(idxGrip));
+      const bindArrowLen = bindVec(idxArrowRear).distanceTo(bindVec(idxArrowTip));
+
+      // Settle into riding Solarius + shooting pose
+      for (let step = 0; step < 90; step++) {
+        updateSolarLeoHumanoidPose(rig, {
+          elapsed: step * 0.016,
+          dt: 0.016,
+          speed: 0,
+          shooting: true,
+          shootRecoil: step > 60 ? 0.85 : 0,
+          dashing: false,
+          riding: true,
+          ultBurst: 0,
+          lobbyPose: 'heroic',
+        });
+      }
+      rig.group.updateMatrixWorld(true);
+      mesh.skeleton.update();
+
+      const posedVec = (i: number) => {
+        const v = bindVec(i);
+        mesh.applyBoneTransform(i, v);
+        return v;
+      };
+
+      const pUpper = posedVec(idxUpperTip);
+      const pGrip = posedVec(idxGrip);
+      const pLower = posedVec(idxLowerTip);
+      const pRear = posedVec(idxArrowRear);
+      const pTip = posedVec(idxArrowTip);
+
+      assert.ok(
+        Math.abs(pUpper.distanceTo(pLower) - bindUpperToLower) < 1e-3,
+        `${variant} bow span must not compress or stretch in riding/shooting pose`
+      );
+      assert.ok(
+        Math.abs(pUpper.distanceTo(pGrip) - bindUpperToGrip) < 1e-3,
+        `${variant} upper bow limb must not shear relative to grip`
+      );
+      assert.ok(
+        Math.abs(pRear.distanceTo(pTip) - bindArrowLen) < 1e-3,
+        `${variant} arrow length must remain 100% rigid`
+      );
+      assert.ok(
+        rig.bowStringRig.currentPull < 0.7,
+        `${variant} bowstring should snap forward during shot recoil (got ${rig.bowStringRig.currentPull})`
+      );
+
+      // Settle back to idle full-draw
+      for (let step = 0; step < 90; step++) {
+        updateSolarLeoHumanoidPose(rig, {
+          elapsed: 2 + step * 0.016,
+          dt: 0.016,
+          speed: 0,
+          shooting: false,
+          shootRecoil: 0,
+          dashing: false,
+          riding: true,
+          ultBurst: 0,
+          lobbyPose: 'heroic',
+        });
+      }
+      assert.ok(
+        rig.bowStringRig.currentPull > 0.98,
+        `${variant} bowstring should return smoothly to full draw at rest`
+      );
+
+      disposeObjectResources(rig.group);
+      tpl.sharedGeometries.forEach((g) => g.dispose());
+      tpl.sharedTextures.forEach((t) => t.dispose());
+      tpl.parts.forEach((p) => p.material.dispose());
+    }
+  });
+});
+
