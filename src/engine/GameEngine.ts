@@ -3935,6 +3935,10 @@ export class GameEngine {
           scene,
           asset === 'heroes/van-tich.glb' ? 'staff' : 'bow',
           asset === 'heroes/hatsune-miku.glb',
+          {
+            persona: asset === 'heroes/hatsune-miku.glb' ? 'miku' : 'alice',
+            liteMode: this.getActiveSolarLeoVariant() === 'lite',
+          }
         );
         this.artemisLoadedAsset = asset;
         this.artemisModel = scene;
@@ -4266,6 +4270,7 @@ export class GameEngine {
     visualCfg: HeroVisualConfig
   ): void {
     const heroChanged = this.baseStats.heroId !== stats.heroId;
+    const skinChanged = this.heroVisualCfg?.skinId !== visualCfg.skinId;
     const visualChanged = JSON.stringify(this.heroVisualCfg) !== JSON.stringify(visualCfg);
     const companionsChanged =
       heroChanged ||
@@ -4280,6 +4285,13 @@ export class GameEngine {
     if (visualChanged || heroChanged) {
       this.buildHero();
       this.refreshAppearanceGate();
+      // Play a cheerful showcase flourish whenever the player switches Hero or Outfit in Lobby
+      if ((heroChanged || skinChanged) && this.phase === GamePhase.TITLE && !this.disposed) {
+        this.lobbyEmoteTimer = Math.max(this.lobbyEmoteTimer, 1.85);
+        const { x, y, z } = this.hero.root.position;
+        this.spawnShockwave(x, z, this.weaponAccentHex, 2.1, 0.36);
+        this.spawnParticles(x, y + 1.15, z, this.weaponAccentHex, this.getActiveSolarLeoVariant() === 'lite' ? 8 : 16);
+      }
     } else if (companionsChanged) {
       this.rebuildCompanions();
     }
@@ -11514,10 +11526,8 @@ export class GameEngine {
         : 0;
       const showWeaponInLobby =
         this.lobbyInspectActive ||
-        emotePose.active ||
         this.lobbyHeroPose === 'aim_ready' ||
-        this.lobbyHeroPose === 'victory_salute' ||
-        (this.heroVisualCfg.mythicWeaponTier ?? 0) >= 1;
+        this.lobbyHeroPose === 'victory_salute';
 
       this.hero.root.rotation.y = this.lobbyYaw;
       if (!hasMount) {
@@ -11640,29 +11650,35 @@ export class GameEngine {
         this.hero.magicOrb.rotation.z += dt * 2.8;
       }
       this.hero.bowGroup.visible = showWeaponInLobby && !hasSolarLeoHero;
+      const lobbyCelebrating = emotePose.active || this.lobbyEmoteTimer > 0.05;
       if (hasRealisticArtemis) {
-        this.hero.nockedArrow.visible = showWeaponInLobby;
+        const lobbyAimingBow = this.lobbyHeroPose === 'aim_ready';
+        this.hero.nockedArrow.visible = showWeaponInLobby && lobbyAimingBow;
         this.artemisMotion?.update(
           dt,
           this.elapsed,
           0,
-          showWeaponInLobby,
-          emotePose.active ? 0.35 + emotePose.drawProgress * 0.65 : 0.35,
+          lobbyAimingBow,
+          lobbyAimingBow ? 0.55 : 0,
           this.hero.bowGroup,
           onDragon || (this.artemisLoadedAsset === 'heroes/van-tich.glb' && Boolean(this.hero.mountGroup)),
           false,
-          0
+          0,
+          'lobby',
+          lobbyCelebrating
         );
       } else if (hasSolarLeoHero && this.solarLeoHeroRig) {
         updateSolarLeoHumanoidPose(this.solarLeoHeroRig, {
           elapsed: this.elapsed,
           dt,
           speed: 0,
-          shooting: emotePose.active,
-          shootRecoil: emotePose.active ? emotePose.drawProgress : 0,
+          shooting: this.lobbyHeroPose === 'aim_ready',
+          shootRecoil: this.lobbyHeroPose === 'aim_ready' && emotePose.active ? emotePose.drawProgress : 0,
           dashing: false,
           riding: onDragon || Boolean(this.hero.mountGroup),
-          ultBurst: emotePose.active ? emotePose.glowBoost * 0.65 : 0,
+          ultBurst: lobbyCelebrating ? emotePose.glowBoost * 0.45 : 0,
+          mode: 'lobby',
+          celebrating: lobbyCelebrating,
           lobbyPose: this.lobbyHeroPose,
         });
       }
@@ -14059,7 +14075,9 @@ export class GameEngine {
         this.hero.bowGroup,
         seated,
         this.dashTimer > 0,
-        heroTurnRate
+        heroTurnRate,
+        'combat',
+        false
       );
     } else if (this.solarLeoHeroRig?.group.parent === this.hero.bodyGroup) {
       this.hero.bowGroup.visible = false;
@@ -14072,6 +14090,8 @@ export class GameEngine {
         dashing: this.dashTimer > 0,
         riding: onDragon || Boolean(this.hero.mountGroup),
         ultBurst: this.solarLeoUltBurst,
+        mode: 'combat',
+        celebrating: false,
       });
     }
 

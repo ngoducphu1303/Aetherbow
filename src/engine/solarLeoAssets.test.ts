@@ -12,6 +12,7 @@ import {
   evaluateHaloSovereignAction,
   evaluateMountRoyalAction,
   evaluatePetPlayfulTrick,
+  evaluateSolarLeoHeroAction,
   evaluateWingsShowcasePose,
   getSolarLeoAssetUrl,
   HUMANOID_HEAD_RIGID_START_NY,
@@ -979,6 +980,119 @@ test('Astrolabe of Regulus (Artifact) and Halo of the Leo Sovereign (Halo) cycle
     hTpl.parts.forEach((p) => p.material.dispose());
   });
 });
+
+test('Aurelia and all 4 Solar Leo outfits cycle unique playful actions, keep Aurelia bow rigid, stay mounted-safe, and respect High/Lite aura budgets', async () => {
+  const styles = [
+    'aurelia',
+    'aurelia_oasis_dancer',
+    'aurelia_temple_commander',
+    'aurelia_solaris_valkyrie',
+    'aurelia_winter_solstice',
+  ] as const;
+
+  const allSeenActions = new Set<string>();
+  for (const styleId of styles) {
+    const styleActions = new Set<string>();
+    let maxHeadRoll = 0;
+    let maxRootY = 0;
+    let maxArmRaise = 0;
+    for (let t = 0; t < 20; t += 0.25) {
+      const f = evaluateSolarLeoHeroAction(styleId, t, 'lobby', false, false);
+      styleActions.add(f.action);
+      allSeenActions.add(f.action);
+      maxHeadRoll = Math.max(maxHeadRoll, Math.abs(f.headRoll));
+      maxRootY = Math.max(maxRootY, f.rootY);
+      maxArmRaise = Math.max(maxArmRaise, Math.abs(f.armLPitch), Math.abs(f.armRPitch));
+    }
+    assert.equal(styleActions.size, 4, `${styleId} must cycle all 4 unique actions`);
+    assert.ok(maxHeadRoll > 0.1, `${styleId} must show expressive head tilt (max=${maxHeadRoll})`);
+    assert.ok(maxRootY > 0.08, `${styleId} must bounce/levitate joyfully when dismounted (max=${maxRootY})`);
+    if (styleId !== 'aurelia') {
+      assert.ok(maxArmRaise > 0.75, `${styleId} must perform lively expressive arm gestures (max=${maxArmRaise})`);
+    }
+    // Mounted safety: rootY stays tightly damped near saddle while upper body still dances
+    const mountedFrame = evaluateSolarLeoHeroAction(styleId, 11.2, 'lobby', true, false);
+    assert.ok(mountedFrame.rootY <= 0.06, `${styleId} must stay anchored on saddle when riding (y=${mountedFrame.rootY})`);
+
+    // Instant celebration flourish on outfit switch / emote
+    const celeb = evaluateSolarLeoHeroAction(styleId, 0.5, 'lobby', false, true);
+    assert.ok(celeb.sparkleBoost >= 0.95, `${styleId} celebration must surge sparkle aura`);
+  }
+  assert.equal(allSeenActions.size, 20, 'All 5 hero/outfit styles must have 20 unique named choreography beats');
+
+  // Verify real Aurelia base + Oasis Dancer Lite GLBs: High/Lite heroAuraRig caps, zero bow bend on Aurelia base, lively arms on Oasis Dancer
+  await withNodeGlbLoader(async (loader) => {
+    const aBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia.litePathSegments));
+    const aGltf = await loader.parseAsync(aBuf.buffer.slice(aBuf.byteOffset, aBuf.byteOffset + aBuf.byteLength), '');
+    const aTpl = prepareSolarLeoTemplate('aurelia', aGltf.scene, 4, { liteMode: false });
+    const aHigh = instantiateSolarLeoModel(aTpl, { liteMode: false });
+    const aLite = instantiateSolarLeoModel(aTpl, { liteMode: true });
+
+    assert.ok(aHigh.heroAuraRig && aHigh.heroAuraRig.moteCount === 16 && aHigh.heroAuraRig.ribbonRing);
+    assert.ok(aLite.heroAuraRig && aLite.heroAuraRig.moteCount === 8 && aLite.heroAuraRig.ribbonRing === undefined);
+
+    let maxChestYaw = 0;
+    let maxHeadRoll = 0;
+    for (let step = 0; step < 240; step++) {
+      updateSolarLeoHumanoidPose(aHigh, {
+        elapsed: step * 0.08,
+        dt: 0.08,
+        speed: 0,
+        shooting: false,
+        shootRecoil: 0,
+        dashing: false,
+        riding: true,
+        ultBurst: 0,
+        mode: 'lobby',
+        celebrating: step < 20,
+      });
+      maxChestYaw = Math.max(maxChestYaw, Math.abs(aHigh.bones.chest.rotation.y));
+      maxHeadRoll = Math.max(maxHeadRoll, Math.abs(aHigh.bones.head.rotation.z));
+      assert.ok(Math.abs(aHigh.bones.armL.rotation.x) < 1e-5, 'Aurelia sculpted bow armL must remain strictly rigid');
+      assert.ok(Math.abs(aHigh.bones.armR.rotation.x) < 1e-5, 'Aurelia sculpted bow armR must remain strictly rigid');
+    }
+    assert.ok(maxChestYaw > 0.14, `Aurelia Lobby pose must animate chest expressively (max=${maxChestYaw})`);
+    assert.ok(maxHeadRoll > 0.1, `Aurelia Lobby pose must animate playful head tilt (max=${maxHeadRoll})`);
+
+    disposeObjectResources(aHigh.group);
+    disposeObjectResources(aLite.group);
+    aTpl.sharedGeometries.forEach((g) => g.dispose());
+    aTpl.sharedTextures.forEach((t) => t.dispose());
+    aTpl.parts.forEach((p) => p.material.dispose());
+
+    const dBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia_oasis_dancer.litePathSegments));
+    const dGltf = await loader.parseAsync(dBuf.buffer.slice(dBuf.byteOffset, dBuf.byteOffset + dBuf.byteLength), '');
+    const dTpl = prepareSolarLeoTemplate('aurelia_oasis_dancer', dGltf.scene, 4, { liteMode: true });
+    const dRig = instantiateSolarLeoModel(dTpl, { liteMode: true });
+    assert.ok(dRig.heroAuraRig && dRig.heroAuraRig.styleId === 'aurelia_oasis_dancer' && dRig.heroAuraRig.moteCount === 8);
+
+    let maxDancerArm = 0;
+    let maxDancerYaw = 0;
+    for (let step = 0; step < 240; step++) {
+      updateSolarLeoHumanoidPose(dRig, {
+        elapsed: step * 0.08,
+        dt: 0.08,
+        speed: 0,
+        shooting: false,
+        shootRecoil: 0,
+        dashing: false,
+        riding: false,
+        ultBurst: 0,
+        mode: 'lobby',
+      });
+      maxDancerArm = Math.max(maxDancerArm, Math.abs(dRig.bones.armL.rotation.x));
+      maxDancerYaw = Math.max(maxDancerYaw, Math.abs(dRig.visualRoot.rotation.y));
+    }
+    assert.ok(maxDancerArm > 0.65, `Oasis Dancer must animate playful ribbon arms (max=${maxDancerArm})`);
+    assert.ok(maxDancerYaw > 1.5, `Oasis Dancer must perform joyful pirouette spin (max=${maxDancerYaw})`);
+
+    disposeObjectResources(dRig.group);
+    dTpl.sharedGeometries.forEach((g) => g.dispose());
+    dTpl.sharedTextures.forEach((t) => t.dispose());
+    dTpl.parts.forEach((p) => p.material.dispose());
+  });
+});
+
 
 
 

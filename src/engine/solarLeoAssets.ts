@@ -277,6 +277,73 @@ export interface SolarLeoHaloAuraRig {
   outerRing?: THREE.Mesh;
 }
 
+export type SolarLeoHeroStyleId =
+  | 'aurelia'
+  | 'aurelia_oasis_dancer'
+  | 'aurelia_temple_commander'
+  | 'aurelia_solaris_valkyrie'
+  | 'aurelia_winter_solstice';
+
+export type SolarLeoHeroActionKind =
+  | 'sunbeam_sway'
+  | 'archer_flourish'
+  | 'royal_twirl_hop'
+  | 'starlight_salute'
+  | 'oasis_hip_sway'
+  | 'silk_ribbon_wave'
+  | 'joyful_pirouette_hop'
+  | 'desert_bloom_pose'
+  | 'regal_salute_nod'
+  | 'banner_command_sweep'
+  | 'proud_march_bounce'
+  | 'solar_rally_cheer'
+  | 'valkyrie_hover_sway'
+  | 'celestial_wing_stretch'
+  | 'victory_spin_lift'
+  | 'sunfire_oath_pose'
+  | 'frost_waltz_sway'
+  | 'snowflake_twirl'
+  | 'crystal_curtsy_bow'
+  | 'aurora_blessing_lift';
+
+export interface SolarLeoHeroActionFrame {
+  styleId: SolarLeoHeroStyleId;
+  action: SolarLeoHeroActionKind;
+  phase: number;
+  rootY: number;
+  rootYaw: number;
+  pelvisPitch: number;
+  pelvisRoll: number;
+  spinePitch: number;
+  chestPitch: number;
+  chestYaw: number;
+  headPitch: number;
+  headYaw: number;
+  headRoll: number;
+  armLPitch: number;
+  armRPitch: number;
+  armLRoll: number;
+  armRRoll: number;
+  handLPitch: number;
+  handRPitch: number;
+  legLPitch: number;
+  legRPitch: number;
+  legLRoll: number;
+  legRRoll: number;
+  cloakPitch: number;
+  cloakRoll: number;
+  sparkleBoost: number;
+  auraOrbitSpeedMult: number;
+}
+
+export interface SolarLeoHeroAuraRig {
+  group: THREE.Group;
+  motes: THREE.InstancedMesh;
+  moteCount: number;
+  styleId: SolarLeoHeroStyleId;
+  ribbonRing?: THREE.Mesh;
+}
+
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   aurelia: {
     id: 'aurelia',
@@ -906,6 +973,7 @@ export interface InstantiatedSolarLeoModel {
   wingsAuraRig?: SolarLeoWingsAuraRig;
   artifactAuraRig?: SolarLeoArtifactAuraRig;
   haloAuraRig?: SolarLeoHaloAuraRig;
+  heroAuraRig?: SolarLeoHeroAuraRig;
   bounds: THREE.Box3;
   size: THREE.Vector3;
   gaitPhase: number;
@@ -1388,6 +1456,12 @@ export function instantiateSolarLeoModel(
     group.add(haloAuraRig.group);
   }
 
+  let heroAuraRig: SolarLeoHeroAuraRig | undefined;
+  if (template.rigType === 'humanoid') {
+    heroAuraRig = createSolarLeoHeroAuraRig(resolveHeroStyleId(template.assetId), liteMode);
+    group.add(heroAuraRig.group);
+  }
+
   return {
     assetId: template.assetId,
     rigType: template.rigType,
@@ -1405,6 +1479,7 @@ export function instantiateSolarLeoModel(
     wingsAuraRig,
     artifactAuraRig,
     haloAuraRig,
+    heroAuraRig,
     bounds: template.bounds.clone(),
     size: template.size.clone(),
     gaitPhase: 0,
@@ -1485,14 +1560,609 @@ export interface SolarLeoHeroAnimInput {
   dashing: boolean;
   riding: boolean;
   ultBurst: number;
+  mode?: 'lobby' | 'combat';
+  celebrating?: boolean;
   lobbyPose?: 'heroic' | 'aim_ready' | 'astral_float' | 'victory_salute';
+}
+
+const _heroMoteDummy = new THREE.Object3D();
+const _heroMotePaletteTmp = new THREE.Color();
+
+const HERO_STYLE_ACTION_CYCLES: Record<SolarLeoHeroStyleId, readonly SolarLeoHeroActionKind[]> = {
+  aurelia: ['sunbeam_sway', 'archer_flourish', 'royal_twirl_hop', 'starlight_salute'],
+  aurelia_oasis_dancer: [
+    'oasis_hip_sway',
+    'silk_ribbon_wave',
+    'joyful_pirouette_hop',
+    'desert_bloom_pose',
+  ],
+  aurelia_temple_commander: [
+    'regal_salute_nod',
+    'banner_command_sweep',
+    'proud_march_bounce',
+    'solar_rally_cheer',
+  ],
+  aurelia_solaris_valkyrie: [
+    'valkyrie_hover_sway',
+    'celestial_wing_stretch',
+    'victory_spin_lift',
+    'sunfire_oath_pose',
+  ],
+  aurelia_winter_solstice: [
+    'frost_waltz_sway',
+    'snowflake_twirl',
+    'crystal_curtsy_bow',
+    'aurora_blessing_lift',
+  ],
+};
+
+const HERO_STYLE_PALETTES: Record<SolarLeoHeroStyleId, readonly [number, number, number, number]> = {
+  aurelia: [0xfef08a, 0xfbbf24, 0x93c5fd, 0xffffff],
+  aurelia_oasis_dancer: [0xfde047, 0xfb923c, 0xf472b6, 0xfffbeb],
+  aurelia_temple_commander: [0xf59e0b, 0xef4444, 0xfef08a, 0xfca5a5],
+  aurelia_solaris_valkyrie: [0xfbbf24, 0xf97316, 0xfffbeb, 0xfde047],
+  aurelia_winter_solstice: [0x7dd3fc, 0xe0f2fe, 0xc4b5fd, 0xffffff],
+};
+
+const HERO_ACTION_DURATION_SEC = 4.8;
+
+function resolveHeroStyleId(assetId: SolarLeoAssetId): SolarLeoHeroStyleId {
+  if (
+    assetId === 'aurelia_oasis_dancer' ||
+    assetId === 'aurelia_temple_commander' ||
+    assetId === 'aurelia_solaris_valkyrie' ||
+    assetId === 'aurelia_winter_solstice'
+  ) {
+    return assetId;
+  }
+  return 'aurelia';
+}
+
+function createSolarLeoHeroAuraRig(
+  styleId: SolarLeoHeroStyleId,
+  liteMode: boolean
+): SolarLeoHeroAuraRig {
+  const group = new THREE.Group();
+  group.name = `SolarLeoHeroAura_${styleId}`;
+
+  // Single InstancedMesh = 1 draw call (8 motes in Lite for Dell E5430, 16 motes in High)
+  const moteCount = liteMode ? 8 : 16;
+  const moteGeo =
+    styleId === 'aurelia_winter_solstice'
+      ? new THREE.OctahedronGeometry(0.044, 0)
+      : new THREE.OctahedronGeometry(0.038, 0);
+  const moteMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const motes = new THREE.InstancedMesh(moteGeo, moteMat, moteCount);
+  motes.name = `HeroSignatureMotes_${styleId}`;
+  motes.frustumCulled = false;
+
+  const palette = HERO_STYLE_PALETTES[styleId];
+  for (let i = 0; i < moteCount; i++) {
+    _heroMotePaletteTmp.setHex(palette[i % palette.length]);
+    motes.setColorAt(i, _heroMotePaletteTmp);
+    _heroMoteDummy.position.set(0.5, 1.0, 0);
+    _heroMoteDummy.scale.setScalar(0.75);
+    _heroMoteDummy.updateMatrix();
+    motes.setMatrixAt(i, _heroMoteDummy.matrix);
+  }
+  if (motes.instanceColor) motes.instanceColor.needsUpdate = true;
+  motes.instanceMatrix.needsUpdate = true;
+  group.add(motes);
+
+  let ribbonRing: THREE.Mesh | undefined;
+  if (!liteMode) {
+    const ringGeo = new THREE.TorusGeometry(0.62, 0.011, 6, 36);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: palette[0],
+      transparent: true,
+      opacity: 0.44,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    ribbonRing = new THREE.Mesh(ringGeo, ringMat);
+    ribbonRing.name = `HeroSignatureRibbonRing_${styleId}`;
+    ribbonRing.rotation.x = Math.PI * 0.5;
+    ribbonRing.position.y = 0.88;
+    group.add(ribbonRing);
+  }
+
+  return { group, motes, moteCount, styleId, ribbonRing };
+}
+
+/**
+ * Pure deterministic choreographer for Aurelia & all 4 Solar Leo Outfits:
+ * each hero/outfit cycles 4 distinct, playful & expressive showcase actions in Lobby
+ * (plus instant celebratory dance/salute flourish on emote or outfit switch), while keeping
+ * saddle seating rock-solid when riding Solarius and zero bow distortion on Aurelia base.
+ */
+export function evaluateSolarLeoHeroAction(
+  assetId: SolarLeoAssetId,
+  elapsed: number,
+  mode: 'lobby' | 'combat' = 'lobby',
+  riding = false,
+  celebrating = false
+): SolarLeoHeroActionFrame {
+  const styleId = resolveHeroStyleId(assetId);
+  const safeT = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0);
+  const cycle = HERO_STYLE_ACTION_CYCLES[styleId];
+  const rideScale = riding ? 0.22 : 1.0;
+
+  // Base neutral pose
+  const frame: SolarLeoHeroActionFrame = {
+    styleId,
+    action: cycle[0],
+    phase: 0,
+    rootY: 0,
+    rootYaw: 0,
+    pelvisPitch: 0,
+    pelvisRoll: 0,
+    spinePitch: 0,
+    chestPitch: 0,
+    chestYaw: 0,
+    headPitch: 0,
+    headYaw: 0,
+    headRoll: 0,
+    armLPitch: -0.06,
+    armRPitch: -0.06,
+    armLRoll: 0.06,
+    armRRoll: -0.06,
+    handLPitch: 0,
+    handRPitch: 0,
+    legLPitch: 0,
+    legRPitch: 0,
+    legLRoll: 0,
+    legRRoll: 0,
+    cloakPitch: 0.1,
+    cloakRoll: 0,
+    sparkleBoost: 0.15,
+    auraOrbitSpeedMult: 1.0,
+  };
+
+  if (mode === 'combat' && !celebrating) {
+    // Subtle liveliness in combat idle without interfering with aim or dash readability
+    const breathe = Math.sin(safeT * 2.9);
+    const sway = Math.sin(safeT * 1.9);
+    frame.chestPitch = breathe * 0.032;
+    frame.headYaw = sway * 0.06;
+    frame.headRoll = Math.cos(safeT * 1.5) * 0.035;
+    frame.cloakPitch = 0.14 + Math.sin(safeT * 3.8) * 0.07;
+    frame.cloakRoll = sway * 0.06;
+    frame.sparkleBoost = 0.25;
+    frame.auraOrbitSpeedMult = 1.25;
+    return frame;
+  }
+
+  if (celebrating) {
+    // Instant joyful showcase flourish when switching outfit/hero or tapping hero in Lobby
+    const p = (safeT * 0.95) % 1;
+    const hop = Math.sin(p * Math.PI);
+    const cheerWave = Math.sin(p * Math.PI * 4);
+    frame.action = cycle[2];
+    frame.phase = p;
+    frame.rootY = hop * 0.19 * rideScale;
+    frame.rootYaw =
+      styleId === 'aurelia_oasis_dancer' || styleId === 'aurelia_winter_solstice'
+        ? Math.sin(p * Math.PI * 2) * 0.42 * (riding ? 0.45 : 1)
+        : Math.sin(p * Math.PI * 2) * 0.24 * (riding ? 0.5 : 1);
+    frame.pelvisRoll = cheerWave * 0.075 * (riding ? 0.5 : 1);
+    frame.chestPitch = -0.08 * hop;
+    frame.chestYaw = Math.sin(p * Math.PI * 2) * 0.16;
+    frame.headPitch = -0.07 * hop + Math.sin(p * Math.PI * 4) * 0.05;
+    frame.headYaw = -Math.sin(p * Math.PI * 2) * 0.18;
+    frame.headRoll = cheerWave * 0.14;
+    frame.armLPitch = -0.68 - Math.abs(cheerWave) * 0.24;
+    frame.armRPitch = -0.82 - hop * 0.28;
+    frame.armLRoll = 0.34 + hop * 0.18;
+    frame.armRRoll = -0.36 - hop * 0.2;
+    frame.handLPitch = -0.22 * hop;
+    frame.handRPitch = -0.25 * hop;
+    if (!riding) {
+      frame.legLPitch = -0.18 * hop;
+      frame.legRPitch = 0.16 * hop;
+    }
+    frame.cloakPitch = 0.24 + hop * 0.26;
+    frame.cloakRoll = cheerWave * 0.18;
+    frame.sparkleBoost = 1.0;
+    frame.auraOrbitSpeedMult = 2.25;
+    return frame;
+  }
+
+  const slot = Math.floor(safeT / HERO_ACTION_DURATION_SEC) % cycle.length;
+  const action = cycle[slot];
+  const p = (safeT % HERO_ACTION_DURATION_SEC) / HERO_ACTION_DURATION_SEC;
+  const env = smoothstep01(Math.min(p / 0.16, (1 - p) / 0.16));
+  const wave2 = Math.sin(p * Math.PI * 2);
+  const wave4 = Math.sin(p * Math.PI * 4);
+  const arc = Math.sin(p * Math.PI);
+
+  frame.action = action;
+  frame.phase = p;
+
+  switch (action) {
+    // ── AURELIA BASE (Playful-Regal Solar Archer) ──────────────────────────────
+    case 'sunbeam_sway': {
+      frame.rootY = Math.abs(wave2) * 0.055 * env * rideScale;
+      frame.pelvisRoll = wave2 * 0.065 * env * (riding ? 0.55 : 1);
+      frame.chestYaw = wave2 * 0.16 * env;
+      frame.chestPitch = -0.04 * arc * env + wave4 * 0.025 * env;
+      frame.headYaw = -wave2 * 0.2 * env;
+      frame.headRoll = wave2 * 0.13 * env;
+      frame.headPitch = -0.05 * Math.abs(wave2) * env;
+      frame.cloakPitch = 0.14 + Math.abs(wave2) * 0.16 * env;
+      frame.cloakRoll = wave2 * 0.14 * env;
+      frame.sparkleBoost = 0.35 + arc * 0.25;
+      frame.auraOrbitSpeedMult = 1.15;
+      return frame;
+    }
+    case 'archer_flourish': {
+      // Playful left-right scout scan with confident bow lift & springy toe bounce
+      const bounce = Math.abs(Math.sin(p * Math.PI * 3));
+      frame.rootY = bounce * 0.065 * env * rideScale;
+      frame.rootYaw = wave2 * 0.18 * env * (riding ? 0.5 : 1);
+      frame.chestYaw = wave2 * 0.24 * env;
+      frame.chestPitch = -0.07 * arc * env;
+      frame.headYaw = wave2 * 0.18 * env;
+      frame.headPitch = -0.08 * arc * env;
+      frame.headRoll = -wave2 * 0.09 * env;
+      frame.cloakPitch = 0.18 + arc * 0.22 * env;
+      frame.cloakRoll = -wave2 * 0.16 * env;
+      frame.sparkleBoost = 0.55 + arc * 0.35;
+      frame.auraOrbitSpeedMult = 1.55;
+      return frame;
+    }
+    case 'royal_twirl_hop': {
+      // Cheerful double hop with lively hip sway & celebratory bow flourish
+      const dblHop = Math.abs(Math.sin(p * Math.PI * 2));
+      frame.rootY = dblHop * 0.14 * env * rideScale;
+      frame.rootYaw = Math.sin(p * Math.PI * 2) * 0.28 * env * (riding ? 0.45 : 1);
+      frame.pelvisRoll = wave4 * 0.08 * env * (riding ? 0.55 : 1);
+      frame.spinePitch = -0.05 * dblHop * env;
+      frame.chestYaw = -wave2 * 0.2 * env;
+      frame.headPitch = -0.09 * dblHop * env;
+      frame.headRoll = wave4 * 0.15 * env;
+      if (!riding) {
+        frame.legLPitch = Math.sin(p * Math.PI * 4) * 0.2 * env;
+        frame.legRPitch = -Math.sin(p * Math.PI * 4) * 0.2 * env;
+      }
+      frame.cloakPitch = 0.22 + dblHop * 0.26 * env;
+      frame.cloakRoll = wave4 * 0.18 * env;
+      frame.sparkleBoost = 0.72 + dblHop * 0.35;
+      frame.auraOrbitSpeedMult = 1.85;
+      return frame;
+    }
+    case 'starlight_salute': {
+      // Warm friendly bow-nod & starlight radiant levitation pulse
+      const nod = Math.sin(smoothstep01((p - 0.15) / 0.7) * Math.PI * 2);
+      frame.rootY = arc * 0.1 * env * rideScale;
+      frame.chestPitch = (-0.08 * arc + nod * 0.04) * env;
+      frame.chestYaw = Math.sin(p * Math.PI * 2) * 0.12 * env;
+      frame.headPitch = (0.12 * Math.max(0, nod) - 0.08 * arc) * env;
+      frame.headRoll = Math.sin(p * Math.PI * 2) * 0.14 * env;
+      frame.cloakPitch = 0.2 + arc * 0.24 * env;
+      frame.sparkleBoost = 0.8 + arc * 0.35;
+      frame.auraOrbitSpeedMult = 1.7;
+      return frame;
+    }
+
+    // ── GOLDEN OASIS SUN DANCER (Playful Ribbon & Desert Belly-Dancer) ─────────
+    case 'oasis_hip_sway': {
+      frame.rootY = Math.abs(wave4) * 0.065 * env * rideScale;
+      frame.pelvisRoll = wave4 * 0.13 * env * (riding ? 0.55 : 1);
+      frame.chestYaw = -wave4 * 0.2 * env;
+      frame.chestPitch = Math.sin(p * Math.PI * 2) * 0.05 * env;
+      frame.headRoll = wave4 * 0.16 * env;
+      frame.headYaw = wave2 * 0.18 * env;
+      frame.armLPitch = -0.38 - Math.sin(p * Math.PI * 4) * 0.26 * env;
+      frame.armRPitch = -0.42 + Math.sin(p * Math.PI * 4) * 0.26 * env;
+      frame.armLRoll = 0.34 + Math.abs(wave2) * 0.2 * env;
+      frame.armRRoll = -0.34 - Math.abs(wave2) * 0.2 * env;
+      frame.handLPitch = Math.cos(p * Math.PI * 4) * 0.32 * env;
+      frame.handRPitch = -Math.cos(p * Math.PI * 4) * 0.32 * env;
+      frame.cloakPitch = 0.18 + Math.abs(wave4) * 0.2 * env;
+      frame.cloakRoll = wave4 * 0.22 * env;
+      frame.sparkleBoost = 0.65;
+      frame.auraOrbitSpeedMult = 1.6;
+      return frame;
+    }
+    case 'silk_ribbon_wave': {
+      // Expressive alternating silk-sleeve waves with cheerful side-to-side smile tilts
+      frame.rootY = Math.abs(wave2) * 0.08 * env * rideScale;
+      frame.pelvisRoll = wave2 * 0.1 * env * (riding ? 0.55 : 1);
+      frame.chestYaw = wave2 * 0.26 * env;
+      frame.headYaw = -wave2 * 0.24 * env;
+      frame.headRoll = -wave2 * 0.17 * env;
+      frame.armLPitch = -0.82 * env + wave4 * 0.34 * env;
+      frame.armRPitch = -0.58 * env - wave4 * 0.34 * env;
+      frame.armLRoll = 0.44 * env;
+      frame.armRRoll = -0.44 * env;
+      frame.handLPitch = wave4 * 0.42 * env;
+      frame.handRPitch = -wave4 * 0.42 * env;
+      frame.cloakPitch = 0.24 + arc * 0.24 * env;
+      frame.cloakRoll = -wave2 * 0.25 * env;
+      frame.sparkleBoost = 0.8;
+      frame.auraOrbitSpeedMult = 1.9;
+      return frame;
+    }
+    case 'joyful_pirouette_hop': {
+      // Playful spin-twirl + bouncy desert dancer hop
+      const spinAngle = riding ? Math.sin(p * Math.PI * 2) * 0.42 : smoothstep01(p) * Math.PI * 2;
+      frame.rootY = arc * 0.17 * env * rideScale;
+      frame.rootYaw = spinAngle;
+      frame.pelvisRoll = wave2 * 0.09 * env * (riding ? 0.5 : 1);
+      frame.chestPitch = -0.07 * arc * env;
+      frame.headRoll = wave2 * 0.14 * env;
+      frame.armLPitch = -0.92 * arc * env;
+      frame.armRPitch = -0.92 * arc * env;
+      frame.armLRoll = 0.52 * arc * env;
+      frame.armRRoll = -0.52 * arc * env;
+      if (!riding) {
+        frame.legLPitch = -0.22 * arc * env;
+        frame.legRPitch = 0.24 * arc * env;
+      }
+      frame.cloakPitch = 0.34 + arc * 0.32 * env;
+      frame.cloakRoll = wave2 * 0.24 * env;
+      frame.sparkleBoost = 1.0;
+      frame.auraOrbitSpeedMult = 2.35;
+      return frame;
+    }
+    case 'desert_bloom_pose': {
+      // Charming lotus-bloom greeting pose with gentle curtsy & warm head nod
+      frame.rootY = -0.04 * Math.sin(p * Math.PI * 2) * env * rideScale;
+      frame.pelvisPitch = 0.07 * arc * env * (riding ? 0.4 : 1);
+      frame.chestPitch = -0.06 * arc * env;
+      frame.headPitch = 0.08 * Math.sin(p * Math.PI * 2) * env;
+      frame.headRoll = 0.16 * arc * env;
+      frame.armLPitch = -0.62 * arc * env;
+      frame.armRPitch = -0.78 * arc * env;
+      frame.armLRoll = 0.36 * arc * env;
+      frame.armRRoll = -0.22 * arc * env;
+      frame.cloakPitch = 0.18 + arc * 0.2 * env;
+      frame.sparkleBoost = 0.75;
+      frame.auraOrbitSpeedMult = 1.5;
+      return frame;
+    }
+
+    // ── ROYAL SUN-TEMPLE COMMANDER (Heroic, Charismatic & Lively) ──────────────
+    case 'regal_salute_nod': {
+      frame.rootY = arc * 0.05 * env * rideScale;
+      frame.chestPitch = -0.08 * arc * env;
+      frame.chestYaw = 0.14 * arc * env;
+      frame.headPitch = (0.09 * Math.sin(p * Math.PI * 2) - 0.04 * arc) * env;
+      frame.headYaw = -0.14 * arc * env;
+      frame.armRPitch = -1.06 * arc * env;
+      frame.armRRoll = -0.26 * arc * env;
+      frame.handRPitch = -0.22 * arc * env;
+      frame.armLPitch = -0.18 * arc * env;
+      frame.armLRoll = 0.22 * arc * env;
+      frame.cloakPitch = 0.22 + arc * 0.2 * env;
+      frame.sparkleBoost = 0.65;
+      frame.auraOrbitSpeedMult = 1.45;
+      return frame;
+    }
+    case 'banner_command_sweep': {
+      // Sweeping heroic rally gesture from left to right
+      frame.rootY = Math.abs(wave2) * 0.07 * env * rideScale;
+      frame.chestYaw = wave2 * 0.28 * env;
+      frame.headYaw = wave2 * 0.2 * env;
+      frame.headRoll = -wave2 * 0.09 * env;
+      frame.armRPitch = -0.78 * env - Math.max(0, wave2) * 0.34 * env;
+      frame.armRRoll = -0.34 * env - wave2 * 0.24 * env;
+      frame.armLPitch = -0.42 * env + Math.min(0, wave2) * 0.24 * env;
+      frame.armLRoll = 0.28 * env;
+      frame.cloakPitch = 0.26 + Math.abs(wave2) * 0.24 * env;
+      frame.cloakRoll = -wave2 * 0.2 * env;
+      frame.sparkleBoost = 0.8;
+      frame.auraOrbitSpeedMult = 1.85;
+      return frame;
+    }
+    case 'proud_march_bounce': {
+      // Playful energetic commander march-in-place bounce
+      const beat = Math.sin(p * Math.PI * 6);
+      frame.rootY = Math.abs(beat) * 0.09 * env * rideScale;
+      frame.pelvisRoll = beat * 0.07 * env * (riding ? 0.45 : 1);
+      frame.chestYaw = -beat * 0.14 * env;
+      frame.headPitch = -Math.abs(beat) * 0.05 * env;
+      frame.headRoll = beat * 0.09 * env;
+      frame.armLPitch = -0.22 - beat * 0.38 * env;
+      frame.armRPitch = -0.22 + beat * 0.38 * env;
+      if (!riding) {
+        frame.legLPitch = beat * 0.34 * env;
+        frame.legRPitch = -beat * 0.34 * env;
+      }
+      frame.cloakPitch = 0.2 + Math.abs(beat) * 0.2 * env;
+      frame.sparkleBoost = 0.58;
+      frame.auraOrbitSpeedMult = 1.65;
+      return frame;
+    }
+    case 'solar_rally_cheer': {
+      // Double-fist victorious cheer hop!
+      const cheerHop = Math.abs(Math.sin(p * Math.PI * 2));
+      frame.rootY = cheerHop * 0.14 * env * rideScale;
+      frame.chestPitch = -0.1 * cheerHop * env;
+      frame.headPitch = -0.1 * cheerHop * env;
+      frame.headRoll = wave2 * 0.12 * env;
+      frame.armLPitch = -0.95 * cheerHop * env;
+      frame.armRPitch = -0.95 * cheerHop * env;
+      frame.armLRoll = 0.36 * cheerHop * env;
+      frame.armRRoll = -0.36 * cheerHop * env;
+      frame.cloakPitch = 0.26 + cheerHop * 0.28 * env;
+      frame.sparkleBoost = 0.98;
+      frame.auraOrbitSpeedMult = 2.15;
+      return frame;
+    }
+
+    // ── SOLARIS VALKYRIE REGALIA (Radiant Aerial Champion) ─────────────────────
+    case 'valkyrie_hover_sway': {
+      frame.rootY = (0.12 + Math.sin(p * Math.PI * 2) * 0.07) * env * rideScale;
+      frame.pelvisPitch = -0.05 * env * (riding ? 0.4 : 1);
+      frame.pelvisRoll = wave2 * 0.08 * env * (riding ? 0.5 : 1);
+      frame.chestYaw = wave2 * 0.18 * env;
+      frame.headRoll = -wave2 * 0.12 * env;
+      frame.armLPitch = -0.28 * env;
+      frame.armRPitch = -0.28 * env;
+      frame.armLRoll = (0.34 + Math.sin(p * Math.PI * 4) * 0.12) * env;
+      frame.armRRoll = (-0.34 - Math.sin(p * Math.PI * 4) * 0.12) * env;
+      if (!riding) {
+        frame.legLPitch = 0.16 * env;
+        frame.legRPitch = 0.28 * env;
+      }
+      frame.cloakPitch = 0.26 + Math.sin(p * Math.PI * 4) * 0.12 * env;
+      frame.sparkleBoost = 0.72;
+      frame.auraOrbitSpeedMult = 1.65;
+      return frame;
+    }
+    case 'celestial_wing_stretch': {
+      // Heroic sun-embrace levitation spreading both arms wide toward the sky
+      frame.rootY = arc * 0.22 * env * rideScale;
+      frame.chestPitch = -0.14 * arc * env;
+      frame.headPitch = -0.15 * arc * env;
+      frame.armLPitch = -0.58 * arc * env;
+      frame.armRPitch = -0.58 * arc * env;
+      frame.armLRoll = 0.68 * arc * env;
+      frame.armRRoll = -0.68 * arc * env;
+      if (!riding) {
+        frame.legLPitch = 0.22 * arc * env;
+        frame.legRPitch = 0.34 * arc * env;
+      }
+      frame.cloakPitch = 0.32 + arc * 0.34 * env;
+      frame.sparkleBoost = 1.0;
+      frame.auraOrbitSpeedMult = 2.25;
+      return frame;
+    }
+    case 'victory_spin_lift': {
+      // Energetic aerial valkyrie spin flourish
+      const spin = riding ? Math.sin(p * Math.PI * 2) * 0.38 : smoothstep01(p) * Math.PI * 2;
+      frame.rootY = (0.08 + arc * 0.18) * env * rideScale;
+      frame.rootYaw = spin;
+      frame.chestPitch = -0.08 * arc * env;
+      frame.armLPitch = -0.85 * arc * env;
+      frame.armRPitch = -0.45 * arc * env;
+      frame.armLRoll = 0.45 * arc * env;
+      frame.armRRoll = -0.45 * arc * env;
+      frame.cloakPitch = 0.36 + arc * 0.3 * env;
+      frame.cloakRoll = wave2 * 0.22 * env;
+      frame.sparkleBoost = 0.96;
+      frame.auraOrbitSpeedMult = 2.4;
+      return frame;
+    }
+    case 'sunfire_oath_pose': {
+      // Playful wink-tilt & sunfire fist raise
+      frame.rootY = Math.abs(wave2) * 0.08 * env * rideScale;
+      frame.chestYaw = -0.18 * arc * env;
+      frame.headYaw = 0.16 * arc * env;
+      frame.headRoll = 0.15 * arc * env;
+      frame.armRPitch = -1.04 * arc * env;
+      frame.armRRoll = -0.22 * arc * env;
+      frame.armLPitch = -0.28 * arc * env;
+      frame.armLRoll = 0.26 * arc * env;
+      frame.cloakPitch = 0.22 + arc * 0.22 * env;
+      frame.sparkleBoost = 0.85;
+      frame.auraOrbitSpeedMult = 1.8;
+      return frame;
+    }
+
+    // ── WINTER SOLSTICE CRYSTAL SOVEREIGN (Enchanting Ice Ballet & Twirls) ─────
+    case 'frost_waltz_sway': {
+      // Graceful 3/4 ice-waltz sway with floating crystal arms
+      frame.rootY = Math.abs(wave2) * 0.075 * env * rideScale;
+      frame.pelvisRoll = wave2 * 0.11 * env * (riding ? 0.5 : 1);
+      frame.chestYaw = wave2 * 0.22 * env;
+      frame.headRoll = -wave2 * 0.16 * env;
+      frame.headYaw = -wave2 * 0.14 * env;
+      frame.armLPitch = -0.46 * env + wave2 * 0.24 * env;
+      frame.armRPitch = -0.46 * env - wave2 * 0.24 * env;
+      frame.armLRoll = 0.42 * env;
+      frame.armRRoll = -0.42 * env;
+      frame.handLPitch = -0.2 * env;
+      frame.handRPitch = -0.2 * env;
+      frame.cloakPitch = 0.18 + Math.abs(wave2) * 0.2 * env;
+      frame.cloakRoll = wave2 * 0.2 * env;
+      frame.sparkleBoost = 0.68;
+      frame.auraOrbitSpeedMult = 1.4;
+      return frame;
+    }
+    case 'snowflake_twirl': {
+      // Graceful ballet pirouette spinning amidst falling frost crystals
+      const twirl = riding ? Math.sin(p * Math.PI * 2) * 0.44 : smoothstep01(p) * Math.PI * 2;
+      frame.rootY = arc * 0.15 * env * rideScale;
+      frame.rootYaw = twirl;
+      frame.chestPitch = -0.06 * arc * env;
+      frame.headRoll = wave2 * 0.14 * env;
+      frame.armLPitch = -0.96 * arc * env;
+      frame.armRPitch = -0.96 * arc * env;
+      frame.armLRoll = 0.32 * arc * env;
+      frame.armRRoll = -0.32 * arc * env;
+      if (!riding) {
+        frame.legLPitch = -0.16 * arc * env;
+        frame.legRPitch = 0.26 * arc * env;
+      }
+      frame.cloakPitch = 0.3 + arc * 0.3 * env;
+      frame.cloakRoll = wave2 * 0.24 * env;
+      frame.sparkleBoost = 1.0;
+      frame.auraOrbitSpeedMult = 2.3;
+      return frame;
+    }
+    case 'crystal_curtsy_bow': {
+      // Playful royal ice-princess curtsy dip & cheerful wave
+      frame.rootY = -0.07 * arc * env * rideScale;
+      frame.pelvisPitch = 0.12 * arc * env * (riding ? 0.4 : 1);
+      frame.chestPitch = 0.06 * arc * env;
+      frame.headPitch = 0.1 * arc * env;
+      frame.headRoll = 0.18 * arc * env;
+      frame.armLPitch = -0.22 * arc * env;
+      frame.armLRoll = 0.46 * arc * env;
+      frame.armRPitch = -0.72 * arc * env + wave4 * 0.16 * env;
+      frame.armRRoll = -0.34 * arc * env;
+      if (!riding) {
+        frame.legLPitch = -0.22 * arc * env;
+        frame.legRPitch = 0.24 * arc * env;
+      }
+      frame.cloakPitch = 0.24 + arc * 0.18 * env;
+      frame.sparkleBoost = 0.78;
+      frame.auraOrbitSpeedMult = 1.55;
+      return frame;
+    }
+    case 'aurora_blessing_lift': {
+      // Gentle snow-queen hover lifting frosty starlight sparkles upward
+      frame.rootY = (0.1 + arc * 0.12) * env * rideScale;
+      frame.chestPitch = -0.1 * arc * env;
+      frame.headPitch = -0.1 * arc * env;
+      frame.headYaw = wave2 * 0.16 * env;
+      frame.armLPitch = -0.78 * arc * env;
+      frame.armRPitch = -0.78 * arc * env;
+      frame.armLRoll = 0.54 * arc * env;
+      frame.armRRoll = -0.54 * arc * env;
+      frame.cloakPitch = 0.26 + arc * 0.28 * env;
+      frame.sparkleBoost = 0.95;
+      frame.auraOrbitSpeedMult = 2.05;
+      return frame;
+    }
+  }
 }
 
 export function updateSolarLeoHumanoidPose(
   rig: InstantiatedSolarLeoModel,
   input: SolarLeoHeroAnimInput
 ): void {
-  const { elapsed, dt, speed, shooting, shootRecoil, dashing, riding, ultBurst, lobbyPose } = input;
+  const {
+    elapsed,
+    dt,
+    speed,
+    shooting,
+    shootRecoil,
+    dashing,
+    riding,
+    ultBurst,
+    lobbyPose,
+    mode = 'combat',
+    celebrating = false,
+  } = input;
   const b = rig.bones;
   if (!b.pelvis || !b.chest) return;
 
@@ -1502,75 +2172,94 @@ export function updateSolarLeoHumanoidPose(
   const s = Math.sin(g);
   const c = Math.cos(g);
   const breath = Math.sin(elapsed * 2.5);
-  const lam = 14;
+  const lam = 12;
 
-  let rootY = 0;
-  let pelvisPitch = 0;
-  let pelvisRoll = 0;
-  let spinePitch = 0;
-  let chestYaw = 0;
-  let chestPitch = breath * 0.025;
-  let headPitch = -breath * 0.015;
-  let headYaw = Math.sin(elapsed * 1.1) * 0.04;
+  const isShowcaseIdle = mode === 'lobby' && moveFactor <= 0.08 && !shooting && shootRecoil <= 0.01;
+  const choreo = evaluateSolarLeoHeroAction(
+    rig.assetId,
+    elapsed,
+    isShowcaseIdle ? 'lobby' : 'combat',
+    riding,
+    celebrating || ultBurst > 0.35
+  );
 
-  let legLPitch = 0;
-  let legRPitch = 0;
-  let legLRoll = 0;
-  let legRRoll = 0;
+  let rootY = isShowcaseIdle ? choreo.rootY : 0;
+  let rootYaw = isShowcaseIdle ? choreo.rootYaw : 0;
+  let pelvisPitch = isShowcaseIdle ? choreo.pelvisPitch : 0;
+  let pelvisRoll = isShowcaseIdle ? choreo.pelvisRoll : 0;
+  let spinePitch = isShowcaseIdle ? choreo.spinePitch : 0;
+  let chestYaw = isShowcaseIdle ? choreo.chestYaw : 0;
+  let chestPitch = isShowcaseIdle ? choreo.chestPitch + breath * 0.02 : breath * 0.025;
+  let headPitch = isShowcaseIdle ? choreo.headPitch - breath * 0.012 : -breath * 0.015;
+  let headYaw = isShowcaseIdle ? choreo.headYaw : Math.sin(elapsed * 1.1) * 0.05;
+  let headRoll = isShowcaseIdle ? choreo.headRoll : choreo.headRoll * 0.65;
 
-  let armLPitch = -0.06 + breath * 0.03;
-  let armRPitch = -0.06 - breath * 0.03;
-  let armLRoll = 0.05;
-  let armRRoll = -0.05;
-  let handLPitch = 0;
-  let handRPitch = 0;
+  let legLPitch = isShowcaseIdle ? choreo.legLPitch : 0;
+  let legRPitch = isShowcaseIdle ? choreo.legRPitch : 0;
+  let legLRoll = isShowcaseIdle ? choreo.legLRoll : 0;
+  let legRRoll = isShowcaseIdle ? choreo.legRRoll : 0;
 
-  let cloakPitch = 0.08 + Math.sin(elapsed * 2.8) * 0.06;
-  let cloakRoll = Math.cos(elapsed * 1.9) * 0.04;
+  let armLPitch = isShowcaseIdle ? choreo.armLPitch + breath * 0.02 : -0.06 + breath * 0.03;
+  let armRPitch = isShowcaseIdle ? choreo.armRPitch - breath * 0.02 : -0.06 - breath * 0.03;
+  let armLRoll = isShowcaseIdle ? choreo.armLRoll : 0.06;
+  let armRRoll = isShowcaseIdle ? choreo.armRRoll : -0.06;
+  let handLPitch = isShowcaseIdle ? choreo.handLPitch : 0;
+  let handRPitch = isShowcaseIdle ? choreo.handRPitch : 0;
+
+  let cloakPitch = isShowcaseIdle ? choreo.cloakPitch : 0.1 + Math.sin(elapsed * 3.0) * 0.07;
+  let cloakRoll = isShowcaseIdle ? choreo.cloakRoll : Math.cos(elapsed * 2.1) * 0.05;
 
   if (riding) {
-    // Mounted saddle posture: legs straddle cleanly, torso upright & stabilized
-    pelvisPitch = -0.06;
+    // Mounted saddle posture: keep legs straddling Solarius cleanly while letting upper body dance/emote!
+    pelvisPitch = -0.06 + (isShowcaseIdle ? choreo.pelvisPitch * 0.45 : 0);
     legLPitch = -0.78;
     legRPitch = -0.78;
     legLRoll = 0.34;
     legRRoll = -0.34;
-    cloakPitch = 0.28 + Math.min(0.45, speed * 0.05) + Math.sin(elapsed * 5.2) * 0.06;
-    armLPitch = -0.22;
-    armRPitch = -0.22;
+    cloakPitch = Math.max(
+      cloakPitch,
+      0.28 + Math.min(0.45, speed * 0.05) + Math.sin(elapsed * 5.2) * 0.07
+    );
+    if (!isShowcaseIdle) {
+      armLPitch = -0.22;
+      armRPitch = -0.22;
+    }
   } else if (moveFactor > 0.08) {
-    // Distance-driven stride with weight & counter-swing
-    rootY = Math.abs(s) * 0.075 * moveFactor;
-    pelvisPitch = 0.09 * moveFactor;
-    pelvisRoll = s * 0.055 * moveFactor;
-    spinePitch = 0.06 * moveFactor;
-    chestYaw = -s * 0.11 * moveFactor;
-    legLPitch = s * 0.56 * moveFactor;
-    legRPitch = -s * 0.56 * moveFactor;
-    armLPitch = -s * 0.36 * moveFactor;
-    armRPitch = s * 0.36 * moveFactor;
-    cloakPitch = 0.24 * moveFactor + Math.abs(c) * 0.14 * moveFactor;
-    cloakRoll = s * 0.08 * moveFactor;
+    // Springy, joyful combat stride with counter-swing & lively cloak/head bounce
+    rootY = Math.abs(s) * 0.095 * moveFactor;
+    pelvisPitch = 0.1 * moveFactor;
+    pelvisRoll = s * 0.07 * moveFactor;
+    spinePitch = 0.065 * moveFactor;
+    chestYaw = -s * 0.14 * moveFactor;
+    headRoll = s * 0.055 * moveFactor;
+    legLPitch = s * 0.6 * moveFactor;
+    legRPitch = -s * 0.6 * moveFactor;
+    armLPitch = -s * 0.42 * moveFactor;
+    armRPitch = s * 0.42 * moveFactor;
+    cloakPitch = 0.26 * moveFactor + Math.abs(c) * 0.16 * moveFactor;
+    cloakRoll = s * 0.11 * moveFactor;
   } else if (lobbyPose === 'aim_ready') {
-    chestYaw = 0.18;
+    chestYaw = 0.18 + Math.sin(elapsed * 1.9) * 0.06;
     armLPitch = -0.58;
     armRPitch = -0.42;
     headYaw = -0.1;
   } else if (lobbyPose === 'astral_float') {
-    rootY = 0.14 + Math.sin(elapsed * 2.2) * 0.07;
+    rootY = 0.16 + Math.sin(elapsed * 2.4) * 0.08 + choreo.rootY * 0.4;
     legLPitch = 0.16;
-    legRPitch = 0.24;
-    armLRoll = 0.28;
-    armRRoll = -0.28;
-    cloakPitch = 0.22 + Math.sin(elapsed * 3.1) * 0.1;
+    legRPitch = 0.26;
+    armLRoll = 0.32 + Math.sin(elapsed * 2.4) * 0.06;
+    armRRoll = -0.32 - Math.sin(elapsed * 2.4) * 0.06;
+    cloakPitch = 0.24 + Math.sin(elapsed * 3.1) * 0.11;
   } else if (lobbyPose === 'victory_salute') {
-    armRPitch = -0.82;
-    armRRoll = -0.22;
-    chestPitch = -0.06;
+    armRPitch = -0.88 - Math.sin(elapsed * 3.2) * 0.08;
+    armRRoll = -0.24;
+    chestPitch = -0.07;
+    headRoll = 0.09 + Math.sin(elapsed * 2.4) * 0.05;
   }
 
   if (shooting || shootRecoil > 0.01) {
     const recoil = Math.min(1, shootRecoil);
+    rootYaw = 0;
     chestYaw += 0.2 - recoil * 0.1;
     chestPitch -= 0.05 + recoil * 0.08;
     armLPitch = -0.62 - recoil * 0.16;
@@ -1578,21 +2267,23 @@ export function updateSolarLeoHumanoidPose(
     armRPitch = -0.54 + recoil * 0.32;
     handRPitch = 0.18 * recoil;
     headYaw = -0.1;
+    headRoll = 0;
   }
 
   if (dashing) {
-    pelvisPitch += 0.22;
-    spinePitch += 0.14;
-    cloakPitch += 0.42;
+    rootYaw = 0;
+    pelvisPitch += 0.24;
+    spinePitch += 0.15;
+    cloakPitch += 0.46;
   }
 
   if (ultBurst > 0.01) {
     const u = Math.min(1, ultBurst);
-    rootY += 0.22 * u;
-    chestPitch -= 0.14 * u;
-    armLRoll += 0.42 * u;
-    armRRoll -= 0.42 * u;
-    cloakPitch += 0.35 * u;
+    rootY += 0.24 * u;
+    chestPitch -= 0.15 * u;
+    armLRoll += 0.45 * u;
+    armRRoll -= 0.45 * u;
+    cloakPitch += 0.38 * u;
   }
 
   // For Aurelia's sculpted full-draw bow GLB, keep arm/hand bones strictly aligned with `chest`
@@ -1608,6 +2299,7 @@ export function updateSolarLeoHumanoidPose(
   }
 
   rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, rootY, lam, dt);
+  rig.visualRoot.rotation.y = THREE.MathUtils.damp(rig.visualRoot.rotation.y, rootYaw, lam * 0.85, dt);
   b.pelvis.rotation.x = THREE.MathUtils.damp(b.pelvis.rotation.x, pelvisPitch, lam, dt);
   b.pelvis.rotation.z = THREE.MathUtils.damp(b.pelvis.rotation.z, pelvisRoll, lam, dt);
   if (b.spine) b.spine.rotation.x = THREE.MathUtils.damp(b.spine.rotation.x, spinePitch, lam, dt);
@@ -1616,6 +2308,7 @@ export function updateSolarLeoHumanoidPose(
   if (b.head) {
     b.head.rotation.x = THREE.MathUtils.damp(b.head.rotation.x, headPitch, lam, dt);
     b.head.rotation.y = THREE.MathUtils.damp(b.head.rotation.y, headYaw, lam, dt);
+    b.head.rotation.z = THREE.MathUtils.damp(b.head.rotation.z, headRoll, lam, dt);
   }
   if (b.armL) {
     b.armL.rotation.x = THREE.MathUtils.damp(b.armL.rotation.x, armLPitch, lam, dt);
@@ -1647,6 +2340,57 @@ export function updateSolarLeoHumanoidPose(
     const nextPull = THREE.MathUtils.damp(rig.bowStringRig.currentPull, targetPull, recoil > 0.02 ? 28 : 14, dt);
     const twang = recoil > 0.02 ? Math.sin(elapsed * 55) * recoil * 0.65 : 0;
     updateSolarLeoBowStringGeometry(rig.bowStringRig, nextPull, twang);
+  }
+
+  // Update per-outfit signature sparkle motes & High-only graceful ribbon ring (zero GC allocations)
+  if (rig.heroAuraRig) {
+    const { motes, moteCount, styleId, ribbonRing } = rig.heroAuraRig;
+    const energy = Math.min(1.5, choreo.sparkleBoost + ultBurst * 0.9 + (dashing ? 0.45 : 0));
+    const orbitSpeed =
+      (styleId === 'aurelia_winter_solstice' ? 1.15 : styleId === 'aurelia_oasis_dancer' ? 1.75 : 1.45) *
+      choreo.auraOrbitSpeedMult +
+      (dashing ? 1.5 : 0) +
+      ultBurst * 1.6;
+    const baseY = rig.visualRoot.position.y;
+
+    for (let i = 0; i < moteCount; i++) {
+      const frac = i / moteCount;
+      const a = elapsed * orbitSpeed * (i % 2 === 0 ? 1 : -0.78) + frac * Math.PI * 2;
+      const radius =
+        (styleId === 'aurelia_solaris_valkyrie' ? 0.72 : 0.62) +
+        Math.sin(elapsed * 2.8 + i * 1.7) * 0.14 +
+        energy * 0.08;
+      // Snowflakes drift softly downward for Winter Solstice; sun/ember motes spiral joyfully upward!
+      const risePhase =
+        styleId === 'aurelia_winter_solstice'
+          ? 1 - ((elapsed * 0.24 + frac * 1.3) % 1)
+          : (elapsed * 0.34 + frac * 1.3) % 1;
+      const mx = Math.cos(a) * radius;
+      const mz = Math.sin(a) * radius;
+      const my = baseY + 0.25 + risePhase * 1.68 + Math.sin(elapsed * 3.4 + i) * 0.06;
+      const twinkle = (0.55 + Math.abs(Math.sin(elapsed * 4.8 + i * 2.1)) * 0.65) * (0.75 + energy * 0.4);
+      _heroMoteDummy.position.set(mx, my, mz);
+      _heroMoteDummy.rotation.set(elapsed * 2.1 + i, elapsed * 2.7, i);
+      if (styleId === 'aurelia_winter_solstice') {
+        _heroMoteDummy.scale.set(twinkle * 0.95, twinkle * 0.95, twinkle * 0.95);
+      } else {
+        _heroMoteDummy.scale.set(twinkle * 0.72, twinkle * 1.36, twinkle * 0.72);
+      }
+      _heroMoteDummy.updateMatrix();
+      motes.setMatrixAt(i, _heroMoteDummy.matrix);
+    }
+    motes.instanceMatrix.needsUpdate = true;
+
+    if (ribbonRing) {
+      ribbonRing.position.y = baseY + 0.86 + Math.sin(elapsed * 2.6) * 0.12;
+      ribbonRing.rotation.z = elapsed * (0.95 * choreo.auraOrbitSpeedMult);
+      ribbonRing.rotation.x = Math.PI * 0.5 + Math.sin(elapsed * 1.9) * 0.26;
+      ribbonRing.rotation.y = Math.cos(elapsed * 1.5) * 0.22;
+      const ringScale = 0.94 + Math.sin(elapsed * 3.2) * 0.07 + energy * 0.1;
+      ribbonRing.scale.setScalar(ringScale);
+      const rMat = ribbonRing.material as THREE.MeshBasicMaterial;
+      rMat.opacity = THREE.MathUtils.clamp(0.28 + energy * 0.32, 0.22, 0.78);
+    }
   }
 }
 
