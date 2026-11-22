@@ -11,12 +11,50 @@ import type {
   WeekendBlitzSchedule,
   WeekendBlitzStateResponse,
 } from '../data/weeklyBossData';
+import {
+  fallbackClaimWeekendBlitzReward,
+  fallbackClaimWeeklyBossReward,
+  fallbackClaimWeeklyBossSeasonReward,
+  fallbackFetchWeekendBlitzState,
+  fallbackFetchWeeklyBossSeasonState,
+  fallbackFetchWeeklyBossState,
+  fallbackStartWeekendBlitzAttempt,
+  fallbackStartWeeklyBossAttempt,
+  fallbackSubmitWeekendBlitzAttempt,
+  fallbackSubmitWeeklyBossAttempt,
+  type WeeklyBossFallbackIdentity,
+} from './weeklyBossLocalFallback';
+
+let standaloneFallbackLatched = false;
+
+export function isWeeklyBossStandaloneFallbackActive(): boolean {
+  return standaloneFallbackLatched;
+}
+
+export function resetWeeklyBossApiModeForTests(): void {
+  standaloneFallbackLatched = false;
+}
+
+function getCurrentFallbackIdentity(preferredName?: string): WeeklyBossFallbackIdentity {
+  const user = auth?.currentUser ?? null;
+  const uid = user?.uid || 'local_artemis_player';
+  const displayName =
+    preferredName?.trim() ||
+    user?.displayName?.trim() ||
+    user?.email?.split('@')[0] ||
+    'Chiến Binh Tinh Giới';
+  return {
+    uid,
+    displayName: displayName.slice(0, 24),
+    authenticated: true,
+  };
+}
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  const user = auth.currentUser;
+  const user = auth?.currentUser ?? null;
   if (user) {
     try {
       const token = await user.getIdToken();
@@ -28,18 +66,60 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
-async function parseApiResponse<T>(res: Response): Promise<T> {
-  const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string } & T;
-  if (!res.ok) {
-    throw new Error(data.message || data.error || `Lỗi máy chủ (${res.status})`);
+function isStaticHostUnavailableStatus(status: number): boolean {
+  return status === 404 || status === 405 || status === 501;
+}
+
+async function requestWithStaticFallback<T>(
+  url: string,
+  init: RequestInit,
+  fallbackFn: () => T
+): Promise<T> {
+  if (standaloneFallbackLatched) {
+    return fallbackFn();
   }
-  return data;
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(url, { ...init, headers });
+    const contentType = res.headers.get('content-type') || '';
+
+    // Static SPA hosts (e.g., Vercel without serverless API) return 404/405 or HTML
+    if (isStaticHostUnavailableStatus(res.status) || contentType.includes('text/html')) {
+      standaloneFallbackLatched = true;
+      return fallbackFn();
+    }
+
+    const rawText = await res.text();
+    let parsed: ({ error?: string; message?: string } & T) | null = null;
+    try {
+      parsed = JSON.parse(rawText) as { error?: string; message?: string } & T;
+    } catch {
+      // Non-JSON payload on an API route indicates static host/proxy mismatch
+      standaloneFallbackLatched = true;
+      return fallbackFn();
+    }
+
+    if (!res.ok) {
+      throw new Error(parsed.message || parsed.error || `Lỗi máy chủ (${res.status})`);
+    }
+    return parsed;
+  } catch (err) {
+    // Only fall back on network-level errors (TypeError / offline / blocked);
+    // rethrow legitimate server validation errors (e.g. out of attempts).
+    if (err instanceof TypeError) {
+      standaloneFallbackLatched = true;
+      return fallbackFn();
+    }
+    throw err;
+  }
 }
 
 export async function fetchWeeklyBossState(): Promise<WeeklyBossStateResponse> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/state', { method: 'GET', headers });
-  return parseApiResponse<WeeklyBossStateResponse>(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/state',
+    { method: 'GET' },
+    () => fallbackFetchWeeklyBossState(getCurrentFallbackIdentity())
+  );
 }
 
 export async function startWeeklyBossAttempt(displayName: string): Promise<{
@@ -48,13 +128,14 @@ export async function startWeeklyBossAttempt(displayName: string): Promise<{
   attemptsUsed: number;
   attemptsRemaining: number;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/start', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ displayName }),
-  });
-  return parseApiResponse(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/start',
+    {
+      method: 'POST',
+      body: JSON.stringify({ displayName }),
+    },
+    () => fallbackStartWeeklyBossAttempt(getCurrentFallbackIdentity(displayName), displayName)
+  );
 }
 
 export async function submitWeeklyBossAttempt(payload: {
@@ -79,13 +160,15 @@ export async function submitWeeklyBossAttempt(payload: {
   attemptsRemaining: number;
   leaderboard: WeeklyBossLeaderboardEntry[];
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/submit', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
-  return parseApiResponse(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/submit',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    () =>
+      fallbackSubmitWeeklyBossAttempt(getCurrentFallbackIdentity(payload.displayName), payload)
+  );
 }
 
 export async function claimWeeklyBossReward(payload: {
@@ -97,19 +180,22 @@ export async function claimWeeklyBossReward(payload: {
   receipt: WeeklyBossClaimReceipt;
   claimedTierIds: string[];
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/claim', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
-  return parseApiResponse(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/claim',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    () => fallbackClaimWeeklyBossReward(getCurrentFallbackIdentity(), payload)
+  );
 }
 
 export async function fetchWeeklyBossSeasonState(): Promise<WeeklyBossSeasonStateResponse> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/season', { method: 'GET', headers });
-  return parseApiResponse<WeeklyBossSeasonStateResponse>(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/season',
+    { method: 'GET' },
+    () => fallbackFetchWeeklyBossSeasonState(getCurrentFallbackIdentity())
+  );
 }
 
 export async function claimWeeklyBossSeasonReward(payload: {
@@ -121,19 +207,22 @@ export async function claimWeeklyBossSeasonReward(payload: {
   receipt: WeeklyBossSeasonClaimReceipt;
   claimedSeasonTierIds: string[];
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/season/claim', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
-  return parseApiResponse(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/season/claim',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    () => fallbackClaimWeeklyBossSeasonReward(getCurrentFallbackIdentity(), payload)
+  );
 }
 
 export async function fetchWeekendBlitzState(): Promise<WeekendBlitzStateResponse> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/weekend/state', { method: 'GET', headers });
-  return parseApiResponse<WeekendBlitzStateResponse>(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/weekend/state',
+    { method: 'GET' },
+    () => fallbackFetchWeekendBlitzState(getCurrentFallbackIdentity())
+  );
 }
 
 export async function startWeekendBlitzAttempt(displayName: string): Promise<{
@@ -142,13 +231,14 @@ export async function startWeekendBlitzAttempt(displayName: string): Promise<{
   attemptsUsed: number;
   attemptsRemaining: number;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/weekend/start', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ displayName }),
-  });
-  return parseApiResponse(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/weekend/start',
+    {
+      method: 'POST',
+      body: JSON.stringify({ displayName }),
+    },
+    () => fallbackStartWeekendBlitzAttempt(getCurrentFallbackIdentity(displayName), displayName)
+  );
 }
 
 export async function submitWeekendBlitzAttempt(payload: {
@@ -174,13 +264,15 @@ export async function submitWeekendBlitzAttempt(payload: {
   leaderboard: WeeklyBossLeaderboardEntry[];
   seasonCpBonusAwarded: number;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/weekend/submit', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
-  return parseApiResponse(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/weekend/submit',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    () =>
+      fallbackSubmitWeekendBlitzAttempt(getCurrentFallbackIdentity(payload.displayName), payload)
+  );
 }
 
 export async function claimWeekendBlitzReward(payload: {
@@ -192,11 +284,12 @@ export async function claimWeekendBlitzReward(payload: {
   receipt: WeekendBlitzClaimReceipt;
   claimedTierIds: string[];
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/weekly-boss/weekend/claim', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
-  return parseApiResponse(res);
+  return requestWithStaticFallback(
+    '/api/weekly-boss/weekend/claim',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    () => fallbackClaimWeekendBlitzReward(getCurrentFallbackIdentity(), payload)
+  );
 }

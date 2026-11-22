@@ -21,6 +21,7 @@ import type {
   PlayerCombatTelemetryInput,
 } from '../engine/wave10FivePillars';
 import type { WeeklyBossLeaderboardEntry } from '../data/weeklyBossData';
+import { LiveAiLocalFallback, type LiveAiServerEnvelope } from './liveAiLocalFallback';
 
 export type LiveSocketStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
 
@@ -148,6 +149,8 @@ type SpectatorClaimAckListener = (ack: LiveSpectatorClaimAckPayload) => void;
 
 class LiveAiSocketClient {
   private ws: WebSocket | null = null;
+  private standaloneFallback: LiveAiLocalFallback | null = null;
+  private everOpened = false;
   private status: LiveSocketStatus = 'offline';
   private snapshot: AiLiveHubSnapshot | null = null;
   private reconnectAttempt = 0;
@@ -185,6 +188,10 @@ class LiveAiSocketClient {
     return this.snapshot;
   }
 
+  public isStandaloneMode(): boolean {
+    return this.standaloneFallback !== null;
+  }
+
   public ensureConnected(displayName?: string): void {
     if (displayName && displayName.trim().length >= 2) {
       this.announcedDisplayName = displayName.trim().slice(0, 24);
@@ -192,8 +199,12 @@ class LiveAiSocketClient {
     if (typeof window === 'undefined') return;
     if (!this.started) {
       this.started = true;
-      void this.fetchInitialRestFallback();
-      this.connect();
+      void this.bootstrapConnection();
+    } else if (this.standaloneFallback && displayName) {
+      this.standaloneFallback.handleClientMessage({
+        type: 'presence:announce',
+        payload: { displayName: this.announcedDisplayName },
+      });
     } else if (this.ws && this.ws.readyState === WebSocket.OPEN && displayName) {
       this.send({
         type: 'presence:announce',
@@ -202,23 +213,74 @@ class LiveAiSocketClient {
     }
   }
 
-  private async fetchInitialRestFallback(): Promise<void> {
+  private activateStandaloneFallback(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        this.ws.close();
+      } catch {
+        // ignore
+      }
+      this.ws = null;
+    }
+    if (!this.standaloneFallback) {
+      this.standaloneFallback = new LiveAiLocalFallback((envelope: LiveAiServerEnvelope) => {
+        this.handleIncomingMessage(envelope);
+      });
+    }
+    this.status = 'connected';
+    this.standaloneFallback.handleClientMessage({
+      type: 'presence:announce',
+      payload: { displayName: this.announcedDisplayName },
+    });
+  }
+
+  private async bootstrapConnection(): Promise<void> {
+    this.status = 'connecting';
+    const hasBackendServer = await this.probeLiveBackend();
+    if (!hasBackendServer) {
+      // Static SPA hosting (e.g. Vercel) — run browser-local Live AI Hub cleanly with zero WS reconnect spam
+      this.activateStandaloneFallback();
+      return;
+    }
+    this.connect();
+  }
+
+  private async probeLiveBackend(): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 3500);
     try {
-      const res = await fetch('/api/live-ai/snapshot');
-      if (!res.ok) return;
+      const res = await fetch('/api/live-ai/snapshot', { signal: controller.signal });
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || contentType.includes('text/html')) {
+        return false;
+      }
       const data = (await res.json()) as AiLiveHubSnapshot;
-      if (!this.snapshot && data && Array.isArray(data.players)) {
+      if (!data || !Array.isArray(data.players)) {
+        return false;
+      }
+      if (!this.snapshot) {
         this.snapshot = data;
         this.mergeChatHistory(data.chatHistory);
         this.emitSnapshot();
       }
+      return true;
     } catch {
-      // WebSocket connection will populate once ready
+      return false;
+    } finally {
+      window.clearTimeout(timer);
     }
   }
 
   private connect(): void {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || this.standaloneFallback) return;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -233,6 +295,7 @@ class LiveAiSocketClient {
       this.ws = socket;
 
       socket.onopen = () => {
+        this.everOpened = true;
         this.reconnectAttempt = 0;
         this.status = 'connected';
         this.send({
@@ -248,6 +311,36 @@ class LiveAiSocketClient {
             type?: string;
             payload?: unknown;
           };
+          this.handleIncomingMessage(msg);
+        } catch {
+          // Ignore invalid JSON message
+        }
+      };
+
+      socket.onclose = () => {
+        this.ws = null;
+        if (!this.everOpened && this.reconnectAttempt >= 1) {
+          this.activateStandaloneFallback();
+          return;
+        }
+        this.status = 'reconnecting';
+        this.emitSnapshot();
+        this.scheduleReconnect();
+      };
+
+      socket.onerror = () => {
+        try {
+          socket.close();
+        } catch {
+          // ignore
+        }
+      };
+    } catch {
+      this.activateStandaloneFallback();
+    }
+  }
+
+  private handleIncomingMessage(msg: { type?: string; payload?: unknown }): void {
           if (msg.type === 'hub:snapshot' && msg.payload) {
             this.snapshot = msg.payload as AiLiveHubSnapshot;
             this.mergeChatHistory(this.snapshot.chatHistory);
@@ -518,34 +611,10 @@ class LiveAiSocketClient {
             }
             for (const cb of this.serverBountyClaimAckListeners) cb(ack);
           }
-        } catch {
-          // Ignore invalid JSON message
-        }
-      };
-
-      socket.onclose = () => {
-        this.ws = null;
-        this.status = 'reconnecting';
-        this.emitSnapshot();
-        this.scheduleReconnect();
-      };
-
-      socket.onerror = () => {
-        try {
-          socket.close();
-        } catch {
-          // ignore
-        }
-      };
-    } catch {
-      this.status = 'offline';
-      this.emitSnapshot();
-      this.scheduleReconnect();
-    }
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimer !== null) return;
+    if (this.reconnectTimer !== null || this.standaloneFallback) return;
     this.reconnectAttempt += 1;
     const delayMs = Math.min(12_000, 1200 * Math.pow(1.6, Math.min(5, this.reconnectAttempt - 1)));
     this.reconnectTimer = window.setTimeout(() => {
@@ -555,6 +624,10 @@ class LiveAiSocketClient {
   }
 
   private send(msg: unknown): boolean {
+    if (this.standaloneFallback) {
+      this.standaloneFallback.handleClientMessage(msg);
+      return true;
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
       return true;

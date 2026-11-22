@@ -8,10 +8,10 @@ export const CHAPTER1_MAP_MODEL_ASSET = 'Chương 1/Map mới/Chương 1.glb' as
 export const CHAPTER1_MAP_LITE_LABEL = 'Bản Đồ 3D Chương 1 Lite · Tối Ưu Máy Yếu';
 
 const MODEL_VERSIONS = {
-  'heroes/golden-dress-girl.glb': 2,
-  'heroes/alice-ao-dai-hoa-mai.glb': 1,
-  'heroes/van-tich.glb': 1,
-  'heroes/hatsune-miku.glb': 1,
+  'heroes/golden-dress-girl.glb': 3,
+  'heroes/alice-ao-dai-hoa-mai.glb': 2,
+  'heroes/van-tich.glb': 2,
+  'heroes/hatsune-miku.glb': 2,
   [CHAPTER1_MAP_MODEL_ASSET]: 2,
 } as const;
 
@@ -282,6 +282,10 @@ async function readStreamUrl(url: URL, download: Download): Promise<ArrayBuffer>
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('text/html')) {
+      throw new Error('Phản hồi không phải tệp GLB hợp lệ');
+    }
     const encoding = response.headers.get('content-encoding');
     if (!encoding || encoding === 'identity') {
       download.length = Number(response.headers.get('content-length')) || 0;
