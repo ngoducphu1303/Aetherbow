@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --max-old-space-size=256 --import tsx --test --test-concurrency=1 tests/*.test.mjs src/engine/*.test.ts"
+    "test": "node --max-old-space-size=256 --import tsx --test --test-concurrency=1 tests/*.test.mjs src/engine/*.test.ts",
+    "check:glb": "node scripts/sync-glb-assets.mjs --check",
+    "sync:glb": "node scripts/sync-glb-assets.mjs"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",
