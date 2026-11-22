@@ -18,7 +18,6 @@ import worldBossArt from '../assets/images/world_boss_abyss_1795005956955.jpg';
 import { soundEngine } from '../audio/soundEngine';
 import { HERO_MAP } from '../data/heroesData';
 import {
-  AVATAR_FRAMES,
   MYTHIC_BADGES,
   WORLD_BOSS_MAX_DAILY_RUNS,
   WORLD_BOSS_MILESTONES,
@@ -94,8 +93,6 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   playerDisplayName,
   currentUid = null,
   vipLevel = 0,
-  onUnlockAvatarFrame,
-  onEquipAvatarFrame,
   onUnlockVipFrame,
   onEquipVipFrame,
   onCopyTopProfile,
@@ -188,8 +185,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
   void buildHonorLeaderboard;
 
   const wb = normalizeWorldBoss(save.worldBoss);
-  const unlockedFrames = new Set<AvatarFrameId>(save.unlockedAvatarFrames ?? ['default_gold']);
-  const equippedFrame = save.equippedAvatarFrameId ?? 'default_gold';
+  const equippedFrame = save.equippedAvatarFrameId;
   const unlockedVipFrames = new Set<VipAvatarFrameId>(save.unlockedVipFrames ?? []);
   const equippedVipFrame = save.equippedVipFrameId ?? null;
   const claimedBadges = new Set<MythicBadgeId>(save.claimedMythicBadges ?? []);
@@ -220,7 +216,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                 Bảng Vinh Danh Liên Server &amp; Huy Hiệu Thần Thoại
               </h2>
               <p className="text-[11px] text-slate-300 truncate">
-                Đua Top Liên Server, nhận thưởng Boss Thế Giới, khắc ấn Huy Hiệu &amp; Khung Avatar Hoàng Đạo!
+                Đua Top Liên Server, nhận thưởng Boss Thế Giới, khắc ấn Huy Hiệu &amp; Khung VIP Động!
               </p>
             </div>
           </div>
@@ -265,7 +261,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
             }`}
           >
             <Frame className="w-3.5 h-3.5" />
-            <span>Khung Avatar Hoàng Đạo ({unlockedFrames.size}/{AVATAR_FRAMES.length})</span>
+            <span>Khung VIP Động ({unlockedVipFrames.size}/{VIP_AVATAR_FRAME_DEFS.length})</span>
           </button>
           {onOpenWeeklyBoss && (
             <button
@@ -997,82 +993,6 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                           )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Classic Zodiac Avatar Frames */}
-            <div>
-              <div className="text-xs font-black uppercase tracking-wider text-slate-300 mb-2.5">
-                Khung Avatar Hoàng Đạo ({unlockedFrames.size}/{AVATAR_FRAMES.length})
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {AVATAR_FRAMES.map((frame) => {
-                  const unlocked = unlockedFrames.has(frame.id);
-                  const equipped = equippedFrame === frame.id;
-                  return (
-                    <div
-                      key={frame.id}
-                      className={`rounded-2xl border p-4 flex flex-col items-center text-center justify-between gap-3 ${
-                        equipped
-                          ? 'bg-[#171209]/95 border-amber-300'
-                          : unlocked
-                          ? 'bg-[#081523]/95 border-sky-400/50'
-                          : 'bg-[#070b1a]/95 border-slate-800'
-                      }`}
-                    >
-                      <div className="flex flex-col items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">
-                          {frame.tierLabel}
-                        </span>
-                        <ZodiacAvatar
-                          heroId={activeHero.id}
-                          accentHex={activeHero.accentHex}
-                          cloakHex={activeHero.cloakHex}
-                          hairHex={activeHero.hairHex}
-                          frameId={frame.id}
-                          sizeClass="w-16 h-16"
-                        />
-                        <div className="font-display text-sm font-black text-white">{frame.name}</div>
-                        <p className="text-[11px] text-slate-300 leading-snug">{frame.desc}</p>
-                        <div className="text-[10px] font-bold text-sky-300">
-                          {frame.unlockMethodLabel}
-                        </div>
-                      </div>
-
-                      {unlocked ? (
-                        <button
-                          type="button"
-                          disabled={equipped}
-                          onClick={() => {
-                            soundEngine.playUiClick(1.05);
-                            onEquipAvatarFrame(frame.id);
-                          }}
-                          className={`w-full py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:cursor-default ${
-                            equipped ? 'a2-emerald-btn' : 'a2-yellow-btn'
-                          }`}
-                        >
-                          {equipped ? 'Đang Trang Bị' : 'Trang Bị Khung'}
-                        </button>
-                      ) : frame.unlockGems ? (
-                        <button
-                          type="button"
-                          disabled={save.gems < frame.unlockGems}
-                          onClick={() => {
-                            soundEngine.playLevelUp();
-                            onUnlockAvatarFrame(frame.id);
-                          }}
-                          className="a2-purple-btn w-full py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
-                        >
-                          Mở Khóa ({frame.unlockGems} Ngọc)
-                        </button>
-                      ) : (
-                        <div className="w-full py-2 rounded-xl text-[11px] font-black bg-slate-900 text-slate-400 border border-slate-800">
-                          Đạt Điều Kiện Để Mở
-                        </div>
-                      )}
                     </div>
                   );
                 })}

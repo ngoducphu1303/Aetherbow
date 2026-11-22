@@ -344,13 +344,13 @@ export function migrateSaveData(raw: SaveData): SaveData {
     }
   }
 
-  // Restrict heroes strictly to Alice ('artemis') and Hatsune Miku ('hatsune_miku'), both unlocked.
-  const VALID_HERO_IDS = new Set<HeroId>(['artemis', 'hatsune_miku']);
+  // Keep Alice ('artemis'), Hatsune Miku ('hatsune_miku'), and Aurelia ('aurelia') all unlocked.
+  const VALID_HERO_IDS = new Set<HeroId>(['artemis', 'hatsune_miku', 'aurelia']);
   const filteredHeroes = (Array.isArray(raw.unlockedHeroes) ? raw.unlockedHeroes : []).filter(
     (id): id is HeroId => VALID_HERO_IDS.has(id as HeroId)
   );
   const normalizedUnlockedHeroes: HeroId[] = Array.from(
-    new Set<HeroId>(['artemis', 'hatsune_miku', ...filteredHeroes])
+    new Set<HeroId>(['artemis', 'hatsune_miku', 'aurelia', ...filteredHeroes])
   );
   const resolvedHeroId: HeroId =
     raw.selectedHeroId && VALID_HERO_IDS.has(raw.selectedHeroId as HeroId)
@@ -359,15 +359,83 @@ export function migrateSaveData(raw: SaveData): SaveData {
   const normalizedHeroStars: Partial<Record<HeroId, number>> = {
     artemis: Math.max(0, Math.floor(raw.heroStars?.artemis ?? 0)),
     hatsune_miku: Math.max(0, Math.floor(raw.heroStars?.hatsune_miku ?? 0)),
+    aurelia: Math.max(0, Math.floor(raw.heroStars?.aurelia ?? 0)),
   };
 
-  // Restrict mounts strictly to Hắc Long ('black_dragon') and remove all Astral Steeds & Hero Skins.
-  const normalizedUnlockedMounts: SaveData['unlockedMounts'] = ['black_dragon'];
-  const normalizedMountLevels: SaveData['mountLevels'] = {
-    black_dragon: Math.max(1, Math.floor(raw.mountLevels?.black_dragon ?? 1)),
+  // Unlock all 4 Aurelia Solar Leo skins while validating equippedSkinByHero.
+  const SOLAR_LEO_SKINS: NonNullable<SaveData['unlockedSkins']> = [
+    'aurelia_oasis_dancer',
+    'aurelia_temple_commander',
+    'aurelia_solaris_valkyrie',
+    'aurelia_winter_solstice',
+  ];
+  const validSkinSet = new Set<string>(['default', ...SOLAR_LEO_SKINS]);
+  const normalizedUnlockedSkins = Array.from(
+    new Set([
+      ...SOLAR_LEO_SKINS,
+      ...(Array.isArray(raw.unlockedSkins)
+        ? raw.unlockedSkins.filter((id) => validSkinSet.has(id) && id !== 'default')
+        : []),
+    ])
+  ) as NonNullable<SaveData['unlockedSkins']>;
+  const rawEquippedSkins = raw.equippedSkinByHero ?? {};
+  const normalizedEquippedSkinByHero: NonNullable<SaveData['equippedSkinByHero']> = {};
+  if (rawEquippedSkins.aurelia && validSkinSet.has(rawEquippedSkins.aurelia)) {
+    normalizedEquippedSkinByHero.aurelia = rawEquippedSkins.aurelia;
+  }
+
+  // Keep only Solarius ('solarius') mount; safely migrate legacy Hắc Long saves to Solarius.
+  const normalizedUnlockedMounts: NonNullable<SaveData['unlockedMounts']> = ['solarius'];
+  const migratedSolariusLv = Math.max(
+    1,
+    Math.floor(raw.mountLevels?.solarius ?? raw.mountLevels?.black_dragon ?? 1)
+  );
+  const normalizedMountLevels: NonNullable<SaveData['mountLevels']> = {
+    solarius: migratedSolariusLv,
   };
   const resolvedEquippedMountId: SaveData['equippedMountId'] =
-    raw.equippedMountId === null ? null : 'black_dragon';
+    raw.equippedMountId === null || raw.equippedMountId === undefined
+      ? null
+      : 'solarius';
+
+  // Keep only Astraeo pet, Wings of the Solar Zenith, Astrolabe of Regulus artifact, and Halo of the Leo Sovereign.
+  const existingAstraeo = Array.isArray(raw.pets)
+    ? raw.pets.find((p) => p.petId === 'astraeo')
+    : undefined;
+  const normalizedPets: NonNullable<SaveData['pets']> = [
+    {
+      petId: 'astraeo',
+      level: Math.max(1, Math.floor(existingAstraeo?.level ?? 1)),
+    },
+  ];
+  const resolvedEquippedPetId: SaveData['equippedPetId'] =
+    raw.equippedPetId ? 'astraeo' : null;
+  const normalizedEvolvedPets: NonNullable<SaveData['evolvedPets']> = (
+    Array.isArray(raw.evolvedPets) ? raw.evolvedPets : []
+  ).filter((id): id is 'astraeo' => id === 'astraeo');
+
+  const normalizedUnlockedWings: NonNullable<SaveData['unlockedWings']> = ['solar_zenith'];
+  const normalizedWingLevels: NonNullable<SaveData['wingLevels']> = {
+    solar_zenith: Math.max(1, Math.floor(raw.wingLevels?.solar_zenith ?? 1)),
+  };
+  const resolvedEquippedWingId: SaveData['equippedWingId'] =
+    raw.equippedWingId ? 'solar_zenith' : null;
+
+  const normalizedUnlockedArtifacts: NonNullable<SaveData['unlockedArtifacts']> = [
+    'astrolabe_regulus',
+  ];
+  const normalizedArtifactLevels: NonNullable<SaveData['artifactLevels']> = {
+    astrolabe_regulus: Math.max(1, Math.floor(raw.artifactLevels?.astrolabe_regulus ?? 1)),
+  };
+  const resolvedEquippedArtifactId: SaveData['equippedArtifactId'] =
+    raw.equippedArtifactId ? 'astrolabe_regulus' : null;
+
+  const normalizedUnlockedHalos: NonNullable<SaveData['unlockedHalos']> = ['leo_sovereign'];
+  const normalizedHaloLevels: NonNullable<SaveData['haloLevels']> = {
+    leo_sovereign: Math.max(1, Math.floor(raw.haloLevels?.leo_sovereign ?? 1)),
+  };
+  const resolvedEquippedHaloId: SaveData['equippedHaloId'] =
+    raw.equippedHaloId ? 'leo_sovereign' : null;
 
   // Build synchronized visible inbox (never respawning deleted mails, always reflecting claimedMailIds)
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -389,12 +457,34 @@ export function migrateSaveData(raw: SaveData): SaveData {
     aliceDefaultMigrated: true,
     unlockedHeroes: normalizedUnlockedHeroes,
     heroStars: normalizedHeroStars,
-    unlockedSkins: [],
-    equippedSkinByHero: {},
+    pets: normalizedPets,
+    equippedPetId: resolvedEquippedPetId,
+    evolvedPets: normalizedEvolvedPets,
+    unlockedSkins: normalizedUnlockedSkins,
+    equippedSkinByHero: normalizedEquippedSkinByHero,
+    unlockedAuras: [],
+    equippedAuraId: undefined,
+    unlockedWings: normalizedUnlockedWings,
+    wingLevels: normalizedWingLevels,
+    equippedWingId: resolvedEquippedWingId,
+    unlockedCelestialWings: [],
+    celestialWingStars: {},
+    equippedCelestialWingId: null,
+    unlockedAvatarFrames: [],
+    equippedAvatarFrameId: undefined,
     unlockedMounts: normalizedUnlockedMounts,
     mountLevels: normalizedMountLevels,
     equippedMountId: resolvedEquippedMountId,
     mountAppearance: 'zodiac',
+    unlockedWeaponAuras: [],
+    weaponAuraLevels: {},
+    equippedWeaponAuraId: 'none',
+    unlockedArtifacts: normalizedUnlockedArtifacts,
+    artifactLevels: normalizedArtifactLevels,
+    equippedArtifactId: resolvedEquippedArtifactId,
+    unlockedHalos: normalizedUnlockedHalos,
+    haloLevels: normalizedHaloLevels,
+    equippedHaloId: resolvedEquippedHaloId,
     unlockedAstralSteeds: [],
     astralSteedStars: {},
     equippedAstralSteedId: null,
@@ -735,15 +825,8 @@ export function applyEarlyRunMilestones(
     summary.sTierBlueprintsGained += 8;
     summary.goldGained += 280;
     summary.gemsGained += 40;
-    // Award moved Celestial Wing 3D on Chapter 2 Clear (entering Chapter 3)!
-    if (!nextCelWings.includes('seraph_azure')) {
-      nextCelWings.push('seraph_azure');
-      nextCelWingStars = { ...nextCelWingStars, seraph_azure: 1 };
-      if (!nextEqCelWing) nextEqCelWing = 'seraph_azure';
-      summary.unlockedCelestialWing = true;
-    }
     summary.milestoneIds.push('ms_ch2_clear');
-    summary.titles.push('Vượt Chương 2 · Mở Khóa Đấu Trường, Sự Kiện & Cánh Thần Quang 3D');
+    summary.titles.push('Vượt Chương 2 · Mở Khóa Đấu Trường, Sự Kiện & Bản Vẽ [S]');
   }
 
   if (chapterId === 3 && victory && !claimed.has('ms_ch3_clear')) {

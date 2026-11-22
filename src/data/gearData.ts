@@ -912,8 +912,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     maxHp += skinDef.hpBonus;
   }
 
-  const activeAuraId = save.equippedAuraId ?? 'zodiac_gold';
-  const auraDef = AURA_MAP[activeAuraId];
+  const activeAuraId = save.equippedAuraId;
+  const auraDef = activeAuraId ? AURA_MAP[activeAuraId] : undefined;
   if (auraDef) {
     critChance += auraDef.critBonus;
   }
@@ -1282,10 +1282,11 @@ export function createInitialSaveData(): SaveData {
     bestStagePerChapter: {},
     selectedHeroId: 'artemis',
     aliceDefaultMigrated: true,
-    unlockedHeroes: ['artemis', 'hatsune_miku'],
+    unlockedHeroes: ['artemis', 'hatsune_miku', 'aurelia'],
     heroStars: {
       artemis: 0,
       hatsune_miku: 0,
+      aurelia: 0,
     },
     equipped: {
       [GearSlot.WEAPON]: starterWeapon.uid,
@@ -1327,12 +1328,17 @@ export function createInitialSaveData(): SaveData {
     flashDeals: { date: getTodayKey(), purchasedIds: [] },
     dailySweeps: { date: getTodayKey(), remaining: MAX_DAILY_SWEEPS },
     runHistory: [],
-    pets: [],
+    pets: [{ petId: 'astraeo', level: 1 }],
     equippedPetId: null,
-    unlockedSkins: [],
+    unlockedSkins: [
+      'aurelia_oasis_dancer',
+      'aurelia_temple_commander',
+      'aurelia_solaris_valkyrie',
+      'aurelia_winter_solstice',
+    ],
     equippedSkinByHero: {},
-    unlockedAuras: ['zodiac_gold'],
-    equippedAuraId: 'zodiac_gold',
+    unlockedAuras: [],
+    equippedAuraId: undefined,
     vip: {
       activeUntilDate: '',
       lastDailyClaimDate: '',
@@ -1357,11 +1363,11 @@ export function createInitialSaveData(): SaveData {
     elementalTowers: normalizeElementalTowers(),
     commercialPackClaims: {},
     wingFeathers: 0,
-    unlockedWings: [],
-    wingLevels: {},
+    unlockedWings: ['solar_zenith'],
+    wingLevels: { solar_zenith: 1 },
     equippedWingId: null,
-    unlockedAvatarFrames: ['default_gold'],
-    equippedAvatarFrameId: 'default_gold',
+    unlockedAvatarFrames: [],
+    equippedAvatarFrameId: undefined,
     claimedMythicBadges: [],
     equippedMythicBadgeId: null,
     monthlyPrivilege: normalizeMonthlyPrivilege(),
@@ -1372,10 +1378,10 @@ export function createInitialSaveData(): SaveData {
     mountShards: 0,
     awakeningCrystals: 0,
     wishTickets: 0,
-    unlockedMounts: ['black_dragon'],
-    mountLevels: { black_dragon: 1 },
+    unlockedMounts: ['solarius'],
+    mountLevels: { solarius: 1 },
     equippedMountId: null,
-    unlockedWeaponAuras: ['none'],
+    unlockedWeaponAuras: [],
     weaponAuraLevels: {},
     equippedWeaponAuraId: 'none',
     wishPool: normalizeWishPool(),
@@ -1384,8 +1390,8 @@ export function createInitialSaveData(): SaveData {
     dispatch: normalizeDispatchState(),
     bloodMoon: normalizeBloodMoon(),
     artifactShards: 0,
-    unlockedArtifacts: [],
-    artifactLevels: {},
+    unlockedArtifacts: ['astrolabe_regulus'],
+    artifactLevels: { astrolabe_regulus: 1 },
     equippedArtifactId: null,
     mysticExchange: normalizeMysticExchange(),
     abyssalGauntlet: normalizeAbyssalGauntlet(),
@@ -1393,8 +1399,8 @@ export function createInitialSaveData(): SaveData {
     unlockedDynamicTitles: ['none'],
     equippedDynamicTitleId: 'none',
     divineCrystals: 0,
-    unlockedHalos: [],
-    haloLevels: {},
+    unlockedHalos: ['leo_sovereign'],
+    haloLevels: { leo_sovereign: 1 },
     equippedHaloId: null,
     stepUpChain: normalizeStepUpChain(),
     gemRebateVault: normalizeGemRebateVault(),

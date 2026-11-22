@@ -12,14 +12,12 @@ const MODEL_VERSIONS = {
   'heroes/alice-ao-dai-hoa-mai.glb': 1,
   'heroes/van-tich.glb': 1,
   'heroes/hatsune-miku.glb': 1,
-  'mounts/dragon.glb': 3,
   [CHAPTER1_MAP_MODEL_ASSET]: 2,
 } as const;
 
 export const MODEL_LABELS: Record<keyof typeof MODEL_VERSIONS, string> = {
   'heroes/golden-dress-girl.glb': 'Mô hình Anh Hùng Alice 3D',
   'heroes/alice-ao-dai-hoa-mai.glb': 'Áo Dài Hoa Mai của Alice',
-  'mounts/dragon.glb': 'Thú Cưỡi Hắc Long 3D',
   'heroes/van-tich.glb': 'Vân Tịch 3D',
   'heroes/hatsune-miku.glb': 'Hatsune Miku 3D',
   [CHAPTER1_MAP_MODEL_ASSET]: 'Bản Đồ 3D Chương 1 · Thánh Điện Nhật Luân',

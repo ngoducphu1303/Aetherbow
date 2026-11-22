@@ -626,14 +626,14 @@ function ensureBrowserLocalSavesPurgedForResetEpoch(): void {
     if (localStorage.getItem(RESET_EPOCH_MARKER_KEY) === String(ACCOUNT_RESET_EPOCH)) {
       return;
     }
-    const keysToRemove: string[] = [];
+    const keysToRemove: string[] = [STORAGE_KEY, GUEST_STORAGE_KEY, STORAGE_OWNER_KEY];
     for (let i = 0; i < localStorage.length; i += 1) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('artemis_3d_save_')) {
+      if (k && (k.startsWith('artemis_3d_save_') || k.startsWith('artemis_3d_guest_'))) {
         keysToRemove.push(k);
       }
     }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
+    Array.from(new Set(keysToRemove)).forEach((k) => localStorage.removeItem(k));
     localStorage.setItem(RESET_EPOCH_MARKER_KEY, String(ACCOUNT_RESET_EPOCH));
   } catch {
     // ignore storage errors
@@ -1217,7 +1217,7 @@ export default function App() {
     const skinDef = requestedSkin && (!requestedSkin.heroId || requestedSkin.heroId === hero.id)
       ? requestedSkin
       : SKIN_MAP.default;
-    const auraDef = AURA_MAP[save.equippedAuraId ?? 'zodiac_gold'] ?? AURA_MAP.zodiac_gold;
+    const auraDef = save.equippedAuraId ? AURA_MAP[save.equippedAuraId] : undefined;
     const selCh = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
     const equippedWingId =
       save.equippedWingId && (save.unlockedWings ?? []).includes(save.equippedWingId)
@@ -1302,8 +1302,8 @@ export default function App() {
       cheekColor: hero.cheekColor,
       crownStyle: hero.crownStyle,
       weaponArchetype: wTpl?.weaponArchetype ?? 'bow',
-      auraPrimaryHex: auraDef.primaryHex,
-      auraSecondaryHex: auraDef.secondaryHex,
+      auraPrimaryHex: auraDef?.primaryHex,
+      auraSecondaryHex: auraDef?.secondaryHex,
       pedestalTintHex: selCh.trimHex,
       constellationLevels: playerStats.constellationLevels,
       wingId: effectiveWingId,
@@ -3549,6 +3549,49 @@ export default function App() {
     setSave(nextSave);
     setSelectedChapterId(Math.min(CHAPTERS.length, Math.max(1, nextSave.highestChapterCleared + 1)));
   }, []);
+
+  const handleResetAllPlayerData = useCallback(async () => {
+    if (cloudSaveTimerRef.current) {
+      window.clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+    }
+    const freshSave = createFreshSaveData();
+    skipNextAutoSyncRef.current = true;
+    saveRef.current = freshSave;
+    unlockedToastIdsRef.current = null;
+    prevPowerRef.current = null;
+    setSave(freshSave);
+    setSelectedChapterId(1);
+    setGameMode('chapter');
+    setActiveLobbyTab('battle');
+    setRunSummary(null);
+    setPreviewHeroId(null);
+    setSaveConflict(null);
+    try {
+      const keysToRemove: string[] = [STORAGE_KEY, GUEST_STORAGE_KEY];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('artemis_3d_save_') || k.startsWith('artemis_3d_guest_'))) {
+          keysToRemove.push(k);
+        }
+      }
+      Array.from(new Set(keysToRemove)).forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem(RESET_EPOCH_MARKER_KEY, String(ACCOUNT_RESET_EPOCH));
+      if (currentUser) {
+        localStorage.setItem(getUserStorageKey(currentUser.uid), JSON.stringify(freshSave));
+        localStorage.setItem(STORAGE_OWNER_KEY, 'cloud');
+      } else {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(freshSave));
+        localStorage.setItem(STORAGE_OWNER_KEY, 'guest');
+      }
+    } catch {
+      // ignore storage errors
+    }
+    if (currentUser) {
+      cloudHydratedUidRef.current = currentUser.uid;
+      await performCloudSave(currentUser, freshSave);
+    }
+  }, [currentUser, performCloudSave]);
 
   const guardFeatureUnlock = useCallback(
     (feature: EarlyFeatureId): boolean => {
@@ -6829,10 +6872,10 @@ export default function App() {
       setSave((prev) => {
         const next = { ...prev };
         // Never silently switch the player's active hero when copying a Top leaderboard build.
-        if ((prev.unlockedMounts ?? []).includes('black_dragon')) {
-          next.equippedMountId = 'black_dragon';
+        if ((prev.unlockedMounts ?? []).includes('solarius')) {
+          next.equippedMountId = 'solarius';
           next.mountAppearance = 'zodiac';
-          syncedParts.push('Hắc Long');
+          syncedParts.push('Solarius');
         }
         if ((prev.unlockedWarBanners ?? []).includes(profile.warBannerId)) {
           next.equippedWarBannerId = profile.warBannerId;
@@ -8289,6 +8332,15 @@ export default function App() {
   }, []);
 
   const handleEquipSkin = useCallback((heroId: HeroId, skinId: HeroSkinId) => {
+    setWardrobePreview((prev) => (prev.skinId !== undefined ? { ...prev, skinId: undefined } : prev));
+    if (skinId === 'default') {
+      soundEngine.playUiClick(1.0);
+      setSave((prev) => ({
+        ...prev,
+        equippedSkinByHero: { ...(prev.equippedSkinByHero ?? {}), [heroId]: 'default' },
+      }));
+      return;
+    }
     const skin = SKIN_MAP[skinId];
     if (!skin || (skin.heroId && skin.heroId !== heroId)) return;
     soundEngine.playUiClick(1.1);
@@ -9411,13 +9463,6 @@ export default function App() {
       if (currency === 'gems' && prev.gems < def.unlockGems) return prev;
       if (currency === 'feathers' && feathers < def.unlockFeathers) return prev;
 
-      const nextUnlockedFrames = new Set<AvatarFrameId>(
-        prev.unlockedAvatarFrames ?? ['default_gold']
-      );
-      if (wingId === 'seraph_zodiac') {
-        nextUnlockedFrames.add('seraph_crown');
-      }
-
       soundEngine.playAchievement();
       return {
         ...prev,
@@ -9427,7 +9472,6 @@ export default function App() {
         unlockedWings: [...unlocked, wingId],
         wingLevels: { ...(prev.wingLevels ?? {}), [wingId]: 1 },
         equippedWingId: wingId,
-        unlockedAvatarFrames: Array.from(nextUnlockedFrames),
       };
     });
   }, []);
@@ -9473,8 +9517,7 @@ export default function App() {
       const canConditionUnlock =
         (frameId === 'royal_vip' && hasRoyal) ||
         (frameId === 'crystal_guardian' && cd.bestWave >= 4) ||
-        (frameId === 'world_dragon' && wb.bestSingleDamage >= 150000) ||
-        (frameId === 'seraph_crown' && (prev.unlockedWings ?? []).includes('seraph_zodiac'));
+        (frameId === 'world_dragon' && wb.bestSingleDamage >= 150000);
 
       if (canConditionUnlock) {
         unlocked.add(frameId);
@@ -12140,6 +12183,7 @@ export default function App() {
             setSave((prev) => ({ ...prev, playtestMetrics: resetPlaytestMetrics() }))
           }
           onImportSave={handleImportSave}
+          onResetPlayerData={handleResetAllPlayerData}
           onClose={() => setSettingsOpen(false)}
         />
       )}

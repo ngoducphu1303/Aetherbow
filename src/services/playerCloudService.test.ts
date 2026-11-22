@@ -137,6 +137,32 @@ test('Pre-reset local guest save cannot override a legacy cloud account when lin
   assert.equal(action, 'fresh_initial');
 });
 
+test('Previous-epoch (Epoch 1 / v3) cloud account and guest save both reset to fresh_initial after global reset', () => {
+  const epoch1Save: SaveData = {
+    ...makeProgressedSave(),
+    accountResetEpoch: ACCOUNT_RESET_EPOCH - 1,
+  };
+  const epoch1Cloud = makeCloudRecord(epoch1Save, CURRENT_RESET_SAVE_VERSION - 1);
+  assert.equal(isSaveBeforeResetEpoch(epoch1Save), true);
+  assert.equal(isCloudRecordBeforeResetEpoch(epoch1Cloud), true);
+
+  const directLoginAction = resolveAccountHydrationAction({
+    cloudRecord: epoch1Cloud,
+    localSave: createInitialSaveData(),
+    isNewRegistration: false,
+    preserveGuestSave: false,
+  });
+  assert.equal(directLoginAction, 'fresh_initial');
+
+  const guestLinkAction = resolveAccountHydrationAction({
+    cloudRecord: epoch1Cloud,
+    localSave: epoch1Save,
+    isNewRegistration: false,
+    preserveGuestSave: true,
+  });
+  assert.equal(guestLinkAction, 'fresh_initial');
+});
+
 test('Post-reset initial save carries current ACCOUNT_RESET_EPOCH', () => {
   const fresh = createInitialSaveData();
   assert.equal(fresh.accountResetEpoch, ACCOUNT_RESET_EPOCH);

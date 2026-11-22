@@ -8,7 +8,6 @@ import {
   Gift,
   Play,
   Sparkles,
-  Star,
   Trophy,
   X,
 } from 'lucide-react';
@@ -20,8 +19,6 @@ import {
   ASTRAL_BOARD_TILES,
   ASTRAL_DICE_BUY_COST_GEMS,
   ASTRAL_GOLDEN_DICE_COST_GEMS,
-  CELESTIAL_WING_DEFS,
-  CELESTIAL_WING_MAX_STAR,
   ROYAL_3D_TITLE_DEFS,
   SKY_CITADEL_MAX_DAILY_RUNS,
   SKY_CITADEL_MILESTONES,
@@ -31,8 +28,6 @@ import {
   computeZodiacRelicBonuses,
   countClaimableAstralBoardRewards,
   countClaimableSkyCitadelMilestones,
-  getCelestialWingStats,
-  getCelestialWingUpgradeCost,
   getZodiacRelicUpgradeCost,
   normalizeAstralBoard,
   normalizeSkyCitadel,
@@ -75,8 +70,6 @@ const BOARD_COORDS: Array<[number, number]> = [
 export const Wave14AscensionModal: React.FC<Wave14AscensionModalProps> = ({
   save,
   initialTab = 'wings',
-  onUnlockOrUpgradeWing,
-  onEquipWing,
   onStartSkyCitadel,
   onClaimSkyCitadelMilestone,
   onClaimDailyFreeDice,
@@ -94,9 +87,6 @@ export const Wave14AscensionModal: React.FC<Wave14AscensionModalProps> = ({
   const [goldenPickerOpen, setGoldenPickerOpen] = useState(false);
 
   const feathers = save.celestialFeathers ?? 0;
-  const unlockedWings = save.unlockedCelestialWings ?? [];
-  const wingStars = save.celestialWingStars ?? {};
-  const equippedWing = save.equippedCelestialWingId ?? null;
   const sky = normalizeSkyCitadel(save.skyCitadel);
   const board = normalizeAstralBoard(save.astralBoard);
   const relics = normalizeZodiacRelics(save.zodiacRelics);
@@ -137,7 +127,7 @@ export const Wave14AscensionModal: React.FC<Wave14AscensionModalProps> = ({
                 </div>
                 <h2 className="font-display text-lg sm:text-2xl font-black text-white truncate">
                   {tab === 'wings'
-                    ? 'Cánh Thần Quang 3D & Không Chiến'
+                    ? 'Không Chiến Tinh Giới 3D'
                     : tab === 'board'
                     ? 'Bàn Cờ Xúc Xắc Tinh Tú 16 Ô'
                     : 'Kho Cổ Vật Hoàng Đạo & Danh Hiệu 3D'}
@@ -181,7 +171,7 @@ export const Wave14AscensionModal: React.FC<Wave14AscensionModalProps> = ({
                 }`}
               >
                 <Feather className="w-3.5 h-3.5" />
-                <span>Cánh 3D & Không Chiến</span>
+                <span>Không Chiến Tinh Giới</span>
                 {skyClaimable > 0 && (
                   <span className="ml-1 font-mono-nums text-[10px] font-black text-rose-600 bg-rose-100 px-1.5 rounded">
                     {skyClaimable}
@@ -320,159 +310,6 @@ export const Wave14AscensionModal: React.FC<Wave14AscensionModalProps> = ({
                     </div>
                   );
                 })}
-              </div>
-
-              {/* 4 Articulated 3D Celestial Wings */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-display text-base font-black text-white">
-                    Bộ Sưu Tập Cánh Thần Quang 3D (Hiển Thị Trực Tiếp Trên Lưng Anh Hùng)
-                  </h3>
-                  <span className="text-xs font-mono-nums text-sky-300 font-bold">
-                    Hiện có: {feathers} Lông Vũ Thần Quang
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {CELESTIAL_WING_DEFS.map((wing) => {
-                    const isUnlocked = unlockedWings.includes(wing.id);
-                    const star = isUnlocked ? Math.max(1, wingStars[wing.id] ?? 1) : 0;
-                    const isEquipped = equippedWing === wing.id;
-                    const stats = getCelestialWingStats(wing.id, isUnlocked ? star : 1);
-                    const upgCost = getCelestialWingUpgradeCost(star || 1);
-                    const isMax = star >= CELESTIAL_WING_MAX_STAR;
-                    const canAffordUnlock =
-                      !isUnlocked && feathers >= wing.unlockFeathers && save.gems >= wing.unlockGems;
-                    const canAffordUpgrade =
-                      isUnlocked && !isMax && feathers >= upgCost.feathers && save.gold >= upgCost.gold;
-
-                    return (
-                      <div
-                        key={wing.id}
-                        className={`rounded-2xl p-4 border flex flex-col justify-between gap-3 ${
-                          isEquipped
-                            ? 'border-amber-300/80 bg-[#131c3d]'
-                            : 'border-slate-700/80 bg-[#0c1228]'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <div className="text-[11px] font-bold text-amber-300">
-                                {wing.rarity} · {wing.badge}
-                              </div>
-                              <h4 className="font-display text-base font-black text-white mt-0.5">
-                                {wing.name}
-                              </h4>
-                            </div>
-                            <div className="flex items-center gap-0.5 text-amber-300 font-mono-nums text-xs font-black shrink-0">
-                              {isUnlocked ? (
-                                <>
-                                  {Array.from({ length: CELESTIAL_WING_MAX_STAR }).map((_, i) => (
-                                    <Star
-                                      key={i}
-                                      className={`w-3.5 h-3.5 ${
-                                        i < star ? 'fill-amber-300 text-amber-300' : 'text-slate-600'
-                                      }`}
-                                    />
-                                  ))}
-                                </>
-                              ) : (
-                                <span className="text-slate-400">Chưa mở</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">{wing.desc}</p>
-
-                          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                            <div className="rounded-lg bg-[#080d1f] p-2 border border-slate-800">
-                              <div className="text-[10px] text-slate-400">Công Kích</div>
-                              <div className="font-mono-nums text-xs font-black text-amber-300">
-                                +{Math.round(stats.atkPct * 100)}%
-                              </div>
-                            </div>
-                            <div className="rounded-lg bg-[#080d1f] p-2 border border-slate-800">
-                              <div className="text-[10px] text-slate-400">Sinh Lực</div>
-                              <div className="font-mono-nums text-xs font-black text-emerald-300">
-                                +{Math.round(stats.hpPct * 100)}%
-                              </div>
-                            </div>
-                            <div className="rounded-lg bg-[#080d1f] p-2 border border-slate-800">
-                              <div className="text-[10px] text-slate-400">Tốc Bắn</div>
-                              <div className="font-mono-nums text-xs font-black text-sky-300">
-                                +{Math.round(stats.aspd * 100)}%
-                              </div>
-                            </div>
-                            <div className="rounded-lg bg-[#080d1f] p-2 border border-slate-800">
-                              <div className="text-[10px] text-slate-400">Chí Mạng</div>
-                              <div className="font-mono-nums text-xs font-black text-rose-300">
-                                +{(stats.crit * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-1">
-                          {isUnlocked ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  soundEngine.playUiClick(1.05);
-                                  onEquipWing(wing.id);
-                                }}
-                                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
-                                  isEquipped
-                                    ? 'bg-emerald-500/20 border border-emerald-400/60 text-emerald-200'
-                                    : 'a2-slate-btn text-white'
-                                }`}
-                              >
-                                {isEquipped ? 'Đang Đeo 3D' : 'Đeo Cánh 3D'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isMax || !canAffordUpgrade}
-                                onClick={() => {
-                                  soundEngine.playUiClick(1.15);
-                                  onUnlockOrUpgradeWing(wing.id);
-                                }}
-                                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
-                                  isMax
-                                    ? 'bg-slate-800 text-amber-300 cursor-default'
-                                    : canAffordUpgrade
-                                    ? 'a2-gold-btn text-slate-950'
-                                    : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                                }`}
-                              >
-                                {isMax
-                                  ? 'Tối Đa 5★'
-                                  : `Tăng ${star + 1}★ (${upgCost.feathers} Lông Vũ)`}
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={!canAffordUnlock}
-                              onClick={() => {
-                                soundEngine.playUiClick(1.15);
-                                onUnlockOrUpgradeWing(wing.id);
-                              }}
-                              className={`w-full py-2.5 px-4 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
-                                canAffordUnlock
-                                  ? 'a2-gold-btn text-slate-950'
-                                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                              }`}
-                            >
-                              Mở Khóa ({wing.unlockFeathers} Lông Vũ
-                              {wing.unlockGems > 0 ? ` + ${wing.unlockGems} Ngọc` : ''})
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </>
           )}

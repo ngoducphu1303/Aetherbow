@@ -237,7 +237,8 @@ test('Legacy Save Migration: respects deleted mails and preserves 100% of legacy
   assert.ok(migratedA.inventory.some((g) => g.uid === 'legacy_epic_armor_88' && g.rarity === Rarity.EPIC));
   assert.equal(migratedA.equipped[GearSlot.WEAPON], 'legacy_s_bow_99');
   assert.equal(migratedA.runeInventory.length, 1);
-  assert.deepEqual(migratedA.unlockedCelestialWings, ['seraph_azure']);
+  // Legacy Celestial Wings are retired and cleaned safely on migration
+  assert.deepEqual(migratedA.unlockedCelestialWings, []);
   assert.deepEqual(migratedA.unlockedRoyal3DTitles, ['title_sky_sovereign']);
   assert.deepEqual(migratedA.achievementsClaimed, ['ach_first_blood']);
 
@@ -336,8 +337,8 @@ test('Progression Gating Ch.1–3: rarity ceilings, feature locks, and progressi
   assert.equal(getEarlyProgressionPolicy(ch2After).allowSTier, false);
   assert.equal(isEarlyFeatureUnlocked(ch2After, 'starter_pack').unlocked, false);
   assert.equal(isEarlyFeatureUnlocked(ch2After, 'meta_events').unlocked, true);
-  assert.equal(sumCh2.unlockedCelestialWing, true);
-  assert.ok(ch2After.unlockedCelestialWings?.includes('seraph_azure'));
+  assert.equal(Boolean(sumCh2.unlockedCelestialWing), false);
+  assert.deepEqual(ch2After.unlockedCelestialWings ?? [], []);
 
   // Post Ch.3 Clear (Entering Ch.4): S-Tier & Starter Pack & Co-op Raid open; Ch.4 clear opens Legendary; Ch.8 clear opens Mythic
   const ch3After: SaveData = { ...ch2After, highestChapterCleared: 3, bestStagePerChapter: { 1: 12, 2: 12, 3: 12 } };
@@ -486,7 +487,7 @@ test('Chapter 1 Build Archetypes: SKILLS_CATALOG exposes distinct AoE and Boss b
 });
 
 test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DPS of Artemis on identical Ch.1 loadout', () => {
-  assert.equal(HEROES.length, 2);
+  assert.equal(HEROES.length, 3);
   const fresh = createInitialSaveData();
   const artemisDps = computeExpectedDps(
     computePlayerStats({ ...fresh, selectedHeroId: 'artemis' })
@@ -1088,7 +1089,7 @@ test('Phase 4 · Ch.7–12 Smart Valkyrie Drafting & Boss Phase III Punish Windo
 });
 
 test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
-  assert.equal(HEROES.length, 2);
+  assert.equal(HEROES.length, 3);
   const effectKinds = new Set<string>();
   for (const hero of HEROES) {
     const skill = getHeroActiveSkill(hero.id);
@@ -1101,12 +1102,21 @@ test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseli
   }
   assert.equal(effectKinds.size, HEROES.length, 'Each hero must have a distinct active skill effect kind');
 
-  // Fresh Ch.1 static baseline must stay completely untouched
+  // Pure Ch.1 static baseline (without pre-unlocked Solar Leo Codex items) stays untouched
   const fresh = createInitialSaveData();
-  const stats = computePlayerStats(fresh);
-  assert.equal(stats.attack, 80);
-  assert.equal(stats.maxHp, 439);
-  assert.equal(stats.powerRating, 547);
+  const pureBaseline = computePlayerStats({
+    ...fresh,
+    unlockedHeroes: ['artemis', 'hatsune_miku'],
+    unlockedSkins: [],
+    pets: [],
+    unlockedWings: [],
+    unlockedMounts: ['black_dragon'],
+    unlockedArtifacts: [],
+    unlockedHalos: [],
+  });
+  assert.equal(pureBaseline.attack, 80);
+  assert.equal(pureBaseline.maxHp, 439);
+  assert.equal(pureBaseline.powerRating, 547);
 });
 
 test('Phase 5 · Perfect Dodge Counter Rewards & Internal Cooldown Anti-Spam', () => {
@@ -1408,10 +1418,15 @@ test('Alice Default Hero: default hero displays as Alice, restores legacy saves 
   const restored = migrateSaveData(legacySwitched);
   assert.equal(restored.selectedHeroId, 'artemis');
   assert.equal(restored.aliceDefaultMigrated, true);
-  assert.deepEqual(restored.unlockedHeroes, ['artemis', 'hatsune_miku']);
-  assert.deepEqual(restored.unlockedSkins, []);
-  assert.deepEqual(restored.unlockedMounts, ['black_dragon']);
-  assert.equal(restored.equippedMountId, 'black_dragon');
+  assert.deepEqual(restored.unlockedHeroes, ['artemis', 'hatsune_miku', 'aurelia']);
+  assert.deepEqual(restored.unlockedSkins, [
+    'aurelia_oasis_dancer',
+    'aurelia_temple_commander',
+    'aurelia_solaris_valkyrie',
+    'aurelia_winter_solstice',
+  ]);
+  assert.deepEqual(restored.unlockedMounts, ['solarius']);
+  assert.equal(restored.equippedMountId, 'solarius');
   assert.deepEqual(restored.unlockedAstralSteeds, []);
   assert.equal(restored.equippedAstralSteedId, null);
 

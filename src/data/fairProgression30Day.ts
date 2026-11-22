@@ -1003,7 +1003,7 @@ export function simulate30DayFairProgression(options: {
       goldToday += Math.round(880 * chFactor);
       gemsToday += 48;
       const unlockedWings = save.unlockedWings ?? [];
-      const wingId = 'seraph_zodiac';
+      const wingId = 'solar_zenith';
       if (!unlockedWings.includes(wingId)) {
         save = {
           ...save,
@@ -1021,7 +1021,7 @@ export function simulate30DayFairProgression(options: {
     // Blood Moon (unlocked Ch.6+) -> Mount 3D
     if (isEarlyFeatureUnlocked(save, 'blood_moon').unlocked) {
       goldToday += Math.round(980 * chFactor);
-      const mountId = 'black_dragon';
+      const mountId = 'solarius';
       const unlockedMounts = save.unlockedMounts ?? [];
       if (!unlockedMounts.includes(mountId)) {
         save = {
@@ -1040,7 +1040,7 @@ export function simulate30DayFairProgression(options: {
     // Abyssal Gauntlet (unlocked Ch.7+) -> Artifact 3D
     if (isEarlyFeatureUnlocked(save, 'abyssal_gauntlet').unlocked) {
       goldToday += Math.round(1150 * chFactor);
-      const artId = 'phoenix_orb';
+      const artId = 'astrolabe_regulus';
       const unlockedArts = save.unlockedArtifacts ?? [];
       if (!unlockedArts.includes(artId)) {
         save = {
@@ -1060,7 +1060,7 @@ export function simulate30DayFairProgression(options: {
     if (isEarlyFeatureUnlocked(save, 'pantheon_expedition').unlocked) {
       goldToday += Math.round(1650 * chFactor);
       gemsToday += 68;
-      const haloId = 'solar_crown';
+      const haloId = 'leo_sovereign';
       const unlockedHalos = save.unlockedHalos ?? [];
       if (!unlockedHalos.includes(haloId)) {
         save = {

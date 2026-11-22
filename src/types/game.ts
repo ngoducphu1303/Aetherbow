@@ -29,7 +29,7 @@ export enum Rarity {
   MYTHIC = 'MYTHIC',
 }
 
-export type HeroId = 'artemis' | 'hatsune_miku';
+export type HeroId = 'artemis' | 'hatsune_miku' | 'aurelia';
 
 export type CrownStyle =
   | 'crescent'
@@ -772,7 +772,8 @@ export type PetId =
   | 'storm_dragonet'
   | 'eclipse_fox'
   | 'jade_turtle'
-  | 'star_fairy';
+  | 'star_fairy'
+  | 'astraeo';
 
 export interface PetDefinition {
   id: PetId;
@@ -798,7 +799,12 @@ export interface PetInstance {
   level: number; // 1..30
 }
 
-export type HeroSkinId = 'default';
+export type HeroSkinId =
+  | 'default'
+  | 'aurelia_oasis_dancer'
+  | 'aurelia_temple_commander'
+  | 'aurelia_solaris_valkyrie'
+  | 'aurelia_winter_solstice';
 
 export interface HeroSkinDefinition {
   id: HeroSkinId;
@@ -1075,7 +1081,12 @@ export interface ElementalTowersState {
   storm: number;
 }
 
-export type WingId = 'aries_feather' | 'phoenix_blaze' | 'swan_nebula' | 'seraph_zodiac';
+export type WingId =
+  | 'aries_feather'
+  | 'phoenix_blaze'
+  | 'swan_nebula'
+  | 'seraph_zodiac'
+  | 'solar_zenith';
 
 export interface WingDefinition {
   id: WingId;
@@ -1706,7 +1717,7 @@ export interface AiLiveHubSnapshot {
   spectatorMatch?: LiveSpectatorMatchSnapshot | null;
 }
 
-export type MountId = 'black_dragon';
+export type MountId = 'black_dragon' | 'solarius';
 
 export interface MountDefinition {
   id: MountId;
@@ -1861,7 +1872,8 @@ export type ArtifactId =
   | 'astral_astrolabe'
   | 'phoenix_orb'
   | 'frost_prism'
-  | 'eclipse_chalice';
+  | 'eclipse_chalice'
+  | 'astrolabe_regulus';
 
 export interface MythicArtifactDefinition {
   id: ArtifactId;
@@ -2334,7 +2346,8 @@ export type HaloId =
   | 'solar_crown'
   | 'lunar_eclipse'
   | 'stellar_wheel'
-  | 'seraphim_glory';
+  | 'seraphim_glory'
+  | 'leo_sovereign';
 
 export interface DivineHaloDefinition {
   id: HaloId;

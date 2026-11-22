@@ -28,15 +28,15 @@ import {
   resolveAstralBoardRoll,
 } from './wave14Data';
 
-test('Wave 14: Celestial Wings 3D scale cleanly from 1★ to 5★ with progressive costs', () => {
-  assert.equal(CELESTIAL_WING_DEFS.length, 4);
+test('Wave 14: Legacy Celestial Wings are retired cleanly and stat/cost helpers stay safe', () => {
+  assert.equal(CELESTIAL_WING_DEFS.length, 0);
 
-  const s1 = getCelestialWingStats('sovereign_aurora', 1);
-  const s5 = getCelestialWingStats('sovereign_aurora', 5);
-  assert.ok(s5.atkPct > s1.atkPct);
-  assert.ok(s5.hpPct > s1.hpPct);
-  assert.ok(s5.aspd > s1.aspd);
-  assert.ok(s5.crit > s1.crit);
+  assert.deepEqual(getCelestialWingStats('sovereign_aurora', 5), {
+    atkPct: 0,
+    hpPct: 0,
+    aspd: 0,
+    crit: 0,
+  });
 
   const cost1 = getCelestialWingUpgradeCost(1);
   const cost4 = getCelestialWingUpgradeCost(4);
@@ -79,20 +79,17 @@ test('Wave 14: Astral Dice Board 16-tile wrap-around, pass-start Gems, and x2 ne
   assert.equal(rWrap.rewardFeathers, ASTRAL_BOARD_TILES[2].amount);
 });
 
-test('Wave 14: Wings, Zodiac Relics, Guild Sanctuary, and Royal 3D Titles boost computePlayerStats', () => {
+test('Wave 14: Zodiac Relics, Guild Sanctuary, and Royal 3D Titles boost computePlayerStats', () => {
   assert.equal(ZODIAC_RELIC_DEFS.length, 6);
   assert.equal(GUILD_MONUMENT_DEFS.length, 4);
   assert.equal(ROYAL_3D_TITLE_DEFS.length, 5);
   assert.equal(SANCTUARY_FLOOR_DEFS.length, 4);
-  assert.equal(MYTHIC_SHARD_OFFERS.length, 6);
+  assert.equal(MYTHIC_SHARD_OFFERS.length, 5);
 
   const base = createInitialSaveData();
   const baseStats = computePlayerStats(base);
 
   const boosted = createInitialSaveData();
-  boosted.unlockedCelestialWings = ['seraph_azure', 'sovereign_aurora'];
-  boosted.celestialWingStars = { seraph_azure: 2, sovereign_aurora: 4 };
-  boosted.equippedCelestialWingId = 'sovereign_aurora';
   boosted.zodiacRelics = {
     essence: 20,
     levels: {

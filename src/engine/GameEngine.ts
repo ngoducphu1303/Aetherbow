@@ -324,8 +324,23 @@ import {
   rollRoomChaosEvent,
   shouldTriggerSurpriseAmbush,
 } from './funCombatOverhaul';
-import { createDragonMountMotion } from './dragonMountMotion';
-import { BLACK_DRAGON_ASSET, createBlackDragonRide } from './blackDragonRide';
+
+import {
+  disposeSolarLeoTemplateCache,
+  getCachedSolarLeoTemplateSync,
+  InstantiatedSolarLeoModel,
+  instantiateSolarLeoModel,
+  loadSolarLeoTemplate,
+  resolveSolarLeoHeroAssetId,
+  SOLAR_LEO_ARTIFACT_OFFSET,
+  SolarLeoVariant,
+  updateSolarLeoArtifactPose,
+  updateSolarLeoHaloPose,
+  updateSolarLeoHumanoidPose,
+  updateSolarLeoMountPose,
+  updateSolarLeoPetPose,
+  updateSolarLeoWingsPose,
+} from './solarLeoAssets';
 import {
   getChapter1MapAssetUrl,
   getChapter1MapLiteAssetUrl,
@@ -1016,14 +1031,30 @@ export class GameEngine {
   private artemisModelLoading = false;
   private artemisLoadedAsset?: string;
   private artemisFailedAsset?: string;
-  private dragonMount?: THREE.Group;
-  private dragonMotion?: ReturnType<typeof createDragonMountMotion>;
   private readonly dragonSeat = new THREE.Vector3();
-  private dragonMountLoading = false;
-  private dragonMountFailed = false;
-  private blackDragon?: ReturnType<typeof createBlackDragonRide>;
-  private blackDragonRequest?: AbortController;
-  private blackDragonFailed = false;
+  // Chapter 1 Solar Leo 3D Character Pack (Aurelia + 4 skins, Solarius, Wings, Halo, Artifact, Astraeo)
+  private solarLeoHeroRig?: InstantiatedSolarLeoModel;
+  private solarLeoHeroKey?: string;
+  private solarLeoHeroSeq = 0;
+  private solarLeoMountRig?: InstantiatedSolarLeoModel;
+  private solarLeoMountVariant?: SolarLeoVariant;
+  private solarLeoMountSeq = 0;
+  private solarLeoWingRig?: InstantiatedSolarLeoModel;
+  private solarLeoWingVariant?: SolarLeoVariant;
+  private solarLeoWingSeq = 0;
+  private solarLeoHaloRig?: InstantiatedSolarLeoModel;
+  private solarLeoHaloVariant?: SolarLeoVariant;
+  private solarLeoHaloSeq = 0;
+  private solarLeoArtifactRig?: InstantiatedSolarLeoModel;
+  private solarLeoArtifactVariant?: SolarLeoVariant;
+  private solarLeoArtifactSeq = 0;
+  private solarLeoPetRig?: InstantiatedSolarLeoModel;
+  private solarLeoPetVariant?: SolarLeoVariant;
+  private solarLeoPetSeq = 0;
+  private solarLeoShootRecoil = 0;
+  private solarLeoUltBurst = 0;
+  private solarLeoPetAttackRecoil = 0;
+  private aureliaSolarShotCount = 0;
   private appearanceBlocked = false;
   private appearanceStatus: AppearanceStatus = 'loading';
   private heroShadow!: THREE.Mesh;
@@ -3353,17 +3384,381 @@ export class GameEngine {
     return visualHeroId === 'artemis' || visualHeroId === 'hatsune_miku';
   }
 
-  private wantsDragonMount(): boolean {
-    return (
-      this.heroVisualCfg.mountId === 'black_dragon' &&
-      !this.heroVisualCfg.astralSteedId &&
-      this.blackDragonFailed
-    );
-  }
-
   private hasDragonRide(): boolean {
     const mount = this.hero.mountGroup;
-    return !!mount && (this.dragonMount?.parent === mount || this.blackDragon?.model.parent === mount);
+    return !!mount && this.solarLeoMountRig?.group.parent === mount;
+  }
+
+  private getActiveSolarLeoVariant(): SolarLeoVariant {
+    if (
+      this.lowEndGpu ||
+      this.isSoftwareGl ||
+      this.graphicsQuality === 'low' ||
+      this.getActiveBoss3dModelVariant() !== 'high'
+    ) {
+      return 'lite';
+    }
+    return 'high';
+  }
+
+  private getSolarLeoAnisotropy(variant: SolarLeoVariant): number {
+    if (variant === 'lite') return 1;
+    return Math.min(4, Math.max(1, this.renderer?.capabilities?.getMaxAnisotropy?.() ?? 2));
+  }
+
+  private applySolarLeoHeroRig(rig: InstantiatedSolarLeoModel): void {
+    if (!this.hero) return;
+    for (const mesh of this.hero.bodyMeshes) mesh.visible = false;
+    this.hero.bowGroup.visible = false;
+    this.hero.magicOrb.visible = false;
+    this.hero.hitMeshes = rig.hitMeshes;
+    if (rig.group.parent !== this.hero.bodyGroup) {
+      this.hero.bodyGroup.add(rig.group);
+    }
+  }
+
+  private syncSolarLeoHeroVisual(): void {
+    if (!this.hero) return;
+    const heroId = this.heroVisualCfg?.heroId ?? this.baseStats.heroId;
+    const assetId = resolveSolarLeoHeroAssetId(heroId, this.heroVisualCfg?.skinId);
+    if (!assetId) {
+      this.solarLeoHeroSeq++;
+      if (this.solarLeoHeroRig) {
+        this.releaseObject(this.solarLeoHeroRig.group);
+        this.solarLeoHeroRig = undefined;
+        this.solarLeoHeroKey = undefined;
+      }
+      return;
+    }
+
+    const variant = this.getActiveSolarLeoVariant();
+    const key = `${assetId}:${variant}`;
+    if (this.solarLeoHeroRig && this.solarLeoHeroKey === key) {
+      this.applySolarLeoHeroRig(this.solarLeoHeroRig);
+      return;
+    }
+
+    const cached = getCachedSolarLeoTemplateSync(assetId, variant);
+    if (cached) {
+      this.solarLeoHeroSeq++;
+      if (this.solarLeoHeroRig) this.releaseObject(this.solarLeoHeroRig.group);
+      this.solarLeoHeroRig = instantiateSolarLeoModel(cached, { liteMode: variant === 'lite' });
+      this.solarLeoHeroKey = key;
+      this.applySolarLeoHeroRig(this.solarLeoHeroRig);
+      return;
+    }
+
+    const seq = ++this.solarLeoHeroSeq;
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    loadSolarLeoTemplate(assetId, variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+      .then((tpl) => {
+        if (this.disposed || seq !== this.solarLeoHeroSeq || !this.hero) return;
+        const currentAsset = resolveSolarLeoHeroAssetId(
+          this.heroVisualCfg?.heroId ?? this.baseStats.heroId,
+          this.heroVisualCfg?.skinId
+        );
+        if (currentAsset !== assetId) return;
+        if (this.solarLeoHeroRig) this.releaseObject(this.solarLeoHeroRig.group);
+        this.solarLeoHeroRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+        this.solarLeoHeroKey = key;
+        this.applySolarLeoHeroRig(this.solarLeoHeroRig);
+      })
+      .catch((err) => {
+        console.warn(`Không tải được mô hình Anh hùng ${assetId}:`, err);
+      });
+  }
+
+  private syncSolarLeoMountVisual(): void {
+    const mount = this.hero?.mountGroup;
+    const wantsSolarius =
+      Boolean(mount) &&
+      this.heroVisualCfg.mountId === 'solarius' &&
+      !this.heroVisualCfg.astralSteedId;
+
+    if (!wantsSolarius || !mount) {
+      this.solarLeoMountSeq++;
+      if (this.solarLeoMountRig) {
+        this.releaseObject(this.solarLeoMountRig.group);
+        this.solarLeoMountRig = undefined;
+        this.solarLeoMountVariant = undefined;
+      }
+      return;
+    }
+
+    const variant = this.getActiveSolarLeoVariant();
+    const attachRig = (rig: InstantiatedSolarLeoModel) => {
+      if (!this.hero?.mountGroup) return;
+      for (const part of this.hero.mountGroup.children) part.visible = part === rig.group;
+      if (rig.group.parent !== this.hero.mountGroup) this.hero.mountGroup.add(rig.group);
+      rig.group.visible = true;
+    };
+
+    if (this.solarLeoMountRig && this.solarLeoMountVariant === variant) {
+      attachRig(this.solarLeoMountRig);
+      return;
+    }
+
+    const cached = getCachedSolarLeoTemplateSync('solarius', variant);
+    if (cached) {
+      this.solarLeoMountSeq++;
+      if (this.solarLeoMountRig) this.releaseObject(this.solarLeoMountRig.group);
+      this.solarLeoMountRig = instantiateSolarLeoModel(cached, { liteMode: variant === 'lite' });
+      this.solarLeoMountVariant = variant;
+      attachRig(this.solarLeoMountRig);
+      return;
+    }
+
+    const seq = ++this.solarLeoMountSeq;
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    loadSolarLeoTemplate('solarius', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+      .then((tpl) => {
+        if (this.disposed || seq !== this.solarLeoMountSeq || !this.hero?.mountGroup) return;
+        if (this.heroVisualCfg.mountId !== 'solarius' || this.heroVisualCfg.astralSteedId) return;
+        if (this.solarLeoMountRig) this.releaseObject(this.solarLeoMountRig.group);
+        this.solarLeoMountRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+        this.solarLeoMountVariant = variant;
+        attachRig(this.solarLeoMountRig);
+      })
+      .catch((err) => {
+        console.warn('Không tải được thú cưỡi 3D Solarius:', err);
+      });
+  }
+
+  private syncSolarLeoWingVisual(): void {
+    const wingGroup = this.hero?.wingGroup;
+    const wantsSolarWings = Boolean(wingGroup) && this.heroVisualCfg.wingId === 'solar_zenith';
+    // Never overlap default blue Celestial Wings behind the full 3D Wings of the Solar Zenith
+    if (this.hero?.celestialWingGroup) {
+      this.hero.celestialWingGroup.visible = !wantsSolarWings;
+    }
+    if (!wantsSolarWings || !wingGroup) {
+      this.solarLeoWingSeq++;
+      if (this.solarLeoWingRig) {
+        this.releaseObject(this.solarLeoWingRig.group);
+        this.solarLeoWingRig = undefined;
+        this.solarLeoWingVariant = undefined;
+      }
+      return;
+    }
+
+    // Immediately hide procedural fallback blades while the 3D Solar Zenith GLB attaches or loads
+    for (const part of wingGroup.children) {
+      if (part !== this.solarLeoWingRig?.group) part.visible = false;
+    }
+
+    const variant = this.getActiveSolarLeoVariant();
+    const attachRig = (rig: InstantiatedSolarLeoModel) => {
+      if (!this.hero?.wingGroup) return;
+      if (this.hero.celestialWingGroup) this.hero.celestialWingGroup.visible = false;
+      rig.group.position.set(0, 0.16, -0.06);
+      for (const part of this.hero.wingGroup.children) part.visible = part === rig.group;
+      if (rig.group.parent !== this.hero.wingGroup) this.hero.wingGroup.add(rig.group);
+      rig.group.visible = true;
+    };
+
+    if (this.solarLeoWingRig && this.solarLeoWingVariant === variant) {
+      attachRig(this.solarLeoWingRig);
+      return;
+    }
+
+    const cached = getCachedSolarLeoTemplateSync('solar_zenith', variant);
+    if (cached) {
+      this.solarLeoWingSeq++;
+      if (this.solarLeoWingRig) this.releaseObject(this.solarLeoWingRig.group);
+      this.solarLeoWingRig = instantiateSolarLeoModel(cached, { liteMode: variant === 'lite' });
+      this.solarLeoWingVariant = variant;
+      attachRig(this.solarLeoWingRig);
+      return;
+    }
+
+    const seq = ++this.solarLeoWingSeq;
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    loadSolarLeoTemplate('solar_zenith', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+      .then((tpl) => {
+        if (this.disposed || seq !== this.solarLeoWingSeq || !this.hero?.wingGroup) return;
+        if (this.heroVisualCfg.wingId !== 'solar_zenith') return;
+        if (this.solarLeoWingRig) this.releaseObject(this.solarLeoWingRig.group);
+        this.solarLeoWingRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+        this.solarLeoWingVariant = variant;
+        attachRig(this.solarLeoWingRig);
+      })
+      .catch((err) => {
+        console.warn('Không tải được cánh 3D Thần Dực Đỉnh Thái Dương:', err);
+      });
+  }
+
+  private syncSolarLeoHaloVisual(): void {
+    const haloGroup = this.hero?.haloGroup;
+    const wantsLeoHalo = Boolean(haloGroup) && this.heroVisualCfg.haloId === 'leo_sovereign';
+    if (!wantsLeoHalo || !haloGroup) {
+      this.solarLeoHaloSeq++;
+      if (this.solarLeoHaloRig) {
+        this.releaseObject(this.solarLeoHaloRig.group);
+        this.solarLeoHaloRig = undefined;
+        this.solarLeoHaloVariant = undefined;
+      }
+      return;
+    }
+
+    const variant = this.getActiveSolarLeoVariant();
+    const attachRig = (rig: InstantiatedSolarLeoModel) => {
+      if (!this.hero?.haloGroup) return;
+      rig.group.position.set(0, 0.22, -0.05);
+      for (const part of this.hero.haloGroup.children) part.visible = part === rig.group;
+      if (rig.group.parent !== this.hero.haloGroup) this.hero.haloGroup.add(rig.group);
+      rig.group.visible = true;
+    };
+
+    if (this.solarLeoHaloRig && this.solarLeoHaloVariant === variant) {
+      attachRig(this.solarLeoHaloRig);
+      return;
+    }
+
+    const cached = getCachedSolarLeoTemplateSync('leo_sovereign', variant);
+    if (cached) {
+      this.solarLeoHaloSeq++;
+      if (this.solarLeoHaloRig) this.releaseObject(this.solarLeoHaloRig.group);
+      this.solarLeoHaloRig = instantiateSolarLeoModel(cached, { liteMode: variant === 'lite' });
+      this.solarLeoHaloVariant = variant;
+      attachRig(this.solarLeoHaloRig);
+      return;
+    }
+
+    const seq = ++this.solarLeoHaloSeq;
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    loadSolarLeoTemplate('leo_sovereign', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+      .then((tpl) => {
+        if (this.disposed || seq !== this.solarLeoHaloSeq || !this.hero?.haloGroup) return;
+        if (this.heroVisualCfg.haloId !== 'leo_sovereign') return;
+        if (this.solarLeoHaloRig) this.releaseObject(this.solarLeoHaloRig.group);
+        this.solarLeoHaloRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+        this.solarLeoHaloVariant = variant;
+        attachRig(this.solarLeoHaloRig);
+      })
+      .catch((err) => {
+        console.warn('Không tải được hào quang 3D Hào Quang Sư Tử Chí Tôn:', err);
+      });
+  }
+
+  private syncSolarLeoArtifactVisual(): void {
+    const artifactGroup = this.hero?.artifactGroup;
+    const wantsAstrolabe =
+      Boolean(artifactGroup) && this.heroVisualCfg.artifactId === 'astrolabe_regulus';
+    if (!wantsAstrolabe || !artifactGroup) {
+      this.solarLeoArtifactSeq++;
+      if (this.solarLeoArtifactRig) {
+        this.releaseObject(this.solarLeoArtifactRig.group);
+        this.solarLeoArtifactRig = undefined;
+        this.solarLeoArtifactVariant = undefined;
+      }
+      return;
+    }
+
+    const variant = this.getActiveSolarLeoVariant();
+    const attachRig = (rig: InstantiatedSolarLeoModel) => {
+      if (!this.hero?.artifactGroup) return;
+      this.hero.artifactGroup.position.set(
+        SOLAR_LEO_ARTIFACT_OFFSET.x,
+        SOLAR_LEO_ARTIFACT_OFFSET.y,
+        SOLAR_LEO_ARTIFACT_OFFSET.z
+      );
+      for (const part of this.hero.artifactGroup.children) part.visible = part === rig.group;
+      if (rig.group.parent !== this.hero.artifactGroup) this.hero.artifactGroup.add(rig.group);
+      rig.group.visible = true;
+    };
+
+    if (this.solarLeoArtifactRig && this.solarLeoArtifactVariant === variant) {
+      attachRig(this.solarLeoArtifactRig);
+      return;
+    }
+
+    const cached = getCachedSolarLeoTemplateSync('astrolabe_regulus', variant);
+    if (cached) {
+      this.solarLeoArtifactSeq++;
+      if (this.solarLeoArtifactRig) this.releaseObject(this.solarLeoArtifactRig.group);
+      this.solarLeoArtifactRig = instantiateSolarLeoModel(cached, { liteMode: variant === 'lite' });
+      this.solarLeoArtifactVariant = variant;
+      attachRig(this.solarLeoArtifactRig);
+      return;
+    }
+
+    const seq = ++this.solarLeoArtifactSeq;
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    loadSolarLeoTemplate('astrolabe_regulus', variant, this.getSolarLeoAnisotropy(variant), {
+      baseUrl,
+    })
+      .then((tpl) => {
+        if (this.disposed || seq !== this.solarLeoArtifactSeq || !this.hero?.artifactGroup) return;
+        if (this.heroVisualCfg.artifactId !== 'astrolabe_regulus') return;
+        if (this.solarLeoArtifactRig) this.releaseObject(this.solarLeoArtifactRig.group);
+        this.solarLeoArtifactRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+        this.solarLeoArtifactVariant = variant;
+        attachRig(this.solarLeoArtifactRig);
+      })
+      .catch((err) => {
+        console.warn('Không tải được thánh khí 3D Tinh Bàn Regulus:', err);
+      });
+  }
+
+  private syncSolarLeoPetVisual(): void {
+    const petModel = this.petModel;
+    const wantsAstraeo = Boolean(petModel) && this.builtPetId === 'astraeo';
+    if (!wantsAstraeo || !petModel) {
+      this.solarLeoPetSeq++;
+      if (this.solarLeoPetRig) {
+        this.releaseObject(this.solarLeoPetRig.group);
+        this.solarLeoPetRig = undefined;
+        this.solarLeoPetVariant = undefined;
+      }
+      return;
+    }
+
+    const variant = this.getActiveSolarLeoVariant();
+    const attachRig = (rig: InstantiatedSolarLeoModel) => {
+      if (!this.petModel) return;
+      for (const part of this.petModel.children) part.visible = part === rig.group;
+      if (rig.group.parent !== this.petModel) this.petModel.add(rig.group);
+      rig.group.visible = true;
+    };
+
+    if (this.solarLeoPetRig && this.solarLeoPetVariant === variant) {
+      attachRig(this.solarLeoPetRig);
+      return;
+    }
+
+    const cached = getCachedSolarLeoTemplateSync('astraeo', variant);
+    if (cached) {
+      this.solarLeoPetSeq++;
+      if (this.solarLeoPetRig) this.releaseObject(this.solarLeoPetRig.group);
+      this.solarLeoPetRig = instantiateSolarLeoModel(cached, { liteMode: variant === 'lite' });
+      this.solarLeoPetVariant = variant;
+      attachRig(this.solarLeoPetRig);
+      return;
+    }
+
+    const seq = ++this.solarLeoPetSeq;
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    loadSolarLeoTemplate('astraeo', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+      .then((tpl) => {
+        if (this.disposed || seq !== this.solarLeoPetSeq || !this.petModel) return;
+        if (this.builtPetId !== 'astraeo') return;
+        if (this.solarLeoPetRig) this.releaseObject(this.solarLeoPetRig.group);
+        this.solarLeoPetRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
+        this.solarLeoPetVariant = variant;
+        attachRig(this.solarLeoPetRig);
+      })
+      .catch((err) => {
+        console.warn('Không tải được tinh linh 3D Astraeo:', err);
+      });
+  }
+
+  private syncSolarLeoVisuals(): void {
+    this.syncSolarLeoHeroVisual();
+    this.syncSolarLeoMountVisual();
+    this.syncSolarLeoWingVisual();
+    this.syncSolarLeoHaloVisual();
+    this.syncSolarLeoArtifactVisual();
+    this.syncSolarLeoPetVisual();
   }
 
   private refreshAppearanceGate(): void {
@@ -3371,13 +3766,8 @@ export class GameEngine {
     const asset = this.getRiggedHeroAsset();
     const artemisPending = this.wantsRiggedHeroModel() &&
       (this.artemisLoadedAsset !== asset || this.artemisModel?.parent !== this.hero.bodyGroup);
-    const blackDragonPending =
-      this.heroVisualCfg.mountId === 'black_dragon' &&
-      !this.heroVisualCfg.astralSteedId &&
-      !this.blackDragonFailed &&
-      (!this.blackDragon || this.blackDragon.model.parent !== this.hero.mountGroup);
 
-    this.appearanceBlocked = artemisPending || blackDragonPending;
+    this.appearanceBlocked = artemisPending;
     this.hero.root.visible = !this.appearanceBlocked;
     if (this.heroShadow) this.heroShadow.visible = !this.appearanceBlocked;
     if (this.appearanceBlocked) {
@@ -3390,11 +3780,8 @@ export class GameEngine {
 
   public retryAppearance(): void {
     this.artemisFailedAsset = undefined;
-    this.dragonMountFailed = false;
-    this.blackDragonFailed = false;
     this.chapter1MapFailCount = 0;
     if (this.wantsRiggedHeroModel()) this.useArtemisModel();
-    this.useBlackDragonMount();
     this.ensureChapter1MapLoaded();
     this.refreshAppearanceGate();
   }
@@ -3481,127 +3868,33 @@ export class GameEngine {
       });
   }
 
-  private useDragonMount(): void {
-    const mount = this.hero.mountGroup;
-    if (!mount || !this.wantsDragonMount()) return;
-
-    if (this.dragonMount) {
-      for (const part of mount.children) part.visible = part === this.dragonMount;
-      if (this.dragonMount.parent !== mount) mount.add(this.dragonMount);
-      return;
-    }
-
-    if (this.dragonMountLoading || this.dragonMountFailed) return;
-    this.dragonMountLoading = true;
-    this.loadAppearanceAsset('mounts/dragon.glb')
-      .then(({ scene }) => {
-        if (this.disposed) {
-          this.releaseObject(scene);
-          return;
-        }
-
-        const modelScale = 8.2;
-        scene.scale.setScalar(modelScale);
-        try {
-          this.dragonMotion = createDragonMountMotion(scene);
-        } catch (error) {
-          this.releaseObject(scene);
-          throw error;
-        }
-        scene.traverse((object) => {
-          if (object instanceof THREE.Mesh) object.castShadow = true;
-        });
-        const saddle = new THREE.Mesh(
-          new THREE.SphereGeometry(1, 20, 12),
-          new THREE.MeshStandardMaterial({ color: 0x462d27, roughness: 0.78 })
-        );
-        // In the saddle joint, +Z is up and +Y points down the dragon's back.
-        saddle.scale.set(0.32 / modelScale, 0.27 / modelScale, 0.065 / modelScale);
-        saddle.castShadow = true;
-        this.dragonMotion.saddle.add(saddle);
-
-        this.dragonMount = new THREE.Group();
-        this.dragonMount.name = 'Thanh Long';
-        this.dragonMount.add(scene);
-        this.useDragonMount();
-      })
-      .catch((error) => {
-        this.dragonMountFailed = true;
-        console.warn('Could not load the Thanh Long mount.', error);
-      })
-      .finally(() => {
-        this.dragonMountLoading = false;
-        if (!this.disposed) this.refreshAppearanceGate();
-      });
-  }
-
-  private useBlackDragonMount(): void {
-    const mount = this.hero.mountGroup;
-    if (!mount || this.heroVisualCfg.mountId !== 'black_dragon' || this.heroVisualCfg.astralSteedId) return;
-    if (this.blackDragon) {
-      const model = this.blackDragon.model;
-      for (const part of mount.children) part.visible = part === model;
-      if (model.parent !== mount) mount.add(model);
-      return;
-    }
-    if (this.blackDragonRequest || this.blackDragonFailed) return;
-    const request = new AbortController();
-    this.blackDragonRequest = request;
-    const url = new URL(`${import.meta.env.BASE_URL}${BLACK_DRAGON_ASSET}`, document.baseURI);
-    url.searchParams.set('v', '3');
-    void (async () => {
-      try {
-        const response = await fetch(url, { signal: request.signal });
-        if (!response.ok || response.headers.get('content-type')?.includes('text/html')) {
-          throw new Error('Không tìm thấy mô hình Hắc Long.');
-        }
-        const data = await response.arrayBuffer();
-        if (this.disposed) return;
-        const { scene, animations } = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
-        if (this.disposed) { this.releaseObject(scene); return; }
-        try {
-          this.blackDragon = createBlackDragonRide(scene, animations);
-        } catch (error) {
-          this.releaseObject(scene);
-          throw error;
-        }
-        this.useBlackDragonMount();
-      } catch (error) {
-        if (!this.disposed) {
-          this.blackDragonFailed = true;
-          console.warn('Không tải được Hắc Long; dùng mô hình rồng 3D dự phòng.', error);
-          this.useDragonMount();
-        }
-      } finally {
-        this.blackDragonRequest = undefined;
-        if (!this.disposed) this.refreshAppearanceGate();
-      }
-    })();
-  }
-
   private updateDragonRide(dt: number, speed: number, sprint = false): number {
-    const black = this.blackDragon?.model.parent === this.hero.mountGroup ? this.blackDragon : undefined;
-    if (black) black.update(dt, speed, sprint);
-    else if (this.dragonMotion) this.dragonMotion.update(dt, this.elapsed, speed);
-    const saddle = black?.saddle ?? this.dragonMotion?.saddle;
+    const solarius =
+      this.solarLeoMountRig?.group.parent === this.hero.mountGroup ? this.solarLeoMountRig : undefined;
+    if (solarius) updateSolarLeoMountPose(solarius, this.elapsed, dt, speed, sprint);
+    const saddle = solarius?.saddle;
     if (!saddle) return 0.68;
     saddle.getWorldPosition(this.dragonSeat);
     this.hero.root.worldToLocal(this.dragonSeat);
-    this.hero.bodyGroup.position.z = this.dragonSeat.z + 0.04;
+    this.hero.bodyGroup.position.z = this.dragonSeat.z;
 
     const artemis = this.artemisModel?.parent === this.hero.bodyGroup;
-    if (!artemis) {
+    const aurelia = this.solarLeoHeroRig?.group.parent === this.hero.bodyGroup;
+    if (!artemis && !aurelia) {
       this.hero.leftLeg.rotation.set(-0.84, 0, -0.52);
       this.hero.rightLeg.rotation.set(-0.84, 0, 0.52);
     }
-    return this.dragonSeat.y - (artemis ? 0.86 : 0.44);
+    return this.dragonSeat.y - (artemis || aurelia ? 0.86 : 0.44);
   }
 
   private buildHero(): void {
     if (this.hero) {
       this.artemisModel?.removeFromParent();
-      this.dragonMount?.removeFromParent();
-      this.blackDragon?.model.removeFromParent();
+      this.solarLeoHeroRig?.group.removeFromParent();
+      this.solarLeoMountRig?.group.removeFromParent();
+      this.solarLeoWingRig?.group.removeFromParent();
+      this.solarLeoHaloRig?.group.removeFromParent();
+      this.solarLeoArtifactRig?.group.removeFromParent();
       this.releaseObject(this.hero.root);
       this.releaseObject(this.heroShadow);
     }
@@ -3610,8 +3903,11 @@ export class GameEngine {
     this.hero.root.position.set(this.px, 0, this.pz);
     this.entitiesGroup.add(this.hero.root);
     if (this.wantsRiggedHeroModel()) this.useArtemisModel();
-    this.useDragonMount();
-    this.useBlackDragonMount();
+    this.syncSolarLeoHeroVisual();
+    this.syncSolarLeoMountVisual();
+    this.syncSolarLeoWingVisual();
+    this.syncSolarLeoHaloVisual();
+    this.syncSolarLeoArtifactVisual();
 
     this.heroShadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1.3, 1.3),
@@ -3661,44 +3957,11 @@ export class GameEngine {
 
     this.rebuildLobbyPedestal();
 
+    // 3D ground zodiac aura rings disabled to keep visuals uncluttered and save GPU fill-rate
     if (this.combatAuraGroup) {
       this.releaseObject(this.combatAuraGroup);
+      this.combatAuraGroup = null;
     }
-    this.combatAuraGroup = new THREE.Group();
-    const combatRingOuter = new THREE.Mesh(
-      new THREE.RingGeometry(0.74, 0.81, 36),
-      new THREE.MeshBasicMaterial({
-        color: this.heroVisualCfg.auraPrimaryHex ?? 0xfbbf24,
-        transparent: true,
-        opacity: 0.52,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      })
-    );
-    combatRingOuter.rotation.x = -Math.PI / 2;
-    const combatRingInner = new THREE.Mesh(
-      new THREE.RingGeometry(0.55, 0.59, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x38bdf8,
-        transparent: true,
-        opacity: 0.36,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      })
-    );
-    combatRingInner.rotation.x = -Math.PI / 2;
-    this.combatAuraGroup.add(combatRingOuter, combatRingInner);
-    this.combatAuraGroup.position.set(this.px, 0.04, this.pz);
-    this.combatAuraGroup.visible = this.phase !== GamePhase.TITLE;
-    this.entitiesGroup.add(this.combatAuraGroup);
 
     this.rebuildCompanions();
     this.refreshAppearanceGate();
@@ -3723,6 +3986,7 @@ export class GameEngine {
     const desiredEvolved = Boolean(this.baseStats.equippedPetEvolved);
     if (desiredPet !== this.builtPetId || desiredEvolved !== this.builtPetEvolved) {
       if (this.petModel) {
+        this.solarLeoPetRig?.group.removeFromParent();
         this.releaseObject(this.petModel);
         this.petModel = null;
       }
@@ -3734,6 +3998,7 @@ export class GameEngine {
         this.entitiesGroup.add(this.petModel);
       }
     }
+    this.syncSolarLeoPetVisual();
   }
 
   private rebuildLobbyPedestal(): void {
@@ -3741,8 +4006,6 @@ export class GameEngine {
       this.releaseObject(this.lobbyHaloGroup);
     }
     const floorTheme = SANCTUARY_FLOOR_MAP[this.sanctuaryFloorThemeId] ?? SANCTUARY_FLOOR_MAP.marble_gold;
-    const auraPrimary = this.heroVisualCfg.auraPrimaryHex ?? floorTheme.ringHex;
-    const auraSecondary = this.heroVisualCfg.auraSecondaryHex ?? floorTheme.pillarGlowHex;
     const constellationLevels =
       this.heroVisualCfg.constellationLevels ?? this.baseStats.constellationLevels ?? [];
 
@@ -3757,39 +4020,7 @@ export class GameEngine {
     );
     this.lobbyHaloGroup.add(royalPedestal);
 
-    const outerHalo = new THREE.Mesh(
-      new THREE.RingGeometry(1.22, 1.38, 48),
-      new THREE.MeshBasicMaterial({
-        color: auraPrimary,
-        transparent: true,
-        opacity: 0.84,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      })
-    );
-    outerHalo.rotation.x = -Math.PI / 2;
-    outerHalo.position.y = 0.02;
-
-    const innerHalo = new THREE.Mesh(
-      new THREE.RingGeometry(0.84, 0.96, 36),
-      new THREE.MeshBasicMaterial({
-        color: auraSecondary,
-        transparent: true,
-        opacity: 0.72,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-      })
-    );
-    innerHalo.rotation.x = -Math.PI / 2;
-    innerHalo.position.y = 0.025;
-
-    // 12 Constellation Orbital Star Crystals
+    // 12 Constellation Orbital Star Crystals (3D ground zodiac aura rings removed for GPU efficiency)
     const starCrystalGeo = new THREE.OctahedronGeometry(0.085, 0);
     for (let i = 0; i < CONSTELLATIONS.length; i++) {
       const cDef = CONSTELLATIONS[i];
@@ -3815,7 +4046,6 @@ export class GameEngine {
       this.lobbyHaloGroup.add(gem);
     }
 
-    this.lobbyHaloGroup.add(outerHalo, innerHalo);
     this.lobbyHaloGroup.visible = this.phase === GamePhase.TITLE;
     this.entitiesGroup.add(this.lobbyHaloGroup);
 
@@ -6840,9 +7070,9 @@ export class GameEngine {
       cheekColor: oppHeroDef.cheekColor,
       crownStyle: oppHeroDef.crownStyle,
       weaponArchetype: rivalDef.weaponArchetype,
-      wingId: roundIdx >= 1 ? 'seraph_zodiac' : undefined,
+      wingId: roundIdx >= 1 ? 'solar_zenith' : undefined,
       wingLevel: 3 + roundIdx * 2,
-      haloId: roundIdx >= 2 ? 'seraphim_glory' : 'solar_crown',
+      haloId: 'leo_sovereign',
       haloLevel: 2 + roundIdx * 2,
     });
     rivalHeroRefs.magicOrb.visible = false;
@@ -10103,6 +10333,7 @@ export class GameEngine {
       this.composer.setPixelRatio(targetDpr);
       this.composer.setSize(w, h);
     }
+    this.syncSolarLeoVisuals();
     this.syncPostProcessingUniforms();
   }
 
@@ -10777,6 +11008,27 @@ export class GameEngine {
         }
         break;
       }
+      case 'aurelia': {
+        this.solarLeoUltBurst = 1.0;
+        this.alexOverdriveTimer = Math.max(this.alexOverdriveTimer, 5.0);
+        this.shield = Math.min(this.maxHp * 0.4, this.shield + this.maxHp * 0.15);
+        this.spawnUltColumn(this.px, this.pz, 0xf59e0b, 1.05);
+        this.spawnShockwave(this.px, this.pz, 0xfbbf24, 6.8, 0.55);
+        this.spawnParticles(this.px, 1.35, this.pz, 0xfef08a, 24);
+        for (let i = 0; i < 12; i++) {
+          const yaw = (i / 12) * Math.PI * 2;
+          this.firePlayerArrow(yaw, 0, true, 'ultimate');
+        }
+        for (const e of [...this.enemies]) {
+          if (!e || e.dead || e.spawnTimer > 0) continue;
+          const d = Math.hypot(e.x - this.px, e.z - this.pz);
+          if (d <= 6.8) {
+            this.spawnShockwave(e.x, e.z, 0xf59e0b, 2.0, 0.32);
+            this.damageEnemy(e, atkPower * 2.6, true, false, false, false, false, 'NHẬT LUÂN!', 'ultimate');
+          }
+        }
+        break;
+      }
     }
 
     this.syncHudImmediate();
@@ -11058,8 +11310,7 @@ export class GameEngine {
       }
       const emotePose = computeLobbyEmotePose(this.lobbyEmoteTimer, this.lobbyEmoteDuration);
       const onDragon = this.hasDragonRide();
-      const rideSpeed = this.blackDragon?.model.parent === this.hero.mountGroup ? walk * LOBBY_CITY_WALK_SPEED : walk;
-      const mountOffset = onDragon ? this.updateDragonRide(dt, rideSpeed) : this.hero.mountGroup ? 0.68 : 0;
+      const mountOffset = onDragon ? this.updateDragonRide(dt, walk) : this.hero.mountGroup ? 0.68 : 0;
       const poseFloatY =
         (this.lobbyHeroPose === 'astral_float'
           ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1
@@ -11142,12 +11393,38 @@ export class GameEngine {
         this.hero.warBannerCloth.rotation.y = Math.cos(this.elapsed * 2.1) * 0.08;
       }
       if (this.hero.artifactGroup) {
-        this.hero.artifactGroup.rotation.y += dt * 1.35;
-        this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 2.6) * 0.07;
+        if (this.solarLeoArtifactRig?.group.parent === this.hero.artifactGroup) {
+          this.hero.artifactGroup.rotation.y = 0;
+          this.hero.artifactGroup.position.set(
+            SOLAR_LEO_ARTIFACT_OFFSET.x,
+            SOLAR_LEO_ARTIFACT_OFFSET.y,
+            SOLAR_LEO_ARTIFACT_OFFSET.z
+          );
+          updateSolarLeoArtifactPose(this.solarLeoArtifactRig, this.elapsed, dt);
+        } else {
+          this.hero.artifactGroup.rotation.y += dt * 1.35;
+          this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 2.6) * 0.07;
+        }
       }
       if (this.hero.haloGroup) {
-        this.hero.haloGroup.rotation.z += dt * 0.95;
-        this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.2) * 0.04;
+        if (this.solarLeoHaloRig?.group.parent === this.hero.haloGroup) {
+          this.hero.haloGroup.rotation.z = 0;
+          this.hero.haloGroup.position.y = 1.34;
+          updateSolarLeoHaloPose(this.solarLeoHaloRig, this.elapsed, dt);
+        } else {
+          this.hero.haloGroup.rotation.z += dt * 0.95;
+          this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.2) * 0.04;
+        }
+      }
+      if (this.solarLeoWingRig && this.solarLeoWingRig.group.parent === this.hero.wingGroup) {
+        updateSolarLeoWingsPose(
+          this.solarLeoWingRig,
+          this.elapsed,
+          dt,
+          walk * LOBBY_CITY_WALK_SPEED,
+          false,
+          emotePose.active ? 0.55 : 0
+        );
       }
       if (this.hero.soulRingNodes) {
         for (const node of this.hero.soulRingNodes) {
@@ -11162,13 +11439,14 @@ export class GameEngine {
         });
       }
       const hasRealisticArtemis = this.artemisModel?.parent === this.hero.bodyGroup;
-      this.hero.magicOrb.visible = !showWeaponInLobby && !hasRealisticArtemis;
+      const hasSolarLeoHero = this.solarLeoHeroRig?.group.parent === this.hero.bodyGroup;
+      this.hero.magicOrb.visible = !showWeaponInLobby && !hasRealisticArtemis && !hasSolarLeoHero;
       if (this.hero.magicOrb.userData?.uprightLantern) {
         this.hero.magicOrb.rotation.y += dt * 1.45;
       } else {
         this.hero.magicOrb.rotation.z += dt * 2.8;
       }
-      this.hero.bowGroup.visible = showWeaponInLobby;
+      this.hero.bowGroup.visible = showWeaponInLobby && !hasSolarLeoHero;
       if (hasRealisticArtemis) {
         this.hero.nockedArrow.visible = showWeaponInLobby;
         this.artemisMotion?.update(
@@ -11182,6 +11460,18 @@ export class GameEngine {
           false,
           0
         );
+      } else if (hasSolarLeoHero && this.solarLeoHeroRig) {
+        updateSolarLeoHumanoidPose(this.solarLeoHeroRig, {
+          elapsed: this.elapsed,
+          dt,
+          speed: walk * LOBBY_CITY_WALK_SPEED,
+          shooting: emotePose.active,
+          shootRecoil: emotePose.active ? emotePose.drawProgress : 0,
+          dashing: false,
+          riding: onDragon || Boolean(this.hero.mountGroup),
+          ultBurst: emotePose.active ? emotePose.glowBoost * 0.65 : 0,
+          lobbyPose: this.lobbyHeroPose,
+        });
       }
       if (this.lobbyHaloGroup) {
         this.lobbyHaloGroup.visible = !city;
@@ -11221,7 +11511,14 @@ export class GameEngine {
         this.petModel.visible = true;
         const petBob = Math.sin(this.elapsed * 3.0) * 0.11;
         this.petModel.position.set((origin?.x ?? 0) - 1.14, (origin?.y ?? 0) + 1.08 + petBob, (origin?.z ?? 4.5) + 0.28);
-        this.petModel.rotation.y = this.lobbyYaw * 0.6 + Math.sin(this.elapsed * 1.4) * 0.25;
+        // Keep pet head facing forward by default in Lobby (never drift out of phase with turntable spin);
+        // when walking in Lobby City, follow the hero's forward travel yaw.
+        this.petModel.rotation.y = city
+          ? this.hero.root.rotation.y
+          : Math.sin(this.elapsed * 1.4) * 0.08;
+        if (this.solarLeoPetRig?.group.parent === this.petModel) {
+          updateSolarLeoPetPose(this.solarLeoPetRig, this.elapsed, dt, 0);
+        }
       }
       // Wave 11 & Wave 13: Smooth Lobby 3D Sky & Weather Theme Damping (zero allocations)
       const skyTheme = LOBBY_SKY_THEME_MAP[this.lobbySkyThemeId] ?? LOBBY_SKY_THEME_MAP.golden_galaxy;
@@ -13251,15 +13548,40 @@ export class GameEngine {
       this.hero.weaponAuraGroup.rotation.y += dt * 1.25;
     }
     if (this.hero.artifactGroup) {
-      this.hero.artifactGroup.rotation.y += dt * 1.65;
-      this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 3.1) * 0.08;
+      if (this.solarLeoArtifactRig?.group.parent === this.hero.artifactGroup) {
+        this.hero.artifactGroup.rotation.y = 0;
+        this.hero.artifactGroup.position.set(
+          SOLAR_LEO_ARTIFACT_OFFSET.x,
+          SOLAR_LEO_ARTIFACT_OFFSET.y,
+          SOLAR_LEO_ARTIFACT_OFFSET.z
+        );
+        updateSolarLeoArtifactPose(this.solarLeoArtifactRig, this.elapsed, dt);
+      } else {
+        this.hero.artifactGroup.rotation.y += dt * 1.65;
+        this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 3.1) * 0.08;
+      }
     }
     if (this.hero.haloGroup) {
-      this.hero.haloGroup.rotation.z += dt * 1.35;
-      this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.8) * 0.045;
+      if (this.solarLeoHaloRig?.group.parent === this.hero.haloGroup) {
+        this.hero.haloGroup.rotation.z = 0;
+        this.hero.haloGroup.position.y = 1.34;
+        updateSolarLeoHaloPose(this.solarLeoHaloRig, this.elapsed, dt);
+      } else {
+        this.hero.haloGroup.rotation.z += dt * 1.35;
+        this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.8) * 0.045;
+      }
     }
 
-    if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
+    if (this.solarLeoWingRig && this.solarLeoWingRig.group.parent === this.hero.wingGroup) {
+      updateSolarLeoWingsPose(
+        this.solarLeoWingRig,
+        this.elapsed,
+        dt,
+        speedMag,
+        this.dashTimer > 0,
+        this.solarLeoUltBurst
+      );
+    } else if (this.hero.leftWingPivot && this.hero.rightWingPivot) {
       const flapSpeed = isMoving ? 8.5 : 3.6;
       const flapAmp = isMoving ? 0.34 : 0.18;
       const flap = Math.sin(this.elapsed * flapSpeed) * flapAmp;
@@ -13447,6 +13769,9 @@ export class GameEngine {
       }
     }
 
+    this.solarLeoShootRecoil = Math.max(0, this.solarLeoShootRecoil - dt * 5.2);
+    this.solarLeoUltBurst = Math.max(0, this.solarLeoUltBurst - dt * 1.15);
+
     if (this.artemisModel?.parent === this.hero.bodyGroup) {
       this.hero.nockedArrow.visible = aimingBow;
       const seated = onDragon ||
@@ -13462,6 +13787,18 @@ export class GameEngine {
         this.dashTimer > 0,
         heroTurnRate
       );
+    } else if (this.solarLeoHeroRig?.group.parent === this.hero.bodyGroup) {
+      this.hero.bowGroup.visible = false;
+      updateSolarLeoHumanoidPose(this.solarLeoHeroRig, {
+        elapsed: this.elapsed,
+        dt,
+        speed: speedMag,
+        shooting: aimingBow,
+        shootRecoil: Math.max(this.solarLeoShootRecoil, drawProgress * 0.55),
+        dashing: this.dashTimer > 0,
+        riding: onDragon || Boolean(this.hero.mountGroup),
+        ultBurst: this.solarLeoUltBurst,
+      });
     }
 
     if (this.volleyQueue.length > 0 && nearest) {
@@ -13494,6 +13831,9 @@ export class GameEngine {
 
     // Atreus every 4th shot bonus piercing wave trigger handled on arrow launch
     this.atreusShotCount++;
+    if (this.solarLeoHeroRig?.group.parent === this.hero.bodyGroup) {
+      this.solarLeoShootRecoil = 1.0;
+    }
   }
 
   private firePlayerArrow(
@@ -14189,12 +14529,14 @@ export class GameEngine {
         this.petModel.rotation.y = this.pFacing;
       }
 
+      this.solarLeoPetAttackRecoil = Math.max(0, this.solarLeoPetAttackRecoil - dt * 4.5);
       if (pDef && nearest && nearest.spawnTimer <= 0) {
         this.petFireTimer += dt;
         const evolvedMult = getEvolvedPetMultiplier(Boolean(this.baseStats.equippedPetEvolved));
         const effectiveInterval = pDef.fireInterval * evolvedMult.fireRateMult;
         if (this.petFireTimer >= effectiveInterval) {
           this.petFireTimer = 0;
+          this.solarLeoPetAttackRecoil = 1.0;
           const yaw = Math.atan2(
             nearest.x - this.petModel.position.x,
             nearest.z - this.petModel.position.z
@@ -14214,6 +14556,9 @@ export class GameEngine {
             pDef.element === 'storm'
           );
         }
+      }
+      if (this.solarLeoPetRig?.group.parent === this.petModel) {
+        updateSolarLeoPetPose(this.solarLeoPetRig, this.elapsed, dt, this.solarLeoPetAttackRecoil);
       }
     }
 
@@ -18190,6 +18535,21 @@ export class GameEngine {
           if (!p.isSword) {
             if (this.baseStats.heroId === 'artemis') {
               this.markedEnemyIds.add(e.id);
+            } else if (this.baseStats.heroId === 'aurelia') {
+              this.aureliaSolarShotCount++;
+              if (this.aureliaSolarShotCount >= 3) {
+                this.aureliaSolarShotCount = 0;
+                const coronaDmg = this.baseStats.attack * this.getCurrentAtkMultiplier() * 1.45;
+                this.shield = Math.min(this.maxHp * 0.35, this.shield + this.maxHp * 0.04);
+                this.spawnShockwave(e.x, e.z, 0xf59e0b, 2.8, 0.34);
+                this.spawnParticles(e.x, 0.9, e.z, 0xfef08a, 10);
+                for (const other of [...this.enemies]) {
+                  if (!other || other.dead || other.spawnTimer > 0) continue;
+                  if (Math.hypot(other.x - e.x, other.z - e.z) <= 2.8) {
+                    this.damageEnemy(other, coronaDmg, true, false, false, false, false, 'ẤN QUANG!', 'elemental');
+                  }
+                }
+              }
             }
             if (
               (this.activeSkills.meteor_shower ?? 0) > 0 &&
@@ -22597,7 +22957,6 @@ export class GameEngine {
     if (this.disposed) return;
     this.disposed = true;
     this.lobbyCityRequest.abort();
-    this.blackDragonRequest?.abort();
     this.chapter1MapLoading = false;
     delete this.container.dataset.lobbyCity;
     cancelAnimationFrame(this.frameId);
@@ -22627,22 +22986,37 @@ export class GameEngine {
       this.artemisModel = undefined;
       this.artemisMotion = undefined;
     }
-    if (this.dragonMount) {
-      this.releaseObject(this.dragonMount);
-      this.dragonMount = undefined;
-      this.dragonMotion = undefined;
-    }
-    if (this.blackDragon) {
-      this.blackDragon.dispose();
-      this.releaseObject(this.blackDragon.model);
-      this.blackDragon = undefined;
-    }
     if (this.chapter1MapModel) {
       this.releaseObject(this.chapter1MapModel);
       this.chapter1MapModel = null;
     }
+    if (this.solarLeoHeroRig) {
+      this.releaseObject(this.solarLeoHeroRig.group);
+      this.solarLeoHeroRig = undefined;
+    }
+    if (this.solarLeoMountRig) {
+      this.releaseObject(this.solarLeoMountRig.group);
+      this.solarLeoMountRig = undefined;
+    }
+    if (this.solarLeoWingRig) {
+      this.releaseObject(this.solarLeoWingRig.group);
+      this.solarLeoWingRig = undefined;
+    }
+    if (this.solarLeoHaloRig) {
+      this.releaseObject(this.solarLeoHaloRig.group);
+      this.solarLeoHaloRig = undefined;
+    }
+    if (this.solarLeoArtifactRig) {
+      this.releaseObject(this.solarLeoArtifactRig.group);
+      this.solarLeoArtifactRig = undefined;
+    }
+    if (this.solarLeoPetRig) {
+      this.releaseObject(this.solarLeoPetRig.group);
+      this.solarLeoPetRig = undefined;
+    }
     this.releaseObject(this.scene);
     disposeChapter1RosterTemplateCache();
+    disposeSolarLeoTemplateCache();
     this.disposePostProcessing();
     this.contactShadowTex.dispose();
     this.keyLight.shadow.dispose();

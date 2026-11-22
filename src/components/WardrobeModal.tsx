@@ -9,9 +9,10 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { ZODIAC_AURAS, HERO_SKINS } from '../data/wave3Data';
+import { HERO_MAP } from '../data/heroesData';
+import { HERO_SKINS } from '../data/wave3Data';
 import { ZODIAC_WINGS } from '../data/wave7Data';
-import { getMountAppearance, WEAPON_AURAS, ZODIAC_MOUNTS } from '../data/wave8Data';
+import { getMountAppearance, ZODIAC_MOUNTS } from '../data/wave8Data';
 import { DIVINE_HALO_CATALOG } from '../data/wave10Data';
 import { ASTRAL_STEED_DEFS, getAstralSteedStats } from '../data/wave13Data';
 import {
@@ -25,8 +26,8 @@ import {
   WeaponAuraId,
   WingId,
 } from '../types/game';
-import { getSkinAssetPack } from '../data/assetRegistry';
-import { AwakenCrystalIcon, MountShardIcon, ResilientAssetImg, SoulGemIcon, WingFeatherIcon } from './GameIcons';
+import { getHeroAssetPack, getSkinAssetPack, SOLAR_LEO_ITEM_THUMBNAILS } from '../data/assetRegistry';
+import { MountShardIcon, ResilientAssetImg, SoulGemIcon, WingFeatherIcon } from './GameIcons';
 
 interface WardrobeModalProps {
   save: SaveData;
@@ -50,7 +51,7 @@ interface WardrobeModalProps {
   onClose: () => void;
 }
 
-type WardrobeTab = 'halos' | 'mounts' | 'wings' | 'weapon_auras' | 'skins';
+type WardrobeTab = 'halos' | 'mounts' | 'wings' | 'skins';
 
 export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   save,
@@ -67,14 +68,13 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   onEquipMount,
   onUnlockMount,
   onEquipSteed,
-  onEquipWeaponAura,
-  onUnlockWeaponAura,
   onEquipHalo,
   onUnlockHalo,
   onClose,
 }) => {
   const [tab, setTab] = useState<WardrobeTab>('halos');
 
+  const currentHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
   const equippedSkin = save.equippedSkinByHero?.[save.selectedHeroId] ?? 'default';
   const activeSkinPreview = preview.skinId ?? equippedSkin;
   const activeWingPreview = preview.wingId !== undefined ? preview.wingId : (save.equippedWingId ?? null);
@@ -84,8 +84,6 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
     preview.mountId,
     preview.astralSteedId
   );
-  const activeWeaponAuraPreview =
-    preview.weaponAuraId !== undefined ? preview.weaponAuraId : (save.equippedWeaponAuraId ?? 'none');
   const activeHaloPreview =
     preview.haloId !== undefined ? preview.haloId : (save.equippedHaloId ?? null);
 
@@ -93,7 +91,6 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
   const unlockedWings = new Set<WingId>(save.unlockedWings ?? []);
   const unlockedMounts = new Set<MountId>(save.unlockedMounts ?? []);
   const unlockedAstralSteeds = new Set<AstralSteedId>(save.unlockedAstralSteeds ?? []);
-  const unlockedWeaponAuras = new Set<WeaponAuraId>(save.unlockedWeaponAuras ?? ['none']);
   const unlockedHalos = new Set<HaloId>(save.unlockedHalos ?? []);
 
   return (
@@ -167,7 +164,6 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                 { id: 'halos', label: 'Hào Quang 3D' },
                 { id: 'mounts', label: 'Thú Cưỡi 3D' },
                 { id: 'wings', label: 'Cánh Hoàng Đạo' },
-                { id: 'weapon_auras', label: 'Hào Quang Vũ Khí' },
                 { id: 'skins', label: 'Trang Phục Skin' },
               ] as const
             ).map((t) => (
@@ -203,10 +199,6 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
               <WingFeatherIcon className="w-3.5 h-3.5" />
               {save.wingFeathers ?? 0}
             </span>
-            <span className="flex items-center gap-1 text-rose-300">
-              <AwakenCrystalIcon className="w-3.5 h-3.5" />
-              {save.awakeningCrystals ?? 0}
-            </span>
             <button
               type="button"
               onClick={() => onChangePreview({})}
@@ -235,14 +227,26 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                       : 'bg-[#080d1e] border-slate-800'
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                      <span className="text-amber-300">{h.badge}</span>
-                      {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
-                    </div>
-                    <div className="text-xs font-black text-white">{h.name}</div>
-                    <div className="text-[10px] text-slate-300 mt-1">
-                      +{Math.round(h.baseAtkPct * 100)}% ATK · +{Math.round(h.baseHpPct * 100)}% HP · +{Math.round(h.baseCritDmg * 100)}% ST Bạo
+                  <div className="flex items-start gap-2.5">
+                    {SOLAR_LEO_ITEM_THUMBNAILS[h.id] && (
+                      <div className="w-11 h-11 rounded-xl overflow-hidden border border-amber-300/45 bg-[#101833] shrink-0">
+                        <ResilientAssetImg
+                          src={SOLAR_LEO_ITEM_THUMBNAILS[h.id]}
+                          alt={h.name}
+                          className="w-full h-full object-cover"
+                          fallback={<Sparkles className="w-4 h-4 text-amber-300 m-auto" />}
+                        />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                        <span className="text-amber-300">{h.badge}</span>
+                        {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
+                      </div>
+                      <div className="text-xs font-black text-white">{h.name}</div>
+                      <div className="text-[10px] text-slate-300 mt-1">
+                        +{Math.round(h.baseAtkPct * 100)}% ATK · +{Math.round(h.baseHpPct * 100)}% HP · +{Math.round(h.baseCritDmg * 100)}% ST Bạo
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -339,14 +343,26 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         : 'bg-[#080d1e] border-slate-800'
                     }`}
                   >
-                    <div>
-                      <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                        <span className="text-amber-300">{m.badge}</span>
-                        {equipped && <span className="text-emerald-300">ĐANG CƯỠI</span>}
-                      </div>
-                      <div className="text-xs font-black text-white">{m.name}</div>
-                      <div className="text-[10px] text-slate-300 mt-1">
-                        +{m.baseAtk} ATK · +{m.baseHp} HP · +{Math.round(m.baseMoveSpeed * 100)}% Tốc
+                    <div className="flex items-start gap-2.5">
+                      {SOLAR_LEO_ITEM_THUMBNAILS[m.id] && (
+                        <div className="w-11 h-11 rounded-xl overflow-hidden border border-amber-300/45 bg-[#101833] shrink-0">
+                          <ResilientAssetImg
+                            src={SOLAR_LEO_ITEM_THUMBNAILS[m.id]}
+                            alt={m.name}
+                            className="w-full h-full object-cover"
+                            fallback={<Sparkles className="w-4 h-4 text-amber-300 m-auto" />}
+                          />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                          <span className="text-amber-300">{m.badge}</span>
+                          {equipped && <span className="text-emerald-300">ĐANG CƯỠI</span>}
+                        </div>
+                        <div className="text-xs font-black text-white">{m.name}</div>
+                        <div className="text-[10px] text-slate-300 mt-1">
+                          +{m.baseAtk} ATK · +{m.baseHp} HP · +{Math.round(m.baseMoveSpeed * 100)}% Tốc
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -475,14 +491,26 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                       : 'bg-[#080d1e] border-slate-800'
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                      <span className="text-sky-300">{w.badge}</span>
-                      {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
-                    </div>
-                    <div className="text-xs font-black text-white">{w.name}</div>
-                    <div className="text-[10px] text-slate-300 mt-1">
-                      +{w.baseAtk} ATK · +{w.baseHp} HP · +{Math.round(w.baseCrit * 100)}% Chí Mạng
+                  <div className="flex items-start gap-2.5">
+                    {SOLAR_LEO_ITEM_THUMBNAILS[w.id] && (
+                      <div className="w-11 h-11 rounded-xl overflow-hidden border border-amber-300/45 bg-[#101833] shrink-0">
+                        <ResilientAssetImg
+                          src={SOLAR_LEO_ITEM_THUMBNAILS[w.id]}
+                          alt={w.name}
+                          className="w-full h-full object-cover"
+                          fallback={<Sparkles className="w-4 h-4 text-amber-300 m-auto" />}
+                        />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
+                        <span className="text-sky-300">{w.badge}</span>
+                        {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
+                      </div>
+                      <div className="text-xs font-black text-white">{w.name}</div>
+                      <div className="text-[10px] text-slate-300 mt-1">
+                        +{w.baseAtk} ATK · +{w.baseHp} HP · +{Math.round(w.baseCrit * 100)}% Chí Mạng
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -519,81 +547,68 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
               );
             })}
 
-          {tab === 'weapon_auras' &&
-            WEAPON_AURAS.map((wa) => {
-              const owned = unlockedWeaponAuras.has(wa.id);
-              const equipped = (save.equippedWeaponAuraId ?? 'none') === wa.id;
-              const isPreviewing = activeWeaponAuraPreview === wa.id;
-              const hasCrystals = (save.awakeningCrystals ?? 0) >= wa.unlockCrystals;
-              const hasGems = save.gems >= wa.unlockGems;
-              const canUnlock = hasCrystals || hasGems;
-              return (
-                <div
-                  key={wa.id}
-                  className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
-                    isPreviewing
-                      ? 'bg-rose-400/10 border-rose-300'
-                      : 'bg-[#080d1e] border-slate-800'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                      <span className="text-rose-300">{wa.badge}</span>
-                      {equipped && <span className="text-emerald-300">ĐANG KÍCH</span>}
-                    </div>
-                    <div className="text-xs font-black text-white">{wa.name}</div>
-                    <div className="text-[10px] text-slate-300 mt-1">
-                      {wa.id === 'none'
-                        ? wa.desc
-                        : `+${Math.round(wa.baseAtkPct * 100)}% ATK · +${Math.round(
-                            wa.baseCritDmg * 100
-                          )}% ST Chí Mạng`}
-                    </div>
+          {tab === 'skins' && (() => {
+            const isDefaultEquipped = equippedSkin === 'default';
+            const isDefaultPreview = activeSkinPreview === 'default';
+            const heroPack = getHeroAssetPack(save.selectedHeroId);
+            return (
+              <div
+                className={`rounded-2xl p-3 border flex flex-col justify-between gap-2 ${
+                  isDefaultPreview
+                    ? 'bg-amber-400/12 border-amber-300'
+                    : 'bg-[#080d1e] border-slate-800'
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-amber-300/50 bg-[#101833] shrink-0">
+                    <ResilientAssetImg
+                      src={heroPack.icon}
+                      alt={currentHero.name}
+                      className="w-full h-full object-cover object-top"
+                      fallback={<Shield className="w-4 h-4 text-amber-300 m-auto" />}
+                    />
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onChangePreview({ ...preview, weaponAuraId: wa.id })}
-                      className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
-                    >
-                      <Eye className="w-3 h-3" />
-                      <span>Mặc Thử</span>
-                    </button>
-                    {owned ? (
-                      <button
-                        type="button"
-                        onClick={() => onEquipWeaponAura(wa.id)}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
-                          equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
-                        }`}
-                      >
-                        {equipped ? 'Đang Dùng' : 'Trang Bị'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={!canUnlock}
-                        onClick={() => onUnlockWeaponAura(wa.id)}
-                        className="flex-1 py-1.5 px-2 rounded-lg a2-yellow-btn disabled:opacity-45 text-[10px] font-black whitespace-nowrap cursor-pointer font-mono-nums"
-                      >
-                        {hasCrystals ? `${wa.unlockCrystals} Tinh Thể` : `${wa.unlockGems} Ngọc`}
-                      </button>
-                    )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-0.5">
+                      <span className="text-amber-300">MẶC ĐỊNH</span>
+                      {isDefaultEquipped && <span className="text-emerald-300">ĐANG MẶC</span>}
+                    </div>
+                    <div className="text-xs font-black text-white truncate">
+                      Giáp Gốc · {currentHero.name}
+                    </div>
+                    <div className="text-[10px] text-slate-300 mt-0.5">
+                      Gỡ trang phục về ngoại hình nguyên bản
+                    </div>
                   </div>
                 </div>
-              );
-            })}
-
-          {tab === 'skins' &&
-            HERO_SKINS.filter((sk) => !sk.heroId || sk.heroId === save.selectedHeroId).length === 0 && (
-              <div className="col-span-full rounded-2xl border border-purple-400/25 bg-[#080d1e] px-4 py-6 text-center">
-                <Sparkles className="w-6 h-6 text-purple-300/75 mx-auto mb-2" />
-                <div className="text-sm font-black text-white">Chưa có trang phục nào</div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Hệ thống trang phục hiện đang trống và sẵn sàng để thêm trang phục mới sau này.
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onChangePreview({ ...preview, skinId: 'default' })}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-sky-400 text-[11px] font-black text-sky-200 flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
+                  >
+                    <Eye className="w-3 h-3" />
+                    <span>Mặc Thử</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSelectSkin('default')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
+                      isDefaultEquipped ? 'a2-slate-btn' : 'a2-emerald-btn'
+                    }`}
+                  >
+                    {isDefaultEquipped ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Đang Mặc
+                      </span>
+                    ) : (
+                      'Về Mặc Định'
+                    )}
+                  </button>
+                </div>
               </div>
-            )}
+            );
+          })()}
 
           {tab === 'skins' &&
             HERO_SKINS.filter((sk) => !sk.heroId || sk.heroId === save.selectedHeroId).map((sk) => {
@@ -643,14 +658,14 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                     {owned ? (
                       <button
                         type="button"
-                        onClick={() => onSelectSkin(sk.id)}
+                        onClick={() => onSelectSkin(equipped ? 'default' : sk.id)}
                         className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer ${
                           equipped ? 'a2-slate-btn' : 'a2-emerald-btn'
                         }`}
                       >
                         {equipped ? (
                           <span className="inline-flex items-center gap-1">
-                            <Check className="w-3 h-3" /> Đang Mặc
+                            <Check className="w-3 h-3" /> Tháo
                           </span>
                         ) : (
                           'Trang Bị'
@@ -672,17 +687,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
             })}
         </div>
 
-        {/* Quick Ground Aura Indicator */}
-        <div className="hidden sm:flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-2">
-          <span className="flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-amber-300" />
-            <span>
-              Hào Quang Sảnh hiện tại:{' '}
-              <strong className="text-amber-200">
-                {ZODIAC_AURAS.find((a) => a.id === (save.equippedAuraId ?? 'zodiac_gold'))?.name ?? 'Hoàng Đạo'}
-              </strong>
-            </span>
-          </span>
+        <div className="hidden sm:flex items-center justify-end text-[11px] text-slate-400 border-t border-slate-800/80 pt-2">
           <span>Mẹo: Nhấn &ldquo;Mặc Thử&rdquo; để xem trước mọi Thú Cưỡi, Cánh &amp; Hào Quang ngay trên mô hình 3D.</span>
         </div>
       </div>

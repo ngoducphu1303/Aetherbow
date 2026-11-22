@@ -23,21 +23,21 @@ export const MAX_WEAPON_AURA_LEVEL = 10;
 
 export const ZODIAC_MOUNTS: MountDefinition[] = [
   {
-    id: 'black_dragon',
-    name: 'Hắc Long',
-    badge: 'HIẾM · RỒNG ĐEN',
-    rarity: 'Hiếm',
-    desc: 'Rồng đen cánh rộng. Nhận miễn phí để cưỡi khi dạo phố và khi ra trận. Mô hình: 3DHaupt.',
-    bodyHex: 0x20202a,
-    armorHex: 0x444153,
-    maneHex: 0x5e365a,
-    glowHex: 0xc46db1,
-    baseAtk: 34,
-    baseHp: 220,
-    baseMoveSpeed: 0.1,
-    baseDr: 0.03,
-    atkPerLv: 9,
-    hpPerLv: 55,
+    id: 'solarius',
+    name: 'Solarius · Sư Tử Thái Dương',
+    badge: 'CHƯƠNG 1 · HUYỀN THOẠI 3D',
+    rarity: 'Huyền Thoại',
+    desc: 'Chiến sư hoàng kim Solarius với khung xương tứ chi 3D chuyển động phi nước đại uy dũng trong Sảnh và Chiến Đấu.',
+    bodyHex: 0xd97706,
+    armorHex: 0xf59e0b,
+    maneHex: 0xfde047,
+    glowHex: 0xfef08a,
+    baseAtk: 46,
+    baseHp: 280,
+    baseMoveSpeed: 0.14,
+    baseDr: 0.05,
+    atkPerLv: 12,
+    hpPerLv: 68,
     unlockGems: 0,
     unlockShards: 0,
   },
@@ -87,68 +87,7 @@ export function getMountUpgradeCost(level: number) {
   };
 }
 
-export const WEAPON_AURAS: WeaponAuraDefinition[] = [
-  {
-    id: 'none',
-    name: 'Nguyên Bản Không Hào Quang',
-    badge: 'MẶC ĐỊNH',
-    rarity: 'Cơ Bản',
-    desc: 'Giữ nguyên trạng thái vũ khí thuần túy không kèm vòng luân thức tỉnh.',
-    primaryHex: 0x94a3b8,
-    secondaryHex: 0xcbd5e1,
-    baseAtkPct: 0,
-    baseCritDmg: 0,
-    atkPctPerLv: 0,
-    critDmgPerLv: 0,
-    unlockGems: 0,
-    unlockCrystals: 0,
-  },
-  {
-    id: 'solar_flare',
-    name: 'Nhật Luân Viêm Dương',
-    badge: 'SỬ THI · HỎA ẤN',
-    rarity: 'Sử Thi',
-    desc: 'Vòng luân lửa mặt trời xoay quanh vũ khí, cường hóa %ATK và Sát Thương Chí Mạng.',
-    primaryHex: 0xf59e0b,
-    secondaryHex: 0xf97316,
-    baseAtkPct: 0.08,
-    baseCritDmg: 0.18,
-    atkPctPerLv: 0.02,
-    critDmgPerLv: 0.04,
-    unlockGems: 95,
-    unlockCrystals: 12,
-  },
-  {
-    id: 'astral_prism',
-    name: 'Lăng Kính Tinh Tú',
-    badge: 'HUYỀN THOẠI · BĂNG QUANG',
-    rarity: 'Huyền Thoại',
-    desc: 'Pháp trận tinh thể xanh lam bao bọc vũ khí, tăng mạnh sức xuyên phá và bạo kích.',
-    primaryHex: 0x38bdf8,
-    secondaryHex: 0xa855f7,
-    baseAtkPct: 0.14,
-    baseCritDmg: 0.3,
-    atkPctPerLv: 0.025,
-    critDmgPerLv: 0.055,
-    unlockGems: 180,
-    unlockCrystals: 24,
-  },
-  {
-    id: 'void_eclipse',
-    name: 'Huyết Nguyệt Thức Tỉnh',
-    badge: 'THẦN THOẠI · TỐI THƯỢNG',
-    rarity: 'Thần Thoại',
-    desc: 'Ấn ký Nhật Thực đỏ rực quay cuồng quanh tay vũ khí, kích phát uy lực tối thượng.',
-    primaryHex: 0xf43f5e,
-    secondaryHex: 0xfbbf24,
-    baseAtkPct: 0.22,
-    baseCritDmg: 0.45,
-    atkPctPerLv: 0.032,
-    critDmgPerLv: 0.075,
-    unlockGems: 290,
-    unlockCrystals: 38,
-  },
-];
+export const WEAPON_AURAS: WeaponAuraDefinition[] = [];
 
 export const WEAPON_AURA_MAP: Record<WeaponAuraId, WeaponAuraDefinition> = WEAPON_AURAS.reduce(
   (acc, item) => {
@@ -159,8 +98,8 @@ export const WEAPON_AURA_MAP: Record<WeaponAuraId, WeaponAuraDefinition> = WEAPO
 );
 
 export function getWeaponAuraStats(auraId: WeaponAuraId, level: number) {
-  const def = WEAPON_AURA_MAP[auraId] ?? WEAPON_AURAS[0];
-  if (auraId === 'none') {
+  const def = WEAPON_AURA_MAP[auraId];
+  if (!def || auraId === 'none') {
     return { atkPct: 0, critDmg: 0 };
   }
   const lv = Math.max(1, Math.min(MAX_WEAPON_AURA_LEVEL, level));
@@ -184,21 +123,21 @@ export const WISH_PITY_LIMIT = 30;
 
 export const WISH_TARGET_CATALOG: WishTargetItem[] = [
   {
-    id: 'wish_black_dragon',
+    id: 'wish_solarius',
     kind: 'mount',
-    refId: 'black_dragon',
-    name: 'Hắc Long',
-    badge: 'THÚ CƯỠI HẮC LONG · RATE-UP',
-    desc: 'Cường hóa Thú Cưỡi Hắc Long (+30 Mảnh Thú Cưỡi nếu đã sở hữu).',
-    accentColor: '#c084fc',
+    refId: 'solarius',
+    name: 'Solarius · Sư Tử Thái Dương',
+    badge: 'THÚ CƯỠI SOLARIUS · RATE-UP',
+    desc: 'Cường hóa Thú Cưỡi Solarius (+30 Mảnh Thú Cưỡi nếu đã sở hữu).',
+    accentColor: '#f59e0b',
   },
   {
-    id: 'wish_seraph_wing',
+    id: 'wish_solar_wing',
     kind: 'wing',
-    refId: 'seraph_zodiac',
-    name: 'Thánh Dực Seraph Hoàng Đạo',
+    refId: 'solar_zenith',
+    name: 'Thần Dực Đỉnh Thái Dương',
     badge: 'CÁNH THẦN THOẠI · RATE-UP',
-    desc: 'Đôi cánh 6 lông vàng rực gắn lưng 3D. Nếu đã sở hữu sẽ hoàn +28 Lông Vũ Tinh Tú.',
+    desc: 'Đôi thần dực hoàng kim 3D Chương 1. Nếu đã sở hữu sẽ hoàn +28 Lông Vũ Tinh Tú.',
     accentColor: '#fbbf24',
   },
   {
@@ -347,7 +286,7 @@ export const FIRST_TOPUP_TIERS: FirstTopUpTier[] = [
   {
     id: 'topup_tier_60',
     title: 'Túi Tinh Thạch Khởi Hành',
-    subtitle: 'Nạp lần đầu nhận X2 thành 120 Ngọc Hồn + Mảnh Hắc Long',
+    subtitle: 'Nạp lần đầu nhận X2 thành 120 Ngọc Hồn + Mảnh Solarius',
     badge: 'X2 NẠP ĐẦU · MỐC 1',
     priceLabel: '22.000đ',
     baseGems: 60,
@@ -361,7 +300,7 @@ export const FIRST_TOPUP_TIERS: FirstTopUpTier[] = [
   {
     id: 'topup_tier_180',
     title: 'Rương Thần Hồn Nhật Thực',
-    subtitle: 'Nạp lần đầu nhận X2 thành 360 Ngọc Hồn + Tinh Thể Thức Tỉnh',
+    subtitle: 'Nạp lần đầu nhận X2 thành 360 Ngọc Hồn + Tinh Thể Hoàng Đạo',
     badge: 'X2 NẠP ĐẦU · MỐC 2',
     priceLabel: '69.000đ',
     baseGems: 180,
@@ -391,8 +330,8 @@ export const FIRST_TOPUP_TIERS: FirstTopUpTier[] = [
 export const HOT_FLASH_BUNDLES: HotFlashBundle[] = [
   {
     id: 'hot_bundle_mount_starter',
-    title: 'Gói Kỵ Sĩ Hắc Long (-65%)',
-    subtitle: 'Mảnh Thú Cưỡi Hắc Long, Vé Ước Nguyện & Tinh Thể nâng cấp nhanh!',
+    title: 'Gói Kỵ Sĩ Solarius (-65%)',
+    subtitle: 'Mảnh Thú Cưỡi Solarius, Vé Ước Nguyện & Lông Vũ nâng cấp nhanh!',
     badge: 'GIẢM SỐC -65%',
     discountLabel: 'GIÁ GỐC 160 NGỌC',
     originalGemsLabel: '160 Ngọc',
@@ -408,7 +347,7 @@ export const HOT_FLASH_BUNDLES: HotFlashBundle[] = [
   {
     id: 'hot_bundle_wish_x10',
     title: 'Gói Hồ Ước Nguyện Bùng Nổ (-55%)',
-    subtitle: 'Trọn bộ 10 Vé Ước Nguyện + 20 Tinh Thể Thức Tỉnh Vũ Khí!',
+    subtitle: 'Trọn bộ 10 Vé Ước Nguyện + 16 Lông Vũ Thần Dực!',
     badge: 'HOT NHẤT TUẦN',
     discountLabel: 'GIÁ GỐC 260 NGỌC',
     originalGemsLabel: '260 Ngọc',

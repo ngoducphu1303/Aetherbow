@@ -85,7 +85,6 @@ import {
 import {
   HERO_SKINS,
   PETS_CATALOG,
-  ZODIAC_AURAS,
   getPetStats,
   getPetUpgradeCost,
   isVipActive,
@@ -119,7 +118,6 @@ import {
   normalizeGrowthFund,
 } from '../data/wave6Data';
 import {
-  AVATAR_FRAMES,
   MAX_WING_LEVEL,
   MONTHLY_CARDS,
   TOPUP_EVOLUTION_MILESTONES,
@@ -137,8 +135,6 @@ import {
   HOT_FLASH_BUNDLES,
   MOUNT_MAP,
   MAX_MOUNT_LEVEL,
-  MAX_WEAPON_AURA_LEVEL,
-  WEAPON_AURAS,
   WISH_MILESTONES,
   WISH_PITY_LIMIT,
   WISH_POOL_10_COST_GEMS,
@@ -148,19 +144,15 @@ import {
   getMountAppearance,
   getMountStats,
   getMountUpgradeCost,
-  getWeaponAuraStats,
-  getWeaponAuraUpgradeCost,
   normalizeFirstTopUp,
   normalizeWishPool,
 } from '../data/wave8Data';
 import {
   ARTIFACT_MAP,
-  HERO_BONDS,
   MAX_ARTIFACT_LEVEL,
   MYSTIC_CURRENCY_LABELS,
   MYSTIC_EXCHANGE_OFFERS,
   MYTHIC_ARTIFACTS,
-  evaluateHeroBonds,
   getArtifactStats,
   getArtifactUpgradeCost,
   normalizeMysticExchange,
@@ -228,7 +220,7 @@ import {
   WeaponAuraId,
   WingId,
 } from '../types/game';
-import { getSkinAssetPack } from '../data/assetRegistry';
+import { getHeroAssetPack, getSkinAssetPack, SOLAR_LEO_ITEM_THUMBNAILS } from '../data/assetRegistry';
 import {
   ArtifactRelicIcon,
   AwakenCrystalIcon,
@@ -1223,20 +1215,13 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onEvolvePet,
   onUnlockSkin,
   onEquipSkin,
-  onUnlockAura,
-  onEquipAura,
   onUnlockWing,
   onEquipWing,
   onUpgradeWing,
-  onUnlockAvatarFrame,
-  onEquipAvatarFrame,
   onUnlockMount,
   onEquipMount,
   onUpgradeMount,
   onEquipSteed,
-  onUnlockWeaponAura,
-  onEquipWeaponAura,
-  onUpgradeWeaponAura,
   onUnlockArtifact,
   onEquipArtifact,
   onUpgradeArtifact,
@@ -1268,23 +1253,16 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const ownedPets = normalizePets(save.pets);
   const unlockedSkins = save.unlockedSkins ?? ['default'];
   const activeSkinId = save.equippedSkinByHero?.[hero.id] ?? 'default';
-  const unlockedAuras = save.unlockedAuras ?? ['zodiac_gold'];
-  const activeAuraId = save.equippedAuraId ?? 'zodiac_gold';
   const unlockedWings = save.unlockedWings ?? [];
   const wingLevels = save.wingLevels ?? {};
   const equippedWingId = save.equippedWingId ?? null;
   const wingFeathers = save.wingFeathers ?? 0;
-  const unlockedFrames = save.unlockedAvatarFrames ?? ['default_gold'];
-  const equippedFrameId = save.equippedAvatarFrameId ?? 'default_gold';
   const unlockedMounts = save.unlockedMounts ?? [];
   const mountLevels = save.mountLevels ?? {};
   const unlockedAstralSteeds = save.unlockedAstralSteeds ?? [];
   const astralSteedStars = save.astralSteedStars ?? {};
   const { mountId: equippedMountId, astralSteedId: equippedAstralSteedId } = getMountAppearance(save);
   const mountShards = save.mountShards ?? 0;
-  const unlockedWeaponAuras = save.unlockedWeaponAuras ?? ['none'];
-  const weaponAuraLevels = save.weaponAuraLevels ?? {};
-  const equippedWeaponAuraId = save.equippedWeaponAuraId ?? 'none';
   const awakeningCrystals = save.awakeningCrystals ?? 0;
   const petEssence = save.petEssence ?? 0;
   const unlockedArtifacts = save.unlockedArtifacts ?? [];
@@ -1292,7 +1270,6 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const equippedArtifactId = save.equippedArtifactId ?? null;
   const mxState = normalizeMysticExchange(save.mysticExchange);
   const artifactShards = mxState.artifactShards;
-  const heroBondsSummary = evaluateHeroBonds(save);
   const unlockedHalos = save.unlockedHalos ?? [];
   const haloLevels = save.haloLevels ?? {};
   const equippedHaloId = save.equippedHaloId ?? null;
@@ -1855,14 +1832,27 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div
-                              className={`w-11 h-11 rounded-2xl border-2 shrink-0 flex items-center justify-center shadow-lg ${
+                              className={`w-11 h-11 rounded-2xl border-2 shrink-0 flex items-center justify-center shadow-lg overflow-hidden ${
                                 isEvolved ? 'border-amber-300' : 'border-white/70'
                               }`}
                               style={{
                                 background: `radial-gradient(circle at 30% 30%, ${secondaryCss}, ${primaryCss})`,
                               }}
                             >
-                              {isEvolved ? (
+                              {SOLAR_LEO_ITEM_THUMBNAILS[pet.id] ? (
+                                <ResilientAssetImg
+                                  src={SOLAR_LEO_ITEM_THUMBNAILS[pet.id]}
+                                  alt={displayName}
+                                  className="w-full h-full object-cover"
+                                  fallback={
+                                    isEvolved ? (
+                                      <Crown className="w-5 h-5 text-slate-950" />
+                                    ) : (
+                                      <Sparkles className="w-5 h-5 text-slate-950" />
+                                    )
+                                  }
+                                />
+                              ) : isEvolved ? (
                                 <Crown className="w-5 h-5 text-slate-950" />
                               ) : (
                                 <Sparkles className="w-5 h-5 text-slate-950" />
@@ -2022,16 +2012,67 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   </span>
                 </div>
 
-                {HERO_SKINS.filter((skin) => !skin.heroId || skin.heroId === hero.id).length === 0 ? (
-                  <div className="rounded-2xl border border-amber-400/25 bg-[#080d1e] px-4 py-6 text-center">
-                    <Sparkles className="w-6 h-6 text-amber-300/70 mx-auto mb-2" />
-                    <div className="text-sm font-black text-amber-100">Chưa có trang phục nào</div>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Tất cả trang phục cũ đã được dọn sạch. Các bộ trang phục mới sẽ được bổ sung sau.
-                    </p>
-                  </div>
-                ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {(() => {
+                    const isDefaultEquipped = !activeSkinId || activeSkinId === 'default';
+                    const heroPack = getHeroAssetPack(hero.id);
+                    const cHex = `#${hero.cloakHex.toString(16).padStart(6, '0')}`;
+                    const aHex = `#${hero.accentHex.toString(16).padStart(6, '0')}`;
+                    return (
+                      <div
+                        className={`rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${
+                          isDefaultEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="w-16 h-20 rounded-xl overflow-hidden border border-amber-300/50 bg-[#0d152f] shrink-0">
+                            <ResilientAssetImg
+                              src={heroPack.portrait}
+                              alt={hero.name}
+                              className="w-full h-full object-cover object-top"
+                              fallback={<Sparkles className="w-5 h-5 text-amber-300 m-auto" />}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-[10px] font-black text-amber-300 tracking-wider">
+                                MẶC ĐỊNH
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full border border-white/60"
+                                  style={{ backgroundColor: cHex }}
+                                />
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full border border-white/60"
+                                  style={{ backgroundColor: aHex }}
+                                />
+                              </div>
+                            </div>
+                            <h5 className="font-display text-sm font-black text-white truncate">
+                              Giáp Gốc · {hero.name}
+                            </h5>
+                            <p className="text-[11px] text-slate-300 mt-1 leading-relaxed line-clamp-2">
+                              Ngoại hình nguyên bản mặc định của {hero.name}. Chọn để gỡ trang phục hiện tại.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onEquipSkin(hero.id, 'default')}
+                          className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                            isDefaultEquipped
+                              ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300'
+                              : 'a2-emerald-btn'
+                          }`}
+                        >
+                          {isDefaultEquipped && <Check className="w-3.5 h-3.5" />}
+                          <span>{isDefaultEquipped ? 'Đang Mặc Giáp Gốc' : 'Gỡ Trang Phục · Về Mặc Định'}</span>
+                        </button>
+                      </div>
+                    );
+                  })()}
                   {HERO_SKINS.filter((skin) => !skin.heroId || skin.heroId === hero.id).map((skin) => {
                     const isOwned = unlockedSkins.includes(skin.id);
                     const isEquipped = activeSkinId === skin.id;
@@ -2094,16 +2135,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         {isOwned ? (
                           <button
                             type="button"
-                            disabled={isEquipped}
-                            onClick={() => onEquipSkin(hero.id, skin.id)}
+                            onClick={() => onEquipSkin(hero.id, isEquipped ? 'default' : skin.id)}
                             className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
                               isEquipped
-                                ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 cursor-default'
+                                ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/60'
                                 : 'a2-emerald-btn'
                             }`}
                           >
                             {isEquipped && <Check className="w-3.5 h-3.5" />}
-                            <span>{isEquipped ? 'Đang Mặc' : `Mặc Cho ${hero.name}`}</span>
+                            <span>{isEquipped ? 'Đang Mặc · Về Mặc Định' : `Mặc Cho ${hero.name}`}</span>
                           </button>
                         ) : skin.unlockGold === 0 && skin.unlockGems === 0 ? (
                           <button
@@ -2140,97 +2180,6 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                           >
                             <SoulGemIcon className="w-3.5 h-3.5" />
                             <span>Mở Khóa · {skin.unlockGems}</span>
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                )}
-              </div>
-
-              <div className="pt-2 border-t border-amber-400/20">
-                <h4 className="font-display text-sm font-black text-sky-200 mb-2.5">
-                  Vòng Hào Quang Hoàng Đạo 3D
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {ZODIAC_AURAS.map((aura) => {
-                    const isOwned = unlockedAuras.includes(aura.id);
-                    const isEquipped = activeAuraId === aura.id;
-                    const pHex = `#${aura.primaryHex.toString(16).padStart(6, '0')}`;
-                    const sHex = `#${aura.secondaryHex.toString(16).padStart(6, '0')}`;
-
-                    return (
-                      <div
-                        key={aura.id}
-                        className={`rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${
-                          isEquipped ? 'cel-panel-ornate' : 'cel-panel'
-                        }`}
-                      >
-                        <div className="flex items-start gap-2.5">
-                          <div
-                            className="w-10 h-10 rounded-full shrink-0 border-2 border-white/80 shadow"
-                            style={{
-                              background: `conic-gradient(${pHex}, ${sHex}, ${pHex})`,
-                            }}
-                          />
-                          <div className="min-w-0">
-                            <h5 className="font-display text-sm font-black text-white truncate">
-                              {aura.name}
-                            </h5>
-                            <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
-                              {aura.desc}
-                            </p>
-                            {aura.critBonus > 0 && (
-                              <div className="text-[11px] font-mono-nums font-black text-amber-300 mt-1">
-                                +{Math.round(aura.critBonus * 1000) / 10}% Tỷ Lệ Chí Mạng
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {isOwned ? (
-                          <button
-                            type="button"
-                            disabled={isEquipped}
-                            onClick={() => onEquipAura(aura.id)}
-                            className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                              isEquipped
-                                ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 cursor-default'
-                                : 'a2-emerald-btn'
-                            }`}
-                          >
-                            {isEquipped && <Check className="w-3.5 h-3.5" />}
-                            <span>{isEquipped ? 'Đang Kích Hoạt' : 'Trang Bị Hào Quang'}</span>
-                          </button>
-                        ) : aura.unlockGold > 0 ? (
-                          <button
-                            type="button"
-                            disabled={save.gold < aura.unlockGold}
-                            onClick={() => onUnlockAura(aura.id, 'gold')}
-                            className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
-                              save.gold >= aura.unlockGold
-                                ? 'a2-yellow-btn'
-                                : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                            }`}
-                          >
-                            <GoldCoinIcon className="w-3.5 h-3.5" />
-                            <span>Mở Khóa · {aura.unlockGold}</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={save.gems < aura.unlockGems}
-                            onClick={() => onUnlockAura(aura.id, 'gems')}
-                            className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
-                              save.gems >= aura.unlockGems
-                                ? 'a2-purple-btn'
-                                : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                            }`}
-                          >
-                            <SoulGemIcon className="w-3.5 h-3.5" />
-                            <span>Mở Khóa · {aura.unlockGems}</span>
                           </button>
                         )}
                       </div>
@@ -2298,12 +2247,21 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="flex items-center gap-2.5">
                             <span
-                              className="w-10 h-10 rounded-xl border border-amber-300/60 flex items-center justify-center shrink-0"
+                              className="w-11 h-11 rounded-xl border border-amber-300/60 flex items-center justify-center shrink-0 overflow-hidden"
                               style={{
                                 background: `linear-gradient(135deg, ${pColor}33, ${sColor}22)`,
                               }}
                             >
-                              <WingFeatherIcon className="w-5 h-5" />
+                              {SOLAR_LEO_ITEM_THUMBNAILS[w.id] ? (
+                                <ResilientAssetImg
+                                  src={SOLAR_LEO_ITEM_THUMBNAILS[w.id]}
+                                  alt={w.name}
+                                  className="w-full h-full object-cover"
+                                  fallback={<WingFeatherIcon className="w-5 h-5" />}
+                                />
+                              ) : (
+                                <WingFeatherIcon className="w-5 h-5" />
+                              )}
                             </span>
                             <div>
                               <span className="text-[10px] font-black uppercase text-amber-300">
@@ -2421,74 +2379,10 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   );
                 })}
               </div>
-
-              {/* Quick Avatar Frame Showcase */}
-              <div className="pt-2 border-t border-amber-400/20">
-                <h4 className="font-display text-sm font-black text-amber-200 mb-2.5">
-                  Khung Avatar Hoàng Đạo
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                  {AVATAR_FRAMES.map((frame) => {
-                    const owned = unlockedFrames.includes(frame.id);
-                    const equipped = equippedFrameId === frame.id;
-                    return (
-                      <div
-                        key={frame.id}
-                        className={`rounded-2xl p-3 flex flex-col items-center text-center justify-between gap-2 ${
-                          equipped ? 'cel-panel-ornate' : 'cel-panel'
-                        }`}
-                      >
-                        <ZodiacAvatar
-                          heroId={hero.id}
-                          accentHex={hero.accentHex}
-                          cloakHex={hero.cloakHex}
-                          hairHex={hero.hairHex}
-                          frameId={frame.id}
-                          sizeClass="w-11 h-11"
-                        />
-                        <div className="text-[11px] font-black text-white leading-tight">
-                          {frame.name}
-                        </div>
-                        {owned ? (
-                          <button
-                            type="button"
-                            disabled={equipped}
-                            onClick={() => {
-                              soundEngine.playUiClick(1.05);
-                              onEquipAvatarFrame?.(frame.id);
-                            }}
-                            className={`w-full py-1.5 rounded-lg text-[10px] font-black cursor-pointer ${
-                              equipped ? 'a2-emerald-btn' : 'a2-yellow-btn'
-                            }`}
-                          >
-                            {equipped ? 'Đang Dùng' : 'Chọn'}
-                          </button>
-                        ) : frame.unlockGems ? (
-                          <button
-                            type="button"
-                            disabled={save.gems < frame.unlockGems}
-                            onClick={() => {
-                              soundEngine.playLevelUp();
-                              onUnlockAvatarFrame?.(frame.id);
-                            }}
-                            className="a2-purple-btn w-full py-1.5 rounded-lg text-[10px] font-black cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
-                          >
-                            {frame.unlockGems} Ngọc
-                          </button>
-                        ) : (
-                          <span className="text-[9px] font-bold text-slate-400">
-                            {frame.tierLabel}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           )}
 
-          {/* SUB-TAB 5: ZODIAC MOUNTS 3D & AWAKENED WEAPON AURAS */}
+          {/* SUB-TAB 5: ZODIAC MOUNTS 3D */}
           {heroSubTab === 'mounts' && (
             <div className="space-y-4 pb-6">
               <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-center">
@@ -2510,13 +2404,13 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 </div>
                 <div className="md:col-span-7 p-4 flex flex-col gap-1">
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
-                    Kỵ Sĩ Tinh Giới &amp; Vũ Khí Thức Tỉnh 3D
+                    Kỵ Sĩ Tinh Giới · Thú Cưỡi 3D
                   </span>
                   <h4 className="font-display text-base sm:text-lg font-black text-white">
-                    Thú Cưỡi Hoàng Đạo 3D &amp; Vòng Luân Vũ Khí
+                    Thú Cưỡi Hoàng Đạo 3D · Solarius
                   </h4>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Thú Cưỡi xuất hiện trực tiếp dưới chân Anh Hùng trong cả Sảnh lẫn Trận Đấu, tăng ATK, HP, Giảm ST và Tốc chạy. Thu thập Mảnh Thú Cưỡi &amp; Tinh Thể từ Đêm Trăng Máu, Phái Cử hoặc Hồ Ước Nguyện!
+                    Thú Cưỡi xuất hiện trực tiếp dưới chân Anh Hùng trong cả Sảnh lẫn Trận Đấu, tăng ATK, HP, Giảm ST và Tốc chạy. Thu thập Mảnh Thú Cưỡi từ Đêm Trăng Máu, Phái Cử hoặc Hồ Ước Nguyện!
                   </p>
                 </div>
               </div>
@@ -2527,8 +2421,8 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     Đang cưỡi 3D:{' '}
                     <span className="text-amber-300">
                       {equippedMountId
-                        ? MOUNT_MAP[equippedMountId]?.name ?? 'Hắc Long'
-                        : 'Hắc Long'}
+                        ? MOUNT_MAP[equippedMountId]?.name ?? 'Solarius · Sư Tử Thái Dương'
+                        : 'Solarius · Sư Tử Thái Dương'}
                     </span>
                   </div>
                   <button
@@ -2570,12 +2464,21 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         <div className="flex items-start justify-between gap-2 mb-1.5">
                           <div className="flex items-center gap-2.5">
                             <span
-                              className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/40 shadow-inner shrink-0"
+                              className="w-11 h-11 rounded-xl flex items-center justify-center border border-white/40 shadow-inner shrink-0 overflow-hidden"
                               style={{
                                 background: `linear-gradient(135deg, ${pColor}33, ${gColor}44)`,
                               }}
                             >
-                              <MountShardIcon className="w-5 h-5" />
+                              {SOLAR_LEO_ITEM_THUMBNAILS[m.id] ? (
+                                <ResilientAssetImg
+                                  src={SOLAR_LEO_ITEM_THUMBNAILS[m.id]}
+                                  alt={m.name}
+                                  className="w-full h-full object-cover"
+                                  fallback={<MountShardIcon className="w-5 h-5" />}
+                                />
+                              ) : (
+                                <MountShardIcon className="w-5 h-5" />
+                              )}
                             </span>
                             <div>
                               <span className="text-[10px] font-black uppercase text-amber-300">
@@ -2808,147 +2711,10 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 </div>
               </div>
               )}
-
-              {/* Awakened Weapon Auras */}
-              <div className="pt-2 border-t border-amber-400/20">
-                <h4 className="font-display text-sm sm:text-base font-black text-amber-200 mb-2.5">
-                  Hào Quang Vũ Khí Thức Tỉnh
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {WEAPON_AURAS.map((wa) => {
-                    const isOwned = unlockedWeaponAuras.includes(wa.id);
-                    const isEquipped = equippedWeaponAuraId === wa.id;
-                    const lv = Math.max(1, weaponAuraLevels[wa.id] ?? 1);
-                    const maxLv = lv >= MAX_WEAPON_AURA_LEVEL;
-                    const waStats = getWeaponAuraStats(wa.id, lv);
-                    const upCost = getWeaponAuraUpgradeCost(lv);
-
-                    return (
-                      <div
-                        key={wa.id}
-                        className={`rounded-2xl p-4 flex flex-col justify-between gap-2.5 ${
-                          isEquipped ? 'cel-panel-ornate' : 'cel-panel'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-[10px] font-black text-rose-300">
-                              {wa.badge} {isOwned && wa.id !== 'none' ? `· Cấp ${lv}/${MAX_WEAPON_AURA_LEVEL}` : ''}
-                            </span>
-                            {isEquipped && (
-                              <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[9px] font-black text-emerald-300">
-                                ĐANG KÍCH
-                              </span>
-                            )}
-                          </div>
-                          <h5 className="font-display text-sm font-black text-white">{wa.name}</h5>
-                          <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">{wa.desc}</p>
-                          {wa.id !== 'none' && (
-                            <>
-                              <div className="flex items-center gap-3 mt-2 text-[11px] font-mono-nums font-bold">
-                                <span className="text-amber-300">+{Math.round(waStats.atkPct * 1000) / 10}% ATK</span>
-                                <span className="text-rose-300">+{Math.round(waStats.critDmg * 1000) / 10}% ST Chí Mạng</span>
-                              </div>
-                              {isOwned && !maxLv && (() => {
-                                const nextWa = getWeaponAuraStats(wa.id, lv + 1);
-                                return (
-                                  <div className="mt-2">
-                                    <UpgradeStatDiff
-                                      title={`Thức Tỉnh Lv.${lv} → Lv.${lv + 1}`}
-                                      rows={[
-                                        {
-                                          label: '% ATK',
-                                          current: `+${(waStats.atkPct * 100).toFixed(1)}%`,
-                                          next: `+${(nextWa.atkPct * 100).toFixed(1)}%`,
-                                          delta: `+${((nextWa.atkPct - waStats.atkPct) * 100).toFixed(1)}%`,
-                                        },
-                                        {
-                                          label: 'ST Chí Mạng',
-                                          current: `+${(waStats.critDmg * 100).toFixed(1)}%`,
-                                          next: `+${(nextWa.critDmg * 100).toFixed(1)}%`,
-                                          delta: `+${((nextWa.critDmg - waStats.critDmg) * 100).toFixed(1)}%`,
-                                        },
-                                      ]}
-                                    />
-                                  </div>
-                                );
-                              })()}
-                            </>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {isOwned ? (
-                            <>
-                              <button
-                                type="button"
-                                disabled={isEquipped}
-                                onClick={() => {
-                                  soundEngine.playUiClick(1.05);
-                                  onEquipWeaponAura?.(wa.id);
-                                }}
-                                className={`flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
-                                  isEquipped ? 'a2-emerald-btn opacity-80 cursor-default' : 'a2-slate-btn'
-                                }`}
-                              >
-                                {isEquipped ? 'Đang Trang Bị' : 'Kích Hoạt'}
-                              </button>
-                              {wa.id !== 'none' && (
-                                <button
-                                  type="button"
-                                  disabled={
-                                    maxLv || awakeningCrystals < upCost.crystals || save.gold < upCost.gold
-                                  }
-                                  onClick={() => {
-                                    soundEngine.playLevelUp();
-                                    onUpgradeWeaponAura?.(wa.id);
-                                  }}
-                                  className="a2-yellow-btn flex-1 py-2 px-3 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
-                                >
-                                  {maxLv
-                                    ? 'Tối Đa'
-                                    : `Thức Tỉnh (${upCost.crystals} TT + ${upCost.gold}V)`}
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                disabled={awakeningCrystals < wa.unlockCrystals}
-                                onClick={() => {
-                                  soundEngine.playLevelUp();
-                                  onUnlockWeaponAura?.(wa.id, 'crystals');
-                                }}
-                                className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
-                              >
-                                <AwakenCrystalIcon className="w-3.5 h-3.5" />
-                                <span>Mở · {wa.unlockCrystals} TT</span>
-                              </button>
-                              <button
-                                type="button"
-                                disabled={save.gems < wa.unlockGems}
-                                onClick={() => {
-                                  soundEngine.playLevelUp();
-                                  onUnlockWeaponAura?.(wa.id, 'gems');
-                                }}
-                                className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed font-mono-nums"
-                              >
-                                <SoulGemIcon className="w-3.5 h-3.5" />
-                                <span>Mở · {wa.unlockGems} Ngọc</span>
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           )}
 
-          {/* SUB-TAB 6: MYTHIC ARTIFACTS 3D & HERO SYNERGY BONDS */}
+          {/* SUB-TAB 6: MYTHIC ARTIFACTS 3D */}
           {heroSubTab === 'artifacts' && (
             <div className="space-y-5 pb-6">
               <div className="cel-panel-ornate rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 items-center">
@@ -2971,7 +2737,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 <div className="md:col-span-7 p-4 flex flex-col gap-1.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">
-                      Thánh Khí Thần Thoại 3D · Bay Hộ Vệ Sau Vai
+                      Thánh Khí Thần Thoại 3D · Tinh Bàn Regulus
                     </span>
                     <span className="px-2.5 py-1 rounded-lg bg-[#070b1a] border border-amber-400/40 font-mono-nums text-xs font-black text-amber-200 flex items-center gap-1.5">
                       <ArtifactRelicIcon className="w-3.5 h-3.5" />
@@ -2979,10 +2745,10 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     </span>
                   </div>
                   <h4 className="font-display text-base sm:text-lg font-black text-white">
-                    Thánh Khí Hoàng Đạo 3D &amp; Cộng Hưởng Đội Hình
+                    Thánh Khí Hoàng Đạo 3D · Tinh Bàn Regulus
                   </h4>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Thánh Khí xoay quanh vai Anh Hùng trong cả Sảnh lẫn Chiến Đấu, cộng ATK, HP, Chí Mạng &amp; Sát Thương Boss. Săn Mảnh Thánh Khí từ <strong>Hố Sâu Đột Biến 3D</strong> và <strong>Chợ Thương Nhân</strong>!
+                    Thánh Khí bay hộ vệ bên cạnh Anh Hùng trong cả Sảnh lẫn Chiến Đấu, cộng ATK, HP, Chí Mạng &amp; Sát Thương Boss. Săn Mảnh Thánh Khí từ <strong>Hố Sâu Đột Biến 3D</strong> và <strong>Chợ Thương Nhân</strong>!
                   </p>
                 </div>
               </div>
@@ -3010,12 +2776,21 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="flex items-center gap-2.5">
                             <span
-                              className="w-10 h-10 rounded-xl border border-amber-300/60 flex items-center justify-center shrink-0"
+                              className="w-11 h-11 rounded-xl border border-amber-300/60 flex items-center justify-center shrink-0 overflow-hidden"
                               style={{
                                 background: `linear-gradient(135deg, ${pColor}33, ${sColor}22)`,
                               }}
                             >
-                              <ArtifactRelicIcon className="w-5 h-5" />
+                              {SOLAR_LEO_ITEM_THUMBNAILS[art.id] ? (
+                                <ResilientAssetImg
+                                  src={SOLAR_LEO_ITEM_THUMBNAILS[art.id]}
+                                  alt={art.name}
+                                  className="w-full h-full object-cover"
+                                  fallback={<ArtifactRelicIcon className="w-5 h-5" />}
+                                />
+                              ) : (
+                                <ArtifactRelicIcon className="w-5 h-5" />
+                              )}
                             </span>
                             <div>
                               <span className="text-[10px] font-black uppercase text-amber-300">
@@ -3133,112 +2908,6 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   );
                 })}
               </div>
-
-              {/* Hero Synergy Bonds */}
-              <div className="pt-2 border-t border-amber-400/20">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div>
-                    <h4 className="font-display text-sm sm:text-base font-black text-amber-200">
-                      Cộng Hưởng Duyên Đội Hình ({heroBondsSummary.activeCount}/{HERO_BONDS.length} Kích Hoạt)
-                    </h4>
-                    <p className="text-[11px] text-slate-300">
-                      Chiêu mộ &amp; tăng sao các cặp Anh Hùng chỉ định để nhận vĩnh viễn % ATK, % HP &amp; Chí Mạng toàn đội.
-                    </p>
-                  </div>
-                  <span className="font-mono-nums text-xs font-black text-emerald-300">
-                    +{Math.round(heroBondsSummary.atkPct * 100)}% ATK · +{Math.round(heroBondsSummary.hpPct * 100)}% HP
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {HERO_BONDS.map((bond) => {
-                    const active = heroBondsSummary.activeIds.includes(bond.id);
-                    const starSum = bond.heroIds.reduce(
-                      (s, id) =>
-                        s +
-                        Math.max(
-                          0,
-                          save.heroStars?.[id] ?? (save.unlockedHeroes.includes(id) ? 1 : 0)
-                        ),
-                      0
-                    );
-                    const allOwned = bond.heroIds.every((id) => save.unlockedHeroes.includes(id));
-
-                    return (
-                      <div
-                        key={bond.id}
-                        className={`rounded-2xl p-4 border flex flex-col justify-between gap-2.5 ${
-                          active ? 'cel-panel-ornate' : 'cel-panel'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <h5
-                              className="font-display text-sm font-black"
-                              style={{ color: bond.accentColor }}
-                            >
-                              {bond.name}
-                            </h5>
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-black font-mono-nums ${
-                                active
-                                  ? 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-300'
-                                  : 'bg-slate-900 border border-slate-700 text-slate-400'
-                              }`}
-                            >
-                              {active
-                                ? 'ĐÃ KÍCH HOẠT'
-                                : `Sao ${starSum}/${bond.minTotalStars}`}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-300">{bond.subtitle}</p>
-                          <div className="flex flex-wrap gap-2 mt-2.5">
-                            {bond.heroIds.map((hid) => {
-                              const hDef = HERO_MAP[hid];
-                              const hOwned = save.unlockedHeroes.includes(hid);
-                              const hStar = save.heroStars?.[hid] ?? (hOwned ? 1 : 0);
-                              return hDef ? (
-                                <button
-                                  key={hid}
-                                  type="button"
-                                  onClick={() => {
-                                    onPreviewHero(hid);
-                                    setHeroSubTab('roster');
-                                  }}
-                                  className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer ${
-                                    hOwned
-                                      ? 'bg-[#091229] border-amber-400/35 text-white'
-                                      : 'bg-slate-950/80 border-slate-800 text-slate-500'
-                                  }`}
-                                >
-                                  <span>{hDef.name}</span>
-                                  <span className="font-mono-nums text-amber-300">
-                                    {hOwned ? `★${hStar}` : 'Chưa mở'}
-                                  </span>
-                                </button>
-                              ) : null;
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="pt-2 border-t border-amber-400/15 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-nums font-bold">
-                          <span className="text-amber-300">
-                            +{Math.round(bond.bonusAtkPct * 100)}% ATK · +{Math.round(bond.bonusHpPct * 100)}% HP
-                          </span>
-                          <span className="text-sky-300">
-                            +{(bond.bonusCrit * 100).toFixed(1)}% Crit · +{Math.round(bond.bonusCritDmg * 100)}% ST Crit
-                          </span>
-                        </div>
-                        {!allOwned && (
-                          <div className="text-[10px] text-slate-400">
-                            Cần chiêu mộ đủ tất cả Anh Hùng trong duyên để kích hoạt.
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           )}
 
@@ -3276,10 +2945,10 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </span>
                     </div>
                     <h4 className="font-display text-sm sm:text-base font-black text-white mt-0.5">
-                      Xoay Tròn Sau Đầu &amp; Vai Anh Hùng Trong Sảnh Lẫn Thực Chiến 3D
+                      Hào Quang Sư Tử Chí Tôn · Xoay Tròn Sau Lưng Anh Hùng 3D
                     </h4>
                     <p className="text-xs text-slate-300 mt-1">
-                      Thu thập Thần Tinh từ <strong className="text-amber-300">Viễn Chinh Điện Thần 3D</strong> hoặc <strong className="text-amber-300">Chuỗi Quà Liên Hoàn</strong> để khai mở &amp; thăng cấp 4 Vòng Hào Quang Chí Tôn!
+                      Thu thập Thần Tinh từ <strong className="text-amber-300">Viễn Chinh Điện Thần 3D</strong> hoặc <strong className="text-amber-300">Chuỗi Quà Liên Hoàn</strong> để thăng cấp Hào Quang Sư Tử Chí Tôn!
                     </p>
                   </div>
                 </div>
@@ -3305,14 +2974,23 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         <div className="flex items-start justify-between gap-2 mb-1.5">
                           <div className="flex items-center gap-2.5">
                             <span
-                              className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+                              className="w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 overflow-hidden"
                               style={{
                                 backgroundColor: `#${halo.primaryHex.toString(16).padStart(6, '0')}22`,
                                 borderColor: `#${halo.secondaryHex.toString(16).padStart(6, '0')}88`,
                                 color: `#${halo.secondaryHex.toString(16).padStart(6, '0')}`,
                               }}
                             >
-                              <Crown className="w-5 h-5" />
+                              {SOLAR_LEO_ITEM_THUMBNAILS[halo.id] ? (
+                                <ResilientAssetImg
+                                  src={SOLAR_LEO_ITEM_THUMBNAILS[halo.id]}
+                                  alt={halo.name}
+                                  className="w-full h-full object-cover"
+                                  fallback={<Crown className="w-5 h-5" />}
+                                />
+                              ) : (
+                                <Crown className="w-5 h-5" />
+                              )}
                             </span>
                             <div>
                               <span className="text-[10px] font-black uppercase text-amber-300">

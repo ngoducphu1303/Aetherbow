@@ -36,14 +36,11 @@ test('Codex Collection ranks compute points accurately and permanently boost com
     artemis: 5,
     hatsune_miku: 5,
   };
-  richSave.pets = [
-    { petId: 'solar_phoenix', level: 4 },
-    { petId: 'frost_owl', level: 3 },
-  ];
-  richSave.evolvedPets = ['solar_phoenix'];
-  richSave.unlockedWings = ['seraph_zodiac'];
-  richSave.unlockedArtifacts = ['astral_astrolabe', 'eclipse_chalice'];
-  richSave.unlockedHalos = ['solar_crown'];
+  richSave.pets = [{ petId: 'astraeo', level: 4 }];
+  richSave.evolvedPets = ['astraeo'];
+  richSave.unlockedWings = ['solar_zenith'];
+  richSave.unlockedArtifacts = ['astrolabe_regulus'];
+  richSave.unlockedHalos = ['leo_sovereign'];
   richSave.unlockedSkyThemes = ['golden_galaxy', 'dawn_sanctum', 'lunar_eclipse'];
   richSave.codexClaimedRanks = [];
 
@@ -80,20 +77,20 @@ test('3D Spirit Beast Evolution multiplies pet power and boosts equipped player 
   assert.ok(evolvedMult.fireRateMult < 1);
 
   assert.equal(
-    getSpiritBeastFormName('solar_phoenix', false, 'Phượng Hoàng Thái Dương'),
-    'Phượng Hoàng Thái Dương'
+    getSpiritBeastFormName('astraeo', false, 'Astraeo · Sư Tử Tinh Linh'),
+    'Astraeo · Sư Tử Tinh Linh'
   );
   assert.ok(
-    getSpiritBeastFormName('solar_phoenix', true, 'Phượng Hoàng Thái Dương').includes('Tiến Hóa')
+    getSpiritBeastFormName('astraeo', true, 'Astraeo · Sư Tử Tinh Linh').includes('Tiến Hóa')
   );
 
   const save = createInitialSaveData();
-  save.pets = [{ petId: 'solar_phoenix', level: 3 }];
-  save.equippedPetId = 'solar_phoenix';
+  save.pets = [{ petId: 'astraeo', level: 3 }];
+  save.equippedPetId = 'astraeo';
   save.evolvedPets = [];
   const beforeStats = computePlayerStats(save);
 
-  save.evolvedPets = ['solar_phoenix'];
+  save.evolvedPets = ['astraeo'];
   const afterStats = computePlayerStats(save);
 
   assert.ok(afterStats.attack > beforeStats.attack);

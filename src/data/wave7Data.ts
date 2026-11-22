@@ -28,80 +28,23 @@ export const MAX_WING_LEVEL = 15;
 
 export const ZODIAC_WINGS: WingDefinition[] = [
   {
-    id: 'aries_feather',
-    name: 'Tinh Vũ Bạch Dương',
-    badge: 'CÁNH HIẾM',
-    rarity: 'Hiếm',
-    desc: 'Đôi cánh lông vũ ánh bạc khảm ngọc lam tinh tú, gia tăng nhẹ công lực và tốc độ bắn.',
-    featherStyle: 'blade',
-    primaryHex: 0x38bdf8,
-    secondaryHex: 0xe0f2fe,
-    spineHex: 0xfbbf24,
-    baseAtk: 28,
-    baseHp: 120,
-    baseCrit: 0.03,
-    baseAspd: 0.04,
-    atkPerLv: 9,
-    hpPerLv: 38,
-    unlockGems: 40,
-    unlockFeathers: 18,
-  },
-  {
-    id: 'phoenix_blaze',
-    name: 'Hỏa Dực Phượng Hoàng',
-    badge: 'CÁNH SỬ THI',
-    rarity: 'Sử Thi',
-    desc: 'Lông vũ rực lửa mặt trời kết hợp trục vàng hoàng gia, bùng nổ sát thương và bạo kích.',
-    featherStyle: 'flame',
-    primaryHex: 0xf97316,
-    secondaryHex: 0xfde047,
-    spineHex: 0xd97706,
-    baseAtk: 48,
-    baseHp: 210,
-    baseCrit: 0.055,
-    baseAspd: 0.06,
-    atkPerLv: 14,
-    hpPerLv: 58,
-    unlockGems: 85,
-    unlockFeathers: 42,
-  },
-  {
-    id: 'swan_nebula',
-    name: 'Ngân Hà Thiên Nga',
-    badge: 'CÁNH HUYỀN THOẠI',
-    rarity: 'Huyền Thoại',
-    desc: 'Cánh tinh thể tử anh dệt từ bụi ngân hà, nâng tầm sinh lực và nhịp tấn công chớp nhoáng.',
-    featherStyle: 'crystal',
-    primaryHex: 0xa855f7,
-    secondaryHex: 0x67e8f9,
-    spineHex: 0xfbbf24,
-    baseAtk: 74,
-    baseHp: 340,
-    baseCrit: 0.08,
-    baseAspd: 0.09,
-    atkPerLv: 20,
-    hpPerLv: 86,
-    unlockGems: 145,
-    unlockFeathers: 80,
-  },
-  {
-    id: 'seraph_zodiac',
-    name: 'Thần Dực Thánh Quang',
-    badge: 'CÁNH THẦN THOẠI',
+    id: 'solar_zenith',
+    name: 'Thần Dực Đỉnh Thái Dương',
+    badge: 'CHƯƠNG 1 · THẦN THOẠI 3D',
     rarity: 'Thần Thoại',
-    desc: 'Sáu phiến thần dực Hoàng Đạo ròng vàng rực sáng, biểu tượng tối cao của Chí Tôn Tinh Giới.',
+    desc: 'Wings of the Solar Zenith — Đôi thần dực hoàng kim rèn từ ánh nắng cực đỉnh của đền Sư Tử với khớp đập 3D thật.',
     featherStyle: 'seraph',
-    primaryHex: 0xfbbf24,
+    primaryHex: 0xf59e0b,
     secondaryHex: 0xfef08a,
-    spineHex: 0xffffff,
-    baseAtk: 112,
-    baseHp: 520,
-    baseCrit: 0.11,
-    baseAspd: 0.12,
-    atkPerLv: 28,
-    hpPerLv: 125,
-    unlockGems: 240,
-    unlockFeathers: 135,
+    spineHex: 0xfffbeb,
+    baseAtk: 96,
+    baseHp: 440,
+    baseCrit: 0.095,
+    baseAspd: 0.11,
+    atkPerLv: 24,
+    hpPerLv: 110,
+    unlockGems: 0,
+    unlockFeathers: 0,
   },
 ];
 
@@ -111,7 +54,10 @@ export const WING_MAP: Record<WingId, WingDefinition> = ZODIAC_WINGS.reduce((acc
 }, {} as Record<WingId, WingDefinition>);
 
 export function getWingStats(wingId: WingId, level: number) {
-  const def = WING_MAP[wingId] ?? ZODIAC_WINGS[0];
+  const def = WING_MAP[wingId];
+  if (!def) {
+    return { atk: 0, hp: 0, crit: 0, aspd: 0 };
+  }
   const lv = Math.max(1, Math.min(MAX_WING_LEVEL, level));
   return {
     atk: def.baseAtk + (lv - 1) * def.atkPerLv,
@@ -129,66 +75,9 @@ export function getWingUpgradeCost(level: number): { feathers: number; gold: num
 }
 
 // ============================================================================
-// 2. KHUNG AVATAR HOÀNG ĐẠO & HUY HIỆU THẦN THOẠI
+// 2. HUY HIỆU THẦN THOẠI (KHUNG AVATAR HOÀNG ĐẠO ĐÃ ĐƯỢC TINH GỌN)
 // ============================================================================
-export const AVATAR_FRAMES: AvatarFrameDefinition[] = [
-  {
-    id: 'default_gold',
-    name: 'Khung Tân Tinh',
-    tierLabel: 'CƠ BẢN',
-    desc: 'Viền vàng đồng cổ điển của Thợ Săn Hoàng Đạo.',
-    ringClass: 'border-2 border-amber-400/70 bg-[#0b1229]',
-    glowColor: 'rgba(251,191,36,0.28)',
-    unlockMethodLabel: 'Mở sẵn',
-  },
-  {
-    id: 'astral_crescent',
-    name: 'Trăng Khuyết Tinh Tú',
-    tierLabel: 'HIẾM',
-    desc: 'Khung lam ngọc lấp lánh ánh trăng non, tỏa hào quang tinh khiết.',
-    ringClass: 'border-2 border-sky-300 bg-gradient-to-br from-sky-900/70 to-indigo-950',
-    glowColor: 'rgba(56,189,248,0.45)',
-    unlockMethodLabel: 'Mở bằng 35 Ngọc Hồn',
-    unlockGems: 35,
-  },
-  {
-    id: 'crystal_guardian',
-    name: 'Hộ Vệ Pha Lê',
-    tierLabel: 'SỬ THI',
-    desc: 'Khung lục bảo khảm tinh thể phòng ngự từ Thánh Địa Pha Lê.',
-    ringClass: 'border-2 border-emerald-300 bg-gradient-to-br from-emerald-900/75 to-teal-950',
-    glowColor: 'rgba(52,211,153,0.5)',
-    unlockMethodLabel: 'Vượt Đợt 4 Thủ Thành Pha Lê hoặc 55 Ngọc',
-    unlockGems: 55,
-  },
-  {
-    id: 'royal_vip',
-    name: 'Hoàng Gia Chí Tôn',
-    tierLabel: 'ĐẶC QUYỀN',
-    desc: 'Vương miện vàng ròng nạm hồng ngọc dành riêng cho chủ nhân Thẻ Hoàng Đạo.',
-    ringClass: 'border-2 border-amber-300 bg-gradient-to-br from-amber-700/60 via-rose-900/60 to-indigo-950',
-    glowColor: 'rgba(251,191,36,0.62)',
-    unlockMethodLabel: 'Kích hoạt Thẻ Hoàng Đạo Chí Tôn hoặc Mốc Nạp III',
-  },
-  {
-    id: 'world_dragon',
-    name: 'Long Hồn Liên Server',
-    tierLabel: 'HUYỀN THOẠI',
-    desc: 'Khung rồng lửa tím đỏ dành cho dũng sĩ chinh phục Boss Thế Giới.',
-    ringClass: 'border-2 border-rose-400 bg-gradient-to-br from-rose-900/70 via-purple-950 to-slate-950',
-    glowColor: 'rgba(244,63,94,0.6)',
-    unlockMethodLabel: 'Đạt mốc 150.000 Sát Thương Boss Thế Giới',
-  },
-  {
-    id: 'seraph_crown',
-    name: 'Thánh Quang Thần Dực',
-    tierLabel: 'THẦN THOẠI',
-    desc: 'Vòng sáng thần thánh vĩnh cửu hội tụ tinh hoa 12 Chòm Sao.',
-    ringClass: 'border-2 border-yellow-200 bg-gradient-to-br from-amber-500/50 via-purple-900/70 to-sky-950',
-    glowColor: 'rgba(254,240,138,0.72)',
-    unlockMethodLabel: 'Sở hữu Cánh Thần Dực Thánh Quang hoặc Mốc Nạp VI',
-  },
-];
+export const AVATAR_FRAMES: AvatarFrameDefinition[] = [];
 
 export const AVATAR_FRAME_MAP: Record<AvatarFrameId, AvatarFrameDefinition> =
   AVATAR_FRAMES.reduce((acc, f) => {
@@ -352,7 +241,7 @@ export const MONTHLY_CARDS: MonthlyCardDef[] = [
   {
     tier: 'royal_zodiac',
     name: 'Thẻ Hoàng Đạo Chí Tôn (30 Ngày)',
-    subtitle: 'Thẻ đặc quyền tối thượng: tăng thẳng công lực, tặng Khung VIP & lượt PvP.',
+    subtitle: 'Thẻ đặc quyền tối thượng: tăng thẳng công lực, tặng Lông Vũ & lượt PvP.',
     badge: 'ĐẶC QUYỀN CAO CẤP',
     gemCost: 148,
     durationDays: 30,
@@ -367,7 +256,7 @@ export const MONTHLY_CARDS: MonthlyCardDef[] = [
     extraDefenseRuns: 1,
     extraArenaTickets: 2,
     perks: [
-      'Hoàn ngay 160 Ngọc Hồn + 38 Lông Vũ + Khung Hoàng Gia VIP',
+      'Hoàn ngay 160 Ngọc Hồn + 38 Lông Vũ Thần Dực',
       'Mỗi ngày: 45 Ngọc + 620 Vàng + 16 Lông Vũ + 55 Bụi',
       '+8% Công lực toàn đội, +35% Vàng & +2 Vé Arena/ngày',
     ],
@@ -459,7 +348,7 @@ export const TOPUP_EVOLUTION_MILESTONES: TopUpEvolutionTier[] = [
     title: 'Quà Tiến Hóa Hoàng Gia',
     pointsRequired: 160,
     rewards: [
-      { kind: 'frame', amount: 1, frameId: 'royal_vip', label: 'Khung Hoàng Gia VIP' },
+      { kind: 'gems', amount: 65, label: '65 Ngọc Hồn' },
       { kind: 'feathers', amount: 35, label: '35 Lông Vũ' },
     ],
   },
@@ -476,10 +365,10 @@ export const TOPUP_EVOLUTION_MILESTONES: TopUpEvolutionTier[] = [
   {
     id: 'tu_tier_5',
     tierLabel: 'BẬC V',
-    title: 'Hỏa Dực Thức Tỉnh',
+    title: 'Thần Dực Thức Tỉnh',
     pointsRequired: 400,
     rewards: [
-      { kind: 'wing', amount: 1, wingId: 'phoenix_blaze', label: 'Cánh Phượng Hoàng' },
+      { kind: 'wing', amount: 1, wingId: 'solar_zenith', label: 'Thần Dực Đỉnh Thái Dương' },
       { kind: 'feathers', amount: 55, label: '55 Lông Vũ' },
     ],
   },
@@ -489,7 +378,7 @@ export const TOPUP_EVOLUTION_MILESTONES: TopUpEvolutionTier[] = [
     title: 'Đỉnh Cao Thánh Quang',
     pointsRequired: 600,
     rewards: [
-      { kind: 'frame', amount: 1, frameId: 'seraph_crown', label: 'Khung Thánh Quang' },
+      { kind: 'star_dust', amount: 260, label: '260 Bụi Tinh Tú' },
       { kind: 'gems', amount: 180, label: '180 Ngọc Hồn' },
     ],
   },
@@ -816,7 +705,6 @@ export const WORLD_BOSS_MILESTONES: WorldBossDamageMilestone[] = [
     rewardGems: 55,
     rewardFeathers: 32,
     rewardStarDust: 150,
-    rewardFrame: 'world_dragon',
   },
   {
     id: 'wb_260k',

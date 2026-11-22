@@ -1409,6 +1409,7 @@ class SoundEngine {
       wukong: [392, 587.33, 783.99],
       van_tich: [369.99, 554.37, 1108.73],
       hatsune_miku: [493.88, 659.25, 987.77],
+      aurelia: [587.33, 880.0, 1174.66],
     };
     const notes = baseFreqMap[heroId] ?? [523.25, 783.99, 1046.5];
     notes.forEach((freq, idx) => {

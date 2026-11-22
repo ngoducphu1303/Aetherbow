@@ -19,11 +19,12 @@ import {
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 
 function assertAssetFileExists(publicPath: string, contextLabel: string) {
+  const decodedPath = decodeURI(publicPath);
   assert.ok(
-    publicPath.startsWith('/assets/apiaetherbow/'),
-    `${contextLabel}: expected /assets/apiaetherbow/... path, got "${publicPath}"`
+    decodedPath.startsWith('/assets/apiaetherbow/') || decodedPath.startsWith('/assets/Chương 1/'),
+    `${contextLabel}: expected /assets/apiaetherbow/... or /assets/Chương 1/... path, got "${decodedPath}"`
   );
-  const absPath = path.join(PUBLIC_DIR, publicPath.replace(/^\/+/, ''));
+  const absPath = path.join(PUBLIC_DIR, decodedPath.replace(/^\/+/, ''));
   assert.ok(
     fs.existsSync(absPath),
     `${contextLabel}: asset file missing on disk at ${absPath}`
@@ -35,11 +36,11 @@ function assertAssetFileExists(publicPath: string, contextLabel: string) {
   );
 }
 
-test('Hero roster contains only Alice and Hatsune Miku with valid non-empty assets', () => {
+test('Hero roster contains Alice, Hatsune Miku, and Aurelia with valid non-empty assets', () => {
   assert.deepEqual(
     HEROES.map((h) => h.id),
-    ['artemis', 'hatsune_miku'],
-    'Expected strictly Alice (artemis) and Hatsune Miku (hatsune_miku)'
+    ['artemis', 'hatsune_miku', 'aurelia'],
+    'Expected Alice (artemis), Hatsune Miku (hatsune_miku), and Aurelia (aurelia)'
   );
   for (const hero of HEROES) {
     const pack = getHeroAssetPack(hero.id);
@@ -50,8 +51,13 @@ test('Hero roster contains only Alice and Hatsune Miku with valid non-empty asse
   }
 });
 
-test('HERO_SKINS is completely cleared while getSkinAssetPack falls back safely to hero assets', () => {
-  assert.equal(HERO_SKINS.length, 0, 'Expected zero hero skins');
+test('HERO_SKINS contains Aurelia 4 Solar Leo skins and getSkinAssetPack falls back safely for Alice & Miku', () => {
+  assert.equal(HERO_SKINS.length, 4, 'Expected 4 Aurelia Solar Leo skins');
+  for (const skin of HERO_SKINS) {
+    const pack = getSkinAssetPack(skin.id, skin.heroId ?? 'aurelia');
+    assertAssetFileExists(pack.icon, `Skin ${skin.id} icon`);
+    assertAssetFileExists(pack.portrait, `Skin ${skin.id} portrait`);
+  }
   const fallbackAlice = getSkinAssetPack('default', 'artemis');
   const fallbackMiku = getSkinAssetPack('default', 'hatsune_miku');
   assertAssetFileExists(fallbackAlice.portrait, 'Alice fallback skin portrait');

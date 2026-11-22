@@ -21,15 +21,16 @@ test('3D Divine Halo stats scale monotonically with level and clamp to max level
   assert.equal(noneStats.atkPct, 0);
   assert.equal(noneStats.critDmg, 0);
 
-  const lv1 = getDivineHaloStats('solar_crown', 1);
-  const lv5 = getDivineHaloStats('solar_crown', 5);
-  const lvMax = getDivineHaloStats('solar_crown', DIVINE_HALO_MAX_LEVEL);
-  const lvOver = getDivineHaloStats('solar_crown', 99);
+  const lv1 = getDivineHaloStats('leo_sovereign', 1);
+  const lv5 = getDivineHaloStats('leo_sovereign', 5);
+  const lvMax = getDivineHaloStats('leo_sovereign', DIVINE_HALO_MAX_LEVEL);
+  const lvOver = getDivineHaloStats('leo_sovereign', 99);
 
   assert.ok(lv1.atkPct > 0);
   assert.ok(lv5.atkPct > lv1.atkPct);
   assert.ok(lv5.critDmg > lv1.critDmg);
   assert.deepEqual(lvMax, lvOver);
+  assert.equal(getDivineHaloStats('solar_crown', 5).atkPct, 0);
 
   const cost1 = getDivineHaloUpgradeCost(1);
   const cost3 = getDivineHaloUpgradeCost(3);
@@ -95,17 +96,18 @@ test('Celestial Pantheon Boss Expedition normalizes blessings and counts claimab
 
 test('Equipping a 3D Divine Halo increases player attack, maxHp, critDamage, and powerRating', () => {
   const save = createInitialSaveData();
+  save.equippedHaloId = null;
   const baseStats = computePlayerStats(save);
 
-  save.unlockedHalos = ['seraphim_glory'];
-  save.haloLevels = { seraphim_glory: 3 };
-  save.equippedHaloId = 'seraphim_glory';
+  save.unlockedHalos = ['leo_sovereign'];
+  save.haloLevels = { leo_sovereign: 3 };
+  save.equippedHaloId = 'leo_sovereign';
 
   const haloStats = computePlayerStats(save);
   assert.ok(haloStats.attack > baseStats.attack);
   assert.ok(haloStats.maxHp > baseStats.maxHp);
   assert.ok(haloStats.critDamage > baseStats.critDamage);
   assert.ok(haloStats.powerRating > baseStats.powerRating);
-  assert.equal(haloStats.equippedHaloId, 'seraphim_glory');
+  assert.equal(haloStats.equippedHaloId, 'leo_sovereign');
   assert.equal(haloStats.haloLevel, 3);
 });

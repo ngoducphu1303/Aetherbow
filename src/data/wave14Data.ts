@@ -29,84 +29,7 @@ import { getTodayKey } from './questsData';
 
 export const CELESTIAL_WING_MAX_STAR = 5;
 
-export const CELESTIAL_WING_DEFS: CelestialWingDef[] = [
-  {
-    id: 'seraph_azure',
-    name: 'Cánh Thiên Sứ Lam Quang',
-    badge: 'SỬ THI · TỐC BẮN',
-    rarity: 'Sử Thi',
-    desc: 'Đôi cánh lông vũ ánh lam thanh thoát có khớp đập 3D linh hoạt, tăng mạnh Công Kích và Tốc Độ Bắn.',
-    featherHex: 0x38bdf8,
-    tipHex: 0xe0f2fe,
-    frameHex: 0xfbbf24,
-    emissiveHex: 0x0284c7,
-    baseAtkPct: 0.08,
-    baseHpPct: 0.06,
-    baseAspd: 0.08,
-    baseCrit: 0.02,
-    atkPctPerStar: 0.03,
-    hpPctPerStar: 0.025,
-    unlockFeathers: 16,
-    unlockGems: 0,
-  },
-  {
-    id: 'phoenix_solar',
-    name: 'Cánh Phượng Hoàng Thái Dương',
-    badge: 'HUYỀN THOẠI · BẠO KÍCH',
-    rarity: 'Huyền Thoại',
-    desc: 'Đôi cánh lửa vàng rực cháy mang uy lực phượng hoàng, khuếch đại Tỷ Lệ Chí Mạng và Công Kích.',
-    featherHex: 0xf97316,
-    tipHex: 0xfef08a,
-    frameHex: 0xf59e0b,
-    emissiveHex: 0xea580c,
-    baseAtkPct: 0.11,
-    baseHpPct: 0.08,
-    baseAspd: 0.09,
-    baseCrit: 0.045,
-    atkPctPerStar: 0.036,
-    hpPctPerStar: 0.03,
-    unlockFeathers: 24,
-    unlockGems: 90,
-  },
-  {
-    id: 'nebula_void',
-    name: 'Cánh Hư Không Tinh Vân',
-    badge: 'THẦN THOẠI · XUYÊN PHÁ',
-    rarity: 'Thần Thoại',
-    desc: 'Đôi cánh dệt từ bụi ngân hà tím lam lấp lánh, gia tăng vượt trội Sinh Lực và sát thương toàn đội.',
-    featherHex: 0xa855f7,
-    tipHex: 0x67e8f9,
-    frameHex: 0xe2e8f0,
-    emissiveHex: 0x7e22ce,
-    baseAtkPct: 0.135,
-    baseHpPct: 0.115,
-    baseAspd: 0.11,
-    baseCrit: 0.05,
-    atkPctPerStar: 0.042,
-    hpPctPerStar: 0.036,
-    unlockFeathers: 34,
-    unlockGems: 150,
-  },
-  {
-    id: 'sovereign_aurora',
-    name: 'Cánh Chí Tôn Cực Quang',
-    badge: 'CHÍ TÔN · HOÀNG ĐẠO',
-    rarity: 'Chí Tôn',
-    desc: 'Tuyệt phẩm cánh thần 6 phiến hoàng kim cực quang, biểu tượng của Chúa Tể Không Chiến Tinh Giới.',
-    featherHex: 0xfbbf24,
-    tipHex: 0x34d399,
-    frameHex: 0xfef9c3,
-    emissiveHex: 0xd97706,
-    baseAtkPct: 0.17,
-    baseHpPct: 0.14,
-    baseAspd: 0.14,
-    baseCrit: 0.065,
-    atkPctPerStar: 0.05,
-    hpPctPerStar: 0.042,
-    unlockFeathers: 48,
-    unlockGems: 220,
-  },
-];
+export const CELESTIAL_WING_DEFS: CelestialWingDef[] = [];
 
 export const CELESTIAL_WING_MAP: Record<CelestialWingId, CelestialWingDef> = CELESTIAL_WING_DEFS.reduce(
   (acc, item) => {
@@ -660,17 +583,6 @@ export function countClaimableGuildSanctuaryRewards(save: SaveData): number {
 export const SEASON_IV_TITLE = 'Mùa IV: Thiên Giới Cánh Thần';
 
 export const MYTHIC_SHARD_OFFERS: MythicShardOfferDef[] = [
-  {
-    id: 'mso_wing_phoenix',
-    title: 'Cánh Phượng Hoàng Thái Dương 3D',
-    subtitle: 'Mở khóa trực tiếp Cánh Thần Quang Huyền Thoại (+11% Công, +4.5% Crit)',
-    badge: 'ĐỘC QUYỀN MÙA IV',
-    costShards: 22,
-    maxPurchases: 1,
-    rewardKind: 'celestial_wing',
-    amount: 1,
-    targetWingId: 'phoenix_solar',
-  },
   {
     id: 'mso_title_seraph',
     title: 'Danh Hiệu 3D: Chí Tôn Cực Quang',

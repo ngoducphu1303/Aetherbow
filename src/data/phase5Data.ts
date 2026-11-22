@@ -46,6 +46,19 @@ export const HERO_ACTIVE_SKILLS: Record<HeroId, HeroActiveSkillDef> = {
     radius: 4.5,
     durationSec: 3.5,
   },
+  aurelia: {
+    heroId: 'aurelia',
+    name: 'Nhật Hoa Trảm Thiên',
+    shortLabel: 'Nhật Hoa',
+    desc: 'Phóng Vành Nhật Hoa Thái Dương gây 175% ATK diện rộng, thiêu đốt kẻ địch và tạo khiên 10% HP trong 4 giây.',
+    cooldownSec: 8.5,
+    damageMult: 1.75,
+    effectKind: 'ember_nova',
+    accentHex: 0xf59e0b,
+    accentCss: '#f59e0b',
+    radius: 6.2,
+    durationSec: 4.0,
+  },
 };
 
 export function getHeroActiveSkill(heroId: HeroId): HeroActiveSkillDef {

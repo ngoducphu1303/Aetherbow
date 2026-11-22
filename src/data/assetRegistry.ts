@@ -35,9 +35,53 @@ export const HERO_ASSET_PACKS: Record<HeroId, CharacterAssetPack> = {
     skill: '/assets/apiaetherbow/characters/hatsune-miku/skill.png',
     burst: '/assets/apiaetherbow/characters/hatsune-miku/burst.png',
   },
+  aurelia: {
+    assetKey: 'aurelia',
+    icon: encodeURI('/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia.webp'),
+    portrait: encodeURI('/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia.webp'),
+    skill: encodeURI('/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia.webp'),
+    burst: encodeURI('/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia.webp'),
+  },
 };
 
-export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> = {};
+export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> = {
+  aurelia_oasis_dancer: {
+    assetKey: 'aurelia-oasis-dancer',
+    icon: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer.webp'),
+    portrait: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer.webp'),
+    skill: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer.webp'),
+    burst: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer.webp'),
+  },
+  aurelia_temple_commander: {
+    assetKey: 'aurelia-temple-commander',
+    icon: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Royal Sun-Temple Commander.webp'),
+    portrait: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Royal Sun-Temple Commander.webp'),
+    skill: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Royal Sun-Temple Commander.webp'),
+    burst: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Royal Sun-Temple Commander.webp'),
+  },
+  aurelia_solaris_valkyrie: {
+    assetKey: 'aurelia-solaris-valkyrie',
+    icon: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Solaris Valkyrie Regalia.webp'),
+    portrait: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Solaris Valkyrie Regalia.webp'),
+    skill: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Solaris Valkyrie Regalia.webp'),
+    burst: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Solaris Valkyrie Regalia.webp'),
+  },
+  aurelia_winter_solstice: {
+    assetKey: 'aurelia-winter-solstice',
+    icon: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Winter Solstice Crystal Sovereign.webp'),
+    portrait: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Winter Solstice Crystal Sovereign.webp'),
+    skill: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Winter Solstice Crystal Sovereign.webp'),
+    burst: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Winter Solstice Crystal Sovereign.webp'),
+  },
+};
+
+export const SOLAR_LEO_ITEM_THUMBNAILS: Record<string, string> = {
+  astraeo: encodeURI('/assets/Chương 1/Nhân vật/2. Tinh linh/Astraeo.webp'),
+  solar_zenith: encodeURI('/assets/Chương 1/Nhân vật/3. Cánh/Wings of the Solar Zenith.webp'),
+  solarius: encodeURI('/assets/Chương 1/Nhân vật/4. Thú cưỡi/Solarius.webp'),
+  astrolabe_regulus: encodeURI('/assets/Chương 1/Nhân vật/5. Thánh khí/Astrolabe of Regulus.webp'),
+  leo_sovereign: encodeURI('/assets/Chương 1/Nhân vật/6. Hào quang/Halo of the Leo Sovereign.webp'),
+};
 
 export const ENEMY_ASSET_PACKS: Record<EnemyKind, EnemyAssetPack> = {
   [EnemyKind.SKIRMISHER]: {

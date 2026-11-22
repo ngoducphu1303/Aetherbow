@@ -22,76 +22,22 @@ export const MAX_ARTIFACT_LEVEL = 10;
 
 export const MYTHIC_ARTIFACTS: MythicArtifactDefinition[] = [
   {
-    id: 'astral_astrolabe',
-    name: 'Thiên Bàn Tinh Tú',
-    badge: 'HOÀNG KIM · ĐA NĂNG',
-    elementLabel: 'Tinh Quang',
-    desc: 'Quả cầu chiêm tinh xoay sau vai Anh Hùng, tăng mạnh Công Kích, Chí Mạng và sát thương Boss.',
-    primaryHex: 0xfbbf24,
+    id: 'astrolabe_regulus',
+    name: 'Tinh Bàn Regulus',
+    badge: 'CHƯƠNG 1 · THÁNH KHÍ 3D',
+    elementLabel: 'Thái Dương · Hoàng Đạo',
+    desc: 'Astrolabe of Regulus — Thánh khí chiêm tinh 3D của chòm Sư Tử xoay con quay hộ vệ sau vai, tăng mạnh Công, Chí Mạng & Sát Thương Boss.',
+    primaryHex: 0xf59e0b,
     secondaryHex: 0x38bdf8,
-    baseAtk: 42,
-    baseHp: 260,
-    baseCrit: 0.04,
-    baseBossDmg: 0.08,
-    atkPerLv: 14,
-    hpPerLv: 75,
-    critPerLv: 0.008,
-    unlockGems: 135,
-    unlockArtifactShards: 24,
-  },
-  {
-    id: 'phoenix_orb',
-    name: 'Hỏa Châu Phượng Hoàng',
-    badge: 'HỎA DIỄM · CÔNG PHÁ',
-    elementLabel: 'Liệt Hỏa',
-    desc: 'Ngọc lửa bất tử hộ thân giúp bùng nổ hỏa lực và gia tăng sát thương lên Thủ Lĩnh.',
-    primaryHex: 0xf97316,
-    secondaryHex: 0xfef08a,
-    baseAtk: 58,
-    baseHp: 190,
-    baseCrit: 0.05,
-    baseBossDmg: 0.12,
-    atkPerLv: 19,
-    hpPerLv: 55,
-    critPerLv: 0.01,
-    unlockGems: 195,
-    unlockArtifactShards: 34,
-  },
-  {
-    id: 'frost_prism',
-    name: 'Lăng Kính Tuyết Thần',
-    badge: 'HÀN BĂNG · HỘ MỆNH',
-    elementLabel: 'Cực Hàn',
-    desc: 'Pha lê băng tinh khiết bảo hộ sinh mệnh dồi dào và ổn định tỷ lệ bạo kích.',
-    primaryHex: 0x38bdf8,
-    secondaryHex: 0xe0f2fe,
-    baseAtk: 38,
-    baseHp: 460,
-    baseCrit: 0.035,
-    baseBossDmg: 0.06,
-    atkPerLv: 12,
+    baseAtk: 68,
+    baseHp: 420,
+    baseCrit: 0.065,
+    baseBossDmg: 0.14,
+    atkPerLv: 22,
     hpPerLv: 125,
-    critPerLv: 0.007,
-    unlockGems: 165,
-    unlockArtifactShards: 28,
-  },
-  {
-    id: 'eclipse_chalice',
-    name: 'Chén Thánh Nhật Thực',
-    badge: 'HUYỀN THOẠI · TỐI THƯỢNG',
-    elementLabel: 'Hư Không',
-    desc: 'Thánh khí cổ đại từ Hố Sâu Đột Biến, khuếch đại toàn diện ATK, Sinh Lực và Chí Mạng.',
-    primaryHex: 0xa855f7,
-    secondaryHex: 0xf43f5e,
-    baseAtk: 76,
-    baseHp: 520,
-    baseCrit: 0.07,
-    baseBossDmg: 0.16,
-    atkPerLv: 24,
-    hpPerLv: 145,
-    critPerLv: 0.012,
-    unlockGems: 295,
-    unlockArtifactShards: 48,
+    critPerLv: 0.011,
+    unlockGems: 0,
+    unlockArtifactShards: 0,
   },
 ];
 
@@ -105,6 +51,9 @@ export const ARTIFACT_MAP: Record<ArtifactId, MythicArtifactDefinition> = MYTHIC
 
 export function getArtifactStats(artifactId: ArtifactId, level: number) {
   const def = ARTIFACT_MAP[artifactId];
+  if (!def) {
+    return { atk: 0, hp: 0, crit: 0, bossDmg: 0 };
+  }
   const lv = Math.max(1, Math.min(MAX_ARTIFACT_LEVEL, level));
   return {
     atk: def.baseAtk + (lv - 1) * def.atkPerLv,
@@ -122,44 +71,7 @@ export function getArtifactUpgradeCost(level: number) {
   };
 }
 
-export const HERO_BONDS: HeroBondDefinition[] = [
-  {
-    id: 'bond_starlight_hunters',
-    name: 'Song Tinh Trăng Bạc',
-    subtitle: 'Alice + Hatsune Miku đồng tâm hiệp lực giữ tuyến đầu',
-    heroIds: ['artemis', 'hatsune_miku'],
-    minTotalStars: 2,
-    bonusAtkPct: 0.06,
-    bonusHpPct: 0.08,
-    bonusCrit: 0.025,
-    bonusCritDmg: 0.1,
-    accentColor: '#34d399',
-  },
-  {
-    id: 'bond_storm_blaze',
-    name: 'Hòa Âm Nguyệt Vũ',
-    subtitle: 'Alice + Hatsune Miku đạt tổng 4★ cộng hưởng Tốc Bắn & Chí Mạng',
-    heroIds: ['artemis', 'hatsune_miku'],
-    minTotalStars: 4,
-    bonusAtkPct: 0.1,
-    bonusHpPct: 0.08,
-    bonusCrit: 0.035,
-    bonusCritDmg: 0.18,
-    accentColor: '#39c5bb',
-  },
-  {
-    id: 'bond_sovereign_trinity',
-    name: 'Đỉnh Cao Tinh Giới',
-    subtitle: 'Alice + Hatsune Miku đạt tổng 6★ chấn nhiếp Tinh Giới',
-    heroIds: ['artemis', 'hatsune_miku'],
-    minTotalStars: 6,
-    bonusAtkPct: 0.14,
-    bonusHpPct: 0.14,
-    bonusCrit: 0.05,
-    bonusCritDmg: 0.25,
-    accentColor: '#fbbf24',
-  },
-];
+export const HERO_BONDS: HeroBondDefinition[] = [];
 
 export function evaluateHeroBonds(save: Pick<SaveData, 'unlockedHeroes' | 'heroStars'>) {
   const owned = new Set<HeroId>(save.unlockedHeroes ?? ['artemis']);
@@ -485,8 +397,8 @@ export function computePowerAdvisor(
   if (!eqHalo && divineCrystals >= 20) {
     return {
       actionKind: 'halos',
-      title: 'Khai mở Thánh Luân Thái Dương 3D',
-      detail: `Đang có ${divineCrystals} Thần Tinh — đủ mở khóa Hào Quang 3D tăng +8% ATK & +16% Bạo Thương!`,
+      title: 'Khai mở Hào Quang Sư Tử Chí Tôn 3D',
+      detail: `Đang có ${divineCrystals} Thần Tinh — nâng cấp Hào Quang Sư Tử Chí Tôn tăng mạnh ATK% & Bạo Thương!`,
       ctaLabel: 'Mở Hào Quang',
       estGainLabel: '+520 LC',
     };
@@ -504,11 +416,11 @@ export function computePowerAdvisor(
   }
 
   // 1. Unlocked artifact not equipped or upgradable
-  const eqArt = save.equippedArtifactId;
+  const eqArt = save.equippedArtifactId && ARTIFACT_MAP[save.equippedArtifactId] ? save.equippedArtifactId : null;
   if (!eqArt && (save.unlockedArtifacts?.length ?? 0) > 0) {
     return {
       actionKind: 'artifacts',
-      title: 'Trang bị ngay Thánh Khí Thần Thoại 3D',
+      title: 'Trang bị ngay Tinh Bàn Regulus 3D',
       detail: 'Bạn đã sở hữu Thánh Khí nhưng chưa đeo lên vai Anh Hùng.',
       ctaLabel: 'Đeo Thánh Khí',
       estGainLabel: '+320 LC',
@@ -517,22 +429,23 @@ export function computePowerAdvisor(
   if (!eqArt && artifactShards >= 24) {
     return {
       actionKind: 'artifacts',
-      title: 'Mở khóa Thánh Khí đầu tiên bằng Mảnh Thánh Khí',
-      detail: `Kho hiện có ${artifactShards} Mảnh Thánh Khí, đủ kích hoạt Thiên Bàn Tinh Tú.`,
+      title: 'Mở khóa Thánh Khí Tinh Bàn Regulus',
+      detail: `Kho hiện có ${artifactShards} Mảnh Thánh Khí để kích hoạt & nâng cấp Tinh Bàn Regulus.`,
       ctaLabel: 'Mở Thánh Khí',
       estGainLabel: '+420 LC',
     };
   }
   if (eqArt) {
+    const artDef = ARTIFACT_MAP[eqArt];
     const lv = Math.max(1, save.artifactLevels?.[eqArt] ?? 1);
     const cost = getArtifactUpgradeCost(lv);
-    if (lv < MAX_ARTIFACT_LEVEL && artifactShards >= cost.shards && save.gold >= cost.gold) {
+    if (artDef && lv < MAX_ARTIFACT_LEVEL && artifactShards >= cost.shards && save.gold >= cost.gold) {
       return {
         actionKind: 'artifacts',
-        title: `Nâng cấp ${ARTIFACT_MAP[eqArt].name} lên Lv.${lv + 1}`,
+        title: `Nâng cấp ${artDef.name} lên Lv.${lv + 1}`,
         detail: `Đủ ${cost.shards} Mảnh Thánh Khí & ${cost.gold} Vàng để tăng chỉ số trực tiếp.`,
         ctaLabel: 'Nâng Thánh Khí',
-        estGainLabel: `+${Math.round(ARTIFACT_MAP[eqArt].atkPerLv * 4.5)} LC`,
+        estGainLabel: `+${Math.round(artDef.atkPerLv * 4.5)} LC`,
       };
     }
   }

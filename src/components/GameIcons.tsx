@@ -523,11 +523,13 @@ export const ZodiacAvatar: React.FC<{
   frameId = 'default_gold',
   sizeClass = 'w-10 h-10',
 }) => {
-  const frame = AVATAR_FRAME_MAP[frameId] ?? AVATAR_FRAME_MAP.default_gold;
+  const frame = frameId ? AVATAR_FRAME_MAP[frameId] : undefined;
+  const ringClass = frame?.ringClass ?? 'border-2 border-amber-400/55 bg-[#0b1229]';
+  const glowColor = frame?.glowColor ?? 'rgba(251,191,36,0.22)';
   return (
     <div
-      className={`relative rounded-full p-0.5 flex items-center justify-center shrink-0 ${frame.ringClass} ${sizeClass}`}
-      style={{ boxShadow: `0 0 14px ${frame.glowColor}` }}
+      className={`relative rounded-full p-0.5 flex items-center justify-center shrink-0 ${ringClass} ${sizeClass}`}
+      style={{ boxShadow: `0 0 12px ${glowColor}` }}
     >
       <HeroCrestSvg
         heroId={heroId}
@@ -537,12 +539,6 @@ export const ZodiacAvatar: React.FC<{
         hairHex={hairHex}
         className="w-full h-full"
       />
-      {(frameId === 'royal_vip' || frameId === 'seraph_crown') && (
-        <span
-          aria-hidden="true"
-          className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-2 bg-amber-300 border border-white/80 rounded-t-sm rotate-45"
-        />
-      )}
     </div>
   );
 };

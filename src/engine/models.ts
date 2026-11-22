@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WING_MAP } from '../data/wave7Data';
-import { MOUNT_MAP, WEAPON_AURA_MAP } from '../data/wave8Data';
+import { MOUNT_MAP } from '../data/wave8Data';
 import { ARTIFACT_MAP } from '../data/wave9Data';
 import { DIVINE_HALO_MAP } from '../data/wave10Data';
 import { MYTHIC_WEAPON_TIERS, WAR_BANNER_MAP } from '../data/wave12Data';
 import { ASTRAL_STEED_MAP, SOUL_RING_DEFS } from '../data/wave13Data';
 import { CELESTIAL_WING_MAP } from '../data/wave14Data';
+import { SOLAR_LEO_ARTIFACT_OFFSET } from './solarLeoAssets';
 import {
   ArtifactId,
   AstralSteedId,
@@ -305,7 +306,7 @@ function attachHeroAccessories(
   let wingGroup: THREE.Group | undefined;
   let leftWingPivot: THREE.Group | undefined;
   let rightWingPivot: THREE.Group | undefined;
-  if (cfg.wingId) {
+  if (cfg.wingId && WING_MAP[cfg.wingId]) {
     const builtWings = createZodiacWingsModel(cfg.wingId, cfg.wingLevel ?? 1);
     wingGroup = builtWings.group;
     leftWingPivot = builtWings.leftPivot;
@@ -314,22 +315,26 @@ function attachHeroAccessories(
     bodyGroup.add(wingGroup);
   }
 
-  let weaponAuraGroup: THREE.Group | undefined;
-  if (cfg.weaponAuraId && cfg.weaponAuraId !== 'none') {
-    weaponAuraGroup = createWeaponAuraModel(cfg.weaponAuraId, cfg.weaponAuraLevel ?? 1);
-    weaponAuraGroup.position.set(0.28, 0.94, 0.34);
-    bodyGroup.add(weaponAuraGroup);
-  }
+  // Weapon Auras have been removed to keep silhouettes crisp and save GPU draw calls
+  const weaponAuraGroup: THREE.Group | undefined = undefined;
 
   let artifactGroup: THREE.Group | undefined;
-  if (cfg.artifactId) {
+  if (cfg.artifactId && ARTIFACT_MAP[cfg.artifactId]) {
     artifactGroup = createMythicArtifactModel(cfg.artifactId, cfg.artifactLevel ?? 1);
-    artifactGroup.position.set(0.56, 1.38, -0.22);
+    if (cfg.artifactId === 'astrolabe_regulus') {
+      artifactGroup.position.set(
+        SOLAR_LEO_ARTIFACT_OFFSET.x,
+        SOLAR_LEO_ARTIFACT_OFFSET.y,
+        SOLAR_LEO_ARTIFACT_OFFSET.z
+      );
+    } else {
+      artifactGroup.position.set(0.56, 1.38, -0.22);
+    }
     bodyGroup.add(artifactGroup);
   }
 
   let haloGroup: THREE.Group | undefined;
-  if (cfg.haloId) {
+  if (cfg.haloId && DIVINE_HALO_MAP[cfg.haloId]) {
     haloGroup = createDivineHaloModel(cfg.haloId, cfg.haloLevel ?? 1);
     haloGroup.position.set(0, 1.34, -0.34);
     bodyGroup.add(haloGroup);
@@ -367,20 +372,10 @@ function attachHeroAccessories(
     }
   }
 
-  let celestialWingGroup: THREE.Group | undefined;
-  let celestialWingLeft: THREE.Group | undefined;
-  let celestialWingRight: THREE.Group | undefined;
-  if (cfg.celestialWingId && CELESTIAL_WING_MAP[cfg.celestialWingId]) {
-    const builtCelWings = createCelestialWings3DGroup(
-      cfg.celestialWingId,
-      cfg.celestialWingStar ?? 1
-    );
-    celestialWingGroup = builtCelWings.group;
-    celestialWingLeft = builtCelWings.leftPivot;
-    celestialWingRight = builtCelWings.rightPivot;
-    celestialWingGroup.position.set(0, 1.18, -0.34);
-    bodyGroup.add(celestialWingGroup);
-  }
+  // Legacy Celestial Wings have been removed; only Thần Dực Đỉnh Thái Dương remains
+  const celestialWingGroup: THREE.Group | undefined = undefined;
+  const celestialWingLeft: THREE.Group | undefined = undefined;
+  const celestialWingRight: THREE.Group | undefined = undefined;
 
   let mountGroup: THREE.Group | undefined;
   let mountLegs: THREE.Group[] | undefined;
@@ -394,7 +389,7 @@ function attachHeroAccessories(
     mountLegs = builtSteed.legs;
     root.add(astralSteedGroup);
     bodyGroup.position.y = 0.72;
-  } else if (cfg.mountId) {
+  } else if (cfg.mountId && MOUNT_MAP[cfg.mountId]) {
     const builtMount = createZodiacMountModel(cfg.mountId, cfg.mountLevel ?? 1);
     mountGroup = builtMount.group;
     mountLegs = builtMount.legs;
@@ -1709,6 +1704,12 @@ function createZodiacWingsModel(
 ): { group: THREE.Group; leftPivot: THREE.Group; rightPivot: THREE.Group } {
   const def = WING_MAP[wingId];
   const group = new THREE.Group();
+  if (!def) {
+    const leftPivot = new THREE.Group();
+    const rightPivot = new THREE.Group();
+    group.add(leftPivot, rightPivot);
+    return { group, leftPivot, rightPivot };
+  }
   const scaleFactor = 1 + Math.min(14, Math.max(0, wingLevel - 1)) * 0.022;
   const emissiveBoost = 0.85 + Math.min(14, Math.max(0, wingLevel - 1)) * 0.06;
 
@@ -2968,50 +2969,15 @@ export function createSpiritCrystalModel(): SpiritCrystalRefs {
   return { group, coreMesh, outerRing, shards };
 }
 
-function createWeaponAuraModel(auraId: WeaponAuraId, level: number): THREE.Group {
-  const def = WEAPON_AURA_MAP[auraId] ?? WEAPON_AURA_MAP.solar_flare;
-  const g = new THREE.Group();
-  const boost = 1 + Math.min(9, Math.max(0, level - 1)) * 0.08;
-
-  const primaryMat = new THREE.MeshStandardMaterial({
-    color: def.primaryHex,
-    emissive: def.primaryHex,
-    emissiveIntensity: 1.3 * boost,
-    roughness: 0.16,
-    metalness: 0.45,
-  });
-  const secondaryMat = new THREE.MeshStandardMaterial({
-    color: def.secondaryHex,
-    emissive: def.secondaryHex,
-    emissiveIntensity: 1.5 * boost,
-    roughness: 0.12,
-    metalness: 0.35,
-  });
-
-  const outerRing = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.022, 8, 28), primaryMat);
-  const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.016, 6, 22), secondaryMat);
-  innerRing.rotation.x = Math.PI / 3;
-  g.add(outerRing, innerRing);
-
-  const shardGeo = new THREE.OctahedronGeometry(0.052, 0);
-  const shardCount = auraId === 'void_eclipse' ? 6 : 4;
-  for (let i = 0; i < shardCount; i++) {
-    const a = (i / shardCount) * Math.PI * 2;
-    const shard = new THREE.Mesh(shardGeo, i % 2 === 0 ? secondaryMat : primaryMat);
-    shard.position.set(Math.cos(a) * 0.34, Math.sin(a) * 0.34, 0);
-    shard.scale.set(0.75, 1.45, 0.75);
-    g.add(shard);
-  }
-
-  return g;
-}
-
 function createZodiacMountModel(
   mountId: MountId,
   level: number
 ): { group: THREE.Group; legs: THREE.Group[] } {
   const def = MOUNT_MAP[mountId];
   const group = new THREE.Group();
+  if (!def) {
+    return { group, legs: [] };
+  }
   const boost = 0.85 + Math.min(14, Math.max(0, level - 1)) * 0.06;
 
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -3126,6 +3092,7 @@ function createZodiacMountModel(
 function createMythicArtifactModel(artifactId: ArtifactId, level: number): THREE.Group {
   const def = ARTIFACT_MAP[artifactId];
   const g = new THREE.Group();
+  if (!def) return g;
   const boost = 1 + Math.min(9, Math.max(0, level - 1)) * 0.08;
   const scaleFactor = 1 + Math.min(9, Math.max(0, level - 1)) * 0.025;
 
@@ -3208,6 +3175,7 @@ function createMythicArtifactModel(artifactId: ArtifactId, level: number): THREE
 function createDivineHaloModel(haloId: HaloId, level: number): THREE.Group {
   const def = DIVINE_HALO_MAP[haloId];
   const g = new THREE.Group();
+  if (!def) return g;
   const boost = 1 + Math.min(11, Math.max(0, level - 1)) * 0.07;
   const scaleFactor = 1 + Math.min(11, Math.max(0, level - 1)) * 0.02;
 
@@ -4207,11 +4175,16 @@ export function createCelestialWings3DGroup(
   wingId: CelestialWingId,
   star: number
 ): { group: THREE.Group; leftPivot: THREE.Group; rightPivot: THREE.Group } {
-  const def = CELESTIAL_WING_MAP[wingId] ?? CELESTIAL_WING_MAP.seraph_azure;
+  const def = CELESTIAL_WING_MAP[wingId];
+  const group = new THREE.Group();
+  if (!def) {
+    const leftPivot = new THREE.Group();
+    const rightPivot = new THREE.Group();
+    group.add(leftPivot, rightPivot);
+    return { group, leftPivot, rightPivot };
+  }
   const s = Math.max(1, Math.min(5, Math.floor(star || 1)));
   const spanScale = 0.94 + (s - 1) * 0.1;
-
-  const group = new THREE.Group();
 
   // Brushed metallic dorsal clasp (roughness 0.22 vs luminous feathers 0.48)
   const frameMat = new THREE.MeshStandardMaterial({

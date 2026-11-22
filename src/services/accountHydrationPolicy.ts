@@ -1,7 +1,7 @@
 import { SaveData } from '../types/game';
 
-export const ACCOUNT_RESET_EPOCH = 1;
-export const CURRENT_RESET_SAVE_VERSION = 3;
+export const ACCOUNT_RESET_EPOCH = 2;
+export const CURRENT_RESET_SAVE_VERSION = 4;
 
 export interface AccountCloudSaveHeader {
   saveVersion?: number;

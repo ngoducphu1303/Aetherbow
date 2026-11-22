@@ -55,6 +55,31 @@ export const HEROES: HeroDefinition[] = [
     cheekColor: '#f472b6',
     crownStyle: 'ranger_band',
   },
+  {
+    id: 'aurelia',
+    name: 'Aurelia',
+    rarity: 'Legendary',
+    title: 'Nữ Hoàng Thái Dương Sư Tử',
+    skillName: 'Ấn Quang Thái Dương',
+    ultName: 'Thiên Quang Nhật Luân',
+    ultDesc:
+      'Triệu hồi Vành Nhật Hoa Hoàng Kim phát nổ 260% ATK, phóng 12 mũi tên Thái Dương truy kích và cường hóa +35% tốc bắn trong 5 giây.',
+    role: 'Bùng Nổ Thái Dương & Tích Tụ Nhật Hoa',
+    roleTag: 'aoe',
+    unlockChapterReq: 0,
+    passiveDesc:
+      'Mỗi phát bắn thứ 3 kích nổ Ấn Quang Thái Dương gây 145% ATK diện rộng quanh mục tiêu và hồi 4% khiên ánh dương.',
+    bonusAtk: 55,
+    bonusHp: 218,
+    unlockGold: 0,
+    unlockGems: 0,
+    accentHex: 0xf59e0b,
+    cloakHex: 0x9a3412,
+    hairHex: 0xfde68a,
+    eyeColor: '#f59e0b',
+    cheekColor: '#fb923c',
+    crownStyle: 'cleo_crown',
+  },
 ];
 
 export const HERO_MAP: Record<HeroId, HeroDefinition> = Object.fromEntries(

@@ -43,8 +43,11 @@ import {
   type LiveSpectatorMatchState,
 } from '../engine/wave11FivePillars.ts';
 
+import { ACCOUNT_RESET_EPOCH } from '../services/accountHydrationPolicy.ts';
+
 interface LiveAiStoreData {
   version: 1;
+  resetEpoch?: number;
   players: AiLivePlayerProfile[];
   activities: AiLiveActivityEvent[];
   processedDuelIds: Record<string, number>;
@@ -74,6 +77,7 @@ function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
   const weaponByHero: Record<HeroId, string> = {
     artemis: 'Cung Ngân Hà Tinh Tú +20',
     hatsune_miku: 'Cung Nhịp Điệu +20',
+    aurelia: 'Cung Thái Dương Regulus +20',
   };
   const mountPool = ['Hắc Long'];
   const wingPool = [
@@ -231,7 +235,7 @@ function normalizeAiPlayerProfile(
   nowMs: number
 ): AiLivePlayerProfile {
   const seed = SEED_BY_ID.get(raw.id) ?? INITIAL_AI_ROSTER[fallbackIndex % INITIAL_AI_ROSTER.length];
-  const validHeroes: HeroId[] = ['artemis', 'hatsune_miku'];
+  const validHeroes: HeroId[] = ['artemis', 'hatsune_miku', 'aurelia'];
   const heroId: HeroId = validHeroes.includes(raw.heroId as HeroId) ? (raw.heroId as HeroId) : seed.heroId;
   return {
     id: raw.id || seed.id,
@@ -359,6 +363,7 @@ export class LiveAiPlayersService {
 
     return {
       version: 1,
+      resetEpoch: ACCOUNT_RESET_EPOCH,
       players,
       activities,
       processedDuelIds: {},
@@ -374,7 +379,13 @@ export class LiveAiPlayersService {
       }
       const raw = fs.readFileSync(this.storePath, 'utf8');
       const parsed = JSON.parse(raw) as Partial<LiveAiStoreData>;
-      if (parsed && parsed.version === 1 && Array.isArray(parsed.players) && parsed.players.length >= 8) {
+      if (
+        parsed &&
+        parsed.version === 1 &&
+        (parsed.resetEpoch ?? 0) >= ACCOUNT_RESET_EPOCH &&
+        Array.isArray(parsed.players) &&
+        parsed.players.length >= 8
+      ) {
         const normalizedPlayers = parsed.players.map((p, idx) =>
           normalizeAiPlayerProfile(p, idx, nowMs)
         );
@@ -383,7 +394,7 @@ export class LiveAiPlayersService {
           items.map((msg, idx) => ({
             ...msg,
             heroId:
-              msg.heroId === 'artemis' || msg.heroId === 'hatsune_miku'
+              msg.heroId === 'artemis' || msg.heroId === 'hatsune_miku' || msg.heroId === 'aurelia'
                 ? msg.heroId
                 : idx % 2 === 0
                 ? 'artemis'
@@ -401,6 +412,7 @@ export class LiveAiPlayersService {
         };
         return {
           version: 1,
+          resetEpoch: parsed.resetEpoch ?? ACCOUNT_RESET_EPOCH,
           players: normalizedPlayers,
           activities: Array.isArray(parsed.activities) ? parsed.activities.slice(0, MAX_ACTIVITY_HISTORY) : [],
           processedDuelIds:

@@ -17,112 +17,22 @@ import { getTodayKey } from './questsData';
 
 export const PETS_CATALOG: PetDefinition[] = [
   {
-    id: 'solar_phoenix',
-    name: 'Phượng Hoàng Nhật Luân',
-    title: 'Tinh Linh Lửa Hoàng Đạo',
-    element: 'fire',
-    rarity: 'Huyền Thoại',
-    desc: 'Phượng hoàng rực cháy bay hộ vệ, phóng cầu lửa thiêu đốt gây bạo kích cao.',
-    skillName: 'Hỏa Vũ Thần Diễm',
-    skillDesc: 'Phóng cầu lửa mỗi 1.15s gây 88% ATK + thiêu đốt mục tiêu.',
-    baseAtk: 26,
-    baseHp: 110,
-    baseCrit: 0.05,
-    unlockGems: 95,
-    unlockGold: 0,
-    primaryHex: 0xf97316,
-    secondaryHex: 0xfacc15,
-    fireInterval: 1.15,
-  },
-  {
-    id: 'frost_owl',
-    name: 'Cú Tuyết Tinh Vân',
-    title: 'Tinh Linh Băng Giá',
-    element: 'ice',
-    rarity: 'Hiếm',
-    desc: 'Linh thú trí tuệ của Bạch Dương, phóng tia băng làm chậm bước tiến kẻ địch.',
-    skillName: 'Hàn Băng Truy Ảnh',
-    skillDesc: 'Bắn tên băng mỗi 1.3s làm chậm địch 25% trong 1.8s.',
-    baseAtk: 16,
-    baseHp: 90,
-    baseCrit: 0.02,
-    unlockGems: 0,
-    unlockGold: 420,
-    primaryHex: 0x38bdf8,
-    secondaryHex: 0xe0f2fe,
-    fireInterval: 1.3,
-  },
-  {
-    id: 'storm_dragonet',
-    name: 'Ấu Long Lôi Đình',
-    title: 'Tinh Linh Sấm Sét',
-    element: 'storm',
-    rarity: 'Sử Thi',
-    desc: 'Rồng con mang sừng sét cổ đại, tung tia điện cao áp phá giáp quái tinh anh.',
-    skillName: 'Long Lôi Oanh Kích',
-    skillDesc: 'Phóng tia sét mỗi 1.05s với hệ số sát thương 75% ATK.',
-    baseAtk: 22,
-    baseHp: 95,
-    baseCrit: 0.04,
-    unlockGems: 65,
-    unlockGold: 0,
-    primaryHex: 0xa855f7,
-    secondaryHex: 0x67e8f9,
-    fireInterval: 1.05,
-  },
-  {
-    id: 'eclipse_fox',
-    name: 'Cửu Vĩ Nguyệt Thực',
-    title: 'Tinh Linh Bóng Đêm',
-    element: 'shadow',
-    rarity: 'Sử Thi',
-    desc: 'Hồ ly hai đuôi ẩn mình dưới ánh trăng, bắn cầu bóng tối truy kích chuẩn xác.',
-    skillName: 'Huyễn Ảnh Truy Hồn',
-    skillDesc: 'Phóng cầu ma thuật đuổi mục tiêu mỗi 1.1s + tăng 4% Chí Mạng.',
-    baseAtk: 21,
-    baseHp: 80,
-    baseCrit: 0.06,
-    unlockGems: 72,
-    unlockGold: 0,
-    primaryHex: 0xf43f5e,
-    secondaryHex: 0xc084fc,
-    fireInterval: 1.1,
-  },
-  {
-    id: 'jade_turtle',
-    name: 'Huyền Vũ Ngọc Bích',
-    title: 'Tinh Linh Hộ Mệnh',
-    element: 'earth',
-    rarity: 'Hiếm',
-    desc: 'Linh quy hộ giáp ngọc lục bảo tăng sinh lực tối đa và bắn mảnh pha lê bảo vệ.',
-    skillName: 'Ngọc Bích Hộ Thuẫn',
-    skillDesc: 'Bắn mảnh ngọc mỗi 1.35s + gia tăng lượng lớn HP cho Anh Hùng.',
-    baseAtk: 14,
-    baseHp: 185,
-    baseCrit: 0.02,
-    unlockGems: 0,
-    unlockGold: 480,
-    primaryHex: 0x10b981,
-    secondaryHex: 0xa7f3d0,
-    fireInterval: 1.35,
-  },
-  {
-    id: 'star_fairy',
-    name: 'Tiên Nữ Ngân Hà',
-    title: 'Tinh Linh Ánh Sao',
+    id: 'astraeo',
+    name: 'Astraeo',
+    title: 'Tinh Linh Nhật Luân Sư Tử',
     element: 'star',
     rarity: 'Huyền Thoại',
-    desc: 'Tinh linh thuần khiết tỏa hào quang sao trời, bắn chùm sao tốc độ cao.',
-    skillName: 'Tinh Quang Liên Xạ',
-    skillDesc: 'Bắn sao băng tốc độ cao mỗi 0.9s với tỷ lệ chí mạng vượt trội.',
-    baseAtk: 24,
-    baseHp: 120,
-    baseCrit: 0.07,
-    unlockGems: 110,
+    desc: 'Tinh linh Thái Dương Chương 1 bay hộ vệ sát vai, phóng luồng tia Regulus xuyên phá và tăng bạo kích.',
+    skillName: 'Quang Tiễn Regulus',
+    skillDesc: 'Phóng tia tinh quang Thái Dương mỗi 0.92s gây 92% ATK và tăng 6% Chí Mạng.',
+    baseAtk: 26,
+    baseHp: 125,
+    baseCrit: 0.06,
+    unlockGems: 0,
     unlockGold: 0,
-    primaryHex: 0xfbbf24,
-    secondaryHex: 0xfef08a,
-    fireInterval: 0.9,
+    primaryHex: 0xf59e0b,
+    secondaryHex: 0xfef3c7,
+    fireInterval: 0.92,
   },
 ];
 
@@ -132,6 +42,9 @@ export const PET_MAP: Record<PetId, PetDefinition> = Object.fromEntries(
 
 export function getPetStats(petId: PetId, level: number) {
   const def = PET_MAP[petId];
+  if (!def) {
+    return { atk: 0, hp: 0, crit: 0 };
+  }
   const scale = 1 + (Math.max(1, level) - 1) * 0.16;
   return {
     atk: Math.round(def.baseAtk * scale),
@@ -147,64 +60,70 @@ export function getPetUpgradeCost(level: number): { essence: number; gold: numbe
   };
 }
 
-export const HERO_SKINS: HeroSkinDefinition[] = [];
+export const HERO_SKINS: HeroSkinDefinition[] = [
+  {
+    id: 'aurelia_oasis_dancer',
+    heroId: 'aurelia',
+    name: 'Vũ Công Ốc Đảo Hoàng Kim',
+    badge: 'CHƯƠNG 1 · SỬ THI',
+    desc: 'Golden Oasis Sun Dancer — Bộ lễ phục lụa vàng ốc đảo sa mạc rực ánh bình minh dành riêng cho Aurelia.',
+    unlockGems: 0,
+    unlockGold: 0,
+    cloakHex: 0xd97706,
+    accentHex: 0xfde047,
+    hairHex: 0xfef08a,
+    atkBonus: 18,
+    hpBonus: 75,
+  },
+  {
+    id: 'aurelia_temple_commander',
+    heroId: 'aurelia',
+    name: 'Thống Soái Đền Mặt Trời',
+    badge: 'CHƯƠNG 1 · HUYỀN THOẠI',
+    desc: 'Royal Sun-Temple Commander — Chiến giáp hoàng gia Đền Thờ Mặt Trời uy nghiêm của thống soái Sư Tử.',
+    unlockGems: 0,
+    unlockGold: 0,
+    cloakHex: 0x991b1b,
+    accentHex: 0xf59e0b,
+    hairHex: 0xfde68a,
+    atkBonus: 22,
+    hpBonus: 95,
+  },
+  {
+    id: 'aurelia_solaris_valkyrie',
+    heroId: 'aurelia',
+    name: 'Chiến Thần Solaris Valkyrie',
+    badge: 'CHƯƠNG 1 · THẦN THOẠI',
+    desc: 'Solaris Valkyrie Regalia — Thánh giáp Nữ Thần Chiến Tranh rực lửa nhật hoa tối thượng.',
+    unlockGems: 0,
+    unlockGold: 0,
+    cloakHex: 0xb45309,
+    accentHex: 0xfbbf24,
+    hairHex: 0xfffbeb,
+    atkBonus: 26,
+    hpBonus: 110,
+  },
+  {
+    id: 'aurelia_winter_solstice',
+    heroId: 'aurelia',
+    name: 'Nữ Hoàng Băng Tinh Đông Chí',
+    badge: 'CHƯƠNG 1 · CHÍ TÔN',
+    desc: 'Winter Solstice Crystal Sovereign — Thánh bào pha lê băng tuyết hoàng kim tỏa hào quang Đông Chí.',
+    unlockGems: 0,
+    unlockGold: 0,
+    cloakHex: 0x0369a1,
+    accentHex: 0x7dd3fc,
+    hairHex: 0xe0f2fe,
+    atkBonus: 24,
+    hpBonus: 120,
+  },
+];
 
 export const SKIN_MAP: Partial<Record<HeroSkinId, HeroSkinDefinition>> = Object.fromEntries(
   HERO_SKINS.map((s) => [s.id, s])
 ) as Partial<Record<HeroSkinId, HeroSkinDefinition>>;
 
-export const ZODIAC_AURAS: AuraDefinition[] = [
-  {
-    id: 'zodiac_gold',
-    name: 'Vòng Tròn Hoàng Kim',
-    desc: 'Ấn ký Hoàng Đạo cổ điển tỏa sáng sắc vàng ấm áp.',
-    unlockGems: 0,
-    unlockGold: 0,
-    primaryHex: 0xfbbf24,
-    secondaryHex: 0x38bdf8,
-    critBonus: 0,
-  },
-  {
-    id: 'arcane_eclipse',
-    name: 'Nhật Thực Huyền Bí',
-    desc: 'Vòng ma pháp tím lam xoay ngược chiều kim đồng hồ quanh Anh Hùng.',
-    unlockGems: 35,
-    unlockGold: 0,
-    primaryHex: 0xa855f7,
-    secondaryHex: 0x67e8f9,
-    critBonus: 0.025,
-  },
-  {
-    id: 'aurora_emerald',
-    name: 'Cực Quang Ngọc Lục',
-    desc: 'Hào quang sinh mệnh xanh lục bảo giúp ổn định nhịp bắn.',
-    unlockGems: 0,
-    unlockGold: 420,
-    primaryHex: 0x10b981,
-    secondaryHex: 0xa7f3d0,
-    critBonus: 0.015,
-  },
-  {
-    id: 'crimson_corona',
-    name: 'Vành Nhật Hoa Đỏ',
-    desc: 'Hào quang rực lửa của chiến thần khi bùng nổ sát thương.',
-    unlockGems: 48,
-    unlockGold: 0,
-    primaryHex: 0xf43f5e,
-    secondaryHex: 0xf97316,
-    critBonus: 0.03,
-  },
-  {
-    id: 'starlight_prism',
-    name: 'Lăng Kính Tinh Tú',
-    desc: 'Vầng hào quang đa sắc sáng rực như dải ngân hà thu nhỏ.',
-    unlockGems: 65,
-    unlockGold: 0,
-    primaryHex: 0x38bdf8,
-    secondaryHex: 0xfef08a,
-    critBonus: 0.035,
-  },
-];
+export const ZODIAC_AURAS: AuraDefinition[] = [];
 
 export const AURA_MAP: Record<AuraStyleId, AuraDefinition> = Object.fromEntries(
   ZODIAC_AURAS.map((a) => [a.id, a])
@@ -399,5 +318,6 @@ export function normalizeDailyRift(d?: Partial<DailyRiftState>): DailyRiftState 
 }
 
 export function normalizePets(pets?: PetInstance[]): PetInstance[] {
-  return Array.isArray(pets) ? pets : [];
+  if (!Array.isArray(pets)) return [];
+  return pets.filter((p) => Boolean(PET_MAP[p.petId]));
 }

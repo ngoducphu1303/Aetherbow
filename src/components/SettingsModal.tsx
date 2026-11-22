@@ -65,6 +65,7 @@ interface SettingsModalProps {
   onReplayTutorial?: () => void;
   onResetPlaytestMetrics?: () => void;
   onImportSave?: (nextSave: SaveData) => void;
+  onResetPlayerData?: () => Promise<void> | void;
   onClose: () => void;
 }
 
@@ -105,6 +106,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onReplayTutorial,
   onResetPlaytestMetrics,
   onImportSave,
+  onResetPlayerData,
   onClose,
 }) => {
   const [showPlaytestKpi, setShowPlaytestKpi] = useState(false);
@@ -114,6 +116,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [copiedSaveCode, setCopiedSaveCode] = useState(false);
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [resettingData, setResettingData] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
   const [importPending, setImportPending] = useState<{
     save: SaveData;
     preview: SaveTransferPreview;
@@ -444,6 +449,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               )}
             </div>
+
+            {onResetPlayerData && (
+              <div className="rounded-2xl bg-[#080d1e] border border-rose-500/35 p-3.5 space-y-2.5">
+                <div className="text-xs font-black text-rose-300 flex items-center gap-1.5">
+                  <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>3. Đặt Lại Dữ Liệu Về Ban Đầu</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Xóa toàn bộ tiến trình chương, vàng, ngọc, trang bị, bảng xếp hạng cá nhân và đưa tài khoản hiện tại về trạng thái khởi đầu mới.
+                </p>
+                {!confirmResetOpen ? (
+                  <button
+                    type="button"
+                    disabled={resettingData}
+                    onClick={() => {
+                      soundEngine.playUiClick(0.9);
+                      setResetDone(false);
+                      setConfirmResetOpen(true);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl text-xs font-black border border-rose-500/45 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25 cursor-pointer whitespace-nowrap transition-colors"
+                  >
+                    Đặt Lại Toàn Bộ Dữ Liệu
+                  </button>
+                ) : (
+                  <div className="rounded-xl bg-rose-950/50 border border-rose-400/50 p-3 space-y-2">
+                    <div className="text-[11px] font-bold text-rose-200 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-300 shrink-0 mt-0.5" />
+                      <span>Bạn chắc chắn muốn đưa toàn bộ dữ liệu người chơi về trạng thái ban đầu?</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={resettingData}
+                        onClick={() => {
+                          soundEngine.playUiClick(0.95);
+                          setConfirmResetOpen(false);
+                        }}
+                        className="a2-slate-btn py-2 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        disabled={resettingData}
+                        onClick={async () => {
+                          soundEngine.playUiClick(0.85);
+                          setResettingData(true);
+                          try {
+                            await onResetPlayerData();
+                            setConfirmResetOpen(false);
+                            setResetDone(true);
+                          } finally {
+                            setResettingData(false);
+                          }
+                        }}
+                        className="py-2 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-500 text-white cursor-pointer whitespace-nowrap disabled:opacity-60"
+                      >
+                        {resettingData ? 'Đang đặt lại…' : 'Xác Nhận Đặt Lại'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {resetDone && (
+                  <div className="rounded-xl bg-emerald-500/15 border border-emerald-400/50 px-3 py-2 text-xs font-bold text-emerald-200">
+                    Đã đưa toàn bộ dữ liệu về trạng thái ban đầu!
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@ import {
   WEEKLY_BOSS_LOANER_STATS,
   WEEKLY_BOSS_MAX_FREE_ATTEMPTS,
 } from '../data/weeklyBossData.ts';
+import { ACCOUNT_RESET_EPOCH } from '../services/accountHydrationPolicy.ts';
 import type { CombatStyleGrade } from '../types/game.ts';
 import type {
   WeeklyBossClaimReceipt,
@@ -83,6 +84,7 @@ export interface WeekendBlitzEventLedger {
 
 export interface WeeklyBossStoreData {
   version: 1;
+  resetEpoch?: number;
   weeks: Record<string, WeeklyBossWeekLedger>;
   weekendEvents?: Record<string, WeekendBlitzEventLedger>;
   seasonClaims?: Record<string, WeeklyBossSeasonClaimReceipt>;
@@ -133,7 +135,14 @@ export class WeeklyBossServiceError extends Error {
 }
 
 function createEmptyStore(): WeeklyBossStoreData {
-  return { version: 1, weeks: {}, seasonClaims: {}, seasonIdempotencyIndex: {} };
+  return {
+    version: 1,
+    resetEpoch: ACCOUNT_RESET_EPOCH,
+    weeks: {},
+    weekendEvents: {},
+    seasonClaims: {},
+    seasonIdempotencyIndex: {},
+  };
 }
 
 function createEmptyWeekLedger(weekId: string): WeeklyBossWeekLedger {
@@ -195,10 +204,30 @@ export class WeeklyBossService {
       if (!fs.existsSync(this.storePath)) return createEmptyStore();
       const raw = fs.readFileSync(this.storePath, 'utf8');
       const parsed = JSON.parse(raw) as Partial<WeeklyBossStoreData>;
-      if (parsed && parsed.version === 1 && parsed.weeks && typeof parsed.weeks === 'object') {
-        return { version: 1, weeks: parsed.weeks };
+      if (
+        parsed &&
+        parsed.version === 1 &&
+        (parsed.resetEpoch ?? 0) >= ACCOUNT_RESET_EPOCH &&
+        parsed.weeks &&
+        typeof parsed.weeks === 'object'
+      ) {
+        return {
+          version: 1,
+          resetEpoch: parsed.resetEpoch ?? ACCOUNT_RESET_EPOCH,
+          weeks: parsed.weeks,
+          weekendEvents: parsed.weekendEvents ?? {},
+          seasonClaims: parsed.seasonClaims ?? {},
+          seasonIdempotencyIndex: parsed.seasonIdempotencyIndex ?? {},
+        };
       }
-      return createEmptyStore();
+      const fresh = createEmptyStore();
+      try {
+        this.store = fresh;
+        this.persistStore();
+      } catch {
+        // ignore disk write errors during reset
+      }
+      return fresh;
     } catch {
       return createEmptyStore();
     }
