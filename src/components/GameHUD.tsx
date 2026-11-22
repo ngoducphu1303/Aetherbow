@@ -1339,6 +1339,28 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                             Pha I
                           </span>
                         )}
+                        {hud.bossTimedEnraged ? (
+                          <>
+                            <span aria-hidden="true" className="text-slate-600">·</span>
+                            <span className="text-[9px] font-black uppercase text-rose-400 animate-pulse whitespace-nowrap">
+                              Cuồng Nộ!
+                            </span>
+                          </>
+                        ) : typeof hud.bossEnrageRemainingSec === 'number' &&
+                          hud.bossEnrageRemainingSec <= 35 ? (
+                          <>
+                            <span aria-hidden="true" className="text-slate-600">·</span>
+                            <span
+                              className={`font-mono-nums text-[9px] font-black whitespace-nowrap ${
+                                hud.bossEnrageRemainingSec <= 12
+                                  ? 'text-rose-400 animate-pulse'
+                                  : 'text-amber-300'
+                              }`}
+                            >
+                              Nộ {Math.ceil(hud.bossEnrageRemainingSec)}s
+                            </span>
+                          </>
+                        ) : null}
                       </>
                     )}
                   </div>

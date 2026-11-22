@@ -54,21 +54,52 @@ test('30-Day Fair Progression · Chapters 1–12 Curve, Talents Lv.20 & Co-op Ra
   assert.equal(COOP_RAID_DIFFICULTIES[2].recommendedPower, 185000);
 });
 
-test('30-Day Fair Progression · Soft Power Pressure Tiers & Endless Tower LC Curve', () => {
+test('30-Day Fair Progression · Deep Progressive LC Suppression, Enrage & Endless Tower LC Curve', () => {
   const ready = computePowerPressure(10000, 10000);
   assert.equal(ready.tier, 'ready');
   assert.equal(ready.enemyDamageTakenMult, 1.0);
   assert.equal(ready.enemyDamageDealtMult, 1.0);
+  assert.equal(ready.enemyDrPiercePct, 0);
+  assert.equal(ready.bossEnrageSec, 75);
+  assert.equal(ready.allowInstantExecute, true);
 
-  const skill = computePowerPressure(8200, 10000);
+  // 9,000 LC vs Ch.3 (10,000 LC): ratio 0.90 -> Ready (normal clear)
+  const ch3 = computePowerPressure(9000, 10000);
+  assert.equal(ch3.tier, 'ready');
+  assert.equal(ch3.enemyDamageTakenMult, 1.0);
+
+  // Skill challenge window (~1.12x - 1.33x above LC): tense but clearable with strong dodging
+  const skill = computePowerPressure(8000, 10000);
   assert.equal(skill.tier, 'skill_challenge');
-  assert.equal(skill.enemyDamageTakenMult, 1.0);
-  assert.ok(skill.enemyDamageDealtMult > 1.05 && skill.enemyDamageDealtMult <= 1.25);
+  assert.ok(skill.enemyDamageTakenMult >= 0.85 && skill.enemyDamageTakenMult < 0.98);
+  assert.ok(skill.enemyDamageDealtMult >= 1.2 && skill.enemyDamageDealtMult <= 1.5);
+  assert.ok(skill.bossEnrageSec >= 60 && skill.bossEnrageSec <= 70);
+  assert.equal(skill.allowInstantExecute, true);
 
-  const danger = computePowerPressure(4500, 10000);
-  assert.equal(danger.tier, 'high_danger');
-  assert.ok(danger.enemyDamageTakenMult < 0.7 && danger.enemyDamageTakenMult >= 0.28);
-  assert.ok(danger.enemyDamageDealtMult >= 1.8);
+  // Hard skill cap edge (~1.45x above LC, ratio ~0.69): demanding high-danger clear
+  const edge = computePowerPressure(9000, 13000);
+  assert.equal(edge.tier, 'high_danger');
+  assert.ok(edge.enemyDamageTakenMult >= 0.45 && edge.enemyDamageTakenMult <= 0.72);
+  assert.ok(edge.enemyDamageDealtMult >= 1.75 && edge.enemyDamageDealtMult <= 2.4);
+  assert.equal(edge.allowInstantExecute, true);
+
+  // 9,000 LC vs Ch.4 (20,000 LC, 2.22x gap): severe progressive suppression
+  const ch4 = computePowerPressure(9000, 20000);
+  assert.equal(ch4.tier, 'high_danger');
+  assert.ok(ch4.enemyDamageTakenMult <= 0.22, `Ch.4 2.2x gap damageTaken=${ch4.enemyDamageTakenMult}`);
+  assert.ok(ch4.enemyDamageDealtMult >= 3.2, `Ch.4 2.2x gap damageDealt=${ch4.enemyDamageDealtMult}`);
+  assert.ok(ch4.enemyDrPiercePct >= 0.3, `Ch.4 DR pierce=${ch4.enemyDrPiercePct}`);
+  assert.ok(ch4.bossEnrageSec <= 45, `Ch.4 enrage=${ch4.bossEnrageSec}`);
+  assert.equal(ch4.allowInstantExecute, false);
+
+  // 9,000 LC vs Ch.7 (80,000 LC, 8.89x gap): absolute suppression prevents impossible clears
+  const ch7 = computePowerPressure(9000, 80000);
+  assert.equal(ch7.tier, 'high_danger');
+  assert.ok(ch7.enemyDamageTakenMult <= 0.025, `Ch.7 8.9x gap damageTaken=${ch7.enemyDamageTakenMult}`);
+  assert.ok(ch7.enemyDamageDealtMult >= 8.5, `Ch.7 8.9x gap damageDealt=${ch7.enemyDamageDealtMult}`);
+  assert.ok(ch7.enemyDrPiercePct >= 0.65, `Ch.7 DR pierce=${ch7.enemyDrPiercePct}`);
+  assert.ok(ch7.bossEnrageSec <= 28, `Ch.7 enrage=${ch7.bossEnrageSec}`);
+  assert.equal(ch7.allowInstantExecute, false);
 
   // Endless Tower recommended LC increases smoothly from Floor 1 -> Floor 50
   let prev = 0;

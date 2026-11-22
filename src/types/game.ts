@@ -2205,6 +2205,8 @@ export interface HudSnapshot {
   // AAA Wave 7: Boss Weak-Point Window & Arena Resonance Trap Callout
   bossWeakPointActive?: boolean;
   bossWeakPointTimer?: number;
+  bossEnrageRemainingSec?: number;
+  bossTimedEnraged?: boolean;
   trapTriggerToast?: string | null;
   // AAA Wave 2 + Pillar 5 Real-Time AI & Diagnostics
   autoPilotEnabled?: boolean;

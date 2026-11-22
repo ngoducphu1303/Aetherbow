@@ -204,10 +204,17 @@ import {
   toHudCoopSynergy,
 } from './coopSynergy';
 import {
+  BOSS_GUARD_BREAK_STUN_SEC,
+  BOSS_STUN_IMMUNITY_SEC,
   BossAiRuntimeState,
   BossHazardKind,
   BossPendingVolley,
+  BossTimedEnrageModifiers,
+  clampBossChillSlowMult,
   clearBossAiTransientCombat,
+  computeBossEnrageModifiers,
+  computeBossInnateArmorReduction,
+  computeBossPhaseDamageMult,
   computeSafeBlinkDestination,
   createBossAiRuntimeState,
   getBossPerformanceBudget,
@@ -614,6 +621,7 @@ interface EnemyEntity {
   solarLionBurstType?: 'none' | 'lunge' | 'slam' | 'roar';
   solarLionBurstTimer?: number;
   bossAiState?: BossAiRuntimeState;
+  bossStunImmuneTimer?: number;
   dead?: boolean;
 }
 
@@ -9189,21 +9197,21 @@ export class GameEngine {
       case EnemyKind.WARDEN_BOSS:
         baseHp = 1150;
         speed = 2.65;
-        damage = 42;
+        damage = 57;
         xpValue = 95;
         goldValue = 55;
         break;
       case EnemyKind.TITAN_BOSS:
         baseHp = 1950;
         speed = 2.45;
-        damage = 54;
+        damage = 73;
         xpValue = 145;
         goldValue = 95;
         break;
       case EnemyKind.ZODIAC_BOSS:
         baseHp = 2750;
         speed = 2.75;
-        damage = 64;
+        damage = 86;
         xpValue = 210;
         goldValue = 150;
         break;
@@ -14563,6 +14571,9 @@ export class GameEngine {
 
       if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
       if (e.reactionCd && e.reactionCd > 0) e.reactionCd = Math.max(0, e.reactionCd - dt);
+      if (e.bossStunImmuneTimer && e.bossStunImmuneTimer > 0) {
+        e.bossStunImmuneTimer = Math.max(0, e.bossStunImmuneTimer - dt);
+      }
       const statusTint = resolveEnemyStatusTint({
         hitFlashTimer: e.hitFlashTimer,
         stunTimer: e.stunTimer,
@@ -14572,14 +14583,21 @@ export class GameEngine {
         isMarked: this.markedEnemyIds.has(e.id) || (e.stormMarkUntil ?? 0) > this.elapsed,
         elapsed: this.elapsed,
       });
+      const isTimedEnragedBoss = Boolean(e.isBoss && e.bossAiState?.timedEnrageTriggered);
       const bossRagePulse =
-        e.isBoss && (e.bossPhase ?? 1) >= 2 && e.hitFlashTimer <= 0 && !(e.stunTimer && e.stunTimer > 0)
-          ? (e.bossPhase === 3 ? 0.42 : 0.24) + Math.sin(this.elapsed * 9.5) * 0.14
+        e.isBoss &&
+        ((e.bossPhase ?? 1) >= 2 || isTimedEnragedBoss) &&
+        e.hitFlashTimer <= 0 &&
+        !(e.stunTimer && e.stunTimer > 0)
+          ? (isTimedEnragedBoss ? 0.58 : e.bossPhase === 3 ? 0.42 : 0.24) +
+            Math.sin(this.elapsed * (isTimedEnragedBoss ? 13 : 9.5)) * 0.16
           : 0;
       for (const hm of e.model.hitMeshes) {
         const mat = hm.material as THREE.MeshStandardMaterial;
         if (bossRagePulse > 0 && statusTint.intensity <= 0.05) {
-          mat.emissive.setHex(e.bossPhase === 3 ? 0xf43f5e : 0xf97316);
+          mat.emissive.setHex(
+            isTimedEnragedBoss ? 0xe11d48 : e.bossPhase === 3 ? 0xf43f5e : 0xf97316
+          );
           mat.emissiveIntensity = bossRagePulse;
         } else {
           mat.emissive.setHex(statusTint.hex);
@@ -14587,10 +14605,10 @@ export class GameEngine {
         }
       }
 
-      // Burn & Poison DoT
+      // Burn & Poison DoT (strictly gated by LC Power Pressure & Boss Innate Armor so DoTs never bypass!)
       if (e.burnTimer > 0) {
         e.burnTimer -= dt;
-        const tickDmg = e.burnDps * dt;
+        const tickDmg = this.scaleAuxiliaryPlayerDamage(e.burnDps * dt, e);
         e.hp -= tickDmg;
         this.dmgElemental += tickDmg;
         if (Math.random() < 0.2) {
@@ -14598,7 +14616,7 @@ export class GameEngine {
         }
       }
       if (e.poisonDps > 0) {
-        const tickDmg = e.poisonDps * dt;
+        const tickDmg = this.scaleAuxiliaryPlayerDamage(e.poisonDps * dt, e);
         e.hp -= tickDmg;
         this.dmgElemental += tickDmg;
         if (Math.random() < 0.15) {
@@ -14682,7 +14700,8 @@ export class GameEngine {
       }
 
       const superFreeze = (this.activeSkills.super_freeze ?? 0) > 0;
-      const slowMult = e.chillTimer > 0 ? (superFreeze ? 0.42 : 0.58) : 1.0;
+      const rawSlowMult = e.chillTimer > 0 ? (superFreeze ? 0.42 : 0.58) : 1.0;
+      const slowMult = clampBossChillSlowMult(rawSlowMult, e.isBoss && !e.isArenaRival);
       if (e.chillTimer > 0) e.chillTimer -= dt;
 
       // Phase 2: 3D Boss Punish Window emerald halo tick
@@ -14767,9 +14786,21 @@ export class GameEngine {
       }
 
       const bossAi = e.bossAiState;
+      const bossEnrageMods = this.getBossTimedEnrageMods(e);
       if (bossAi) {
         if (bossAi.blinkFlashTimer > 0) {
           bossAi.blinkFlashTimer = Math.max(0, bossAi.blinkFlashTimer - dt);
+        }
+        // Boss Timed Enrage ("CUỒNG NỘ BẠO PHÁT") — ticks on PvE bosses to prevent infinite kiting
+        if (this.isTimedEnrageEnabledForBoss(e)) {
+          bossAi.timedEnrageElapsed += dt;
+          if (!bossAi.timedEnrageTriggered && bossAi.timedEnrageElapsed >= bossAi.timedEnrageLimitSec) {
+            bossAi.timedEnrageTriggered = true;
+            soundEngine.playBossAlarm();
+            this.shakeIntensity = Math.max(this.shakeIntensity, 0.46);
+            this.spawnShockwave(e.x, e.z, 0xe11d48, 6.2, 0.48);
+            this.emitFloatingNumber(e.x, 2.65, e.z, 0, true, false, 'fire', 'CUỒNG NỘ BẠO PHÁT!', true);
+          }
         }
         // Process staggered follow-up projectile / shockwave waves (true rotating spirals, mobile bursts, tectonic rings)
         if (bossAi.pendingVolleys.length > 0) {
@@ -14833,7 +14864,7 @@ export class GameEngine {
               z: e.z,
               radius: 1.95,
               durationSec: Math.min(3.8, act.hazardDurationSec ?? 3.4),
-              damagePerTick: Math.max(12, Math.round(e.damage * 0.42)),
+              damagePerTick: this.getEffectiveBossAttackDamage(e, 0.42),
               ownerName: e.bossTitle || this.currentChapter.bossName,
             });
           }
@@ -14842,7 +14873,7 @@ export class GameEngine {
           if (!act.hitPlayerDuringDash && Math.hypot(this.px - e.x, this.pz - e.z) < e.radius + 0.75) {
             act.hitPlayerDuringDash = true;
             this.damagePlayer(
-              Math.round(e.damage * act.damageMult),
+              this.getEffectiveBossAttackDamage(e, act.damageMult),
               {
                 code: 'boss_lane',
                 label: `${bossAi.activeSkillLabel || 'Xung Kích'} của ${e.bossTitle ?? 'Boss'}`,
@@ -14854,7 +14885,7 @@ export class GameEngine {
             );
           }
 
-          // Shatter destructible obstacles along charge path; hitting arena boundary staggers the boss!
+          // Shatter destructible obstacles along charge path; hitting arena boundary staggers the boss (respects stun immunity)!
           for (const obs of this.obstacles) {
             if (obs.intact === false) continue;
             if (Math.hypot(e.x - obs.x, e.z - obs.z) < e.radius + obs.radius + 0.25) {
@@ -14863,13 +14894,18 @@ export class GameEngine {
               } else {
                 bossAi.activeAction = null;
                 clearBossAiTransientCombat(bossAi);
-                e.stunTimer = 1.75;
+                if (!e.bossStunImmuneTimer || e.bossStunImmuneTimer <= 0) {
+                  e.stunTimer = 1.5;
+                  e.bossStunImmuneTimer = 8.0;
+                  this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'fire', 'CHOÁNG ĐẬP TRỤ!', true);
+                } else {
+                  this.emitFloatingNumber(e.x, 2.35, e.z, 0, false, false, 'ice', 'KHÁNG CHOÁNG!');
+                }
                 e.vx = 0;
                 e.vz = 0;
                 this.openBossWeakPoint(e);
                 soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
                 this.spawnShockwave(e.x, e.z, 0xfbbf24, 3.2, 0.34);
-                this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'fire', 'CHOÁNG ĐẬP TRỤ!', true);
                 this.scheduleNextBossCooldownOrCombo(e, isEnraged);
                 break;
               }
@@ -14883,13 +14919,18 @@ export class GameEngine {
           ) {
             bossAi.activeAction = null;
             clearBossAiTransientCombat(bossAi);
-            e.stunTimer = 1.75;
+            if (!e.bossStunImmuneTimer || e.bossStunImmuneTimer <= 0) {
+              e.stunTimer = 1.5;
+              e.bossStunImmuneTimer = 8.0;
+              this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'fire', 'CHOÁNG ĐẬP TƯỜNG!', true);
+            } else {
+              this.emitFloatingNumber(e.x, 2.35, e.z, 0, false, false, 'ice', 'KHÁNG CHOÁNG!');
+            }
             e.vx = 0;
             e.vz = 0;
             this.openBossWeakPoint(e);
             soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
             this.spawnShockwave(e.x, e.z, 0xfbbf24, 3.4, 0.36);
-            this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'fire', 'CHOÁNG ĐẬP TƯỜNG!', true);
             this.scheduleNextBossCooldownOrCombo(e, isEnraged);
           } else if (bossAi.activeAction && progress >= 1) {
             bossAi.activeAction = null;
@@ -14911,7 +14952,8 @@ export class GameEngine {
             arenaHalfW: ARENA_HALF_W,
             arenaHalfD: ARENA_HALF_D,
             isTelegraphing: true,
-            telegraphMoveMult: 0.28,
+            telegraphMoveMult: 0.64,
+            enrageSpeedMult: bossEnrageMods.speedMult,
           });
           e.vx = move.vx;
           e.vz = move.vz;
@@ -14982,13 +15024,13 @@ export class GameEngine {
           });
         }
 
-        // Bosses stay fluidly mobile during non-rooting telegraphs instead of freezing like statues
+        // Bosses stay fluidly mobile during telegraphs (>= 55% speed) instead of freezing like statues
         if (bossAi) {
           const activeSkill =
             bossAi.activeSkillId
               ? ZODIAC_BOSS_PROFILES[bossAi.profileId]?.skills[bossAi.activeSkillId]
               : undefined;
-          const teleMoveMult = activeSkill?.telegraphMoveMult ?? 0.24;
+          const teleMoveMult = activeSkill?.telegraphMoveMult ?? 0.64;
           const move = stepBossMovement(bossAi, {
             dt,
             elapsed: this.elapsed,
@@ -15003,6 +15045,7 @@ export class GameEngine {
             arenaHalfD: ARENA_HALF_D,
             isTelegraphing: true,
             telegraphMoveMult: teleMoveMult,
+            enrageSpeedMult: bossEnrageMods.speedMult,
           });
           e.vx = move.vx;
           e.vz = move.vz;
@@ -15268,7 +15311,7 @@ export class GameEngine {
             }
           }
         } else if (e.isBoss && bossAi) {
-          // Active Zodiac Boss Navigation (stalking, orbiting, kiting, flanking — never static!)
+          // Active Zodiac Boss Navigation (stalking, micro-dashing, orbiting, flanking — never static!)
           const move = stepBossMovement(bossAi, {
             dt,
             elapsed: this.elapsed,
@@ -15283,9 +15326,20 @@ export class GameEngine {
             arenaHalfD: ARENA_HALF_D,
             isTelegraphing: false,
             telegraphMoveMult: 1.0,
+            enrageSpeedMult: bossEnrageMods.speedMult,
           });
           e.vx = move.vx;
           e.vz = move.vz;
+          if (move.microDashTriggered) {
+            const dashBudget = getBossPerformanceBudget(this.lowEndGpu);
+            this.spawnParticles(
+              e.x,
+              0.45,
+              e.z,
+              bossAi.accentHex,
+              Math.max(2, Math.round(5 * dashBudget.particleScale))
+            );
+          }
 
           if (e.attackTimer <= 0) {
             const plan = planNextBossSkill(bossAi, {
@@ -15376,7 +15430,7 @@ export class GameEngine {
                   radius: pt.radius,
                   delaySec: pt.delaySec,
                   duration: plan.telegraphDuration,
-                  damage: Math.round(e.damage * plan.skill.damageMult),
+                  damage: this.getEffectiveBossAttackDamage(e, plan.skill.damageMult),
                   colorHex: mColor,
                   hazardKind: plan.skill.hazardKind,
                   hazardDurationSec: plan.skill.hazardDurationSec,
@@ -15672,17 +15726,71 @@ export class GameEngine {
       towerFloor: this.towerFloor,
       isBossRushMode: this.isBossRushMode,
       bossRushStage: this.bossRushRound,
+      timedEnrageLimitSec: this.activePowerPressure.bossEnrageSec,
     });
+  }
+
+  private isTimedEnrageEnabledForBoss(e: EnemyEntity): boolean {
+    return Boolean(
+      e.isBoss &&
+        !e.isArenaRival &&
+        !e.isTrainingDummy &&
+        !e.isVaultPillar &&
+        !this.isTrainingMode &&
+        !this.isArenaMode &&
+        !this.isWeeklyRankedBossMode &&
+        !this.isWorldBossMode &&
+        !this.isGuildBossMode
+    );
+  }
+
+  private getBossTimedEnrageMods(e: EnemyEntity): BossTimedEnrageModifiers {
+    if (!e.bossAiState || !this.isTimedEnrageEnabledForBoss(e)) {
+      return {
+        active: false,
+        remainingSec: 999,
+        overtimeSec: 0,
+        damageMult: 1.0,
+        speedMult: 1.0,
+        cooldownMult: 1.0,
+      };
+    }
+    return computeBossEnrageModifiers(
+      e.bossAiState.timedEnrageElapsed,
+      e.bossAiState.timedEnrageLimitSec
+    );
+  }
+
+  private getEffectiveBossAttackDamage(e: EnemyEntity, skillDamageMult: number): number {
+    const phaseMult = e.isBoss ? computeBossPhaseDamageMult(e.bossPhase) : 1.0;
+    const enrageMult = this.getBossTimedEnrageMods(e).damageMult;
+    return Math.max(12, Math.round(e.damage * skillDamageMult * phaseMult * enrageMult));
+  }
+
+  private scaleAuxiliaryPlayerDamage(rawDmg: number, target: EnemyEntity): number {
+    if (rawDmg <= 0) return 0;
+    let mult = 1.0;
+    if (target.isBoss && !target.isArenaRival && !target.isTrainingDummy) {
+      mult *= 1 - computeBossInnateArmorReduction(this.currentChapter.id, true);
+    }
+    if (!target.isArenaRival && !this.isTrainingMode && this.activePowerPressure.enemyDamageTakenMult !== 1.0) {
+      mult *= this.activePowerPressure.enemyDamageTakenMult;
+    }
+    return rawDmg * mult;
   }
 
   private scheduleNextBossCooldownOrCombo(e: EnemyEntity, isEnraged: boolean): void {
     const bossAi = e.bossAiState;
     if (!bossAi) return;
+    const enrageMods = this.getBossTimedEnrageMods(e);
     if (bossAi.comboQueue.length > 0) {
       const prevSkill = bossAi.activeSkillId
         ? ZODIAC_BOSS_PROFILES[bossAi.profileId]?.skills[bossAi.activeSkillId]
         : undefined;
-      e.attackTimer = Math.max(0.26, (prevSkill?.comboGapSec ?? 0.36) * (e.bossPhase === 3 ? 0.85 : 1.0));
+      e.attackTimer = Math.max(
+        0.22,
+        (prevSkill?.comboGapSec ?? 0.32) * (e.bossPhase === 3 ? 0.85 : 1.0) * enrageMods.cooldownMult
+      );
       e.punishWindowTimer = 0;
       if (e.punishRingMesh) e.punishRingMesh.visible = false;
       return;
@@ -15692,7 +15800,12 @@ export class GameEngine {
         ? computePvEIntensityProfile(this.aiDuelTier, this.pveChallengeEnabled)
         : null;
     const pveCdMult = pveProfile ? pveProfile.enemyCooldownMult : 1.0;
-    const rec = getBossRecoveryDuration(bossAi, isEnraged ? e.bossPhase : 1, pveCdMult);
+    const rec = getBossRecoveryDuration(
+      bossAi,
+      isEnraged ? e.bossPhase : 1,
+      pveCdMult,
+      enrageMods.cooldownMult
+    );
     e.attackTimer = rec;
     e.punishWindowMax = rec;
     e.punishWindowTimer = rec;
@@ -15720,7 +15833,7 @@ export class GameEngine {
         : 1.0;
     const projMult = pveSpdMult * (1 - bossPartSlowPct);
     const baseYaw = Math.atan2(e.aimX, e.aimZ);
-    const dmg = Math.max(12, Math.round(e.damage * skill.damageMult));
+    const dmg = this.getEffectiveBossAttackDamage(e, skill.damageMult);
 
     if (skill.kind === 'leap_slam') {
       if (e.solarLionVisualGroup) {
@@ -15864,7 +15977,7 @@ export class GameEngine {
           z: this.pz,
           radius: 2.35,
           durationSec: skill.hazardDurationSec ?? 4.0,
-          damagePerTick: Math.max(12, Math.round(e.damage * 0.4)),
+          damagePerTick: Math.max(12, this.getEffectiveBossAttackDamage(e, 0.42)),
           ownerName: e.bossTitle || this.currentChapter.bossName,
         });
       }
@@ -15968,7 +16081,7 @@ export class GameEngine {
           z: hz,
           radius: Math.min(3.0, (skill.radius ?? 2.75) * 0.92),
           durationSec: skill.hazardDurationSec ?? 4.6,
-          damagePerTick: Math.max(12, Math.round(e.damage * 0.44)),
+          damagePerTick: Math.max(12, this.getEffectiveBossAttackDamage(e, 0.45)),
           ownerName: e.bossTitle || this.currentChapter.bossName,
         });
       }
@@ -16002,7 +16115,7 @@ export class GameEngine {
     volley: BossPendingVolley,
     speedMult: number
   ): void {
-    const dmg = Math.max(10, Math.round(e.damage * volley.damageMult));
+    const dmg = this.getEffectiveBossAttackDamage(e, volley.damageMult);
     const speed = volley.projectileSpeed * speedMult;
     const budget = getBossPerformanceBudget(this.lowEndGpu);
 
@@ -16088,7 +16201,7 @@ export class GameEngine {
         this.shatterCrystalObstacle(obs);
       }
     }
-    const dmg = Math.max(14, Math.round(e.damage * act.damageMult));
+    const dmg = this.getEffectiveBossAttackDamage(e, act.damageMult);
     if (Math.hypot(this.px - e.x, this.pz - e.z) <= act.slamRadius + 0.35) {
       this.damagePlayer(
         dmg,
@@ -16121,7 +16234,7 @@ export class GameEngine {
         z: e.z,
         radius: Math.min(2.9, act.slamRadius * 0.82),
         durationSec: act.hazardDurationSec ?? 4.2,
-        damagePerTick: Math.max(12, Math.round(e.damage * 0.42)),
+        damagePerTick: this.getEffectiveBossAttackDamage(e, 0.42),
         ownerName: e.bossTitle || this.currentChapter.bossName,
       });
     }
@@ -16136,7 +16249,7 @@ export class GameEngine {
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.3);
     this.spawnShockwave(e.x, e.z, act.colorHex, act.slamRadius + 1.0, 0.44);
     this.spawnParticles(e.x, 1.0, e.z, act.colorHex, Math.max(8, Math.round(20 * budget.particleScale)));
-    const dmg = Math.max(14, Math.round(e.damage * act.damageMult));
+    const dmg = this.getEffectiveBossAttackDamage(e, act.damageMult);
     if (Math.hypot(this.px - e.x, this.pz - e.z) <= act.slamRadius + 0.4) {
       this.damagePlayer(
         dmg,
@@ -17147,9 +17260,6 @@ export class GameEngine {
 
     const activeSynergies = evaluateActiveSynergies(this.activeSkills);
     let mult = 1.0;
-    if (!e.isArenaRival && !this.isTrainingMode && this.activePowerPressure.enemyDamageTakenMult !== 1.0) {
-      mult *= this.activePowerPressure.enemyDamageTakenMult;
-    }
     if (this.markedEnemyIds.has(e.id)) mult += 0.2;
     if (e.isBoss && !e.isArenaRival && (this.baseStats.bossDamageBonus ?? 0) > 0) {
       mult += this.baseStats.bossDamageBonus;
@@ -17237,6 +17347,16 @@ export class GameEngine {
     if (e.isArenaRival && this.aiRivalMatchConfig) {
       const sd = computeArenaSuddenDeath(this.arenaTimeLeft);
       mult *= (1 - this.aiRivalMatchConfig.rivalPvpResilience) * sd.damageMult;
+    }
+
+    // PvE Boss Innate Astral Armor (16% Ch.1 -> 26% Ch.12)
+    if (e.isBoss && !e.isArenaRival && !e.isTrainingDummy) {
+      mult *= 1 - computeBossInnateArmorReduction(this.currentChapter.id, true);
+    }
+
+    // FINAL MULTIPLICATIVE GATE: Power Pressure applies LAST so additive buffs can NEVER bypass LC suppression!
+    if (!e.isArenaRival && !this.isTrainingMode && this.activePowerPressure.enemyDamageTakenMult !== 1.0) {
+      mult *= this.activePowerPressure.enemyDamageTakenMult;
     }
 
     const finalDmg = Math.max(1, Math.round(amount * mult));
@@ -17382,45 +17502,61 @@ export class GameEngine {
         }
       }
       if (staggerRes.triggeredBreak) {
-        e.stunTimer = GUARD_BREAK_DURATION_SEC;
-        e.punishWindowTimer = 0;
-        if (e.punishRingMesh) e.punishRingMesh.visible = false;
-        e.telegraphType = 'none';
-        e.telegraphGroup.visible = false;
-        e.laserLine.visible = false;
-        if (e.bossAiState) {
-          clearBossAiTransientCombat(e.bossAiState);
+        const isPveBoss = e.isBoss && !e.isArenaRival;
+        if (isPveBoss && (e.bossStunImmuneTimer ?? 0) > 0) {
+          // Boss CC Resistance: cannot be stun-locked during 10s post-break immunity window
+          this.bossStaggerState.brokenRemainingSec = 0;
+          this.bossStaggerState.current = 0;
+          e.breakShield = e.maxBreakShield;
+          e.punishWindowMax = 1.2;
+          e.punishWindowTimer = 1.2;
+          this.emitFloatingNumber(e.x, 2.5, e.z, 0, true, false, 'ice', 'KHÁNG CHOÁNG! +PHẢN ĐÒN');
+        } else {
+          const stunDur = isPveBoss ? BOSS_GUARD_BREAK_STUN_SEC : GUARD_BREAK_DURATION_SEC;
+          e.stunTimer = stunDur;
+          if (isPveBoss) {
+            e.bossStunImmuneTimer = BOSS_STUN_IMMUNITY_SEC;
+            this.bossStaggerState.brokenRemainingSec = stunDur;
+          }
+          e.punishWindowTimer = 0;
+          if (e.punishRingMesh) e.punishRingMesh.visible = false;
+          e.telegraphType = 'none';
+          e.telegraphGroup.visible = false;
+          e.laserLine.visible = false;
+          if (e.bossAiState) {
+            clearBossAiTransientCombat(e.bossAiState);
+          }
+          this.dangerLanePool.forEach((l) => {
+            l.active = false;
+            l.mesh.visible = false;
+          });
+          this.bossBrokenBannerTimer = 2.2;
+          this.hitstopTimer = Math.max(this.hitstopTimer, 0.065);
+          this.shakeIntensity = Math.max(this.shakeIntensity, 0.58);
+          const breakPan = computeSpatialPan(e.x, ARENA_HALF_W);
+          soundEngine.playBossGuardBreak(breakPan);
+          soundEngine.playBossBreakShatter(breakPan);
+          soundEngine.playBossStaggerRoar(breakPan);
+          soundEngine.playImpactScorchThump(breakPan);
+          triggerHapticPulse('boss_break', this.hapticsEnabled);
+          this.spawnArmorShards(e.x, 1.35, e.z, 0xfbbf24, 16);
+          this.spawnImpactLight(e.x, 1.8, e.z, 'super_crit');
+          this.spawnCritStar(e.x, 1.5, e.z, 0xfde047, 2.5);
+          this.triggerPostFxImpulse('boss_break');
+          this.spawnShockwave(e.x, e.z, 0xfde047, 7.2, 0.56);
+          this.spawnImpactDecal(e.x, e.z, 0xfde047, 3.3, 2.0);
+          this.spawnBattleScar(e.x, e.z, 1.25);
+          this.spawnParticles(e.x, 1.3, e.z, 0xfde047, 38);
+          this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHÁ GIÁP! +45% ST', true);
+          this.runBossBreaksCount += 1;
+          this.advanceRoomBounty({ type: 'boss_break' });
+          const gbStyle = recordStyleAction(this.styleMomentum, 'guard_break');
+          if (gbStyle.promoted) {
+            soundEngine.playComboRankUp(gbStyle.pitchBoost);
+          }
+          // Deterministic 4-tick (66ms) Boss Stagger Break hit-stop
+          triggerDeterministicHitStop(this.kinestheticsClock, 4);
         }
-        this.dangerLanePool.forEach((l) => {
-          l.active = false;
-          l.mesh.visible = false;
-        });
-        this.bossBrokenBannerTimer = 2.8;
-        this.hitstopTimer = Math.max(this.hitstopTimer, 0.065);
-        this.shakeIntensity = Math.max(this.shakeIntensity, 0.58);
-        const breakPan = computeSpatialPan(e.x, ARENA_HALF_W);
-        soundEngine.playBossGuardBreak(breakPan);
-        soundEngine.playBossBreakShatter(breakPan);
-        soundEngine.playBossStaggerRoar(breakPan);
-        soundEngine.playImpactScorchThump(breakPan);
-        triggerHapticPulse('boss_break', this.hapticsEnabled);
-        this.spawnArmorShards(e.x, 1.35, e.z, 0xfbbf24, 16);
-        this.spawnImpactLight(e.x, 1.8, e.z, 'super_crit');
-        this.spawnCritStar(e.x, 1.5, e.z, 0xfde047, 2.5);
-        this.triggerPostFxImpulse('boss_break');
-        this.spawnShockwave(e.x, e.z, 0xfde047, 7.2, 0.56);
-        this.spawnImpactDecal(e.x, e.z, 0xfde047, 3.3, 2.0);
-        this.spawnBattleScar(e.x, e.z, 1.25);
-        this.spawnParticles(e.x, 1.3, e.z, 0xfde047, 38);
-        this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHÁ GIÁP! +45% ST', true);
-        this.runBossBreaksCount += 1;
-        this.advanceRoomBounty({ type: 'boss_break' });
-        const gbStyle = recordStyleAction(this.styleMomentum, 'guard_break');
-        if (gbStyle.promoted) {
-          soundEngine.playComboRankUp(gbStyle.pitchBoost);
-        }
-        // Deterministic 4-tick (66ms) Boss Stagger Break hit-stop
-        triggerDeterministicHitStop(this.kinestheticsClock, 4);
       }
     }
     if (coopAllyIndex === undefined && !e.isTrainingDummy) {
@@ -17787,10 +17923,11 @@ export class GameEngine {
       }
     }
     if (resonanceElem) {
+      // Feed post-pressure finalDmg so Elemental Resonance never bypasses LC suppression!
       const resAdvance = advanceElementalResonance(
         this.elementalResonance,
         resonanceElem,
-        Math.max(finalDmg, this.baseStats.attack)
+        finalDmg
       );
       this.elementalResonance = resAdvance.nextState;
       if (resAdvance.burstTriggered && !e.isTrainingDummy) {
@@ -17799,10 +17936,11 @@ export class GameEngine {
           if (!other || other.dead || other.spawnTimer > 0) continue;
           const rdist = Math.hypot(other.x - e.x, other.z - e.z);
           if (rdist <= resAdvance.aoeRadius) {
+            const burstDmg = Math.max(1, Math.round(resAdvance.burstDamage));
             if (!other.isTrainingDummy) {
-              other.hp -= resAdvance.burstDamage;
+              other.hp -= burstDmg;
             }
-            this.dmgElemental += resAdvance.burstDamage;
+            this.dmgElemental += burstDmg;
             other.hitFlashTimer = 0.14;
             if (other.isBoss && other.maxBreakShield && other.breakShield && other.breakShield > 0) {
               const br = Math.round(other.maxBreakShield * resAdvance.breakShieldRatio);
@@ -18115,13 +18253,17 @@ export class GameEngine {
             const cdz = other.z - e.z;
             const cd = Math.hypot(cdx, cdz);
             if (cd <= chain.radius + other.radius) {
-              other.hp -= chain.splashDamage;
+              const chainDmg = Math.max(
+                1,
+                Math.round(this.scaleAuxiliaryPlayerDamage(chain.splashDamage, other))
+              );
+              other.hp -= chainDmg;
               other.hitFlashTimer = 0.08;
               if (!other.isBoss && !other.isBossTotem && cd > 0.05) {
                 other.knockVx = (other.knockVx ?? 0) + (cdx / cd) * chain.knockbackForce;
                 other.knockVz = (other.knockVz ?? 0) + (cdz / cd) * chain.knockbackForce;
               }
-              this.emitFloatingNumber(other.x, 1.5, other.z, chain.splashDamage, true, false, 'storm');
+              this.emitFloatingNumber(other.x, 1.5, other.z, chainDmg, true, false, 'storm');
               if (other.hp <= 0) {
                 chainVictims.push(other);
               }
@@ -18902,16 +19044,19 @@ export class GameEngine {
 
     const drCap = this.isArenaMode
       ? this.aiRivalMatchConfig?.playerArenaDrCap ?? 0.32
-      : 0.8;
+      : 0.65;
     const effectiveDr = Math.min(
       drCap,
       this.baseStats.damageReduction +
         (this.isChampionshipMode ? this.championshipDrBonus : 0) +
         (this.isCoopRaidMode && this.coopRoleSynergy ? this.coopRoleSynergy.damageReductionBonus : 0)
     );
+    const drPierce =
+      !this.isArenaMode && !this.isTrainingMode ? this.activePowerPressure.enemyDrPiercePct : 0;
+    const finalDr = effectiveDr * (1 - drPierce);
     const powerPressureMult =
       !this.isArenaMode && !this.isTrainingMode ? this.activePowerPressure.enemyDamageDealtMult : 1.0;
-    let dmg = Math.max(2, Math.round(rawAmount * powerPressureMult * (1 - effectiveDr)));
+    let dmg = Math.max(2, Math.round(rawAmount * powerPressureMult * (1 - finalDr)));
     if (this.shield > 0) {
       const absorbed = Math.min(this.shield, dmg);
       this.shield -= absorbed;
@@ -20503,6 +20648,9 @@ export class GameEngine {
   ): void {
     const eligible = this.enemies.find((en) => {
       if (!en || en.dead || en.spawnTimer > 0) return false;
+      if (en.isBoss && !en.isArenaRival && !this.activePowerPressure.allowInstantExecute) {
+        return false;
+      }
       if (Math.hypot(en.x - centerX, en.z - centerZ) > maxRange + en.radius) return false;
       const guardBroken = Boolean(
         (en.stunTimer && en.stunTimer > 0) ||
@@ -21132,6 +21280,16 @@ export class GameEngine {
           bossWeakPointTimer: this.bossWeakPointState?.active
             ? Number(this.bossWeakPointState.remainingSec.toFixed(1))
             : undefined,
+          ...(() => {
+            if (!boss || !this.isTimedEnrageEnabledForBoss(boss) || !boss.bossAiState) {
+              return {};
+            }
+            const mods = this.getBossTimedEnrageMods(boss);
+            return {
+              bossEnrageRemainingSec: Number(mods.remainingSec.toFixed(1)),
+              bossTimedEnraged: mods.active || undefined,
+            };
+          })(),
           trapTriggerToast: this.trapTriggerToastTimer > 0 ? this.trapTriggerToast : null,
         };
       })(),
@@ -21254,6 +21412,9 @@ export class GameEngine {
       finisherReadyTargetName: (() => {
         const execCand = this.enemies.find((en) => {
           if (!en || en.dead || en.spawnTimer > 0) return false;
+          if (en.isBoss && !en.isArenaRival && !this.activePowerPressure.allowInstantExecute) {
+            return false;
+          }
           const gb = Boolean(
             (en.stunTimer && en.stunTimer > 0) ||
               (this.bossStaggerState &&
@@ -21277,6 +21438,9 @@ export class GameEngine {
       finisherTargetHpPct: (() => {
         const execCand = this.enemies.find((en) => {
           if (!en || en.dead || en.spawnTimer > 0) return false;
+          if (en.isBoss && !en.isArenaRival && !this.activePowerPressure.allowInstantExecute) {
+            return false;
+          }
           const gb = Boolean(
             (en.stunTimer && en.stunTimer > 0) ||
               (this.bossStaggerState &&

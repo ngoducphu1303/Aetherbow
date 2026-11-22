@@ -36,7 +36,7 @@ import {
 } from '../types/game';
 
 // ============================================================================
-// 1. SOFT POWER PRESSURE (LC MILESTONE CHECK WITHOUT HARD LOCKING SKILLED PLAY)
+// 1. PROGRESSIVE POWER PRESSURE (SKILL GAP 1.3x–1.5x + TIMED BOSS ENRAGE)
 // ============================================================================
 
 export type PowerPressureTier = 'ready' | 'skill_challenge' | 'high_danger';
@@ -49,10 +49,16 @@ export interface PowerPressureEvaluation {
   label: string;
   shortLabel: string;
   description: string;
-  /** Multiplier applied to damage the player deals to enemies (1.0 when >= 75% LC). */
+  /** Final multiplicative gate applied to ALL player damage sources (normal, skills, DoT, reactions, resonance). */
   enemyDamageTakenMult: number;
-  /** Multiplier applied to damage enemies deal to the player (1.0 when >= 90% LC). */
+  /** Multiplier applied to damage enemies deal to the player. */
   enemyDamageDealtMult: number;
+  /** Fraction (0..0.72) of player Damage Reduction pierced by enemies when player is under-powered. */
+  enemyDrPiercePct: number;
+  /** Boss Timed Enrage countdown (seconds) before boss enters lethal berserk overdrive. */
+  bossEnrageSec: number;
+  /** Instant Execution Finisher (<= 18% HP) is only allowed within the skill challenge band (ratio >= 0.62). */
+  allowInstantExecute: boolean;
   textClass: string;
   borderClass: string;
   bgClass: string;
@@ -66,6 +72,7 @@ export function computePowerPressure(
   const safeRec = Math.max(1, Math.round(recommendedPower || 1));
   const ratio = safePlayer / safeRec;
 
+  // Band 1: Ready (>= 90% recommended LC, <= 1.11x gap) — no LC penalty
   if (ratio >= 0.9) {
     return {
       tier: 'ready',
@@ -74,19 +81,25 @@ export function computePowerPressure(
       recommendedPower: safeRec,
       label: 'Đạt Chuẩn Lực Chiến',
       shortLabel: 'Đạt Chuẩn',
-      description: 'Lực chiến đạt ≥90% khuyến nghị — không chịu áp lực áp chế.',
+      description: 'Lực chiến đạt ≥90% khuyến nghị — chiến đấu đúng thực lực, không chịu áp chế.',
       enemyDamageTakenMult: 1.0,
       enemyDamageDealtMult: 1.0,
+      enemyDrPiercePct: 0,
+      bossEnrageSec: 75,
+      allowInstantExecute: true,
       textClass: 'text-emerald-300',
       borderClass: 'border-emerald-400/40',
       bgClass: 'bg-emerald-500/10',
     };
   }
 
+  // Band 2: Skill Challenge (75%..89% LC, 1.12x..1.33x gap) — winnable cleanly with sharp dodging
   if (ratio >= 0.75) {
-    // Skill challenge zone: full player damage, enemies hit slightly harder (+10%..+22%)
-    const deficit = (0.9 - ratio) / 0.15; // 0..1
-    const dmgDealtMult = Number((1.08 + deficit * 0.14).toFixed(2));
+    const t = (0.9 - ratio) / 0.15; // 0 at 90% -> 1 at 75%
+    const dmgTakenMult = Number((1.0 - t * 0.14).toFixed(3)); // 1.00 -> 0.86
+    const dmgDealtMult = Number((1.18 + t * 0.27).toFixed(2)); // 1.18 -> 1.45
+    const drPiercePct = Number((0.06 + t * 0.06).toFixed(2)); // 6% -> 12%
+    const enrageSec = Math.round(70 - t * 8); // 70s -> 62s
     return {
       tier: 'skill_challenge',
       ratio,
@@ -94,32 +107,68 @@ export function computePowerPressure(
       recommendedPower: safeRec,
       label: 'Thử Thách Kỹ Năng',
       shortLabel: 'Thử Thách',
-      description: `Thiếu ${Math.round((1 - ratio) * 100)}% LC khuyến nghị — quái đánh mạnh hơn ${Math.round((dmgDealtMult - 1) * 100)}%, vượt tốt bằng né đòn & combo.`,
-      enemyDamageTakenMult: 1.0,
+      description: `Thiếu ${Math.round((1 - ratio) * 100)}% LC — sát thương gây ra ${Math.round(dmgTakenMult * 100)}%, quái đánh mạnh ${dmgDealtMult.toFixed(2)}x (xuyên ${Math.round(drPiercePct * 100)}% giảm thương), Boss Cuồng Nộ sau ${enrageSec}s.`,
+      enemyDamageTakenMult: dmgTakenMult,
       enemyDamageDealtMult: dmgDealtMult,
+      enemyDrPiercePct: drPiercePct,
+      bossEnrageSec: enrageSec,
+      allowInstantExecute: true,
       textClass: 'text-amber-300',
       borderClass: 'border-amber-400/45',
       bgClass: 'bg-amber-500/10',
     };
   }
 
-  // High danger zone (<75% LC): enemies resist damage progressively & hit much harder
-  const severity = Math.min(1, (0.75 - ratio) / 0.5); // 0 at 75% -> 1 at 25%
-  const dmgTakenMult = Number(Math.max(0.28, 1 - severity * 0.72).toFixed(2));
-  const dmgDealtMult = Number((1.32 + severity * 1.08).toFixed(2));
+  // Band 3: Skill Ceiling Edge (62%..74% LC, 1.35x..1.61x gap) — extreme skill check (~1.5x max realistic clear)
+  if (ratio >= 0.62) {
+    const t = (0.75 - ratio) / 0.13; // 0 at 75% -> 1 at 62%
+    const dmgTakenMult = Number((0.85 - t * 0.39).toFixed(3)); // 0.85 -> 0.46
+    const dmgDealtMult = Number((1.5 + t * 0.85).toFixed(2)); // 1.50 -> 2.35
+    const drPiercePct = Number((0.14 + t * 0.12).toFixed(2)); // 14% -> 26%
+    const enrageSec = Math.round(60 - t * 10); // 60s -> 50s
+    return {
+      tier: 'high_danger',
+      ratio,
+      playerPower: safePlayer,
+      recommendedPower: safeRec,
+      label: 'Ranh Giới Vượt Cấp · Áp Chế LC',
+      shortLabel: 'Ranh Giới LC',
+      description: `Thiếu ${Math.round((1 - ratio) * 100)}% LC — sát thương gây ra chỉ còn ${Math.round(dmgTakenMult * 100)}%, quái đánh mạnh ${dmgDealtMult.toFixed(2)}x (xuyên ${Math.round(drPiercePct * 100)}% giảm thương) & Boss Cuồng Nộ sau ${enrageSec}s.`,
+      enemyDamageTakenMult: dmgTakenMult,
+      enemyDamageDealtMult: dmgDealtMult,
+      enemyDrPiercePct: drPiercePct,
+      bossEnrageSec: enrageSec,
+      allowInstantExecute: true,
+      textClass: 'text-orange-300',
+      borderClass: 'border-orange-500/50',
+      bgClass: 'bg-orange-500/12',
+    };
+  }
+
+  // Band 4: Deep Exponential Suppression (<62% LC, >1.61x..9x+ gap) — shuts down 2x..9x cheese clears
+  const u = Math.max(0, Math.min(1, (0.62 - ratio) / 0.52)); // 0 at 62% -> 1 at <=10%
+  const dmgTakenMult = Number(
+    Math.max(0.015, 0.46 * Math.pow(0.015 / 0.46, Math.pow(u, 0.78))).toFixed(3)
+  );
+  const dmgDealtMult = Number((2.35 + u * 7.15).toFixed(2)); // 2.35x -> 9.50x
+  const drPiercePct = Number(Math.min(0.72, 0.26 + u * 0.46).toFixed(2)); // 26% -> 72%
+  const enrageSec = Math.max(25, Math.round(50 - u * 25)); // 50s -> 25s
   return {
     tier: 'high_danger',
     ratio,
     playerPower: safePlayer,
     recommendedPower: safeRec,
-    label: 'Nguy Hiểm Cao · Áp Chế LC',
-    shortLabel: 'Nguy Hiểm Cao',
-    description: `Thiếu ${Math.round((1 - ratio) * 100)}% LC — quái giảm ${Math.round((1 - dmgTakenMult) * 100)}% sát thương nhận & tăng ${Math.round((dmgDealtMult - 1) * 100)}% sát thương. Hãy nâng trang bị/thiên phú trước!`,
+    label: 'Áp Chế Tuyệt Đối · Vượt Cấp Quá Mức',
+    shortLabel: 'Áp Chế Nặng',
+    description: `Thiếu ${Math.round((1 - ratio) * 100)}% LC — sát thương chỉ còn ${Math.max(1.5, Number((dmgTakenMult * 100).toFixed(1)))}%, quái đánh ${dmgDealtMult.toFixed(1)}x xuyên ${Math.round(drPiercePct * 100)}% giảm thương, khóa Kết Liễu & Boss Cuồng Nộ sau ${enrageSec}s!`,
     enemyDamageTakenMult: dmgTakenMult,
     enemyDamageDealtMult: dmgDealtMult,
+    enemyDrPiercePct: drPiercePct,
+    bossEnrageSec: enrageSec,
+    allowInstantExecute: false,
     textClass: 'text-rose-300',
-    borderClass: 'border-rose-500/50',
-    bgClass: 'bg-rose-500/12',
+    borderClass: 'border-rose-500/55',
+    bgClass: 'bg-rose-500/15',
   };
 }
 
