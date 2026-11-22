@@ -497,8 +497,33 @@ export type Chapter1MapMode = 'auto' | 'lite_3d' | 'light' | 'high_3d';
 
 export type LowEndSafetyMode = 'auto' | 'on' | 'off';
 
+export type DeviceHardwareTier = 'ultra_lite' | 'lite' | 'balanced' | 'high';
+
+export interface SystemLiteBudget {
+  deviceTier: DeviceHardwareTier;
+  liteActive: boolean;
+  targetCombatFps: 12 | 24 | 30 | 45 | 60;
+  targetLobbyFps: 12 | 20 | 30;
+  maxPixelBudget: number;
+  maxDpr: number;
+  minAdaptiveDprScale: number;
+  maxTextureSize: 512 | 1024 | 2048 | 4096;
+  arenaTextureSize: 256 | 512;
+  shadowMapSize: 0 | 1024 | 2048;
+  bloomAllowed: boolean;
+  environmentReflections: boolean;
+  loadLobbyCity3d: boolean;
+  arenaMonolithCount: number;
+  arenaDustCount: number;
+  enableBrazierFlames: boolean;
+  enableConstellationLines: boolean;
+  assetVariant: 'none' | 'lite' | 'high';
+  particleBudgetMult: number;
+}
+
 export interface GpuProfileSummary {
   tier: GpuCapabilityTier;
+  deviceTier?: DeviceHardwareTier;
   tierLabel: string;
   rendererName: string;
   recommendedQuality: GraphicsQuality;
@@ -507,10 +532,15 @@ export interface GpuProfileSummary {
   targetCombatFps: 12 | 30 | 60;
   lowPowerLegacyGpu?: boolean;
   supportsHighDetailChapter1Map?: boolean;
+  supportsHighDetailAssets?: boolean;
   safetyReason?: string;
   crashGuardTripped?: boolean;
   logicalCores?: number;
+  deviceMemoryGb?: number;
+  estimatedVramMb?: number;
   maxTextureSize?: number;
+  maxRenderbufferSize?: number;
+  maxTextureImageUnits?: number;
 }
 
 export type HudScaleMode = 'compact' | 'normal' | 'large';

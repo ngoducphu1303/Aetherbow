@@ -79,7 +79,9 @@ import type { WeeklyBossSchedule } from '../data/weeklyBossData';
 import {
   MythicZodiacGradeShader,
   resolvePostFxConfig,
+  resolveSystemLiteBudget,
 } from './aaaVisualPipeline';
+import { sanitizeLoadedObjectForBudget } from './assetSanitizer';
 import {
   CombatFlashKind,
   computeHitstopMicroJitter,
@@ -356,11 +358,14 @@ import {
 import {
   clearBoss3dLoadInFlight,
   clearChapter1MapLoadInFlight,
+  clearHeavyAssetLoadInFlight,
   detectStartupGpuProfile,
   isLowEndSafetyModeActive,
   markBoss3dLoadInFlight,
   markChapter1MapLoadInFlight,
+  markHeavyAssetLoadInFlight,
   readPersistedChapter1MapMode,
+  readPersistedLowEndSafetyMode,
   refreshStartupGpuProfile,
   resetGpuCrashSentinel,
   resolveBoss3dModelVariant,
@@ -473,6 +478,7 @@ import {
   BossPaceHudSnapshot,
   CoopAiRole,
   CoopRoleSynergySummary,
+  SystemLiteBudget,
   WeatherBiomeKind,
   WheelOutcome,
 } from '../types/game';
@@ -985,7 +991,7 @@ export class GameEngine {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private pmremGenerator: THREE.PMREMGenerator;
-  private envRenderTarget: THREE.WebGLRenderTarget;
+  private envRenderTarget: THREE.WebGLRenderTarget | null = null;
 
   private keyLight: THREE.DirectionalLight;
   private hemiLight: THREE.HemisphereLight;
@@ -1016,6 +1022,8 @@ export class GameEngine {
   private chapter1MapStatus: AppearanceStatus = 'loading';
   private chapter1MapMode: Chapter1MapMode = 'auto';
   private lowEndSafetyMode: LowEndSafetyMode = 'auto';
+  private systemBudget!: SystemLiteBudget;
+  private lastRawFrameDt = 1 / 60;
   private chapter1MapInFlightMarked = false;
   private chapter1MapStableFrames = 0;
   private entitiesGroup = new THREE.Group();
@@ -1828,13 +1836,19 @@ export class GameEngine {
     this.heroVisualCfg = initialVisualCfg;
     this.weaponAccentHex = initialVisualCfg.weaponAccentHex;
 
-    // Auto GPU capability detection + crash sentinel (shared across SplashGate, modelAssets & engine)
+    // Auto GPU/CPU/RAM/VRAM detection + crash sentinel (shared across SplashGate, modelAssets & engine)
     const detectedProfile = detectStartupGpuProfile();
     this.gpuProfile = detectedProfile;
     this.isSoftwareGl = detectedProfile.tier === 'software';
-    this.lowEndGpu = isLowEndSafetyModeActive(detectedProfile, this.lowEndSafetyMode);
-    this.graphicsQuality = detectedProfile.recommendedQuality;
     this.chapter1MapMode = readPersistedChapter1MapMode();
+    this.lowEndSafetyMode = readPersistedLowEndSafetyMode();
+    this.systemBudget = resolveSystemLiteBudget(
+      detectedProfile,
+      this.lowEndSafetyMode,
+      this.chapter1MapMode
+    );
+    this.lowEndGpu = this.systemBudget.liteActive;
+    this.graphicsQuality = this.lowEndGpu ? 'low' : detectedProfile.recommendedQuality;
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl && !this.lowEndGpu,
@@ -1844,7 +1858,8 @@ export class GameEngine {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.setPixelRatio(this.getTargetPixelRatio());
-    this.renderer.shadowMap.enabled = !this.isSoftwareGl && !this.lowEndGpu;
+    this.renderer.shadowMap.enabled =
+      !this.isSoftwareGl && !this.lowEndGpu && this.systemBudget.shadowMapSize > 0;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.domElement.style.display = 'block';
@@ -1862,21 +1877,28 @@ export class GameEngine {
     this.camera.position.set(0, 18, 17);
     this.camera.lookAt(0, 0, 2);
 
-    // Mandatory studio environment reflection
+    // Studio environment reflection (skipped in ultra-lite/software mode to conserve VRAM & boot time)
     this.pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-    const environment = new RoomEnvironment();
-    this.envRenderTarget = this.pmremGenerator.fromScene(environment, 0.04);
-    environment.dispose();
-    this.scene.environment = this.envRenderTarget.texture;
+    if (this.systemBudget.environmentReflections) {
+      const environment = new RoomEnvironment();
+      this.envRenderTarget = this.pmremGenerator.fromScene(environment, 0.04);
+      environment.dispose();
+      this.scene.environment = this.envRenderTarget.texture;
+    }
 
     // 3-point high-contrast Mythic Zodiac lighting rig
-    this.hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x26352e, 0.88);
+    this.hemiLight = new THREE.HemisphereLight(
+      0x7dd3fc,
+      0x26352e,
+      this.systemBudget.environmentReflections ? 0.88 : 1.16
+    );
     this.scene.add(this.hemiLight);
 
-    const initShadowSize = detectedProfile.shadowMapSize || 1024;
+    const initShadowSize = this.systemBudget.shadowMapSize || detectedProfile.shadowMapSize || 1024;
     this.keyLight = new THREE.DirectionalLight(0xffe4b8, 1.92);
     this.keyLight.position.set(12, 22, 10);
-    this.keyLight.castShadow = !this.isSoftwareGl && !this.lowEndGpu;
+    this.keyLight.castShadow =
+      !this.isSoftwareGl && !this.lowEndGpu && this.systemBudget.shadowMapSize > 0;
     this.keyLight.shadow.mapSize.set(initShadowSize, initShadowSize);
     this.keyLight.shadow.camera.near = 2;
     this.keyLight.shadow.camera.far = 55;
@@ -1926,7 +1948,7 @@ export class GameEngine {
     }
     this.snapCameraToLobby();
 
-    if (!this.isSoftwareGl && !this.lowEndGpu) {
+    if (!this.isSoftwareGl && !this.lowEndGpu && this.systemBudget.bloomAllowed) {
       this.setupPostProcessing();
     }
 
@@ -1935,7 +1957,9 @@ export class GameEngine {
     }
 
     this.bindEvents();
-    void this.loadLobbyCity();
+    if (this.systemBudget.loadLobbyCity3d) {
+      void this.loadLobbyCity();
+    }
     this.startLoop();
   }
 
@@ -3787,13 +3811,40 @@ export class GameEngine {
   }
 
   private async loadAppearanceAsset(path: ModelAsset) {
-    const url = getModelAssetUrl(path);
+    const budget = this.getActiveSystemBudget();
+    const url = getModelAssetUrl(path, budget.liteActive);
     const data = await downloadModel(path);
+    markHeavyAssetLoadInFlight(path);
     try {
-      return await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(data, new URL('.', url).href);
+      await MeshoptDecoder.ready;
+      const gltf = await new GLTFLoader()
+        .setMeshoptDecoder(MeshoptDecoder)
+        .parseAsync(data, new URL('.', url).href);
+      sanitizeLoadedObjectForBudget(gltf.scene, budget, {
+        preserveFaceSharpness: true,
+      });
+      return gltf;
     } catch (error) {
       discardModelDownload(path, data);
+      if (budget.liteActive) {
+        // Automatic recovery fallback to full GLB if a Lite asset fails to parse
+        const fullUrl = getModelAssetUrl(path, false);
+        const resp = await fetch(fullUrl);
+        if (resp.ok) {
+          const fullBuf = await resp.arrayBuffer();
+          await MeshoptDecoder.ready;
+          const gltf = await new GLTFLoader()
+            .setMeshoptDecoder(MeshoptDecoder)
+            .parseAsync(fullBuf, new URL('.', fullUrl).href);
+          sanitizeLoadedObjectForBudget(gltf.scene, budget, {
+            preserveFaceSharpness: true,
+          });
+          return gltf;
+        }
+      }
       throw error;
+    } finally {
+      clearHeavyAssetLoadInFlight();
     }
   }
 
@@ -4202,8 +4253,23 @@ export class GameEngine {
     this.callbacks.onChapter1MapStatusChange?.(status);
   }
 
+  private getActiveSystemBudget(): SystemLiteBudget {
+    if (!this.systemBudget) {
+      this.systemBudget = resolveSystemLiteBudget(
+        this.gpuProfile,
+        this.lowEndSafetyMode,
+        this.chapter1MapMode
+      );
+    }
+    return this.systemBudget;
+  }
+
   private getActiveChapter1MapVariant(): 'none' | 'lite' | 'full' {
-    return resolveChapter1MapVariant(this.gpuProfile, this.chapter1MapMode);
+    return resolveChapter1MapVariant(
+      this.gpuProfile,
+      this.chapter1MapMode,
+      this.lowEndSafetyMode
+    );
   }
 
   private getActiveBoss3dModelVariant(): 'none' | 'lite' | 'high' {
@@ -4492,7 +4558,12 @@ export class GameEngine {
     resetGpuCrashSentinel();
     this.gpuProfile = refreshStartupGpuProfile();
     this.isSoftwareGl = this.gpuProfile.tier === 'software';
-    this.lowEndGpu = isLowEndSafetyModeActive(this.gpuProfile, this.lowEndSafetyMode);
+    this.systemBudget = resolveSystemLiteBudget(
+      this.gpuProfile,
+      this.lowEndSafetyMode,
+      this.chapter1MapMode
+    );
+    this.lowEndGpu = this.systemBudget.liteActive;
     this.chapter1MapFailCount = 0;
     this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
     return this.gpuProfile;
@@ -4582,10 +4653,12 @@ export class GameEngine {
           }
           return;
         }
-        const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+        const budget = this.getActiveSystemBudget();
+        const maxAniso = budget.liteActive ? 1 : Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
         const prepared = prepareChapter1MapModel(gltf.scene, maxAniso, {
-          liteMode: targetVariant === 'lite',
+          liteMode: targetVariant === 'lite' || budget.liteActive,
         });
+        sanitizeLoadedObjectForBudget(prepared.group, budget, { disableShadows: true });
         this.unloadChapter1MapModel();
         this.chapter1MapModel = prepared.group;
         this.chapter1MapLoadedVariant = targetVariant;
@@ -4711,38 +4784,43 @@ export class GameEngine {
         }
       `,
     });
-    this.skyDomeMesh = new THREE.Mesh(new THREE.SphereGeometry(92, 32, 20), this.skyDomeMat);
+    const arenaBudget = this.getActiveSystemBudget();
+    this.skyDomeMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(92, arenaBudget.liteActive ? 16 : 32, arenaBudget.liteActive ? 10 : 20),
+      this.skyDomeMat
+    );
     this.skyDomeMesh.renderOrder = -10;
     this.arenaGroup.add(this.skyDomeMesh);
 
-    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+    const maxAniso = arenaBudget.liteActive
+      ? 1
+      : Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
     const floorTex = createStoneTileTexture(
       chapter.floorPrimary,
       chapter.floorAccent,
       maxAniso
     );
-    const normalTex = createStoneNormalTexture(maxAniso);
-    const roughnessTex = createStoneRoughnessTexture(maxAniso);
+    const normalTex = arenaBudget.liteActive ? null : createStoneNormalTexture(maxAniso);
+    const roughnessTex = arenaBudget.liteActive ? null : createStoneRoughnessTexture(maxAniso);
 
     const proceduralShell = new THREE.Group();
     proceduralShell.name = 'ProceduralArenaShell';
     this.proceduralArenaShell = proceduralShell;
     this.arenaGroup.add(proceduralShell);
 
-    // 1. High-Contrast Mythic PBR Marble Temple Arena Floor (Albedo + Roughness + Tangent-Space Normal)
+    // 1. High-Contrast Mythic PBR Marble Temple Arena Floor (Lite skips tangent-space normal/roughness maps)
     const floorGeo = new THREE.BoxGeometry(ARENA_HALF_W * 2 + 1.6, 1.4, ARENA_HALF_D * 2 + 1.6);
     const floorMat = new THREE.MeshStandardMaterial({
       map: floorTex,
-      normalMap: normalTex,
-      normalScale: new THREE.Vector2(0.85, 0.85),
-      roughnessMap: roughnessTex,
+      ...(normalTex ? { normalMap: normalTex, normalScale: new THREE.Vector2(0.85, 0.85) } : {}),
+      ...(roughnessTex ? { roughnessMap: roughnessTex } : {}),
       roughness: 0.92,
-      metalness: 0.28,
-      envMapIntensity: 1.45,
+      metalness: arenaBudget.liteActive ? 0.14 : 0.28,
+      envMapIntensity: arenaBudget.environmentReflections ? 1.45 : 0.6,
     });
     this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
     this.floorMesh.position.set(0, -0.7, 0);
-    this.floorMesh.receiveShadow = true;
+    this.floorMesh.receiveShadow = !arenaBudget.liteActive && arenaBudget.shadowMapSize > 0;
     proceduralShell.add(this.floorMesh);
 
     const marbleMat = new THREE.MeshStandardMaterial({
@@ -4870,9 +4948,9 @@ export class GameEngine {
       chapterGlowMat,
       postCount
     );
-    shaftInst.castShadow = !this.isSoftwareGl;
-    shaftInst.receiveShadow = true;
-    plinthInst.receiveShadow = true;
+    shaftInst.castShadow = !this.isSoftwareGl && arenaBudget.shadowMapSize > 0;
+    shaftInst.receiveShadow = !arenaBudget.liteActive && arenaBudget.shadowMapSize > 0;
+    plinthInst.receiveShadow = !arenaBudget.liteActive && arenaBudget.shadowMapSize > 0;
 
     postPositions.forEach(([px, pz], idx) => {
       const isSouthCutaway = pz > ARENA_HALF_D;
@@ -4981,50 +5059,53 @@ export class GameEngine {
       this.arenaBrazierGems.push(topper);
       proceduralShell.add(topper);
 
-      // AAA Wave 6: Flickering Dynamic Brazier Flames reacting to Boss Phase rage
-      const flameGroup = new THREE.Group();
-      const flameBaseY = shrineStyle === 'earth_monolith' ? 2.66 : 1.04;
-      flameGroup.position.set(cx, flameBaseY, cz);
-      const outerFlameGeo = new THREE.ConeGeometry(0.32, 0.95, 7);
-      outerFlameGeo.translate(0, 0.45, 0);
-      const outerFlameMat = new THREE.MeshBasicMaterial({
-        color: 0xfbbf24,
-        transparent: true,
-        opacity: 0.74,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const outerFlame = new THREE.Mesh(outerFlameGeo, outerFlameMat);
+      // AAA Wave 6: Flickering Dynamic Brazier Flames reacting to Boss Phase rage (skipped in Lite mode)
+      if (arenaBudget.enableBrazierFlames) {
+        const flameGroup = new THREE.Group();
+        const flameBaseY = shrineStyle === 'earth_monolith' ? 2.66 : 1.04;
+        flameGroup.position.set(cx, flameBaseY, cz);
+        const outerFlameGeo = new THREE.ConeGeometry(0.32, 0.95, 7);
+        outerFlameGeo.translate(0, 0.45, 0);
+        const outerFlameMat = new THREE.MeshBasicMaterial({
+          color: 0xfbbf24,
+          transparent: true,
+          opacity: 0.74,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const outerFlame = new THREE.Mesh(outerFlameGeo, outerFlameMat);
 
-      const coreFlameGeo = new THREE.ConeGeometry(0.16, 0.56, 6);
-      coreFlameGeo.translate(0, 0.28, 0);
-      const coreFlameMat = new THREE.MeshBasicMaterial({
-        color: 0xfffbeb,
-        transparent: true,
-        opacity: 0.88,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const coreFlame = new THREE.Mesh(coreFlameGeo, coreFlameMat);
-      flameGroup.add(outerFlame, coreFlame);
-      proceduralShell.add(flameGroup);
-      this.arenaBrazierFlames.push({
-        group: flameGroup,
-        outer: outerFlame,
-        core: coreFlame,
-        baseX: cx,
-        baseY: flameBaseY,
-        baseZ: cz,
-      });
+        const coreFlameGeo = new THREE.ConeGeometry(0.16, 0.56, 6);
+        coreFlameGeo.translate(0, 0.28, 0);
+        const coreFlameMat = new THREE.MeshBasicMaterial({
+          color: 0xfffbeb,
+          transparent: true,
+          opacity: 0.88,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const coreFlame = new THREE.Mesh(coreFlameGeo, coreFlameMat);
+        flameGroup.add(outerFlame, coreFlame);
+        proceduralShell.add(flameGroup);
+        this.arenaBrazierFlames.push({
+          group: flameGroup,
+          outer: outerFlame,
+          core: coreFlame,
+          baseX: cx,
+          baseY: flameBaseY,
+          baseZ: cz,
+        });
+      }
     }
 
-    // 6. Distant Obsidian Temple Spires & Crown Crystals (Horizon Silhouette)
+    // 6. Distant Obsidian Temple Spires & Crown Crystals (scaled to SystemLiteBudget across all 12 chapters)
+    const monolithCount = Math.max(4, arenaBudget.arenaMonolithCount);
     const spireGeo = new THREE.CylinderGeometry(0.95, 2.05, 16, 6);
     const spireTipGeo = new THREE.OctahedronGeometry(1.1, 0);
-    const monoliths = new THREE.InstancedMesh(spireGeo, marbleMat, 22);
-    const monolithTips = new THREE.InstancedMesh(spireTipGeo, chapterGlowMat, 22);
-    for (let i = 0; i < 22; i++) {
-      const ang = (i / 22) * Math.PI * 2;
+    const monoliths = new THREE.InstancedMesh(spireGeo, marbleMat, monolithCount);
+    const monolithTips = new THREE.InstancedMesh(spireTipGeo, chapterGlowMat, monolithCount);
+    for (let i = 0; i < monolithCount; i++) {
+      const ang = (i / monolithCount) * Math.PI * 2;
       const dist = 24 + (i % 4) * 5.5;
       const baseY = -5.5 + (i % 3) * 2.4;
       const sy = 0.78 + (i % 4) * 0.28;
@@ -5046,33 +5127,36 @@ export class GameEngine {
     monolithTips.computeBoundingSphere();
     proceduralShell.add(monoliths, monolithTips);
 
-    // 7. Drifting Ambient Celestial Temple Dust Motes (single InstancedMesh)
-    const arenaDustCount = this.isSoftwareGl || this.lowEndGpu ? 14 : 28;
-    const arenaDustMat = new THREE.MeshBasicMaterial({
-      color: chapter.trimHex,
-      transparent: true,
-      opacity: 0.65,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    this.arenaDustMesh = new THREE.InstancedMesh(
-      new THREE.OctahedronGeometry(0.055, 0),
-      arenaDustMat,
-      arenaDustCount
-    );
-    this.arenaDustMesh.frustumCulled = false;
+    // 7. Drifting Ambient Celestial Temple Dust Motes (single InstancedMesh, budget-scaled across all chapters)
+    const arenaDustCount = arenaBudget.arenaDustCount;
     this.arenaDustSeeds = [];
-    for (let i = 0; i < arenaDustCount; i++) {
-      this.arenaDustSeeds.push({
-        x: ((i * 7.31) % (ARENA_HALF_W * 2)) - ARENA_HALF_W,
-        y: (i * 0.47) % 4.8,
-        z: ((i * 5.83) % (ARENA_HALF_D * 2)) - ARENA_HALF_D,
-        speed: 0.28 + (i % 4) * 0.09,
-        phase: i * 1.13,
-        scale: 0.65 + (i % 3) * 0.28,
+    this.arenaDustMesh = null;
+    if (arenaDustCount > 0) {
+      const arenaDustMat = new THREE.MeshBasicMaterial({
+        color: chapter.trimHex,
+        transparent: true,
+        opacity: 0.65,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
       });
+      this.arenaDustMesh = new THREE.InstancedMesh(
+        new THREE.OctahedronGeometry(0.055, 0),
+        arenaDustMat,
+        arenaDustCount
+      );
+      this.arenaDustMesh.frustumCulled = false;
+      for (let i = 0; i < arenaDustCount; i++) {
+        this.arenaDustSeeds.push({
+          x: ((i * 7.31) % (ARENA_HALF_W * 2)) - ARENA_HALF_W,
+          y: (i * 0.47) % 4.8,
+          z: ((i * 5.83) % (ARENA_HALF_D * 2)) - ARENA_HALF_D,
+          speed: 0.28 + (i % 4) * 0.09,
+          phase: i * 1.13,
+          scale: 0.65 + (i % 3) * 0.28,
+        });
+      }
+      this.arenaGroup.add(this.arenaDustMesh);
     }
-    this.arenaGroup.add(this.arenaDustMesh);
 
     // 8. AAA Wave 7: Chapter-Specific Dynamic 3D Weather Emitter (single THREE.Points, quality-scaled)
     const weatherProfile = getChapterWeatherProfile(chapter.id, this.graphicsQuality);
@@ -5111,8 +5195,8 @@ export class GameEngine {
     this.portal.group.position.set(0, 0, -ARENA_HALF_D - 0.65);
     this.arenaGroup.add(this.portal.group);
 
-    // 8. Volumetric-Feel Zodiac Sanctuary Light Shafts (flanking Boss Gate & high-contrast skybeams)
-    if (!this.isSoftwareGl) {
+    // 8. Volumetric-Feel Zodiac Sanctuary Light Shafts (skipped on Lite/Software GPUs)
+    if (!this.isSoftwareGl && !arenaBudget.liteActive) {
       const shaftGeo = new THREE.ConeGeometry(2.8, 17, 14, 1, true);
       const shaftCoords: Array<[number, number, number, number]> = [
         [-7.8, 7.6, -ARENA_HALF_D + 1.4, 0.22],
@@ -5138,54 +5222,56 @@ export class GameEngine {
       });
     }
 
-    // 9. AAA Wave 6: Procedural Overhead 3D Zodiac Constellation Sky Dome
-    const constSpec = getZodiacConstellationGeometry(chapter.zodiacId);
-    const constGroup = new THREE.Group();
-    const starPositions = new Float32Array(constSpec.stars.length * 3);
-    for (let i = 0; i < constSpec.stars.length; i++) {
-      starPositions[i * 3] = constSpec.stars[i][0];
-      starPositions[i * 3 + 1] = constSpec.stars[i][1];
-      starPositions[i * 3 + 2] = constSpec.stars[i][2];
-    }
-    const starPtsGeo = new THREE.BufferGeometry();
-    starPtsGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-    const starPtsMat = new THREE.PointsMaterial({
-      color: chapter.trimHex,
-      size: 0.85,
-      sizeAttenuation: true,
-      transparent: true,
-      opacity: 0.82,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const starPoints = new THREE.Points(starPtsGeo, starPtsMat);
-    constGroup.add(starPoints);
+    // 9. AAA Wave 6: Procedural Overhead 3D Zodiac Constellation Sky Dome (skipped in ultra-lite mode)
+    if (arenaBudget.enableConstellationLines) {
+      const constSpec = getZodiacConstellationGeometry(chapter.zodiacId);
+      const constGroup = new THREE.Group();
+      const starPositions = new Float32Array(constSpec.stars.length * 3);
+      for (let i = 0; i < constSpec.stars.length; i++) {
+        starPositions[i * 3] = constSpec.stars[i][0];
+        starPositions[i * 3 + 1] = constSpec.stars[i][1];
+        starPositions[i * 3 + 2] = constSpec.stars[i][2];
+      }
+      const starPtsGeo = new THREE.BufferGeometry();
+      starPtsGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+      const starPtsMat = new THREE.PointsMaterial({
+        color: chapter.trimHex,
+        size: 0.85,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const starPoints = new THREE.Points(starPtsGeo, starPtsMat);
+      constGroup.add(starPoints);
 
-    const linePositions = new Float32Array(constSpec.edges.length * 6);
-    for (let i = 0; i < constSpec.edges.length; i++) {
-      const [aIdx, bIdx] = constSpec.edges[i];
-      const a = constSpec.stars[aIdx] ?? constSpec.stars[0];
-      const b = constSpec.stars[bIdx] ?? constSpec.stars[0];
-      linePositions[i * 6] = a[0];
-      linePositions[i * 6 + 1] = a[1];
-      linePositions[i * 6 + 2] = a[2];
-      linePositions[i * 6 + 3] = b[0];
-      linePositions[i * 6 + 4] = b[1];
-      linePositions[i * 6 + 5] = b[2];
+      const linePositions = new Float32Array(constSpec.edges.length * 6);
+      for (let i = 0; i < constSpec.edges.length; i++) {
+        const [aIdx, bIdx] = constSpec.edges[i];
+        const a = constSpec.stars[aIdx] ?? constSpec.stars[0];
+        const b = constSpec.stars[bIdx] ?? constSpec.stars[0];
+        linePositions[i * 6] = a[0];
+        linePositions[i * 6 + 1] = a[1];
+        linePositions[i * 6 + 2] = a[2];
+        linePositions[i * 6 + 3] = b[0];
+        linePositions[i * 6 + 4] = b[1];
+        linePositions[i * 6 + 5] = b[2];
+      }
+      const constLineGeo = new THREE.BufferGeometry();
+      constLineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+      const constLineMat = new THREE.LineBasicMaterial({
+        color: chapter.keyLightHex,
+        transparent: true,
+        opacity: 0.34,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const constLines = new THREE.LineSegments(constLineGeo, constLineMat);
+      constGroup.add(constLines);
+      this.constellationGroup = constGroup;
+      this.arenaGroup.add(constGroup);
     }
-    const constLineGeo = new THREE.BufferGeometry();
-    constLineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
-    const constLineMat = new THREE.LineBasicMaterial({
-      color: chapter.keyLightHex,
-      transparent: true,
-      opacity: 0.34,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const constLines = new THREE.LineSegments(constLineGeo, constLineMat);
-    constGroup.add(constLines);
-    this.constellationGroup = constGroup;
-    this.arenaGroup.add(constGroup);
 
     if (chapter.id === 1 && loadCustomMap) {
       this.ensureChapter1MapLoaded();
@@ -8048,27 +8134,57 @@ export class GameEngine {
     this.lobbyCityCamera = mode;
   }
 
+  private unloadLobbyCity(): void {
+    this.lobbyCityRequest.abort();
+    this.lobbyCityRequest = new AbortController();
+    this.setLobbyCityActive(false);
+    if (this.lobbyCity) {
+      if (this.lobbyCity.group.parent === this.scene) {
+        this.scene.remove(this.lobbyCity.group);
+      }
+      this.releaseObject(this.lobbyCity.group);
+      this.lobbyCity = null;
+    }
+  }
+
   private async loadLobbyCity(): Promise<void> {
+    const budget = this.getActiveSystemBudget();
+    if (!budget.loadLobbyCity3d || this.lobbyCity) return;
+    const signal = this.lobbyCityRequest.signal;
     const url = new URL(`${import.meta.env.BASE_URL}${LOBBY_CITY_ASSET}`, document.baseURI);
     try {
-      const response = await fetch(url, { signal: this.lobbyCityRequest.signal });
+      const response = await fetch(url, { signal });
       if (!response.ok || response.headers.get('content-type')?.includes('text/html')) return;
       const data = await response.arrayBuffer();
-      if (this.disposed) return;
-      const { scene: group } = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
-      if (this.disposed) { this.releaseObject(group); return; }
-      group.scale.setScalar(LOBBY_CITY_SCALE);
-      addLobbyCityStreets(group);
-      const nav = createLobbyCityNavigation(group);
-      const x = -3 * LOBBY_CITY_SCALE;
-      const z = 8 * LOBBY_CITY_SCALE;
-      const y = nav?.groundAt(x, z);
-      if (!nav || y == null) { this.releaseObject(group); return; }
-      group.visible = false;
-      this.scene.add(group);
-      this.lobbyCity = { group, nav, pose: { x, y, z } };
+      if (this.disposed || signal.aborted || !this.getActiveSystemBudget().loadLobbyCity3d) return;
+      markHeavyAssetLoadInFlight('Sảnh Thành Phố 3D');
+      try {
+        const { scene: group } = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
+        if (this.disposed || signal.aborted || !this.getActiveSystemBudget().loadLobbyCity3d) {
+          this.releaseObject(group);
+          return;
+        }
+        sanitizeLoadedObjectForBudget(group, this.getActiveSystemBudget(), { disableShadows: true });
+        group.scale.setScalar(LOBBY_CITY_SCALE);
+        addLobbyCityStreets(group);
+        const nav = createLobbyCityNavigation(group);
+        const x = -3 * LOBBY_CITY_SCALE;
+        const z = 8 * LOBBY_CITY_SCALE;
+        const y = nav?.groundAt(x, z);
+        if (!nav || y == null) {
+          this.releaseObject(group);
+          return;
+        }
+        group.visible = false;
+        this.scene.add(group);
+        this.lobbyCity = { group, nav, pose: { x, y, z } };
+      } finally {
+        clearHeavyAssetLoadInFlight();
+      }
     } catch (error) {
-      if (!this.disposed) console.warn('Không tải được phố 3D; dùng sảnh mặc định.', error);
+      if (!this.disposed && !signal.aborted) {
+        console.warn('Không tải được phố 3D; dùng sảnh mặc định.', error);
+      }
     }
   }
 
@@ -10203,15 +10319,22 @@ export class GameEngine {
     this.pendingGpuSync = null;
 
     // Immediately trip persistent GPU Safe Mode so a WebGL crash / driver TDR reset
-    // automatically drops the 90.3 MB 4K map, restores the lightweight arena, and caps at 30 FPS.
+    // automatically drops heavy 3D assets across the entire game and caps at Lite 30 FPS.
     tripGpuCrashSentinel(
-      'Phát hiện mất kết nối WebGL / quá tải GPU · Đã tự chuyển sang Sân Nhẹ & 30 FPS'
+      'Phát hiện mất kết nối WebGL / quá tải GPU · Đã tự chuyển sang Chế Độ Lite toàn hệ thống'
     );
     this.gpuProfile = refreshStartupGpuProfile();
+    this.chapter1MapMode = 'light';
+    this.lowEndSafetyMode = 'on';
+    this.systemBudget = resolveSystemLiteBudget(
+      this.gpuProfile,
+      this.lowEndSafetyMode,
+      this.chapter1MapMode
+    );
     this.lowEndGpu = true;
     this.graphicsQuality = 'low';
-    this.chapter1MapMode = 'light';
     this.unloadChapter1MapModel();
+    this.unloadLobbyCity();
     this.setChapter1MapStatus('ready');
     this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
   };
@@ -10230,11 +10353,16 @@ export class GameEngine {
   }
 
   private getTargetPixelRatio(): number {
-    const low = this.isSoftwareGl || this.lowEndGpu || this.graphicsQuality === 'low';
-    const cap = low ? 1 : this.graphicsQuality === 'medium' ? 1.5 : 2;
+    const budget = this.getActiveSystemBudget();
+    const low = this.isSoftwareGl || this.lowEndGpu || this.graphicsQuality === 'low' || budget.liteActive;
+    const qualityCap = low ? budget.maxDpr : this.graphicsQuality === 'medium' ? Math.min(1.5, budget.maxDpr) : budget.maxDpr;
     const pixels = Math.max(1, this.container.clientWidth * this.container.clientHeight);
-    const budget = low ? 1_500_000 : 2_500_000;
-    return Math.min(window.devicePixelRatio || 1, cap, Math.sqrt(budget / pixels));
+    const pixelBudget = low ? budget.maxPixelBudget : Math.max(budget.maxPixelBudget, 2_200_000);
+    const baseDpr = Math.min(window.devicePixelRatio || 1, qualityCap, Math.sqrt(pixelBudget / pixels));
+    const govDpr = this.adaptiveResolutionGuard
+      ? Math.min(this.adaptiveResScale, getAdaptiveFpsModifiers(this.adaptiveFpsGovernor).dprScale)
+      : 1.0;
+    return Math.max(0.55, baseDpr * govDpr);
   }
 
   public applyRuntimeSettings(cfg: {
@@ -10253,16 +10381,23 @@ export class GameEngine {
     chapter1MapMode?: Chapter1MapMode;
     lowEndSafetyMode?: LowEndSafetyMode;
   }): void {
+    const prevLiteActive = this.systemBudget?.liteActive ?? this.lowEndGpu;
     if (cfg.lowEndSafetyMode) {
       this.lowEndSafetyMode = cfg.lowEndSafetyMode;
-    }
-    if (this.gpuProfile) {
-      this.lowEndGpu = isLowEndSafetyModeActive(this.gpuProfile, this.lowEndSafetyMode);
     }
     const prevVariant = this.getActiveChapter1MapVariant();
     if (cfg.chapter1MapMode) {
       this.chapter1MapMode = cfg.chapter1MapMode;
     }
+    if (this.gpuProfile) {
+      this.systemBudget = resolveSystemLiteBudget(
+        this.gpuProfile,
+        this.lowEndSafetyMode,
+        this.chapter1MapMode
+      );
+      this.lowEndGpu = this.systemBudget.liteActive;
+    }
+    const budget = this.getActiveSystemBudget();
     const nextVariant = this.getActiveChapter1MapVariant();
     if (nextVariant !== prevVariant) {
       this.chapter1MapFailCount = 0;
@@ -10275,7 +10410,13 @@ export class GameEngine {
       this.applyChapter1MapState();
     }
 
-    const quality = this.isSoftwareGl || this.lowEndGpu ? 'low' : cfg.graphicsQuality;
+    if (!budget.loadLobbyCity3d) {
+      this.unloadLobbyCity();
+    } else if (!this.lobbyCity) {
+      void this.loadLobbyCity();
+    }
+
+    const quality = this.isSoftwareGl || this.lowEndGpu || budget.liteActive ? 'low' : cfg.graphicsQuality;
     this.graphicsQuality = quality;
     this.screenShakeEnabled = cfg.screenShake;
     this.showDamageNumbersEnabled = cfg.showDamageNumbers;
@@ -10301,21 +10442,21 @@ export class GameEngine {
         this.adaptiveFpsGovernor.tier = 'full';
       }
     }
-    this.bloomEnabled = cfg.bloomEnabled !== false;
-    this.starfallEnabled = !this.lowEndGpu && !this.isSoftwareGl && cfg.starfallWeather !== false;
+    this.bloomEnabled = budget.bloomAllowed && cfg.bloomEnabled !== false;
+    this.starfallEnabled = !this.lowEndGpu && !this.isSoftwareGl && !budget.liteActive && cfg.starfallWeather !== false;
     if (this.starfallMesh) {
       this.starfallMesh.visible = this.starfallEnabled;
     }
     const baseParticleDensity =
-      quality === 'low' ? 0.45 : quality === 'medium' ? 0.75 : 1.0;
+      (quality === 'low' ? 0.45 : quality === 'medium' ? 0.75 : 1.0) * budget.particleBudgetMult;
     const govMods = getAdaptiveFpsModifiers(this.adaptiveFpsGovernor);
-    this.particleDensityScale = baseParticleDensity * govMods.particleScale;
+    this.particleDensityScale = Math.max(0.2, baseParticleDensity * govMods.particleScale);
 
     if (!this.isSoftwareGl) {
-      const shadowsOn = quality !== 'low';
+      const shadowsOn = quality !== 'low' && budget.shadowMapSize > 0;
       this.renderer.shadowMap.enabled = shadowsOn;
       this.keyLight.castShadow = shadowsOn;
-      const desiredShadowSize = quality === 'high' ? 2048 : 1024;
+      const desiredShadowSize = Math.min(budget.shadowMapSize || 1024, quality === 'high' ? 2048 : 1024);
       if (shadowsOn && this.keyLight.shadow.mapSize.width !== desiredShadowSize) {
         this.keyLight.shadow.mapSize.set(desiredShadowSize, desiredShadowSize);
         this.keyLight.shadow.map?.dispose();
@@ -10327,11 +10468,17 @@ export class GameEngine {
     if (!this.isSoftwareGl && !this.lowEndGpu && quality !== 'low' && this.bloomEnabled && !this.composer) {
       this.setupPostProcessing();
     }
+    if (this.bloomPass) {
+      this.bloomPass.enabled = this.bloomEnabled && !budget.liteActive;
+    }
     if (this.composer) {
       const w = Math.max(1, this.container.clientWidth);
       const h = Math.max(1, this.container.clientHeight);
       this.composer.setPixelRatio(targetDpr);
       this.composer.setSize(w, h);
+    }
+    if (prevLiteActive !== budget.liteActive && this.phase === GamePhase.TITLE) {
+      this.buildArena(this.currentChapter, this.currentChapter.id === 1);
     }
     this.syncSolarLeoVisuals();
     this.syncPostProcessingUniforms();
@@ -11047,6 +11194,7 @@ export class GameEngine {
       try {
         const rawDt = (now - this.lastTime) / 1000;
         this.lastTime = now;
+        this.lastRawFrameDt = Math.min(Math.max(rawDt, 0.001), 0.5);
         if (this.fpsSampler) pushFpsSample(this.fpsSampler, rawDt);
         const dt = Math.min(Math.max(rawDt, 0.001), MAX_FRAME_DT);
         // Some modes set the phase directly rather than using setPhase().
@@ -11097,15 +11245,12 @@ export class GameEngine {
       } else {
         if (sync) gl.deleteSync(sync);
         this.pendingGpuSync = null;
+        const budget = this.getActiveSystemBudget();
         const fps = this.isSoftwareGl
           ? 12
-          : this.lowEndGpu
-          ? this.phase === GamePhase.TITLE
-            ? 20
-            : 30
           : this.phase === GamePhase.TITLE
-          ? 30
-          : 60;
+          ? budget.targetLobbyFps
+          : budget.targetCombatFps;
         const delay = Math.max(0, 1000 / fps - (performance.now() - this.lastTime));
         this.frameId = window.setTimeout(cb, delay);
       }
@@ -11605,23 +11750,45 @@ export class GameEngine {
       this.hemiLight.intensity = 0.88 * this.combatLightingState.hemiIntensity;
     }
 
-    // Pillar 1: Wave 5 Adaptive FPS Governor + Resolution Guard (hardware WebGL only; never recreates WebGLRenderer)
+    // Pillar 1: System-Wide Progressive Adaptive FPS Governor + Resolution Guard (works for 24/30/45/60 FPS)
     this.elementalImpactVfxCd = Math.max(0, this.elementalImpactVfxCd - dt);
-    const govStep = sampleAdaptiveFpsFrame(this.adaptiveFpsGovernor, dt);
+    const activeBudget = this.getActiveSystemBudget();
+    const activeTargetFps = activeBudget.targetCombatFps;
+    const govStep = sampleAdaptiveFpsFrame(
+      this.adaptiveFpsGovernor,
+      this.lastRawFrameDt,
+      activeTargetFps
+    );
     if (this.adaptiveResolutionGuard && !this.isSoftwareGl) {
       if (govStep.tierChanged) {
         const baseParticleDensity =
-          this.graphicsQuality === 'low' ? 0.45 : this.graphicsQuality === 'medium' ? 0.75 : 1.0;
-        this.particleDensityScale = baseParticleDensity * govStep.modifiers.particleScale;
-        const maxPr =
-          this.graphicsQuality === 'low' ? 1.0 : this.graphicsQuality === 'medium' ? 1.5 : 2.0;
-        const nextDpr = Math.min(
-          maxPr,
-          (window.devicePixelRatio || 1) * Math.min(this.adaptiveResScale, govStep.modifiers.dprScale)
-        );
+          (this.graphicsQuality === 'low' ? 0.45 : this.graphicsQuality === 'medium' ? 0.75 : 1.0) *
+          activeBudget.particleBudgetMult;
+        this.particleDensityScale = Math.max(0.2, baseParticleDensity * govStep.modifiers.particleScale);
+        const nextDpr = this.getTargetPixelRatio();
         this.renderer.setPixelRatio(nextDpr);
         if (this.composer) {
           this.composer.setPixelRatio(nextDpr);
+        }
+        // Progressive secondary VFX shedding on severe GPU load (and smooth restoration on recovery)
+        const inGuard = this.adaptiveFpsGovernor.tier === 'performance_guard';
+        const inBalanced = this.adaptiveFpsGovernor.tier === 'balanced';
+        if (this.bloomPass) {
+          this.bloomPass.enabled = !inGuard && this.bloomEnabled && activeBudget.bloomAllowed;
+        }
+        if (this.starfallMesh) {
+          this.starfallMesh.visible = !inGuard && !inBalanced && this.starfallEnabled;
+        }
+        if (this.arenaDustMesh) {
+          this.arenaDustMesh.visible = !inGuard;
+        }
+        if (this.chapterWeatherPoints) {
+          this.chapterWeatherPoints.visible = !inGuard;
+        }
+        if (activeBudget.shadowMapSize > 0 && this.graphicsQuality !== 'low') {
+          const allowShadows = !inGuard;
+          this.renderer.shadowMap.enabled = allowShadows;
+          this.keyLight.castShadow = allowShadows;
         }
       }
       this.adaptiveResCheckTimer += dt;
@@ -11632,14 +11799,13 @@ export class GameEngine {
           const nextScale = evaluateAdaptiveResolutionScale(
             fpsRead.frameTimeMs,
             this.adaptiveResScale,
-            this.adaptiveResolutionGuard
+            this.adaptiveResolutionGuard,
+            activeTargetFps,
+            activeBudget.minAdaptiveDprScale
           );
           if (Math.abs(nextScale - this.adaptiveResScale) >= 0.04) {
             this.adaptiveResScale = nextScale;
-            const maxPr =
-              this.graphicsQuality === 'low' ? 1.0 : this.graphicsQuality === 'medium' ? 1.5 : 2.0;
-            const dprMult = Math.min(this.adaptiveResScale, govStep.modifiers.dprScale);
-            const nextDpr = Math.min(maxPr, (window.devicePixelRatio || 1) * dprMult);
+            const nextDpr = this.getTargetPixelRatio();
             this.renderer.setPixelRatio(nextDpr);
             if (this.composer) {
               this.composer.setPixelRatio(nextDpr);
@@ -23020,7 +23186,7 @@ export class GameEngine {
     this.disposePostProcessing();
     this.contactShadowTex.dispose();
     this.keyLight.shadow.dispose();
-    this.envRenderTarget.dispose();
+    this.envRenderTarget?.dispose();
     this.pmremGenerator.dispose();
     this.renderer.dispose();
     if (dom.parentElement === this.container) {

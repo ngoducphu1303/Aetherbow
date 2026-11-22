@@ -520,13 +520,17 @@ import {
 import { GameEngine, type AppearanceStatus } from './engine/GameEngine';
 import {
   detectStartupGpuProfile,
+  isLowEndSafetyModeActive,
   readPersistedChapter1MapMode,
+  readPersistedLowEndSafetyMode,
+  readPersistedSelectedHeroId,
   resolveChapter1MapVariant,
 } from './engine/gpuSafetyGuard';
 import {
   getModelDownloadStatus,
   preloadGameModels,
   setChapter1MapPreloadVariant,
+  setGlobalAssetPreloadMode,
   subscribeToModelDownloads,
 } from './engine/modelAssets';
 import { HeroVisualConfig } from './engine/models';
@@ -793,7 +797,10 @@ export default function App() {
   const [chapter1MapStatus, setChapter1MapStatus] = useState<AppearanceStatus>(() => {
     const initialProfile = detectStartupGpuProfile();
     const initialMode = readPersistedChapter1MapMode();
-    return resolveChapter1MapVariant(initialProfile, initialMode) === 'none' ? 'ready' : 'loading';
+    const initialLowEndMode = readPersistedLowEndSafetyMode();
+    return resolveChapter1MapVariant(initialProfile, initialMode, initialLowEndMode) === 'none'
+      ? 'ready'
+      : 'loading';
   });
   const modelDownloadStatus = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadStatus);
   const canEnterGame =
@@ -1937,23 +1944,45 @@ export default function App() {
   useEffect(() => {
     const startupProfile = detectStartupGpuProfile();
     const startupMapMode = readPersistedChapter1MapMode();
-    setChapter1MapPreloadVariant(resolveChapter1MapVariant(startupProfile, startupMapMode));
+    const startupLowEndMode = readPersistedLowEndSafetyMode();
+    const startupHeroId = readPersistedSelectedHeroId();
+    const liteActive = isLowEndSafetyModeActive(startupProfile, startupLowEndMode);
+    setGlobalAssetPreloadMode({
+      liteMode: liteActive,
+      activeHeroId: startupHeroId,
+      lazyPreloadOnlyActiveHero: true,
+    });
+    setChapter1MapPreloadVariant(
+      resolveChapter1MapVariant(startupProfile, startupMapMode, startupLowEndMode)
+    );
     preloadGameModels();
   }, []);
 
   const retryStartupModels = useCallback(() => {
     const activeMode = currentSettings.chapter1MapMode ?? 'auto';
-    setChapter1MapPreloadVariant(resolveChapter1MapVariant(gpuProfile, activeMode));
+    const lowEndMode = currentSettings.lowEndSafetyMode ?? 'auto';
+    setGlobalAssetPreloadMode({
+      liteMode: isLowEndSafetyModeActive(gpuProfile, lowEndMode),
+      activeHeroId: save.selectedHeroId,
+      lazyPreloadOnlyActiveHero: true,
+    });
+    setChapter1MapPreloadVariant(resolveChapter1MapVariant(gpuProfile, activeMode, lowEndMode));
     preloadGameModels();
     engineRef.current?.retryAppearance();
-  }, [currentSettings.chapter1MapMode, gpuProfile]);
+  }, [currentSettings.chapter1MapMode, currentSettings.lowEndSafetyMode, gpuProfile, save.selectedHeroId]);
 
   const handleResetGpuCrashGuard = useCallback(() => {
     const nextProfile = engineRef.current?.resetGpuCrashGuard() ?? detectStartupGpuProfile();
     setGpuProfile(nextProfile);
     const activeMode = currentSettings.chapter1MapMode ?? 'auto';
-    setChapter1MapPreloadVariant(resolveChapter1MapVariant(nextProfile, activeMode));
-  }, [currentSettings.chapter1MapMode]);
+    const lowEndMode = currentSettings.lowEndSafetyMode ?? 'auto';
+    setGlobalAssetPreloadMode({
+      liteMode: isLowEndSafetyModeActive(nextProfile, lowEndMode),
+      activeHeroId: save.selectedHeroId,
+      lazyPreloadOnlyActiveHero: true,
+    });
+    setChapter1MapPreloadVariant(resolveChapter1MapVariant(nextProfile, activeMode, lowEndMode));
+  }, [currentSettings.chapter1MapMode, currentSettings.lowEndSafetyMode, save.selectedHeroId]);
 
   // Initialize Three.js engine once
   useEffect(() => {
@@ -3441,15 +3470,23 @@ export default function App() {
     engineRef.current?.setLobbyViewMode(mode);
   }, [activeLobbyTab]);
 
-  // Sync runtime 3D graphics, shake, GPU safety & Chapter 1 map preferences
+  // Sync runtime 3D graphics, shake, global Lite Mode & Chapter 1 map preferences
   useEffect(() => {
+    const lowEndMode = currentSettings.lowEndSafetyMode ?? 'auto';
+    const liteActive = isLowEndSafetyModeActive(gpuProfile, lowEndMode);
+    setGlobalAssetPreloadMode({
+      liteMode: liteActive,
+      activeHeroId: save.selectedHeroId,
+      lazyPreloadOnlyActiveHero: true,
+    });
     const targetVariant = resolveChapter1MapVariant(
       gpuProfile,
-      currentSettings.chapter1MapMode ?? 'auto'
+      currentSettings.chapter1MapMode ?? 'auto',
+      lowEndMode
     );
     setChapter1MapPreloadVariant(targetVariant);
     engineRef.current?.applyRuntimeSettings(currentSettings);
-  }, [currentSettings, gpuProfile]);
+  }, [currentSettings, gpuProfile, save.selectedHeroId]);
 
   // Clean up expired floating damage numbers
   useEffect(() => {
@@ -11300,6 +11337,7 @@ export default function App() {
           chapter1MapStatus={chapter1MapStatus}
           gpuProfile={gpuProfile}
           chapter1MapMode={currentSettings.chapter1MapMode ?? 'auto'}
+          lowEndSafetyMode={currentSettings.lowEndSafetyMode ?? 'auto'}
           authReady={authReady}
           currentUser={currentUser}
           playerDisplayName={playerDisplayName}

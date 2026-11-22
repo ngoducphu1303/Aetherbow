@@ -60,11 +60,13 @@ export function createAdaptiveFpsGovernor(enabled = true): AdaptiveFpsGovernor {
 
 /**
  * Feeds real wall-clock frame delta into the sliding FPS monitor.
- * Never mutates simulation timing; only outputs recommended visual tier transitions.
+ * Evaluates against the device's target FPS (e.g. 30 FPS on Lite vs 60 FPS on discrete GPU)
+ * so low-end laptops step down smoothly when struggling without false-triggering at their normal cap.
  */
 export function sampleAdaptiveFpsFrame(
   gov: AdaptiveFpsGovernor,
-  rawDtSec: number
+  rawDtSec: number,
+  targetFps = 60
 ): { tierChanged: boolean; modifiers: AdaptiveFpsModifiers } {
   const safeDt = Math.max(1 / 240, Math.min(0.25, rawDtSec));
   const instFps = Math.min(144, 1 / safeDt);
@@ -79,16 +81,21 @@ export function sampleAdaptiveFpsFrame(
     return { tierChanged: changed, modifiers: ADAPTIVE_FPS_PROFILES.full };
   }
 
+  const clampedTarget = Math.max(12, Math.min(60, targetFps));
+  const warnFps = clampedTarget === 60 ? 38 : clampedTarget * 0.72;
+  const criticalFps = clampedTarget === 60 ? 30 : clampedTarget * 0.56;
+  const recoverFps = clampedTarget === 60 ? 52 : clampedTarget * 0.88;
+
   const prevTier = gov.tier;
-  if (gov.avgFps < 38) {
+  if (gov.avgFps < warnFps) {
     gov.lowFpsStreakSec += safeDt;
     gov.highFpsStreakSec = 0;
     if (gov.lowFpsStreakSec >= 2.5) {
       if (gov.tier === 'full') gov.tier = 'balanced';
-      else if (gov.tier === 'balanced' && gov.avgFps < 30) gov.tier = 'performance_guard';
+      else if (gov.tier === 'balanced' && gov.avgFps < criticalFps) gov.tier = 'performance_guard';
       gov.lowFpsStreakSec = 0;
     }
-  } else if (gov.avgFps >= 52) {
+  } else if (gov.avgFps >= recoverFps) {
     gov.highFpsStreakSec += safeDt;
     gov.lowFpsStreakSec = 0;
     if (gov.highFpsStreakSec >= 5.5) {

@@ -3,13 +3,16 @@ import type {
   Chapter1MapMode,
   Chapter1MapVariant,
   GpuProfileSummary,
+  HeroId,
   LowEndSafetyMode,
+  SystemLiteBudget,
 } from '../types/game';
-import { classifyGpuCapability } from './aaaVisualPipeline';
+import { classifyGpuCapability, resolveSystemLiteBudget } from './aaaVisualPipeline';
 
 export const GPU_CRASH_SENTINEL_KEY = 'aetherbow_gpu_safe_mode_v1';
 export const CH1_MAP_INFLIGHT_KEY = 'aetherbow_ch1_map_inflight_v1';
 export const BOSS_3D_INFLIGHT_KEY = 'aetherbow_boss_3d_inflight_v1';
+export const GLOBAL_ASSET_INFLIGHT_KEY = 'aetherbow_heavy_asset_inflight_v1';
 
 export interface GpuCrashSentinelState {
   tripped: boolean;
@@ -22,6 +25,8 @@ interface RawHardwareProbe {
   deviceMemoryGb?: number;
   hardwareConcurrency: number;
   maxTextureSize?: number;
+  maxRenderbufferSize?: number;
+  maxTextureImageUnits?: number;
 }
 
 let cachedRawProbe: RawHardwareProbe | null = null;
@@ -71,6 +76,7 @@ export function tripGpuCrashSentinel(
       store.setItem(GPU_CRASH_SENTINEL_KEY, JSON.stringify(next));
       store.removeItem(CH1_MAP_INFLIGHT_KEY);
       store.removeItem(BOSS_3D_INFLIGHT_KEY);
+      store.removeItem(GLOBAL_ASSET_INFLIGHT_KEY);
     } catch {
       // Ignore quota/privacy errors
     }
@@ -86,6 +92,7 @@ export function resetGpuCrashSentinel(storage?: Storage | null): void {
       store.removeItem(GPU_CRASH_SENTINEL_KEY);
       store.removeItem(CH1_MAP_INFLIGHT_KEY);
       store.removeItem(BOSS_3D_INFLIGHT_KEY);
+      store.removeItem(GLOBAL_ASSET_INFLIGHT_KEY);
     } catch {
       // Ignore storage errors
     }
@@ -94,11 +101,36 @@ export function resetGpuCrashSentinel(storage?: Storage | null): void {
 }
 
 /**
- * Records that the 90.3 MB Chapter 1 GLB map is actively being parsed/uploaded
- * to WebGL. If the laptop black-screens or shuts down before 2 stable frames
- * render, the next boot detects this unfinished marker and automatically locks
- * Safe Mode so the crash never loops.
+ * Records that a heavy 3D asset (any Chapter map, Boss, Hero, or Lobby GLB) is actively
+ * being parsed/uploaded to WebGL. If the laptop black-screens or shuts down before stable
+ * frames complete, the next boot promotes this marker into persistent Safe/Lite Mode.
  */
+export function markHeavyAssetLoadInFlight(
+  assetLabel: string,
+  storage?: Storage | null
+): void {
+  const store = getSafeStorage(storage);
+  if (!store) return;
+  try {
+    store.setItem(
+      GLOBAL_ASSET_INFLIGHT_KEY,
+      JSON.stringify({ label: assetLabel.slice(0, 80), at: Date.now() })
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearHeavyAssetLoadInFlight(storage?: Storage | null): void {
+  const store = getSafeStorage(storage);
+  if (!store) return;
+  try {
+    store.removeItem(GLOBAL_ASSET_INFLIGHT_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function markChapter1MapLoadInFlight(storage?: Storage | null): void {
   const store = getSafeStorage(storage);
   if (!store) return;
@@ -140,9 +172,9 @@ export function clearBoss3dLoadInFlight(storage?: Storage | null): void {
 }
 
 /**
- * Checks whether a previous session aborted mid-load of a heavy 3D map or Boss GLB
- * (e.g. Windows GPU TDR black screen or thermal shutdown) and promotes it into a
- * persistent Safe Mode latch before any heavy asset is requested.
+ * Checks whether a previous session aborted mid-load of ANY heavy 3D map, Boss, Hero,
+ * or Lobby GLB (e.g. Windows GPU TDR black screen or thermal shutdown) and promotes it
+ * into a persistent Safe/Lite Mode latch before any heavy asset is requested.
  */
 export function promoteUnfinishedChapter1MapCrash(
   storage?: Storage | null
@@ -164,12 +196,28 @@ export function promoteUnfinishedChapter1MapCrash(
           store
         );
       }
+      const globalInflight = store.getItem(GLOBAL_ASSET_INFLIGHT_KEY);
+      if (globalInflight) {
+        let assetLabel = 'tài nguyên 3D';
+        try {
+          const parsed = JSON.parse(globalInflight) as { label?: string };
+          if (parsed?.label) assetLabel = parsed.label;
+        } catch {
+          assetLabel = globalInflight.slice(0, 60);
+        }
+        return tripGpuCrashSentinel(
+          `Phát hiện máy bị gián đoạn khi nạp ${assetLabel} ở phiên trước · Đã tự bật Chế Độ Lite An Toàn`,
+          store
+        );
+      }
     } catch {
       // Ignore storage errors
     }
   }
   return readGpuCrashSentinel(store);
 }
+
+export const promoteUnfinishedHeavyAssetCrash = promoteUnfinishedChapter1MapCrash;
 
 function probeBrowserHardwareOnce(): RawHardwareProbe {
   if (cachedRawProbe) return cachedRawProbe;
@@ -183,6 +231,8 @@ function probeBrowserHardwareOnce(): RawHardwareProbe {
 
   let rendererString = '';
   let maxTextureSize: number | undefined;
+  let maxRenderbufferSize: number | undefined;
+  let maxTextureImageUnits: number | undefined;
 
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
     try {
@@ -202,6 +252,14 @@ function probeBrowserHardwareOnce(): RawHardwareProbe {
         if (Number.isFinite(texSize) && texSize > 0) {
           maxTextureSize = texSize;
         }
+        const rbSize = Number(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE));
+        if (Number.isFinite(rbSize) && rbSize > 0) {
+          maxRenderbufferSize = rbSize;
+        }
+        const texUnits = Number(gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS));
+        if (Number.isFinite(texUnits) && texUnits > 0) {
+          maxTextureImageUnits = texUnits;
+        }
         gl.getExtension('WEBGL_lose_context')?.loseContext();
       }
     } catch {
@@ -214,12 +272,14 @@ function probeBrowserHardwareOnce(): RawHardwareProbe {
     deviceMemoryGb,
     hardwareConcurrency,
     maxTextureSize,
+    maxRenderbufferSize,
+    maxTextureImageUnits,
   };
   return cachedRawProbe;
 }
 
 /**
- * Synchronously detects the host GPU/CPU/RAM profile + Crash Sentinel state
+ * Synchronously detects the host CPU/GPU/RAM/VRAM profile + Crash Sentinel state
  * BEFORE any 3D asset preload begins. Shared by SplashGate, modelAssets, and GameEngine.
  */
 export function detectStartupGpuProfile(storage?: Storage | null): GpuProfileSummary {
@@ -234,6 +294,8 @@ export function detectStartupGpuProfile(storage?: Storage | null): GpuProfileSum
     raw.hardwareConcurrency,
     {
       maxTextureSize: raw.maxTextureSize,
+      maxRenderbufferSize: raw.maxRenderbufferSize,
+      maxTextureImageUnits: raw.maxTextureImageUnits,
       crashGuardTripped: sentinel.tripped,
       crashReason: sentinel.reason,
     }
@@ -251,15 +313,15 @@ export function refreshStartupGpuProfile(storage?: Storage | null): GpuProfileSu
 
 export function resolveChapter1MapVariant(
   profile: GpuProfileSummary,
-  mode: Chapter1MapMode = 'auto'
+  mode: Chapter1MapMode = 'auto',
+  lowEndSafetyMode: LowEndSafetyMode = 'auto'
 ): Chapter1MapVariant {
   if (mode === 'light') return 'none';
   if (mode === 'lite_3d') return 'lite';
   if (mode === 'high_3d') return 'full';
-  // Auto mode: software WebGL or crash-tripped sessions fall back to ultra-light procedural arena;
-  // strong discrete GPUs load the full 90.3 MB uncompressed GLB; legacy/weak laptops (e.g. Intel HD 4000)
-  // automatically load the lightweight 3D Lite GLB (~30k tris, 1024px albedo).
+  // Global Lite mode pins all heavy maps to Lite unless explicitly overridden
   if (profile.crashGuardTripped || profile.tier === 'software') return 'none';
+  if (lowEndSafetyMode === 'on') return 'lite';
   if (profile.supportsHighDetailChapter1Map !== false && !profile.lowPowerLegacyGpu) {
     return 'full';
   }
@@ -268,9 +330,10 @@ export function resolveChapter1MapVariant(
 
 export function shouldUseHighDetailChapter1Map(
   profile: GpuProfileSummary,
-  mode: Chapter1MapMode = 'auto'
+  mode: Chapter1MapMode = 'auto',
+  lowEndSafetyMode: LowEndSafetyMode = 'auto'
 ): boolean {
-  return resolveChapter1MapVariant(profile, mode) === 'full';
+  return resolveChapter1MapVariant(profile, mode, lowEndSafetyMode) === 'full';
 }
 
 export function resolveBoss3dModelVariant(
@@ -293,6 +356,27 @@ export function resolveBoss3dModelVariant(
   return 'lite';
 }
 
+/**
+ * Resolves the active asset quality tier ('lite' vs 'high') for ALL shared 3D models
+ * (Heroes, Skins, Pets, Mounts, Wings, Artifacts, Halos, Bosses, Mobs, and future content).
+ */
+export function resolveGlobalAssetVariant(
+  profile: GpuProfileSummary,
+  lowEndSafetyMode: LowEndSafetyMode = 'auto',
+  chapter1MapMode: Chapter1MapMode = 'auto'
+): 'lite' | 'high' {
+  const budget = resolveSystemLiteBudget(profile, lowEndSafetyMode, chapter1MapMode);
+  return budget.assetVariant === 'high' ? 'high' : 'lite';
+}
+
+export function getSystemLiteBudget(
+  profile: GpuProfileSummary,
+  lowEndSafetyMode: LowEndSafetyMode = 'auto',
+  chapter1MapMode: Chapter1MapMode = 'auto'
+): SystemLiteBudget {
+  return resolveSystemLiteBudget(profile, lowEndSafetyMode, chapter1MapMode);
+}
+
 export function isLowEndSafetyModeActive(
   profile: GpuProfileSummary,
   mode: LowEndSafetyMode = 'auto'
@@ -301,29 +385,115 @@ export function isLowEndSafetyModeActive(
   if (mode === 'on') return true;
   if (mode === 'off') return false;
   return Boolean(
-    profile.lowPowerLegacyGpu || profile.crashGuardTripped || profile.tier !== 'discrete'
+    profile.lowPowerLegacyGpu ||
+      profile.crashGuardTripped ||
+      profile.tier !== 'discrete' ||
+      profile.deviceTier === 'ultra_lite' ||
+      profile.deviceTier === 'lite'
   );
 }
 
-/**
- * Reads saved Chapter1MapMode from local save storage at very first boot so
- * SplashGate knows whether the user explicitly pinned 'light' or 'high_3d'.
- */
-export function readPersistedChapter1MapMode(storage?: Storage | null): Chapter1MapMode {
-  const store = getSafeStorage(storage);
-  if (!store) return 'auto';
+function getCandidateSaveStorageKeys(store: Storage): string[] {
+  const owner = (() => {
+    try {
+      return store.getItem('artemis_3d_save_owner_v1');
+    } catch {
+      return null;
+    }
+  })();
+
+  const uidKeys: string[] = [];
   try {
-    for (const key of ['aetherbow_zodiac_save_v1', 'aetherbow_guest_save_v1']) {
+    for (let i = 0; i < store.length; i += 1) {
+      const k = store.key(i);
+      if (k && k.startsWith('artemis_3d_save_uid_')) {
+        uidKeys.push(k);
+      }
+    }
+  } catch {
+    // Ignore storage enumeration errors
+  }
+
+  const ordered =
+    owner === 'guest'
+      ? [
+          'artemis_3d_guest_save_v1',
+          'artemis_3d_save_v1',
+          ...uidKeys,
+          'aetherbow_zodiac_save_v1',
+          'aetherbow_guest_save_v1',
+        ]
+      : [
+          ...uidKeys,
+          'artemis_3d_guest_save_v1',
+          'artemis_3d_save_v1',
+          'aetherbow_zodiac_save_v1',
+          'aetherbow_guest_save_v1',
+        ];
+  return Array.from(new Set(ordered));
+}
+
+function readPersistedSaveSnapshot(storage?: Storage | null): {
+  selectedHeroId?: HeroId;
+  settings?: {
+    chapter1MapMode?: unknown;
+    lowEndSafetyMode?: unknown;
+  };
+} | null {
+  const store = getSafeStorage(storage);
+  if (!store) return null;
+  try {
+    for (const key of getCandidateSaveStorageKeys(store)) {
       const raw = store.getItem(key);
       if (!raw) continue;
-      const parsed = JSON.parse(raw) as { settings?: { chapter1MapMode?: unknown } };
-      const mode = parsed?.settings?.chapter1MapMode;
-      if (mode === 'lite_3d' || mode === 'light' || mode === 'high_3d' || mode === 'auto') {
-        return mode;
+      const parsed = JSON.parse(raw) as {
+        selectedHeroId?: HeroId;
+        settings?: { chapter1MapMode?: unknown; lowEndSafetyMode?: unknown };
+      };
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
       }
     }
   } catch {
     // Ignore parse errors
   }
+  return null;
+}
+
+/**
+ * Reads saved Chapter1MapMode from actual local save storage at very first boot so
+ * SplashGate knows whether the user explicitly pinned 'light', 'lite_3d', or 'high_3d'.
+ */
+export function readPersistedChapter1MapMode(storage?: Storage | null): Chapter1MapMode {
+  const parsed = readPersistedSaveSnapshot(storage);
+  const mode = parsed?.settings?.chapter1MapMode;
+  if (mode === 'lite_3d' || mode === 'light' || mode === 'high_3d' || mode === 'auto') {
+    return mode;
+  }
   return 'auto';
+}
+
+/**
+ * Reads saved Global Lite Mode preference before any 3D asset preload begins.
+ */
+export function readPersistedLowEndSafetyMode(storage?: Storage | null): LowEndSafetyMode {
+  const parsed = readPersistedSaveSnapshot(storage);
+  const mode = parsed?.settings?.lowEndSafetyMode;
+  if (mode === 'auto' || mode === 'on' || mode === 'off') {
+    return mode;
+  }
+  return 'auto';
+}
+
+/**
+ * Reads the player's currently selected hero before preload so low-end devices
+ * only fetch that hero's Lite 3D model at boot instead of preloading all heroes.
+ */
+export function readPersistedSelectedHeroId(storage?: Storage | null): HeroId {
+  const parsed = readPersistedSaveSnapshot(storage);
+  const id = parsed?.selectedHeroId;
+  if (id === 'artemis' || id === 'hatsune_miku' || id === 'aurelia') {
+    return id;
+  }
+  return 'artemis';
 }

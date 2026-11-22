@@ -26,7 +26,7 @@ import {
   CloudSyncStatus,
   formatAccountHandle,
 } from '../services/playerCloudService';
-import { Chapter1MapMode, GpuProfileSummary, SaveData } from '../types/game';
+import { Chapter1MapMode, GpuProfileSummary, LowEndSafetyMode, SaveData } from '../types/game';
 import { AuthGatePanel, AuthSuccessMeta } from './AuthGatePanel';
 
 interface SplashGateProps {
@@ -36,6 +36,7 @@ interface SplashGateProps {
   chapter1MapStatus?: AppearanceStatus;
   gpuProfile?: GpuProfileSummary;
   chapter1MapMode?: Chapter1MapMode;
+  lowEndSafetyMode?: LowEndSafetyMode;
   authReady: boolean;
   currentUser: User | null;
   playerDisplayName: string;
@@ -74,6 +75,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   chapter1MapStatus = 'ready',
   gpuProfile,
   chapter1MapMode = 'auto',
+  lowEndSafetyMode = 'auto',
   authReady,
   currentUser,
   playerDisplayName,
@@ -94,7 +96,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   const [signingOut, setSigningOut] = useState(false);
   const progress = useSyncExternalStore(subscribeToModelDownloads, getModelDownloadProgress);
   const chapter1Variant = gpuProfile
-    ? resolveChapter1MapVariant(gpuProfile, chapter1MapMode)
+    ? resolveChapter1MapVariant(gpuProfile, chapter1MapMode, lowEndSafetyMode)
     : 'full';
   const ready =
     progress.status === 'ready' &&

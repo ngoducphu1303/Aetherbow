@@ -1,4 +1,4 @@
-import type { Chapter1MapVariant } from '../types/game';
+import type { Chapter1MapVariant, HeroId } from '../types/game';
 import {
   fetchChapter1MapArrayBuffer,
   getChapter1MapLiteAssetUrl,
@@ -14,6 +14,13 @@ const MODEL_VERSIONS = {
   'heroes/hatsune-miku.glb': 1,
   [CHAPTER1_MAP_MODEL_ASSET]: 2,
 } as const;
+
+export const HERO_LITE_VARIANT_PATHS: Partial<Record<ModelAsset, string>> = {
+  'heroes/golden-dress-girl.glb': 'heroes/golden-dress-girl-lite.glb',
+  'heroes/alice-ao-dai-hoa-mai.glb': 'heroes/alice-ao-dai-hoa-mai-lite.glb',
+  'heroes/van-tich.glb': 'heroes/van-tich-lite.glb',
+  'heroes/hatsune-miku.glb': 'heroes/hatsune-miku-lite.glb',
+};
 
 export const MODEL_LABELS: Record<keyof typeof MODEL_VERSIONS, string> = {
   'heroes/golden-dress-girl.glb': 'Mô hình Anh Hùng Alice 3D',
@@ -57,27 +64,81 @@ const models = Object.keys(MODEL_VERSIONS) as ModelAsset[];
 const downloads = new Map<string, Download>();
 const listeners = new Set<() => void>();
 let chapter1MapPreloadVariant: Chapter1MapVariant = 'full';
+let globalLiteHeroAssets = false;
+let lazyPreloadOnlyActiveHero = false;
+let activePreloadHeroId: HeroId = 'artemis';
 
 function getCacheKeyForChapter1Variant(variant: 'lite' | 'full'): string {
   return variant === 'lite' ? `${CHAPTER1_MAP_MODEL_ASSET}::lite` : CHAPTER1_MAP_MODEL_ASSET;
 }
 
 function getCacheKeyForActiveModel(path: ModelAsset): string {
-  if (path !== CHAPTER1_MAP_MODEL_ASSET) return path;
-  return getCacheKeyForChapter1Variant(chapter1MapPreloadVariant === 'lite' ? 'lite' : 'full');
+  if (path === CHAPTER1_MAP_MODEL_ASSET) {
+    return getCacheKeyForChapter1Variant(chapter1MapPreloadVariant === 'lite' ? 'lite' : 'full');
+  }
+  if (globalLiteHeroAssets && HERO_LITE_VARIANT_PATHS[path]) {
+    return `${path}::lite`;
+  }
+  return path;
 }
 
 function getLabelForActiveModel(path: ModelAsset): string {
   if (path === CHAPTER1_MAP_MODEL_ASSET && chapter1MapPreloadVariant === 'lite') {
     return CHAPTER1_MAP_LITE_LABEL;
   }
+  if (globalLiteHeroAssets && HERO_LITE_VARIANT_PATHS[path]) {
+    return `${MODEL_LABELS[path]} (Lite)`;
+  }
   return MODEL_LABELS[path];
 }
 
+function getHeroPreloadAssetForHeroId(heroId: HeroId): ModelAsset | null {
+  if (heroId === 'hatsune_miku') return 'heroes/hatsune-miku.glb';
+  if (heroId === 'aurelia') return null; // Aurelia loads on-demand through solarLeoAssets Lite/High pipeline
+  return 'heroes/golden-dress-girl.glb';
+}
+
 function getActiveModels(): ModelAsset[] {
+  if (lazyPreloadOnlyActiveHero) {
+    const selected: ModelAsset[] = [];
+    const heroAsset = getHeroPreloadAssetForHeroId(activePreloadHeroId);
+    if (heroAsset) selected.push(heroAsset);
+    if (chapter1MapPreloadVariant !== 'none') {
+      selected.push(CHAPTER1_MAP_MODEL_ASSET);
+    }
+    return selected;
+  }
   return chapter1MapPreloadVariant === 'none'
     ? models.filter((path) => path !== CHAPTER1_MAP_MODEL_ASSET)
     : models;
+}
+
+export function setGlobalAssetPreloadMode(options: {
+  liteMode: boolean;
+  activeHeroId?: HeroId;
+  lazyPreloadOnlyActiveHero?: boolean;
+}): void {
+  const nextLite = Boolean(options.liteMode);
+  const nextHero = options.activeHeroId ?? activePreloadHeroId;
+  const nextLazy =
+    options.lazyPreloadOnlyActiveHero !== undefined
+      ? options.lazyPreloadOnlyActiveHero
+      : lazyPreloadOnlyActiveHero;
+  if (
+    globalLiteHeroAssets === nextLite &&
+    activePreloadHeroId === nextHero &&
+    lazyPreloadOnlyActiveHero === nextLazy
+  ) {
+    return;
+  }
+  globalLiteHeroAssets = nextLite;
+  activePreloadHeroId = nextHero;
+  lazyPreloadOnlyActiveHero = nextLazy;
+  publishProgress();
+}
+
+export function isGlobalLiteHeroAssetsEnabled(): boolean {
+  return globalLiteHeroAssets;
 }
 
 export function getChapter1MapPreloadVariant(): Chapter1MapVariant {
@@ -153,11 +214,13 @@ let progress: ModelDownloadSnapshot = {
   files: buildFileSnapshots(),
 };
 
-export function getModelAssetUrl(path: ModelAsset): URL {
+export function getModelAssetUrl(path: ModelAsset, preferLite = globalLiteHeroAssets): URL {
   const baseUrl =
     (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const encodedPath = path
+  const effectivePath =
+    preferLite && HERO_LITE_VARIANT_PATHS[path] ? HERO_LITE_VARIANT_PATHS[path]! : path;
+  const encodedPath = effectivePath
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/');
@@ -176,6 +239,11 @@ export const getModelDownloadStatus = (): ModelDownloadStatus => progress.status
 
 function publishProgress() {
   const activeModels = getActiveModels();
+  if (activeModels.length === 0) {
+    progress = { status: 'ready', percent: 100, completed: 0, total: 0, files: [] };
+    listeners.forEach((listener) => listener());
+    return;
+  }
   let completed = 0;
   let fraction = 0;
   let failed = false;
@@ -336,7 +404,20 @@ export function downloadModel(path: ModelAsset): Promise<ArrayBuffer> {
   if (path === CHAPTER1_MAP_MODEL_ASSET) {
     return downloadChapter1Map(chapter1MapPreloadVariant === 'lite' ? 'lite' : 'full');
   }
-  return startCachedDownload(path, (download) => readStreamUrl(getModelAssetUrl(path), download));
+  const useLite = globalLiteHeroAssets && Boolean(HERO_LITE_VARIANT_PATHS[path]);
+  const cacheKey = getCacheKeyForActiveModel(path);
+  return startCachedDownload(cacheKey, async (download) => {
+    if (useLite) {
+      try {
+        return await readStreamUrl(getModelAssetUrl(path, true), download);
+      } catch {
+        download.received = 0;
+        download.length = 0;
+        return await readStreamUrl(getModelAssetUrl(path, false), download);
+      }
+    }
+    return readStreamUrl(getModelAssetUrl(path, false), download);
+  });
 }
 
 /**

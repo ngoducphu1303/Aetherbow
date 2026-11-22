@@ -1,4 +1,11 @@
-import { GpuProfileSummary, GraphicsQuality } from '../types/game';
+import {
+  Chapter1MapMode,
+  DeviceHardwareTier,
+  GpuProfileSummary,
+  GraphicsQuality,
+  LowEndSafetyMode,
+  SystemLiteBudget,
+} from '../types/game';
 
 export interface PostFxRuntimeConfig {
   enabled: boolean;
@@ -15,21 +22,72 @@ export interface PostFxRuntimeConfig {
 const SOFTWARE_GPU_RE = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i;
 const INTEGRATED_GPU_RE = /Intel.*(?:HD|UHD|Iris|Graphics)|Mali-G[0-5]\d|Adreno\s*\(TM\)\s*[45]\d\d/i;
 // Legacy / weak integrated & mobile GPUs that risk TDR black-screen or thermal
-// shutdown when uploading 942k vertices + three 4096x4096 RGBA8 PBR textures.
+// shutdown when uploading high-poly meshes or 2K–4K RGBA8 PBR textures.
 const LEGACY_WEAK_GPU_RE =
   /Intel.*(?:HD\s*Graphics(?:\s*(?:2\d00|3\d00|4\d00|5\d00|5\d0|6\d0))?|UHD\s*Graphics\s*(?:6\d0|G1)|GMA|Graphics\s*Media\s*Accelerator|Iris(?:\s*(?:Pro|Plus))?\s*(?:5\d0|6\d0|5100|5200|6100))|Radeon\s*(?:HD\s*[2-8]\d{3}|R[2-7]\b|Vega\s*[36]\b)|GeForce\s*(?:GT\s*[2-7]\d0|GTS|8[0-4]0M|9[0-4]0M|MX1[13]0)|Mali-(?:G[0-5]\d|T\d+)|Adreno\s*\(TM\)\s*[345]\d\d|PowerVR/i;
+const HIGH_VRAM_DISCRETE_RE = /RTX\s*[345]\d{3}|RX\s*[679]\d{3}|Radeon\s*Pro|A\d{4}|RTX\s*20[78]\d/i;
 
 export interface ClassifyGpuOptions {
   maxTextureSize?: number;
+  maxRenderbufferSize?: number;
+  maxTextureImageUnits?: number;
   crashGuardTripped?: boolean;
   crashReason?: string;
 }
 
 /**
- * Classifies the runtime WebGL GPU into 3 deterministic AAA hardware tiers
- * (software / integrated / discrete) plus heavy-3D-map safety metadata so
- * legacy laptops (e.g., Dell Latitude E5430 · Intel HD 4000 · 4 logical threads)
- * stay cool and stable without crashing or shutting down.
+ * Estimates usable GPU VRAM (MB) from renderer identity, system RAM, and WebGL texture/renderbuffer limits.
+ * Used across all chapters and modes to keep texture & geometry residency inside safe device bounds.
+ */
+export function estimateGpuVramMb(params: {
+  rendererString: string;
+  tier: 'software' | 'integrated' | 'discrete';
+  isLegacyWeakGpu: boolean;
+  deviceMemoryGb?: number;
+  maxTextureSize?: number;
+  maxRenderbufferSize?: number;
+}): number {
+  const {
+    rendererString,
+    tier,
+    isLegacyWeakGpu,
+    deviceMemoryGb,
+    maxTextureSize,
+    maxRenderbufferSize,
+  } = params;
+
+  const limitSize = Math.min(
+    maxTextureSize && maxTextureSize > 0 ? maxTextureSize : 16384,
+    maxRenderbufferSize && maxRenderbufferSize > 0 ? maxRenderbufferSize : 16384
+  );
+
+  if (tier === 'software') return 128;
+
+  let estimatedMb: number;
+  if (isLegacyWeakGpu) {
+    // Shared integrated memory on older laptops (e.g. Dell Latitude E5430 Intel HD 4000 / 8 GB RAM -> ~512 MB usable WebGL budget)
+    const ramMb = deviceMemoryGb !== undefined ? Math.round(deviceMemoryGb * 64) : 384;
+    estimatedMb = Math.min(512, Math.max(256, ramMb));
+  } else if (tier === 'integrated') {
+    const ramMb = deviceMemoryGb !== undefined ? Math.round(deviceMemoryGb * 128) : 1024;
+    estimatedMb = Math.min(2048, Math.max(768, ramMb));
+  } else {
+    estimatedMb = HIGH_VRAM_DISCRETE_RE.test(rendererString) ? 8192 : 4096;
+  }
+
+  if (limitSize <= 2048) estimatedMb = Math.min(estimatedMb, 256);
+  else if (limitSize <= 4096) estimatedMb = Math.min(estimatedMb, 512);
+  else if (limitSize < 8192) estimatedMb = Math.min(estimatedMb, 512);
+
+  return estimatedMb;
+}
+
+/**
+ * Classifies the runtime WebGL GPU into 3 deterministic hardware tiers
+ * (software / integrated / discrete) AND 4 global device performance tiers
+ * (ultra_lite / lite / balanced / high) using CPU, GPU, RAM, and estimated VRAM
+ * so legacy laptops (e.g., Dell Latitude E5430 · Intel HD 4000 · 4 logical threads)
+ * stay cool and stable across ALL chapters and future content.
  */
 export function classifyGpuCapability(
   rendererString: string,
@@ -41,14 +99,27 @@ export function classifyGpuCapability(
   const logicalCores = Number.isFinite(hardwareConcurrency) && hardwareConcurrency > 0
     ? Math.floor(hardwareConcurrency)
     : 4;
+  const normalizedRam =
+    typeof deviceMemoryGb === 'number' && Number.isFinite(deviceMemoryGb) && deviceMemoryGb > 0
+      ? deviceMemoryGb
+      : undefined;
   const maxTextureSize =
     options?.maxTextureSize && options.maxTextureSize > 0 ? options.maxTextureSize : undefined;
+  const maxRenderbufferSize =
+    options?.maxRenderbufferSize && options.maxRenderbufferSize > 0
+      ? options.maxRenderbufferSize
+      : undefined;
+  const maxTextureImageUnits =
+    options?.maxTextureImageUnits && options.maxTextureImageUnits > 0
+      ? options.maxTextureImageUnits
+      : undefined;
   const crashGuardTripped = Boolean(options?.crashGuardTripped);
 
   if (!rendererString || SOFTWARE_GPU_RE.test(rendererString)) {
     return {
       tier: 'software',
-      tierLabel: 'WebGL Phần Mềm · Tối Ưu Tốc Độ',
+      deviceTier: 'ultra_lite',
+      tierLabel: 'WebGL Phần Mềm · Chế Độ Siêu Nhẹ',
       rendererName: cleanName,
       recommendedQuality: 'low',
       bloomSupported: false,
@@ -56,49 +127,79 @@ export function classifyGpuCapability(
       targetCombatFps: 12,
       lowPowerLegacyGpu: true,
       supportsHighDetailChapter1Map: false,
+      supportsHighDetailAssets: false,
       safetyReason: crashGuardTripped
         ? options?.crashReason || 'Tự bảo vệ sau sự cố WebGL ở phiên trước'
-        : 'WebGL phần mềm · Tự dùng Sân Đấu 3D Nhẹ để tránh treo máy',
+        : 'WebGL phần mềm · Tự bật Chế Độ Siêu Nhẹ toàn hệ thống để tránh treo máy',
       crashGuardTripped,
       logicalCores,
+      deviceMemoryGb: normalizedRam,
+      estimatedVramMb: 128,
       maxTextureSize,
+      maxRenderbufferSize,
+      maxTextureImageUnits,
     };
   }
 
-  const lowMemory = deviceMemoryGb !== undefined && deviceMemoryGb <= 4;
+  const ultraLowMemory = normalizedRam !== undefined && normalizedRam <= 2;
+  const lowMemory = normalizedRam !== undefined && normalizedRam <= 4;
   const lowCores = logicalCores <= 4;
   const isLegacyWeakGpu = LEGACY_WEAK_GPU_RE.test(rendererString);
-  const lowTexLimit = maxTextureSize !== undefined && maxTextureSize < 8192;
+  const lowTexLimit =
+    (maxTextureSize !== undefined && maxTextureSize < 8192) ||
+    (maxRenderbufferSize !== undefined && maxRenderbufferSize < 4096);
   const lowPowerLegacyGpu =
     isLegacyWeakGpu || lowMemory || lowCores || lowTexLimit || crashGuardTripped;
+
+  const isIntegratedBucket =
+    INTEGRATED_GPU_RE.test(rendererString) || lowMemory || lowCores || isLegacyWeakGpu || lowTexLimit;
+  const bucketTier: 'integrated' | 'discrete' = isIntegratedBucket ? 'integrated' : 'discrete';
+  const estimatedVramMb = estimateGpuVramMb({
+    rendererString,
+    tier: bucketTier,
+    isLegacyWeakGpu,
+    deviceMemoryGb: normalizedRam,
+    maxTextureSize,
+    maxRenderbufferSize,
+  });
+
+  const deviceTier: DeviceHardwareTier =
+    crashGuardTripped || ultraLowMemory || estimatedVramMb <= 256
+      ? 'ultra_lite'
+      : lowPowerLegacyGpu || estimatedVramMb <= 512
+      ? 'lite'
+      : bucketTier === 'integrated'
+      ? 'balanced'
+      : 'high';
 
   const buildSafetyReason = (): string | undefined => {
     if (crashGuardTripped) {
       return options?.crashReason || 'Tự bảo vệ sau sự cố mất WebGL / sập GPU ở phiên trước';
     }
     if (isLegacyWeakGpu && lowCores) {
-      return `GPU tích hợp đời cũ & CPU ${logicalCores} luồng · Tự dùng Map 3D Lite & 30 FPS`;
+      return `GPU tích hợp đời cũ (~${estimatedVramMb}MB VRAM) & CPU ${logicalCores} luồng · Tự bật Chế Độ Lite toàn hệ thống`;
     }
     if (isLegacyWeakGpu) {
-      return 'GPU tích hợp đời cũ · Tự dùng Map 3D Lite (~30k mặt) để tránh quá tải';
+      return `GPU tích hợp đời cũ (~${estimatedVramMb}MB VRAM) · Tự bật Chế Độ Lite toàn hệ thống`;
     }
     if (lowCores) {
-      return `CPU ${logicalCores} luồng · Tự dùng Map 3D Lite & 30 FPS`;
+      return `CPU ${logicalCores} luồng · Tự bật Chế Độ Lite & 30 FPS toàn hệ thống`;
     }
     if (lowMemory) {
-      return 'RAM hệ thống giới hạn · Tự dùng Map 3D Lite để tránh tràn bộ nhớ';
+      return `RAM hệ thống giới hạn (${normalizedRam}GB) · Tự bật Chế Độ Lite tránh tràn bộ nhớ`;
     }
     if (lowTexLimit) {
-      return `Giới hạn texture GPU ${maxTextureSize}px · Tự dùng Map 3D Lite 1024px`;
+      return `Giới hạn texture GPU ${maxTextureSize ?? maxRenderbufferSize}px · Tự bật Chế Độ Lite`;
     }
     return undefined;
   };
 
-  if (INTEGRATED_GPU_RE.test(rendererString) || lowMemory || lowCores || isLegacyWeakGpu || lowTexLimit) {
+  if (isIntegratedBucket) {
     return {
       tier: 'integrated',
+      deviceTier,
       tierLabel: lowPowerLegacyGpu
-        ? 'GPU Tích Hợp / Máy Yếu · Chế Độ Bảo Vệ'
+        ? 'Máy Yếu / GPU Tích Hợp · Chế Độ Lite'
         : 'GPU Tích Hợp · Cân Bằng',
       rendererName: cleanName,
       recommendedQuality: lowPowerLegacyGpu ? 'low' : 'medium',
@@ -107,15 +208,21 @@ export function classifyGpuCapability(
       targetCombatFps: 30,
       lowPowerLegacyGpu,
       supportsHighDetailChapter1Map: !lowPowerLegacyGpu,
+      supportsHighDetailAssets: !lowPowerLegacyGpu,
       safetyReason: buildSafetyReason(),
       crashGuardTripped,
       logicalCores,
+      deviceMemoryGb: normalizedRam,
+      estimatedVramMb,
       maxTextureSize,
+      maxRenderbufferSize,
+      maxTextureImageUnits,
     };
   }
 
   return {
     tier: 'discrete',
+    deviceTier,
     tierLabel: crashGuardTripped
       ? 'GPU Rời · Đang Bật Chốt Bảo Vệ'
       : 'GPU Hiệu Năng Cao · Chuẩn AAA',
@@ -126,10 +233,143 @@ export function classifyGpuCapability(
     targetCombatFps: crashGuardTripped ? 30 : 60,
     lowPowerLegacyGpu: crashGuardTripped,
     supportsHighDetailChapter1Map: !crashGuardTripped,
+    supportsHighDetailAssets: !crashGuardTripped,
     safetyReason: buildSafetyReason(),
     crashGuardTripped,
     logicalCores,
+    deviceMemoryGb: normalizedRam,
+    estimatedVramMb,
     maxTextureSize,
+    maxRenderbufferSize,
+    maxTextureImageUnits,
+  };
+}
+
+/**
+ * Resolves the unified system-wide Lite / Compatibility budget applied to ALL chapters (1-12),
+ * Lobby, Endless Tower, Arena, World Boss, Heroes, Bosses, Mobs, and future content.
+ */
+export function resolveSystemLiteBudget(
+  profile: GpuProfileSummary,
+  lowEndSafetyMode: LowEndSafetyMode = 'auto',
+  chapter1MapMode: Chapter1MapMode = 'auto'
+): SystemLiteBudget {
+  const inferredTier: DeviceHardwareTier =
+    profile.deviceTier ??
+    (profile.tier === 'software' || profile.crashGuardTripped
+      ? 'ultra_lite'
+      : profile.lowPowerLegacyGpu
+      ? 'lite'
+      : profile.tier === 'integrated'
+      ? 'balanced'
+      : 'high');
+
+  const isUltra =
+    profile.tier === 'software' ||
+    Boolean(profile.crashGuardTripped) ||
+    inferredTier === 'ultra_lite' ||
+    chapter1MapMode === 'light';
+
+  if (isUltra) {
+    return {
+      deviceTier: 'ultra_lite',
+      liteActive: true,
+      targetCombatFps: profile.tier === 'software' ? 12 : 24,
+      targetLobbyFps: profile.tier === 'software' ? 12 : 20,
+      maxPixelBudget: 550_000,
+      maxDpr: 0.85,
+      minAdaptiveDprScale: 0.65,
+      maxTextureSize: 512,
+      arenaTextureSize: 256,
+      shadowMapSize: 0,
+      bloomAllowed: false,
+      environmentReflections: false,
+      loadLobbyCity3d: false,
+      arenaMonolithCount: 6,
+      arenaDustCount: 6,
+      enableBrazierFlames: false,
+      enableConstellationLines: false,
+      assetVariant:
+        profile.tier === 'software' || profile.crashGuardTripped || chapter1MapMode === 'light'
+          ? 'none'
+          : 'lite',
+      particleBudgetMult: 0.35,
+    };
+  }
+
+  const liteActive =
+    lowEndSafetyMode === 'on' ||
+    chapter1MapMode === 'lite_3d' ||
+    (lowEndSafetyMode === 'auto' && (inferredTier === 'lite' || Boolean(profile.lowPowerLegacyGpu)));
+
+  if (liteActive) {
+    return {
+      deviceTier: inferredTier === 'high' || inferredTier === 'balanced' ? 'lite' : inferredTier,
+      liteActive: true,
+      targetCombatFps: 30,
+      targetLobbyFps: 20,
+      maxPixelBudget: 820_000,
+      maxDpr: 1.0,
+      minAdaptiveDprScale: 0.68,
+      maxTextureSize: 1024,
+      arenaTextureSize: 256,
+      shadowMapSize: 0,
+      bloomAllowed: false,
+      environmentReflections: true,
+      loadLobbyCity3d: false,
+      arenaMonolithCount: 10,
+      arenaDustCount: 10,
+      enableBrazierFlames: false,
+      enableConstellationLines: false,
+      assetVariant: 'lite',
+      particleBudgetMult: 0.45,
+    };
+  }
+
+  if (inferredTier === 'balanced' && chapter1MapMode !== 'high_3d') {
+    return {
+      deviceTier: 'balanced',
+      liteActive: false,
+      targetCombatFps: 45,
+      targetLobbyFps: 30,
+      maxPixelBudget: 1_600_000,
+      maxDpr: 1.5,
+      minAdaptiveDprScale: 0.72,
+      maxTextureSize: 2048,
+      arenaTextureSize: 512,
+      shadowMapSize: 1024,
+      bloomAllowed: false,
+      environmentReflections: true,
+      loadLobbyCity3d: true,
+      arenaMonolithCount: 16,
+      arenaDustCount: 20,
+      enableBrazierFlames: true,
+      enableConstellationLines: true,
+      assetVariant: 'lite',
+      particleBudgetMult: 0.75,
+    };
+  }
+
+  return {
+    deviceTier: 'high',
+    liteActive: false,
+    targetCombatFps: 60,
+    targetLobbyFps: 30,
+    maxPixelBudget: 2_500_000,
+    maxDpr: 2.0,
+    minAdaptiveDprScale: 0.75,
+    maxTextureSize: 4096,
+    arenaTextureSize: 512,
+    shadowMapSize: 2048,
+    bloomAllowed: true,
+    environmentReflections: true,
+    loadLobbyCity3d: true,
+    arenaMonolithCount: 22,
+    arenaDustCount: 28,
+    enableBrazierFlames: true,
+    enableConstellationLines: true,
+    assetVariant: 'high',
+    particleBudgetMult: 1.0,
   };
 }
 

@@ -67,14 +67,21 @@ export function stepCombatLightingMood(
 export function evaluateAdaptiveResolutionScale(
   avgFrameMs: number,
   currentScale: number,
-  guardEnabled: boolean
+  guardEnabled: boolean,
+  targetFps = 60,
+  minScale = 0.75
 ): number {
   if (!guardEnabled) return 1.0;
-  const clampedCur = Math.max(0.75, Math.min(1.0, currentScale));
-  if (avgFrameMs > 25) {
-    return Math.max(0.75, Number((clampedCur - 0.05).toFixed(2)));
+  const floorScale = Math.max(0.6, Math.min(0.95, minScale));
+  const clampedCur = Math.max(floorScale, Math.min(1.0, currentScale));
+  const safeTargetFps = Math.max(12, Math.min(60, targetFps));
+  const dropThresholdMs = safeTargetFps === 60 ? 25 : Math.round((1000 / safeTargetFps) * 1.45);
+  const recoverThresholdMs = safeTargetFps === 60 ? 15.5 : Math.round((1000 / safeTargetFps) * 1.08);
+
+  if (avgFrameMs > dropThresholdMs) {
+    return Math.max(floorScale, Number((clampedCur - 0.05).toFixed(2)));
   }
-  if (avgFrameMs < 15.5 && clampedCur < 1.0) {
+  if (avgFrameMs < recoverThresholdMs && clampedCur < 1.0) {
     return Math.min(1.0, Number((clampedCur + 0.05).toFixed(2)));
   }
   return clampedCur;

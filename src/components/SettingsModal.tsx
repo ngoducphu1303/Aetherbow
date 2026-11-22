@@ -7,11 +7,15 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  Cpu,
   Download,
   Gamepad2,
+  HardDrive,
   Keyboard,
+  Layers,
   Monitor,
   RotateCcw,
+  ShieldCheck,
   Sliders,
   Trash2,
   Upload,
@@ -49,6 +53,7 @@ import {
   SaveData,
   SaveTransferPreview,
 } from '../types/game';
+import { resolveSystemLiteBudget } from '../engine/aaaVisualPipeline';
 import {
   isLowEndSafetyModeActive,
   resolveChapter1MapVariant,
@@ -126,6 +131,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [importSuccess, setImportSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmHeavyMapOverride, setConfirmHeavyMapOverride] = useState(false);
+  const [confirmDisableLiteOnLowEnd, setConfirmDisableLiteOnLowEnd] = useState(false);
   const [gamepadLabel, setGamepadLabel] = useState<string | null>(null);
   const [capturingKeyAction, setCapturingKeyAction] = useState<CombatKeybindAction | null>(null);
   const [keybindNotice, setKeybindNotice] = useState<string | null>(null);
@@ -1033,55 +1039,225 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {gpuProfile && (
-            <div className="rounded-xl bg-[#070b18] border border-slate-800 px-3 py-2.5 space-y-1.5 text-[11px]">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-bold text-slate-100 truncate">{gpuProfile.tierLabel}</div>
-                <span className="font-mono-nums text-[10px] font-bold text-slate-400 shrink-0 whitespace-nowrap">
-                  {gpuProfile.logicalCores ? `${gpuProfile.logicalCores} luồng` : gpuProfile.tier}
-                  {' · '}
-                  {isLowEndSafetyModeActive(gpuProfile, settings.lowEndSafetyMode ?? 'auto')
-                    ? '30 FPS'
-                    : `${gpuProfile.targetCombatFps} FPS`}
-                </span>
-              </div>
-              <div className="text-[10px] text-slate-400 truncate">
-                {gpuProfile.rendererName}
-                {' · '}
-                Đề xuất:{' '}
-                <span className="text-amber-300 font-bold">
-                  {gpuProfile.recommendedQuality === 'high'
-                    ? 'Cao (AAA)'
-                    : gpuProfile.recommendedQuality === 'medium'
-                    ? 'Trung Bình'
-                    : 'Thấp'}
-                </span>
-              </div>
-              {gpuProfile.safetyReason && (
-                <div className="text-[10px] text-amber-200/90 leading-relaxed">
-                  {gpuProfile.safetyReason}
-                </div>
-              )}
-              {gpuProfile.crashGuardTripped && onResetGpuCrashGuard && (
-                <div className="pt-1 flex items-center justify-between gap-2 border-t border-slate-800/80">
-                  <span className="text-[10px] text-rose-300 font-semibold flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    <span>Chốt chống sập WebGL đang khóa bản đồ nặng</span>
+          {gpuProfile && (() => {
+            const activeBudget = resolveSystemLiteBudget(
+              gpuProfile,
+              settings.lowEndSafetyMode ?? 'auto',
+              settings.chapter1MapMode ?? 'auto'
+            );
+            const deviceTierBadge =
+              activeBudget.deviceTier === 'ultra_lite'
+                ? 'Siêu Nhẹ'
+                : activeBudget.deviceTier === 'lite'
+                ? 'Cấu Hình Yếu · Lite'
+                : activeBudget.deviceTier === 'balanced'
+                ? 'Trung Bình'
+                : 'Hiệu Năng Cao';
+            const vramLabel = gpuProfile.estimatedVramMb
+              ? gpuProfile.estimatedVramMb >= 1024
+                ? `${(gpuProfile.estimatedVramMb / 1024).toFixed(1)} GB`
+                : `${gpuProfile.estimatedVramMb} MB`
+              : 'Không rõ';
+            const ramLabel = gpuProfile.deviceMemoryGb
+              ? `${gpuProfile.deviceMemoryGb} GB`
+              : 'Trình duyệt ẩn';
+            const cpuLabel = gpuProfile.logicalCores
+              ? `${gpuProfile.logicalCores} luồng`
+              : 'Không rõ';
+
+            return (
+              <div className="rounded-xl bg-[#070b18] border border-slate-800 px-3 py-2.5 space-y-2 text-[11px]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-bold text-slate-100 flex items-center gap-1.5 truncate">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                    <span className="truncate">{gpuProfile.tierLabel}</span>
+                  </div>
+                  <span
+                    className={`font-mono-nums text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 whitespace-nowrap ${
+                      activeBudget.liteActive
+                        ? 'bg-emerald-950/60 border-emerald-400/35 text-emerald-200'
+                        : 'bg-sky-950/60 border-sky-400/35 text-sky-200'
+                    }`}
+                  >
+                    {activeBudget.liteActive ? 'CHẾ ĐỘ LITE' : deviceTierBadge}
                   </span>
+                </div>
+
+                {/* Hardware Diagnostics Matrix: CPU · GPU · RAM · VRAM */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+                  <div className="rounded-lg bg-[#0b1124] border border-slate-800/90 px-2 py-1.5">
+                    <div className="text-slate-400 flex items-center gap-1">
+                      <Cpu className="w-3 h-3 text-sky-300 shrink-0" />
+                      <span>CPU</span>
+                    </div>
+                    <div className="font-mono-nums font-bold text-slate-100 mt-0.5 truncate">
+                      {cpuLabel}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#0b1124] border border-slate-800/90 px-2 py-1.5">
+                    <div className="text-slate-400 flex items-center gap-1">
+                      <HardDrive className="w-3 h-3 text-amber-300 shrink-0" />
+                      <span>RAM</span>
+                    </div>
+                    <div className="font-mono-nums font-bold text-slate-100 mt-0.5 truncate">
+                      {ramLabel}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#0b1124] border border-slate-800/90 px-2 py-1.5">
+                    <div className="text-slate-400 flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-violet-300 shrink-0" />
+                      <span>VRAM ước tính</span>
+                    </div>
+                    <div className="font-mono-nums font-bold text-slate-100 mt-0.5 truncate">
+                      {vramLabel}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#0b1124] border border-slate-800/90 px-2 py-1.5">
+                    <div className="text-slate-400 flex items-center gap-1">
+                      <Monitor className="w-3 h-3 text-emerald-300 shrink-0" />
+                      <span>Mục tiêu</span>
+                    </div>
+                    <div className="font-mono-nums font-bold text-slate-100 mt-0.5 truncate">
+                      {activeBudget.targetCombatFps} FPS · {activeBudget.maxTextureSize}px
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-slate-400 truncate">
+                  GPU: <span className="text-slate-200 font-semibold">{gpuProfile.rendererName}</span>
+                </div>
+
+                <div className="text-[10px] text-slate-400 leading-relaxed">
+                  Áp dụng toàn game (Chương 1–12 &amp; mọi chế độ):{' '}
+                  <span className="text-slate-200 font-semibold">
+                    {activeBudget.liteActive
+                      ? 'Mô hình nén Lite · Tải theo nhu cầu · Tắt Bloom/Đổ bóng/Sảnh Phố nặng · Tự hạ phân giải khi tụt FPS'
+                      : 'Mô hình chi tiết đầy đủ · Đổ bóng & Bloom theo cấu hình · Tự điều chỉnh độ phân giải khi quá tải'}
+                  </span>
+                </div>
+
+                {gpuProfile.safetyReason && (
+                  <div className="text-[10px] text-amber-200/90 leading-relaxed">
+                    {gpuProfile.safetyReason}
+                  </div>
+                )}
+
+                {gpuProfile.crashGuardTripped && onResetGpuCrashGuard && (
+                  <div className="pt-1.5 flex items-center justify-between gap-2 border-t border-slate-800/80">
+                    <span className="text-[10px] text-rose-300 font-semibold flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Chốt chống sập WebGL đang khóa tài nguyên nặng toàn hệ thống</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.05);
+                        onResetGpuCrashGuard();
+                      }}
+                      className="text-[10px] font-bold text-sky-300 hover:text-sky-200 underline underline-offset-2 cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      Đặt lại chốt
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Global System-Wide Lite Mode Toggle (All 12 Chapters & All Modes) */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-bold text-slate-200">Chế Độ Lite Toàn Hệ Thống</span>
+              <span className="text-[10px] text-slate-400 font-mono-nums">
+                {gpuProfile &&
+                isLowEndSafetyModeActive(gpuProfile, settings.lowEndSafetyMode ?? 'auto')
+                  ? 'Đang bật Lite · Bảo vệ GPU mọi chương'
+                  : 'Chế độ Tiêu Chuẩn · 60 FPS'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: 'auto', label: 'Tự Động', hint: 'Khuyên dùng' },
+                  { id: 'on', label: 'Luôn Bật Lite', hint: 'Mọi chương · 30 FPS' },
+                  { id: 'off', label: 'Tiêu Chuẩn', hint: 'Đầy đủ 60 FPS' },
+                ] as Array<{ id: LowEndSafetyMode; label: string; hint: string }>
+              ).map((opt) => {
+                const active = (settings.lowEndSafetyMode ?? 'auto') === opt.id;
+                const lockedSoftware = opt.id === 'off' && gpuProfile?.tier === 'software';
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={lockedSoftware}
+                    onClick={() => {
+                      soundEngine.playUiClick(1.05);
+                      if (
+                        opt.id === 'off' &&
+                        gpuProfile &&
+                        (gpuProfile.lowPowerLegacyGpu ||
+                          gpuProfile.deviceTier === 'lite' ||
+                          gpuProfile.deviceTier === 'ultra_lite' ||
+                          gpuProfile.crashGuardTripped)
+                      ) {
+                        setConfirmDisableLiteOnLowEnd(true);
+                        return;
+                      }
+                      setConfirmDisableLiteOnLowEnd(false);
+                      onUpdateSettings({ lowEndSafetyMode: opt.id });
+                    }}
+                    className={`py-2 px-2 rounded-xl text-center border transition-colors whitespace-nowrap ${
+                      lockedSoftware
+                        ? 'bg-[#080d1e] border-slate-800 text-slate-500 cursor-not-allowed'
+                        : active
+                        ? 'a2-yellow-btn cursor-pointer'
+                        : 'bg-[#080d1e] border-amber-400/25 text-slate-200 hover:border-amber-300 cursor-pointer'
+                    }`}
+                  >
+                    <div className="text-xs font-black truncate">{opt.label}</div>
+                    <div
+                      className={`text-[10px] mt-0.5 truncate ${
+                        active ? 'text-slate-900 font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      {opt.hint}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {confirmDisableLiteOnLowEnd && (
+              <div className="rounded-xl bg-rose-950/50 border border-rose-400/40 p-2.5 space-y-2 text-[11px]">
+                <div className="text-rose-100 font-semibold leading-relaxed">
+                  Thiết bị hiện tại có GPU tích hợp yếu hoặc bộ nhớ hạn chế (như Intel HD 4000 / Dell Latitude E5430). Tắt Chế Độ Lite có thể gây giật lag nặng, đen màn hình hoặc tắt nguồn do quá tải GPU. Bạn vẫn muốn chuyển sang Tiêu Chuẩn?
+                </div>
+                <div className="flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => {
-                      soundEngine.playUiClick(1.05);
-                      onResetGpuCrashGuard();
+                      soundEngine.playUiClick(0.95);
+                      setConfirmDisableLiteOnLowEnd(false);
+                      onUpdateSettings({ lowEndSafetyMode: 'auto' });
                     }}
-                    className="text-[10px] font-bold text-sky-300 hover:text-sky-200 underline underline-offset-2 cursor-pointer whitespace-nowrap shrink-0"
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold cursor-pointer whitespace-nowrap"
                   >
-                    Đặt lại chốt
+                    Giữ Chế Độ Lite
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.08);
+                      setConfirmDisableLiteOnLowEnd(false);
+                      onUpdateSettings({ lowEndSafetyMode: 'off' });
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-bold cursor-pointer whitespace-nowrap"
+                  >
+                    Vẫn Tắt Lite
                   </button>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
 
           {/* Chapter 1 3D Map Mode */}
           <div className="space-y-1.5 pt-1">
@@ -1092,7 +1268,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   if (!gpuProfile) return 'Bản Đồ 3D Chương 1';
                   const activeVariant = resolveChapter1MapVariant(
                     gpuProfile,
-                    settings.chapter1MapMode ?? 'auto'
+                    settings.chapter1MapMode ?? 'auto',
+                    settings.lowEndSafetyMode ?? 'auto'
                   );
                   if (activeVariant === 'full') return 'Đang dùng Bản Gốc 90,3 MB';
                   if (activeVariant === 'lite') return 'Đang dùng 3D Lite (~1,3 MB)';
@@ -1176,58 +1353,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Low-End Hardware Safety Mode (30 FPS Cap) */}
-          <div className="space-y-1.5 pt-1">
-            <div className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="font-bold text-slate-200">Bảo Vệ Máy Yếu (Khóa 30 FPS)</span>
-              <span className="text-[10px] text-slate-400">
-                {gpuProfile &&
-                isLowEndSafetyModeActive(gpuProfile, settings.lowEndSafetyMode ?? 'auto')
-                  ? 'Đang bảo vệ · Tối đa 30 FPS'
-                  : 'Hiệu năng đầy đủ (60 FPS)'}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {(
-                [
-                  { id: 'auto', label: 'Tự động', hint: 'Khuyên dùng' },
-                  { id: 'on', label: 'Luôn Bật', hint: 'Mát máy 30 FPS' },
-                  { id: 'off', label: 'Tắt', hint: 'Mở khóa 60 FPS' },
-                ] as Array<{ id: LowEndSafetyMode; label: string; hint: string }>
-              ).map((opt) => {
-                const active = (settings.lowEndSafetyMode ?? 'auto') === opt.id;
-                const lockedSoftware = opt.id === 'off' && gpuProfile?.tier === 'software';
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={lockedSoftware}
-                    onClick={() => {
-                      soundEngine.playUiClick(1.05);
-                      onUpdateSettings({ lowEndSafetyMode: opt.id });
-                    }}
-                    className={`py-2 px-2 rounded-xl text-center border transition-colors whitespace-nowrap ${
-                      lockedSoftware
-                        ? 'bg-[#080d1e] border-slate-800 text-slate-500 cursor-not-allowed'
-                        : active
-                        ? 'a2-yellow-btn cursor-pointer'
-                        : 'bg-[#080d1e] border-amber-400/25 text-slate-200 hover:border-amber-300 cursor-pointer'
-                    }`}
-                  >
-                    <div className="text-xs font-black truncate">{opt.label}</div>
-                    <div
-                      className={`text-[10px] mt-0.5 truncate ${
-                        active ? 'text-slate-900 font-bold' : 'text-slate-400'
-                      }`}
-                    >
-                      {opt.hint}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-2">

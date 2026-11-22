@@ -103,7 +103,7 @@ export const EarlyRoadmapModal: React.FC<EarlyRoadmapModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#040611]/90 p-3 sm:p-4 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-label="Lộ Trình 30 Ngày · Fair Progression"
