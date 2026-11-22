@@ -77,6 +77,7 @@ import {
 } from './aaaFivePillarsDirector';
 import type { WeeklyBossSchedule } from '../data/weeklyBossData';
 import {
+  computeEffectiveRenderPixelRatio,
   MythicZodiacGradeShader,
   resolvePostFxConfig,
   resolveSystemLiteBudget,
@@ -309,9 +310,6 @@ import {
   updateBossPaceTracker,
 } from './wave6CombatSystems';
 import { createArtemisMotion } from './artemisMotion';
-import { createLobbyCityNavigation, LOBBY_CITY_ASSET, LOBBY_CITY_KEYS, LOBBY_CITY_SCALE, LOBBY_CITY_WALK_SPEED, lobbyCityDirection, type LobbyCityPose } from './lobbyCity';
-import { addLobbyCityStreets } from './lobbyCityStreets';
-import { DEFAULT_LOBBY_CITY_CAMERA, frameLobbyCityCamera, type LobbyCityCameraId } from './lobbyCityCamera';
 import {
   HEAVY_BREAK_COOLDOWN_SEC,
   type EnemyTacticalRole,
@@ -1069,19 +1067,6 @@ export class GameEngine {
   private heroShieldMesh!: THREE.Mesh;
   private lobbyHaloGroup: THREE.Group | null = null;
   private lobbySanctuary: CelestialSanctuaryRefs | null = null;
-  private lobbyCity: { group: THREE.Group; nav: NonNullable<ReturnType<typeof createLobbyCityNavigation>>; pose: LobbyCityPose } | null = null;
-  private lobbyCityRequest = new AbortController();
-  private lobbyCityKeys: Record<string, boolean> = {};
-  private lobbyCityActive = false;
-  private lobbyCityStride = 0;
-  private lobbyCityCamera: LobbyCityCameraId = DEFAULT_LOBBY_CITY_CAMERA;
-  private lobbyCityEye = new THREE.Vector3();
-  private lobbyCityFocus = new THREE.Vector3();
-  private lobbyCitySight = new THREE.Vector3();
-  private lobbyCityYaw = 0;
-  private lobbyCityTilt = 0;
-  private lobbyCityOrbitDrag: { id: number; x: number; y: number } | null = null;
-  private lobbyCityReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   private lobbySanctuaryDustSeeds: Array<{
     x: number;
     y: number;
@@ -1851,7 +1836,7 @@ export class GameEngine {
     this.graphicsQuality = this.lowEndGpu ? 'low' : detectedProfile.recommendedQuality;
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl && !this.lowEndGpu,
+      antialias: !this.isSoftwareGl && this.systemBudget.deviceTier !== 'ultra_lite',
       powerPreference: this.isSoftwareGl || this.lowEndGpu ? 'low-power' : 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1957,9 +1942,6 @@ export class GameEngine {
     }
 
     this.bindEvents();
-    if (this.systemBudget.loadLobbyCity3d) {
-      void this.loadLobbyCity();
-    }
     this.startLoop();
   }
 
@@ -1971,18 +1953,34 @@ export class GameEngine {
     if (this.isSoftwareGl || this.lowEndGpu || this.composer) return;
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
-    const composer = new EffectComposer(this.renderer);
-    composer.setPixelRatio(this.getTargetPixelRatio());
+    const dpr = this.getTargetPixelRatio();
+    const maxSamples = this.renderer.capabilities.isWebGL2
+      ? Math.min(4, this.renderer.capabilities.maxSamples || 0)
+      : 0;
+    const renderTarget = new THREE.WebGLRenderTarget(
+      Math.max(1, Math.round(w * dpr)),
+      Math.max(1, Math.round(h * dpr)),
+      {
+        type: THREE.HalfFloatType,
+        samples: maxSamples,
+      }
+    );
+    const composer = new EffectComposer(this.renderer, renderTarget);
+    composer.setPixelRatio(dpr);
     composer.setSize(w, h);
 
     const renderPass = new RenderPass(this.scene, this.camera);
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(Math.max(1, Math.floor(w * 0.5)), Math.max(1, Math.floor(h * 0.5))),
-      0.5,
-      0.42,
-      0.78
+      0.38,
+      0.32,
+      0.86
     );
     const gradePass = new ShaderPass(MythicZodiacGradeShader);
+    gradePass.uniforms.uTexelSize.value = new THREE.Vector2(
+      1 / Math.max(1, w * dpr),
+      1 / Math.max(1, h * dpr)
+    );
     const outputPass = new OutputPass();
 
     composer.addPass(renderPass);
@@ -2040,6 +2038,20 @@ export class GameEngine {
       this.gradePass.uniforms.uVignette.value = cfg.vignetteStrength;
       this.gradePass.uniforms.uChromatic.value = cfg.chromaticAmount;
       this.gradePass.uniforms.uGoldWarmth.value = cfg.goldWarmth;
+      if (this.gradePass.uniforms.uSharpness) {
+        this.gradePass.uniforms.uSharpness.value = cfg.sharpness;
+      }
+      if (this.gradePass.uniforms.uTexelSize && this.container) {
+        const dpr = this.renderer?.getPixelRatio() || 1;
+        const pxW = Math.max(1, this.container.clientWidth * dpr);
+        const pxH = Math.max(1, this.container.clientHeight * dpr);
+        const texel = this.gradePass.uniforms.uTexelSize.value as THREE.Vector2 | { x: number; y: number };
+        if (texel && typeof (texel as THREE.Vector2).set === 'function') {
+          (texel as THREE.Vector2).set(1 / pxW, 1 / pxH);
+        } else {
+          this.gradePass.uniforms.uTexelSize.value = new THREE.Vector2(1 / pxW, 1 / pxH);
+        }
+      }
     }
   }
 
@@ -3414,11 +3426,12 @@ export class GameEngine {
   }
 
   private getActiveSolarLeoVariant(): SolarLeoVariant {
+    const budget = this.getActiveSystemBudget();
     if (
       this.lowEndGpu ||
       this.isSoftwareGl ||
       this.graphicsQuality === 'low' ||
-      this.getActiveBoss3dModelVariant() !== 'high'
+      budget.assetVariant !== 'high'
     ) {
       return 'lite';
     }
@@ -3426,8 +3439,9 @@ export class GameEngine {
   }
 
   private getSolarLeoAnisotropy(variant: SolarLeoVariant): number {
-    if (variant === 'lite') return 1;
-    return Math.min(4, Math.max(1, this.renderer?.capabilities?.getMaxAnisotropy?.() ?? 2));
+    const maxAniso = Math.max(1, this.renderer?.capabilities?.getMaxAnisotropy?.() ?? 2);
+    if (variant === 'lite') return Math.min(2, maxAniso);
+    return Math.min(8, maxAniso);
   }
 
   private applySolarLeoHeroRig(rig: InstantiatedSolarLeoModel): void {
@@ -4163,8 +4177,6 @@ export class GameEngine {
   }
 
   public resetLobbyOrbit(): void {
-    this.lobbyCityYaw = 0;
-    this.lobbyCityTilt = 0;
     this.lobbyTargetYaw = 0;
     this.lobbyTargetPitch = 0;
     this.lobbyTargetZoom = 0;
@@ -4565,6 +4577,13 @@ export class GameEngine {
     );
     this.lowEndGpu = this.systemBudget.liteActive;
     this.chapter1MapFailCount = 0;
+    this.ensureEnvironmentReflections();
+    this.syncCanvasResolution();
+    if (!this.isSoftwareGl && !this.lowEndGpu && this.graphicsQuality !== 'low' && this.bloomEnabled && !this.composer) {
+      this.setupPostProcessing();
+    }
+    this.syncSolarLeoVisuals();
+    this.syncPostProcessingUniforms();
     this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
     return this.gpuProfile;
   }
@@ -7998,8 +8017,7 @@ export class GameEngine {
       return;
     }
     this.arenaEntryStartCam.copy(this.camera.position);
-    const pose = this.lobbyCityActive ? this.lobbyCity?.pose : undefined;
-    this.arenaEntryStartLook.set(pose?.x ?? 0, (pose?.y ?? 0) + 1.05, pose?.z ?? 4.5);
+    this.arenaEntryStartLook.set(0, 1.05, 4.5);
     this.arenaEntryFlyTimer = this.arenaEntryFlyDuration;
   }
 
@@ -8018,7 +8036,6 @@ export class GameEngine {
     const prevPhase = this.phase;
     this.phase = phase;
     const isTitle = phase === GamePhase.TITLE;
-    if (!isTitle && this.lobbyCityActive) this.setLobbyCityActive(false);
     if (this.lobbyHaloGroup) {
       this.lobbyHaloGroup.visible = isTitle;
     }
@@ -8054,8 +8071,10 @@ export class GameEngine {
       if (this.hero.rightWingPivot) this.hero.rightWingPivot.visible = true;
       this.isWeeklyRankedBossMode = false;
       this.snapCameraToLobby();
+      this.syncCanvasResolution();
     } else {
       // Restore crisp Zodiac-matched combat arena lighting
+      this.syncCanvasResolution();
       this.rimLight.color.setHex(this.arenaThemeSpec?.rimLightHex ?? 0x93c5fd);
       this.rimLight.intensity = 0.72;
       this.rimLight.position.set(-12, 10, -14);
@@ -8128,78 +8147,6 @@ export class GameEngine {
 
   public setLobbyViewMode(mode: 'battle' | 'gear' | 'heroes' | 'runes' | 'vault'): void {
     this.lobbyViewMode = mode;
-  }
-
-  public setLobbyCityCamera(mode: LobbyCityCameraId): void {
-    this.lobbyCityCamera = mode;
-  }
-
-  private unloadLobbyCity(): void {
-    this.lobbyCityRequest.abort();
-    this.lobbyCityRequest = new AbortController();
-    this.setLobbyCityActive(false);
-    if (this.lobbyCity) {
-      if (this.lobbyCity.group.parent === this.scene) {
-        this.scene.remove(this.lobbyCity.group);
-      }
-      this.releaseObject(this.lobbyCity.group);
-      this.lobbyCity = null;
-    }
-  }
-
-  private async loadLobbyCity(): Promise<void> {
-    const budget = this.getActiveSystemBudget();
-    if (!budget.loadLobbyCity3d || this.lobbyCity) return;
-    const signal = this.lobbyCityRequest.signal;
-    const url = new URL(`${import.meta.env.BASE_URL}${LOBBY_CITY_ASSET}`, document.baseURI);
-    try {
-      const response = await fetch(url, { signal });
-      if (!response.ok || response.headers.get('content-type')?.includes('text/html')) return;
-      const data = await response.arrayBuffer();
-      if (this.disposed || signal.aborted || !this.getActiveSystemBudget().loadLobbyCity3d) return;
-      markHeavyAssetLoadInFlight('Sảnh Thành Phố 3D');
-      try {
-        const { scene: group } = await new GLTFLoader().parseAsync(data, new URL('.', url).href);
-        if (this.disposed || signal.aborted || !this.getActiveSystemBudget().loadLobbyCity3d) {
-          this.releaseObject(group);
-          return;
-        }
-        sanitizeLoadedObjectForBudget(group, this.getActiveSystemBudget(), { disableShadows: true });
-        group.scale.setScalar(LOBBY_CITY_SCALE);
-        addLobbyCityStreets(group);
-        const nav = createLobbyCityNavigation(group);
-        const x = -3 * LOBBY_CITY_SCALE;
-        const z = 8 * LOBBY_CITY_SCALE;
-        const y = nav?.groundAt(x, z);
-        if (!nav || y == null) {
-          this.releaseObject(group);
-          return;
-        }
-        group.visible = false;
-        this.scene.add(group);
-        this.lobbyCity = { group, nav, pose: { x, y, z } };
-      } finally {
-        clearHeavyAssetLoadInFlight();
-      }
-    } catch (error) {
-      if (!this.disposed && !signal.aborted) {
-        console.warn('Không tải được phố 3D; dùng sảnh mặc định.', error);
-      }
-    }
-  }
-
-  private setLobbyCityActive(active: boolean): void {
-    if (active === this.lobbyCityActive) return;
-    this.lobbyCityActive = active;
-    if (this.lobbyCity) this.lobbyCity.group.visible = active;
-    this.container.dataset.lobbyCity = String(active);
-    this.lobbyCityKeys = {};
-    this.lobbyCityStride = 0;
-    this.lobbyCityOrbitDrag = null;
-    this.lobbyDragActive = false;
-    this.lobbyDragPointerId = null;
-    if (this.pointerDown) this.onWindowBlur();
-    if (!active && this.phase === GamePhase.TITLE) this.snapCameraToLobby();
   }
 
   public setLobbyCameraPreset(preset: LobbyCameraPreset): void {
@@ -10303,7 +10250,6 @@ export class GameEngine {
   }
 
   private onContextMenu = (e: MouseEvent) => {
-    if (this.phase === GamePhase.TITLE && this.lobbyCityActive) e.preventDefault();
     if (this.phase === GamePhase.PLAYING) {
       e.preventDefault();
       this.triggerHeavyBreakStrike();
@@ -10334,7 +10280,6 @@ export class GameEngine {
     this.lowEndGpu = true;
     this.graphicsQuality = 'low';
     this.unloadChapter1MapModel();
-    this.unloadLobbyCity();
     this.setChapter1MapStatus('ready');
     this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
   };
@@ -10352,17 +10297,48 @@ export class GameEngine {
     this.startLoop();
   }
 
+  private ensureEnvironmentReflections(): void {
+    const budget = this.getActiveSystemBudget();
+    if (budget.environmentReflections) {
+      if (!this.scene.environment && this.pmremGenerator) {
+        const environment = new RoomEnvironment();
+        this.envRenderTarget = this.pmremGenerator.fromScene(environment, 0.04);
+        environment.dispose();
+        this.scene.environment = this.envRenderTarget.texture;
+      }
+      if (this.hemiLight && this.phase === GamePhase.TITLE) {
+        this.hemiLight.intensity = 0.88;
+      }
+    }
+  }
+
+  private syncCanvasResolution(): void {
+    if (this.disposed || !this.renderer || !this.container) return;
+    const w = Math.max(1, this.container.clientWidth);
+    const h = Math.max(1, this.container.clientHeight);
+    const targetDpr = this.getTargetPixelRatio();
+    this.renderer.setPixelRatio(targetDpr);
+    if (this.composer) {
+      this.composer.setPixelRatio(targetDpr);
+      this.composer.setSize(w, h);
+    }
+    this.syncPostProcessingUniforms();
+  }
+
   private getTargetPixelRatio(): number {
     const budget = this.getActiveSystemBudget();
-    const low = this.isSoftwareGl || this.lowEndGpu || this.graphicsQuality === 'low' || budget.liteActive;
-    const qualityCap = low ? budget.maxDpr : this.graphicsQuality === 'medium' ? Math.min(1.5, budget.maxDpr) : budget.maxDpr;
-    const pixels = Math.max(1, this.container.clientWidth * this.container.clientHeight);
-    const pixelBudget = low ? budget.maxPixelBudget : Math.max(budget.maxPixelBudget, 2_200_000);
-    const baseDpr = Math.min(window.devicePixelRatio || 1, qualityCap, Math.sqrt(pixelBudget / pixels));
-    const govDpr = this.adaptiveResolutionGuard
-      ? Math.min(this.adaptiveResScale, getAdaptiveFpsModifiers(this.adaptiveFpsGovernor).dprScale)
-      : 1.0;
-    return Math.max(0.55, baseDpr * govDpr);
+    return computeEffectiveRenderPixelRatio({
+      viewportWidth: this.container?.clientWidth || 1280,
+      viewportHeight: this.container?.clientHeight || 720,
+      devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+      budget,
+      graphicsQuality: this.graphicsQuality,
+      isSoftwareGl: this.isSoftwareGl,
+      isLobby: this.phase === GamePhase.TITLE,
+      adaptiveResolutionGuard: this.adaptiveResolutionGuard,
+      adaptiveResScale: this.adaptiveResScale,
+      governorDprScale: getAdaptiveFpsModifiers(this.adaptiveFpsGovernor).dprScale,
+    });
   }
 
   public applyRuntimeSettings(cfg: {
@@ -10408,12 +10384,6 @@ export class GameEngine {
         this.ensureChapter1MapLoaded();
       }
       this.applyChapter1MapState();
-    }
-
-    if (!budget.loadLobbyCity3d) {
-      this.unloadLobbyCity();
-    } else if (!this.lobbyCity) {
-      void this.loadLobbyCity();
     }
 
     const quality = this.isSoftwareGl || this.lowEndGpu || budget.liteActive ? 'low' : cfg.graphicsQuality;
@@ -10463,6 +10433,7 @@ export class GameEngine {
         this.keyLight.shadow.map = null;
       }
     }
+    this.ensureEnvironmentReflections();
     const targetDpr = this.getTargetPixelRatio();
     this.renderer.setPixelRatio(targetDpr);
     if (!this.isSoftwareGl && !this.lowEndGpu && quality !== 'low' && this.bloomEnabled && !this.composer) {
@@ -10499,16 +10470,11 @@ export class GameEngine {
       if (this.bloomPass) {
         this.bloomPass.resolution.set(Math.max(1, Math.floor(w * 0.5)), Math.max(1, Math.floor(h * 0.5)));
       }
+      this.syncPostProcessingUniforms();
     }
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (this.phase === GamePhase.TITLE && this.lobbyCityActive && LOBBY_CITY_KEYS.has(e.code)) {
-      if (e.ctrlKey || e.metaKey || e.altKey || (e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable],[role="dialog"]'))) return;
-      e.preventDefault();
-      this.lobbyCityKeys[e.code] = true;
-      return;
-    }
     if (this.phase !== GamePhase.PLAYING) return;
     const code = e.code;
     const kb = this.combatKeybinds;
@@ -10592,13 +10558,10 @@ export class GameEngine {
 
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys[e.code] = false;
-    if (LOBBY_CITY_KEYS.has(e.code)) this.lobbyCityKeys[e.code] = false;
   };
 
   private onWindowBlur = () => {
     this.keys = {};
-    this.lobbyCityKeys = {};
-    this.lobbyCityOrbitDrag = null;
     this.pointerDown = false;
     this.pointerId = null;
     this.joyVecX = 0;
@@ -10620,14 +10583,7 @@ export class GameEngine {
   };
 
   private onPointerDown = (e: PointerEvent) => {
-    if (this.phase === GamePhase.TITLE && this.lobbyCityActive && e.button !== 0) {
-      if (e.button === 2 && e.pointerType === 'mouse') {
-        e.preventDefault();
-        this.lobbyCityOrbitDrag = { id: e.pointerId, x: e.clientX, y: e.clientY };
-      }
-      return;
-    }
-    if (this.phase === GamePhase.TITLE && !this.lobbyCityActive) {
+    if (this.phase === GamePhase.TITLE) {
       soundEngine.unlock();
       this.lobbyDragActive = true;
       this.lobbyDragPointerId = e.pointerId;
@@ -10636,7 +10592,7 @@ export class GameEngine {
       this.lobbyDragMovedDist = 0;
       return;
     }
-    if (this.phase !== GamePhase.PLAYING && !(this.phase === GamePhase.TITLE && this.lobbyCityActive)) return;
+    if (this.phase !== GamePhase.PLAYING) return;
     soundEngine.unlock();
     this.pointerDown = true;
     this.pointerId = e.pointerId;
@@ -10656,19 +10612,6 @@ export class GameEngine {
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    const orbit = this.lobbyCityOrbitDrag;
-    if (orbit && e.pointerId === orbit.id) {
-      if (!(e.buttons & 2)) {
-        this.lobbyCityOrbitDrag = null;
-      } else {
-        const tau = Math.PI * 2;
-        this.lobbyCityYaw = (this.lobbyCityYaw - (e.clientX - orbit.x) * 0.008) % tau;
-        this.lobbyCityTilt = THREE.MathUtils.clamp(this.lobbyCityTilt + (e.clientY - orbit.y) * 0.006, -1.5, 1.5);
-        orbit.x = e.clientX;
-        orbit.y = e.clientY;
-        return;
-      }
-    }
     if (this.phase === GamePhase.TITLE && this.lobbyDragActive && e.pointerId === this.lobbyDragPointerId) {
       const dx = e.clientX - this.lobbyDragLastX;
       const dy = e.clientY - this.lobbyDragLastY;
@@ -10706,7 +10649,6 @@ export class GameEngine {
   };
 
   private onPointerUp = (e: PointerEvent) => {
-    if (this.lobbyCityOrbitDrag?.id === e.pointerId) this.lobbyCityOrbitDrag = null;
     if (this.lobbyDragActive && e.pointerId === this.lobbyDragPointerId) {
       const wasTap = this.phase === GamePhase.TITLE && this.lobbyDragMovedDist < 8;
       this.lobbyDragActive = false;
@@ -11197,8 +11139,6 @@ export class GameEngine {
         this.lastRawFrameDt = Math.min(Math.max(rawDt, 0.001), 0.5);
         if (this.fpsSampler) pushFpsSample(this.fpsSampler, rawDt);
         const dt = Math.min(Math.max(rawDt, 0.001), MAX_FRAME_DT);
-        // Some modes set the phase directly rather than using setPhase().
-        if (this.lobbyCityActive && this.phase !== GamePhase.TITLE) this.setLobbyCityActive(false);
         // Keep the lobby interactive while models load. Hold combat simulation until the rider is visible.
         if (!this.appearanceBlocked || this.phase === GamePhase.TITLE) this.update(dt);
         this.renderSceneFrame();
@@ -11266,25 +11206,8 @@ export class GameEngine {
     const dt = visualDt;
 
     if (this.phase === GamePhase.TITLE) {
-      const city = this.lobbyViewMode === 'battle' && !this.lobbyInspectActive && !this.lobbyPhotoMode ? this.lobbyCity : null;
-      const enteringCity = !!city && !this.lobbyCityActive;
-      this.setLobbyCityActive(!!city);
-      const origin = city?.pose;
-      let walk = 0;
-      if (city) {
-        const [dx, dz] = lobbyCityDirection(this.lobbyCityKeys, this.joyVecX, this.joyVecZ, this.lobbyCityYaw);
-        const { x, z } = city.pose;
-        const distance = LOBBY_CITY_WALK_SPEED * dt;
-        city.nav.move(city.pose, dx * distance, dz * distance);
-        walk = Math.min(1, Math.hypot(city.pose.x - x, city.pose.z - z) / distance);
-        if (walk > 0.01) {
-          const yaw = Math.atan2(city.pose.x - x, city.pose.z - z);
-          this.lobbyTargetYaw = this.lobbyYaw + Math.atan2(Math.sin(yaw - this.lobbyYaw), Math.cos(yaw - this.lobbyYaw));
-        }
-      }
-      this.hero.root.position.set(origin?.x ?? 0, origin?.y ?? 0, origin?.z ?? 4.5);
-      this.heroShadow.position.copy(this.hero.root.position);
-      this.heroShadow.position.y += 0.025;
+      this.hero.root.position.set(0, 0, 4.5);
+      this.heroShadow.position.set(0, 0.025, 4.5);
       const sway = Math.sin(this.elapsed * 0.45) * 0.24;
       const hasMount = Boolean(this.hero.mountGroup);
       const mountExtraZ = hasMount ? 1.85 : 0;
@@ -11372,37 +11295,11 @@ export class GameEngine {
         lookY = THREE.MathUtils.lerp(lookY, 1.24 + (hasMount ? 0.42 : 0), inspectBlend);
       }
 
-      if (city) {
-        const hero = this.hero.root.position;
-        const { position } = this.camera;
-        const { lobbyCityEye: eye, lobbyCityFocus: focus, lobbyCitySight: sight } = this;
-        const fov = frameLobbyCityCamera(this.lobbyCityCamera, hero, this.camera.aspect, this.lobbyOrbitZoom,
-          mountExtraY, eye, focus, this.lobbyCityYaw, this.lobbyCityTilt);
-        sight.set(hero.x, hero.y + 1.3 + mountLookY, hero.z);
-        const snap = enteringCity || this.lobbyCityReducedMotion?.matches;
-        if (snap) position.copy(eye);
-        else position.lerp(eye, 1 - Math.exp(-7 * dt));
-        if (city.nav.clearCamera(sight, position)) {
-          if (position.distanceToSquared(sight) < 9) {
-            // A narrow alley can leave too little room behind the hero; rise to a near-vertical view.
-            position.set(hero.x + Math.sin(this.lobbyCityYaw) * 0.3, Math.max(hero.y + 6, eye.y), hero.z + Math.cos(this.lobbyCityYaw) * 0.3);
-            city.nav.clearCamera(sight, position);
-          }
-          focus.copy(sight);
-        }
-        const nextFov = snap ? fov : THREE.MathUtils.damp(this.camera.fov, fov, 8, dt);
-        if (Math.abs(this.camera.fov - nextFov) > 0.01) {
-          this.camera.fov = nextFov;
-          this.camera.updateProjectionMatrix();
-        }
-        this.camera.lookAt(focus);
-      } else {
-        this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 5.2, dt);
-        this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 5.2, dt);
-        this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 5.2, dt);
-        this.camera.lookAt(lookX, lookY, 4.5);
-      }
-      this.heroLight.position.set((origin?.x ?? 0) + 1.8, (origin?.y ?? 0) + 2.55, (origin?.z ?? 4.5) + 3.1);
+      this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, targetCamX, 5.2, dt);
+      this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, targetCamY, 5.2, dt);
+      this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, targetCamZ, 5.2, dt);
+      this.camera.lookAt(lookX, lookY, 4.5);
+      this.heroLight.position.set(1.8, 2.55, 7.6);
 
       if (this.lobbyPhotoMode) {
         this.applyPhotoStudioLighting(dt);
@@ -11423,7 +11320,7 @@ export class GameEngine {
 
       if (this.lobbyAutoSpinIdleTimer > 0) {
         this.lobbyAutoSpinIdleTimer -= dt;
-      } else if (!this.lobbyDragActive && !city) {
+      } else if (!this.lobbyDragActive) {
         const spinSpeed = this.lobbyInspectActive
           ? this.lobbyInspectAutoRotate
             ? 0.58
@@ -11438,7 +11335,7 @@ export class GameEngine {
       if (this.lobbyHeadSyncTimer <= 0 && this.callbacks.onLobbyHeadPos) {
         this.lobbyHeadSyncTimer = 0.05;
         const headWorldY = (hasMount ? 3.28 : 2.52) + (this.lobbyHeroPose === 'astral_float' ? 0.35 : 0);
-        _v2.set(origin?.x ?? 0, (origin?.y ?? 0) + headWorldY, origin?.z ?? 4.5).project(this.camera);
+        _v2.set(0, headWorldY, 4.5).project(this.camera);
         const cw = this.container.clientWidth || window.innerWidth;
         const ch = this.container.clientHeight || window.innerHeight;
         const sx = ((_v2.x + 1) * 0.5) * cw;
@@ -11455,7 +11352,7 @@ export class GameEngine {
       }
       const emotePose = computeLobbyEmotePose(this.lobbyEmoteTimer, this.lobbyEmoteDuration);
       const onDragon = this.hasDragonRide();
-      const mountOffset = onDragon ? this.updateDragonRide(dt, walk) : this.hero.mountGroup ? 0.68 : 0;
+      const mountOffset = onDragon ? this.updateDragonRide(dt, 0) : this.hero.mountGroup ? 0.68 : 0;
       const poseFloatY =
         (this.lobbyHeroPose === 'astral_float'
           ? 0.34 + Math.sin(this.elapsed * 3.2) * 0.1
@@ -11482,11 +11379,9 @@ export class GameEngine {
         (this.heroVisualCfg.mythicWeaponTier ?? 0) >= 1;
 
       this.hero.root.rotation.y = this.lobbyYaw;
-      this.lobbyCityStride += walk * dt * 15;
       if (!hasMount) {
-        const step = Math.sin(this.lobbyCityStride) * walk * 0.48;
-        this.hero.leftLeg.rotation.x = THREE.MathUtils.damp(this.hero.leftLeg.rotation.x, step, 14, dt);
-        this.hero.rightLeg.rotation.x = THREE.MathUtils.damp(this.hero.rightLeg.rotation.x, -step, 14, dt);
+        this.hero.leftLeg.rotation.x = THREE.MathUtils.damp(this.hero.leftLeg.rotation.x, 0, 14, dt);
+        this.hero.rightLeg.rotation.x = THREE.MathUtils.damp(this.hero.rightLeg.rotation.x, 0, 14, dt);
       }
       this.hero.bodyGroup.position.y = onDragon
         ? mountOffset
@@ -11566,7 +11461,7 @@ export class GameEngine {
           this.solarLeoWingRig,
           this.elapsed,
           dt,
-          walk * LOBBY_CITY_WALK_SPEED,
+          0,
           false,
           emotePose.active ? 0.55 : 0
         );
@@ -11597,7 +11492,7 @@ export class GameEngine {
         this.artemisMotion?.update(
           dt,
           this.elapsed,
-          walk,
+          0,
           showWeaponInLobby,
           emotePose.active ? 0.35 + emotePose.drawProgress * 0.65 : 0.35,
           this.hero.bowGroup,
@@ -11609,7 +11504,7 @@ export class GameEngine {
         updateSolarLeoHumanoidPose(this.solarLeoHeroRig, {
           elapsed: this.elapsed,
           dt,
-          speed: walk * LOBBY_CITY_WALK_SPEED,
+          speed: 0,
           shooting: emotePose.active,
           shootRecoil: emotePose.active ? emotePose.drawProgress : 0,
           dashing: false,
@@ -11619,12 +11514,12 @@ export class GameEngine {
         });
       }
       if (this.lobbyHaloGroup) {
-        this.lobbyHaloGroup.visible = !city;
+        this.lobbyHaloGroup.visible = true;
         this.lobbyHaloGroup.rotation.y += dt * 0.55;
       }
       this.arenaGroup.visible = false;
-      if (this.lobbySanctuary) this.lobbySanctuary.group.visible = !city;
-      if (this.lobbySanctuary && !city) {
+      if (this.lobbySanctuary) {
+        this.lobbySanctuary.group.visible = true;
         this.lobbySanctuary.outerArchRing.rotation.z += dt * 0.14;
         this.lobbySanctuary.innerArchRing.rotation.z -= dt * 0.26;
         this.lobbySanctuary.archVeil.rotation.z += dt * 0.085;
@@ -11655,12 +11550,9 @@ export class GameEngine {
       if (this.petModel) {
         this.petModel.visible = true;
         const petBob = Math.sin(this.elapsed * 3.0) * 0.11;
-        this.petModel.position.set((origin?.x ?? 0) - 1.14, (origin?.y ?? 0) + 1.08 + petBob, (origin?.z ?? 4.5) + 0.28);
-        // Keep pet head facing forward by default in Lobby (never drift out of phase with turntable spin);
-        // when walking in Lobby City, follow the hero's forward travel yaw.
-        this.petModel.rotation.y = city
-          ? this.hero.root.rotation.y
-          : Math.sin(this.elapsed * 1.4) * 0.08;
+        this.petModel.position.set(-1.14, 1.08 + petBob, 4.78);
+        // Keep pet head facing forward by default in Lobby (never drift out of phase with turntable spin)
+        this.petModel.rotation.y = Math.sin(this.elapsed * 1.4) * 0.08;
         if (this.solarLeoPetRig?.group.parent === this.petModel) {
           updateSolarLeoPetPose(this.solarLeoPetRig, this.elapsed, dt, 0);
         }
@@ -11670,18 +11562,18 @@ export class GameEngine {
       const weatherDef = LOBBY_WEATHER_DEFS.find((w) => w.id === this.lobbyWeatherId);
       const dampAlpha = 1 - Math.exp(-3.5 * dt);
       if (this.scene.background instanceof THREE.Color) {
-        _skyCol.setHex(city ? 0x94bdd4 : skyTheme.skyHex);
+        _skyCol.setHex(skyTheme.skyHex);
         this.scene.background.lerp(_skyCol, dampAlpha);
       }
       if (this.scene.fog instanceof THREE.FogExp2) {
-        _fogCol.setHex(city ? 0xa5beda : skyTheme.fogHex);
+        _fogCol.setHex(skyTheme.fogHex);
         this.scene.fog.color.lerp(_fogCol, dampAlpha);
       }
-      _keyCol.setHex(city ? 0xfff3df : skyTheme.keyLightHex);
+      _keyCol.setHex(skyTheme.keyLightHex);
       this.keyLight.color.lerp(_keyCol, dampAlpha);
-      _hemiSkyCol.setHex(city ? 0xd6eaff : skyTheme.hemiSkyHex);
+      _hemiSkyCol.setHex(skyTheme.hemiSkyHex);
       this.hemiLight.color.lerp(_hemiSkyCol, dampAlpha);
-      _hemiGndCol.setHex(city ? 0xa99886 : skyTheme.hemiGroundHex);
+      _hemiGndCol.setHex(skyTheme.hemiGroundHex);
       this.hemiLight.groundColor.lerp(_hemiGndCol, dampAlpha);
       const starMat = this.starfallMesh?.material as THREE.MeshBasicMaterial | undefined;
       if (starMat?.color) {
@@ -11695,7 +11587,6 @@ export class GameEngine {
 
       this.portal.vortex.rotation.z += dt * 0.9;
       this.updateStarfallWeather(dt);
-      if (city && this.starfallMesh) this.starfallMesh.visible = false;
       this.updateParticles(dt);
       this.updateShockwaves(dt);
       this.updateUltColumns(dt);
@@ -23122,9 +23013,7 @@ export class GameEngine {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.lobbyCityRequest.abort();
     this.chapter1MapLoading = false;
-    delete this.container.dataset.lobbyCity;
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
     if (this.pendingGpuSync) {

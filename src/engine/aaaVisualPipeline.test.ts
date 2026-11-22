@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   classifyGpuCapability,
+  computeEffectiveRenderPixelRatio,
   MythicZodiacGradeShader,
   resolvePostFxConfig,
+  resolveSystemLiteBudget,
 } from './aaaVisualPipeline';
 import {
   computeHitstopMicroJitter,
@@ -111,10 +113,103 @@ test('AAA Post-FX Config enforces strict software/low-end bypass and clamps bloo
   });
   assert.equal(noShake.chromaticAmount, 0);
 
-  // Verify shader uniforms exist for EffectComposer ShaderPass
+  // Verify shader uniforms exist for EffectComposer ShaderPass (including CAS sharpening)
   assert.ok(MythicZodiacGradeShader.uniforms.uVignette);
   assert.ok(MythicZodiacGradeShader.uniforms.uChromatic);
   assert.ok(MythicZodiacGradeShader.uniforms.uGoldWarmth);
+  assert.ok(MythicZodiacGradeShader.uniforms.uSharpness);
+  assert.ok(MythicZodiacGradeShader.uniforms.uTexelSize);
+  assert.ok(highBoss.sharpness > 0.25 && highBoss.sharpness <= 0.5);
+  assert.equal(swCfg.sharpness, 0);
+  assert.equal(lowQualityCfg.sharpness, 0);
+});
+
+test('Sharpness & DPR pipeline: Lobby renders 100% native even on Dell E5430 Lite while Combat stays GPU-safe, and Standard+Lite3D stays High', () => {
+  const e5430 = classifyGpuCapability(
+    'ANGLE (Intel, Intel(R) HD Graphics 4000 Direct3D11 vs_5_0 ps_5_0)',
+    8,
+    4,
+    { maxTextureSize: 8192 }
+  );
+  const liteBudget = resolveSystemLiteBudget(e5430, 'auto', 'auto');
+
+  // Dell E5430 Lobby at 1366x768 & 1920x1080 MUST render at crisp 1.0x native DPR (not blurry 0.63x!)
+  const e5430Lobby1366 = computeEffectiveRenderPixelRatio({
+    viewportWidth: 1366,
+    viewportHeight: 768,
+    devicePixelRatio: 1,
+    budget: liteBudget,
+    graphicsQuality: 'low',
+    isSoftwareGl: false,
+    isLobby: true,
+    adaptiveResolutionGuard: true,
+    adaptiveResScale: 0.72,
+    governorDprScale: 0.75,
+  });
+  assert.equal(e5430Lobby1366, 1.0);
+
+  const e5430Lobby1080 = computeEffectiveRenderPixelRatio({
+    viewportWidth: 1920,
+    viewportHeight: 1080,
+    devicePixelRatio: 1,
+    budget: liteBudget,
+    graphicsQuality: 'low',
+    isSoftwareGl: false,
+    isLobby: true,
+    adaptiveResolutionGuard: true,
+    adaptiveResScale: 0.72,
+    governorDprScale: 0.75,
+  });
+  assert.equal(e5430Lobby1080, 1.0);
+
+  // Dell E5430 Combat at 1920x1080 strictly enforces <= 820k pixel fillrate cap so GPU never overheats
+  const e5430Combat1080 = computeEffectiveRenderPixelRatio({
+    viewportWidth: 1920,
+    viewportHeight: 1080,
+    devicePixelRatio: 1,
+    budget: liteBudget,
+    graphicsQuality: 'low',
+    isSoftwareGl: false,
+    isLobby: false,
+    adaptiveResolutionGuard: false,
+    adaptiveResScale: 1,
+    governorDprScale: 1,
+  });
+  assert.ok(e5430Combat1080 < 0.7, `Expected Lite combat DPR < 0.7 at 1080p, got ${e5430Combat1080}`);
+
+  // Standard ('off') + Chapter 1 3D Lite ('lite_3d') + stale crash guard must NOT trap the user in blurry ultra_lite
+  const guardedE5430 = classifyGpuCapability(
+    'ANGLE (Intel, Intel(R) HD Graphics 4000 Direct3D11)',
+    8,
+    4,
+    { maxTextureSize: 8192, crashGuardTripped: true, crashReason: 'stale crash' }
+  );
+  const standardWithLiteMap = resolveSystemLiteBudget(guardedE5430, 'off', 'lite_3d');
+  assert.equal(standardWithLiteMap.liteActive, false);
+  assert.equal(standardWithLiteMap.assetVariant, 'high');
+  assert.equal(standardWithLiteMap.bloomAllowed, true);
+  assert.equal(standardWithLiteMap.environmentReflections, true);
+
+  // HiDPI desktop on High mode renders sharper than 1.0x (not capped to 1.09x by an overly tight pixel budget)
+  const highHiDpi = computeEffectiveRenderPixelRatio({
+    viewportWidth: 1440,
+    viewportHeight: 900,
+    devicePixelRatio: 2,
+    budget: standardWithLiteMap,
+    graphicsQuality: 'high',
+    isSoftwareGl: false,
+    isLobby: true,
+    adaptiveResolutionGuard: true,
+    adaptiveResScale: 1,
+    governorDprScale: 1,
+  });
+  assert.ok(highHiDpi >= 1.75, `Expected HiDPI High DPR >= 1.75, got ${highHiDpi}`);
+
+  // Software WebGL stays ultra_lite even if lowEndSafetyMode === 'off'
+  const swift = classifyGpuCapability('Google SwiftShader', 8, 4);
+  const swiftBudget = resolveSystemLiteBudget(swift, 'off', 'high_3d');
+  assert.equal(swiftBudget.deviceTier, 'ultra_lite');
+  assert.equal(swiftBudget.liteActive, true);
 });
 
 test('AAA Combat Juice: hit-stop micro-jitter, directional knockback recoil, dynamic lights & post-FX impulses', () => {

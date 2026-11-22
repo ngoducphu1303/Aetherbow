@@ -10,6 +10,15 @@ const EXTRA_RUNTIME_GLBS = new Set([
   'public/assets/Chương 1/Map mới/Chương 1.glb',
 ]);
 
+// Removed / deprecated GLB asset prefixes that must not be synced back
+const EXCLUDED_GLB_PREFIXES = [
+  'public/assets/lobby-local/',
+];
+
+function isExcludedGlb(repoPath) {
+  return EXCLUDED_GLB_PREFIXES.some((prefix) => repoPath.startsWith(prefix));
+}
+
 function parseArgs(argv) {
   const args = new Set(argv.slice(2));
   const getFlagValue = (name, fallback) => {
@@ -125,7 +134,9 @@ function formatMB(bytes) {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const allGlbs = await fetchRepoGlbList(opts.repo, opts.branch);
+  const allGlbs = (await fetchRepoGlbList(opts.repo, opts.branch)).filter(
+    (entry) => !isExcludedGlb(entry.path)
+  );
   const targetGlbs = opts.includeAllRaw
     ? allGlbs
     : allGlbs.filter(

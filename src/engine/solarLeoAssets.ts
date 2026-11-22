@@ -589,7 +589,9 @@ function configureTextureForQuality(
   sharedTextures: Set<THREE.Texture>
 ): void {
   if (!tex) return;
-  tex.anisotropy = liteMode ? 1 : Math.min(4, Math.max(1, maxAnisotropy));
+  tex.anisotropy = liteMode
+    ? Math.min(2, Math.max(1, maxAnisotropy))
+    : Math.min(8, Math.max(1, maxAnisotropy));
   tex.userData = { ...(tex.userData ?? {}), sharedCachedTexture: true };
   sharedTextures.add(tex);
 }

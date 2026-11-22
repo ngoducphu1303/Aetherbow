@@ -18,14 +18,6 @@
   }
 }
 
-.lobby-city-hint {
-  display: none;
-}
-
-#root:has([data-lobby-city="true"]) .lobby-city-hint {
-  display: block;
-}
-
 .font-display {
   font-family: "Philosopher", "Cormorant Garamond", Georgia, serif;
   letter-spacing: 0.015em;

@@ -1117,8 +1117,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Monitor className="w-3 h-3 text-emerald-300 shrink-0" />
                       <span>Mục tiêu</span>
                     </div>
-                    <div className="font-mono-nums font-bold text-slate-100 mt-0.5 truncate">
-                      {activeBudget.targetCombatFps} FPS · {activeBudget.maxTextureSize}px
+                    <div className="font-mono-nums font-bold text-slate-100 mt-0.5 text-[9.5px] whitespace-nowrap">
+                      {activeBudget.targetCombatFps}fps · {activeBudget.maxTextureSize}px
                     </div>
                   </div>
                 </div>
@@ -1130,9 +1130,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="text-[10px] text-slate-400 leading-relaxed">
                   Áp dụng toàn game (Chương 1–12 &amp; mọi chế độ):{' '}
                   <span className="text-slate-200 font-semibold">
-                    {activeBudget.liteActive
-                      ? 'Mô hình nén Lite · Tải theo nhu cầu · Tắt Bloom/Đổ bóng/Sảnh Phố nặng · Tự hạ phân giải khi tụt FPS'
-                      : 'Mô hình chi tiết đầy đủ · Đổ bóng & Bloom theo cấu hình · Tự điều chỉnh độ phân giải khi quá tải'}
+                    {activeBudget.deviceTier === 'ultra_lite'
+                      ? 'Chế độ Siêu Nhẹ · Texture 512px · Sân đấu tối giản chống treo WebGL'
+                      : activeBudget.liteActive
+                      ? 'Sảnh 100% độ phân giải gốc · Mô hình Lite 1024px · Khử răng cưa mượt · Tắt Bloom/Đổ bóng nặng khi vào trận'
+                      : 'Mô hình High PBR · Khử răng cưa MSAA + Tăng nét CAS · Đổ bóng & Bloom sắc nét theo cấu hình'}
                   </span>
                 </div>
 
@@ -1172,7 +1174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {gpuProfile &&
                 isLowEndSafetyModeActive(gpuProfile, settings.lowEndSafetyMode ?? 'auto')
                   ? 'Đang bật Lite · Bảo vệ GPU mọi chương'
-                  : 'Chế độ Tiêu Chuẩn · 60 FPS'}
+                  : 'Chế độ Tiêu Chuẩn · 60 FPS · Sắc Nét'}
               </span>
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -1229,7 +1231,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {confirmDisableLiteOnLowEnd && (
               <div className="rounded-xl bg-rose-950/50 border border-rose-400/40 p-2.5 space-y-2 text-[11px]">
                 <div className="text-rose-100 font-semibold leading-relaxed">
-                  Thiết bị hiện tại có GPU tích hợp yếu hoặc bộ nhớ hạn chế (như Intel HD 4000 / Dell Latitude E5430). Tắt Chế Độ Lite có thể gây giật lag nặng, đen màn hình hoặc tắt nguồn do quá tải GPU. Bạn vẫn muốn chuyển sang Tiêu Chuẩn?
+                  Thiết bị hiện tại có GPU tích hợp yếu hoặc bộ nhớ hạn chế (như Intel HD 4000 / Dell Latitude E5430). Tắt Chế Độ Lite sẽ mở khóa độ nét cao (và tự gỡ Chốt chống sập nếu đang bật), nhưng có thể gây giật lag nặng nếu GPU quá tải. Bạn vẫn muốn chuyển sang Tiêu Chuẩn?
                 </div>
                 <div className="flex items-center justify-end gap-2">
                   <button
@@ -1248,6 +1250,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onClick={() => {
                       soundEngine.playUiClick(1.08);
                       setConfirmDisableLiteOnLowEnd(false);
+                      if (gpuProfile?.crashGuardTripped && onResetGpuCrashGuard) {
+                        onResetGpuCrashGuard();
+                      }
                       onUpdateSettings({ lowEndSafetyMode: 'off' });
                     }}
                     className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-bold cursor-pointer whitespace-nowrap"

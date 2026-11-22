@@ -15,6 +15,7 @@ export interface PostFxRuntimeConfig {
   vignetteStrength: number;
   chromaticAmount: number;
   goldWarmth: number;
+  sharpness: number;
   shadowMapSize: 0 | 1024 | 2048;
   toneMappingExposure: number;
 }
@@ -266,9 +267,8 @@ export function resolveSystemLiteBudget(
 
   const isUltra =
     profile.tier === 'software' ||
-    Boolean(profile.crashGuardTripped) ||
-    inferredTier === 'ultra_lite' ||
-    chapter1MapMode === 'light';
+    (lowEndSafetyMode !== 'off' &&
+      (Boolean(profile.crashGuardTripped) || inferredTier === 'ultra_lite' || chapter1MapMode === 'light'));
 
   if (isUltra) {
     return {
@@ -277,8 +277,8 @@ export function resolveSystemLiteBudget(
       targetCombatFps: profile.tier === 'software' ? 12 : 24,
       targetLobbyFps: profile.tier === 'software' ? 12 : 20,
       maxPixelBudget: 550_000,
-      maxDpr: 0.85,
-      minAdaptiveDprScale: 0.65,
+      maxDpr: 1.0,
+      minAdaptiveDprScale: 0.72,
       maxTextureSize: 512,
       arenaTextureSize: 256,
       shadowMapSize: 0,
@@ -297,10 +297,11 @@ export function resolveSystemLiteBudget(
     };
   }
 
+  // Selecting 3D Lite for Chapter 1 Map alone does NOT force global Lite when the user explicitly chose Standard ('off')
   const liteActive =
     lowEndSafetyMode === 'on' ||
-    chapter1MapMode === 'lite_3d' ||
-    (lowEndSafetyMode === 'auto' && (inferredTier === 'lite' || Boolean(profile.lowPowerLegacyGpu)));
+    (lowEndSafetyMode === 'auto' &&
+      (chapter1MapMode === 'lite_3d' || inferredTier === 'lite' || Boolean(profile.lowPowerLegacyGpu)));
 
   if (liteActive) {
     return {
@@ -310,7 +311,7 @@ export function resolveSystemLiteBudget(
       targetLobbyFps: 20,
       maxPixelBudget: 820_000,
       maxDpr: 1.0,
-      minAdaptiveDprScale: 0.68,
+      minAdaptiveDprScale: 0.72,
       maxTextureSize: 1024,
       arenaTextureSize: 256,
       shadowMapSize: 0,
@@ -326,26 +327,26 @@ export function resolveSystemLiteBudget(
     };
   }
 
-  if (inferredTier === 'balanced' && chapter1MapMode !== 'high_3d') {
+  if (inferredTier === 'balanced' && lowEndSafetyMode !== 'off' && chapter1MapMode !== 'high_3d') {
     return {
       deviceTier: 'balanced',
       liteActive: false,
       targetCombatFps: 45,
       targetLobbyFps: 30,
-      maxPixelBudget: 1_600_000,
-      maxDpr: 1.5,
-      minAdaptiveDprScale: 0.72,
+      maxPixelBudget: 2_100_000,
+      maxDpr: 1.75,
+      minAdaptiveDprScale: 0.8,
       maxTextureSize: 2048,
       arenaTextureSize: 512,
       shadowMapSize: 1024,
-      bloomAllowed: false,
+      bloomAllowed: true,
       environmentReflections: true,
-      loadLobbyCity3d: true,
+      loadLobbyCity3d: false,
       arenaMonolithCount: 16,
       arenaDustCount: 20,
       enableBrazierFlames: true,
       enableConstellationLines: true,
-      assetVariant: 'lite',
+      assetVariant: 'high',
       particleBudgetMult: 0.75,
     };
   }
@@ -355,15 +356,15 @@ export function resolveSystemLiteBudget(
     liteActive: false,
     targetCombatFps: 60,
     targetLobbyFps: 30,
-    maxPixelBudget: 2_500_000,
+    maxPixelBudget: 4_200_000,
     maxDpr: 2.0,
-    minAdaptiveDprScale: 0.75,
+    minAdaptiveDprScale: 0.82,
     maxTextureSize: 4096,
     arenaTextureSize: 512,
     shadowMapSize: 2048,
     bloomAllowed: true,
     environmentReflections: true,
-    loadLobbyCity3d: true,
+    loadLobbyCity3d: false,
     arenaMonolithCount: 22,
     arenaDustCount: 28,
     enableBrazierFlames: true,
@@ -373,9 +374,81 @@ export function resolveSystemLiteBudget(
   };
 }
 
+export interface EffectivePixelRatioParams {
+  viewportWidth: number;
+  viewportHeight: number;
+  devicePixelRatio: number;
+  budget: SystemLiteBudget;
+  graphicsQuality: GraphicsQuality;
+  isSoftwareGl: boolean;
+  isLobby: boolean;
+  adaptiveResolutionGuard: boolean;
+  adaptiveResScale: number;
+  governorDprScale: number;
+}
+
+/**
+ * Computes crisp, GPU-safe canvas pixel ratio:
+ * - In the static Lobby showcase, real GPUs (even Lite laptops like Dell E5430) render at
+ *   100% native CSS resolution (DPR >= 1.0) without combat adaptive downscaling so heroes,
+ *   mounts, pets, and sanctuary details never look stretched or blurry.
+ * - In Combat, strictly respects the active SystemLiteBudget pixel cap to keep weak GPUs cool.
+ */
+export function computeEffectiveRenderPixelRatio(params: EffectivePixelRatioParams): number {
+  const {
+    viewportWidth,
+    viewportHeight,
+    devicePixelRatio,
+    budget,
+    graphicsQuality,
+    isSoftwareGl,
+    isLobby,
+    adaptiveResolutionGuard,
+    adaptiveResScale,
+    governorDprScale,
+  } = params;
+
+  const safeDpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  const pixels = Math.max(1, Math.max(1, viewportWidth) * Math.max(1, viewportHeight));
+
+  if (isSoftwareGl) {
+    return Math.max(0.65, Math.min(1.0, Math.sqrt(budget.maxPixelBudget / pixels)));
+  }
+
+  const low = graphicsQuality === 'low' || budget.liteActive;
+  const qualityCap = low
+    ? isLobby
+      ? Math.min(1.25, Math.max(1.0, budget.maxDpr))
+      : budget.maxDpr
+    : graphicsQuality === 'medium'
+    ? Math.min(1.75, budget.maxDpr)
+    : budget.maxDpr;
+
+  // Lobby showcase has low draw-call load (20-30 FPS, no mobs/projectiles) -> always keep native 1:1 sharpness
+  const effectiveBudget = isLobby
+    ? low
+      ? Math.max(budget.maxPixelBudget, Math.min(pixels * 1.15, 2_250_000))
+      : Math.max(budget.maxPixelBudget, 4_200_000)
+    : low
+    ? budget.maxPixelBudget
+    : Math.max(budget.maxPixelBudget, 3_600_000);
+
+  const budgetDpr = Math.sqrt(effectiveBudget / pixels);
+  const baseDpr = Math.min(safeDpr, qualityCap, budgetDpr);
+
+  if (isLobby) {
+    // Keep at least 1.0x native pixel crispness in Lobby on real GPUs when screen fits within 2.25M px
+    const lobbyFloor = pixels <= 2_250_000 ? Math.min(safeDpr, 1.0) : 0.85;
+    return Math.max(lobbyFloor, baseDpr);
+  }
+
+  const govDpr = adaptiveResolutionGuard ? Math.min(adaptiveResScale, governorDprScale) : 1.0;
+  return Math.max(low ? 0.65 : 0.78, baseDpr * govDpr);
+}
+
 /**
  * Resolves live post-processing parameters for the High-Contrast Mythic Zodiac
- * visual style (UnrealBloomPass + Mythic Gold-Obsidian Vignette + Impact Chromatic Pulse).
+ * visual style (Crisp UnrealBloomPass + Contrast Adaptive Sharpening + Gold-Obsidian Vignette).
  */
 export function resolvePostFxConfig(params: {
   quality: GraphicsQuality;
@@ -412,6 +485,7 @@ export function resolvePostFxConfig(params: {
       vignetteStrength: 0,
       chromaticAmount: 0,
       goldWarmth: 0,
+      sharpness: 0,
       shadowMapSize: 0,
       toneMappingExposure: 1.12,
     };
@@ -420,33 +494,36 @@ export function resolvePostFxConfig(params: {
   if (quality === 'medium') {
     return {
       enabled: bloomEnabled,
-      bloomStrength: bloomEnabled ? 0.34 + impulseBloom * 0.45 : 0,
-      bloomRadius: 0.38,
-      bloomThreshold: 0.88,
-      vignetteStrength: isLobby ? 0.22 : isBossStage ? 0.3 : 0.24,
+      bloomStrength: bloomEnabled ? 0.28 + impulseBloom * 0.45 : 0,
+      bloomRadius: 0.3,
+      bloomThreshold: 0.9,
+      vignetteStrength: isLobby ? 0.18 : isBossStage ? 0.28 : 0.22,
       chromaticAmount: impulseChroma * 0.65,
       goldWarmth: 0.05,
+      sharpness: isLobby ? 0.34 : 0.26,
       shadowMapSize: 1024,
-      toneMappingExposure: 1.14,
+      toneMappingExposure: 1.13,
     };
   }
 
-  // High — AAA Mythic Zodiac High-Contrast
+  // High — AAA Mythic Zodiac High-Contrast & Razor-Sharp CAS
   return {
     enabled: bloomEnabled,
-    bloomStrength: bloomEnabled ? (isLobby ? 0.48 : 0.52) + impulseBloom * 0.72 : 0,
-    bloomRadius: isLobby ? 0.48 : 0.42,
-    bloomThreshold: isLobby ? 0.8 : 0.78,
-    vignetteStrength: isLobby ? 0.26 : isBossStage ? 0.38 : 0.28,
+    bloomStrength: bloomEnabled ? (isLobby ? 0.32 : 0.42) + impulseBloom * 0.72 : 0,
+    bloomRadius: isLobby ? 0.32 : 0.34,
+    bloomThreshold: isLobby ? 0.88 : 0.86,
+    vignetteStrength: isLobby ? 0.22 : isBossStage ? 0.38 : 0.26,
     chromaticAmount: impulseChroma,
-    goldWarmth: isLobby ? 0.08 : 0.06,
+    goldWarmth: isLobby ? 0.07 : 0.06,
+    sharpness: isLobby ? 0.44 : 0.36,
     shadowMapSize: 2048,
-    toneMappingExposure: isLobby ? 1.16 : 1.15,
+    toneMappingExposure: isLobby ? 1.14 : 1.15,
   };
 }
 
 /**
  * Single-pass AAA Mythic Zodiac finishing shader:
+ * - Contrast Adaptive Sharpening (CAS) 5-tap micro-sharpen for crisp armor, hair & runes without haloing
  * - Soft obsidian-gold radial vignette that frames the arena without obscuring corners
  * - Dynamic radial chromatic aberration impulse triggered on Boss roars, Ultimates & Perfect Dodge
  * - Calibrated warm-gold highlight lift & crisp deep-obsidian shadow contrast
@@ -454,9 +531,11 @@ export function resolvePostFxConfig(params: {
 export const MythicZodiacGradeShader = {
   uniforms: {
     tDiffuse: { value: null },
-    uVignette: { value: 0.28 },
+    uVignette: { value: 0.26 },
     uChromatic: { value: 0.0 },
     uGoldWarmth: { value: 0.06 },
+    uSharpness: { value: 0.36 },
+    uTexelSize: { value: { x: 1 / 1280, y: 1 / 720 } },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -470,6 +549,8 @@ export const MythicZodiacGradeShader = {
     uniform float uVignette;
     uniform float uChromatic;
     uniform float uGoldWarmth;
+    uniform float uSharpness;
+    uniform vec2 uTexelSize;
     varying vec2 vUv;
 
     void main() {
@@ -478,6 +559,20 @@ export const MythicZodiacGradeShader = {
 
       vec4 base = texture2D(tDiffuse, vUv);
       vec3 col = base.rgb;
+
+      // Contrast Adaptive Sharpening (5-tap cross with local min/max clamp to prevent edge halos)
+      if (uSharpness > 0.005) {
+        vec3 n = texture2D(tDiffuse, clamp(vUv + vec2(0.0, uTexelSize.y), 0.001, 0.999)).rgb;
+        vec3 s = texture2D(tDiffuse, clamp(vUv - vec2(0.0, uTexelSize.y), 0.001, 0.999)).rgb;
+        vec3 e = texture2D(tDiffuse, clamp(vUv + vec2(uTexelSize.x, 0.0), 0.001, 0.999)).rgb;
+        vec3 w = texture2D(tDiffuse, clamp(vUv - vec2(uTexelSize.x, 0.0), 0.001, 0.999)).rgb;
+        vec3 mn = min(col, min(min(n, s), min(e, w)));
+        vec3 mx = max(col, max(max(n, s), max(e, w)));
+        vec3 amp = clamp(min(mn, 1.0 - mx) / max(mx, vec3(0.001)), 0.0, 1.0);
+        vec3 weight = sqrt(amp) * (-0.16 * uSharpness);
+        vec3 sharpened = (col + (n + s + e + w) * weight) / (1.0 + 4.0 * weight);
+        col = clamp(sharpened, mn * 0.92, mx * 1.08);
+      }
 
       if (uChromatic > 0.0001) {
         vec2 offset = centered * uChromatic * (0.45 + dist * 1.4);
@@ -491,7 +586,7 @@ export const MythicZodiacGradeShader = {
       col = mix(col, col * goldLift, smoothstep(0.32, 0.95, luma));
 
       // Gentle obsidian-indigo edge framing
-      float vig = smoothstep(0.46, 0.96, dist);
+      float vig = smoothstep(0.48, 0.98, dist);
       vec3 shadowTint = vec3(0.03, 0.04, 0.09);
       col = mix(col, mix(col * 0.55, shadowTint, 0.32), vig * uVignette);
 

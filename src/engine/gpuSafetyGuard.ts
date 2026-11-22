@@ -341,9 +341,12 @@ export function resolveBoss3dModelVariant(
   lowEndSafetyMode: LowEndSafetyMode = 'auto',
   chapter1MapMode: Chapter1MapMode = 'auto'
 ): Boss3dModelVariant {
-  if (profile.crashGuardTripped || profile.tier === 'software') return 'none';
+  if (profile.tier === 'software') return 'none';
+  if (profile.crashGuardTripped && lowEndSafetyMode !== 'off') return 'none';
   if (chapter1MapMode === 'light') return 'none';
-  if (lowEndSafetyMode === 'on' || chapter1MapMode === 'lite_3d') return 'lite';
+  if (lowEndSafetyMode === 'on') return 'lite';
+  if (lowEndSafetyMode === 'off') return 'high';
+  if (chapter1MapMode === 'lite_3d') return 'lite';
   if (chapter1MapMode === 'high_3d') return 'high';
   if (
     profile.tier === 'discrete' &&

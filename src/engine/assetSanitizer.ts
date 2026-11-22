@@ -103,9 +103,9 @@ export function sanitizeLoadedObjectForBudget(
       if (isDataMap) {
         capEdge = Math.min(capEdge, 256);
       } else if (isFace && options.preserveFaceSharpness) {
-        capEdge = Math.min(capEdge, 768);
+        capEdge = Math.min(capEdge, 1024);
       } else {
-        capEdge = Math.min(capEdge, budget.deviceTier === 'ultra_lite' ? 512 : 768);
+        capEdge = Math.min(capEdge, budget.deviceTier === 'ultra_lite' ? 512 : 1024);
       }
 
       // Disabling mipmaps on Lite cuts GPU texture memory footprint by ~33%
