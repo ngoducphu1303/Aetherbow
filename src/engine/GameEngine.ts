@@ -225,6 +225,17 @@ import {
   ZODIAC_BOSS_PROFILES,
 } from './zodiacBossAi';
 import {
+  CHAPTER1_ROSTER_ASSET_IDS,
+  Chapter1RosterAssetId,
+  Chapter1RosterBurstType,
+  disposeChapter1RosterTemplateCache,
+  getCachedChapter1RosterTemplateSync,
+  instantiateChapter1RosterModel,
+  loadChapter1RosterTemplate,
+  resolveChapter1RosterAssetId,
+  updateChapter1RosterMotion,
+} from './chapter1RosterAssets';
+import {
   AdaptiveFpsGovernor,
   BOSS_FINISHER_DURATION_SEC,
   BOSS_PHASE_ATMOSPHERE,
@@ -620,6 +631,11 @@ interface EnemyEntity {
   solarLionVisualGroup?: THREE.Group;
   solarLionBurstType?: 'none' | 'lunge' | 'slam' | 'roar';
   solarLionBurstTimer?: number;
+  roster3dAssetId?: Chapter1RosterAssetId;
+  roster3dVisualGroup?: THREE.Group;
+  roster3dBaseScale?: number;
+  roster3dBurstType?: Chapter1RosterBurstType;
+  roster3dBurstTimer?: number;
   bossAiState?: BossAiRuntimeState;
   bossStunImmuneTimer?: number;
   dead?: boolean;
@@ -4027,6 +4043,124 @@ export class GameEngine {
     })();
   }
 
+  private prefetchChapter1RosterModels(): void {
+    const variant = this.getActiveBoss3dModelVariant();
+    if (variant === 'none') return;
+    const baseUrl =
+      (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+
+    if (variant === 'lite') {
+      // Sequential preload in Lite mode avoids CPU/RAM spikes on low-end laptops (e.g. Dell E5430)
+      void (async () => {
+        for (const assetId of CHAPTER1_ROSTER_ASSET_IDS) {
+          if (this.disposed) return;
+          try {
+            await loadChapter1RosterTemplate(assetId, variant, maxAniso, {
+              baseUrl,
+              baseUri: document.baseURI,
+            });
+          } catch {
+            // Keep procedural fallback cleanly if an asset fails to preload
+          }
+        }
+      })();
+      return;
+    }
+
+    for (const assetId of CHAPTER1_ROSTER_ASSET_IDS) {
+      void loadChapter1RosterTemplate(assetId, variant, maxAniso, {
+        baseUrl,
+        baseUri: document.baseURI,
+      }).catch(() => {});
+    }
+  }
+
+  private mountChapter1RosterInstance(
+    entity: EnemyEntity,
+    assetId: Chapter1RosterAssetId,
+    template: NonNullable<ReturnType<typeof getCachedChapter1RosterTemplateSync>>
+  ): void {
+    const isStage8Titan = entity.kind === EnemyKind.TITAN_BOSS;
+    const heightMultiplier = isStage8Titan ? 1.18 : entity.isElite && !entity.isBoss ? 1.12 : 1.0;
+    const emissiveTintHex = isStage8Titan
+      ? 0x7c2d12
+      : entity.isElite && !entity.isBoss
+      ? 0x4c1d95
+      : undefined;
+    const inst = instantiateChapter1RosterModel(template, {
+      heightMultiplier,
+      emissiveTintHex,
+      emissiveIntensity: isStage8Titan ? 0.22 : 0.16,
+    });
+
+    const preservedPartMeshes = new Set<THREE.Object3D>();
+    if (entity.bossPartMeshes) {
+      for (const list of Object.values(entity.bossPartMeshes)) {
+        list?.forEach((m) => preservedPartMeshes.add(m));
+      }
+    }
+    if (entity.model.bossAuraRing) preservedPartMeshes.add(entity.model.bossAuraRing);
+
+    for (const child of entity.model.bodyGroup.children) {
+      if (!preservedPartMeshes.has(child)) {
+        child.visible = false;
+      }
+    }
+
+    entity.model.bodyGroup.add(inst.group);
+    entity.roster3dAssetId = assetId;
+    entity.roster3dVisualGroup = inst.group;
+    entity.roster3dBaseScale = heightMultiplier;
+    entity.roster3dBurstType = entity.isBoss ? 'roar' : 'none';
+    entity.roster3dBurstTimer = entity.isBoss ? 0.42 : 0;
+    if (inst.hitMeshes.length > 0) {
+      entity.model.hitMeshes = inst.hitMeshes;
+    }
+  }
+
+  private attachChapter1RosterModel(
+    entity: EnemyEntity,
+    assetId: Chapter1RosterAssetId
+  ): void {
+    const variant = this.getActiveBoss3dModelVariant();
+    if (variant === 'none') return;
+
+    const cached = getCachedChapter1RosterTemplateSync(assetId, variant);
+    if (cached) {
+      this.mountChapter1RosterInstance(entity, assetId, cached);
+      return;
+    }
+
+    const baseUrl =
+      (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+
+    void (async () => {
+      markBoss3dLoadInFlight();
+      try {
+        const template = await loadChapter1RosterTemplate(assetId, variant, maxAniso, {
+          baseUrl,
+          baseUri: document.baseURI,
+        });
+        clearBoss3dLoadInFlight();
+        if (this.disposed || entity.dead || entity.hp <= 0 || !this.enemies.includes(entity)) {
+          return;
+        }
+        if (entity.roster3dVisualGroup) return;
+        this.mountChapter1RosterInstance(entity, assetId, template);
+      } catch (error) {
+        clearBoss3dLoadInFlight();
+        if (!this.disposed) {
+          console.warn(
+            `Không tải được mô hình 3D Chương 1 (${assetId}:${variant}); giữ mô hình dự phòng.`,
+            error
+          );
+        }
+      }
+    })();
+  }
+
   private unloadChapter1MapModel(): void {
     if (this.chapter1MapInFlightMarked) {
       clearChapter1MapLoadInFlight();
@@ -4785,6 +4919,7 @@ export class GameEngine {
     this.resetRunState(stats);
     if (ch.id === 1) {
       this.prefetchSolarLionBossModel();
+      this.prefetchChapter1RosterModels();
     }
     const chapterRecPower = Math.round(ch.recommendedPower * (1 + this.nightmareTier * 0.35));
     this.activePowerPressure = computePowerPressure(stats.powerRating, chapterRecPower);
@@ -9508,6 +9643,17 @@ export class GameEngine {
       })
     ) {
       this.attachSolarLionBossModel(spawnedEntity);
+    } else if (spawnedEntity) {
+      const rosterAssetId = resolveChapter1RosterAssetId({
+        chapterId: this.currentChapter.id,
+        enemyKind: kind,
+        isSideModeActive: this.isSideModeActiveForBossModel(),
+        isTrainingDummy: spawnedEntity.isTrainingDummy,
+        isArenaRival: spawnedEntity.isArenaRival,
+      });
+      if (rosterAssetId) {
+        this.attachChapter1RosterModel(spawnedEntity, rosterAssetId);
+      }
     }
 
     // AAA Wave 5: Rotating Celestial Summon Portal underneath spawning enemies
@@ -15678,6 +15824,40 @@ export class GameEngine {
           dt
         );
         e.model.bodyGroup.position.y = 0;
+      } else if (e.roster3dVisualGroup && e.roster3dAssetId) {
+        if (e.roster3dBurstTimer && e.roster3dBurstTimer > 0) {
+          e.roster3dBurstTimer = Math.max(0, e.roster3dBurstTimer - dt);
+          if (e.roster3dBurstTimer <= 0) {
+            e.roster3dBurstType = 'none';
+          }
+        }
+        const teleProgress =
+          e.telegraphType !== 'none'
+            ? Math.max(
+                0,
+                Math.min(1, 1 - e.telegraphTimer / Math.max(0.01, e.telegraphDuration))
+              )
+            : 0;
+        updateChapter1RosterMotion(
+          e.roster3dVisualGroup,
+          {
+            assetId: e.roster3dAssetId,
+            elapsed: this.elapsed,
+            phaseAngle: e.phaseAngle,
+            speed: Math.hypot(e.vx, e.vz),
+            telegraphType: e.telegraphType,
+            telegraphProgress: teleProgress,
+            burstType: e.roster3dBurstType ?? 'none',
+            burstTimer: e.roster3dBurstTimer ?? 0,
+            bossPhase: e.bossPhase,
+            stunTimer: e.stunTimer ?? 0,
+            hitFlashTimer: e.hitFlashTimer,
+            isSubBossTitan: e.kind === EnemyKind.TITAN_BOSS,
+          },
+          e.roster3dBaseScale ?? 1.0,
+          dt
+        );
+        e.model.bodyGroup.position.y = 0;
       } else if (
         e.kind === EnemyKind.WISP ||
         e.kind === EnemyKind.DRAGON_WHELP ||
@@ -15840,6 +16020,10 @@ export class GameEngine {
         e.solarLionBurstType = 'slam';
         e.solarLionBurstTimer = 0.45;
       }
+      if (e.roster3dVisualGroup) {
+        e.roster3dBurstType = 'slam';
+        e.roster3dBurstTimer = 0.45;
+      }
       bossAi.activeAction = {
         kind: 'leap',
         elapsed: 0,
@@ -15870,6 +16054,10 @@ export class GameEngine {
       if (e.solarLionVisualGroup) {
         e.solarLionBurstType = 'lunge';
         e.solarLionBurstTimer = 0.46;
+      }
+      if (e.roster3dVisualGroup) {
+        e.roster3dBurstType = 'lunge';
+        e.roster3dBurstTimer = 0.44;
       }
       const laneYaw = e.laneAngles[0] ?? baseYaw;
       bossAi.activeAction = {
@@ -15902,6 +16090,10 @@ export class GameEngine {
       if (e.solarLionVisualGroup) {
         e.solarLionBurstType = 'roar';
         e.solarLionBurstTimer = 0.36;
+      }
+      if (e.roster3dVisualGroup) {
+        e.roster3dBurstType = 'roar';
+        e.roster3dBurstTimer = 0.36;
       }
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
       soundEngine.playMeteorImpact(computeSpatialPan(e.x, ARENA_HALF_W));
@@ -15989,6 +16181,10 @@ export class GameEngine {
         e.solarLionBurstType = 'roar';
         e.solarLionBurstTimer = 0.34;
       }
+      if (e.roster3dVisualGroup) {
+        e.roster3dBurstType = 'roar';
+        e.roster3dBurstTimer = 0.34;
+      }
       const count = Math.max(3, Math.round((skill.count ?? 5) * budget.orbCountScale));
       const speed = (skill.projectileSpeed ?? 12.0) * projMult;
       const totalWaves = Math.max(1, skill.waves ?? 2);
@@ -16026,6 +16222,10 @@ export class GameEngine {
       if (e.solarLionVisualGroup) {
         e.solarLionBurstType = 'slam';
         e.solarLionBurstTimer = 0.44;
+      }
+      if (e.roster3dVisualGroup) {
+        e.roster3dBurstType = 'slam';
+        e.roster3dBurstTimer = 0.44;
       }
       const waves = Math.max(2, (skill.waves ?? 3) - (this.lowEndGpu ? 1 : 0));
       const interval = skill.waveIntervalSec ?? 0.4;
@@ -16617,6 +16817,10 @@ export class GameEngine {
         e.solarLionBurstType = 'lunge';
         e.solarLionBurstTimer = 0.38;
       }
+      if (e.roster3dVisualGroup) {
+        e.roster3dBurstType = 'lunge';
+        e.roster3dBurstTimer = 0.36;
+      }
       if (e.tacticalRole === 'charger') {
         e.chargerDashing = true;
         e.chargerDashTimer = 0.62;
@@ -16679,6 +16883,10 @@ export class GameEngine {
           );
         }
       } else if (e.kind === EnemyKind.DRAGON_WHELP) {
+        if (e.roster3dVisualGroup) {
+          e.roster3dBurstType = 'lunge';
+          e.roster3dBurstTimer = 0.32;
+        }
         for (let k = -1; k <= 1; k += 2) {
           const a = baseYaw + k * 0.18;
           this.fireEnemyOrb(
@@ -16692,6 +16900,10 @@ export class GameEngine {
           );
         }
       } else {
+        if (e.roster3dVisualGroup) {
+          e.roster3dBurstType = 'cast';
+          e.roster3dBurstTimer = 0.34;
+        }
         const speed = (e.kind === EnemyKind.WISP ? 11.5 : 9.6) * pveSpdMult;
         this.fireEnemyOrb(
           e.x,
@@ -16758,6 +16970,10 @@ export class GameEngine {
       if (e.solarLionVisualGroup) {
         e.solarLionBurstType = 'slam';
         e.solarLionBurstTimer = 0.42;
+      }
+      if (e.roster3dVisualGroup) {
+        e.roster3dBurstType = 'slam';
+        e.roster3dBurstTimer = 0.42;
       }
       if (e.telegraphType === 'slam') {
         this.spawnShockwave(e.slamX, e.slamZ, 0xf97316, e.slamRadius + 0.6, 0.42);
@@ -21566,6 +21782,7 @@ export class GameEngine {
       this.chapter1MapModel = null;
     }
     this.releaseObject(this.scene);
+    disposeChapter1RosterTemplateCache();
     this.disposePostProcessing();
     this.contactShadowTex.dispose();
     this.keyLight.shadow.dispose();

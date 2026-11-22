@@ -34,7 +34,7 @@ const RAW_ZODIAC_CHAPTERS: RawZodiacChapter[] = [
     zodiacIcon: '🦁',
     zodiacName: 'Sư Tử',
     regionName: 'Thánh Điện Nhật Luân',
-    subtitle: 'Chòm sao Sư Tử thức giấc! Hạ gục Tướng Quân Hỏa Ngục Ares và đối đầu Sư Vương Thái Dương.',
+    subtitle: 'Chòm sao Sư Tử thức giấc! Vượt qua đội quân Đền Thờ Ánh Dương, hạ Sư Tử Cánh Ánh Dương và đối đầu Sư Vương Thái Dương.',
     bossName: 'Sư Vương Thái Dương',
     floorPrimary: '#19223a',
     floorAccent: '#f5b83d',
@@ -49,7 +49,7 @@ const RAW_ZODIAC_CHAPTERS: RawZodiacChapter[] = [
     dmgScale: 1.2,
     goldBonusMult: 1.0,
     recommendedPower: 1350,
-    subBossNames: ['Ares · Tướng Quân Hỏa Ngục', 'Boreas · Tướng Quân Phong Băng'],
+    subBossNames: ['Sư Tử Cánh Ánh Dương · Tiên Phong', 'Sư Tử Cánh Ánh Dương · Thống Lĩnh'],
     enemyFamily: [EnemyKind.SKIRMISHER, EnemyKind.IMP_ARCHER, EnemyKind.DRAGON_WHELP],
   },
   {
@@ -398,14 +398,57 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
     } else {
       const waveCount = s >= 7 ? 2 : 1;
       const waves: ChapterStageDef['waves'] = [];
-      for (let w = 0; w < waveCount; w++) {
-        waves.push({
-          enemies: [
-            { kind: e1, count: 2 + Math.floor(s / 4), isElite: s >= 5 && w === 0 },
-            { kind: e2, count: 1 + Math.floor(s / 3) },
-            ...(s >= 3 ? [{ kind: e3, count: 1 + Math.floor(s / 5) }] : []),
-          ],
-        });
+      if (ch.id === 1) {
+        // Chapter 1 showcases all 4 dedicated Solar Temple 3D mobs in role-matched formations:
+        // SKIRMISHER = Sư Tử Lửa Đền Thờ, GOLEM = Vệ Binh Đá Mặt Trời,
+        // IMP_ARCHER = Linh Hồn Lửa Hoàng Đạo, DRAGON_WHELP = Chiến Binh Thương Ánh Dương
+        for (let w = 0; w < waveCount; w++) {
+          const enemies: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> = [];
+          if (s === 1) {
+            enemies.push(
+              { kind: EnemyKind.SKIRMISHER, count: 2 },
+              { kind: EnemyKind.IMP_ARCHER, count: 2 }
+            );
+          } else if (s === 2) {
+            enemies.push(
+              { kind: EnemyKind.SKIRMISHER, count: 2 },
+              { kind: EnemyKind.GOLEM, count: 1 },
+              { kind: EnemyKind.IMP_ARCHER, count: 1 }
+            );
+          } else if (s === 3) {
+            enemies.push(
+              { kind: EnemyKind.SKIRMISHER, count: 2 },
+              { kind: EnemyKind.DRAGON_WHELP, count: 2 },
+              { kind: EnemyKind.GOLEM, count: 1 }
+            );
+          } else {
+            // Stages 5–7 & 9–11 mix all 4 Solar Temple archetypes cleanly
+            enemies.push(
+              { kind: EnemyKind.SKIRMISHER, count: 2 + Math.floor(s / 6), isElite: s >= 5 && w === 0 },
+              { kind: EnemyKind.IMP_ARCHER, count: 1 + Math.floor(s / 5) },
+              {
+                kind: w === 0 ? EnemyKind.GOLEM : EnemyKind.DRAGON_WHELP,
+                count: w === 0 ? 1 : 2,
+                isElite: s >= 9 && w === 0,
+              },
+              {
+                kind: w === 0 ? EnemyKind.DRAGON_WHELP : EnemyKind.GOLEM,
+                count: 1,
+              }
+            );
+          }
+          waves.push({ enemies });
+        }
+      } else {
+        for (let w = 0; w < waveCount; w++) {
+          waves.push({
+            enemies: [
+              { kind: e1, count: 2 + Math.floor(s / 4), isElite: s >= 5 && w === 0 },
+              { kind: e2, count: 1 + Math.floor(s / 3) },
+              ...(s >= 3 ? [{ kind: e3, count: 1 + Math.floor(s / 5) }] : []),
+            ],
+          });
+        }
       }
       stages.push({
         stageNumber: s,
