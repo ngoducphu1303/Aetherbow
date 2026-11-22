@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { EnemyKind } from '../types/game';
+import {
+  AutoRigInstance,
+  instantiateAutoRigModel,
+  prepareAutoRigTemplate,
+} from './aaaAutoRigSystem';
 
 /**
  * Official GitHub source & hardware-adaptive runtime variants for the Chapter 1
@@ -143,15 +148,16 @@ export function downloadChapter1BossArrayBuffer(
 
 export interface PreparedChapter1Boss {
   group: THREE.Group;
+  rigInstance: AutoRigInstance;
   hitMeshes: THREE.Mesh[];
   scale: number;
   bounds: THREE.Box3;
 }
 
 /**
- * Normalizes scale, grounds feet flush at y = 0, centers X/Z around the boss pivot,
- * enforces SRGBColorSpace / linear PBR channels, and tunes shadow & anisotropy caps
- * for both High (discrete GPU) and Lite (Dell Latitude E5430 / Intel HD 4000) modes.
+ * Calibrates facing (+Z), grounds feet flush at y = 0, auto-rigs real 13-bone GPU SkinnedMesh
+ * weights & claw bone anchors, and tunes shadow & anisotropy caps for both High (discrete GPU)
+ * and Lite (Dell Latitude E5430 / Intel HD 4000) modes.
  */
 export function prepareChapter1BossModel(
   gltfScene: THREE.Object3D,
@@ -159,72 +165,41 @@ export function prepareChapter1BossModel(
   options?: { liteMode?: boolean; facingYawOffset?: number }
 ): PreparedChapter1Boss {
   const liteMode = Boolean(options?.liteMode);
-  const group = new THREE.Group();
-  group.name = liteMode ? 'Chapter1SolarLionBossLite' : 'Chapter1SolarLionBossHigh';
-
-  const pivot = new THREE.Group();
-  pivot.name = 'Chapter1SolarLionBossPivot';
-  pivot.rotation.y = options?.facingYawOffset ?? CHAPTER1_BOSS_FACING_YAW;
-  pivot.add(gltfScene);
-  group.add(pivot);
-
-  group.updateMatrixWorld(true);
-  const rawBox = new THREE.Box3().setFromObject(gltfScene);
-  const rawSize = new THREE.Vector3();
-  const rawCenter = new THREE.Vector3();
-  rawBox.getSize(rawSize);
-  rawBox.getCenter(rawCenter);
-
-  const rawHeight = Math.max(0.001, rawSize.y);
-  const scale = CHAPTER1_BOSS_TARGET_HEIGHT / rawHeight;
-
-  gltfScene.scale.setScalar(scale);
-  gltfScene.position.set(
-    -rawCenter.x * scale,
-    -rawBox.min.y * scale,
-    -rawCenter.z * scale
-  );
-
-  const anisoCap = liteMode ? 2 : 8;
-  const aniso = Math.max(1, Math.min(anisoCap, Math.floor(maxAnisotropy || 1)));
-  const hitMeshes: THREE.Mesh[] = [];
-
-  gltfScene.traverse((obj) => {
-    if (!(obj instanceof THREE.Mesh)) return;
-    obj.castShadow = !liteMode;
-    obj.receiveShadow = true;
-    obj.frustumCulled = false;
-
-    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-    for (const mat of mats) {
-      if (!mat) continue;
-      if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
-        if (mat.map) {
-          mat.map.colorSpace = THREE.SRGBColorSpace;
-          mat.map.anisotropy = aniso;
-          mat.map.needsUpdate = true;
-        }
-        if (mat.normalMap) {
-          mat.normalMap.anisotropy = aniso;
-        }
-        if (mat.roughnessMap) {
-          mat.roughnessMap.anisotropy = aniso;
-        }
-        if (mat.metalnessMap) {
-          mat.metalnessMap.anisotropy = aniso;
-        }
-        mat.envMapIntensity = liteMode ? 1.05 : 1.35;
-        mat.needsUpdate = true;
-        if (!hitMeshes.includes(obj)) {
-          hitMeshes.push(obj);
-        }
-      }
-    }
+  const rigTemplate = prepareAutoRigTemplate('solar_lion_boss', gltfScene, maxAnisotropy, {
+    liteMode,
+    facingYawOffset: options?.facingYawOffset ?? CHAPTER1_BOSS_FACING_YAW,
   });
 
-  group.updateMatrixWorld(true);
-  const bounds = new THREE.Box3().setFromObject(group);
-  return { group, hitMeshes, scale, bounds };
+  // Dispose raw unbaked geometries and unmark shared flags so per-boss releaseObject frees GPU cleanly
+  gltfScene.traverse((obj) => {
+    if (obj instanceof THREE.Mesh && obj.geometry && !rigTemplate.sharedGeometries.has(obj.geometry)) {
+      obj.geometry.dispose();
+    }
+  });
+  rigTemplate.sharedGeometries.forEach((geo) => {
+    if (geo.userData) delete geo.userData.sharedCachedGeometry;
+  });
+  rigTemplate.sharedTextures.forEach((tex) => {
+    if (tex.userData) delete tex.userData.sharedCachedTexture;
+  });
+
+  const rigInstance = instantiateAutoRigModel(rigTemplate);
+  rigInstance.group.name = liteMode ? 'Chapter1SolarLionBossLite' : 'Chapter1SolarLionBossHigh';
+
+  // Dispose template source material clones (the SkinnedMesh instance now owns its cloned materials)
+  rigTemplate.parts.forEach((p) => {
+    const mats = Array.isArray(p.material) ? p.material : [p.material];
+    mats.forEach((m) => m.dispose());
+  });
+
+  const scale = CHAPTER1_BOSS_TARGET_HEIGHT / Math.max(0.001, rigTemplate.size.y);
+  return {
+    group: rigInstance.group,
+    rigInstance,
+    hitMeshes: rigInstance.skinnedMeshes,
+    scale,
+    bounds: rigInstance.bounds,
+  };
 }
 
 export interface Chapter1BossMotionInput {
@@ -238,6 +213,9 @@ export interface Chapter1BossMotionInput {
   bossPhase: 1 | 2 | 3;
   stunTimer: number;
   hitFlashTimer: number;
+  lateralSpeed?: number;
+  recoilPitch?: number;
+  recoilRoll?: number;
 }
 
 export interface Chapter1BossMotionSnapshot {
@@ -349,6 +327,17 @@ export function updateChapter1BossMotion(
     targetPitchX -= recoil * 0.09;
     targetScaleY *= 1 - recoil * 0.04;
     targetScaleXZ *= 1 + recoil * 0.035;
+  }
+
+  // AAA velocity-coupled corner banking & directional hit-flinch
+  if (input.lateralSpeed !== undefined && input.stunTimer <= 0) {
+    targetRollZ += Math.max(-0.18, Math.min(0.18, (-input.lateralSpeed / 4.5) * 0.16));
+  }
+  if (input.recoilPitch !== undefined) {
+    targetPitchX += input.recoilPitch;
+  }
+  if (input.recoilRoll !== undefined) {
+    targetRollZ += input.recoilRoll;
   }
 
   const lambda = 14;

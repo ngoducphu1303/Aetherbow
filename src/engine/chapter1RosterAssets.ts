@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EnemyKind } from '../types/game';
+import {
+  AUTO_RIG_CALIBRATION,
+  AutoRigInstance,
+  instantiateAutoRigModel,
+  prepareAutoRigTemplate,
+  PreparedAutoRigTemplate,
+} from './aaaAutoRigSystem';
 
 export type Chapter1RosterAssetId =
   | 'fire_lion'
@@ -40,7 +47,7 @@ export const CHAPTER1_ROSTER_SPECS: Record<Chapter1RosterAssetId, Chapter1Roster
     litePathSegments: ['assets', 'Chương 1', 'Quái mới', '1. Sư Tử Lửa Đền Thờ Lite.glb'],
     targetHeight: 1.55,
     hoverOffsetY: 0,
-    facingYawOffset: 0,
+    facingYawOffset: AUTO_RIG_CALIBRATION.fire_lion.facingYawOffset,
     maxLiteBytes: 520_000,
   },
   stone_guardian: {
@@ -53,7 +60,7 @@ export const CHAPTER1_ROSTER_SPECS: Record<Chapter1RosterAssetId, Chapter1Roster
     litePathSegments: ['assets', 'Chương 1', 'Quái mới', '2. Vệ Binh Đá Mặt Trời Lite.glb'],
     targetHeight: 2.25,
     hoverOffsetY: 0,
-    facingYawOffset: 0,
+    facingYawOffset: AUTO_RIG_CALIBRATION.stone_guardian.facingYawOffset,
     maxLiteBytes: 520_000,
   },
   flame_spirit: {
@@ -66,7 +73,7 @@ export const CHAPTER1_ROSTER_SPECS: Record<Chapter1RosterAssetId, Chapter1Roster
     litePathSegments: ['assets', 'Chương 1', 'Quái mới', '3. Linh Hồn Lửa Hoàng Đạo Lite.glb'],
     targetHeight: 1.75,
     hoverOffsetY: 0.26,
-    facingYawOffset: 0,
+    facingYawOffset: AUTO_RIG_CALIBRATION.flame_spirit.facingYawOffset,
     maxLiteBytes: 520_000,
   },
   sun_spearman: {
@@ -79,7 +86,7 @@ export const CHAPTER1_ROSTER_SPECS: Record<Chapter1RosterAssetId, Chapter1Roster
     litePathSegments: ['assets', 'Chương 1', 'Quái mới', '4. Chiến Binh Thương Ánh Dương Lite.glb'],
     targetHeight: 1.85,
     hoverOffsetY: 0,
-    facingYawOffset: 0,
+    facingYawOffset: AUTO_RIG_CALIBRATION.sun_spearman.facingYawOffset,
     maxLiteBytes: 520_000,
   },
   winged_solar_lion: {
@@ -92,7 +99,7 @@ export const CHAPTER1_ROSTER_SPECS: Record<Chapter1RosterAssetId, Chapter1Roster
     litePathSegments: ['assets', 'Chương 1', 'Boss phụ mới', '1. Sư Tử Cánh Ánh Dương Lite.glb'],
     targetHeight: 2.65,
     hoverOffsetY: 0.08,
-    facingYawOffset: 0,
+    facingYawOffset: AUTO_RIG_CALIBRATION.winged_solar_lion.facingYawOffset,
     maxLiteBytes: 900_000,
   },
 };
@@ -237,6 +244,7 @@ export interface PreparedChapter1RosterTemplate {
   assetId: Chapter1RosterAssetId;
   variant: Chapter1RosterVariant;
   root: THREE.Group;
+  rigTemplate: PreparedAutoRigTemplate;
   scale: number;
   bounds: THREE.Box3;
   sharedGeometries: Set<THREE.BufferGeometry>;
@@ -246,15 +254,15 @@ export interface PreparedChapter1RosterTemplate {
 export interface InstantiatedChapter1RosterModel {
   assetId: Chapter1RosterAssetId;
   group: THREE.Group;
+  rigInstance: AutoRigInstance;
   hitMeshes: THREE.Mesh[];
   bounds: THREE.Box3;
 }
 
 /**
- * Normalizes scale, grounds feet flush at y = 0 (+ hoverOffsetY for floating spirits),
- * centers X/Z around the entity pivot, sets SRGB / anisotropy limits, and flags all
- * BufferGeometries & Textures as shared cached resources so multiple enemy instances
- * never duplicate GPU memory or dispose each other's buffers.
+ * Calibrates facing orientation (+Z), grounds feet flush at y = 0 (+ hoverOffsetY for floating spirits),
+ * auto-rigs real GPU SkinnedMesh 4-bone capsule weights, and flags all BufferGeometries & Textures
+ * as shared cached resources so multiple enemy instances share GPU memory cleanly on Dell E5430.
  */
 export function prepareChapter1RosterTemplate(
   assetId: Chapter1RosterAssetId,
@@ -266,96 +274,39 @@ export function prepareChapter1RosterTemplate(
   const liteMode = Boolean(options?.liteMode);
   const variant: Chapter1RosterVariant = liteMode ? 'lite' : 'high';
 
-  const root = new THREE.Group();
-  root.name = `Ch1RosterTemplate_${assetId}_${variant}`;
+  const rigTemplate = prepareAutoRigTemplate(assetId, gltfScene, maxAnisotropy, {
+    liteMode,
+    facingYawOffset: options?.facingYawOffset ?? spec.facingYawOffset,
+  });
 
-  const pivot = new THREE.Group();
-  pivot.name = `Ch1RosterPivot_${assetId}`;
-  pivot.rotation.y = options?.facingYawOffset ?? spec.facingYawOffset;
-  pivot.add(gltfScene);
-  root.add(pivot);
-
-  root.updateMatrixWorld(true);
-  const rawBox = new THREE.Box3().setFromObject(gltfScene);
-  const rawSize = new THREE.Vector3();
-  const rawCenter = new THREE.Vector3();
-  rawBox.getSize(rawSize);
-  rawBox.getCenter(rawCenter);
-
-  const rawHeight = Math.max(0.001, rawSize.y);
-  const scale = spec.targetHeight / rawHeight;
-
-  gltfScene.scale.setScalar(scale);
-  gltfScene.position.set(
-    -rawCenter.x * scale,
-    -rawBox.min.y * scale + spec.hoverOffsetY,
-    -rawCenter.z * scale
-  );
-
-  const anisoCap = liteMode ? 2 : 8;
-  const aniso = Math.max(1, Math.min(anisoCap, Math.floor(maxAnisotropy || 1)));
-  const sharedGeometries = new Set<THREE.BufferGeometry>();
-  const sharedTextures = new Set<THREE.Texture>();
-
+  // Dispose raw unbaked geometries from the temporary parsed GLTF scene (textures are retained by rigTemplate)
   gltfScene.traverse((obj) => {
-    if (!(obj instanceof THREE.Mesh)) return;
-    obj.castShadow = !liteMode;
-    obj.receiveShadow = true;
-    obj.frustumCulled = false;
-
-    if (obj.geometry) {
-      obj.geometry.userData = {
-        ...(obj.geometry.userData ?? {}),
-        sharedCachedGeometry: true,
-      };
-      sharedGeometries.add(obj.geometry);
-    }
-
-    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-    for (const mat of mats) {
-      if (!mat) continue;
-      if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
-        const registerTex = (tex: THREE.Texture | null | undefined, isSrgb: boolean) => {
-          if (!tex) return;
-          if (isSrgb) {
-            tex.colorSpace = THREE.SRGBColorSpace;
-          }
-          tex.anisotropy = aniso;
-          tex.userData = {
-            ...(tex.userData ?? {}),
-            sharedCachedTexture: true,
-          };
-          tex.needsUpdate = true;
-          sharedTextures.add(tex);
-        };
-        registerTex(mat.map, true);
-        registerTex(mat.normalMap, false);
-        registerTex(mat.roughnessMap, false);
-        registerTex(mat.metalnessMap, false);
-        mat.envMapIntensity = liteMode ? 1.0 : 1.28;
-        mat.needsUpdate = true;
-      }
+    if (obj instanceof THREE.Mesh && obj.geometry && !rigTemplate.sharedGeometries.has(obj.geometry)) {
+      obj.geometry.dispose();
     }
   });
 
-  root.updateMatrixWorld(true);
-  const bounds = new THREE.Box3().setFromObject(root);
+  const root = new THREE.Group();
+  root.name = `Ch1RosterTemplate_${assetId}_${variant}`;
+  const rawHeight = Math.max(0.001, rigTemplate.size.y);
+  const scale = spec.targetHeight / rawHeight;
+
   return {
     assetId,
     variant,
     root,
+    rigTemplate,
     scale,
-    bounds,
-    sharedGeometries,
-    sharedTextures,
+    bounds: rigTemplate.bounds.clone(),
+    sharedGeometries: rigTemplate.sharedGeometries,
+    sharedTextures: rigTemplate.sharedTextures,
   };
 }
 
 /**
- * Instantiates a lightweight combat-ready clone from a cached template.
- * Shares BufferGeometry and GPU Textures across all enemies of the same type;
- * only clones the lightweight Material descriptor so each enemy can flash on hit
- * or glow for Elite/Stage-8 Titan distinction independently.
+ * Instantiates a combat-ready SkinnedMesh rig from a cached template.
+ * Shares BufferGeometry (including skinIndex/skinWeight) & GPU Textures across all enemies of the same type;
+ * gives each instance its own lightweight 10-14 Bone Skeleton, cloned Material for hit-flash, and Bone Anchors.
  */
 export function instantiateChapter1RosterModel(
   template: PreparedChapter1RosterTemplate,
@@ -365,46 +316,15 @@ export function instantiateChapter1RosterModel(
     emissiveIntensity?: number;
   }
 ): InstantiatedChapter1RosterModel {
-  const group = template.root.clone(true);
-  group.name = `Ch1RosterInstance_${template.assetId}`;
-  const heightMult = options?.heightMultiplier ?? 1.0;
-  if (Math.abs(heightMult - 1.0) > 0.001) {
-    group.scale.setScalar(heightMult);
-  }
+  const rigInstance = instantiateAutoRigModel(template.rigTemplate, options);
+  rigInstance.group.name = `Ch1RosterInstance_${template.assetId}`;
 
-  const hitMeshes: THREE.Mesh[] = [];
-  group.traverse((obj) => {
-    if (!(obj instanceof THREE.Mesh)) return;
-    obj.frustumCulled = false;
-
-    const cloneMat = (src: THREE.Material): THREE.Material => {
-      const cloned = src.clone();
-      if (
-        (cloned instanceof THREE.MeshStandardMaterial ||
-          cloned instanceof THREE.MeshPhysicalMaterial) &&
-        options?.emissiveTintHex !== undefined
-      ) {
-        cloned.emissive.setHex(options.emissiveTintHex);
-        cloned.emissiveIntensity = options.emissiveIntensity ?? 0.22;
-      }
-      return cloned;
-    };
-
-    if (Array.isArray(obj.material)) {
-      obj.material = obj.material.map(cloneMat);
-    } else if (obj.material) {
-      obj.material = cloneMat(obj.material);
-    }
-    hitMeshes.push(obj);
-  });
-
-  group.updateMatrixWorld(true);
-  const bounds = new THREE.Box3().setFromObject(group);
   return {
     assetId: template.assetId,
-    group,
-    hitMeshes,
-    bounds,
+    group: rigInstance.group,
+    rigInstance,
+    hitMeshes: rigInstance.skinnedMeshes,
+    bounds: rigInstance.bounds,
   };
 }
 
@@ -462,6 +382,10 @@ export function disposeChapter1RosterTemplateCache(): void {
       if (tex.userData) delete tex.userData.sharedCachedTexture;
       tex.dispose();
     });
+    tpl.rigTemplate.parts.forEach((part) => {
+      const mats = Array.isArray(part.material) ? part.material : [part.material];
+      mats.forEach((m) => m.dispose());
+    });
     tpl.root.traverse((obj) => {
       if (obj instanceof THREE.Mesh && obj.material) {
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -486,6 +410,9 @@ export interface Chapter1RosterMotionInput {
   stunTimer: number;
   hitFlashTimer: number;
   isSubBossTitan?: boolean;
+  lateralSpeed?: number;
+  recoilPitch?: number;
+  recoilRoll?: number;
 }
 
 export interface Chapter1RosterMotionSnapshot {
@@ -661,6 +588,18 @@ export function computeChapter1RosterMotion(
     offsetZ -= 0.08 * h;
     scaleX *= 1 + 0.05 * h;
     scaleY *= 1 - 0.05 * h;
+  }
+
+  // AAA velocity-coupled corner banking & directional hit-flinch away from arrows
+  if (input.lateralSpeed !== undefined && stunTimer <= 0) {
+    const latBank = Math.max(-0.22, Math.min(0.22, (-input.lateralSpeed / 4.0) * 0.2));
+    rollZ += latBank;
+  }
+  if (input.recoilPitch !== undefined) {
+    pitchX += input.recoilPitch;
+  }
+  if (input.recoilRoll !== undefined) {
+    rollZ += input.recoilRoll;
   }
 
   _motionSnap.offsetY = offsetY;

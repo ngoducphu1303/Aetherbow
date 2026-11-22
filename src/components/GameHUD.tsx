@@ -44,6 +44,11 @@ import {
   yawToRadarDegrees,
 } from '../engine/combatFeel';
 import {
+  computeTopHudSafeZoneY,
+  resolveTopCombatBanner,
+  type TopCombatBannerTone,
+} from '../engine/combatHudBanners';
+import {
   AiAutoPilotTactic,
   ChampionshipTacticId,
   CombatKeybinds,
@@ -206,7 +211,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     if (hud.isBossStage && hud.bossName && bossBannerStageRef.current !== hud.stage) {
       bossBannerStageRef.current = hud.stage;
       setBossIntroTitle(hud.bossName);
-      const timer = window.setTimeout(() => setBossIntroTitle(null), 2650);
+      const timer = window.setTimeout(() => setBossIntroTitle(null), isCompact ? 1350 : 1850);
       return () => window.clearTimeout(timer);
     }
     if (!hud.isBossStage) {
@@ -214,7 +219,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       setBossIntroTitle(null);
     }
     return undefined;
-  }, [hud.isBossStage, hud.bossName, hud.stage]);
+  }, [hud.isBossStage, hud.bossName, hud.stage, isCompact]);
 
   // Auto-collapse room buff & stage announcements after 2.5s so top-left stays uncluttered
   const [roomBannerExpanded, setRoomBannerExpanded] = useState<boolean>(false);
@@ -238,10 +243,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const ultPct = Math.max(0, Math.min(100, Math.floor(hud.ultCharge)));
   const ultReady = ultPct >= 100;
   const inspectedSkill = inspectedSkillId ? SKILLS_CATALOG[inspectedSkillId] : null;
+  const hasTopBossBar = Boolean(hud.bossName && !hud.isArenaMode);
+  const topHudSafeY = computeTopHudSafeZoneY(hasTopBossBar, isCompact);
+  const activeTopBanner = resolveTopCombatBanner(hud, bossIntroTitle, isCompact);
   const presentedDamages = resolveFloatingNumberPresentation(
     damages,
     hud.enemiesRemaining,
-    isCompact
+    isCompact,
+    { topSafeY: topHudSafeY, maxLabelLines: 2 }
   );
 
   const arenaOppHpPct = hud.isArenaMode
@@ -252,72 +261,26 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   return (
     <div className="fixed inset-0 z-10 pointer-events-none overflow-hidden">
-      {/* AAA Wave 2: Cinematic Letterbox Framing Bars (Boss Intro & Execution Slow-Mo) */}
-      {cinematicBarRatio > 0.01 && (
+      {/* Slim Cinematic Letterbox Bars (disabled in Compact HUD to maximize arena visibility) */}
+      {!isCompact && cinematicBarRatio > 0.01 && (
         <>
           <div
             aria-hidden="true"
-            className="fixed top-0 left-0 right-0 h-10 sm:h-12 bg-[#02040a] origin-top pointer-events-none z-[18] border-b border-amber-400/20"
+            className="fixed top-0 left-0 right-0 h-5 sm:h-6 bg-[#02040a] origin-top pointer-events-none z-[18] border-b border-amber-400/20"
             style={{
               transform: `scaleY(${cinematicBarRatio})`,
-              opacity: Math.min(0.96, cinematicBarRatio * 1.15),
+              opacity: Math.min(0.88, cinematicBarRatio),
             }}
           />
           <div
             aria-hidden="true"
-            className="fixed bottom-0 left-0 right-0 h-10 sm:h-12 bg-[#02040a] origin-bottom pointer-events-none z-[18] border-t border-amber-400/20"
+            className="fixed bottom-0 left-0 right-0 h-5 sm:h-6 bg-[#02040a] origin-bottom pointer-events-none z-[18] border-t border-amber-400/20"
             style={{
               transform: `scaleY(${cinematicBarRatio})`,
-              opacity: Math.min(0.96, cinematicBarRatio * 1.15),
+              opacity: Math.min(0.88, cinematicBarRatio),
             }}
           />
         </>
-      )}
-
-      {/* AAA Wave 2: Boss Execution Slow-Mo Finisher Callout (kept near top perimeter) */}
-      {(hud.bossFinisherTimer ?? 0) > 0 && hud.bossFinisherName && (
-        <div className="fixed inset-x-0 top-14 z-[20] flex justify-center px-4 pointer-events-none">
-          <div className="aaa-finisher-banner px-5 py-2 rounded-xl border-y-2 border-amber-300 bg-[#14050b]/92 shadow-[0_0_32px_rgba(251,191,36,0.5)] text-center">
-            <div className="text-[9px] font-black uppercase tracking-[0.28em] text-amber-300">
-              KẾT LIỄU HOÀNG ĐẠO
-            </div>
-            <div className="font-display text-lg sm:text-2xl font-black text-white tracking-wider">
-              {hud.bossFinisherName}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AAA Wave 3: Non-Blocking Hero Ultimate Cut-In Strip (pinned high above combat view) */}
-      {(hud.ultCutinTimer ?? 0) > 0 && hud.ultCutinTitle && (
-        <div className="fixed inset-x-0 top-12 z-[19] flex justify-center px-4 pointer-events-none">
-          <div
-            className="aaa-ult-cutin-strip px-3.5 sm:px-5 py-1.5 rounded-xl border-y-2 bg-[#070b1a]/94 shadow-[0_0_28px_rgba(251,191,36,0.42)] flex items-center gap-2.5"
-            style={{ borderColor: hud.ultCutinAccentHex || '#fbbf24' }}
-          >
-            <div className="w-8 h-8 rounded-lg overflow-hidden border border-amber-300/75 bg-slate-950/90 flex items-center justify-center shrink-0">
-              <ResilientAssetImg
-                src={heroAssets.portrait || heroAssets.icon}
-                alt={hud.ultCutinHeroName || hud.heroName}
-                className="w-full h-full object-cover object-top"
-                fallback={
-                  <Zap
-                    className="w-4 h-4 shrink-0"
-                    style={{ color: hud.ultCutinAccentHex || '#fde047' }}
-                  />
-                }
-              />
-            </div>
-            <div className="text-left">
-              <div className="text-[9px] font-black uppercase tracking-[0.22em] text-amber-300">
-                TUYỆT KỸ · {hud.ultCutinHeroName || hud.heroName}
-              </div>
-              <div className="font-display text-sm sm:text-base font-black text-white tracking-wide leading-tight">
-                {hud.ultCutinTitle}
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* AAA Wave 3: Boss Phase II / III Atmosphere Shift Flash */}
@@ -430,7 +393,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </>
       )}
 
-      {/* Floating Damage Numbers (Side-flanked & density-scaled to never block enemies ahead) */}
+      {/* Floating Damage Numbers (Compact, <=2 non-overlapping label lines, flank-pushed clear of Boss) */}
       {presentedDamages.map((d) => {
         const colorClass = d.isHeal
           ? 'text-emerald-300'
@@ -441,13 +404,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           : d.isCrit
           ? 'text-amber-300'
           : d.element === 'fire'
-          ? 'text-orange-400'
+          ? 'text-orange-300'
           : d.element === 'ice'
           ? 'text-cyan-300'
           : d.element === 'storm'
           ? 'text-purple-300'
           : d.element === 'poison'
-          ? 'text-lime-400'
+          ? 'text-lime-300'
           : 'text-slate-100';
 
         const animClass = d.isSuperCrit
@@ -457,22 +420,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           : 'a2-dmg-float';
 
         const shadowStyle = d.isSuperCrit
-          ? '0 2px 6px rgba(0,0,0,0.98), 0 0 14px rgba(251,191,36,0.9)'
-          : d.isCrit
-          ? '0 2px 5px rgba(0,0,0,0.95), 0 0 8px rgba(245,158,11,0.55)'
-          : '0 1px 4px rgba(0,0,0,0.96)';
+          ? '0 1px 3px rgba(0,0,0,0.96), 0 0 8px rgba(251,191,36,0.55)'
+          : '0 1px 3px rgba(0,0,0,0.95)';
 
-        const sizeClass = d.denseMode
+        const sizeClass = d.compactLabel
+          ? isCompact
+            ? 'text-[9.5px] sm:text-[10px] tracking-normal'
+            : 'text-[10px] sm:text-[11px] tracking-normal'
+          : isCompact
           ? d.isSuperCrit
-            ? 'text-base sm:text-lg tracking-tight'
+            ? 'text-xs sm:text-sm tracking-tight'
             : d.isCrit
-            ? 'text-sm sm:text-base'
-            : 'text-[11px] opacity-90'
+            ? 'text-[11px] sm:text-xs'
+            : 'text-[10px] opacity-85'
           : d.isSuperCrit
-          ? 'text-lg sm:text-xl tracking-tight'
+          ? 'text-sm sm:text-[15px] tracking-tight'
           : d.isCrit
-          ? 'text-sm sm:text-lg'
-          : 'text-xs sm:text-sm';
+          ? 'text-xs sm:text-[13px]'
+          : 'text-[11px] opacity-90';
 
         return (
           <div
@@ -482,24 +447,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               top: `${d.y}px`,
               textShadow: shadowStyle,
             }}
-            className={`absolute font-mono-nums font-black leading-none select-none ${animClass} ${sizeClass} ${colorClass}`}
+            className={`absolute -translate-x-1/2 font-mono-nums font-bold leading-none whitespace-nowrap select-none ${animClass} ${sizeClass} ${colorClass}`}
           >
-            {d.isSuperCrit && !d.compactLabel && !d.denseMode && (
-              <span className="block text-[8px] font-display tracking-[0.14em] text-amber-300/95 uppercase mb-0.5 text-center">
-                BẠO ĐỈNH
-              </span>
-            )}
-            <span>
-              {d.compactLabel
-                ? `${d.compactLabel} ${d.amount > 0 ? d.amount : ''}`
-                : d.isHeal
-                ? `+${d.amount}`
-                : d.isSuperCrit
-                ? `${d.amount}!!`
-                : d.isCrit
-                ? `${d.amount}!`
-                : d.amount}
-            </span>
+            {d.compactLabel
+              ? `${d.compactLabel}${d.amount > 0 ? ` ${d.amount}` : ''}`
+              : d.isHeal
+              ? `+${d.amount}`
+              : d.isSuperCrit
+              ? `${d.amount}!!`
+              : d.isCrit
+              ? `${d.amount}!`
+              : d.amount}
           </div>
         );
       })}
@@ -1292,34 +1250,60 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             curLayer > 1 ? underPalette[(curLayer - 1) % underPalette.length] : 'bg-slate-950/90';
 
           const totalHpPct = Math.max(0, Math.min(100, bossHpPct));
+          const hasStagger = (hud.bossMaxShield ?? 0) > 0 || hud.bossStaggerRatio !== undefined;
+          const staggerPct = hasStagger
+            ? hud.bossStaggerRatio !== undefined
+              ? Math.max(0, Math.min(100, hud.bossStaggerRatio * 100))
+              : Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    100 -
+                      ((hud.bossShield ?? 0) / Math.max(1, hud.bossMaxShield ?? 1)) * 100
+                  )
+                )
+            : 0;
+          const stunRemaining = hud.bossStaggerBrokenSec ?? hud.bossStunTimer ?? 0;
+          const isStunned = Boolean(hud.bossStaggerBroken || stunRemaining > 0.05);
+
           return (
             <div
-              className={`w-full max-w-md mx-auto rounded-xl px-3 py-1.5 shadow-xl border ${
+              className={`w-full mx-auto rounded-lg border shadow-md ${
+                isCompact ? 'max-w-sm px-2 py-1' : 'max-w-md px-2.5 py-1'
+              } ${
                 hud.bossPhase === 3
-                  ? 'bg-[#260612]/94 border-amber-300'
+                  ? isCompact
+                    ? 'bg-[#1c060f]/78 border-amber-300/75'
+                    : 'bg-[#220611]/86 border-amber-300/85'
                   : hud.bossPhase === 2
-                  ? 'bg-[#200713]/94 border-amber-400/80'
-                  : 'bg-[#120816]/94 border-amber-300/45'
+                  ? isCompact
+                    ? 'bg-[#190710]/76 border-amber-400/60'
+                    : 'bg-[#1d0712]/84 border-amber-400/70'
+                  : isCompact
+                  ? 'bg-[#0d0713]/74 border-amber-300/35'
+                  : 'bg-[#100816]/82 border-amber-300/40'
               }`}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <BossPortraitBadge
-                  chapterId={hud.chapterId}
-                  weeklyBossId={hud.weeklyBossId}
-                  bossName={hud.bossName}
-                  bossKind={hud.bossEnemyKind}
-                  isDragonLair={hud.isDragonLairMode}
-                  isSkyCitadel={hud.isSkyCitadelMode}
-                  isWorldBoss={hud.isWorldBossMode}
-                  isGuildBoss={hud.isGuildBossMode}
-                  variant="icon"
-                  className="w-6 h-6 rounded-lg"
-                />
-                <div className="flex-1 min-w-0 flex items-center justify-between gap-1.5 text-[11px] font-black">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                {!isCompact && (
+                  <BossPortraitBadge
+                    chapterId={hud.chapterId}
+                    weeklyBossId={hud.weeklyBossId}
+                    bossName={hud.bossName}
+                    bossKind={hud.bossEnemyKind}
+                    isDragonLair={hud.isDragonLairMode}
+                    isSkyCitadel={hud.isSkyCitadelMode}
+                    isWorldBoss={hud.isWorldBossMode}
+                    isGuildBoss={hud.isGuildBossMode}
+                    variant="icon"
+                    className="w-5 h-5 rounded-md shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0 flex items-center justify-between gap-1.5 text-[10.5px] font-bold">
                   <div className="flex items-center gap-1 min-w-0">
                     <span className="font-display text-amber-50 truncate">{hud.bossName}</span>
                     {totalLayers > 1 && (
-                      <span className="font-mono-nums text-[10px] font-black text-amber-300 shrink-0">
+                      <span className="font-mono-nums text-[9.5px] font-black text-amber-300 shrink-0">
                         ×{curLayer}
                       </span>
                     )}
@@ -1327,23 +1311,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       <>
                         <span aria-hidden="true" className="text-slate-600">·</span>
                         {hud.bossPhase === 3 ? (
-                          <span className="text-[9px] font-black uppercase text-amber-200 whitespace-nowrap">
+                          <span className="text-[9px] font-black text-amber-200 whitespace-nowrap">
                             Pha III
                           </span>
                         ) : hud.bossPhase === 2 ? (
-                          <span className="text-[9px] font-black uppercase text-rose-300 whitespace-nowrap">
+                          <span className="text-[9px] font-black text-rose-300 whitespace-nowrap">
                             Pha II
                           </span>
                         ) : (
-                          <span className="text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">
+                          <span className="text-[9px] font-semibold text-slate-400 whitespace-nowrap">
                             Pha I
                           </span>
                         )}
                         {hud.bossTimedEnraged ? (
                           <>
                             <span aria-hidden="true" className="text-slate-600">·</span>
-                            <span className="text-[9px] font-black uppercase text-rose-400 animate-pulse whitespace-nowrap">
-                              Cuồng Nộ!
+                            <span className="text-[9px] font-black text-rose-400 whitespace-nowrap">
+                              Cuồng Nộ
                             </span>
                           </>
                         ) : typeof hud.bossEnrageRemainingSec === 'number' &&
@@ -1353,7 +1337,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                             <span
                               className={`font-mono-nums text-[9px] font-black whitespace-nowrap ${
                                 hud.bossEnrageRemainingSec <= 12
-                                  ? 'text-rose-400 animate-pulse'
+                                  ? 'text-rose-400'
                                   : 'text-amber-300'
                               }`}
                             >
@@ -1364,19 +1348,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       </>
                     )}
                   </div>
-                  <span className="font-mono-nums text-[10px] text-amber-100/95 shrink-0">
+                  <span className="font-mono-nums text-[9.5px] text-amber-100/95 shrink-0">
                     {hud.isWorldBossMode
-                      ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
+                      ? `${hud.worldBossTimeLeft ?? 60}s · ${(hud.worldBossTotalDamage ?? 0).toLocaleString('vi-VN')}`
                       : hud.isGuildBossMode
-                      ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')} ST`
+                      ? `${hud.guildBossTimeLeft ?? 60}s · ${(hud.guildBossTotalDamage ?? 0).toLocaleString('vi-VN')}`
+                      : isCompact
+                      ? `${Math.round(totalHpPct)}%${hasStagger ? ` · ${isStunned ? `Vỡ ${stunRemaining.toFixed(1)}s` : `Giáp ${Math.round(staggerPct)}%`}` : ''}`
                       : `${Math.round(totalHpPct)}% · ${Math.max(0, hud.bossHp).toLocaleString('vi-VN')}`}
                   </span>
                 </div>
               </div>
 
-              <div className={`relative h-2 rounded-full overflow-hidden border border-amber-300/35 ${underBg}`}>
+              <div className={`relative ${isCompact ? 'h-1.5' : 'h-1.5'} rounded-full overflow-hidden border border-amber-300/30 ${underBg}`}>
                 <div
-                  className="h-full bg-amber-100/75 absolute top-0 left-0 transition-all duration-300"
+                  className="h-full bg-amber-100/70 absolute top-0 left-0 transition-all duration-300"
                   style={{ width: `${Math.max(layerFrac, bossLayerGhostPct)}%` }}
                 />
                 <div
@@ -1385,141 +1371,60 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 />
                 <div className="pointer-events-none absolute inset-0 z-[2]" aria-hidden="true">
                   <span
-                    className={`absolute top-0 bottom-0 w-[2px] ${
-                      totalHpPct <= 50 ? 'bg-amber-200/35' : 'bg-amber-300'
+                    className={`absolute top-0 bottom-0 w-[1.5px] ${
+                      totalHpPct <= 50 ? 'bg-amber-200/30' : 'bg-amber-300/90'
                     }`}
                     style={{ left: '50%' }}
                   />
                   <span
-                    className={`absolute top-0 bottom-0 w-[2px] ${
-                      totalHpPct <= 25 ? 'bg-rose-200/35' : 'bg-rose-300'
+                    className={`absolute top-0 bottom-0 w-[1.5px] ${
+                      totalHpPct <= 25 ? 'bg-rose-200/30' : 'bg-rose-300/90'
                     }`}
                     style={{ left: '25%' }}
                   />
                 </div>
               </div>
 
-              {/* Compact Stagger / Guard-Break Micro-Strip */}
-              {((hud.bossMaxShield ?? 0) > 0 || hud.bossStaggerRatio !== undefined) && (() => {
-                const staggerPct =
-                  hud.bossStaggerRatio !== undefined
-                    ? Math.max(0, Math.min(100, hud.bossStaggerRatio * 100))
-                    : Math.max(
-                        0,
-                        Math.min(
-                          100,
-                          100 -
-                            ((hud.bossShield ?? 0) / Math.max(1, hud.bossMaxShield ?? 1)) * 100
-                        )
-                      );
-                const stunRemaining = hud.bossStaggerBrokenSec ?? hud.bossStunTimer ?? 0;
-                const isStunned = Boolean(hud.bossStaggerBroken || stunRemaining > 0.05);
-                return (
-                  <div className="mt-1 flex items-center gap-2">
-                    <div className="relative h-1.5 flex-1 rounded-full bg-slate-950/95 border border-amber-400/35 overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-100 ${
-                          isStunned
-                            ? 'bg-gradient-to-r from-yellow-300 via-amber-400 to-rose-400'
-                            : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-200'
-                        }`}
-                        style={{ width: `${isStunned ? 100 : staggerPct}%` }}
-                      />
-                    </div>
-                    <span
-                      className={`text-[9px] font-mono-nums font-black shrink-0 ${
-                        isStunned ? 'text-yellow-300' : 'text-amber-300/90'
-                      }`}
-                    >
-                      {isStunned ? `VỠ GIÁP ${stunRemaining.toFixed(1)}s` : `Giáp ${Math.round(staggerPct)}%`}
-                    </span>
-                  </div>
-                );
-              })()}
-
-              {/* Compact Boss Punish Window */}
-              {hud.bossPunishActive && (hud.bossStunTimer ?? 0) <= 0.05 && (
-                <div className="mt-1 flex items-center gap-2 text-[9px] font-black text-emerald-300">
-                  <span className="shrink-0">SƠ HỞ +{hud.bossPunishBonusPct ?? 18}% ST</span>
-                  <div className="h-1 flex-1 rounded-full bg-slate-950/95 overflow-hidden">
+              {/* Ultra-Slim Stagger Strip */}
+              {hasStagger && (
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <div className="relative h-1 flex-1 rounded-full bg-slate-950/90 overflow-hidden">
                     <div
-                      className="h-full bg-emerald-400 transition-all duration-75"
-                      style={{
-                        width: `${Math.max(4, Math.min(100, Math.round((hud.bossPunishRatio ?? 0) * 100)))}%`,
-                      }}
+                      className={`h-full transition-all duration-100 ${
+                        isStunned
+                          ? 'bg-gradient-to-r from-yellow-300 via-amber-400 to-rose-400'
+                          : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-200'
+                      }`}
+                      style={{ width: `${isStunned ? 100 : staggerPct}%` }}
                     />
                   </div>
+                  {!isCompact && (
+                    <span
+                      className={`text-[8.5px] font-mono-nums font-bold shrink-0 ${
+                        isStunned ? 'text-yellow-300' : 'text-amber-300/85'
+                      }`}
+                    >
+                      {isStunned ? `Vỡ giáp ${stunRemaining.toFixed(1)}s` : `Giáp ${Math.round(staggerPct)}%`}
+                    </span>
+                  )}
                 </div>
               )}
 
-              {/* Compact Boss Telegraph Windup Bar */}
-              {hud.activeBossTelegraph && (hud.bossStunTimer ?? 0) <= 0.05 && (() => {
-                const tg = hud.activeBossTelegraph;
-                const ratio = Math.max(0, Math.min(1, tg.remainingSec / Math.max(0.25, tg.durationSec)));
-                const isCritical = tg.dangerLevel === 'critical';
-                return (
-                  <div
-                    className={`mt-1 rounded-md px-2 py-0.5 bg-[#230712]/95 border ${
-                      isCritical ? 'border-rose-400/80' : 'border-amber-400/75'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 text-[9px] font-black">
-                      <span className="flex items-center gap-1 text-rose-200 truncate">
-                        <AlertTriangle
-                          className={`w-3 h-3 shrink-0 ${
-                            isCritical ? 'text-rose-400' : 'text-amber-300'
-                          }`}
-                        />
-                        <span className="truncate">{tg.label}</span>
-                        <span className="text-amber-300">· {tg.actionHint}</span>
-                      </span>
-                      <span className="font-mono-nums text-rose-100 shrink-0">
-                        {tg.remainingSec.toFixed(1)}s
-                      </span>
-                    </div>
-                    <div className="mt-0.5 h-1 w-full rounded-full bg-slate-950/95 overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-75 ${
-                          isCritical ? 'bg-rose-400' : 'bg-amber-400'
-                        }`}
-                        style={{ width: `${Math.max(5, Math.round(ratio * 100))}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-              {/* Wave 10: Breakable 3D Boss Parts Micro-Bars */}
-              {hud.bossParts && hud.bossParts.length > 0 && (
-                <div className="mt-1 grid grid-cols-3 gap-1">
+              {/* Inline Single-Line Boss Parts Readout (Normal HUD only; hidden in Compact HUD) */}
+              {!isCompact && hud.bossParts && hud.bossParts.length > 0 && (
+                <div className="mt-0.5 flex items-center justify-between gap-2 text-[8.5px] font-mono-nums text-slate-300/90 truncate">
                   {hud.bossParts.map((part) => {
                     const partPct = Math.max(
                       0,
-                      Math.min(100, (part.hp / Math.max(1, part.maxHp)) * 100)
+                      Math.min(100, Math.round((part.hp / Math.max(1, part.maxHp)) * 100))
                     );
                     return (
-                      <div
+                      <span
                         key={part.id}
-                        className={`rounded px-1.5 py-0.5 border text-[8.5px] leading-tight ${
-                          part.broken
-                            ? 'bg-emerald-950/90 border-emerald-400/50 text-emerald-200'
-                            : 'bg-slate-950/90 border-amber-400/30 text-slate-200'
-                        }`}
+                        className={`truncate ${part.broken ? 'text-emerald-300 font-bold' : ''}`}
                       >
-                        <div className="flex items-center justify-between gap-1 font-bold truncate">
-                          <span className="truncate">{part.label}</span>
-                          <span className="font-mono-nums shrink-0">
-                            {part.broken ? part.debuffLabel : `${Math.round(partPct)}%`}
-                          </span>
-                        </div>
-                        {!part.broken && (
-                          <div className="mt-0.5 h-0.5 w-full rounded-full bg-slate-900 overflow-hidden">
-                            <div
-                              className="h-full bg-amber-300 transition-all duration-100"
-                              style={{ width: `${Math.max(4, partPct)}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
+                        {part.label}: {part.broken ? part.debuffLabel : `${partPct}%`}
+                      </span>
                     );
                   })}
                 </div>
@@ -1528,80 +1433,99 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           );
         })()}
 
-        {/* Wave 10: Broken Boss Part Notification */}
-        {hud.bossPartBrokenBanner && (
-          <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#251205]/95 border border-amber-300 text-center">
-            <div className="font-display text-[10.5px] font-black text-amber-200 truncate">
-              {hud.bossPartBrokenBanner}
-            </div>
-          </div>
-        )}
-
-        {/* Slim Boss Guard-Break / Phase Transition Strips */}
-        {(hud.bossBrokenBannerTimer ?? 0) > 0 && (
-          <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-gradient-to-r from-amber-500/95 to-orange-500/95 border border-yellow-100 text-slate-950 text-center">
-            <div className="font-display text-[11px] font-black tracking-wide flex items-center justify-center gap-1.5">
-              <Zap className="w-3 h-3 fill-current shrink-0" />
-              <span>PHÁ GIÁP CHẤN ĐỘNG! · +45% SÁT THƯƠNG</span>
-            </div>
-          </div>
-        )}
-
-        {(hud.bossPhaseThreeBannerTimer ?? 0) > 0 && (hud.bossBrokenBannerTimer ?? 0) <= 0 && (
-          <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#2c0512]/95 border border-amber-300 text-center">
-            <div className="font-display text-[11px] font-black text-amber-200 flex items-center justify-center gap-1.5">
-              <Crown className="w-3 h-3 text-amber-300 shrink-0" />
-              <span>PHA III TỐI THƯỢNG · +24% SÁT THƯƠNG PHẢN ĐÒN</span>
-            </div>
-          </div>
-        )}
-
-        {(hud.bossPhaseTwoBannerTimer ?? 0) > 0 &&
-          (hud.bossPhaseThreeBannerTimer ?? 0) <= 0 &&
-          (hud.bossBrokenBannerTimer ?? 0) <= 0 && (
-          <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#2a0715]/95 border border-amber-300/85 text-center">
-            <div className="font-display text-[11px] font-black text-amber-200 flex items-center justify-center gap-1.5">
-              <Flame className="w-3 h-3 text-rose-400 shrink-0" />
-              <span>PHA II CUỒNG NỘ · BOSS TĂNG TỐC</span>
-            </div>
-          </div>
-        )}
-
-        {/* Wave 9 Pillar 1 & 2: Boss Phase Transition 2.5s Counter Window */}
-        {hud.phaseCounterReady && (hud.phaseCounterWindowSec ?? 0) > 0 && (() => {
-          const rem = hud.phaseCounterWindowSec ?? 0;
-          const total = Math.max(0.5, hud.phaseCounterWindowTotalSec ?? 2.5);
-          const ratioPct = Math.max(4, Math.min(100, Math.round((rem / total) * 100)));
+        {/* Single-Slot Top-Edge Priority Strip (Unifies ALL Boss warnings, phase shifts, finishers, telegraphs & ult cut-ins into 1 slim row so nothing ever stacks or blocks the Boss) */}
+        {activeTopBanner && (() => {
+          const toneMap: Record<
+            TopCombatBannerTone,
+            { container: string; kicker: string; bar: string }
+          > = {
+            cyan: {
+              container: isCompact
+                ? 'bg-black/62 border-cyan-300/60 text-cyan-50'
+                : 'bg-[#071828]/84 border-cyan-300/75 text-cyan-50',
+              kicker: 'text-cyan-300',
+              bar: 'bg-gradient-to-r from-cyan-400 to-amber-300',
+            },
+            amber: {
+              container: isCompact
+                ? 'bg-black/62 border-amber-300/60 text-amber-50'
+                : 'bg-[#1a1005]/84 border-amber-300/75 text-amber-50',
+              kicker: 'text-amber-300',
+              bar: 'bg-amber-400',
+            },
+            gold: {
+              container: isCompact
+                ? 'bg-amber-500/85 border-yellow-100/80 text-slate-950'
+                : 'bg-gradient-to-r from-amber-500/90 to-orange-500/90 border-yellow-100/90 text-slate-950',
+              kicker: 'text-slate-950',
+              bar: 'bg-yellow-200',
+            },
+            rose: {
+              container: isCompact
+                ? 'bg-black/62 border-rose-400/65 text-rose-50'
+                : 'bg-[#250712]/84 border-rose-400/75 text-rose-50',
+              kicker: 'text-rose-300',
+              bar: 'bg-rose-400',
+            },
+            crimson: {
+              container: isCompact
+                ? 'bg-black/62 border-amber-400/55 text-white'
+                : 'bg-[#200610]/84 border-amber-300/70 text-white',
+              kicker: 'text-amber-300',
+              bar: 'bg-amber-400',
+            },
+            emerald: {
+              container: isCompact
+                ? 'bg-black/62 border-emerald-400/60 text-emerald-50'
+                : 'bg-[#061c15]/84 border-emerald-400/70 text-emerald-50',
+              kicker: 'text-emerald-300',
+              bar: 'bg-emerald-400',
+            },
+          };
+          const theme = toneMap[activeTopBanner.tone];
           return (
-            <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#071828]/95 border border-cyan-300/85 shadow-lg">
-              <div className="flex items-center justify-between gap-2 text-[10px] font-black text-cyan-100">
-                <span className="flex items-center gap-1 truncate">
-                  <Zap className="w-3 h-3 text-amber-300 shrink-0" />
-                  <span className="truncate">CỬA SỔ PHẢN CÔNG PHA · BẮN CHÍ MẠNG / Q</span>
-                </span>
-                <span className="font-mono-nums text-amber-300 shrink-0">{rem.toFixed(1)}s</span>
+            <div
+              key={activeTopBanner.id}
+              className={`relative w-full mx-auto overflow-hidden rounded-md border ${
+                isCompact ? 'max-w-sm px-2 py-0.5' : 'max-w-md px-2.5 py-0.5'
+              } ${theme.container}`}
+              style={{ textShadow: activeTopBanner.tone === 'gold' ? 'none' : '0 1px 2px rgba(0,0,0,0.9)' }}
+            >
+              <div
+                className={`flex items-center justify-between gap-2 whitespace-nowrap ${
+                  isCompact ? 'text-[9.5px] leading-tight' : 'text-[10px] leading-tight'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                  <span className={`font-display font-black shrink-0 ${theme.kicker}`}>
+                    {activeTopBanner.kicker}
+                  </span>
+                  <span aria-hidden="true" className="opacity-50 shrink-0">·</span>
+                  <span className="font-semibold truncate">{activeTopBanner.title}</span>
+                  {activeTopBanner.detail && (
+                    <>
+                      <span aria-hidden="true" className="opacity-45 shrink-0 hidden sm:inline">·</span>
+                      <span className="opacity-85 truncate hidden sm:inline">{activeTopBanner.detail}</span>
+                    </>
+                  )}
+                </div>
+                {activeTopBanner.timerText && (
+                  <span className="font-mono-nums font-black shrink-0">
+                    {activeTopBanner.timerText}
+                  </span>
+                )}
               </div>
-              <div className="mt-0.5 h-1 w-full rounded-full bg-slate-950 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-cyan-400 to-amber-300 transition-all duration-75"
-                  style={{ width: `${ratioPct}%` }}
-                />
-              </div>
+              {activeTopBanner.progressRatio !== undefined && (
+                <div className="mt-0.5 h-[2px] w-full rounded-full bg-black/50 overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-75 ${theme.bar}`}
+                    style={{ width: `${Math.max(4, Math.round(activeTopBanner.progressRatio * 100))}%` }}
+                  />
+                </div>
+              )}
             </div>
           );
         })()}
-
-        {/* Wave 9 Pillar 2: Interactive Execution Finisher Readiness Strip */}
-        {hud.finisherReadyTargetName && (
-          <div className="w-full max-w-sm mx-auto rounded-lg px-3 py-1 bg-[#231205]/95 border border-amber-300/90 text-center">
-            <div className="font-display text-[10px] font-black text-amber-200 flex items-center justify-center gap-1.5">
-              <Crosshair className="w-3 h-3 text-amber-300 shrink-0" />
-              <span className="truncate">
-                KẾT LIỄU: {hud.finisherReadyTargetName} ({hud.finisherTargetHpPct ?? 18}% HP) · BẤM F HOẶC Q
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* Crystal Defense Spirit Crystal HP Bar */}
         {hud.isCrystalDefenseMode && (() => {
@@ -2295,68 +2219,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       </div>
 
-      {/* Wave 14: Cinematic Boss Warning Cut-In Overlay */}
-      {hud.bossWarningTitle ? (
-        <div className="mt-4 flex justify-center px-3 pointer-events-none">
-          <div className="w14-boss-warning-cutin relative w-full max-w-2xl overflow-hidden rounded-2xl border-y-2 border-amber-300/90 bg-gradient-to-r from-[#1a040c]/95 via-[#4c071b]/95 to-[#1a040c]/95 px-5 py-3 shadow-[0_0_38px_rgba(244,63,94,0.65)]">
-            <div className="flex items-center justify-center gap-3.5 text-center sm:text-left">
-              <BossPortraitBadge
-                chapterId={hud.chapterId}
-                weeklyBossId={hud.weeklyBossId}
-                bossName={hud.bossWarningTitle}
-                bossKind={hud.bossEnemyKind}
-                isDragonLair={hud.isDragonLairMode}
-                isSkyCitadel={hud.isSkyCitadelMode}
-                isWorldBoss={hud.isWorldBossMode}
-                isGuildBoss={hud.isGuildBossMode}
-                variant="portrait"
-                className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 border-amber-300/85"
-              />
-              <div className="min-w-0">
-                <div className="flex items-center justify-center sm:justify-start gap-1.5 text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span>CẢNH BÁO ĐỎ · THỦ LĨNH XUẤT TRẬN</span>
-                </div>
-                <div className="font-display text-lg sm:text-2xl font-black text-white tracking-wide truncate">
-                  {hud.bossWarningTitle}
-                </div>
-                {hud.bossWarningSubtitle && (
-                  <div className="text-xs font-bold text-rose-200/95 truncate mt-0.5">
-                    {hud.bossWarningSubtitle}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : bossIntroTitle ? (
-        <div className="mt-4 flex justify-center px-4">
-          <div className="a2-boss-intro w-full max-w-md rounded-2xl bg-[#180710]/96 border border-amber-300/80 px-5 py-3 shadow-[0_12px_36px_rgba(0,0,0,0.72)] flex items-center gap-3.5">
-            <BossPortraitBadge
-              chapterId={hud.chapterId}
-              weeklyBossId={hud.weeklyBossId}
-              bossName={bossIntroTitle}
-              bossKind={hud.bossEnemyKind}
-              isDragonLair={hud.isDragonLairMode}
-              isSkyCitadel={hud.isSkyCitadelMode}
-              isWorldBoss={hud.isWorldBossMode}
-              isGuildBoss={hud.isGuildBossMode}
-              variant="portrait"
-              className="w-12 h-12 rounded-xl border-amber-300/80"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
-                <span>Đại Boss Hoàng Đạo</span>
-                <span aria-hidden="true" className="text-amber-500/60">·</span>
-                <span className="text-rose-300">Khai Chiến</span>
-              </div>
-              <div className="font-display text-base sm:text-xl font-black text-white truncate tracking-wide">
-                {bossIntroTitle}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* Center arena stays 100% clear — Boss warnings & intros render in the single-slot top perimeter strip */}
 
       {/* BOTTOM PERIMETER: Interactive Active Skills + Sleek Vitals + Dual Action Medallions */}
       <div
