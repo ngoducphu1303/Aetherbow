@@ -204,6 +204,79 @@ export interface SolarLeoWingsAuraRig {
   featherCount: number;
 }
 
+export type SolarLeoArtifactActionKind =
+  | 'orbital_drift'
+  | 'harmonic_align'
+  | 'gyroscope_overdrive'
+  | 'solar_resonance';
+
+export interface SolarLeoArtifactPoseOptions {
+  mode?: 'lobby' | 'combat';
+  speed?: number;
+  bankAngle?: number;
+  dashing?: boolean;
+  energyBurst?: number;
+  celebrating?: boolean;
+}
+
+export interface SolarLeoArtifactActionFrame {
+  action: SolarLeoArtifactActionKind;
+  phase: number;
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
+  spinSpeedY: number;
+  tiltX: number;
+  tiltZ: number;
+  scalePulse: number;
+  corePulse: number;
+  emissiveBoost: number;
+  orbitSpeedMult: number;
+  orbitRadiusMult: number;
+}
+
+export interface SolarLeoArtifactAuraRig {
+  group: THREE.Group;
+  planets: THREE.InstancedMesh;
+  planetCount: number;
+  coreOrb: THREE.Mesh;
+  gyroRing?: THREE.Mesh;
+}
+
+export type SolarLeoHaloActionKind =
+  | 'sovereign_radiance'
+  | 'zodiac_pulse'
+  | 'celestial_tilt'
+  | 'corona_flare';
+
+export interface SolarLeoHaloPoseOptions {
+  mode?: 'lobby' | 'combat';
+  speed?: number;
+  dashing?: boolean;
+  ultBurst?: number;
+  celebrating?: boolean;
+}
+
+export interface SolarLeoHaloActionFrame {
+  action: SolarLeoHaloActionKind;
+  phase: number;
+  spinSpeedZ: number;
+  tiltX: number;
+  tiltY: number;
+  hoverY: number;
+  scalePulse: number;
+  emissiveBoost: number;
+  starOrbitSpeedMult: number;
+  starRadiusMult: number;
+}
+
+export interface SolarLeoHaloAuraRig {
+  group: THREE.Group;
+  stars: THREE.InstancedMesh;
+  starCount: number;
+  outerRing?: THREE.Mesh;
+}
+
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   aurelia: {
     id: 'aurelia',
@@ -831,6 +904,8 @@ export interface InstantiatedSolarLeoModel {
   petAuraRig?: SolarLeoPetAuraRig;
   mountAuraRig?: SolarLeoMountAuraRig;
   wingsAuraRig?: SolarLeoWingsAuraRig;
+  artifactAuraRig?: SolarLeoArtifactAuraRig;
+  haloAuraRig?: SolarLeoHaloAuraRig;
   bounds: THREE.Box3;
   size: THREE.Vector3;
   gaitPhase: number;
@@ -1301,6 +1376,18 @@ export function instantiateSolarLeoModel(
     group.add(wingsAuraRig.group);
   }
 
+  let artifactAuraRig: SolarLeoArtifactAuraRig | undefined;
+  if (template.rigType === 'artifact') {
+    artifactAuraRig = createSolarLeoArtifactAuraRig(liteMode);
+    group.add(artifactAuraRig.group);
+  }
+
+  let haloAuraRig: SolarLeoHaloAuraRig | undefined;
+  if (template.rigType === 'halo') {
+    haloAuraRig = createSolarLeoHaloAuraRig(liteMode);
+    group.add(haloAuraRig.group);
+  }
+
   return {
     assetId: template.assetId,
     rigType: template.rigType,
@@ -1316,6 +1403,8 @@ export function instantiateSolarLeoModel(
     petAuraRig,
     mountAuraRig,
     wingsAuraRig,
+    artifactAuraRig,
+    haloAuraRig,
     bounds: template.bounds.clone(),
     size: template.size.clone(),
     gaitPhase: 0,
@@ -2636,24 +2725,580 @@ export function updateSolarLeoPetPose(
   }
 }
 
+const _artifactPlanetDummy = new THREE.Object3D();
+const _artifactColGold = new THREE.Color(0xfef08a);
+const _artifactColCyan = new THREE.Color(0x67e8f9);
+const _artifactColViolet = new THREE.Color(0xc4b5fd);
+const _artifactColWhite = new THREE.Color(0xffffff);
+
+const ARTIFACT_ACTION_CYCLE: readonly SolarLeoArtifactActionKind[] = [
+  'orbital_drift',
+  'harmonic_align',
+  'gyroscope_overdrive',
+  'solar_resonance',
+];
+
+const ARTIFACT_ACTION_DURATION_SEC = 4.8;
+
+function createSolarLeoArtifactAuraRig(liteMode: boolean): SolarLeoArtifactAuraRig {
+  const group = new THREE.Group();
+  group.name = 'RegulusAstrolabeAura';
+
+  // Single InstancedMesh = 1 draw call (6 orbital star-gems in Lite, 12 in High)
+  const planetCount = liteMode ? 6 : 12;
+  const planetGeo = new THREE.OctahedronGeometry(0.036, 0);
+  const planetMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.94,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const planets = new THREE.InstancedMesh(planetGeo, planetMat, planetCount);
+  planets.name = 'RegulusOrbitalStars';
+  planets.frustumCulled = false;
+
+  for (let i = 0; i < planetCount; i++) {
+    const col =
+      i % 4 === 0
+        ? _artifactColGold
+        : i % 4 === 1
+          ? _artifactColCyan
+          : i % 4 === 2
+            ? _artifactColViolet
+            : _artifactColWhite;
+    planets.setColorAt(i, col);
+    _artifactPlanetDummy.position.set(0.35, 0, 0);
+    _artifactPlanetDummy.scale.setScalar(0.8);
+    _artifactPlanetDummy.updateMatrix();
+    planets.setMatrixAt(i, _artifactPlanetDummy.matrix);
+  }
+  if (planets.instanceColor) planets.instanceColor.needsUpdate = true;
+  planets.instanceMatrix.needsUpdate = true;
+  group.add(planets);
+
+  // Luminous Regulus star heart suspended inside the armillary core
+  const coreOrb = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.068, liteMode ? 0 : 1),
+    new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.88,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+  );
+  coreOrb.name = 'RegulusStarCore';
+  group.add(coreOrb);
+
+  let gyroRing: THREE.Mesh | undefined;
+  if (!liteMode) {
+    const ringGeo = new THREE.TorusGeometry(0.36, 0.0095, 6, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      transparent: true,
+      opacity: 0.56,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    gyroRing = new THREE.Mesh(ringGeo, ringMat);
+    gyroRing.name = 'RegulusCounterGyroRing';
+    group.add(gyroRing);
+  }
+
+  return { group, planets, planetCount, coreOrb, gyroRing };
+}
+
+/**
+ * Pure deterministic choreographer for Astrolabe of Regulus (Mythic Artifact):
+ * graceful orbital drift, harmonic star alignment pulse, multi-axis gyroscopic overdrive,
+ * and glowing solar resonance (plus immediate supernova overdrive on tap/ult/victory).
+ */
+export function evaluateArtifactCelestialAction(
+  elapsed: number,
+  mode: 'lobby' | 'combat' = 'lobby',
+  celebrating = false
+): SolarLeoArtifactActionFrame {
+  const safeT = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0);
+
+  if (celebrating) {
+    const p = (safeT * 1.5) % 1;
+    const surge = Math.sin(p * Math.PI);
+    return {
+      action: 'gyroscope_overdrive',
+      phase: p,
+      offsetX: Math.sin(safeT * 4.2) * 0.09,
+      offsetY: 0.12 + surge * 0.14,
+      offsetZ: Math.cos(safeT * 4.2) * 0.07,
+      spinSpeedY: 5.2,
+      tiltX: Math.sin(safeT * 5.0) * 0.55,
+      tiltZ: Math.cos(safeT * 4.6) * 0.45,
+      scalePulse: 1.06 + surge * 0.1,
+      corePulse: 1.45 + surge * 0.55,
+      emissiveBoost: 0.52,
+      orbitSpeedMult: 2.3,
+      orbitRadiusMult: 1.28,
+    };
+  }
+
+  if (mode === 'combat') {
+    const wave = Math.sin(safeT * 2.8);
+    return {
+      action: 'orbital_drift',
+      phase: (safeT / 3.4) % 1,
+      offsetX: Math.sin(safeT * 1.9) * 0.06,
+      offsetY: wave * 0.08,
+      offsetZ: Math.cos(safeT * 1.9) * 0.05,
+      spinSpeedY: 2.1,
+      tiltX: Math.sin(safeT * 2.4) * 0.28,
+      tiltZ: Math.cos(safeT * 1.9) * 0.24,
+      scalePulse: 1 + wave * 0.035,
+      corePulse: 1.05 + Math.abs(wave) * 0.25,
+      emissiveBoost: 0.22,
+      orbitSpeedMult: 1.45,
+      orbitRadiusMult: 1.05,
+    };
+  }
+
+  const slot = Math.floor(safeT / ARTIFACT_ACTION_DURATION_SEC) % ARTIFACT_ACTION_CYCLE.length;
+  const action = ARTIFACT_ACTION_CYCLE[slot];
+  const p = (safeT % ARTIFACT_ACTION_DURATION_SEC) / ARTIFACT_ACTION_DURATION_SEC;
+  const env = smoothstep01(Math.min(p / 0.16, (1 - p) / 0.16));
+
+  switch (action) {
+    case 'orbital_drift': {
+      // Graceful infinity Lissajous float with smooth celestial tilt
+      const theta = p * Math.PI * 2;
+      return {
+        action,
+        phase: p,
+        offsetX: Math.sin(theta) * 0.13 * env,
+        offsetY: Math.sin(theta * 2) * 0.11 * env,
+        offsetZ: Math.cos(theta) * 0.09 * env,
+        spinSpeedY: 1.65,
+        tiltX: Math.sin(theta) * 0.34 * env,
+        tiltZ: Math.cos(theta) * 0.28 * env,
+        scalePulse: 1 + Math.sin(theta * 2) * 0.04 * env,
+        corePulse: 1.0 + Math.abs(Math.sin(theta)) * 0.35 * env,
+        emissiveBoost: 0.18,
+        orbitSpeedMult: 1.2,
+        orbitRadiusMult: 1.05,
+      };
+    }
+    case 'harmonic_align': {
+      // Rises & locks cleanly facing forward, then unleashes a rhythmic golden alignment pulse
+      const align = Math.sin(p * Math.PI);
+      const pulseWave = Math.abs(Math.sin(smoothstep01((p - 0.18) / 0.64) * Math.PI * 2));
+      return {
+        action,
+        phase: p,
+        offsetX: 0,
+        offsetY: 0.14 * align * env,
+        offsetZ: 0.08 * align * env,
+        spinSpeedY: 0.75 + pulseWave * 1.4,
+        tiltX: 0.05 * Math.sin(p * Math.PI * 4) * env,
+        tiltZ: 0.06 * Math.cos(p * Math.PI * 4) * env,
+        scalePulse: 1 + pulseWave * 0.11 * env,
+        corePulse: 1.15 + pulseWave * 0.75 * env,
+        emissiveBoost: 0.2 + pulseWave * 0.4,
+        orbitSpeedMult: 0.9 + pulseWave * 1.1,
+        orbitRadiusMult: 0.92 + pulseWave * 0.32,
+      };
+    }
+    case 'gyroscope_overdrive': {
+      // High-energy 3D gyroscopic precession spin with swirling outward planetary stars
+      const peak = Math.sin(p * Math.PI);
+      const tSpin = p * Math.PI * 4;
+      return {
+        action,
+        phase: p,
+        offsetX: Math.cos(tSpin * 0.5) * 0.09 * env,
+        offsetY: 0.09 * peak * env,
+        offsetZ: Math.sin(tSpin * 0.5) * 0.07 * env,
+        spinSpeedY: 1.8 + peak * 3.8,
+        tiltX: Math.sin(tSpin) * 0.62 * peak,
+        tiltZ: Math.cos(tSpin) * 0.52 * peak,
+        scalePulse: 1 + peak * 0.07,
+        corePulse: 1.1 + peak * 0.6,
+        emissiveBoost: 0.22 + peak * 0.36,
+        orbitSpeedMult: 1.3 + peak * 1.35,
+        orbitRadiusMult: 1.04 + peak * 0.28,
+      };
+    }
+    case 'solar_resonance': {
+      // Majestic deep breathing hover with luminous harmonic shimmer
+      const beat = Math.sin(p * Math.PI * 4);
+      const swell = Math.sin(p * Math.PI);
+      return {
+        action,
+        phase: p,
+        offsetX: Math.sin(p * Math.PI * 2) * 0.07 * env,
+        offsetY: 0.06 * swell * env + beat * 0.05 * env,
+        offsetZ: 0.05 * swell * env,
+        spinSpeedY: 1.35,
+        tiltX: 0.22 * Math.sin(p * Math.PI * 2) * env,
+        tiltZ: -0.24 * Math.cos(p * Math.PI * 2) * env,
+        scalePulse: 1 + (0.04 + Math.abs(beat) * 0.06) * env,
+        corePulse: 1.1 + Math.abs(beat) * 0.55 * env,
+        emissiveBoost: 0.28 + Math.abs(beat) * 0.28 * env,
+        orbitSpeedMult: 1.35,
+        orbitRadiusMult: 1.12,
+      };
+    }
+  }
+}
+
 export function updateSolarLeoArtifactPose(
   rig: InstantiatedSolarLeoModel,
   elapsed: number,
-  dt: number
+  dt: number,
+  options?: SolarLeoArtifactPoseOptions
 ): void {
-  rig.visualRoot.rotation.y += dt * 1.45;
-  rig.visualRoot.rotation.x = Math.sin(elapsed * 1.8) * 0.24;
-  rig.visualRoot.rotation.z = Math.cos(elapsed * 1.35) * 0.18;
-  rig.visualRoot.position.y = Math.sin(elapsed * 2.9) * 0.06;
+  const mode = options?.mode ?? 'lobby';
+  const speed = options?.speed ?? 0;
+  const bankAngle = THREE.MathUtils.clamp(options?.bankAngle ?? 0, -0.45, 0.45);
+  const dashing = Boolean(options?.dashing);
+  const energyBurst = THREE.MathUtils.clamp(options?.energyBurst ?? 0, 0, 1);
+  const celebrating = Boolean(options?.celebrating) || energyBurst > 0.25;
+
+  const frame = evaluateArtifactCelestialAction(elapsed, mode, celebrating);
+  const moveFactor = Math.min(1, speed / 5.5);
+  const lam = 11;
+
+  rig.visualRoot.rotation.y += dt * (frame.spinSpeedY + moveFactor * 1.1 + (dashing ? 2.2 : 0) + energyBurst * 2.4);
+  rig.visualRoot.rotation.x = THREE.MathUtils.damp(
+    rig.visualRoot.rotation.x,
+    frame.tiltX + Math.sin(elapsed * 1.8) * 0.14 + (dashing ? 0.22 : 0),
+    lam,
+    dt
+  );
+  rig.visualRoot.rotation.z = THREE.MathUtils.damp(
+    rig.visualRoot.rotation.z,
+    frame.tiltZ + Math.cos(elapsed * 1.35) * 0.12 + bankAngle * 0.45,
+    lam,
+    dt
+  );
+
+  const hoverY = Math.sin(elapsed * 2.9) * 0.06 + frame.offsetY;
+  rig.visualRoot.position.x = THREE.MathUtils.damp(rig.visualRoot.position.x, frame.offsetX, lam, dt);
+  rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, hoverY, lam, dt);
+  rig.visualRoot.position.z = THREE.MathUtils.damp(rig.visualRoot.position.z, frame.offsetZ, lam, dt);
+
+  const sc = frame.scalePulse + energyBurst * 0.12 + (dashing ? 0.06 : 0);
+  rig.visualRoot.scale.setScalar(THREE.MathUtils.damp(rig.visualRoot.scale.x, sc, lam, dt));
+
+  // Living golden emissive shimmer on the sculpted Astrolabe
+  const targetEmissive = 0.2 + frame.emissiveBoost + energyBurst * 0.35 + (dashing ? 0.18 : 0);
+  for (let m = 0; m < rig.hitMeshes.length; m++) {
+    const mat = rig.hitMeshes[m].material as THREE.MeshStandardMaterial;
+    if (mat && typeof mat.emissiveIntensity === 'number') {
+      mat.emissiveIntensity = THREE.MathUtils.clamp(targetEmissive, 0.14, 0.85);
+    }
+  }
+
+  // Update orbiting planetary star-gems, pulsing Regulus core & counter-rotating gyro ring (zero allocations)
+  if (rig.artifactAuraRig) {
+    const { planets, planetCount, coreOrb, gyroRing } = rig.artifactAuraRig;
+    const vx = rig.visualRoot.position.x;
+    const vy = rig.visualRoot.position.y;
+    const vz = rig.visualRoot.position.z;
+    const orbitSpeed = 1.95 * frame.orbitSpeedMult + (dashing ? 1.8 : 0) + energyBurst * 2.0;
+    const baseRadius = 0.38 * frame.orbitRadiusMult + energyBurst * 0.12;
+
+    for (let i = 0; i < planetCount; i++) {
+      const band = i % 3;
+      const dir = band === 1 ? -1 : 1;
+      const a = elapsed * orbitSpeed * dir + (i / planetCount) * Math.PI * 2;
+      const tilt = band === 0 ? 0.38 : band === 1 ? -0.58 : 0.92;
+      const r = baseRadius + Math.sin(elapsed * 3.1 + i * 1.4) * 0.05;
+      const cx = Math.cos(a) * r;
+      const sz = Math.sin(a) * r;
+      const px = vx + cx;
+      const py = vy + sz * Math.sin(tilt);
+      const pz = vz + sz * Math.cos(tilt);
+      const twinkle = 0.6 + Math.abs(Math.sin(elapsed * 5.6 + i * 1.9)) * (0.68 + energyBurst * 0.45);
+      _artifactPlanetDummy.position.set(px, py, pz);
+      _artifactPlanetDummy.rotation.set(elapsed * 2.8 + i, elapsed * 3.4, i);
+      _artifactPlanetDummy.scale.set(twinkle * 0.85, twinkle * 1.32, twinkle * 0.85);
+      _artifactPlanetDummy.updateMatrix();
+      planets.setMatrixAt(i, _artifactPlanetDummy.matrix);
+    }
+    planets.instanceMatrix.needsUpdate = true;
+
+    coreOrb.position.set(vx, vy, vz);
+    coreOrb.rotation.set(elapsed * 2.4, -elapsed * 3.2, elapsed * 1.7);
+    const coreScale = frame.corePulse * (0.95 + Math.sin(elapsed * 6.5) * 0.14) + energyBurst * 0.45;
+    coreOrb.scale.setScalar(coreScale);
+
+    if (gyroRing) {
+      gyroRing.position.set(vx, vy, vz);
+      gyroRing.rotation.x = Math.PI * 0.32 + Math.sin(elapsed * 1.7) * 0.42;
+      gyroRing.rotation.y = -elapsed * (1.85 * frame.orbitSpeedMult);
+      gyroRing.rotation.z = elapsed * 1.1;
+      gyroRing.scale.setScalar(frame.orbitRadiusMult * (0.98 + Math.sin(elapsed * 4.0) * 0.05));
+    }
+  }
+}
+
+const _haloStarDummy = new THREE.Object3D();
+const _haloColGold = new THREE.Color(0xfef08a);
+const _haloColAmber = new THREE.Color(0xfbbf24);
+const _haloColWhite = new THREE.Color(0xffffff);
+const _haloColCyan = new THREE.Color(0x93c5fd);
+
+const HALO_ACTION_CYCLE: readonly SolarLeoHaloActionKind[] = [
+  'sovereign_radiance',
+  'zodiac_pulse',
+  'celestial_tilt',
+  'corona_flare',
+];
+
+const HALO_ACTION_DURATION_SEC = 5.6;
+
+function createSolarLeoHaloAuraRig(liteMode: boolean): SolarLeoHaloAuraRig {
+  const group = new THREE.Group();
+  group.name = 'LeoSovereignCoronaAura';
+
+  // Single InstancedMesh = 1 draw call (8 zodiac crown stars in Lite for Dell E5430, 16 in High)
+  const starCount = liteMode ? 8 : 16;
+  const starGeo = new THREE.OctahedronGeometry(0.048, 0);
+  const starMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.94,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const stars = new THREE.InstancedMesh(starGeo, starMat, starCount);
+  stars.name = 'LeoSovereignZodiacStars';
+  stars.frustumCulled = false;
+
+  for (let i = 0; i < starCount; i++) {
+    const col =
+      i % 4 === 0
+        ? _haloColGold
+        : i % 4 === 1
+          ? _haloColWhite
+          : i % 4 === 2
+            ? _haloColAmber
+            : _haloColCyan;
+    stars.setColorAt(i, col);
+    _haloStarDummy.position.set(0.8, 0, 0);
+    _haloStarDummy.scale.setScalar(0.8);
+    _haloStarDummy.updateMatrix();
+    stars.setMatrixAt(i, _haloStarDummy.matrix);
+  }
+  if (stars.instanceColor) stars.instanceColor.needsUpdate = true;
+  stars.instanceMatrix.needsUpdate = true;
+  group.add(stars);
+
+  let outerRing: THREE.Mesh | undefined;
+  if (!liteMode) {
+    const ringGeo = new THREE.TorusGeometry(0.84, 0.011, 6, 40);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    outerRing = new THREE.Mesh(ringGeo, ringMat);
+    outerRing.name = 'LeoSovereignOuterCoronaRing';
+    group.add(outerRing);
+  }
+
+  return { group, stars, starCount, outerRing };
+}
+
+/**
+ * Pure deterministic choreographer for Halo of the Leo Sovereign (Divine Halo):
+ * sovereign royal radiance, double-heartbeat zodiac pulse, regal celestial inclination,
+ * and accelerating solar corona flare (plus immediate divine overdrive on tap/ult/victory).
+ */
+export function evaluateHaloSovereignAction(
+  elapsed: number,
+  mode: 'lobby' | 'combat' = 'lobby',
+  celebrating = false
+): SolarLeoHaloActionFrame {
+  const safeT = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0);
+
+  if (celebrating) {
+    const p = (safeT * 1.35) % 1;
+    const flare = Math.sin(p * Math.PI);
+    return {
+      action: 'corona_flare',
+      phase: p,
+      spinSpeedZ: 2.4 + flare * 1.4,
+      tiltX: Math.sin(safeT * 3.8) * 0.14,
+      tiltY: Math.cos(safeT * 3.2) * 0.14,
+      hoverY: 0.06 + flare * 0.06,
+      scalePulse: 1.07 + flare * 0.08,
+      emissiveBoost: 0.52,
+      starOrbitSpeedMult: 2.35,
+      starRadiusMult: 1.18 + flare * 0.1,
+    };
+  }
+
+  if (mode === 'combat') {
+    const wave = Math.sin(safeT * 2.6);
+    return {
+      action: 'sovereign_radiance',
+      phase: (safeT / 3.8) % 1,
+      spinSpeedZ: 0.95,
+      tiltX: 0.08 + wave * 0.05,
+      tiltY: Math.cos(safeT * 1.8) * 0.06,
+      hoverY: wave * 0.035,
+      scalePulse: 1.01 + wave * 0.035,
+      emissiveBoost: 0.22,
+      starOrbitSpeedMult: 1.35,
+      starRadiusMult: 1.04,
+    };
+  }
+
+  const slot = Math.floor(safeT / HALO_ACTION_DURATION_SEC) % HALO_ACTION_CYCLE.length;
+  const action = HALO_ACTION_CYCLE[slot];
+  const p = (safeT % HALO_ACTION_DURATION_SEC) / HALO_ACTION_DURATION_SEC;
+  const env = smoothstep01(Math.min(p / 0.16, (1 - p) / 0.16));
+
+  switch (action) {
+    case 'sovereign_radiance': {
+      // Majestic royal slow turn with deep golden breathing
+      const breathe = Math.sin(p * Math.PI * 2);
+      return {
+        action,
+        phase: p,
+        spinSpeedZ: 0.58,
+        tiltX: Math.sin(p * Math.PI * 2) * 0.09 * env,
+        tiltY: Math.cos(p * Math.PI * 2) * 0.08 * env,
+        hoverY: breathe * 0.045 * env,
+        scalePulse: 1 + (0.02 + breathe * 0.04) * env,
+        emissiveBoost: 0.16 + Math.abs(breathe) * 0.16 * env,
+        starOrbitSpeedMult: 1.05,
+        starRadiusMult: 1.0 + breathe * 0.05 * env,
+      };
+    }
+    case 'zodiac_pulse': {
+      // Rhythmic double solar heartbeat expanding the golden crown & perimeter stars
+      const pulse = Math.abs(Math.sin(smoothstep01((p - 0.1) / 0.8) * Math.PI * 2));
+      return {
+        action,
+        phase: p,
+        spinSpeedZ: 0.65 + pulse * 0.75,
+        tiltX: -0.08 * pulse * env,
+        tiltY: Math.sin(p * Math.PI * 4) * 0.07 * env,
+        hoverY: pulse * 0.065 * env,
+        scalePulse: 1 + pulse * 0.1 * env,
+        emissiveBoost: 0.18 + pulse * 0.42 * env,
+        starOrbitSpeedMult: 1.2 + pulse * 0.9,
+        starRadiusMult: 1.02 + pulse * 0.16 * env,
+      };
+    }
+    case 'celestial_tilt': {
+      // Graceful floating astrolabe crown inclination showcasing 3D filigree depth
+      const sway = Math.sin(p * Math.PI * 2);
+      const lift = Math.sin(p * Math.PI);
+      return {
+        action,
+        phase: p,
+        spinSpeedZ: 0.82,
+        tiltX: 0.2 * lift * env,
+        tiltY: sway * 0.24 * env,
+        hoverY: 0.05 * lift * env,
+        scalePulse: 1 + 0.04 * lift * env,
+        emissiveBoost: 0.24 + 0.16 * lift * env,
+        starOrbitSpeedMult: 1.35,
+        starRadiusMult: 1.06,
+      };
+    }
+    case 'corona_flare': {
+      // Smooth acceleration into a blazing solar corona spin & wide starlight bloom
+      const peak = Math.sin(p * Math.PI);
+      return {
+        action,
+        phase: p,
+        spinSpeedZ: 0.7 + peak * 1.95,
+        tiltX: Math.sin(p * Math.PI * 4) * 0.1 * peak,
+        tiltY: Math.cos(p * Math.PI * 4) * 0.1 * peak,
+        hoverY: peak * 0.07 * env,
+        scalePulse: 1 + peak * 0.095 * env,
+        emissiveBoost: 0.22 + peak * 0.48 * env,
+        starOrbitSpeedMult: 1.3 + peak * 1.4,
+        starRadiusMult: 1.04 + peak * 0.18 * env,
+      };
+    }
+  }
 }
 
 export function updateSolarLeoHaloPose(
   rig: InstantiatedSolarLeoModel,
   elapsed: number,
-  dt: number
+  dt: number,
+  options?: SolarLeoHaloPoseOptions
 ): void {
-  rig.visualRoot.rotation.z += dt * 0.52;
-  rig.visualRoot.rotation.x = Math.sin(elapsed * 1.6) * 0.06;
-  const pulse = 1 + Math.sin(elapsed * 3.2) * 0.03;
-  rig.visualRoot.scale.setScalar(pulse);
+  const mode = options?.mode ?? 'lobby';
+  const speed = options?.speed ?? 0;
+  const dashing = Boolean(options?.dashing);
+  const ult = THREE.MathUtils.clamp(options?.ultBurst ?? 0, 0, 1);
+  const celebrating = Boolean(options?.celebrating) || ult > 0.25;
+
+  const frame = evaluateHaloSovereignAction(elapsed, mode, celebrating);
+  const moveFactor = Math.min(1, speed / 5.5);
+  const lam = 10;
+
+  rig.visualRoot.rotation.z += dt * (frame.spinSpeedZ + moveFactor * 0.65 + (dashing ? 1.4 : 0) + ult * 2.1);
+  rig.visualRoot.rotation.x = THREE.MathUtils.damp(
+    rig.visualRoot.rotation.x,
+    frame.tiltX + Math.sin(elapsed * 1.6) * 0.05 + (dashing ? 0.18 : 0),
+    lam,
+    dt
+  );
+  rig.visualRoot.rotation.y = THREE.MathUtils.damp(rig.visualRoot.rotation.y, frame.tiltY, lam, dt);
+  rig.visualRoot.position.y = THREE.MathUtils.damp(rig.visualRoot.position.y, frame.hoverY, lam, dt);
+
+  const targetScale = frame.scalePulse + ult * 0.14 + (dashing ? 0.05 : 0);
+  rig.visualRoot.scale.setScalar(THREE.MathUtils.damp(rig.visualRoot.scale.x, targetScale, lam, dt));
+
+  // Living radiant gold filigree pulse on the sculpted Leo Sovereign Halo
+  const targetEmissive = 0.2 + frame.emissiveBoost + ult * 0.42 + (dashing ? 0.16 : 0);
+  for (let m = 0; m < rig.hitMeshes.length; m++) {
+    const mat = rig.hitMeshes[m].material as THREE.MeshStandardMaterial;
+    if (mat && typeof mat.emissiveIntensity === 'number') {
+      mat.emissiveIntensity = THREE.MathUtils.clamp(targetEmissive, 0.14, 0.88);
+    }
+  }
+
+  // Update counter-rotating zodiac starlight crown & High-only outer corona ring (zero allocations)
+  if (rig.haloAuraRig) {
+    const { stars, starCount, outerRing } = rig.haloAuraRig;
+    const baseR = Math.max(0.68, rig.size.x * 0.54) * frame.starRadiusMult + ult * 0.14;
+    const starSpeed = -0.82 * frame.starOrbitSpeedMult - (dashing ? 1.1 : 0) - ult * 1.6;
+    const vy = rig.visualRoot.position.y;
+
+    for (let i = 0; i < starCount; i++) {
+      const a = elapsed * starSpeed + (i / starCount) * Math.PI * 2;
+      const radialPulse = Math.sin(elapsed * 3.8 + i * 1.57) * 0.055;
+      const r = baseR + radialPulse;
+      const sx = Math.cos(a) * r;
+      const sy = vy + Math.sin(a) * r;
+      const sz = Math.sin(elapsed * 3.0 + i * 2.1) * 0.06;
+      const twinkle = 0.58 + Math.abs(Math.sin(elapsed * 5.2 + i * 1.85)) * (0.72 + ult * 0.5);
+      _haloStarDummy.position.set(sx, sy, sz);
+      _haloStarDummy.rotation.set(elapsed * 2.1 + i, elapsed * 2.6, a);
+      // 4-point celestial star-ray silhouette oriented tangentially around the halo crown
+      _haloStarDummy.scale.set(twinkle * 0.72, twinkle * 1.48, twinkle * 0.72);
+      _haloStarDummy.updateMatrix();
+      stars.setMatrixAt(i, _haloStarDummy.matrix);
+    }
+    stars.instanceMatrix.needsUpdate = true;
+
+    if (outerRing) {
+      outerRing.position.set(0, vy, -0.02);
+      outerRing.rotation.z = -elapsed * (0.68 * frame.starOrbitSpeedMult);
+      outerRing.rotation.x = rig.visualRoot.rotation.x * 0.85;
+      outerRing.rotation.y = rig.visualRoot.rotation.y * 0.85;
+      outerRing.scale.setScalar(frame.starRadiusMult * (0.98 + Math.sin(elapsed * 3.4) * 0.04) + ult * 0.12);
+      const ringMat = outerRing.material as THREE.MeshBasicMaterial;
+      ringMat.opacity = THREE.MathUtils.clamp(0.38 + frame.emissiveBoost * 0.55 + ult * 0.3, 0.3, 0.88);
+    }
+  }
 }

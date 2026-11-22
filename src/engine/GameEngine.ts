@@ -11458,7 +11458,11 @@ export class GameEngine {
             SOLAR_LEO_ARTIFACT_OFFSET.y,
             SOLAR_LEO_ARTIFACT_OFFSET.z
           );
-          updateSolarLeoArtifactPose(this.solarLeoArtifactRig, this.elapsed, dt);
+          updateSolarLeoArtifactPose(this.solarLeoArtifactRig, this.elapsed, dt, {
+            mode: 'lobby',
+            energyBurst: emotePose.active ? emotePose.glowBoost * 0.75 : 0,
+            celebrating: emotePose.active || this.lobbyEmoteTimer > 0.05,
+          });
         } else {
           this.hero.artifactGroup.rotation.y += dt * 1.35;
           this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 2.6) * 0.07;
@@ -11468,7 +11472,11 @@ export class GameEngine {
         if (this.solarLeoHaloRig?.group.parent === this.hero.haloGroup) {
           this.hero.haloGroup.rotation.z = 0;
           this.hero.haloGroup.position.y = 1.34;
-          updateSolarLeoHaloPose(this.solarLeoHaloRig, this.elapsed, dt);
+          updateSolarLeoHaloPose(this.solarLeoHaloRig, this.elapsed, dt, {
+            mode: 'lobby',
+            ultBurst: emotePose.active ? emotePose.glowBoost * 0.7 : 0,
+            celebrating: emotePose.active || this.lobbyEmoteTimer > 0.05,
+          });
         } else {
           this.hero.haloGroup.rotation.z += dt * 0.95;
           this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.2) * 0.04;
@@ -13646,7 +13654,14 @@ export class GameEngine {
           SOLAR_LEO_ARTIFACT_OFFSET.y,
           SOLAR_LEO_ARTIFACT_OFFSET.z
         );
-        updateSolarLeoArtifactPose(this.solarLeoArtifactRig, this.elapsed, dt);
+        updateSolarLeoArtifactPose(this.solarLeoArtifactRig, this.elapsed, dt, {
+          mode: 'combat',
+          speed: speedMag,
+          bankAngle: combatTurnBank,
+          dashing: this.dashTimer > 0,
+          energyBurst: this.solarLeoUltBurst,
+          celebrating: this.phase === GamePhase.VICTORY,
+        });
       } else {
         this.hero.artifactGroup.rotation.y += dt * 1.65;
         this.hero.artifactGroup.position.y = 1.38 + Math.sin(this.elapsed * 3.1) * 0.08;
@@ -13656,7 +13671,13 @@ export class GameEngine {
       if (this.solarLeoHaloRig?.group.parent === this.hero.haloGroup) {
         this.hero.haloGroup.rotation.z = 0;
         this.hero.haloGroup.position.y = 1.34;
-        updateSolarLeoHaloPose(this.solarLeoHaloRig, this.elapsed, dt);
+        updateSolarLeoHaloPose(this.solarLeoHaloRig, this.elapsed, dt, {
+          mode: 'combat',
+          speed: speedMag,
+          dashing: this.dashTimer > 0,
+          ultBurst: this.solarLeoUltBurst,
+          celebrating: this.phase === GamePhase.VICTORY,
+        });
       } else {
         this.hero.haloGroup.rotation.z += dt * 1.35;
         this.hero.haloGroup.position.y = 1.34 + Math.sin(this.elapsed * 2.8) * 0.045;

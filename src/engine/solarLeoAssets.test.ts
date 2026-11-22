@@ -8,6 +8,8 @@ import {
   clearSolarLeoDownloadCache,
   disposeSolarLeoTemplateCache,
   downloadSolarLeoArrayBuffer,
+  evaluateArtifactCelestialAction,
+  evaluateHaloSovereignAction,
   evaluateMountRoyalAction,
   evaluatePetPlayfulTrick,
   evaluateWingsShowcasePose,
@@ -261,9 +263,15 @@ test('All 10 real Solar Leo Lite GLBs calibrate, auto-rig into valid SkinnedMesh
         assert.ok(Number.isFinite(instance.bones.wingL.rotation.z));
         assert.ok(Number.isFinite(instance.bones.tail.rotation.y));
       } else if (spec.rigType === 'artifact') {
+        assert.ok(instance.artifactAuraRig, 'Astrolabe should mount celestial star aura rig');
+        assert.equal(instance.artifactAuraRig.planetCount, 6, 'Lite Astrolabe must cap orbital planets at 6');
+        assert.equal(instance.artifactAuraRig.gyroRing, undefined, 'Lite Astrolabe must omit extra gyro ring');
         updateSolarLeoArtifactPose(instance, 1.4, 1 / 60);
         assert.ok(Number.isFinite(instance.visualRoot.rotation.y));
       } else if (spec.rigType === 'halo') {
+        assert.ok(instance.haloAuraRig, 'Leo Sovereign Halo should mount zodiac star corona rig');
+        assert.equal(instance.haloAuraRig.starCount, 8, 'Lite Halo must cap zodiac stars at 8');
+        assert.equal(instance.haloAuraRig.outerRing, undefined, 'Lite Halo must omit extra outer corona ring');
         updateSolarLeoHaloPose(instance, 1.4, 1 / 60);
         assert.ok(Number.isFinite(instance.visualRoot.rotation.z));
       }
@@ -870,6 +878,108 @@ test('Solarius mount royal choreographer and Solar Zenith wing choreographer cyc
     wTpl.parts.forEach((p) => p.material.dispose());
   });
 });
+
+test('Astrolabe of Regulus (Artifact) and Halo of the Leo Sovereign (Halo) cycle all celestial behaviors, pulse radiance, and respect High/Lite GPU budgets', async () => {
+  // 1. Artifact pure choreographer cycles all 4 celestial behaviors over 20s
+  const seenArtifact = new Set<string>();
+  let maxGyroSpin = 0;
+  let maxCorePulse = 0;
+  for (let t = 0; t < 20.0; t += 0.2) {
+    const f = evaluateArtifactCelestialAction(t, 'lobby', false);
+    seenArtifact.add(f.action);
+    assert.ok(Number.isFinite(f.offsetX) && Number.isFinite(f.offsetY) && Number.isFinite(f.spinSpeedY));
+    maxGyroSpin = Math.max(maxGyroSpin, f.spinSpeedY);
+    maxCorePulse = Math.max(maxCorePulse, f.corePulse);
+  }
+  assert.deepEqual(
+    [...seenArtifact].sort(),
+    ['gyroscope_overdrive', 'harmonic_align', 'orbital_drift', 'solar_resonance']
+  );
+  assert.ok(maxGyroSpin > 4.5, `gyroscope_overdrive must accelerate spin (max=${maxGyroSpin})`);
+  assert.ok(maxCorePulse > 1.5, `Astrolabe star core must visibly pulse (max=${maxCorePulse})`);
+
+  const artCeleb = evaluateArtifactCelestialAction(0.3, 'lobby', true);
+  assert.equal(artCeleb.action, 'gyroscope_overdrive');
+  assert.ok(artCeleb.orbitSpeedMult >= 2.0);
+
+  // 2. Halo pure choreographer cycles all 4 sovereign behaviors over 23s
+  const seenHalo = new Set<string>();
+  let maxHaloSpin = 0;
+  let maxHaloTiltY = 0;
+  for (let t = 0; t < 23.0; t += 0.2) {
+    const f = evaluateHaloSovereignAction(t, 'lobby', false);
+    seenHalo.add(f.action);
+    assert.ok(Number.isFinite(f.spinSpeedZ) && Number.isFinite(f.scalePulse) && Number.isFinite(f.tiltY));
+    maxHaloSpin = Math.max(maxHaloSpin, f.spinSpeedZ);
+    maxHaloTiltY = Math.max(maxHaloTiltY, Math.abs(f.tiltY));
+  }
+  assert.deepEqual(
+    [...seenHalo].sort(),
+    ['celestial_tilt', 'corona_flare', 'sovereign_radiance', 'zodiac_pulse']
+  );
+  assert.ok(maxHaloSpin > 2.2, `corona_flare must accelerate halo spin (max=${maxHaloSpin})`);
+  assert.ok(maxHaloTiltY > 0.18, `celestial_tilt must visibly incline halo in 3D (max=${maxHaloTiltY})`);
+
+  const haloCeleb = evaluateHaloSovereignAction(0.4, 'lobby', true);
+  assert.equal(haloCeleb.action, 'corona_flare');
+  assert.ok(haloCeleb.starOrbitSpeedMult >= 2.0);
+
+  // 3. Real Astrolabe & Halo GLBs: High vs Lite aura caps, multi-axis updates, and safe disposal
+  await withNodeGlbLoader(async (loader) => {
+    const aBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.astrolabe_regulus.litePathSegments));
+    const aGltf = await loader.parseAsync(aBuf.buffer.slice(aBuf.byteOffset, aBuf.byteOffset + aBuf.byteLength), '');
+    const aTpl = prepareSolarLeoTemplate('astrolabe_regulus', aGltf.scene, 4, { liteMode: false });
+    const aHigh = instantiateSolarLeoModel(aTpl, { liteMode: false });
+    const aLite = instantiateSolarLeoModel(aTpl, { liteMode: true });
+
+    assert.ok(aHigh.artifactAuraRig && aHigh.artifactAuraRig.planetCount === 12 && aHigh.artifactAuraRig.gyroRing);
+    assert.ok(aLite.artifactAuraRig && aLite.artifactAuraRig.planetCount === 6 && aLite.artifactAuraRig.gyroRing === undefined);
+
+    let maxArtTiltX = 0;
+    let maxArtOffsetY = 0;
+    for (let step = 0; step < 260; step++) {
+      updateSolarLeoArtifactPose(aHigh, step * 0.06, 0.06, { mode: 'lobby' });
+      maxArtTiltX = Math.max(maxArtTiltX, Math.abs(aHigh.visualRoot.rotation.x));
+      maxArtOffsetY = Math.max(maxArtOffsetY, Math.abs(aHigh.visualRoot.position.y));
+    }
+    assert.ok(maxArtTiltX > 0.35, `Astrolabe must tilt expressively in 3D (max=${maxArtTiltX})`);
+    assert.ok(maxArtOffsetY > 0.1, `Astrolabe must float across orbital arcs (max=${maxArtOffsetY})`);
+
+    disposeObjectResources(aHigh.group);
+    disposeObjectResources(aLite.group);
+    for (const g of aTpl.sharedGeometries) assert.equal(g.userData.sharedCachedGeometry, true);
+    aTpl.sharedGeometries.forEach((g) => g.dispose());
+    aTpl.sharedTextures.forEach((t) => t.dispose());
+    aTpl.parts.forEach((p) => p.material.dispose());
+
+    const hBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.leo_sovereign.litePathSegments));
+    const hGltf = await loader.parseAsync(hBuf.buffer.slice(hBuf.byteOffset, hBuf.byteOffset + hBuf.byteLength), '');
+    const hTpl = prepareSolarLeoTemplate('leo_sovereign', hGltf.scene, 4, { liteMode: false });
+    const hHigh = instantiateSolarLeoModel(hTpl, { liteMode: false });
+    const hLite = instantiateSolarLeoModel(hTpl, { liteMode: true });
+
+    assert.ok(hHigh.haloAuraRig && hHigh.haloAuraRig.starCount === 16 && hHigh.haloAuraRig.outerRing);
+    assert.ok(hLite.haloAuraRig && hLite.haloAuraRig.starCount === 8 && hLite.haloAuraRig.outerRing === undefined);
+
+    let maxHaloScale = 0;
+    let maxHaloRotY = 0;
+    for (let step = 0; step < 300; step++) {
+      updateSolarLeoHaloPose(hHigh, step * 0.06, 0.06, { mode: 'lobby' });
+      maxHaloScale = Math.max(maxHaloScale, hHigh.visualRoot.scale.x);
+      maxHaloRotY = Math.max(maxHaloRotY, Math.abs(hHigh.visualRoot.rotation.y));
+    }
+    assert.ok(maxHaloScale > 1.07, `Halo must pulse grandly during zodiac_pulse/corona_flare (max=${maxHaloScale})`);
+    assert.ok(maxHaloRotY > 0.14, `Halo must incline gracefully in 3D during celestial_tilt (max=${maxHaloRotY})`);
+
+    disposeObjectResources(hHigh.group);
+    disposeObjectResources(hLite.group);
+    for (const g of hTpl.sharedGeometries) assert.equal(g.userData.sharedCachedGeometry, true);
+    hTpl.sharedGeometries.forEach((g) => g.dispose());
+    hTpl.sharedTextures.forEach((t) => t.dispose());
+    hTpl.parts.forEach((p) => p.material.dispose());
+  });
+});
+
 
 
 
