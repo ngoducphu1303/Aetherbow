@@ -345,6 +345,8 @@ interface TitleScreenProps {
   onBulkFuseGear: () => void;
   onSaveBuildPreset: (idx: number) => void;
   onApplyBuildPreset: (idx: number) => void;
+  onSaveChapterEquipmentSet: (chapterId: number) => void;
+  onApplyChapterEquipmentSet: (chapterId: number) => void;
   onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onSelectNightmareTier?: (tier: number) => void;
@@ -564,6 +566,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onBulkFuseGear,
   onSaveBuildPreset,
   onApplyBuildPreset,
+  onSaveChapterEquipmentSet,
+  onApplyChapterEquipmentSet,
   onSaveLoadoutPreset,
   onApplyLoadoutPreset,
   onSelectNightmareTier,
@@ -2106,6 +2110,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               initialSubTab={heroSubTabInitial}
               onPreviewHero={onPreviewHero}
               onSelectHero={onSelectHero}
+              onSaveChapterEquipmentSet={onSaveChapterEquipmentSet}
+              onApplyChapterEquipmentSet={onApplyChapterEquipmentSet}
               onUnlockHero={onUnlockHero}
               onUpgradeHeroStar={onUpgradeHeroStar}
               onUnlockPet={onUnlockPet}

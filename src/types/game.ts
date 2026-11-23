@@ -212,6 +212,12 @@ export interface LoadoutPreset {
   savedAt: number;
 }
 
+export interface ChapterEquipmentPreset {
+  chapterId: number;
+  skinId: HeroSkinId;
+  equipped: SaveData['equipped'];
+}
+
 export interface HeroMasteryProgress {
   level: number; // 1..10
   exp: number;
@@ -1337,6 +1343,7 @@ export interface SaveData {
   dailyRift?: DailyRiftState;
   buildPresets?: BuildPreset[];
   loadoutPresets?: LoadoutPreset[];
+  chapterEquipmentPresets?: ChapterEquipmentPreset[];
   activeLoadoutPresetId?: LoadoutPresetSlotId | null;
   heroMastery?: Partial<Record<HeroId, HeroMasteryProgress>>;
   guild?: GuildState;

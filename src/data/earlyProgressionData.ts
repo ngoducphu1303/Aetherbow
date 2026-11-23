@@ -1,5 +1,6 @@
 import { DEFAULT_HERO_ID, isPlayableHeroId, normalizePlayableHeroId } from './heroesData';
 import { grantChapter2Collection } from './chapter2Collection';
+import { normalizeChapterEquipmentPresets } from './chapterEquipmentSets';
 import {
   ComputedPlayerStats,
   EarlyFeatureId,
@@ -470,6 +471,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
     heroStars: normalizedHeroStars,
     heroMastery: normalizeHeroMastery(raw.heroMastery),
     loadoutPresets: normalizeLoadoutPresets(raw.loadoutPresets),
+    chapterEquipmentPresets: normalizeChapterEquipmentPresets(raw.chapterEquipmentPresets),
     pets: normalizedPets,
     equippedPetId: resolvedEquippedPetId,
     evolvedPets: normalizedEvolvedPets,

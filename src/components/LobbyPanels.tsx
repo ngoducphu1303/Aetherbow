@@ -1,3 +1,5 @@
+import { CHAPTER_EQUIPMENT_SETS, getChapterEquipmentStatus } from '../data/chapterEquipmentSets';
+import { CHAPTERS } from '../data/chaptersData';
 import { canClaimChapter2Asset } from '../data/chapter2Collection';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -1168,6 +1170,8 @@ interface HeroesPanelProps {
   initialSubTab?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos';
   onPreviewHero: (heroId: HeroId) => void;
   onSelectHero: (heroId: HeroId) => void;
+  onSaveChapterEquipmentSet: (chapterId: number) => void;
+  onApplyChapterEquipmentSet: (chapterId: number) => void;
   onUnlockHero: (heroId: HeroId, currency: 'gold' | 'gems') => void;
   onUpgradeHeroStar: (heroId: HeroId) => void;
   onUnlockPet: (petId: PetId, currency: 'gold' | 'gems') => void;
@@ -1208,6 +1212,8 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   initialSubTab = 'roster',
   onPreviewHero,
   onSelectHero,
+  onSaveChapterEquipmentSet,
+  onApplyChapterEquipmentSet,
   onUnlockHero,
   onUpgradeHeroStar,
   onUnlockPet,
@@ -1675,6 +1681,60 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               )}
             </div>
           </div>
+
+          {heroSubTab === 'roster' && (
+            <section aria-label="Bộ Theo Chương" className="cel-panel-ornate rounded-2xl p-3 space-y-2 shrink-0">
+              <h3 className="flex items-center gap-2 text-sm font-black text-amber-200">
+                <Bookmark className="w-4 h-4" /> Bộ Theo Chương
+              </h3>
+              <p className="text-[11px] text-slate-300">
+                Mặc đủ tướng, tinh linh, cánh, thú cưỡi, thánh khí và hào quang cùng chương để lưu cùng trang phục và đồ chiến đấu.
+              </p>
+              {CHAPTER_EQUIPMENT_SETS.map((set) => {
+                const { chapterId } = set;
+                const status = getChapterEquipmentStatus(save, set);
+                const heroName = HERO_MAP[set.equipment.selectedHeroId].name;
+                const chapterName = CHAPTERS.find((chapter) => chapter.id === chapterId)?.regionName;
+                return (
+                  <div key={chapterId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-[#070b1a]/90 p-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-white">Chương {chapterId} · {chapterName}</h4>
+                      <p className="text-[11px] text-slate-300">
+                        {heroName} · {save.highestChapterCleared < set.unlockChapter
+                          ? `Hoàn thành Chương ${set.unlockChapter} để mở bộ`
+                          : status.wearingSavedSet
+                            ? 'Đang mặc bộ đã lưu'
+                            : `${status.wornCount}/${status.total} đang mặc · ${status.preset ? 'Đã lưu' : 'Chưa lưu'}`}
+                      </p>
+                      {status.missingGear > 0 && (
+                        <p className="text-[11px] text-amber-300">Thiếu {status.missingGear} món đã lưu. Đổi bộ sẽ giữ đồ hiện tại ở ô đó.</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1.5">
+                      {status.canSave && !status.wearingSavedSet && (
+                        <button
+                          type="button"
+                          onClick={() => onSaveChapterEquipmentSet(chapterId)}
+                          className="a2-slate-btn rounded-lg px-2 py-1 text-[11px] font-bold text-amber-200"
+                        >
+                          {status.preset ? 'Cập nhật bộ' : 'Lưu bộ'}
+                        </button>
+                      )}
+                      {status.owned && status.preset && !status.wearingSavedSet && (
+                        <button
+                          type="button"
+                          onClick={() => onApplyChapterEquipmentSet(chapterId)}
+                          className="a2-emerald-btn rounded-lg px-2 py-1 text-[11px] font-black"
+                        >
+                          Mặc bộ
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          )}
 
           {/* SUB-TAB 1: HERO ROSTER */}
           {heroSubTab === 'roster' && (

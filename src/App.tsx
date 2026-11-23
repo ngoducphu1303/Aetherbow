@@ -1,3 +1,4 @@
+import { applyChapterEquipmentSet, saveChapterEquipmentSet } from './data/chapterEquipmentSets';
 import { canClaimChapter2Asset, grantChapter2Collection } from './data/chapter2Collection';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -8652,6 +8653,17 @@ export default function App() {
     });
   }, []);
 
+  const handleSaveChapterEquipmentSet = useCallback((chapterId: number) => {
+    soundEngine.playUiClick();
+    setSave((prev) => saveChapterEquipmentSet(prev, chapterId));
+  }, []);
+
+  const handleApplyChapterEquipmentSet = useCallback((chapterId: number) => {
+    soundEngine.playLoadoutSwitch();
+    setPreviewHeroId(null);
+    setSave((prev) => applyChapterEquipmentSet(prev, chapterId));
+  }, []);
+
   const handleSaveLoadoutPreset = useCallback((slotId: 'preset_1' | 'preset_2' | 'preset_3') => {
     soundEngine.playLoadoutSwitch();
     setSave((prev) => ({
@@ -11553,6 +11565,8 @@ export default function App() {
           onBulkFuseGear={handleBulkFuseGear}
           onSaveBuildPreset={handleSaveBuildPreset}
           onApplyBuildPreset={handleApplyBuildPreset}
+          onSaveChapterEquipmentSet={handleSaveChapterEquipmentSet}
+          onApplyChapterEquipmentSet={handleApplyChapterEquipmentSet}
           onSaveLoadoutPreset={handleSaveLoadoutPreset}
           onApplyLoadoutPreset={handleApplyLoadoutPreset}
           onSelectNightmareTier={handleSelectNightmareTier}
