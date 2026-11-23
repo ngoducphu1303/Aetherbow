@@ -1,6 +1,7 @@
 import { AssetCatalog } from './assetCatalog.mjs';
 import { verifyFirebaseAdmin } from './firebaseAdmin.mjs';
 import manifest from '../../scripts/glb-manifest.json' with { type: 'json' };
+import inboxGroups from '../../scripts/glb-inbox-groups.json' with { type: 'json' };
 
 export { AssetCatalog };
 
@@ -241,7 +242,7 @@ async function readGlbUpload(body, size) {
   });
 }
 
-async function uploadAdminAsset(request, url, env) {
+async function uploadAdminAsset(request, env, entry, catalogPath) {
   const rawSize = request.headers.get('x-glb-size') ?? '';
   const size = Number(rawSize);
   if (!/^\d{1,9}$/.test(rawSize) || size < 24 || size > MAX_ADMIN_BYTES) {
@@ -251,16 +252,16 @@ async function uploadAdminAsset(request, url, env) {
   const applicationKey = env.B2_WRITE_APPLICATION_KEY?.trim();
   if (!keyId || !applicationKey) return adminResponse({ error: 'Worker chưa được cấp quyền ghi.' }, 503);
 
-  const path = url.searchParams.get('path');
-  const object = getObjectPath(new URL('https://catalog.internal' + path.split('/').map(encodeURIComponent).join('/')));
-  const revision = { path, id: crypto.randomUUID(), size, uploadedAt: new Date().toISOString() };
+  const record = { ...entry, size, uploadedAt: new Date().toISOString() };
+  const object = getObjectPath(new URL('https://catalog.internal' + record.path.split('/').map(encodeURIComponent).join('/')));
+  const encoded = catalogPath === '/stage'
+    ? '/assets/.revisions/' + record.id + object.encoded.slice('/assets'.length)
+    : object.encoded;
   let stream;
   try {
     stream = await readGlbUpload(request.body, size);
     if (!stream) return adminResponse({ error: 'Tệp không phải GLB 2.0 hợp lệ.' }, 400);
-    const { url: signedUrl, headers } = await createUploadGrant({
-      encoded: '/assets/.revisions/' + revision.id + object.encoded.slice('/assets'.length),
-    }, keyId, applicationKey, size);
+    const { url: signedUrl, headers } = await createUploadGrant({ encoded }, keyId, applicationKey, size);
     const transfer = new FixedLengthStream(size);
     const controller = new AbortController();
     const write = stream.pipeTo(transfer.writable, { signal: controller.signal });
@@ -275,13 +276,47 @@ async function uploadAdminAsset(request, url, env) {
     } finally {
       controller.abort();
     }
-    const registered = await catalog(env, '/stage', 'POST', revision);
-    if (!registered.ok) return adminResponse({ error: 'Không lưu được phiên bản.' }, 502);
-    return adminResponse(revision, 201);
+    const registered = await catalog(env, catalogPath, 'POST', record);
+    if (!registered.ok) return adminResponse({ error: 'Không lưu được thông tin tệp.' }, 502);
+    return adminResponse(record, 201);
   } catch {
     if (stream && !stream.locked) await stream.cancel().catch(() => {});
     return adminResponse({ error: 'Upload bị gián đoạn. Hãy thử lại.' }, 502);
   }
+}
+
+async function handleAssetInbox(request, url, env) {
+  const chapter = url.searchParams.get('chapter') ?? '';
+  if (!/^(?:[1-9]|1[0-2])$/.test(chapter)) return adminResponse({ error: 'Chọn chương từ 1 đến 12.' }, 400);
+
+  if (request.method === 'GET') {
+    const cursor = url.searchParams.get('cursor');
+    const parameters = new URLSearchParams({ chapter });
+    if (cursor) {
+      const prefix = 'inbox:' + chapter + ':';
+      const separator = cursor.lastIndexOf(':');
+      if (!cursor.startsWith(prefix) || !REVISION_ID.test(cursor.slice(separator + 1)) ||
+          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(cursor.slice(prefix.length, separator))) {
+        return adminResponse({ error: 'Trang danh sách không hợp lệ.' }, 400);
+      }
+      parameters.set('cursor', cursor);
+    }
+    const result = await catalog(env, '/inbox?' + parameters);
+    return adminResponse(await result.json(), result.status);
+  }
+
+  if (request.method !== 'PUT') return adminResponse({ error: 'Thao tác không được hỗ trợ.' }, 405);
+  const group = url.searchParams.get('group') ?? '';
+  const input = url.searchParams.get('name') ?? '';
+  if (/[\\/\x00-\x1f\x7f]/.test(input)) return adminResponse({ error: 'Tên tệp không hợp lệ.' }, 400);
+  const name = input.trim().normalize('NFC');
+  if (!Object.hasOwn(inboxGroups, group) || name.length > 120 || name.length <= 4 || !/\.glb$/i.test(name)) {
+    return adminResponse({ error: 'Chọn nhóm và tệp .glb có tên tối đa 120 ký tự.' }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  const path = `/assets/Chương ${chapter}/Asset mới/${inboxGroups[group]}/${id}/${name}`;
+  return uploadAdminAsset(request, env, { id, path, name, chapter: Number(chapter), group }, '/inbox');
 }
 
 async function handleAdmin(request, url, env) {
@@ -302,9 +337,12 @@ async function handleAdmin(request, url, env) {
 
   const endpoint = url.pathname.slice('/__admin'.length);
   if (request.method === 'GET' && endpoint === '/session') return adminResponse({ allowed: true });
+  if (endpoint === '/inbox') return handleAssetInbox(request, url, env);
   const path = url.searchParams.get('path');
   if (!KNOWN_GLB_PATHS.has(path)) return adminResponse({ error: 'Chọn một model đã tích hợp.' }, 404);
-  if (request.method === 'PUT' && endpoint === '/upload') return uploadAdminAsset(request, url, env);
+  if (request.method === 'PUT' && endpoint === '/upload') {
+    return uploadAdminAsset(request, env, { path, id: crypto.randomUUID() }, '/stage');
+  }
   if (request.method === 'GET' && endpoint === '/entry') {
     const result = await catalog(env, '/entry?path=' + encodeURIComponent(path));
     return adminResponse(await result.json(), result.status);

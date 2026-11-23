@@ -3,72 +3,20 @@ import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebas
 import { ArrowLeft, Box, Check, CloudUpload, Eye, LogOut, RotateCcw, Search, ShieldCheck } from 'lucide-react';
 import { auth, googleProvider } from '../firebase';
 import manifest from '../../scripts/glb-manifest.json';
+import AssetInboxPanel from './AssetInboxPanel';
+import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadGlb } from './assetAdminApi';
 
 const Preview = lazy(() => import('./AssetAdminPreview'));
-const MAX_BYTES = 96_000_000;
 const categories = ['Chương 1', 'Chương 2', 'Khác'] as const;
 type Category = typeof categories[number];
 
 type Revision = { path: string; id: string; size: number; uploadedAt: string };
 type Entry = { active: Revision | null; previous: Revision | null; draft: Revision | null; canRollback: boolean };
 
-function endpoint(action: string, path?: string) {
-  const url = new URL('__admin/' + action, manifest.cdnBaseUrl);
-  if (path) url.searchParams.set('path', path);
-  return url;
-}
-
-async function api<T>(user: User, action: string, options: { path?: string; body?: object; signal?: AbortSignal } = {}): Promise<T> {
-  const headers: Record<string, string> = { Authorization: 'Bearer ' + await user.getIdToken() };
-  if (options.body) headers['Content-Type'] = 'application/json';
-  const response = await fetch(endpoint(action, options.path), {
-    method: options.body ? 'POST' : 'GET',
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    signal: options.signal,
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error ?? 'Worker không phản hồi. Hãy thử lại.');
-  return result as T;
-}
-
-function previewUrl(path: string, revision?: Revision | null) {
-  const url = new URL(path.slice(1).split('/').map(encodeURIComponent).join('/'), manifest.cdnBaseUrl);
-  if (revision) url.searchParams.set('rev', revision.id);
-  return url.href;
-}
-
-async function uploadModel(user: User, path: string, file: File, onProgress: (value: number) => void) {
-  const token = await user.getIdToken();
-  return new Promise<Revision>((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open('PUT', endpoint('upload', path).href);
-    request.responseType = 'json';
-    request.timeout = 150_000;
-    request.setRequestHeader('Authorization', 'Bearer ' + token);
-    request.setRequestHeader('X-GLB-Size', String(file.size));
-    request.upload.onprogress = ({ loaded, total }) => {
-      if (total) onProgress(Math.min(100, Math.round(loaded / total * 100)));
-    };
-    request.onload = () => {
-      if (request.status === 201 && request.response?.id) resolve(request.response);
-      else reject(new Error(request.response?.error ?? 'Upload thất bại. Hãy thử lại.'));
-    };
-    request.onerror = () => reject(new Error('Mất kết nối trong lúc upload.'));
-    request.ontimeout = () => reject(new Error('Hết thời gian upload.'));
-    request.send(file);
-  });
-}
-
-function message(error: unknown) {
-  return error instanceof Error ? error.message : 'Đã xảy ra lỗi.';
-}
-
-const primary = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-amber-300 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-40';
-const secondary = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40';
-
 export default function AssetAdminPage() {
   const [session, setSession] = useState<'checking' | 'guest' | 'denied' | 'ready'>('checking');
+  const [mode, setMode] = useState<'replace' | 'new'>(() => new URLSearchParams(window.location.search).get('tab') === 'new' ? 'new' : 'replace');
+  const [inboxBusy, setInboxBusy] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [sessionError, setSessionError] = useState('');
   const [category, setCategory] = useState<Category>('Chương 2');
@@ -151,7 +99,7 @@ export default function AssetAdminPage() {
     setProgress(0);
     setPreview(null);
     try {
-      const uploaded = await uploadModel(user, path, file, setProgress);
+      const uploaded = await uploadGlb<Revision>(user, 'upload', { path }, file, setProgress);
       setStage(uploaded);
       setNotice('Đã tải lên bản nháp. Bạn có thể xem trước rồi áp dụng.');
     } catch (cause) {
@@ -197,9 +145,18 @@ export default function AssetAdminPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <a className={secondary} href="/"><ArrowLeft size={16}/> Về game</a>
-          {session === 'ready' && <button className={secondary} disabled={busy} onClick={() => void signOut(auth)}><LogOut size={16}/> Đăng xuất</button>}
+          {session === 'ready' && <button className={secondary} disabled={busy || inboxBusy} onClick={() => void signOut(auth)}><LogOut size={16}/> Đăng xuất</button>}
         </div>
       </header>
+
+      {session === 'ready' && (
+        <nav aria-label="Quản lý asset" className="mx-auto mt-5 flex max-w-6xl flex-wrap gap-2">
+          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'new'} className={mode === 'new' ? primary : secondary}
+            onClick={() => setMode('new')}>Tải asset mới</button>
+          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'replace'} className={mode === 'replace' ? primary : secondary}
+            onClick={() => setMode('replace')}>Thay model đã tích hợp</button>
+        </nav>
+      )}
 
       {session !== 'ready' ? (
         <section className="mx-auto mt-16 max-w-md space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-7">
@@ -216,6 +173,8 @@ export default function AssetAdminPage() {
             </>
           )}
         </section>
+      ) : mode === 'new' && user ? (
+        <AssetInboxPanel user={user} onBusyChange={setInboxBusy} />
       ) : (
         <div className="mx-auto mt-6 grid max-w-6xl gap-4 lg:grid-cols-[minmax(260px,340px)_1fr]">
           <section className="self-start rounded-2xl border border-slate-800 bg-slate-900/85 p-4" aria-label="Danh mục model">

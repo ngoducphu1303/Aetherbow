@@ -30,6 +30,11 @@ function catalogBinding() {
       if (Array.isArray(key)) return new Map(key.filter((name) => entries.has(name)).map((name) => [name, structuredClone(entries.get(name))]));
       return structuredClone(entries.get(key));
     },
+    list({ prefix, end, reverse, limit }) {
+      const keys = [...entries.keys()].filter((key) => key.startsWith(prefix) && (!end || key < end)).sort();
+      if (reverse) keys.reverse();
+      return new Map(keys.slice(0, limit).map((key) => [key, structuredClone(entries.get(key))]));
+    },
     put(value) { for (const [key, item] of Object.entries(value)) entries.set(key, structuredClone(item)); },
     delete(key) { entries.delete(key); },
     transaction(fn) { return fn(storage); },
@@ -127,4 +132,86 @@ test('draft GLB can be previewed, published, and rolled back without replacing t
   assert.equal((await call('rollback', 'POST', JSON.stringify({ expected: null }))).status, 409);
   assert.equal((await call('rollback', 'POST', JSON.stringify({ expected: revision.id }))).status, 200);
   assert.deepEqual(await versions(), {});
+});
+
+test('new assets use chapter and group folders and stay outside the published model catalog', async (t) => {
+  const glb = model();
+  const saved = new Map();
+  const original = globalThis.FixedLengthStream;
+  globalThis.FixedLengthStream = class extends TransformStream { constructor() { super(); } };
+  t.after(() => { globalThis.FixedLengthStream = original; });
+  const env = {
+    FIREBASE_PROJECT_ID: project, ADMIN_GOOGLE_EMAIL: email, ASSET_CATALOG: catalogBinding(),
+    B2_WRITE_KEY_ID: 'write-id', B2_WRITE_APPLICATION_KEY: 'write-secret',
+    B2_READ_KEY_ID: 'read-id', B2_READ_APPLICATION_KEY: 'read-secret',
+  };
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(input);
+    if (url.hostname === 'www.googleapis.com') return Response.json({keys:[publicKey]});
+    assert.equal(url.hostname, 's3.us-east-005.backblazeb2.com');
+    const pathname = decodeURIComponent(url.pathname);
+    assert.match(pathname, /^\/aetherbow-assets\/assets\/Chương 3\/Asset mới\/Bản đồ\/[a-f0-9-]{36}\/Hỏa Sơn thử\.glb$/);
+    if (options.method === 'GET') return new Response(saved.get(pathname), { status: saved.has(pathname) ? 200 : 404 });
+    const bytes = Buffer.from(await new Response(options.body).arrayBuffer());
+    assert.deepEqual(bytes, glb);
+    saved.set(pathname, bytes);
+    return new Response(null, { status: 200 });
+  });
+
+  const send = (query, method = 'GET', payload) => worker.fetch(new Request(
+    cdn + '/__admin/inbox?' + new URLSearchParams(query),
+    { method, body: payload, headers: { Authorization: 'Bearer ' + token(), 'X-GLB-Size': String(glb.length) } },
+  ), env);
+  const parameters = { chapter: '3', group: 'map', name: 'Hỏa Sơn thử.glb' };
+  assert.equal((await worker.fetch(new Request(cdn + '/__admin/inbox?chapter=3'), env)).status, 401);
+  assert.equal((await send({ ...parameters, chapter: '13' }, 'PUT', glb)).status, 400);
+  assert.equal((await send({ ...parameters, group: 'prototype' }, 'PUT', glb)).status, 400);
+  assert.equal((await send({ ...parameters, name: '../test.glb' }, 'PUT', glb)).status, 400);
+  assert.equal((await send({ ...parameters, name: 'folder\\test.glb' }, 'PUT', glb)).status, 400);
+  assert.equal((await send({ ...parameters, name: 'test.zip' }, 'PUT', glb)).status, 400);
+  assert.equal((await send(parameters, 'PUT', Buffer.alloc(glb.length))).status, 400);
+  assert.equal(saved.size, 0);
+
+  const first = await send(parameters, 'PUT', glb);
+  assert.equal(first.status, 201);
+  const entry = await first.json();
+  assert.equal(entry.name, parameters.name);
+  assert.equal(entry.chapter, 3);
+  assert.equal(entry.size, glb.length);
+  assert.ok(entry.path.includes(entry.id));
+  const duplicate = await send(parameters, 'PUT', glb);
+  assert.equal(duplicate.status, 201);
+  assert.notEqual((await duplicate.json()).path, entry.path);
+  assert.deepEqual((await (await send({chapter:'2'})).json()).files, []);
+  const list = await (await send({ chapter: '3' })).json();
+  assert.equal(list.files.length, 2);
+  assert.equal(list.nextCursor, null);
+  const served = await worker.fetch(new Request(cdn + entry.path), env, {});
+  assert.deepEqual(Buffer.from(await served.arrayBuffer()), glb);
+  const versions = await worker.fetch(new Request(cdn + '/__asset-versions'), env);
+  assert.deepEqual(await versions.json(), {});
+});
+
+test('inbox returns a stable chapter-scoped cursor for more than 50 uploads', async () => {
+  const binding = catalogBinding();
+  const stub = binding.get();
+  for (let i = 0; i < 52; i += 1) {
+    const id = '74f3d7ae-8c56-4ad9-9bee-' + String(i).padStart(12, '0');
+    await stub.fetch('https://catalog.internal/inbox', {
+      method: 'POST',
+      body: JSON.stringify({ id, chapter: 3, uploadedAt: new Date(i).toISOString() }),
+    });
+  }
+  const env = { FIREBASE_PROJECT_ID: project, ADMIN_GOOGLE_EMAIL: email, ASSET_CATALOG: binding };
+  const headers = { Authorization: 'Bearer ' + token() };
+  const first = await worker.fetch(new Request(cdn + '/__admin/inbox?chapter=3', { headers }), env);
+  const result = await first.json();
+  assert.equal(result.files.length, 50);
+  assert.ok(result.nextCursor);
+  const second = await worker.fetch(new Request(cdn + '/__admin/inbox?' + new URLSearchParams({ chapter: '3', cursor: result.nextCursor }), { headers }), env);
+  const remainder = await second.json();
+  assert.equal(remainder.files.length, 2);
+  assert.equal(remainder.nextCursor, null);
+  const invalidCursor = await worker.fetch(new Request(cdn + '/__admin/inbox?' + new URLSearchParams({ chapter: '4', cursor: result.nextCursor }), { headers }), env);
+  assert.equal(invalidCursor.status, 400);
 });

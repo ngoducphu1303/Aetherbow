@@ -11,6 +11,24 @@ export class AssetCatalog {
       const active = (await this.storage.get('active')) ?? {};
       return Response.json(Object.fromEntries(Object.entries(active).map(([path, entry]) => [path, entry.id])));
     }
+    if (route.pathname === '/inbox') {
+      if (request.method === 'POST') {
+        const item = await request.json();
+        await this.storage.put({
+          [`inbox:${item.chapter}:${item.uploadedAt}:${item.id}`]: item,
+        });
+        return Response.json(item);
+      }
+      const prefix = 'inbox:' + route.searchParams.get('chapter') + ':';
+      const cursor = route.searchParams.get('cursor');
+      const rows = [...await this.storage.list({
+        prefix, reverse: true, limit: 51, ...(cursor && { end: cursor }),
+      })];
+      return Response.json({
+        files: rows.slice(0, 50).map(([, value]) => value),
+        nextCursor: rows.length > 50 ? rows[49][0] : null,
+      });
+    }
     if (route.pathname === '/entry') {
       const path = route.searchParams.get('path');
       const rows = await this.storage.get(['active', 'previous', 'draft:' + path]);
