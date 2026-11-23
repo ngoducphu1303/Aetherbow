@@ -1,0 +1,38 @@
+name: Asset upload checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/asset-upload-tests.yml'
+      - 'tests/asset-admin.test.mjs'
+      - 'workers/glb-cdn/**'
+      - 'scripts/glb-*.json'
+      - 'scripts/asset-admin-auth.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/asset-upload-tests.yml'
+      - 'tests/asset-admin.test.mjs'
+      - 'workers/glb-cdn/**'
+      - 'scripts/glb-*.json'
+      - 'scripts/asset-admin-auth.json'
+permissions:
+  contents: read
+jobs:
+  multipart-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            tests/asset-admin.test.mjs
+            workers/glb-cdn/
+            scripts/glb-manifest.json
+            scripts/glb-inbox-groups.json
+            scripts/asset-admin-auth.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify 120 MB multipart session lifecycle
+        run: node --test tests/asset-admin.test.mjs

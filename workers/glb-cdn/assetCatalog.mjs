@@ -53,6 +53,23 @@ export class AssetCatalog {
         return Response.json(candidate);
       });
     }
+    if (route.pathname === '/inbox-upload/part' && request.method === 'POST') {
+      const { id, part, etag } = await request.json();
+      if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/.test(id) ||
+          !Number.isInteger(part) || part < 1 || part > 20 ||
+          typeof etag !== 'string' || !/^[a-f0-9]{32}$/.test(etag)) {
+        return Response.json({ error: 'Phần upload không hợp lệ.' }, { status: 400 });
+      }
+      return this.storage.transaction(async (transaction) => {
+        const key = 'upload:' + id;
+        const session = await transaction.get(key);
+        if (!session) return notFound();
+        if (session.completed) return Response.json({ error: 'Phiên upload đã hoàn tất.' }, { status: 409 });
+        const parts = { ...(session.parts ?? {}), [part]: etag };
+        await transaction.put({ [key]: { ...session, parts } });
+        return Response.json({ etag });
+      });
+    }
     if (route.pathname === '/inbox-upload/finish') {
       const { id } = await request.json();
       const key = 'upload:' + id;
@@ -60,7 +77,7 @@ export class AssetCatalog {
         const session = await transaction.get(key);
         if (!session) return notFound();
         if (session.completed) return Response.json(session.completed);
-        const { b2Id, kind, ...record } = session;
+        const { b2Id, kind, parts, ...record } = session;
         const publication = kind === 'stage'
           ? { ['revision:' + id]: record, ['draft:' + record.path]: record }
           : { [`inbox:${record.chapter}:${record.uploadedAt}:${id}`]: record };

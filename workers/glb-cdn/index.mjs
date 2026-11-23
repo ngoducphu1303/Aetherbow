@@ -364,7 +364,7 @@ async function handleMultipartUpload(request, url, env, action, kind) {
       if (!session) throw new Error('Could not save upload session');
     }
     if ((session.kind ?? 'inbox') !== kind || session.size !== size || session.path !== file.path) return adminResponse({ error: 'Phiên tải đã được dùng cho tệp khác.' }, 409);
-    return adminResponse({ partSize: INBOX_PART_BYTES, completed: session.completed ?? null });
+    return adminResponse({ partSize: INBOX_PART_BYTES, completed: session.completed ?? null, uploadedParts: session.parts ?? {} });
   }
 
   if (!session || (session.kind ?? 'inbox') !== kind) return adminResponse({ error: 'Phiên tải chưa được bắt đầu.' }, 404);
@@ -393,6 +393,10 @@ async function handleMultipartUpload(request, url, env, action, kind) {
       await origin.body?.cancel();
       if (!origin.ok || !/^[a-f0-9]{32}$/.test(etag ?? '')) return adminResponse({ error: `Backblaze chưa nhận phần ${index}.` }, 502);
       await write;
+      // Persist B2's authoritative ETag so a browser refresh can resume from
+      // the last acknowledged part rather than starting a new 120 MB upload.
+      const recorded = await catalog(env, '/inbox-upload/part', 'POST', { id, part: index, etag });
+      if (!recorded.ok) return adminResponse({ error: 'Không lưu được tiến độ tải. Hãy thử lại phần này.' }, 502);
       return adminResponse({ etag });
     } finally {
       controller.abort();
@@ -406,6 +410,11 @@ async function handleMultipartUpload(request, url, env, action, kind) {
     if (!Array.isArray(etags) || etags.length !== parts || etags.some((value) => typeof value !== 'string' || !/^[a-f0-9]{32}$/.test(value))) throw new Error();
   } catch {
     return adminResponse({ error: 'Danh sách phần tải không hợp lệ.' }, 400);
+  }
+  // Finalization must use parts actually acknowledged by B2 and recorded on
+  // the server, never an unverified list supplied by the browser.
+  if (etags.some((etag, index) => session.parts?.[index + 1] !== etag)) {
+    return adminResponse({ error: 'Thiếu phần upload hoặc ETag không khớp. Hãy tải lại các phần còn thiếu.' }, 409);
   }
   const body = '<CompleteMultipartUpload>' + etags.map((etag, index) =>
     `<Part><PartNumber>${index + 1}</PartNumber><ETag>"${etag}"</ETag></Part>`).join('') + '</CompleteMultipartUpload>';
