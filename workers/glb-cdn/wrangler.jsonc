@@ -3,5 +3,7 @@
   "main": "index.mjs",
   "compatibility_date": "2025-05-05",
   "workers_dev": true,
-  "vars": { "UPLOAD_GITHUB_USER_ID": "245531723" }
+  "vars": { "UPLOAD_GITHUB_USER_ID": "245531723", "FIREBASE_PROJECT_ID": "gen-lang-client-0911298747" },
+  "durable_objects": { "bindings": [{ "name": "ASSET_CATALOG", "class_name": "AssetCatalog" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AssetCatalog"] }]
 }

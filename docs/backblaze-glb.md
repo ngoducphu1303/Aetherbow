@@ -52,3 +52,9 @@ npm run check:glb
 ```
 
 Thêm `-- --all` để tải cả mẫu gốc dung lượng lớn, hoặc dùng `-- --file "public/assets/…/Tên.glb"` để tải riêng một tệp. Nếu muốn game local đọc các tệp vừa tải, đặt `VITE_GLB_CDN_BASE_URL=""` trong `.env.local`. Các tệp tải về được Git bỏ qua. Bản gốc trước khi gỡ vẫn truy xuất được từ commit `3a1eda6`.
+
+## Trang quản trị trong game
+
+Mở [Quản trị mô hình 3D](https://aetherbow.vercel.app/admin/assets) và đăng nhập Google bằng tài khoản quản trị. Chọn model đã tích hợp, tải tệp GLB 2.0 tối đa 96 MB, xem thử bản nháp rồi bấm **Áp dụng**. Người chơi tải bản đã áp dụng khi mở lại game. Nút **Quay lại bản trước** khôi phục phiên bản trước đó, kể cả bản gốc trên CDN.
+
+Danh mục quản trị lấy các model có `"runtime": true` trong manifest. Worker kiểm tra Firebase ID token và email quản trị đã xác minh. Biến bí mật `ADMIN_GOOGLE_EMAIL` cấu hình người được phép ghi. Durable Object `ASSET_CATALOG` lưu phiên bản nháp và đã áp dụng. Tệp mới nằm dưới prefix `assets/.revisions/` trên B2. Game đọc danh mục phiên bản lúc khởi động và dùng URL riêng cho từng bản để cache ổn định.

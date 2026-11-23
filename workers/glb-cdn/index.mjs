@@ -1,9 +1,19 @@
+import { AssetCatalog } from './assetCatalog.mjs';
+import { verifyFirebaseAdmin } from './firebaseAdmin.mjs';
+import manifest from '../../scripts/glb-manifest.json' with { type: 'json' };
+
+export { AssetCatalog };
+
 const B2_ORIGIN = 'https://s3.us-east-005.backblazeb2.com';
 const SIGNING_REGION = 'us-east-005';
 const BUCKET = 'aetherbow-assets';
 const UPLOAD_PREFIX = '/__upload';
 const UPLOAD_EXPIRY_SECONDS = 300;
 const GLB_CONTENT_TYPE = 'model/gltf-binary';
+const ADMIN_ORIGIN = 'https://aetherbow.vercel.app';
+const MAX_ADMIN_BYTES = 96_000_000;
+const KNOWN_GLB_PATHS = new Set(manifest.files.filter(({runtime}) => runtime).map(({path}) => path.slice('public'.length)));
+const REVISION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CONTENT_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const CACHE_CONTROL = 'public, max-age=86400';
 const MAP_CHUNK_BYTES = 6 * 1024 * 1024;
@@ -83,7 +93,7 @@ async function createUploadGrant(objectPath, keyId, applicationKey, size, md5) {
   const headers = {
     'cache-control': CACHE_CONTROL,
     'content-length': String(size),
-    'content-md5': md5,
+    ...(md5 ? { 'content-md5': md5 } : {}),
     'content-type': GLB_CONTENT_TYPE,
   };
   const signed = { ...headers, host: url.host };
@@ -156,9 +166,170 @@ function uploadReply(message, status) {
   return new Response(message, { status, headers: { 'cache-control': 'no-store' } });
 }
 
+function adminResponse(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: {
+      'access-control-allow-origin': ADMIN_ORIGIN,
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+function catalog(env, path, method = 'GET', data) {
+  const stub = env.ASSET_CATALOG.get(env.ASSET_CATALOG.idFromName('glb-versions'));
+  return stub.fetch('https://catalog.internal' + path, {
+    method, ...(data && { body: JSON.stringify(data) }),
+  });
+}
+
+async function readGlbUpload(body, size) {
+  if (!body) return null;
+  const reader = body.getReader();
+  const header = new Uint8Array(20);
+  const parts = [];
+  let bytes = 0;
+  try {
+    while (bytes < header.length) {
+      const next = await reader.read();
+      if (next.done) {
+        reader.releaseLock();
+        return null;
+      }
+      const count = Math.min(next.value.length, header.length - bytes);
+      header.set(next.value.subarray(0, count), bytes);
+      bytes += count;
+      parts.push(next.value);
+    }
+    const view = new DataView(header.buffer);
+    if (
+      view.getUint32(0, true) !== 0x46546c67 || view.getUint32(4, true) !== 2 ||
+      view.getUint32(8, true) !== size || view.getUint32(16, true) !== 0x4e4f534a ||
+      view.getUint32(12, true) < 4 || view.getUint32(12, true) % 4 !== 0 ||
+      view.getUint32(12, true) > size - 20
+    ) {
+      await reader.cancel();
+      reader.releaseLock();
+      return null;
+    }
+  } catch (error) {
+    reader.releaseLock();
+    throw error;
+  }
+  return new ReadableStream({
+    start(controller) {
+      for (const part of parts) controller.enqueue(part);
+    },
+    async pull(controller) {
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          reader.releaseLock();
+          controller.close();
+        } else {
+          controller.enqueue(next.value);
+        }
+      } catch (error) {
+        reader.releaseLock();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      reader.releaseLock();
+    },
+  });
+}
+
+async function uploadAdminAsset(request, url, env) {
+  const rawSize = request.headers.get('x-glb-size') ?? '';
+  const size = Number(rawSize);
+  if (!/^\d{1,9}$/.test(rawSize) || size < 24 || size > MAX_ADMIN_BYTES) {
+    return adminResponse({ error: 'Chọn tệp GLB từ 24 byte đến 96 MB.' }, 413);
+  }
+  const keyId = env.B2_WRITE_KEY_ID?.trim();
+  const applicationKey = env.B2_WRITE_APPLICATION_KEY?.trim();
+  if (!keyId || !applicationKey) return adminResponse({ error: 'Worker chưa được cấp quyền ghi.' }, 503);
+
+  const path = url.searchParams.get('path');
+  const object = getObjectPath(new URL('https://catalog.internal' + path.split('/').map(encodeURIComponent).join('/')));
+  const revision = { path, id: crypto.randomUUID(), size, uploadedAt: new Date().toISOString() };
+  let stream;
+  try {
+    stream = await readGlbUpload(request.body, size);
+    if (!stream) return adminResponse({ error: 'Tệp không phải GLB 2.0 hợp lệ.' }, 400);
+    const { url: signedUrl, headers } = await createUploadGrant({
+      encoded: '/assets/.revisions/' + revision.id + object.encoded.slice('/assets'.length),
+    }, keyId, applicationKey, size);
+    const transfer = new FixedLengthStream(size);
+    const controller = new AbortController();
+    const write = stream.pipeTo(transfer.writable, { signal: controller.signal });
+    // Handle a stream rejection while the upstream request is still pending.
+    void write.catch(() => {});
+    try {
+      const response = await fetch(signedUrl, { method: 'PUT', headers, body: transfer.readable, redirect: 'manual',
+        signal: AbortSignal.timeout(120_000) });
+      await response.body?.cancel();
+      if (!response.ok) return adminResponse({ error: 'Backblaze không nhận được tệp.' }, 502);
+      await write;
+    } finally {
+      controller.abort();
+    }
+    const registered = await catalog(env, '/stage', 'POST', revision);
+    if (!registered.ok) return adminResponse({ error: 'Không lưu được phiên bản.' }, 502);
+    return adminResponse(revision, 201);
+  } catch {
+    if (stream && !stream.locked) await stream.cancel().catch(() => {});
+    return adminResponse({ error: 'Upload bị gián đoạn. Hãy thử lại.' }, 502);
+  }
+}
+
+async function handleAdmin(request, url, env) {
+  const origin = request.headers.get('origin');
+  if (origin && origin !== ADMIN_ORIGIN) return adminResponse({ error: 'Nguồn truy cập không hợp lệ.' }, 403);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: {
+    'access-control-allow-origin': ADMIN_ORIGIN,
+    'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
+    'access-control-allow-headers': 'Authorization, Content-Type, X-GLB-Size',
+    'access-control-max-age': '300',
+  } });
+  const token = request.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1];
+  if (!token) return adminResponse({ error: 'Hãy đăng nhập Google để quản lý model.' }, 401);
+  if (!(await verifyFirebaseAdmin(token, env.FIREBASE_PROJECT_ID, env.ADMIN_GOOGLE_EMAIL))) {
+    return adminResponse({ error: 'Tài khoản này không có quyền quản lý model.' }, 403);
+  }
+  if (!env.ASSET_CATALOG) return adminResponse({ error: 'Thiếu danh mục phiên bản.' }, 503);
+
+  const endpoint = url.pathname.slice('/__admin'.length);
+  if (request.method === 'GET' && endpoint === '/session') return adminResponse({ allowed: true });
+  const path = url.searchParams.get('path');
+  if (!KNOWN_GLB_PATHS.has(path)) return adminResponse({ error: 'Chọn một model đã tích hợp.' }, 404);
+  if (request.method === 'PUT' && endpoint === '/upload') return uploadAdminAsset(request, url, env);
+  if (request.method === 'GET' && endpoint === '/entry') {
+    const result = await catalog(env, '/entry?path=' + encodeURIComponent(path));
+    return adminResponse(await result.json(), result.status);
+  }
+  if (request.method === 'POST' && (endpoint === '/publish' || endpoint === '/rollback')) {
+    let data;
+    try {
+      if (Number(request.headers.get('content-length')) > 500) throw new Error();
+      data = await request.json();
+      if (!data || !(data.expected === null || (typeof data.expected === 'string' && REVISION_ID.test(data.expected))) ||
+        (endpoint === '/publish' && (typeof data.id !== 'string' || !REVISION_ID.test(data.id)))) throw new Error();
+    } catch {
+      return adminResponse({ error: 'Phiên bản không hợp lệ.' }, 400);
+    }
+    const result = await catalog(env, endpoint, 'POST', { path, id: data.id, expected: data.expected });
+    return adminResponse(await result.json(), result.status);
+  }
+  return adminResponse({ error: 'Thao tác không được hỗ trợ.' }, 405);
+}
+
 function cacheRequest(url, objectPath, method, range) {
   if (method !== 'GET') return undefined;
   const key = new URL(objectPath.encoded, url.origin);
+  const revision = url.searchParams.get('rev');
+  if (revision) key.searchParams.set('rev', revision);
   const version = url.searchParams.get('v');
   if (version && /^\d{1,12}$/.test(version)) key.searchParams.set('v', version);
   if (range) {
@@ -181,6 +352,13 @@ function error(message, status, extraHeaders) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/__admin/')) return handleAdmin(request, url, env);
+    if (url.pathname === '/__asset-versions' && request.method === 'GET') {
+      const result = env.ASSET_CATALOG ? await catalog(env, '/versions') : Response.json({});
+      return new Response(result.body, { status: result.status, headers: {
+        ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store',
+      } });
+    }
     if (url.pathname.startsWith(UPLOAD_PREFIX + '/')) return handleUpload(request, url, env);
     const objectPath = getObjectPath(url);
     if (!objectPath) return error('Not found', 404);
@@ -192,6 +370,8 @@ export default {
       return error('Method not allowed', 405, { allow: 'GET, HEAD, OPTIONS' });
     }
 
+    const revision = url.searchParams.get('rev');
+    if (revision !== null && !REVISION_ID.test(revision)) return error('Invalid revision', 400);
     const range = method === 'GET' ? request.headers.get('range') : null;
     if (range && !/^bytes=(?:\d{1,12}-\d{0,12}|-\d{1,12})$/.test(range)) {
       return error('Invalid range', 416);
@@ -214,7 +394,10 @@ export default {
     const applicationKey = env.B2_READ_APPLICATION_KEY?.trim();
     if (!keyId || !applicationKey) return error('Asset origin is not configured', 503);
 
-    const upstreamUrl = new URL(`/${BUCKET}${objectPath.encoded}`, B2_ORIGIN);
+    const originPath = revision
+      ? '/assets/.revisions/' + revision + objectPath.encoded.slice('/assets'.length)
+      : objectPath.encoded;
+    const upstreamUrl = new URL(`/${BUCKET}${originPath}`, B2_ORIGIN);
     let upstream;
     try {
       const headers = await signB2Download(upstreamUrl, method, keyId, applicationKey);
