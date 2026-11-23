@@ -1,6 +1,7 @@
 import { CHAPTER_EQUIPMENT_SETS, getChapterEquipmentStatus } from '../data/chapterEquipmentSets';
 import { CHAPTERS } from '../data/chaptersData';
 import { canClaimChapter2Asset } from '../data/chapter2Collection';
+import { canClaimChapter3Asset } from '../data/chapter3Collection';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpCircle,
@@ -1858,7 +1859,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {PETS_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((pet) => {
+                {PETS_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared)).map((pet) => {
                   const inst = ownedPets.find((p) => p.petId === pet.id);
                   const lv = inst?.level ?? 1;
                   const isEquipped = save.equippedPetId === pet.id;
@@ -2136,7 +2137,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </div>
                     );
                   })()}
-                  {HERO_SKINS.filter((skin) => !skin.heroId || skin.heroId === hero.id).map((skin) => {
+                  {HERO_SKINS.filter((skin) => (!skin.heroId || skin.heroId === hero.id) && canClaimChapter2Asset(skin.id, save.highestChapterCleared) && canClaimChapter3Asset(skin.id, save.highestChapterCleared)).map((skin) => {
                     const isOwned = unlockedSkins.includes(skin.id);
                     const isEquipped = activeSkinId === skin.id;
                     const cHex = skin.cloakHex
@@ -2289,7 +2290,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {ZODIAC_WINGS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((w) => {
+                {ZODIAC_WINGS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared)).map((w) => {
                   const isOwned = unlockedWings.includes(w.id);
                   const isEquipped = equippedWingId === w.id;
                   const lv = wingLevels[w.id] ?? 1;
@@ -2506,7 +2507,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ZODIAC_MOUNTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((m) => {
+                {ZODIAC_MOUNTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared)).map((m) => {
                   const isOwned = unlockedMounts.includes(m.id);
                   const isEquipped = equippedMountId === m.id;
                   const lv = Math.max(1, mountLevels[m.id] ?? 1);
@@ -2818,7 +2819,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
 
               {/* 4 Mythic Artifacts */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {MYTHIC_ARTIFACTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((art) => {
+                {MYTHIC_ARTIFACTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared)).map((art) => {
                   const isOwned = unlockedArtifacts.includes(art.id);
                   const isEquipped = equippedArtifactId === art.id;
                   const lv = Math.max(1, artifactLevels[art.id] ?? 1);
@@ -3018,7 +3019,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {DIVINE_HALO_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((halo) => {
+                {DIVINE_HALO_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared)).map((halo) => {
                   const isOwned = unlockedHalos.includes(halo.id);
                   const isEquipped = equippedHaloId === halo.id;
                   const lv = Math.max(1, haloLevels[halo.id] ?? 1);

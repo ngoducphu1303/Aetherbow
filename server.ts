@@ -11,6 +11,7 @@ import {
   WeeklyBossServiceError,
 } from './src/server/weeklyBossService.ts';
 import { LiveAiPlayersService } from './src/server/liveAiPlayersService.ts';
+import { mountAssetDeployRoutes } from './src/server/assetDeployService.ts';
 import type { WeeklyBossLeaderboardEntry } from './src/data/weeklyBossData.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1264,6 +1265,8 @@ async function startServer() {
       wsClients: wsHub?.wss.clients.size ?? 0,
     });
   });
+
+  mountAssetDeployRoutes(app, __dirname, projectId);
 
   // Stream the uncompressed 90.3 MB Chapter 1 GLB map in <= 6 MiB byte chunks so
   // every HTTP/1.1 response stays safely under Cloud Run's 32 MiB response limit.

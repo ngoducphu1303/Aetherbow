@@ -21,7 +21,18 @@ export type Chapter1RosterAssetId =
 export type Chapter2RosterAssetId =
   | 'magma-ram' | 'obsidian-golem' | 'crimson-spirit' | 'aries-berserker' | 'cinderhorn' | 'kratos-aries';
 
-export type CampaignRosterAssetId = Chapter1RosterAssetId | Chapter2RosterAssetId;
+export type Chapter3RosterAssetId =
+  | 'nguu-ngoc-xung-kich'
+  | 've-binh-ngoc-luc-bao'
+  | 'linh-hon-luc-bao'
+  | 'chien-binh-kich-luc-bao'
+  | 'ngoc-nguu-duc-thu'
+  | 'dia-than-kim-nguu';
+
+export type CampaignRosterAssetId =
+  | Chapter1RosterAssetId
+  | Chapter2RosterAssetId
+  | Chapter3RosterAssetId;
 
 export type Chapter1RosterVariant = 'high' | 'lite';
 
@@ -139,28 +150,73 @@ const CHAPTER2_ROSTER_DEFINITIONS = {
 
 export const CHAPTER2_ROSTER_ASSET_IDS = Object.keys(CHAPTER2_ROSTER_DEFINITIONS) as Chapter2RosterAssetId[];
 
+const CHAPTER3_ROSTER_RIGS = {
+  'nguu-ngoc-xung-kich': 'fire_lion',
+  've-binh-ngoc-luc-bao': 'stone_guardian',
+  'linh-hon-luc-bao': 'flame_spirit',
+  'chien-binh-kich-luc-bao': 'sun_spearman',
+  'ngoc-nguu-duc-thu': 'winged_solar_lion',
+  'dia-than-kim-nguu': 'stone_guardian',
+} as const satisfies Record<Chapter3RosterAssetId, AutoRigArchetype>;
+
+const CHAPTER3_ROSTER_DEFINITIONS = {
+  'nguu-ngoc-xung-kich': ['Ngưu Ngọc Xung Kích', EnemyKind.SKIRMISHER, 1.62, 0, 0],
+  've-binh-ngoc-luc-bao': ['Vệ Binh Ngọc Lục Bảo', EnemyKind.GOLEM, 2.28, 0, 0],
+  'linh-hon-luc-bao': ['Linh Hồn Lục Bảo', EnemyKind.IMP_ARCHER, 1.78, 0.24, 0],
+  'chien-binh-kich-luc-bao': ['Chiến Binh Kích Lục Bảo', EnemyKind.DRAGON_WHELP, 1.92, 0, 0],
+  // Winged bull source sculpt faces +45° diagonal; -PI/4 aligns nose cleanly to +Z forward.
+  'ngoc-nguu-duc-thu': ['Ngọc Ngưu Dực Thú', EnemyKind.WARDEN_BOSS, 2.75, 0.06, -Math.PI / 4],
+  'dia-than-kim-nguu': ['Địa Thần Kim Ngưu', EnemyKind.ZODIAC_BOSS, 3.3, 0, 0],
+} as const;
+
+export const CHAPTER3_ROSTER_ASSET_IDS = Object.keys(CHAPTER3_ROSTER_DEFINITIONS) as Chapter3RosterAssetId[];
+
 export function getCampaignRosterArchetype(id: CampaignRosterAssetId): AutoRigArchetype {
-  return CHAPTER2_ROSTER_RIGS[id as Chapter2RosterAssetId] ?? (id as Chapter1RosterAssetId);
+  return (
+    CHAPTER2_ROSTER_RIGS[id as Chapter2RosterAssetId] ??
+    CHAPTER3_ROSTER_RIGS[id as Chapter3RosterAssetId] ??
+    (id as Chapter1RosterAssetId)
+  );
 }
 
 function getCampaignRosterSpec(id: CampaignRosterAssetId): Chapter1RosterSpec {
   const aries = CHAPTER2_ROSTER_DEFINITIONS[id as Chapter2RosterAssetId];
-  if (!aries) return CHAPTER1_ROSTER_SPECS[id as Chapter1RosterAssetId];
+  if (aries) {
+    const [displayName, kind, targetHeight, hoverOffsetY, facingYawOffset] = aries;
+    return {
+      id,
+      displayName,
+      roleLabel: '',
+      isSubBoss: id === 'cinderhorn',
+      enemyKinds: id === 'cinderhorn' ? [kind, EnemyKind.TITAN_BOSS] : [kind],
+      highPathSegments: ['assets', 'Chương 2', 'Runtime', `${id}-high.glb`],
+      litePathSegments: ['assets', 'Chương 2', 'Runtime', `${id}-lite.glb`],
+      targetHeight,
+      hoverOffsetY,
+      facingYawOffset,
+      maxLiteBytes: 1_000_000,
+    };
+  }
 
-  const [displayName, kind, targetHeight, hoverOffsetY, facingYawOffset] = aries;
-  return {
-    id,
-    displayName,
-    roleLabel: '',
-    isSubBoss: id === 'cinderhorn',
-    enemyKinds: id === 'cinderhorn' ? [kind, EnemyKind.TITAN_BOSS] : [kind],
-    highPathSegments: ['assets', 'Chương 2', 'Runtime', `${id}-high.glb`],
-    litePathSegments: ['assets', 'Chương 2', 'Runtime', `${id}-lite.glb`],
-    targetHeight,
-    hoverOffsetY,
-    facingYawOffset,
-    maxLiteBytes: 1_000_000,
-  };
+  const taurus = CHAPTER3_ROSTER_DEFINITIONS[id as Chapter3RosterAssetId];
+  if (taurus) {
+    const [displayName, kind, targetHeight, hoverOffsetY, facingYawOffset] = taurus;
+    return {
+      id,
+      displayName,
+      roleLabel: '',
+      isSubBoss: id === 'ngoc-nguu-duc-thu',
+      enemyKinds: id === 'ngoc-nguu-duc-thu' ? [kind, EnemyKind.TITAN_BOSS] : [kind],
+      highPathSegments: ['assets', 'Chương 3', 'Runtime', `${id}-high.glb`],
+      litePathSegments: ['assets', 'Chương 3', 'Runtime', `${id}-lite.glb`],
+      targetHeight,
+      hoverOffsetY,
+      facingYawOffset,
+      maxLiteBytes: 1_000_000,
+    };
+  }
+
+  return CHAPTER1_ROSTER_SPECS[id as Chapter1RosterAssetId];
 }
 
 export interface Chapter1RosterEncounterContext {
@@ -199,9 +255,14 @@ export function resolveChapter1RosterAssetId(
 }
 
 export function resolveCampaignRosterAssetId(ctx: Chapter1RosterEncounterContext): CampaignRosterAssetId | null {
-  if (ctx.chapterId !== 2) return resolveChapter1RosterAssetId(ctx);
   if (ctx.isSideModeActive || ctx.isTrainingDummy || ctx.isArenaRival) return null;
-  return CHAPTER2_ROSTER_ASSET_IDS.find((id) => getCampaignRosterSpec(id).enemyKinds.includes(ctx.enemyKind)) ?? null;
+  if (ctx.chapterId === 2) {
+    return CHAPTER2_ROSTER_ASSET_IDS.find((id) => getCampaignRosterSpec(id).enemyKinds.includes(ctx.enemyKind)) ?? null;
+  }
+  if (ctx.chapterId === 3) {
+    return CHAPTER3_ROSTER_ASSET_IDS.find((id) => getCampaignRosterSpec(id).enemyKinds.includes(ctx.enemyKind)) ?? null;
+  }
+  return resolveChapter1RosterAssetId(ctx);
 }
 
 export function getChapter1RosterAssetUrl(
@@ -254,13 +315,30 @@ async function fetchRosterVariantBytes(
   const baseUri =
     options.baseUri ?? (typeof document !== 'undefined' ? document.baseURI : 'http://localhost:3000/');
   const url = getChapter1RosterAssetUrl(assetId, variant, baseUrl, baseUri);
-  const res = await fetchImpl(url, { signal: options.signal });
-  if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
-    throw new Error(`Không tải được mô hình ${assetId} (${variant}, HTTP ${res.status}).`);
+  const fetchAndValidate = async (targetUrl: URL): Promise<ArrayBuffer> => {
+    const res = await fetchImpl(targetUrl, { signal: options.signal });
+    if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
+      throw new Error(`Không tải được mô hình ${assetId} (${variant}, HTTP ${res.status}).`);
+    }
+    const buf = await res.arrayBuffer();
+    validateGlbBuffer(buf, `${assetId}:${variant}`);
+    return buf;
+  };
+
+  try {
+    return await fetchAndValidate(url);
+  } catch (error) {
+    if (options.signal?.aborted || !(assetId in CHAPTER3_ROSTER_DEFINITIONS)) {
+      throw error;
+    }
+    const spec = getCampaignRosterSpec(assetId);
+    const segments = variant === 'lite' ? spec.litePathSegments : spec.highPathSegments;
+    const localBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    const localUrl = new URL(segments.map(encodeURIComponent).join('/'), new URL(localBase, baseUri));
+    localUrl.searchParams.set('v', CHAPTER1_ROSTER_ASSET_VERSION);
+    if (localUrl.href === url.href) throw error;
+    return await fetchAndValidate(localUrl);
   }
-  const buf = await res.arrayBuffer();
-  validateGlbBuffer(buf, `${assetId}:${variant}`);
-  return buf;
 }
 
 /**

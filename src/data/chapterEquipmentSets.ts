@@ -38,6 +38,18 @@ export const CHAPTER_EQUIPMENT_SETS: readonly ChapterEquipmentSet[] = [
       equippedHaloId: 'aries_vanguard',
     },
   },
+  {
+    chapterId: 3,
+    unlockChapter: 3,
+    equipment: {
+      selectedHeroId: 'sylvia',
+      equippedPetId: 'jade_calf',
+      equippedWingId: 'emerald_taurus_wings',
+      equippedMountId: 'jade_bull',
+      equippedArtifactId: 'jade_heart_relic',
+      equippedHaloId: 'emerald_taurus_halo',
+    },
+  },
 ];
 
 const GEAR_SLOTS = Object.values(GearSlot);

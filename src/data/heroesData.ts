@@ -10,7 +10,7 @@ export type PlayableHeroId = Exclude<HeroId, 'artemis' | 'hatsune_miku'>;
 export const DEFAULT_HERO_ID: PlayableHeroId = 'aurelia';
 
 export function isPlayableHeroId(value: unknown): value is PlayableHeroId {
-  return value === 'aurelia' || value === 'bellona';
+  return value === 'aurelia' || value === 'bellona' || value === 'sylvia';
 }
 
 export function normalizePlayableHeroId(value: unknown): PlayableHeroId {
@@ -58,6 +58,29 @@ export const HEROES: HeroDefinition[] = [
     bonusAtk: 54, bonusHp: 220, unlockGold: 0, unlockGems: 0,
     accentHex: 0xff682e, cloakHex: 0x991b1b, hairHex: 0xa22d20,
     eyeColor: '#ffc062', cheekColor: '#fb7185', crownStyle: 'ranger_band',
+  },
+  {
+    id: 'sylvia',
+    name: 'Sylvia',
+    rarity: 'Legendary',
+    title: 'Thánh Nữ Ngọc Lục Bảo',
+    skillName: 'Địa Mạch Lục Bảo',
+    ultName: 'Thánh Địa Kim Ngưu',
+    ultDesc: 'Triệu hồi Pháp Trận Ngọc Lục Bảo gây 255% ATK quanh Sylvia, kết tinh làm choáng địch và tạo khiên hộ thể 18% HP.',
+    role: 'Khống Chế Ngọc Bảo & Bền Bỉ',
+    roleTag: 'sustain',
+    unlockChapterReq: 3,
+    passiveDesc: 'Khai mở sức mạnh Thánh Địa Kim Ngưu giúp tích tụ khiên ngọc và tung Địa Mạch Lục Bảo xuyên phá đội hình địch.',
+    bonusAtk: 56,
+    bonusHp: 230,
+    unlockGold: 0,
+    unlockGems: 0,
+    accentHex: 0x10b981,
+    cloakHex: 0x065f46,
+    hairHex: 0xd1fae5,
+    eyeColor: '#34d399',
+    cheekColor: '#6ee7b7',
+    crownStyle: 'rolla_tiara',
   },
 ];
 

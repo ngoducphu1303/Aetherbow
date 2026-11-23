@@ -4,12 +4,13 @@ import { ArrowLeft, Box, Check, CloudUpload, Eye, LogOut, RotateCcw, Search, Shi
 import { auth, googleProvider } from '../firebase';
 import manifest from '../../scripts/glb-manifest.json';
 import AssetInboxPanel from './AssetInboxPanel';
+import AssetDeployPanel from './AssetDeployPanel';
 import { adminHandle, credentialMessage, linkAssetAdminAccount, loginAssetAdmin } from './assetAdminCredentials';
 import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadAdminGlb } from './assetAdminApi';
 import { syncAssetAdminUidToFirestore } from '../services/assetInboxMirrorService';
 
 const Preview = lazy(() => import('./AssetAdminPreview'));
-const categories = ['Chương 1', 'Chương 2', 'Khác'] as const;
+const categories = ['Chương 1', 'Chương 2', 'Chương 3', 'Khác'] as const;
 type Category = typeof categories[number];
 
 type Revision = { path: string; id: string; size: number; uploadedAt: string };
@@ -18,7 +19,11 @@ type Entry = { active: Revision | null; previous: Revision | null; draft: Revisi
 
 export default function AssetAdminPage() {
   const [session, setSession] = useState<'checking' | 'guest' | 'denied' | 'ready'>('checking');
-  const [mode, setMode] = useState<'replace' | 'new'>(() => new URLSearchParams(window.location.search).get('tab') === 'new' ? 'new' : 'replace');
+  const [mode, setMode] = useState<'replace' | 'new' | 'deploy'>(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'new' || tab === 'deploy') return tab;
+    return 'replace';
+  });
   const [inboxBusy, setInboxBusy] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [sessionError, setSessionError] = useState('');
@@ -211,6 +216,8 @@ export default function AssetAdminPage() {
             onClick={() => setMode('new')}>Tải asset mới</button>
           <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'replace'} className={mode === 'replace' ? primary : secondary}
             onClick={() => setMode('replace')}>Thay model đã tích hợp</button>
+          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'deploy'} className={mode === 'deploy' ? primary : secondary}
+            onClick={() => setMode('deploy')}>Đồng bộ B2 & Worker</button>
         </nav>
       )}
 
@@ -300,6 +307,8 @@ export default function AssetAdminPage() {
         </section>
       ) : mode === 'new' && user ? (
         <AssetInboxPanel user={user} onBusyChange={setInboxBusy} />
+      ) : mode === 'deploy' && user ? (
+        <AssetDeployPanel user={user} onBusyChange={setInboxBusy} />
       ) : (
         <div className="mx-auto mt-6 grid max-w-6xl gap-4 lg:grid-cols-[minmax(260px,340px)_1fr]">
           <section className="self-start rounded-2xl border border-slate-800 bg-slate-900/85 p-4" aria-label="Danh mục model">

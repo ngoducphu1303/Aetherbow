@@ -14,8 +14,8 @@ import type { SaveData } from '../types/game';
 const blackDragonAsset = new URL('../../public/assets/mounts/black-dragon.glb', import.meta.url);
 const legacyDragonAsset = new URL('../../public/assets/mounts/dragon.glb', import.meta.url);
 
-test('Solarius and Vulcan are the 3D Zodiac mounts, Hắc Long and Weapon Auras are removed, and legacy dragon GLBs are deleted', () => {
-  assert.deepEqual(new Set(ZODIAC_MOUNTS.map(({ id }) => id)), new Set(['solarius', 'vulcan']));
+test('Solarius, Vulcan, and Jade Bull are the 3D Zodiac mounts, Hắc Long and Weapon Auras are removed, and legacy dragon GLBs are deleted', () => {
+  assert.deepEqual(new Set(ZODIAC_MOUNTS.map(({ id }) => id)), new Set(['solarius', 'vulcan', 'jade_bull']));
   assert.equal(MOUNT_MAP.solarius.name, 'Solarius · Sư Tử Thái Dương');
   assert.equal(MOUNT_MAP.black_dragon, undefined);
   assert.ok(MOUNT_MAP.solarius.unlockGems === 0 && MOUNT_MAP.solarius.unlockShards === 0);

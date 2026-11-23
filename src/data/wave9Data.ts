@@ -22,6 +22,24 @@ export const MAX_ARTIFACT_LEVEL = 10;
 
 export const MYTHIC_ARTIFACTS: MythicArtifactDefinition[] = [
   {
+    id: 'jade_heart_relic',
+    name: 'Tâm Ngọc Kim Ngưu',
+    badge: 'CHƯƠNG 3 · THÁNH KHÍ 3D',
+    elementLabel: 'Kim Ngưu · Thổ Ngọc',
+    desc: 'Trái tim kết tinh từ linh mạch ngọc lục bảo, xoay hộ vệ sau vai giúp cường hóa Công, Máu và Sát Thương Boss.',
+    primaryHex: 0x10b981,
+    secondaryHex: 0xfbbf24,
+    baseAtk: 74,
+    baseHp: 460,
+    baseCrit: 0.07,
+    baseBossDmg: 0.15,
+    atkPerLv: 24,
+    hpPerLv: 135,
+    critPerLv: 0.011,
+    unlockGems: 0,
+    unlockArtifactShards: 0,
+  },
+  {
     id: 'war_horn', name: 'Chiến Giác Hỏa Tinh', badge: 'CHƯƠNG 2 · THÁNH KHÍ 3D',
     elementLabel: 'Bạch Dương · Hỏa Tinh', desc: 'Chiến giác đúc bằng đồng núi lửa.',
     primaryHex: 0xfc602e, secondaryHex: 0xffcb75,

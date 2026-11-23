@@ -17,6 +17,24 @@ import { getTodayKey } from './questsData';
 
 export const PETS_CATALOG: PetDefinition[] = [
   {
+    id: 'jade_calf',
+    name: 'Tiểu Ngưu Ngọc Bích',
+    title: 'Tinh Linh Ngọc Lục Bảo',
+    element: 'earth',
+    rarity: 'Huyền Thoại',
+    desc: 'Tinh linh Kim Ngưu kết tinh từ lõi ngọc bích, bay hộ vệ và bắn tinh tiễn lục bảo tăng chí mạng.',
+    skillName: 'Ngọc Tiễn Địa Mạch',
+    skillDesc: 'Phóng tia tinh quang lục bảo mỗi 0.90s gây 95% ATK và tăng 6% Chí Mạng.',
+    baseAtk: 28,
+    baseHp: 135,
+    baseCrit: 0.065,
+    unlockGems: 0,
+    unlockGold: 0,
+    primaryHex: 0x10b981,
+    secondaryHex: 0xfde68a,
+    fireInterval: 0.9,
+  },
+  {
     id: 'pyro', name: 'Pyro', title: 'Tinh Linh Dương Hỏa', element: 'fire',
     rarity: 'Huyền Thoại',
     desc: 'Dương con hỏa vũ đồng hành với người chinh phục Hỏa Sơn Sừng Đỏ.',
@@ -69,6 +87,20 @@ export function getPetUpgradeCost(level: number): { essence: number; gold: numbe
 }
 
 export const HERO_SKINS: HeroSkinDefinition[] = [
+  {
+    id: 'venus_incarnate',
+    heroId: 'sylvia',
+    name: 'Thánh Y Hóa Thân Kim Tinh',
+    badge: 'CHƯƠNG 3 · TRANG PHỤC',
+    desc: 'Thánh Y Hóa Thân Kim Tinh dát vàng ngọc bích dành riêng cho Thánh Nữ Ngọc Lục Bảo Sylvia.',
+    unlockGems: 0,
+    unlockGold: 0,
+    cloakHex: 0x047857,
+    accentHex: 0xfbbf24,
+    hairHex: 0xfef3c7,
+    atkBonus: 24,
+    hpBonus: 120,
+  },
   {
     id: 'golden_fleece', heroId: 'bellona', name: 'Hoàng Bào Kim Dương',
     badge: 'CHƯƠNG 2 · TRANG PHỤC', desc: 'Golden Fleece Empress Regalia dành riêng cho Bellona.',

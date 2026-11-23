@@ -35,6 +35,20 @@ function ariesCharacter(assetKey: string): CharacterAssetPack {
   return { ...pack, skill: pack.icon, burst: pack.icon };
 }
 
+function taurusImage(assetKey: string): string {
+  return encodeURI(`/assets/Chương 3/Runtime/${assetKey}.webp`);
+}
+
+function taurusPortrait(assetKey: string): EnemyAssetPack {
+  const image = taurusImage(assetKey);
+  return { assetKey, icon: image, portrait: image };
+}
+
+function taurusCharacter(assetKey: string): CharacterAssetPack {
+  const pack = taurusPortrait(assetKey);
+  return { ...pack, skill: pack.icon, burst: pack.icon };
+}
+
 const ARIES_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }>> = {
   [EnemyKind.SKIRMISHER]: { ...ariesPortrait('magma-ram'), name: 'Dương Hỏa Dung Nham' },
   [EnemyKind.GOLEM]: { ...ariesPortrait('obsidian-golem'), name: 'Golem Hắc Diện' },
@@ -42,7 +56,15 @@ const ARIES_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }
   [EnemyKind.DRAGON_WHELP]: { ...ariesPortrait('aries-berserker'), name: 'Cuồng Chiến Bạch Dương' },
 };
 
+const TAURUS_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }>> = {
+  [EnemyKind.SKIRMISHER]: { ...taurusPortrait('nguu-ngoc-xung-kich'), name: 'Ngưu Ngọc Xung Kích' },
+  [EnemyKind.GOLEM]: { ...taurusPortrait('ve-binh-ngoc-luc-bao'), name: 'Vệ Binh Ngọc Lục Bảo' },
+  [EnemyKind.IMP_ARCHER]: { ...taurusPortrait('linh-hon-luc-bao'), name: 'Linh Hồn Lục Bảo' },
+  [EnemyKind.DRAGON_WHELP]: { ...taurusPortrait('chien-binh-kich-luc-bao'), name: 'Chiến Binh Kích Lục Bảo' },
+};
+
 export const HERO_ASSET_PACKS: Record<PlayableHeroId, CharacterAssetPack> = {
+  sylvia: taurusCharacter('sylvia'),
   bellona: ariesCharacter('bellona'),
   aurelia: {
     assetKey: 'aurelia',
@@ -54,6 +76,7 @@ export const HERO_ASSET_PACKS: Record<PlayableHeroId, CharacterAssetPack> = {
 };
 
 export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> = {
+  venus_incarnate: taurusCharacter('venus-incarnate'),
   golden_fleece: ariesCharacter('golden-fleece'),
   aurelia_oasis_dancer: {
     assetKey: 'aurelia-oasis-dancer',
@@ -86,6 +109,11 @@ export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> =
 };
 
 export const SOLAR_LEO_ITEM_THUMBNAILS: Record<string, string> = {
+  jade_calf: taurusImage('jade-calf'),
+  emerald_taurus_wings: taurusImage('emerald-taurus-wings'),
+  jade_bull: taurusImage('jade-bull'),
+  jade_heart_relic: taurusImage('jade-heart-relic'),
+  emerald_taurus_halo: taurusImage('emerald-taurus-halo'),
   pyro: ariesImage('pyro'),
   crimson_ram_wings: ariesImage('crimson-ram-wings'),
   vulcan: ariesImage('vulcan'),
@@ -202,7 +230,7 @@ export const WEEKLY_BOSS_CATALOG: Record<string, BossAssetPack> = {
 export const CHAPTER_BOSS_ASSETS: Record<number, BossAssetPack> = {
   1: WEEKLY_BOSS_CATALOG.azhdaha,
   2: ariesPortrait('kratos-aries'),
-  3: WEEKLY_BOSS_CATALOG['lupus-boreas'],
+  3: taurusPortrait('dia-than-kim-nguu'),
   4: WEEKLY_BOSS_CATALOG['everlasting-lord-of-arcane-wisdom'],
   5: WEEKLY_BOSS_CATALOG['all-devouring-narwhal'],
   6: WEEKLY_BOSS_CATALOG['guardian-of-apep-s-oasis'],
@@ -249,12 +277,18 @@ export function getSkinAssetPack(skinId: HeroSkinId, fallbackHeroId: HeroId = DE
 }
 
 export function getEnemyLabel(kind: EnemyKind, chapterId?: number): string {
-  return (chapterId === 2 ? ARIES_ENEMIES[kind]?.name : undefined) ?? ENEMY_LABEL_VI[kind];
+  if (chapterId === 2) return ARIES_ENEMIES[kind]?.name ?? ENEMY_LABEL_VI[kind];
+  if (chapterId === 3) return TAURUS_ENEMIES[kind]?.name ?? ENEMY_LABEL_VI[kind];
+  return ENEMY_LABEL_VI[kind];
 }
 
 export function getEnemyAssetPack(kind: EnemyKind, chapterId?: number): EnemyAssetPack {
   if (chapterId === 2) {
     const pack = ARIES_ENEMIES[kind];
+    if (pack) return pack;
+  }
+  if (chapterId === 3) {
+    const pack = TAURUS_ENEMIES[kind];
     if (pack) return pack;
   }
   return ENEMY_ASSET_PACKS[kind] ?? ENEMY_ASSET_PACKS[EnemyKind.SKIRMISHER];
@@ -286,6 +320,10 @@ export function getBossAssetPack(opts: {
   if (opts.chapterId === 2) {
     if (lower.startsWith('cinderhorn')) return ariesPortrait('cinderhorn');
     if (lower.includes('hỏa dương chiến vương') || !lower) return CHAPTER_BOSS_ASSETS[2];
+  }
+  if (opts.chapterId === 3) {
+    if (lower.includes('ngọc ngưu dực thú')) return taurusPortrait('ngoc-nguu-duc-thu');
+    if (lower.includes('địa thần kim ngưu') || !lower) return CHAPTER_BOSS_ASSETS[3];
   }
   if (lower.includes('boreas') || lower.includes('băng đế')) {
     return WEEKLY_BOSS_CATALOG['lupus-boreas'];

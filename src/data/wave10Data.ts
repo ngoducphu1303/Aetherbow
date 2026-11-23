@@ -21,6 +21,24 @@ export const DIVINE_HALO_MAX_LEVEL = 12;
 
 export const DIVINE_HALO_CATALOG: DivineHaloDefinition[] = [
   {
+    id: 'emerald_taurus_halo',
+    name: 'Pháp Trận Lục Bảo Kim Ngưu',
+    badge: 'CHƯƠNG 3 · HÀO QUANG 3D',
+    elementLabel: 'Kim Ngưu · Thánh Địa Lục Bảo',
+    desc: 'Vầng pháp trận ngọc lục bảo khắc ấn Kim Ngưu xoay sau lưng, tăng mạnh Công, Máu, Bạo Thương và Giảm Thương.',
+    primaryHex: 0x10b981,
+    secondaryHex: 0xfde68a,
+    baseAtkPct: 0.115,
+    baseHpPct: 0.105,
+    baseCritDmg: 0.23,
+    baseDr: 0.05,
+    atkPctPerLv: 0.019,
+    hpPctPerLv: 0.016,
+    critDmgPerLv: 0.032,
+    unlockGems: 0,
+    unlockDivineCrystals: 0,
+  },
+  {
     id: 'aries_vanguard', name: 'Hào Quang Tiên Phong Bạch Dương', badge: 'CHƯƠNG 2 · HÀO QUANG 3D',
     elementLabel: 'Bạch Dương · Hỏa Tinh', desc: 'Vòng lửa khắc huy hiệu Bạch Dương.',
     primaryHex: 0xf97316, secondaryHex: 0xffba60,

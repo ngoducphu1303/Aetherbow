@@ -133,6 +133,7 @@ export const EVOLVED_PET_FORM_NAMES: Record<PetId, string> = {
   star_fairy: 'Nữ Hoàng Ngân Hà (Tiến Hóa)',
   astraeo: 'Thánh Sư Tử Astraeo (Tiến Hóa)',
   pyro: 'Dương Hỏa Pyro (Tiến Hóa)',
+  jade_calf: 'Thánh Ngưu Ngọc Bích (Tiến Hóa)',
 };
 
 export function getSpiritBeastFormName(petId: PetId, isEvolved: boolean, baseName: string): string {

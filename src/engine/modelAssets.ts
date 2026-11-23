@@ -8,9 +8,14 @@ import {
   fetchChapter2MapArrayBuffer,
   type FetchChapter2MapResult,
 } from './chapter2Map';
+import {
+  fetchChapter3MapArrayBuffer,
+  type FetchChapter3MapResult,
+} from './chapter3Map';
 
 export const CHAPTER1_MAP_MODEL_ASSET = 'Chương 1/Map mới/Chương 1.glb' as const;
 export const CHAPTER2_MAP_MODEL_ASSET = 'Chương 2/Map mới/Aries War-Forge Arena Lite.glb' as const;
+export const CHAPTER3_MAP_MODEL_ASSET = 'Chương 3/Runtime/taurus-arena-lite.glb' as const;
 export const CHAPTER1_MAP_LITE_LABEL = 'Bản Đồ 3D Chương 1 Lite · Tối Ưu Máy Yếu';
 
 const MODEL_VERSIONS = {
@@ -416,6 +421,52 @@ export function discardChapter2MapDownload(variant: 'lite' | 'full', data: Array
   if (existing?.buffer !== data) return;
   chapter2MapResolved.delete(variant);
   chapter2MapCache.delete(variant);
+}
+
+const chapter3MapCache = new Map<'lite' | 'full', Promise<FetchChapter3MapResult>>();
+const chapter3MapResolved = new Map<'lite' | 'full', FetchChapter3MapResult>();
+
+export function downloadChapter3Map(
+  variant: 'lite' | 'full',
+  options?: {
+    signal?: AbortSignal;
+    onProgress?: (loadedBytes: number, totalBytes: number) => void;
+  }
+): Promise<FetchChapter3MapResult> {
+  const cached = chapter3MapResolved.get(variant);
+  if (cached) return Promise.resolve(cached);
+  const pending = chapter3MapCache.get(variant);
+  if (pending) return pending;
+
+  const baseUrl =
+    (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+  const baseUri = typeof document !== 'undefined' ? document.baseURI : 'http://localhost:3000/';
+
+  const promise = fetchChapter3MapArrayBuffer({
+    variant,
+    baseUrl,
+    baseUri,
+    signal: options?.signal,
+    onProgress: options?.onProgress,
+  })
+    .then((result) => {
+      chapter3MapResolved.set(variant, result);
+      return result;
+    })
+    .catch((error) => {
+      chapter3MapCache.delete(variant);
+      throw error;
+    });
+
+  chapter3MapCache.set(variant, promise);
+  return promise;
+}
+
+export function discardChapter3MapDownload(variant: 'lite' | 'full', data: ArrayBuffer): void {
+  const existing = chapter3MapResolved.get(variant);
+  if (existing?.buffer !== data) return;
+  chapter3MapResolved.delete(variant);
+  chapter3MapCache.delete(variant);
 }
 
 export function downloadModel(path: ModelAsset): Promise<ArrayBuffer> {

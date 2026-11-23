@@ -23,6 +23,25 @@ export const MAX_WEAPON_AURA_LEVEL = 10;
 
 export const ZODIAC_MOUNTS: MountDefinition[] = [
   {
+    id: 'jade_bull',
+    name: 'Chiến Ngưu Ngọc Bích',
+    badge: 'CHƯƠNG 3 · THÚ CƯỠI 3D',
+    rarity: 'Huyền Thoại',
+    desc: 'Thần thú Kim Ngưu giáp ngọc bích hộ vệ Thánh Địa Ngọc Lục Bảo với chuyển động tứ chi 3D uy mãnh.',
+    bodyHex: 0x064e3b,
+    armorHex: 0x10b981,
+    maneHex: 0xfbbf24,
+    glowHex: 0x6ee7b7,
+    baseAtk: 50,
+    baseHp: 320,
+    baseMoveSpeed: 0.145,
+    baseDr: 0.055,
+    atkPerLv: 13,
+    hpPerLv: 74,
+    unlockGems: 0,
+    unlockShards: 0,
+  },
+  {
     id: 'vulcan', name: 'Vulcan · Chiến Dương', badge: 'CHƯƠNG 2 · THÚ CƯỠI 3D', rarity: 'Huyền Thoại',
     desc: 'Chiến dương của lò rèn Bạch Dương, có chuyển động khung xương bốn chân.',
     bodyHex: 0x60291a, armorHex: 0xa72e25, maneHex: 0xf97316, glowHex: 0xffcf71,

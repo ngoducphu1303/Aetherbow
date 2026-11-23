@@ -468,6 +468,146 @@
       "runtime": true
     },
     {
+      "path": "public/assets/Chương 3/Runtime/chien-binh-kich-luc-bao-high.glb",
+      "size": 1075700,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/chien-binh-kich-luc-bao-lite.glb",
+      "size": 259032,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/dia-than-kim-nguu-high.glb",
+      "size": 2200476,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/dia-than-kim-nguu-lite.glb",
+      "size": 581128,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/emerald-taurus-halo-high.glb",
+      "size": 1144396,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/emerald-taurus-halo-lite.glb",
+      "size": 255952,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/emerald-taurus-wings-high.glb",
+      "size": 1243428,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/emerald-taurus-wings-lite.glb",
+      "size": 269288,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/jade-bull-high.glb",
+      "size": 1803040,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/jade-bull-lite.glb",
+      "size": 540952,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/jade-calf-high.glb",
+      "size": 1096040,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/jade-calf-lite.glb",
+      "size": 238216,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/jade-heart-relic-high.glb",
+      "size": 952152,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/jade-heart-relic-lite.glb",
+      "size": 219012,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/linh-hon-luc-bao-high.glb",
+      "size": 1273568,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/linh-hon-luc-bao-lite.glb",
+      "size": 261300,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/ngoc-nguu-duc-thu-high.glb",
+      "size": 2147552,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/ngoc-nguu-duc-thu-lite.glb",
+      "size": 571192,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/nguu-ngoc-xung-kich-high.glb",
+      "size": 1104788,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/nguu-ngoc-xung-kich-lite.glb",
+      "size": 266344,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/sylvia-high.glb",
+      "size": 2163948,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/sylvia-lite.glb",
+      "size": 572888,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/taurus-arena-high.glb",
+      "size": 3261896,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/taurus-arena-lite.glb",
+      "size": 1693648,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/ve-binh-ngoc-luc-bao-high.glb",
+      "size": 1024968,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/ve-binh-ngoc-luc-bao-lite.glb",
+      "size": 256416,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/venus-incarnate-high.glb",
+      "size": 1978060,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 3/Runtime/venus-incarnate-lite.glb",
+      "size": 546168,
+      "runtime": true
+    },
+    {
       "path": "public/assets/genshin_impact_-_chevreuse/genshin_impact_-_chevreuse.glb",
       "size": 6983484
     },

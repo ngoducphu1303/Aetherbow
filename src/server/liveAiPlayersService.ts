@@ -80,6 +80,7 @@ function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
     hatsune_miku: 'Cung Nhịp Điệu +20',
     aurelia: 'Cung Thái Dương Regulus +20',
     bellona: 'Cung Hỏa Sơn Bạch Dương',
+    sylvia: 'Cung Ngọc Lục Bảo Kim Ngưu',
   };
   const mountPool = ['Hắc Long'];
   const wingPool = [

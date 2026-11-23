@@ -14,7 +14,8 @@ export type SolarLeoAssetId =
   | 'solarius'
   | 'astrolabe_regulus'
   | 'leo_sovereign'
-  | 'bellona' | 'golden_fleece' | 'pyro' | 'crimson_ram_wings' | 'vulcan' | 'war_horn' | 'aries_vanguard';
+  | 'bellona' | 'golden_fleece' | 'pyro' | 'crimson_ram_wings' | 'vulcan' | 'war_horn' | 'aries_vanguard'
+  | 'sylvia' | 'venus_incarnate' | 'jade_calf' | 'emerald_taurus_wings' | 'jade_bull' | 'jade_heart_relic' | 'emerald_taurus_halo';
 
 export type SolarLeoVariant = 'high' | 'lite';
 
@@ -360,6 +361,30 @@ function ariesAsset(
   };
 }
 
+function taurusAsset(
+  id: SolarLeoAssetId, slug: string, name: string, rigType: SolarLeoRigType,
+  targetHeight: number, facingYawOffset = 0
+): SolarLeoAssetSpec {
+  return {
+    id, displayName: name, rigType, targetHeight, facingYawOffset,
+    highPathSegments: ['assets', 'Chương 3', 'Runtime', `${slug}-high.glb`],
+    litePathSegments: ['assets', 'Chương 3', 'Runtime', `${slug}-lite.glb`],
+    thumbnailPathSegments: ['assets', 'Chương 3', 'Runtime', `${slug}.webp`],
+    groundAtZero: rigType === 'humanoid' || rigType === 'quadruped_mount',
+    maxLiteBytes: 900_000,
+  };
+}
+
+export const CHAPTER3_SOLAR_LEO_ASSET_IDS = [
+  'sylvia',
+  'venus_incarnate',
+  'jade_calf',
+  'emerald_taurus_wings',
+  'jade_bull',
+  'jade_heart_relic',
+  'emerald_taurus_halo',
+] as const satisfies readonly SolarLeoAssetId[];
+
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   bellona: ariesAsset('bellona', 'bellona', 'Bellona', 'humanoid', 2.05),
   golden_fleece: ariesAsset('golden_fleece', 'golden-fleece', 'Hoàng Bào Kim Dương', 'humanoid', 2.05),
@@ -369,6 +394,15 @@ export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   vulcan: ariesAsset('vulcan', 'vulcan', 'Vulcan', 'quadruped_mount', 1.62, -Math.PI / 2),
   war_horn: ariesAsset('war_horn', 'war-horn', 'Chiến Giác Hỏa Tinh', 'artifact', 0.65),
   aries_vanguard: ariesAsset('aries_vanguard', 'aries-halo', 'Hào Quang Tiên Phong Bạch Dương', 'halo', 1.48),
+
+  sylvia: taurusAsset('sylvia', 'sylvia', 'Sylvia · Thánh Nữ Ngọc Lục Bảo', 'humanoid', 2.05),
+  venus_incarnate: taurusAsset('venus_incarnate', 'venus-incarnate', 'Thánh Y Hóa Thân Kim Tinh', 'humanoid', 2.05),
+  jade_calf: taurusAsset('jade_calf', 'jade-calf', 'Tiểu Ngưu Ngọc Bích', 'pet', 0.78),
+  emerald_taurus_wings: taurusAsset('emerald_taurus_wings', 'emerald-taurus-wings', 'Thần Dực Lục Bảo Kim Ngưu', 'wings', 1.72),
+  // Source sculpt faces -X; +PI/2 aligns horns and saddle cleanly to +Z forward.
+  jade_bull: taurusAsset('jade_bull', 'jade-bull', 'Chiến Ngưu Ngọc Bích', 'quadruped_mount', 1.66, Math.PI / 2),
+  jade_heart_relic: taurusAsset('jade_heart_relic', 'jade-heart-relic', 'Tâm Ngọc Kim Ngưu', 'artifact', 0.66),
+  emerald_taurus_halo: taurusAsset('emerald_taurus_halo', 'emerald-taurus-halo', 'Pháp Trận Lục Bảo Kim Ngưu', 'halo', 1.50),
 
   aurelia: {
     id: 'aurelia',
@@ -511,6 +545,7 @@ export function resolveSolarLeoHeroAssetId(
   skinId?: HeroSkinId
 ): SolarLeoAssetId | null {
   if (heroId === 'bellona') return skinId === 'golden_fleece' ? 'golden_fleece' : 'bellona';
+  if (heroId === 'sylvia') return skinId === 'venus_incarnate' ? 'venus_incarnate' : 'sylvia';
   if (heroId !== 'aurelia') return null;
   if (
     skinId === 'aurelia_oasis_dancer' ||
@@ -573,13 +608,31 @@ async function fetchSolarLeoVariantBytes(
   const baseUri =
     options.baseUri ?? (typeof document !== 'undefined' ? document.baseURI : 'http://localhost:3000/');
   const url = getSolarLeoAssetUrl(assetId, variant, baseUrl, baseUri);
-  const res = await fetchImpl(url, { signal: options.signal });
-  if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
-    throw new Error(`Không tải được mô hình ${assetId} (${variant}, HTTP ${res.status}).`);
+  const fetchAndValidate = async (targetUrl: URL): Promise<ArrayBuffer> => {
+    const res = await fetchImpl(targetUrl, { signal: options.signal });
+    if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
+      throw new Error(`Không tải được mô hình ${assetId} (${variant}, HTTP ${res.status}).`);
+    }
+    const buf = await res.arrayBuffer();
+    validateGlbBuffer(buf, `${assetId}:${variant}`);
+    return buf;
+  };
+
+  try {
+    return await fetchAndValidate(url);
+  } catch (error) {
+    const isChapter3 = (CHAPTER3_SOLAR_LEO_ASSET_IDS as readonly string[]).includes(assetId);
+    if (options.signal?.aborted || !isChapter3) {
+      throw error;
+    }
+    const spec = SOLAR_LEO_SPECS[assetId];
+    const segments = variant === 'lite' ? spec.litePathSegments : spec.highPathSegments;
+    const localBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    const localUrl = new URL(segments.map(encodeURIComponent).join('/'), new URL(localBase, baseUri));
+    localUrl.searchParams.set('v', SOLAR_LEO_ASSET_VERSION);
+    if (localUrl.href === url.href) throw error;
+    return await fetchAndValidate(localUrl);
   }
-  const buf = await res.arrayBuffer();
-  validateGlbBuffer(buf, `${assetId}:${variant}`);
-  return buf;
 }
 
 /**
