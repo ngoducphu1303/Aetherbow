@@ -20,6 +20,7 @@ import {
   Orbit,
   RefreshCw,
   RotateCw,
+  ScrollText,
   Settings,
   Shield,
   SlidersHorizontal,
@@ -50,7 +51,11 @@ import {
   countClaimableFairRoadmapMilestones,
   evaluateMaxStageReadiness,
 } from '../data/fairProgression30Day';
-import { countClaimableWelfare, getTodayKey } from '../data/questsData';
+import {
+  countClaimableDailyQuests,
+  countClaimableWelfare,
+  getTodayKey,
+} from '../data/questsData';
 import {
   MAX_DAILY_RIFT_RUNS,
   canClaimVipDaily,
@@ -715,6 +720,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const vip = normalizeVip(save.vip);
   const hasVip = isVipActive(vip);
   const vipDailyReady = canClaimVipDaily(vip);
+  const dailyQuestClaimable = countClaimableDailyQuests(save.dailyQuests);
   const claimableCount = countClaimableWelfare(save);
   const bpClaimable = countClaimableBattlePass(save);
   const guild = normalizeGuild(save.guild);
@@ -1925,6 +1931,38 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
             {/* SLIM SINGLE-BAR BOTTOM LAUNCH DOCK (Leaves >80% center completely clear) */}
             <div className="pointer-events-auto w-full max-w-3xl mx-auto z-20">
+              {dailyQuestClaimable > 0 && (
+                <div className="mb-1.5 flex justify-start">
+                  <button
+                    type="button"
+                    data-testid="lobby-daily-quest-badge"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.06);
+                      setSkyPickerOpen(false);
+                      setUtilityDrawerOpen(false);
+                      onOpenRewardsModal('quests');
+                    }}
+                    aria-label={`Nhiệm Vụ Ngày: ${dailyQuestClaimable} nhiệm vụ sẵn sàng nhận thưởng`}
+                    title="Mở Nhiệm Vụ Ngày để nhận thưởng"
+                    className="group inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#1c1330]/95 via-[#161b38]/95 to-[#101836]/95 border border-amber-300/75 hover:border-amber-200 text-amber-100 shadow-[0_6px_20px_rgba(0,0,0,0.5)] transition-all cursor-pointer"
+                  >
+                    <span className="relative flex items-center justify-center w-5 h-5 rounded-lg bg-amber-400/20 border border-amber-300/50 text-amber-300 shrink-0">
+                      <ScrollText className="w-3.5 h-3.5" />
+                      <span
+                        aria-hidden="true"
+                        className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-1 ring-white"
+                      />
+                    </span>
+                    <span className="text-[11px] font-black tracking-wide whitespace-nowrap">
+                      Nhiệm Vụ Ngày
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded-md bg-rose-500 text-white font-mono-nums text-[10px] font-black leading-none">
+                      +{dailyQuestClaimable}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-amber-300/80 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                  </button>
+                </div>
+              )}
               <div className="cel-panel-ornate rounded-2xl px-2.5 sm:px-3.5 py-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shadow-2xl">
                 {/* Left Pair: Compact Mode Picker + Events Hub */}
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -2208,11 +2246,22 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <div className="max-w-3xl mx-auto grid grid-cols-5 gap-1">
           {NAV_TABS.map((tab) => {
             const isActive = activeTab === tab.id;
+            const showDailyQuestBadge = tab.id === 'battle' && dailyQuestClaimable > 0;
             return (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => onTabChange(tab.id)}
+                aria-label={
+                  showDailyQuestBadge
+                    ? `${tab.label} · ${dailyQuestClaimable} nhiệm vụ ngày sẵn sàng nhận`
+                    : undefined
+                }
+                title={
+                  showDailyQuestBadge
+                    ? `Nhiệm Vụ Ngày: ${dailyQuestClaimable} nhiệm vụ sẵn sàng nhận`
+                    : undefined
+                }
                 className={`relative py-2 sm:py-2.5 px-1 flex flex-col items-center justify-center gap-0.5 font-bold transition-colors cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'text-amber-200 bg-gradient-to-b from-amber-400/12 to-transparent'
@@ -2222,7 +2271,17 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 {isActive && (
                   <span className="absolute top-0 left-4 right-4 h-[2px] bg-gradient-to-r from-transparent via-amber-300 to-transparent" />
                 )}
-                {tab.renderIcon(isActive)}
+                <span className="relative inline-flex items-center justify-center">
+                  {tab.renderIcon(isActive)}
+                  {showDailyQuestBadge && (
+                    <span
+                      data-testid="battle-tab-daily-quest-badge"
+                      className="absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 border border-amber-200 text-[9px] font-mono-nums font-black text-white flex items-center justify-center shadow-[0_0_8px_rgba(244,63,94,0.75)] leading-none"
+                    >
+                      {dailyQuestClaimable}
+                    </span>
+                  )}
+                </span>
                 <span className="text-[10px] sm:text-[11px] tracking-wide truncate max-w-full">
                   {tab.label}
                 </span>

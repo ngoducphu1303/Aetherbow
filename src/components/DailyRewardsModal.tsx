@@ -4,6 +4,7 @@ import noviceJourneyBanner from '../assets/images/novice_journey_scroll_17949831
 import {
   CHECK_IN_REWARDS,
   DAILY_QUESTS,
+  countClaimableDailyQuests,
   getTodayKey,
   normalizeCheckIn,
   normalizeDailyQuests,
@@ -44,9 +45,10 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
   const [journeyImgErr, setJourneyImgErr] = useState(false);
 
   const checkIn = normalizeCheckIn(save.checkIn);
-  const daily = normalizeDailyQuests(save.dailyQuests);
-  const journey = normalizeNoviceJourney(save.noviceJourney);
   const today = getTodayKey();
+  const daily = normalizeDailyQuests(save.dailyQuests, today);
+  const dailyQuestClaimable = countClaimableDailyQuests(save.dailyQuests, today);
+  const journey = normalizeNoviceJourney(save.noviceJourney);
   const canCheckInToday = checkIn.count < 7 && checkIn.lastDate !== today;
 
   return (
@@ -89,7 +91,7 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('quests')}
-            className={`py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            className={`relative py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
               tab === 'quests'
                 ? 'a2-yellow-btn'
                 : 'cel-panel text-slate-300 hover:text-white'
@@ -97,6 +99,14 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
           >
             <ScrollText className="w-3.5 h-3.5 shrink-0" />
             <span>Nhiệm Vụ</span>
+            {dailyQuestClaimable > 0 && (
+              <span
+                data-testid="rewards-modal-quests-badge"
+                className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-mono-nums text-[9px] font-black leading-none"
+              >
+                {dailyQuestClaimable}
+              </span>
+            )}
           </button>
           <button
             type="button"

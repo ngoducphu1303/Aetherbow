@@ -8,11 +8,13 @@ export function getTodayKey(): string {
   return `${y}-${m}-${d}`;
 }
 
-export function normalizeDailyQuests(q?: DailyQuestProgress): DailyQuestProgress {
-  const today = getTodayKey();
-  if (!q || q.date !== today) {
+export function normalizeDailyQuests(
+  q?: DailyQuestProgress,
+  todayKey: string = getTodayKey()
+): DailyQuestProgress {
+  if (!q || q.date !== todayKey) {
     return {
-      date: today,
+      date: todayKey,
       kills: 0,
       stages: 0,
       chests: 0,
@@ -28,6 +30,20 @@ export function normalizeDailyQuests(q?: DailyQuestProgress): DailyQuestProgress
     upgrades: q.upgrades ?? 0,
     claimedIds: Array.isArray(q.claimedIds) ? q.claimedIds : [],
   };
+}
+
+export function countClaimableDailyQuests(
+  dailyQuests?: DailyQuestProgress,
+  todayKey: string = getTodayKey()
+): number {
+  const dq = normalizeDailyQuests(dailyQuests, todayKey);
+  let count = 0;
+  for (const q of DAILY_QUESTS) {
+    if (!dq.claimedIds.includes(q.id) && dq[q.metric] >= q.target) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 export function normalizeCheckIn(c?: CheckInProgress): CheckInProgress {
@@ -100,23 +116,35 @@ export const CHECK_IN_REWARDS: CheckInDayReward[] = [
   { day: 7, label: 'Trang Bị Sử Thi', gold: 300, gems: 50, bonusRarity: Rarity.EPIC },
 ];
 
-export function countClaimableWelfare(save: {
-  welcomeGiftClaimed?: boolean;
-  checkIn?: CheckInProgress;
-  dailyQuests?: DailyQuestProgress;
-}): number {
+export function countClaimableWelfare(
+  save: {
+    welcomeGiftClaimed?: boolean;
+    checkIn?: CheckInProgress;
+    dailyQuests?: DailyQuestProgress;
+  },
+  todayKey: string = getTodayKey()
+): number {
   let count = 0;
   if (!save.welcomeGiftClaimed) count += 1;
 
   const ci = normalizeCheckIn(save.checkIn);
-  const today = getTodayKey();
-  if (ci.count < 7 && ci.lastDate !== today) count += 1;
+  if (ci.count < 7 && ci.lastDate !== todayKey) count += 1;
 
-  const dq = normalizeDailyQuests(save.dailyQuests);
-  for (const q of DAILY_QUESTS) {
-    if (!dq.claimedIds.includes(q.id) && dq[q.metric] >= q.target) {
-      count += 1;
-    }
-  }
+  count += countClaimableDailyQuests(save.dailyQuests, todayKey);
   return count;
+}
+
+export function getDefaultWelfareTab(
+  save: {
+    welcomeGiftClaimed?: boolean;
+    checkIn?: CheckInProgress;
+    dailyQuests?: DailyQuestProgress;
+  },
+  todayKey: string = getTodayKey()
+): 'welcome' | 'checkin' | 'quests' {
+  if (!save.welcomeGiftClaimed) return 'welcome';
+  const ci = normalizeCheckIn(save.checkIn);
+  if (ci.count < 7 && ci.lastDate !== todayKey) return 'checkin';
+  if (countClaimableDailyQuests(save.dailyQuests, todayKey) > 0) return 'quests';
+  return 'checkin';
 }

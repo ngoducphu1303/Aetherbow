@@ -57,7 +57,11 @@ import {
   normalizeDailySweeps,
 } from '../data/liveOpsData';
 import { getNightmareTierConfig, isNightmareUnlocked } from '../data/phase5Data';
-import { countClaimableWelfare, getTodayKey } from '../data/questsData';
+import {
+  countClaimableWelfare,
+  getDefaultWelfareTab,
+  getTodayKey,
+} from '../data/questsData';
 import { getTotalTalentLevels } from '../data/talentsData';
 import {
   MAX_DAILY_RIFT_RUNS,
@@ -2243,7 +2247,7 @@ export const LobbyEventsHubDrawer: React.FC<LobbyEventsHubDrawerProps> = ({
                 sub: 'Quà ngày & nhiệm vụ',
                 icon: <Gift className="w-4 h-4 text-emerald-300" />,
                 badge: claimableCount > 0 ? `+${claimableCount}` : undefined,
-                onClick: () => onOpenRewardsModal(!save.welcomeGiftClaimed ? 'welcome' : 'checkin'),
+                onClick: () => onOpenRewardsModal(getDefaultWelfareTab(save)),
               })}
               {renderTile({
                 key: 'bp',
