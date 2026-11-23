@@ -1,3 +1,4 @@
+import { getGlbAssetUrl } from './glbAssetUrl';
 import type { Chapter1MapVariant, HeroId } from '../types/game';
 import {
   fetchChapter1MapArrayBuffer,
@@ -189,14 +190,9 @@ let progress: ModelDownloadSnapshot = {
 export function getModelAssetUrl(path: ModelAsset, preferLite = globalLiteHeroAssets): URL {
   const baseUrl =
     (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const effectivePath =
     preferLite && HERO_LITE_VARIANT_PATHS[path] ? HERO_LITE_VARIANT_PATHS[path]! : path;
-  const encodedPath = effectivePath
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  return new URL(`${normalizedBase}assets/${encodedPath}?v=${MODEL_VERSIONS[path]}`, document.baseURI);
+  return getGlbAssetUrl(['assets', ...effectivePath.split('/')], MODEL_VERSIONS[path], baseUrl, document.baseURI);
 }
 
 export function subscribeToModelDownloads(listener: () => void) {

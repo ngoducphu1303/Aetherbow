@@ -1,3 +1,4 @@
+import { getGlbAssetUrl } from './glbAssetUrl';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EnemyKind } from '../types/game';
@@ -210,12 +211,8 @@ export function getChapter1RosterAssetUrl(
   baseUri = 'http://localhost:3000/'
 ): URL {
   const spec = getCampaignRosterSpec(assetId);
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const segments = variant === 'lite' ? spec.litePathSegments : spec.highPathSegments;
-  const encodedPath = segments.map((seg) => encodeURIComponent(seg)).join('/');
-  const url = new URL(`${normalizedBase}${encodedPath}`, baseUri);
-  url.searchParams.set('v', CHAPTER1_ROSTER_ASSET_VERSION);
-  return url;
+  return getGlbAssetUrl(segments, CHAPTER1_ROSTER_ASSET_VERSION, baseUrl, baseUri);
 }
 
 function validateGlbBuffer(data: ArrayBuffer, label: string): void {

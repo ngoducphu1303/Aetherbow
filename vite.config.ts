@@ -2,13 +2,29 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
+import {parseGlbCdnBase} from './src/engine/glbAssetUrl.ts';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const rootDir = import.meta.dirname;
+  const env = loadEnv(mode, rootDir, 'VITE_');
+  const useGlbCdn = Boolean(parseGlbCdnBase(env.VITE_GLB_CDN_BASE_URL));
   return {
     plugins: [
       react(),
       tailwindcss(),
+      {
+        name: 'copy-public-assets-without-glb',
+        apply: 'build',
+        closeBundle(error?: Error): void {
+          if (error || !useGlbCdn) return;
+          fs.cpSync(path.resolve(rootDir, 'public'), path.resolve(rootDir, 'dist'), {
+            recursive: true,
+            force: false,
+            filter: (source) => path.extname(source).toLowerCase() !== '.glb' || fs.statSync(source).isDirectory(),
+          });
+        },
+      },
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.
@@ -34,6 +50,7 @@ export default defineConfig(() => {
       },
     },
     build: {
+      copyPublicDir: !useGlbCdn,
       rollupOptions: {
         output: {
           manualChunks(id: string) {

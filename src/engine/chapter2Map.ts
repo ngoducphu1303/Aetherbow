@@ -1,3 +1,4 @@
+import { getGlbAssetUrl } from './glbAssetUrl';
 import * as THREE from 'three';
 
 /**
@@ -35,22 +36,13 @@ export function getChapter2MapLiteAssetUrl(
   baseUrl = '/',
   baseUri = 'http://localhost:3000/'
 ): URL {
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const encodedPath = CHAPTER2_MAP_LITE_PATH_SEGMENTS.map((seg) => encodeURIComponent(seg)).join(
-    '/'
-  );
-  const url = new URL(`${normalizedBase}${encodedPath}`, baseUri);
-  url.searchParams.set('v', CHAPTER2_MAP_LITE_VERSION);
-  return url;
+  return getGlbAssetUrl(CHAPTER2_MAP_LITE_PATH_SEGMENTS, CHAPTER2_MAP_LITE_VERSION, baseUrl, baseUri);
 }
 
 export function getChapter2MapHighAssetUrl(
   baseUrl = '/', baseUri = 'http://localhost:3000/'
 ): URL {
-  const path = CHAPTER2_MAP_HIGH_PATH_SEGMENTS.map(encodeURIComponent).join('/');
-  const url = new URL(`${baseUrl.replace(/\/$/, '')}/${path}`, baseUri);
-  url.searchParams.set('v', '1');
-  return url;
+  return getGlbAssetUrl(CHAPTER2_MAP_HIGH_PATH_SEGMENTS, '1', baseUrl, baseUri);
 }
 
 export function isValidGlbBuffer(data: ArrayBuffer): boolean {

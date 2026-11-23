@@ -1,3 +1,4 @@
+import { getGlbAssetUrl } from './glbAssetUrl';
 import * as THREE from 'three';
 import { EnemyKind } from '../types/game';
 import {
@@ -66,13 +67,9 @@ export function getChapter1BossAssetUrl(
   baseUrl = '/',
   baseUri = 'http://localhost:3000/'
 ): URL {
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const segments =
     variant === 'lite' ? CHAPTER1_BOSS_LITE_PATH_SEGMENTS : CHAPTER1_BOSS_HIGH_PATH_SEGMENTS;
-  const encodedPath = segments.map((seg) => encodeURIComponent(seg)).join('/');
-  const url = new URL(`${normalizedBase}${encodedPath}`, baseUri);
-  url.searchParams.set('v', CHAPTER1_BOSS_ASSET_VERSION);
-  return url;
+  return getGlbAssetUrl(segments, CHAPTER1_BOSS_ASSET_VERSION, baseUrl, baseUri);
 }
 
 function validateGlbBuffer(data: ArrayBuffer): void {

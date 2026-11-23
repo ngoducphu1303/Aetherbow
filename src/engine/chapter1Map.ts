@@ -1,3 +1,4 @@
+import { getGlbAssetUrl, useGlbCdn } from './glbAssetUrl';
 import * as THREE from 'three';
 
 /**
@@ -39,24 +40,14 @@ export function getChapter1MapAssetUrl(
   baseUrl = '/',
   baseUri = 'http://localhost:3000/'
 ): URL {
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const encodedPath = CHAPTER1_MAP_PATH_SEGMENTS.map((seg) => encodeURIComponent(seg)).join('/');
-  const url = new URL(`${normalizedBase}${encodedPath}`, baseUri);
-  url.searchParams.set('v', CHAPTER1_MAP_VERSION);
-  return url;
+  return getGlbAssetUrl(CHAPTER1_MAP_PATH_SEGMENTS, CHAPTER1_MAP_VERSION, baseUrl, baseUri);
 }
 
 export function getChapter1MapLiteAssetUrl(
   baseUrl = '/',
   baseUri = 'http://localhost:3000/'
 ): URL {
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const encodedPath = CHAPTER1_MAP_LITE_PATH_SEGMENTS.map((seg) => encodeURIComponent(seg)).join(
-    '/'
-  );
-  const url = new URL(`${normalizedBase}${encodedPath}`, baseUri);
-  url.searchParams.set('v', CHAPTER1_MAP_LITE_VERSION);
-  return url;
+  return getGlbAssetUrl(CHAPTER1_MAP_LITE_PATH_SEGMENTS, CHAPTER1_MAP_LITE_VERSION, baseUrl, baseUri);
 }
 
 export function getChapter1MapMetaUrl(
@@ -180,42 +171,45 @@ export async function fetchChapter1MapArrayBuffer(
   const fetchImpl = options.fetchImpl ?? fetch;
   const signal = options.signal;
 
-  // 1. Primary path: Express chunk API (immune to reverse-proxy Range stripping & 32 MiB response caps)
-  try {
-    const metaUrl = getChapter1MapMetaUrl(baseUrl, baseUri);
-    const metaRes = await fetchImpl(metaUrl, { signal });
-    if (metaRes.ok && metaRes.headers.get('content-type')?.includes('application/json')) {
-      const meta = (await metaRes.json()) as {
-        size?: number;
-        chunkSize?: number;
-        etag?: string;
-      };
-      if (typeof meta.size === 'number' && Number.isFinite(meta.size) && meta.size > 0) {
-        const chunkSize = Math.min(
-          CHAPTER1_MAP_MAX_SAFE_CHUNK_BYTES,
-          Math.max(1024 * 1024, Number(meta.chunkSize) || CHAPTER1_MAP_CHUNK_BYTES)
-        );
-        return await downloadByteRangesInParallel(
-          meta.size,
-          chunkSize,
-          async (start, end) => {
-            const chunkUrl = getChapter1MapChunkUrl(start, end, baseUrl, baseUri, meta.etag);
-            const res = await fetchWithRetry(fetchImpl, chunkUrl, { signal });
-            if (res.headers.get('content-type')?.includes('text/html')) {
-              throw new Error('Phân đoạn Map Chương 1 trả về HTML không hợp lệ.');
-            }
-            return new Uint8Array(await res.arrayBuffer());
-          },
-          { concurrency, signal, onProgress: options.onProgress }
-        );
+  // The chunk API only reads the local file. CDN builds use the origin's Range support.
+  if (!useGlbCdn) {
+    // 1. Primary path: Express chunk API (immune to reverse-proxy Range stripping & 32 MiB response caps)
+    try {
+      const metaUrl = getChapter1MapMetaUrl(baseUrl, baseUri);
+      const metaRes = await fetchImpl(metaUrl, { signal });
+      if (metaRes.ok && metaRes.headers.get('content-type')?.includes('application/json')) {
+        const meta = (await metaRes.json()) as {
+          size?: number;
+          chunkSize?: number;
+          etag?: string;
+        };
+        if (typeof meta.size === 'number' && Number.isFinite(meta.size) && meta.size > 0) {
+          const chunkSize = Math.min(
+            CHAPTER1_MAP_MAX_SAFE_CHUNK_BYTES,
+            Math.max(1024 * 1024, Number(meta.chunkSize) || CHAPTER1_MAP_CHUNK_BYTES)
+          );
+          return await downloadByteRangesInParallel(
+            meta.size,
+            chunkSize,
+            async (start, end) => {
+              const chunkUrl = getChapter1MapChunkUrl(start, end, baseUrl, baseUri, meta.etag);
+              const res = await fetchWithRetry(fetchImpl, chunkUrl, { signal });
+              if (res.headers.get('content-type')?.includes('text/html')) {
+                throw new Error('Phân đoạn Map Chương 1 trả về HTML không hợp lệ.');
+              }
+              return new Uint8Array(await res.arrayBuffer());
+            },
+            { concurrency, signal, onProgress: options.onProgress }
+          );
+        }
       }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      // Fall through to HTTP Range fallback on the static asset URL
     }
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    // Fall through to HTTP Range fallback on the static asset URL
   }
 
-  // 2. Fallback path: Standard HTTP Range requests against the static GLB file
+  // Load from the CDN, or use HTTP Range as the fallback for a local build.
   const assetUrl = getChapter1MapAssetUrl(baseUrl, baseUri);
   const firstEnd = CHAPTER1_MAP_CHUNK_BYTES - 1;
   let probeRes: Response | null = null;
@@ -277,7 +271,15 @@ export async function fetchChapter1MapArrayBuffer(
           signal,
           headers: { Range: `bytes=${range.start}-${range.end}` },
         });
+        const expectedRange = `bytes ${range.start}-${range.end}/${totalSize}`;
+        if (res.status !== 206 || res.headers.get('content-range') !== expectedRange) {
+          await res.body?.cancel();
+          throw new Error('Phản hồi Range không khớp với phân đoạn Map Chương 1.');
+        }
         const chunkBytes = new Uint8Array(await res.arrayBuffer());
+        if (chunkBytes.byteLength !== range.end - range.start + 1) {
+          throw new Error('Kích thước phân đoạn Map Chương 1 không hợp lệ.');
+        }
         combined.set(chunkBytes, range.start);
         loadedBytes += chunkBytes.byteLength;
         options.onProgress?.(loadedBytes, totalSize);
@@ -287,6 +289,12 @@ export async function fetchChapter1MapArrayBuffer(
     return combined.buffer;
   }
 
+  if (probeRes.status === 206) {
+    await probeRes.body?.cancel();
+    // A CDN may omit Content-Range from its CORS expose list. Retrieve the whole
+    // object instead of treating the partial response as a complete GLB.
+    probeRes = await fetchWithRetry(fetchImpl, assetUrl, { signal });
+  }
   const fullBuffer = await probeRes.arrayBuffer();
   options.onProgress?.(fullBuffer.byteLength, fullBuffer.byteLength);
   return fullBuffer;

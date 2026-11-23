@@ -39,7 +39,8 @@ test('vercel.json is valid and protects static assets, GLB caching, and API rout
   };
 
   assert.equal(cfg.framework, 'vite');
-  assert.equal(cfg.buildCommand, 'npm run build');
+  assert.match(cfg.buildCommand, /npm run build$/);
+  assert.match(cfg.buildCommand, /VITE_GLB_CDN_BASE_URL.*aetherbow-glb\.puugoo002\.workers\.dev/);
   assert.equal(cfg.outputDirectory, 'dist');
 
   const glbHeader = cfg.headers.find((h) => h.source.includes('glb'));
