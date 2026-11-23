@@ -1805,6 +1805,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={() => {
               soundEngine.playUiClick();
               onClose();
+              window.location.hash = '#/admin/assets?tab=deploy';
+            }}
+            className="w-full py-2 px-3 rounded-xl text-[11px] font-bold text-slate-300 hover:text-amber-200 border border-slate-800 hover:border-amber-400/35 bg-[#070b18] flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span>Quản Trị 3D &amp; Đồng Bộ CDN</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onClose();
             }}
             className="a2-yellow-btn w-full py-2.5 rounded-xl text-xs font-black cursor-pointer whitespace-nowrap"
           >

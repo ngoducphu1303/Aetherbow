@@ -17,13 +17,19 @@ type Revision = { path: string; id: string; size: number; uploadedAt: string };
 type AdminSession = { canLinkPassword: boolean; passwordLinked: boolean; passwordUid?: string };
 type Entry = { active: Revision | null; previous: Revision | null; draft: Revision | null; canRollback: boolean };
 
+function initialAdminMode(): 'replace' | 'new' | 'deploy' {
+  const searchTab = new URLSearchParams(window.location.search).get('tab');
+  const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+  const hashTab = new URLSearchParams(hashQuery).get('tab');
+  const tab = searchTab || hashTab;
+  if (tab === 'new' || tab === 'deploy') return tab;
+  return 'replace';
+}
+
 export default function AssetAdminPage() {
   const [session, setSession] = useState<'checking' | 'guest' | 'denied' | 'ready'>('checking');
-  const [mode, setMode] = useState<'replace' | 'new' | 'deploy'>(() => {
-    const tab = new URLSearchParams(window.location.search).get('tab');
-    if (tab === 'new' || tab === 'deploy') return tab;
-    return 'replace';
-  });
+  const [mode, setMode] = useState<'replace' | 'new' | 'deploy'>(initialAdminMode);
+  const [workerAvailable, setWorkerAvailable] = useState(true);
   const [inboxBusy, setInboxBusy] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [sessionError, setSessionError] = useState('');
@@ -61,6 +67,7 @@ export default function AssetAdminPage() {
       setSession('checking');
       void api<AdminSession>(nextUser, 'session').then((info) => {
         if (listening && request === sequence) {
+          setWorkerAvailable(true);
           setSessionInfo(info);
           setUser(nextUser);
           setSession('ready');
@@ -68,7 +75,23 @@ export default function AssetAdminPage() {
             void syncAssetAdminUidToFirestore(nextUser, info.passwordUid);
           }
         }
-      }).catch((cause) => {
+      }).catch(async (cause) => {
+        try {
+          const token = await nextUser.getIdToken();
+          const localRes = await fetch('/api/admin/asset-deploy/status', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (localRes.ok && listening && request === sequence) {
+            setWorkerAvailable(false);
+            setSessionInfo({ canLinkPassword: false, passwordLinked: true });
+            setUser(nextUser);
+            setMode('deploy');
+            setSession('ready');
+            return;
+          }
+        } catch {
+          // Fall through to denied state below
+        }
         if (listening && request === sequence) {
           setSessionError(message(cause));
           setSession('denied');
@@ -205,19 +228,28 @@ export default function AssetAdminPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <a className={secondary} href="/"><ArrowLeft size={16}/> Về game</a>
+          <a className={secondary} href="/" onClick={(event) => {
+            if (window.location.hash.startsWith('#/admin/assets')) {
+              event.preventDefault();
+              window.location.hash = '';
+            }
+          }}><ArrowLeft size={16}/> Về game</a>
           {session === 'ready' && <button className={secondary} disabled={busy || inboxBusy || authBusy} onClick={() => void signOut(auth)}><LogOut size={16}/> Đăng xuất</button>}
         </div>
       </header>
 
       {session === 'ready' && (
         <nav aria-label="Quản lý asset" className="mx-auto mt-5 flex max-w-6xl flex-wrap gap-2">
-          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'new'} className={mode === 'new' ? primary : secondary}
-            onClick={() => setMode('new')}>Tải asset mới</button>
-          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'replace'} className={mode === 'replace' ? primary : secondary}
-            onClick={() => setMode('replace')}>Thay model đã tích hợp</button>
+          {workerAvailable && (
+            <>
+              <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'new'} className={mode === 'new' ? primary : secondary}
+                onClick={() => setMode('new')}>Tải asset mới</button>
+              <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'replace'} className={mode === 'replace' ? primary : secondary}
+                onClick={() => setMode('replace')}>Thay model đã tích hợp</button>
+            </>
+          )}
           <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'deploy'} className={mode === 'deploy' ? primary : secondary}
-            onClick={() => setMode('deploy')}>Đồng bộ B2 & Worker</button>
+            onClick={() => setMode('deploy')}>Đồng bộ B2 &amp; Worker</button>
         </nav>
       )}
 

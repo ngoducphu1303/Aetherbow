@@ -46,6 +46,9 @@ export function credentialMessage(cause: unknown) {
   if (code === 'auth/email-already-in-use') return 'Tài khoản puugoo đã tồn tại. Chọn dùng tài khoản có sẵn.';
   if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return 'Cửa sổ xác minh Google đã đóng.';
   if (code === 'auth/too-many-requests') return 'Đã thử quá nhiều lần. Hãy đợi một lúc rồi thử lại.';
+  if (code === 'auth/unauthorized-domain') {
+    return 'Tên miền Preview chưa bật Google Popup trong Firebase. Hãy đăng nhập bằng tài khoản puugoo + mật khẩu (nếu chưa liên kết, bấm "Thiết lập đăng nhập puugoo" trên aetherbow.vercel.app/admin/assets một lần).';
+  }
   if (code === 'auth/network-request-failed') return 'Không kết nối được với hệ thống đăng nhập.';
   return cause instanceof Error ? cause.message : 'Đăng nhập gặp lỗi.';
 }

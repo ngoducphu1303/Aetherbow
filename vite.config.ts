@@ -22,12 +22,7 @@ export default defineConfig(({ mode }) => {
           fs.cpSync(path.resolve(rootDir, 'public'), path.resolve(rootDir, 'dist'), {
             recursive: true,
             force: false,
-            filter: (source) => {
-              if (fs.statSync(source).isDirectory()) return true;
-              if (path.extname(source).toLowerCase() !== '.glb') return true;
-              const normalized = source.replace(/\\/g, '/');
-              return normalized.includes('/Chương 3/Runtime/');
-            },
+            filter: (source) => fs.statSync(source).isDirectory() || path.extname(source).toLowerCase() !== '.glb',
           });
         },
       },
