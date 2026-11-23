@@ -61,6 +61,6 @@ Danh mục quản trị lấy các model có `"runtime": true` trong manifest. W
 
 ### Chuẩn bị tệp mới trước khi tích hợp
 
-Trong trang quản trị, mở **Tải asset mới**, chọn chương và nhóm, rồi tải một hoặc nhiều tệp GLB 2.0. Mỗi tệp tối đa 96 MB. Ví dụ, bản đồ Chương 3 được lưu dưới `assets/Chương 3/Asset mới/Bản đồ/<id>/<tên-tệp>.glb`. Tên tệp được giữ lại và mỗi lần tải có đường dẫn riêng.
+Trong trang quản trị, mở **Tải asset mới**, chọn chương và nhóm, rồi tải một hoặc nhiều tệp GLB 2.0. Mỗi tệp tối đa 96 MB. Trang gửi từng phần 6 MiB và tự thử lại khi kết nối bị gián đoạn. Nếu cần bấm tải lại, giữ trang đang mở để tiếp tục từ phần chưa hoàn tất. Ví dụ, bản đồ Chương 3 được lưu dưới `assets/Chương 3/Asset mới/Bản đồ/<id>/<tên-tệp>.glb`. Tên tệp được giữ lại và mỗi lần tải có đường dẫn riêng.
 
 Dùng **Sao chép danh sách cho AI** để gửi tên, nhóm, kích thước và các URL CDN cho agent tích hợp. **Tải thêm** mở các lần upload cũ hơn nếu danh sách có nhiều trang. Kho asset theo chương chỉ liệt kê cho tài khoản quản trị. Ai có URL CDN của tệp đều có thể tải qua Worker. Các tệp vào kho này chỉ xuất hiện trong game sau khi được tích hợp vào mã hoặc cấu hình của chương.

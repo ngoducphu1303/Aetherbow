@@ -29,6 +29,35 @@ export class AssetCatalog {
         nextCursor: rows.length > 50 ? rows[49][0] : null,
       });
     }
+    if (route.pathname === '/inbox-upload') {
+      if (request.method === 'GET') {
+        const session = await this.storage.get('upload:' + route.searchParams.get('id'));
+        return session ? Response.json(session) : notFound();
+      }
+      const candidate = await request.json();
+      return this.storage.transaction(async (transaction) => {
+        const key = 'upload:' + candidate.id;
+        const existing = await transaction.get(key);
+        if (existing) return Response.json(existing);
+        await transaction.put({ [key]: candidate });
+        return Response.json(candidate);
+      });
+    }
+    if (route.pathname === '/inbox-upload/finish') {
+      const { id } = await request.json();
+      const key = 'upload:' + id;
+      return this.storage.transaction(async (transaction) => {
+        const session = await transaction.get(key);
+        if (!session) return notFound();
+        if (session.completed) return Response.json(session.completed);
+        const { b2Id, ...record } = session;
+        await transaction.put({
+          [key]: { ...session, completed: record },
+          [`inbox:${record.chapter}:${record.uploadedAt}:${id}`]: record,
+        });
+        return Response.json(record);
+      });
+    }
     if (route.pathname === '/entry') {
       const path = route.searchParams.get('path');
       const rows = await this.storage.get(['active', 'previous', 'draft:' + path]);

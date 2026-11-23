@@ -215,3 +215,76 @@ test('inbox returns a stable chapter-scoped cursor for more than 50 uploads', as
   const invalidCursor = await worker.fetch(new Request(cdn + '/__admin/inbox?' + new URLSearchParams({ chapter: '4', cursor: result.nextCursor }), { headers }), env);
   assert.equal(invalidCursor.status, 400);
 });
+
+test('multipart inbox upload retries a part and finalizes idempotently after a lost completion response', async (t) => {
+  const partSize = 6 * 1024 * 1024;
+  const glb = Buffer.alloc(partSize + 24);
+  model().copy(glb);
+  glb.writeUInt32LE(glb.length, 8);
+  const saved = [];
+  let committed = false;
+  let starts = 0;
+  const original = globalThis.FixedLengthStream;
+  globalThis.FixedLengthStream = class extends TransformStream { constructor() { super(); } };
+  t.after(() => { globalThis.FixedLengthStream = original; });
+  const env = {
+    FIREBASE_PROJECT_ID: project, ADMIN_GOOGLE_EMAIL: email, ASSET_CATALOG: catalogBinding(),
+    B2_WRITE_KEY_ID: 'write-id', B2_WRITE_APPLICATION_KEY: 'write-secret',
+  };
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(input);
+    if (url.hostname === 'www.googleapis.com') return Response.json({ keys: [publicKey] });
+    assert.equal(url.hostname, 's3.us-east-005.backblazeb2.com');
+    if (options.method === 'HEAD') {
+      return new Response(null, { status: committed ? 200 : 404, headers: { 'content-length': String(glb.length) } });
+    }
+    if (url.searchParams.has('uploads')) {
+      starts++;
+      return new Response('<InitiateMultipartUploadResult><UploadId>b2-id+/=</UploadId></InitiateMultipartUploadResult>');
+    }
+    assert.equal(url.searchParams.get('uploadId'), 'b2-id+/=');
+    if (options.method === 'PUT') {
+      const part = Number(url.searchParams.get('partNumber'));
+      const bytes = Buffer.from(await new Response(options.body).arrayBuffer());
+      assert.deepEqual(bytes, glb.subarray((part - 1) * partSize, part * partSize));
+      saved.push(part);
+      if (part === 2 && saved.filter((index) => index === 2).length === 1) throw new Error('simulated network reset');
+      return new Response(null, { headers: { etag: '"' + String(part).repeat(32) + '"' } });
+    }
+    assert.match(options.body, /<PartNumber>1<\/PartNumber><ETag>"1{32}"<\/ETag>/);
+    assert.match(options.body, /<PartNumber>2<\/PartNumber><ETag>"2{32}"<\/ETag>/);
+    committed = true;
+    throw new Error('completion response lost');
+  });
+  const id = '74f3d7ae-8c56-4ad9-9bee-000000000001';
+  const send = (action, query, method, body, headers = {}) => worker.fetch(new Request(
+    cdn + '/__admin/inbox-upload/' + action + '?' + new URLSearchParams({ ...query, id }),
+    { method, body, headers: { Authorization: 'Bearer ' + token(), Origin: adminOrigin, ...headers } }
+  ), env);
+  const start = { chapter: '3', group: 'enemy', name: 'quai-thu.glb', size: String(glb.length) };
+  for (let i = 0; i < 2; i++) {
+    const response = await send('start', start, 'POST');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { partSize, completed: null });
+  }
+  assert.equal(starts, 1);
+  assert.equal((await send('start', { ...start, name: 'khac.glb' }, 'POST')).status, 409);
+  const put = (part) => {
+    const body = glb.subarray((part - 1) * partSize, part * partSize);
+    return send('part', { part: String(part) }, 'PUT', body, { 'x-glb-size': String(body.length) });
+  };
+  assert.equal((await put(1)).status, 200);
+  const failure = await put(2);
+  assert.equal(failure.status, 502);
+  assert.equal(failure.headers.get('access-control-allow-origin'), adminOrigin);
+  assert.equal((await put(2)).status, 200);
+  const finish = await send('finish', {}, 'POST', JSON.stringify({ etags: ['1'.repeat(32), '2'.repeat(32)] }));
+  assert.equal(finish.status, 201);
+  const record = await finish.json();
+  assert.equal(record.id, id);
+  assert.equal(record.size, glb.length);
+  assert.equal(record.b2Id, undefined);
+  assert.deepEqual(await (await send('finish', {}, 'POST', '{}')).json(), record);
+  assert.deepEqual((await (await send('start', start, 'POST')).json()).completed, record);
+  assert.deepEqual(saved, [1, 2, 2]);
+});

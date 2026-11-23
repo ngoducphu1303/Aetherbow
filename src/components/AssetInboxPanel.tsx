@@ -3,7 +3,7 @@ import type { User } from 'firebase/auth';
 import { CloudUpload, Copy, ExternalLink, FolderOpen } from 'lucide-react';
 import assetGroups from '../../scripts/glb-inbox-groups.json';
 import { CHAPTERS } from '../data/chaptersData';
-import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadGlb } from './assetAdminApi';
+import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadInboxGlb } from './assetAdminApi';
 
 type Group = keyof typeof assetGroups;
 type Asset = { id: string; name: string; chapter: number; path: string; size: number; group: Group };
@@ -97,7 +97,7 @@ export default function AssetInboxPanel({ user, onBusyChange }: { user: User; on
         const update = (percent: number) => setProgress({ current: index + 1, total: selection.length, percent, name: file.name });
         update(0);
         try {
-          const saved = await uploadGlb<Asset>(user, 'inbox', {
+          const saved = await uploadInboxGlb<Asset>(user, {
             chapter: String(chapter), group, name: file.name,
           }, file, update);
           setFiles((current) => [saved, ...current]);

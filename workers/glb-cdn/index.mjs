@@ -13,6 +13,7 @@ const UPLOAD_EXPIRY_SECONDS = 300;
 const GLB_CONTENT_TYPE = 'model/gltf-binary';
 const ADMIN_ORIGIN = 'https://aetherbow.vercel.app';
 const MAX_ADMIN_BYTES = 96_000_000;
+const INBOX_PART_BYTES = 6 * 1024 * 1024;
 const KNOWN_GLB_PATHS = new Set(manifest.files.filter(({runtime}) => runtime).map(({path}) => path.slice('public'.length)));
 const REVISION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CONTENT_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
@@ -88,20 +89,24 @@ export async function signB2Download(url, method, keyId, applicationKey, now = n
   });
 }
 
-async function createUploadGrant(objectPath, keyId, applicationKey, size, md5) {
-  const url = new URL(`/${BUCKET}${objectPath.encoded}`, B2_ORIGIN);
-  const time = signingTime(new Date());
-  const headers = {
+function createUploadGrant(objectPath, keyId, applicationKey, size, md5) {
+  return presignB2('PUT', objectPath.encoded, keyId, applicationKey, {
     'cache-control': CACHE_CONTROL,
     'content-length': String(size),
     ...(md5 ? { 'content-md5': md5 } : {}),
     'content-type': GLB_CONTENT_TYPE,
-  };
+  });
+}
+
+async function presignB2(method, encoded, keyId, applicationKey, headers = {}, parameters = {}) {
+  const url = new URL(`/${BUCKET}${encoded}`, B2_ORIGIN);
+  const time = signingTime(new Date());
   const signed = { ...headers, host: url.host };
   const headerNames = Object.keys(signed).sort();
   const signedHeaders = headerNames.join(';');
   const canonicalHeaders = headerNames.map((name) => `${name}:${signed[name]}\n`).join('');
   const query = {
+    ...parameters,
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
     'X-Amz-Credential': `${keyId}/${time.scope}`,
     'X-Amz-Date': time.dateTime,
@@ -110,7 +115,7 @@ async function createUploadGrant(objectPath, keyId, applicationKey, size, md5) {
   };
   const canonicalQuery = Object.keys(query).sort()
     .map((name) => `${encodeS3Segment(name)}=${encodeS3Segment(query[name])}`).join('&');
-  const canonical = ['PUT', url.pathname, canonicalQuery, canonicalHeaders, signedHeaders, 'UNSIGNED-PAYLOAD'].join('\n');
+  const canonical = [method, url.pathname, canonicalQuery, canonicalHeaders, signedHeaders, 'UNSIGNED-PAYLOAD'].join('\n');
   const signature = await signB2Request(canonical, time, applicationKey);
   return { url: `${url.href}?${canonicalQuery}&X-Amz-Signature=${signature}`, headers };
 }
@@ -285,6 +290,127 @@ async function uploadAdminAsset(request, env, entry, catalogPath) {
   }
 }
 
+function inboxObjectPath(path) {
+  return '/' + path.slice(1).split('/').map(encodeS3Segment).join('/');
+}
+
+function inboxFile(chapter, group, input, id) {
+  if (/[\\/\x00-\x1f\x7f]/.test(input)) return null;
+  const name = input.trim().normalize('NFC');
+  if (!Object.hasOwn(inboxGroups, group) || name.length > 120 || name.length <= 4 || !/\.glb$/i.test(name)) return null;
+  return { id, name, chapter: Number(chapter), group, path: `/assets/Chương ${chapter}/Asset mới/${inboxGroups[group]}/${id}/${name}` };
+}
+
+function unescapeXml(value) {
+  return value.replace(/&(amp|lt|gt|quot|apos);/g, (_, entity) => ({ amp:'&', lt:'<', gt:'>', quot:'"', apos:"'" })[entity]);
+}
+
+async function handleInboxUpload(request, url, env, action) {
+  const id = url.searchParams.get('id') ?? '';
+  if (!REVISION_ID.test(id)) return adminResponse({ error: 'Phiên tải không hợp lệ.' }, 400);
+  if ((action === 'part' && request.method !== 'PUT') || (action !== 'part' && request.method !== 'POST')) {
+    return adminResponse({ error: 'Thao tác không được hỗ trợ.' }, 405);
+  }
+  if (!['start', 'part', 'finish'].includes(action)) return adminResponse({ error: 'Không tìm thấy thao tác tải tệp.' }, 404);
+
+  const keyId = env.B2_WRITE_KEY_ID?.trim();
+  const applicationKey = env.B2_WRITE_APPLICATION_KEY?.trim();
+  if (!keyId || !applicationKey) return adminResponse({ error: 'Worker chưa được cấp quyền ghi.' }, 503);
+  const state = await catalog(env, '/inbox-upload?id=' + id);
+  let session = state.ok ? await state.json() : null;
+  if (!state.ok && state.status !== 404) throw new Error('Upload catalog unavailable');
+
+  if (action === 'start') {
+    const chapter = url.searchParams.get('chapter') ?? '';
+    const size = Number(url.searchParams.get('size'));
+    if (!/^(?:[1-9]|1[0-2])$/.test(chapter) || !Number.isInteger(size) || size < 24 || size > MAX_ADMIN_BYTES) {
+      return adminResponse({ error: 'Chọn chương 1–12 và tệp GLB tối đa 96 MB.' }, 400);
+    }
+    const file = inboxFile(chapter, url.searchParams.get('group') ?? '', url.searchParams.get('name') ?? '', id);
+    if (!file) return adminResponse({ error: 'Chọn nhóm và tệp .glb có tên hợp lệ.' }, 400);
+    if (!session) {
+      const encoded = inboxObjectPath(file.path);
+      const signed = await presignB2('POST', encoded, keyId, applicationKey, {
+        'cache-control': CACHE_CONTROL, 'content-type': GLB_CONTENT_TYPE,
+      }, { uploads: '' });
+      const origin = await fetch(signed.url, { method: 'POST', headers: signed.headers, redirect: 'manual', signal: AbortSignal.timeout(15000) });
+      const b2IdXml = (await origin.text()).match(/<UploadId>([^<]+)<\/UploadId>/)?.[1];
+      if (!origin.ok || !b2IdXml) return adminResponse({ error: 'Không thể bắt đầu upload tới Backblaze.' }, 502);
+      const candidate = { ...file, size, b2Id: unescapeXml(b2IdXml), uploadedAt: new Date().toISOString() };
+      const registered = await catalog(env, '/inbox-upload', 'POST', candidate);
+      if (registered.ok) session = await registered.json();
+      if (session?.b2Id !== candidate.b2Id) {
+        const discard = await presignB2('DELETE', encoded, keyId, applicationKey, {}, { uploadId: candidate.b2Id });
+        await fetch(discard.url, { method: 'DELETE', redirect: 'manual', signal: AbortSignal.timeout(10000) })
+          .then((response) => response.body?.cancel()).catch(() => {});
+      }
+      if (!session) throw new Error('Could not save upload session');
+    }
+    if (session.size !== size || session.path !== file.path) return adminResponse({ error: 'Phiên tải đã được dùng cho tệp khác.' }, 409);
+    return adminResponse({ partSize: INBOX_PART_BYTES, completed: session.completed ?? null });
+  }
+
+  if (!session) return adminResponse({ error: 'Phiên tải chưa được bắt đầu.' }, 404);
+  if (session.completed) {
+    return action === 'finish' ? adminResponse(session.completed, 201) : adminResponse({ error: 'Tệp đã được lưu.' }, 409);
+  }
+  const encoded = inboxObjectPath(session.path);
+  const parts = Math.ceil(session.size / INBOX_PART_BYTES);
+  if (action === 'part') {
+    const index = Number(url.searchParams.get('part'));
+    if (!Number.isInteger(index) || index < 1 || index > parts) return adminResponse({ error: 'Phần tải không hợp lệ.' }, 400);
+    const size = Math.min(INBOX_PART_BYTES, session.size - (index - 1) * INBOX_PART_BYTES);
+    if (Number(request.headers.get('x-glb-size')) !== size) return adminResponse({ error: 'Kích thước phần tải không hợp lệ.' }, 400);
+    const stream = index === 1 ? await readGlbUpload(request.body, session.size) : request.body;
+    if (!stream) return adminResponse({ error: 'Tệp không phải GLB 2.0 hợp lệ.' }, 400);
+    const signed = await presignB2('PUT', encoded, keyId, applicationKey, { 'content-length': String(size) },
+      { partNumber: String(index), uploadId: session.b2Id });
+    const transfer = new FixedLengthStream(size);
+    const controller = new AbortController();
+    const write = stream.pipeTo(transfer.writable, { signal: controller.signal });
+    void write.catch(() => {});
+    try {
+      const origin = await fetch(signed.url, { method:'PUT', headers:signed.headers, body:transfer.readable, redirect:'manual',
+        signal:AbortSignal.timeout(45000) });
+      const etag = origin.headers.get('etag')?.replaceAll('"', '').toLowerCase();
+      await origin.body?.cancel();
+      if (!origin.ok || !/^[a-f0-9]{32}$/.test(etag ?? '')) return adminResponse({ error: `Backblaze chưa nhận phần ${index}.` }, 502);
+      await write;
+      return adminResponse({ etag });
+    } finally {
+      controller.abort();
+    }
+  }
+
+  let etags;
+  try {
+    if (Number(request.headers.get('content-length')) > 1024) throw new Error();
+    ({ etags } = await request.json());
+    if (!Array.isArray(etags) || etags.length !== parts || etags.some((value) => typeof value !== 'string' || !/^[a-f0-9]{32}$/.test(value))) throw new Error();
+  } catch {
+    return adminResponse({ error: 'Danh sách phần tải không hợp lệ.' }, 400);
+  }
+  const body = '<CompleteMultipartUpload>' + etags.map((etag, index) =>
+    `<Part><PartNumber>${index + 1}</PartNumber><ETag>"${etag}"</ETag></Part>`).join('') + '</CompleteMultipartUpload>';
+  const signed = await presignB2('POST', encoded, keyId, applicationKey, { 'content-type': 'application/xml' }, { uploadId: session.b2Id });
+  // Completion can succeed even when the response was interrupted. Confirm the
+  // unique object and its size before registering it, including on a retry.
+  try {
+    const origin = await fetch(signed.url, { method:'POST', headers:signed.headers, body, redirect:'manual', signal:AbortSignal.timeout(45000) });
+    await origin.text();
+  } catch {
+    // Verify below whether Backblaze committed the upload.
+  }
+  const destination = new URL(`/${BUCKET}${encoded}`, B2_ORIGIN);
+  const headers = await signB2Download(destination, 'HEAD', keyId, applicationKey);
+  const checked = await fetch(destination.href, { method:'HEAD', headers, redirect:'manual', signal:AbortSignal.timeout(15000) });
+  if (!checked.ok || Number(checked.headers.get('content-length')) !== session.size) {
+    return adminResponse({ error: 'Chưa xác minh được tệp trên Backblaze. Hãy thử lại.' }, 502);
+  }
+  const complete = await catalog(env, '/inbox-upload/finish', 'POST', { id });
+  return adminResponse(await complete.json(), complete.ok ? 201 : complete.status);
+}
+
 async function handleAssetInbox(request, url, env) {
   const chapter = url.searchParams.get('chapter') ?? '';
   if (!/^(?:[1-9]|1[0-2])$/.test(chapter)) return adminResponse({ error: 'Chọn chương từ 1 đến 12.' }, 400);
@@ -306,17 +432,9 @@ async function handleAssetInbox(request, url, env) {
   }
 
   if (request.method !== 'PUT') return adminResponse({ error: 'Thao tác không được hỗ trợ.' }, 405);
-  const group = url.searchParams.get('group') ?? '';
-  const input = url.searchParams.get('name') ?? '';
-  if (/[\\/\x00-\x1f\x7f]/.test(input)) return adminResponse({ error: 'Tên tệp không hợp lệ.' }, 400);
-  const name = input.trim().normalize('NFC');
-  if (!Object.hasOwn(inboxGroups, group) || name.length > 120 || name.length <= 4 || !/\.glb$/i.test(name)) {
-    return adminResponse({ error: 'Chọn nhóm và tệp .glb có tên tối đa 120 ký tự.' }, 400);
-  }
-
-  const id = crypto.randomUUID();
-  const path = `/assets/Chương ${chapter}/Asset mới/${inboxGroups[group]}/${id}/${name}`;
-  return uploadAdminAsset(request, env, { id, path, name, chapter: Number(chapter), group }, '/inbox');
+  const record = inboxFile(chapter, url.searchParams.get('group') ?? '', url.searchParams.get('name') ?? '', crypto.randomUUID());
+  if (!record) return adminResponse({ error: 'Chọn nhóm và tệp .glb có tên tối đa 120 ký tự.' }, 400);
+  return uploadAdminAsset(request, env, record, '/inbox');
 }
 
 async function handleAdmin(request, url, env) {
@@ -338,6 +456,7 @@ async function handleAdmin(request, url, env) {
   const endpoint = url.pathname.slice('/__admin'.length);
   if (request.method === 'GET' && endpoint === '/session') return adminResponse({ allowed: true });
   if (endpoint === '/inbox') return handleAssetInbox(request, url, env);
+  if (endpoint.startsWith('/inbox-upload/')) return handleInboxUpload(request, url, env, endpoint.slice('/inbox-upload/'.length));
   const path = url.searchParams.get('path');
   if (!KNOWN_GLB_PATHS.has(path)) return adminResponse({ error: 'Chọn một model đã tích hợp.' }, 404);
   if (request.method === 'PUT' && endpoint === '/upload') {
@@ -390,7 +509,13 @@ function error(message, status, extraHeaders) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/__admin/')) return handleAdmin(request, url, env);
+    if (url.pathname.startsWith('/__admin/')) {
+      try {
+        return await handleAdmin(request, url, env);
+      } catch {
+        return adminResponse({ error: 'Quản trị asset bị gián đoạn. Hãy thử lại.' }, 502);
+      }
+    }
     if (url.pathname === '/__asset-versions' && request.method === 'GET') {
       const result = env.ASSET_CATALOG ? await catalog(env, '/versions') : Response.json({});
       return new Response(result.body, { status: result.status, headers: {
