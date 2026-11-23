@@ -1,5 +1,6 @@
 import { AssetCatalog } from './assetCatalog.mjs';
-import { verifyFirebaseAdmin } from './firebaseAdmin.mjs';
+import { isGoogleAdmin, isPasswordAccount, verifyFirebaseIdentity } from './firebaseAdmin.mjs';
+import adminAuth from '../../scripts/asset-admin-auth.json' with { type: 'json' };
 import manifest from '../../scripts/glb-manifest.json' with { type: 'json' };
 import inboxGroups from '../../scripts/glb-inbox-groups.json' with { type: 'json' };
 
@@ -13,6 +14,7 @@ const UPLOAD_EXPIRY_SECONDS = 300;
 const GLB_CONTENT_TYPE = 'model/gltf-binary';
 const ADMIN_ORIGIN = 'https://aetherbow.vercel.app';
 const MAX_ADMIN_BYTES = 96_000_000;
+const MAX_MULTIPART_BYTES = 120_000_000;
 const INBOX_PART_BYTES = 6 * 1024 * 1024;
 const KNOWN_GLB_PATHS = new Set(manifest.files.filter(({runtime}) => runtime).map(({path}) => path.slice('public'.length)));
 const REVISION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -305,7 +307,14 @@ function unescapeXml(value) {
   return value.replace(/&(amp|lt|gt|quot|apos);/g, (_, entity) => ({ amp:'&', lt:'<', gt:'>', quot:'"', apos:"'" })[entity]);
 }
 
-async function handleInboxUpload(request, url, env, action) {
+function multipartObjectPath(session) {
+  const encoded = inboxObjectPath(session.path);
+  return session.kind === 'stage'
+    ? '/assets/.revisions/' + session.id + encoded.slice('/assets'.length)
+    : encoded;
+}
+
+async function handleMultipartUpload(request, url, env, action, kind) {
   const id = url.searchParams.get('id') ?? '';
   if (!REVISION_ID.test(id)) return adminResponse({ error: 'Phiên tải không hợp lệ.' }, 400);
   if ((action === 'part' && request.method !== 'PUT') || (action !== 'part' && request.method !== 'POST')) {
@@ -321,15 +330,23 @@ async function handleInboxUpload(request, url, env, action) {
   if (!state.ok && state.status !== 404) throw new Error('Upload catalog unavailable');
 
   if (action === 'start') {
-    const chapter = url.searchParams.get('chapter') ?? '';
     const size = Number(url.searchParams.get('size'));
-    if (!/^(?:[1-9]|1[0-2])$/.test(chapter) || !Number.isInteger(size) || size < 24 || size > MAX_ADMIN_BYTES) {
-      return adminResponse({ error: 'Chọn chương 1–12 và tệp GLB tối đa 96 MB.' }, 400);
+    if (!Number.isInteger(size) || size < 24 || size > MAX_MULTIPART_BYTES) {
+      return adminResponse({ error: 'Chọn tệp GLB từ 24 byte đến 120 MB.' }, 413);
     }
-    const file = inboxFile(chapter, url.searchParams.get('group') ?? '', url.searchParams.get('name') ?? '', id);
-    if (!file) return adminResponse({ error: 'Chọn nhóm và tệp .glb có tên hợp lệ.' }, 400);
+    let file;
+    if (kind === 'stage') {
+      const path = url.searchParams.get('path');
+      if (!KNOWN_GLB_PATHS.has(path)) return adminResponse({ error: 'Chọn một model đã tích hợp.' }, 404);
+      file = { id, path, kind };
+    } else {
+      const chapter = url.searchParams.get('chapter') ?? '';
+      if (!/^(?:[1-9]|1[0-2])$/.test(chapter)) return adminResponse({ error: 'Chọn chương từ 1 đến 12.' }, 400);
+      file = inboxFile(chapter, url.searchParams.get('group') ?? '', url.searchParams.get('name') ?? '', id);
+      if (!file) return adminResponse({ error: 'Chọn nhóm và tệp .glb có tên hợp lệ.' }, 400);
+    }
     if (!session) {
-      const encoded = inboxObjectPath(file.path);
+      const encoded = multipartObjectPath(file);
       const signed = await presignB2('POST', encoded, keyId, applicationKey, {
         'cache-control': CACHE_CONTROL, 'content-type': GLB_CONTENT_TYPE,
       }, { uploads: '' });
@@ -346,15 +363,15 @@ async function handleInboxUpload(request, url, env, action) {
       }
       if (!session) throw new Error('Could not save upload session');
     }
-    if (session.size !== size || session.path !== file.path) return adminResponse({ error: 'Phiên tải đã được dùng cho tệp khác.' }, 409);
+    if ((session.kind ?? 'inbox') !== kind || session.size !== size || session.path !== file.path) return adminResponse({ error: 'Phiên tải đã được dùng cho tệp khác.' }, 409);
     return adminResponse({ partSize: INBOX_PART_BYTES, completed: session.completed ?? null });
   }
 
-  if (!session) return adminResponse({ error: 'Phiên tải chưa được bắt đầu.' }, 404);
+  if (!session || (session.kind ?? 'inbox') !== kind) return adminResponse({ error: 'Phiên tải chưa được bắt đầu.' }, 404);
   if (session.completed) {
     return action === 'finish' ? adminResponse(session.completed, 201) : adminResponse({ error: 'Tệp đã được lưu.' }, 409);
   }
-  const encoded = inboxObjectPath(session.path);
+  const encoded = multipartObjectPath(session);
   const parts = Math.ceil(session.size / INBOX_PART_BYTES);
   if (action === 'part') {
     const index = Number(url.searchParams.get('part'));
@@ -447,16 +464,55 @@ async function handleAdmin(request, url, env) {
     'access-control-max-age': '300',
   } });
   const token = request.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1];
-  if (!token) return adminResponse({ error: 'Hãy đăng nhập Google để quản lý model.' }, 401);
-  if (!(await verifyFirebaseAdmin(token, env.FIREBASE_PROJECT_ID, env.ADMIN_GOOGLE_EMAIL))) {
-    return adminResponse({ error: 'Tài khoản này không có quyền quản lý model.' }, 403);
-  }
+  if (!token) return adminResponse({ error: 'Hãy đăng nhập để quản lý model.' }, 401);
+  const identity = await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID);
+  const googleAdmin = isGoogleAdmin(identity, env.ADMIN_GOOGLE_EMAIL);
+  const passwordAccount = isPasswordAccount(identity, adminAuth.passwordEmail);
+  if (!googleAdmin && !passwordAccount) return adminResponse({ error: 'Tài khoản này không có quyền quản lý model.' }, 403);
   if (!env.ASSET_CATALOG) return adminResponse({ error: 'Thiếu danh mục phiên bản.' }, 503);
 
   const endpoint = url.pathname.slice('/__admin'.length);
-  if (request.method === 'GET' && endpoint === '/session') return adminResponse({ allowed: true });
+  let passwordUid;
+  if (passwordAccount || endpoint === '/session' || endpoint === '/password-account') {
+    const result = await catalog(env, '/password-admin');
+    if (!result.ok) return adminResponse({ error: 'Chưa kiểm tra được quyền quản trị.' }, 502);
+    ({ uid: passwordUid } = await result.json());
+  }
+  if (!googleAdmin && (!passwordUid || identity.sub !== passwordUid)) {
+    return adminResponse({ error: 'Tài khoản puugoo chưa được liên kết quyền quản trị.' }, 403);
+  }
+  if (request.method === 'GET' && endpoint === '/session') {
+    return adminResponse({ allowed: true, canLinkPassword: googleAdmin && !passwordUid, passwordLinked: Boolean(passwordUid) });
+  }
+  if (request.method === 'POST' && endpoint === '/password-account') {
+    if (!googleAdmin || Math.floor(Date.now() / 1000) - identity.auth_time > 300) {
+      return adminResponse({ error: 'Hãy xác minh lại bằng Google trước khi liên kết.' }, 403);
+    }
+    let candidate;
+    try {
+      if (Number(request.headers.get('content-length')) > 10000) throw new Error();
+      const { passwordToken } = await request.json();
+      if (typeof passwordToken !== 'string') throw new Error();
+      candidate = await verifyFirebaseIdentity(passwordToken, env.FIREBASE_PROJECT_ID);
+    } catch {
+      return adminResponse({ error: 'Phiên đăng nhập puugoo không hợp lệ.' }, 400);
+    }
+    if (!isPasswordAccount(candidate, adminAuth.passwordEmail) ||
+        Math.floor(Date.now() / 1000) - candidate.auth_time > 300) {
+      return adminResponse({ error: 'Hãy đăng nhập tài khoản puugoo bằng đúng mật khẩu.' }, 403);
+    }
+    const linked = await catalog(env, '/password-admin', 'POST', { uid: candidate.sub });
+    if (linked.status === 409) return adminResponse({ error: 'Tài khoản mật khẩu đã được liên kết.' }, 409);
+    if (!linked.ok) return adminResponse({ error: 'Không lưu được quyền quản trị.' }, 502);
+    return adminResponse({ passwordLinked: true });
+  }
   if (endpoint === '/inbox') return handleAssetInbox(request, url, env);
-  if (endpoint.startsWith('/inbox-upload/')) return handleInboxUpload(request, url, env, endpoint.slice('/inbox-upload/'.length));
+  if (endpoint.startsWith('/inbox-upload/')) {
+    return handleMultipartUpload(request, url, env, endpoint.slice('/inbox-upload/'.length), 'inbox');
+  }
+  if (endpoint.startsWith('/model-upload/')) {
+    return handleMultipartUpload(request, url, env, endpoint.slice('/model-upload/'.length), 'stage');
+  }
   const path = url.searchParams.get('path');
   if (!KNOWN_GLB_PATHS.has(path)) return adminResponse({ error: 'Chọn một model đã tích hợp.' }, 404);
   if (request.method === 'PUT' && endpoint === '/upload') {

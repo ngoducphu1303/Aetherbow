@@ -11,6 +11,16 @@ export class AssetCatalog {
       const active = (await this.storage.get('active')) ?? {};
       return Response.json(Object.fromEntries(Object.entries(active).map(([path, entry]) => [path, entry.id])));
     }
+    if (route.pathname === '/password-admin') {
+      if (request.method === 'GET') return Response.json({ uid: (await this.storage.get('password-admin-uid')) ?? null });
+      const { uid } = await request.json();
+      return this.storage.transaction(async (transaction) => {
+        const stored = await transaction.get('password-admin-uid');
+        if (stored && stored !== uid) return Response.json({ error: 'Already linked' }, { status: 409 });
+        if (!stored) await transaction.put({ 'password-admin-uid': uid });
+        return Response.json({ uid });
+      });
+    }
     if (route.pathname === '/inbox') {
       if (request.method === 'POST') {
         const item = await request.json();
@@ -50,11 +60,11 @@ export class AssetCatalog {
         const session = await transaction.get(key);
         if (!session) return notFound();
         if (session.completed) return Response.json(session.completed);
-        const { b2Id, ...record } = session;
-        await transaction.put({
-          [key]: { ...session, completed: record },
-          [`inbox:${record.chapter}:${record.uploadedAt}:${id}`]: record,
-        });
+        const { b2Id, kind, ...record } = session;
+        const publication = kind === 'stage'
+          ? { ['revision:' + id]: record, ['draft:' + record.path]: record }
+          : { [`inbox:${record.chapter}:${record.uploadedAt}:${id}`]: record };
+        await transaction.put({ [key]: { ...session, completed: record }, ...publication });
         return Response.json(record);
       });
     }

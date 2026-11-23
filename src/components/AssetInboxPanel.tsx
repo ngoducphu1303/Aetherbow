@@ -3,7 +3,7 @@ import type { User } from 'firebase/auth';
 import { CloudUpload, Copy, ExternalLink, FolderOpen } from 'lucide-react';
 import assetGroups from '../../scripts/glb-inbox-groups.json';
 import { CHAPTERS } from '../data/chaptersData';
-import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadInboxGlb } from './assetAdminApi';
+import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadAdminGlb } from './assetAdminApi';
 
 type Group = keyof typeof assetGroups;
 type Asset = { id: string; name: string; chapter: number; path: string; size: number; group: Group };
@@ -81,7 +81,7 @@ export default function AssetInboxPanel({ user, onBusyChange }: { user: User; on
       return !/\.glb$/i.test(name) || name.length <= 4 || name.length > 120 || file.size < 24 || file.size > MAX_BYTES;
     });
     if (invalid) {
-      setError(`Kiểm tra tệp ${invalid.name}. Chỉ nhận GLB tối đa 96 MB và tên tối đa 120 ký tự.`);
+      setError(`Kiểm tra tệp ${invalid.name}. Chỉ nhận GLB tối đa 120 MB và tên tối đa 120 ký tự.`);
       return;
     }
 
@@ -97,7 +97,7 @@ export default function AssetInboxPanel({ user, onBusyChange }: { user: User; on
         const update = (percent: number) => setProgress({ current: index + 1, total: selection.length, percent, name: file.name });
         update(0);
         try {
-          const saved = await uploadInboxGlb<Asset>(user, {
+          const saved = await uploadAdminGlb<Asset>(user, 'inbox-upload', {
             chapter: String(chapter), group, name: file.name,
           }, file, update);
           setFiles((current) => [saved, ...current]);
@@ -154,7 +154,7 @@ export default function AssetInboxPanel({ user, onBusyChange }: { user: User; on
           <input ref={picker} id="asset-inbox-files" type="file" multiple accept=".glb,model/gltf-binary" disabled={busy}
             className="max-w-full text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-slate-100"
             onChange={(e) => { setSelection(Array.from(e.target.files ?? [])); setError(''); setNotice(''); }}/>
-          <p className="text-xs text-slate-400">GLB 2.0, tối đa 96 MB mỗi tệp.</p>
+          <p className="text-xs text-slate-400">GLB 2.0, tối đa 120 MB mỗi tệp.</p>
           {selection.length > 0 && (
             <ul className="max-h-28 overflow-y-auto text-xs text-slate-300">
               {selection.map((file, index) => <li className="truncate py-0.5" key={file.name + index}>{file.name}</li>)}

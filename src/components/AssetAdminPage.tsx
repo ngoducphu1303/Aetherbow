@@ -1,16 +1,18 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { ArrowLeft, Box, Check, CloudUpload, Eye, LogOut, RotateCcw, Search, ShieldCheck } from 'lucide-react';
 import { auth, googleProvider } from '../firebase';
 import manifest from '../../scripts/glb-manifest.json';
 import AssetInboxPanel from './AssetInboxPanel';
-import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadGlb } from './assetAdminApi';
+import { adminHandle, credentialMessage, linkAssetAdminAccount, loginAssetAdmin } from './assetAdminCredentials';
+import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadAdminGlb } from './assetAdminApi';
 
 const Preview = lazy(() => import('./AssetAdminPreview'));
 const categories = ['Chương 1', 'Chương 2', 'Khác'] as const;
 type Category = typeof categories[number];
 
 type Revision = { path: string; id: string; size: number; uploadedAt: string };
+type AdminSession = { canLinkPassword: boolean; passwordLinked: boolean };
 type Entry = { active: Revision | null; previous: Revision | null; draft: Revision | null; canRollback: boolean };
 
 export default function AssetAdminPage() {
@@ -19,6 +21,15 @@ export default function AssetAdminPage() {
   const [inboxBusy, setInboxBusy] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [sessionError, setSessionError] = useState('');
+  const [sessionInfo, setSessionInfo] = useState<AdminSession | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [handle, setHandle] = useState(adminHandle);
+  const [password, setPassword] = useState('');
+  const [setup, setSetup] = useState(false);
+  const [setupMode, setSetupMode] = useState<'existing' | 'create'>('existing');
+  const [setupPassword, setSetupPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [setupError, setSetupError] = useState('');
   const [category, setCategory] = useState<Category>('Chương 2');
   const [search, setSearch] = useState('');
   const [path, setPath] = useState('');
@@ -37,11 +48,14 @@ export default function AssetAdminPage() {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       const request = ++sequence;
       setUser(null);
+      setSessionInfo(null);
+      setSetup(false);
       setSessionError('');
       if (!nextUser) { setSession('guest'); return; }
       setSession('checking');
-      void api(nextUser, 'session').then(() => {
+      void api<AdminSession>(nextUser, 'session').then((info) => {
         if (listening && request === sequence) {
+          setSessionInfo(info);
           setUser(nextUser);
           setSession('ready');
         }
@@ -54,6 +68,44 @@ export default function AssetAdminPage() {
     });
     return () => { listening = false; unsubscribe(); };
   }, []);
+
+  const passwordLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (authBusy) return;
+    setSessionError('');
+    setAuthBusy(true);
+    setPassword('');
+    try {
+      await loginAssetAdmin(handle, password);
+    } catch (cause) {
+      setSessionError(credentialMessage(cause));
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const linkPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user || authBusy || !sessionInfo?.canLinkPassword) return;
+    const create = setupMode === 'create';
+    setSetupError('');
+    if (!setupPassword || (create && (setupPassword.length < 8 || setupPassword !== confirmPassword))) {
+      setSetupError(create ? 'Mật khẩu mới cần ít nhất 8 ký tự và khớp với ô nhập lại.' : 'Nhập mật khẩu của tài khoản puugoo.');
+      return;
+    }
+    setAuthBusy(true);
+    setSetupPassword('');
+    setConfirmPassword('');
+    try {
+      await linkAssetAdminAccount(user, setupPassword, create);
+      setSessionInfo({ canLinkPassword: false, passwordLinked: true });
+      setSetup(false);
+    } catch (cause) {
+      setSetupError(credentialMessage(cause));
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   const choices = useMemo(() => manifest.files
     .filter((item) => item.runtime)
@@ -90,7 +142,7 @@ export default function AssetAdminPage() {
   const upload = async () => {
     if (!user || !file || !entry || busy) return;
     if (!/\.glb$/i.test(file.name) || file.size < 24 || file.size > MAX_BYTES) {
-      setError('Chọn tệp .glb hợp lệ, tối đa 96 MB.');
+      setError('Chọn tệp .glb hợp lệ, tối đa 120 MB.');
       return;
     }
     setBusy(true);
@@ -99,7 +151,7 @@ export default function AssetAdminPage() {
     setProgress(0);
     setPreview(null);
     try {
-      const uploaded = await uploadGlb<Revision>(user, 'upload', { path }, file, setProgress);
+      const uploaded = await uploadAdminGlb<Revision>(user, 'model-upload', { path }, file, setProgress);
       setStage(uploaded);
       setNotice('Đã tải lên bản nháp. Bạn có thể xem trước rồi áp dụng.');
     } catch (cause) {
@@ -145,7 +197,7 @@ export default function AssetAdminPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <a className={secondary} href="/"><ArrowLeft size={16}/> Về game</a>
-          {session === 'ready' && <button className={secondary} disabled={busy || inboxBusy} onClick={() => void signOut(auth)}><LogOut size={16}/> Đăng xuất</button>}
+          {session === 'ready' && <button className={secondary} disabled={busy || inboxBusy || authBusy} onClick={() => void signOut(auth)}><LogOut size={16}/> Đăng xuất</button>}
         </div>
       </header>
 
@@ -158,17 +210,86 @@ export default function AssetAdminPage() {
         </nav>
       )}
 
+      {session === 'ready' && sessionInfo?.canLinkPassword && (
+        <section className="mx-auto mt-5 max-w-6xl space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-300">Liên kết một lần để mở trang quản trị bằng tài khoản puugoo.</p>
+            <button type="button" className={secondary} disabled={authBusy || busy || inboxBusy} onClick={() => {
+              setSetup(!setup);
+              setSetupError('');
+              setSetupPassword('');
+              setConfirmPassword('');
+            }}>{setup ? 'Đóng thiết lập' : 'Thiết lập đăng nhập puugoo'}</button>
+          </div>
+          {setup && (
+            <form onSubmit={(event) => void linkPassword(event)} className="max-w-md space-y-3">
+              <label className="block space-y-1 text-sm">
+                <span>Tài khoản puugoo</span>
+                <select className="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" value={setupMode}
+                  disabled={authBusy} onChange={(event) => {
+                    setSetupMode(event.target.value as 'existing' | 'create');
+                    setSetupPassword('');
+                    setConfirmPassword('');
+                    setSetupError('');
+                  }}>
+                  <option value="existing">Dùng tài khoản puugoo đã có</option>
+                  <option value="create">Tạo tài khoản puugoo mới</option>
+                </select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span>{setupMode === 'create' ? 'Mật khẩu mới' : 'Mật khẩu hiện tại của puugoo'}</span>
+                <input type="password" autoComplete={setupMode === 'create' ? 'new-password' : 'current-password'} required
+                  value={setupPassword} disabled={authBusy} onChange={(event) => setSetupPassword(event.target.value)}
+                  className="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"/>
+              </label>
+              {setupMode === 'create' && (
+                <label className="block space-y-1 text-sm">
+                  <span>Nhập lại mật khẩu</span>
+                  <input type="password" autoComplete="new-password" required value={confirmPassword}
+                    disabled={authBusy} onChange={(event) => setConfirmPassword(event.target.value)}
+                    className="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"/>
+                </label>
+              )}
+              <button className={primary} disabled={authBusy || busy || inboxBusy} type="submit">
+                {authBusy ? 'Đang liên kết…' : 'Xác minh Google và liên kết'}
+              </button>
+              {setupError && <p role="alert" className="text-sm text-rose-300">{setupError}</p>}
+            </form>
+          )}
+        </section>
+      )}
+      {session === 'ready' && sessionInfo?.passwordLinked && (
+        <p className="mx-auto mt-3 max-w-6xl text-xs text-emerald-300">Tài khoản puugoo đã có quyền quản trị.</p>
+      )}
+
       {session !== 'ready' ? (
         <section className="mx-auto mt-16 max-w-md space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-7">
           <ShieldCheck className="text-amber-300" size={29}/>
           <h2 className="text-lg font-bold">Đăng nhập quản trị</h2>
           {session === 'checking' ? <p role="status" className="text-sm text-slate-300">Đang kiểm tra quyền truy cập…</p> : (
             <>
-              <p className="text-sm leading-6 text-slate-300">Đăng nhập bằng tài khoản Google được cấp quyền quản lý model Aetherbow.</p>
-              <button className={primary} onClick={() => {
+              <form className="space-y-3" onSubmit={(event) => void passwordLogin(event)}>
+                <label className="block space-y-1 text-sm">
+                  <span>Tên tài khoản</span>
+                  <input type="text" autoComplete="username" required value={handle} disabled={authBusy}
+                    onChange={(event) => setHandle(event.target.value)}
+                    className="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"/>
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span>Mật khẩu</span>
+                  <input type="password" autoComplete="current-password" required value={password} disabled={authBusy}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"/>
+                </label>
+                <button type="submit" className={primary} disabled={authBusy}>Đăng nhập</button>
+              </form>
+              <button type="button" className={secondary} disabled={authBusy} onClick={() => {
                 setSessionError('');
-                void signInWithPopup(auth, googleProvider).catch((cause) => setSessionError(message(cause)));
-              }}>Đăng nhập Google</button>
+                setAuthBusy(true);
+                void signInWithPopup(auth, googleProvider)
+                  .catch((cause) => setSessionError(credentialMessage(cause)))
+                  .finally(() => setAuthBusy(false));
+              }}>Google để thiết lập hoặc khôi phục quyền</button>
               {sessionError && <p role="alert" className="text-sm text-rose-300">{sessionError}</p>}
             </>
           )}
@@ -219,7 +340,7 @@ export default function AssetAdminPage() {
                   <input key={path} id="asset-admin-file" type="file" accept=".glb,model/gltf-binary" disabled={busy}
                     className="max-w-full text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-slate-100"
                     onChange={(e) => { setFile(e.target.files?.[0] ?? null); setNotice(''); setError(''); }}/>
-                  <p className="text-xs text-slate-400">GLB 2.0, tối đa 96 MB</p>
+                  <p className="text-xs text-slate-400">GLB 2.0, tối đa 120 MB</p>
                   <button className={primary} disabled={!file || !entry || busy} onClick={() => void upload()}><CloudUpload size={16}/> Tải lên bản nháp</button>
                   {progress !== null && <div role="status" className="text-xs text-slate-300">{progress < 100 ? `Đang tải lên ${progress}%` : 'Đang xác minh tệp…'}<progress className="block w-full" max={100} value={progress}/></div>}
                 </div>

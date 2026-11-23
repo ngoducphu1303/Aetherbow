@@ -288,3 +288,75 @@ test('multipart inbox upload retries a part and finalizes idempotently after a l
   assert.deepEqual((await (await send('start', start, 'POST')).json()).completed, record);
   assert.deepEqual(saved, [1, 2, 2]);
 });
+
+test('puugoo earns admin only after Google verifies the matching password account UID', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ keys:[publicKey] }));
+  const env = { FIREBASE_PROJECT_ID: project, ADMIN_GOOGLE_EMAIL: email, ASSET_CATALOG: catalogBinding() };
+  const verifiedNow = Math.floor(Date.now() / 1000);
+  const own = { email: 'puugoo@artemis3d.player', sub: 'puugoo-real-uid', email_verified:false,
+    firebase: { sign_in_provider:'password' } };
+  const call = (route, bearer, passwordToken) => worker.fetch(new Request(cdn+'/__admin/'+route, {
+    method: passwordToken ? 'POST' : 'GET',
+    headers: { Authorization:'Bearer '+bearer, Origin:adminOrigin },
+    body: passwordToken ? JSON.stringify({passwordToken}) : undefined,
+  }), env);
+  const session = token(own);
+  assert.equal((await call('session', session)).status, 403);
+  assert.equal((await call('password-account', session, session)).status, 403);
+  const owner = token();
+  assert.deepEqual(await (await call('session', owner)).json(), {
+    allowed:true, canLinkPassword:true, passwordLinked:false,
+  });
+  assert.equal((await call('password-account', token({auth_time:verifiedNow-301}), session)).status, 403);
+  assert.equal((await call('password-account', owner, token({...own, auth_time:verifiedNow-301}))).status, 403);
+  assert.equal((await call('password-account', owner, token({...own,email:'not-puugoo@artemis3d.player'}))).status, 403);
+  assert.equal((await call('password-account', owner, token({...own,firebase:{sign_in_provider:'google.com'}}))).status, 403);
+  for (let retry = 0; retry < 2; retry++) {
+    assert.equal((await call('password-account', owner, session)).status, 200);
+  }
+  assert.deepEqual(await (await call('session', session)).json(), {
+    allowed:true, canLinkPassword:false, passwordLinked:true,
+  });
+  assert.equal((await call('session', token({...own,sub:'new-account-same-name'}))).status, 403);
+  assert.equal((await call('password-account', owner, token({...own,sub:'different'}))).status, 409);
+});
+
+test('both upload flows accept 120 MB and multipart replacements remain drafts', async (t) => {
+  let contentLength = 120_000_000;
+  const b2Paths = [];
+  const env = { FIREBASE_PROJECT_ID: project, ADMIN_GOOGLE_EMAIL: email, ASSET_CATALOG: catalogBinding(),
+    B2_WRITE_KEY_ID:'write-id', B2_WRITE_APPLICATION_KEY:'write-secret' };
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(input);
+    if (url.hostname === 'www.googleapis.com') return Response.json({keys:[publicKey]});
+    if (options.method === 'HEAD') return new Response(null,{headers:{'content-length':String(contentLength)}});
+    b2Paths.push(decodeURIComponent(url.pathname));
+    if (url.searchParams.has('uploads')) return new Response('<UploadId>test-large-file</UploadId>');
+    assert.match(options.body, /<CompleteMultipartUpload>/);
+    assert.equal((options.body.match(/<PartNumber>/g) ?? []).length,20);
+    return new Response('<CompleteMultipartUploadResult/>');
+  });
+  const auth = { Authorization: 'Bearer ' + token(), Origin: adminOrigin };
+  const browserCall = (route, params, body) => worker.fetch(new Request(cdn+'/__admin/'+route+'?'+new URLSearchParams(params), {
+    method:body ? 'POST' : 'GET', body:body ? JSON.stringify(body):undefined, headers:auth,
+  }),env);
+  const id = '74f3d7ae-8c56-4ad9-9bee-000000000003';
+  for (const [route, query] of [
+    ['model-upload', {path}],
+    ['inbox-upload', {chapter:'3',group:'map',name:'size-test.glb'}],
+  ]) {
+    assert.equal((await browserCall(route+'/start',{...query,id,size:String(contentLength+1)},{})).status,413);
+  }
+  assert.equal((await browserCall('model-upload/start',{path,id,size:String(contentLength)},{})).status,200);
+  const input = {chapter:'3',group:'map',name:'size-test.glb',size:String(contentLength),
+    id:'74f3d7ae-8c56-4ad9-9bee-000000000004'};
+  assert.equal((await browserCall('inbox-upload/start',input,{})).status,200);
+  const finished = await browserCall('model-upload/finish',{id},{etags:Array(20).fill('a'.repeat(32))});
+  assert.equal(finished.status,201);
+  assert.equal((await finished.json()).size,contentLength);
+  assert.ok(b2Paths.some((value)=>value.includes('/.revisions/'+id)));
+  const entry = await (await browserCall('entry',{path})).json();
+  assert.equal(entry.active,null);
+  assert.equal(entry.draft.id,id);
+  assert.deepEqual((await (await browserCall('inbox',{chapter:'3'})).json()).files,[]);
+});

@@ -1,7 +1,7 @@
 import type { User } from 'firebase/auth';
 import manifest from '../../scripts/glb-manifest.json';
 
-export const MAX_BYTES = 96_000_000;
+export const MAX_BYTES = 120_000_000;
 
 class UploadRequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -57,13 +57,8 @@ function putGlb<T>(url: URL, token: string, body: Blob, onProgress: (value: numb
   });
 }
 
-export async function uploadGlb<T extends {id: string}>(user: User, action: string, query: Record<string, string>, file: File, onProgress: (value: number) => void) {
-  const token = await user.getIdToken();
-  return putGlb<T>(endpoint(action, undefined, query), token, file, onProgress, 150_000);
-}
-
-type InboxTransfer = { id: string; etags: string[] };
-const inboxTransfers = new WeakMap<File, Map<string, InboxTransfer>>();
+type AssetTransfer = { id: string; etags: string[] };
+const assetTransfers = new WeakMap<File, Map<string, AssetTransfer>>();
 
 async function retryUpload<T>(operation: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
@@ -78,17 +73,17 @@ async function retryUpload<T>(operation: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function uploadInboxGlb<T extends {id: string}>(
-  user: User, query: Record<string, string>, file: File, onProgress: (value: number) => void,
+export async function uploadAdminGlb<T extends {id: string}>(
+  user: User, target: 'inbox-upload' | 'model-upload', query: Record<string, string>, file: File, onProgress: (value: number) => void,
 ) {
-  const destination = JSON.stringify(query);
-  const files = inboxTransfers.get(file) ?? new Map<string, InboxTransfer>();
-  inboxTransfers.set(file, files);
+  const destination = JSON.stringify([target, query]);
+  const files = assetTransfers.get(file) ?? new Map<string, AssetTransfer>();
+  assetTransfers.set(file, files);
   const transfer = files.get(destination) ?? { id: crypto.randomUUID(), etags: [] };
   files.set(destination, transfer);
   const {id, etags} = transfer;
 
-  const start = await retryUpload(() => api<{partSize: number; completed: T | null}>(user, 'inbox-upload/start', {
+  const start = await retryUpload(() => api<{partSize: number; completed: T | null}>(user, target + '/start', {
     query: { ...query, id, size: String(file.size) }, body: {}, signal: AbortSignal.timeout(35000),
   }));
   if (start.completed) {
@@ -105,7 +100,7 @@ export async function uploadInboxGlb<T extends {id: string}>(
     try {
       const response = await retryUpload(async () => {
         const token = await user.getIdToken();
-        return putGlb<{etag: string}>(endpoint('inbox-upload/part', undefined, { id, part: partNumber }), token, part,
+        return putGlb<{etag: string}>(endpoint(target + '/part', undefined, { id, part: partNumber }), token, part,
           (progress) => onProgress(Math.min(99, Math.round(100 * (startByte + part.size * progress / 100) / file.size))));
       });
       if (!/^[a-f0-9]{32}$/.test(response.etag)) throw new Error('Worker chưa xác nhận phần tải.');
@@ -115,7 +110,7 @@ export async function uploadInboxGlb<T extends {id: string}>(
     }
   }
   onProgress(100);
-  const completed = await retryUpload(() => api<T>(user, 'inbox-upload/finish', {
+  const completed = await retryUpload(() => api<T>(user, target + '/finish', {
     query: { id }, body: { etags }, signal: AbortSignal.timeout(70000),
   }));
   files.delete(destination);

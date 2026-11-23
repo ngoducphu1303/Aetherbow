@@ -17,11 +17,11 @@ async function getKeys() {
   return keys;
 }
 
-export async function verifyFirebaseAdmin(token, projectId, allowedEmail) {
+export async function verifyFirebaseIdentity(token, projectId) {
   try {
-    if (!token || !projectId || !allowedEmail || token.length > 9000) return false;
+    if (!token || !projectId || token.length > 9000) return null;
     const parts = token.split('.');
-    if (parts.length !== 3 || parts.some((part) => !/^[a-zA-Z0-9_-]+$/.test(part))) return false;
+    if (parts.length !== 3 || parts.some((part) => !/^[a-zA-Z0-9_-]+$/.test(part))) return null;
     const [header, payload, signature] = parts;
     const { alg, kid } = JSON.parse(decoder.decode(decodePart(header)));
     const claims = JSON.parse(decoder.decode(decodePart(payload)));
@@ -33,17 +33,27 @@ export async function verifyFirebaseAdmin(token, projectId, allowedEmail) {
       !Number.isFinite(claims.exp) || claims.exp <= now ||
       !Number.isFinite(claims.iat) || claims.iat > now + 60 ||
       !Number.isFinite(claims.auth_time) || claims.auth_time > now + 60 ||
-      claims.email_verified !== true ||
-      typeof claims.email !== 'string' || claims.email.toLowerCase() !== allowedEmail.trim().toLowerCase() ||
-      claims.firebase?.sign_in_provider !== 'google.com'
-    ) return false;
+      typeof claims.email !== 'string'
+    ) return null;
 
     const jwk = (await getKeys()).find((key) => key.kid === kid && key.kty === 'RSA');
-    if (!jwk) return false;
+    if (!jwk) return null;
     const algorithm = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' };
     const key = await crypto.subtle.importKey('jwk', jwk, algorithm, false, ['verify']);
-    return crypto.subtle.verify(algorithm, key, decodePart(signature), encoder.encode(`${header}.${payload}`));
+    const valid = await crypto.subtle.verify(algorithm, key, decodePart(signature), encoder.encode(`${header}.${payload}`));
+    return valid ? claims : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+
+export function isGoogleAdmin(identity, allowedEmail) {
+  return Boolean(allowedEmail && identity?.email_verified === true &&
+    identity.email.toLowerCase() === allowedEmail.trim().toLowerCase() &&
+    identity.firebase?.sign_in_provider === 'google.com');
+}
+
+export function isPasswordAccount(identity, accountEmail) {
+  return identity?.email?.toLowerCase() === accountEmail && identity?.firebase?.sign_in_provider === 'password';
 }
