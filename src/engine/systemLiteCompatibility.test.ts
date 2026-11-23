@@ -197,7 +197,7 @@ test('Persisted save key reader correctly parses artemis_3d_save_v1 & global cra
   );
   assert.equal(readPersistedChapter1MapMode(mockStorage), 'lite_3d');
   assert.equal(readPersistedLowEndSafetyMode(mockStorage), 'on');
-  assert.equal(readPersistedSelectedHeroId(mockStorage), 'hatsune_miku');
+  assert.equal(readPersistedSelectedHeroId(mockStorage), 'aurelia');
 
   // Simulate an unhandled GPU hang / tab crash during heavy 3D asset parse
   resetGpuCrashSentinel(mockStorage);

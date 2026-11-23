@@ -4,38 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Artemis 3D · Hoàng Đạo Tinh Giới</title>
-    <meta name="description" content="Game hành động bắn cung 3D phong cách Artemis với 8 Anh Hùng, 12 Cung Hoàng Đạo, hệ thống Ngọc Khắc và kỹ năng Roguelike." />
+    <meta name="description" content="Game hành động bắn cung 3D phong cách Artemis với 2 Anh Hùng, 12 Cung Hoàng Đạo, hệ thống Ngọc Khắc và kỹ năng Roguelike." />
     <meta property="og:title" content="Artemis 3D · Hoàng Đạo Tinh Giới" />
-    <meta property="og:description" content="Game hành động bắn cung 3D phong cách Artemis với 8 Anh Hùng, 12 Cung Hoàng Đạo, hệ thống Ngọc Khắc và kỹ năng Roguelike." />
+    <meta property="og:description" content="Game hành động bắn cung 3D phong cách Artemis với 2 Anh Hùng, 12 Cung Hoàng Đạo, hệ thống Ngọc Khắc và kỹ năng Roguelike." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <script>
-      (() => {
-        // Start the equipped model downloads while the browser loads the game bundle.
-        let appearanceSave;
-        try {
-          appearanceSave = JSON.parse(localStorage.getItem('artemis_3d_save_v1') || 'null');
-        } catch {}
-        function preloadAppearance(path, version = 2) {
-          const link = document.createElement('link');
-          link.rel = 'preload';
-          link.as = 'fetch';
-          link.crossOrigin = 'anonymous';
-          link.href = '%BASE_URL%assets/' + path + '?v=' + version;
-          document.head.append(link);
-        }
-        const heroId = appearanceSave?.selectedHeroId || 'artemis';
-        const activeSteed = appearanceSave?.equippedAstralSteedId;
-        const hasAstralSteed = activeSteed && Array.isArray(appearanceSave.unlockedAstralSteeds) &&
-          appearanceSave.unlockedAstralSteeds.includes(activeSteed);
-        if (heroId === 'artemis') preloadAppearance('heroes/golden-dress-girl.glb');
-        if ((!hasAstralSteed || appearanceSave?.mountAppearance !== 'astral') &&
-            appearanceSave?.equippedMountId === 'azure_dragon' &&
-            Array.isArray(appearanceSave.unlockedMounts) && appearanceSave.unlockedMounts.includes('azure_dragon')) {
-          preloadAppearance('mounts/dragon.glb', 3);
-        }
-      })();
-    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Philosopher:wght@700&display=swap" rel="stylesheet" />

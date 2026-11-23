@@ -356,7 +356,7 @@ export function getArenaRankInfo(rating: number) {
 
 export const ARENA_LADDER_RIVALS = [
   { name: 'Thiên Lang Vô Song', title: 'Chiến Thần Ánh Sáng', heroId: 'wukong' as const, rating: 1680, powerRating: 3450 },
-  { name: 'Nguyệt Ảnh Linh Cơ', title: 'Chúa Tể Kho Báu', heroId: 'artemis' as const, rating: 1460, powerRating: 2550 },
+  { name: 'Nguyệt Ảnh Linh Cơ', title: 'Chúa Tể Kho Báu', heroId: 'aurelia' as const, rating: 1460, powerRating: 2550 },
   { name: 'Lôi Đế Bất Bại', title: 'Thợ Săn Thủ Lĩnh', heroId: 'thor' as const, rating: 1310, powerRating: 1920 },
   { name: 'Băng Hậu Tinh Vân', title: 'Hộ Vệ Tinh Tú', heroId: 'rolla' as const, rating: 1170, powerRating: 1380 },
   { name: 'Huyết Nguyệt Kỵ Sĩ', title: 'Vũ Điệu Liên Kích', heroId: 'dracoola' as const, rating: 1060, powerRating: 960 },
@@ -397,7 +397,7 @@ export function generateArenaOpponents(playerRating: number, playerPower: number
   ];
 
   return tiers.map((tier, idx) => {
-    const hero = HEROES[(Math.floor(playerRating / 25) + idx * 2) % HEROES.length] ?? HERO_MAP.artemis;
+    const hero = HEROES[(Math.floor(playerRating / 25) + idx * 2) % HEROES.length] ?? HERO_MAP.aurelia;
     const weaponArchetype: ArenaOpponent['weaponArchetype'] = 'bow';
     const oppPower = Math.max(420, Math.round(playerPower * tier.powerMult));
     const oppRating = Math.max(920, playerRating + tier.ratingDelta);

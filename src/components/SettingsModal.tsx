@@ -217,7 +217,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         exportedAt: new Date().toISOString(),
         highestChapterCleared: save?.highestChapterCleared ?? 0,
         bestStagePerChapter: save?.bestStagePerChapter ?? {},
-        selectedHeroId: save?.selectedHeroId ?? 'artemis',
+        selectedHeroId: save?.selectedHeroId ?? 'aurelia',
         playtestMetrics: metrics,
       },
       null,

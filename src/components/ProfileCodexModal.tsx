@@ -199,7 +199,7 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
   const claimedCodexSet = new Set(save.codexClaimedRanks ?? []);
 
   const career = normalizeCareer(save.career);
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const claimedSet = new Set(save.achievementsClaimed ?? []);
   const claimableAchCount = countClaimableAchievements(save);
 

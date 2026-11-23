@@ -268,7 +268,7 @@ test('Deterministic Kinesthetics Clock (Hit-Stop + Perfect Dodge) maintains bit-
   assert.equal(r60.totalPerfectDodgeBursts, 1);
 });
 
-test('migrateSaveData safely initializes aiPreferences while preserving valid hero selection', () => {
+test('migrateSaveData safely initializes aiPreferences while replacing retired heroes', () => {
   const legacySave = {
     version: 3,
     selectedHeroId: 'hatsune_miku',
@@ -277,7 +277,7 @@ test('migrateSaveData safely initializes aiPreferences while preserving valid he
     gold: 1200,
   };
   const migrated = migrateSaveData(legacySave);
-  assert.equal(migrated.selectedHeroId, 'hatsune_miku', 'Valid selected hero must be preserved');
+  assert.equal(migrated.selectedHeroId, 'aurelia', 'Retired selection falls back to the starting hero');
   assert.ok(migrated.aiPreferences, 'aiPreferences must be initialized on legacy saves');
   assert.equal(migrated.aiPreferences.autoPilotEnabled, false);
   assert.equal(migrated.aiPreferences.tactic, 'balanced');

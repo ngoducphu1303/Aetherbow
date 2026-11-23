@@ -36,10 +36,10 @@ function assertAssetFileExists(publicPath: string, contextLabel: string) {
   );
 }
 
-test('Hero roster contains Alice, Hatsune Miku, Aurelia, and Bellona with valid non-empty assets', () => {
+test('Hero roster contains Aurelia and Bellona with valid non-empty assets', () => {
   assert.deepEqual(
     HEROES.map((h) => h.id),
-    ['artemis', 'hatsune_miku', 'aurelia', 'bellona'],
+    ['aurelia', 'bellona'],
     'Expected the four playable heroes'
   );
   for (const hero of HEROES) {
@@ -62,6 +62,8 @@ test('HERO_SKINS contains the Solar Leo and Golden Fleece skins and getSkinAsset
   const fallbackMiku = getSkinAssetPack('default', 'hatsune_miku');
   assertAssetFileExists(fallbackAlice.portrait, 'Alice fallback skin portrait');
   assertAssetFileExists(fallbackMiku.portrait, 'Hatsune Miku fallback skin portrait');
+  assert.deepEqual(fallbackAlice, getHeroAssetPack('aurelia'));
+  assert.deepEqual(fallbackMiku, getHeroAssetPack('aurelia'));
 });
 
 test('Every EnemyKind in ENEMY_CODEX_LIST resolves to existing non-empty icon and portrait assets', () => {

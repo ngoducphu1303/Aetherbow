@@ -99,7 +99,7 @@ function formatAgo(ts: number, nowMs: number): string {
 
 export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   playerDisplayName,
-  playerHeroId = 'artemis',
+  playerHeroId = 'aurelia',
   playerPowerRating = 18500,
   aiPreferences,
   coopPartyRoles = ['dps', 'guardian'],
@@ -553,7 +553,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
           <div className="divide-y divide-slate-800/80 border-y border-slate-800/80 max-h-[40vh] overflow-y-auto">
             {filteredPlayers.map((p) => {
               const st = STATUS_LABEL[p.status];
-              const heroName = HERO_MAP[p.heroId]?.name ?? 'Alice';
+              const heroName = HERO_MAP[p.heroId]?.name ?? 'Aurelia';
               const busy = challengingId === p.id;
               return (
                 <div
@@ -1590,7 +1590,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
             const hpPct = Math.max(0, Math.min(100, (f.hp / Math.max(1, f.maxHp)) * 100));
             const isCheered = match.playerCheeredFighterId === f.aiPlayerId;
             const isWinner = match.status === 'finished' && match.winnerId === f.aiPlayerId;
-            const hero = HERO_MAP[f.heroId] ?? HERO_MAP.artemis;
+            const hero = HERO_MAP[f.heroId] ?? HERO_MAP.aurelia;
             const accent = side === 'A' ? 'border-sky-400/50' : 'border-rose-400/50';
             return (
               <div

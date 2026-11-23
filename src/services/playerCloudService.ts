@@ -1,3 +1,4 @@
+import { normalizePlayableHeroId } from '../data/heroesData';
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
@@ -329,7 +330,7 @@ export async function savePlayerCloudState(
   const arenaRating = clampNum(Math.round(summary.arenaRating), 0, 1000000);
   const worldBossBestDamage = clampNum(Math.round(summary.worldBossBestDamage), 0, 10000000000);
   const vipLevel = clampInt(summary.vipLevel, 0, 30);
-  const heroId = safeIdToken(summary.heroId, 'artemis', 32);
+  const heroId = normalizePlayableHeroId(summary.heroId);
   const heroName = (summary.heroName || 'Artemis').trim().slice(0, 32) || 'Artemis';
   const title = (summary.title || 'Tân Binh Tinh Giới').trim().slice(0, 48) || 'Tân Binh Tinh Giới';
   const equippedAvatarFrameId = safeIdToken(summary.equippedAvatarFrameId, 'default_gold', 48);
@@ -521,7 +522,7 @@ export async function fetchRealLeaderboard(maxEntries = 60): Promise<CloudLeader
       rows.push({
         uid: String(data.uid ?? docSnap.id),
         displayName: String(data.displayName ?? 'Chiến Binh'),
-        heroId: (data.heroId as HeroId) || 'artemis',
+        heroId: normalizePlayableHeroId(data.heroId),
         heroName: String(data.heroName ?? 'Artemis'),
         title: String(data.title ?? 'Tân Binh Tinh Giới'),
         equippedAvatarFrameId: (data.equippedAvatarFrameId as AvatarFrameId) || 'default_gold',
@@ -564,7 +565,7 @@ export function subscribeRealLeaderboard(
         rows.push({
           uid: String(data.uid ?? docSnap.id),
           displayName: String(data.displayName ?? 'Chiến Binh'),
-          heroId: (data.heroId as HeroId) || 'artemis',
+          heroId: normalizePlayableHeroId(data.heroId),
           heroName: String(data.heroName ?? 'Artemis'),
           title: String(data.title ?? 'Tân Binh Tinh Giới'),
           equippedAvatarFrameId: (data.equippedAvatarFrameId as AvatarFrameId) || 'default_gold',
@@ -620,7 +621,7 @@ export async function syncBossRaceEntryToFirestore(params: {
   const ref = doc(db, 'boss_race_entries', entryId);
 
   const displayName = sanitizeDisplayName(params.displayName, 'Chiến Binh');
-  const heroId = safeIdToken(params.heroId, 'artemis', 32);
+  const heroId = normalizePlayableHeroId(params.heroId);
   const bestScore = clampNum(Math.round(params.score), 0, 100000000);
   const bestDamage = clampNum(Math.round(params.damage), 0, 10000000000);
   const bestClearTimeMs = clampInt(params.clearTimeMs, 0, 600000);
@@ -695,7 +696,7 @@ export function subscribeWeeklyBossRace(
           uid: String(data.uid ?? ''),
           weekId: String(data.weekId ?? weekId),
           displayName: String(data.displayName ?? 'Chiến Binh'),
-          heroId: (data.heroId as HeroId) || 'artemis',
+          heroId: normalizePlayableHeroId(data.heroId),
           bestScore: Number(data.bestScore ?? 0),
           bestDamage: Number(data.bestDamage ?? 0),
           bestClearTimeMs: Number(data.bestClearTimeMs ?? 0),
@@ -748,7 +749,7 @@ export async function syncSeasonStandingToFirestore(params: {
   const ref = doc(db, 'season_standings', standingId);
 
   const displayName = sanitizeDisplayName(params.displayName, 'Chiến Binh');
-  const heroId = safeIdToken(params.heroId, 'artemis', 32);
+  const heroId = normalizePlayableHeroId(params.heroId);
   const seasonPoints = clampInt(params.seasonPoints, 0, 1000000);
   const weeksParticipated = clampInt(params.weeksParticipated, 0, 12);
   const equalizedArenaWins = clampInt(params.equalizedArenaWins, 0, 10000);
@@ -824,7 +825,7 @@ export function subscribeSeasonStandings(
           uid: String(data.uid ?? ''),
           seasonId: String(data.seasonId ?? seasonId),
           displayName: String(data.displayName ?? 'Chiến Binh'),
-          heroId: (data.heroId as HeroId) || 'artemis',
+          heroId: normalizePlayableHeroId(data.heroId),
           seasonPoints: Number(data.seasonPoints ?? 0),
           weeksParticipated: Number(data.weeksParticipated ?? 0),
           equalizedArenaWins: Number(data.equalizedArenaWins ?? 0),

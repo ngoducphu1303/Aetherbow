@@ -65,13 +65,11 @@ interface Download {
   error?: string;
 }
 
-const models = Object.keys(MODEL_VERSIONS) as ModelAsset[];
+const startupModels: ModelAsset[] = [CHAPTER1_MAP_MODEL_ASSET];
 const downloads = new Map<string, Download>();
 const listeners = new Set<() => void>();
 let chapter1MapPreloadVariant: Chapter1MapVariant = 'full';
 let globalLiteHeroAssets = false;
-let lazyPreloadOnlyActiveHero = false;
-let activePreloadHeroId: HeroId = 'artemis';
 
 function getCacheKeyForChapter1Variant(variant: 'lite' | 'full'): string {
   return variant === 'lite' ? `${CHAPTER1_MAP_MODEL_ASSET}::lite` : CHAPTER1_MAP_MODEL_ASSET;
@@ -97,25 +95,8 @@ function getLabelForActiveModel(path: ModelAsset): string {
   return MODEL_LABELS[path];
 }
 
-function getHeroPreloadAssetForHeroId(heroId: HeroId): ModelAsset | null {
-  if (heroId === 'hatsune_miku') return 'heroes/hatsune-miku.glb';
-  if (heroId === 'aurelia' || heroId === 'bellona') return null; // Aurelia loads on-demand through solarLeoAssets Lite/High pipeline
-  return 'heroes/golden-dress-girl.glb';
-}
-
 function getActiveModels(): ModelAsset[] {
-  if (lazyPreloadOnlyActiveHero) {
-    const selected: ModelAsset[] = [];
-    const heroAsset = getHeroPreloadAssetForHeroId(activePreloadHeroId);
-    if (heroAsset) selected.push(heroAsset);
-    if (chapter1MapPreloadVariant !== 'none') {
-      selected.push(CHAPTER1_MAP_MODEL_ASSET);
-    }
-    return selected;
-  }
-  return chapter1MapPreloadVariant === 'none'
-    ? models.filter((path) => path !== CHAPTER1_MAP_MODEL_ASSET)
-    : models;
+  return chapter1MapPreloadVariant === 'none' ? [] : startupModels;
 }
 
 export function setGlobalAssetPreloadMode(options: {
@@ -123,22 +104,8 @@ export function setGlobalAssetPreloadMode(options: {
   activeHeroId?: HeroId;
   lazyPreloadOnlyActiveHero?: boolean;
 }): void {
-  const nextLite = Boolean(options.liteMode);
-  const nextHero = options.activeHeroId ?? activePreloadHeroId;
-  const nextLazy =
-    options.lazyPreloadOnlyActiveHero !== undefined
-      ? options.lazyPreloadOnlyActiveHero
-      : lazyPreloadOnlyActiveHero;
-  if (
-    globalLiteHeroAssets === nextLite &&
-    activePreloadHeroId === nextHero &&
-    lazyPreloadOnlyActiveHero === nextLazy
-  ) {
-    return;
-  }
-  globalLiteHeroAssets = nextLite;
-  activePreloadHeroId = nextHero;
-  lazyPreloadOnlyActiveHero = nextLazy;
+  if (globalLiteHeroAssets === options.liteMode) return;
+  globalLiteHeroAssets = options.liteMode;
   publishProgress();
 }
 
@@ -215,7 +182,7 @@ let progress: ModelDownloadSnapshot = {
   status: 'loading',
   percent: 0,
   completed: 0,
-  total: models.length,
+  total: startupModels.length,
   files: buildFileSnapshots(),
 };
 
@@ -496,7 +463,12 @@ export function discardModelDownload(path: ModelAsset, data: ArrayBuffer): void 
 }
 
 export function preloadGameModels(): void {
-  for (const model of getActiveModels()) {
+  const activeModels = getActiveModels();
+  if (activeModels.length === 0) {
+    publishProgress();
+    return;
+  }
+  for (const model of activeModels) {
     // Only starts models that haven't completed yet; already-loaded files stay cached.
     void downloadModel(model).catch(() => {});
   }

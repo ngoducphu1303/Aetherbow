@@ -1,3 +1,4 @@
+import { DEFAULT_HERO_ID, normalizePlayableHeroId, type PlayableHeroId } from './heroesData';
 import { EnemyKind, HeroId, HeroSkinId } from '../types/game';
 
 export interface CharacterAssetPack {
@@ -41,22 +42,8 @@ const ARIES_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }
   [EnemyKind.DRAGON_WHELP]: { ...ariesPortrait('aries-berserker'), name: 'Cuồng Chiến Bạch Dương' },
 };
 
-export const HERO_ASSET_PACKS: Record<HeroId, CharacterAssetPack> = {
+export const HERO_ASSET_PACKS: Record<PlayableHeroId, CharacterAssetPack> = {
   bellona: ariesCharacter('bellona'),
-  artemis: {
-    assetKey: 'ganyu',
-    icon: '/assets/apiaetherbow/characters/ganyu/icon.webp',
-    portrait: '/assets/apiaetherbow/characters/ganyu/portrait.png',
-    skill: '/assets/apiaetherbow/characters/ganyu/skill.png',
-    burst: '/assets/apiaetherbow/characters/ganyu/burst.png',
-  },
-  hatsune_miku: {
-    assetKey: 'hatsune-miku',
-    icon: '/assets/apiaetherbow/characters/hatsune-miku/icon.png',
-    portrait: '/assets/apiaetherbow/characters/hatsune-miku/portrait.png',
-    skill: '/assets/apiaetherbow/characters/hatsune-miku/skill.png',
-    burst: '/assets/apiaetherbow/characters/hatsune-miku/burst.png',
-  },
   aurelia: {
     assetKey: 'aurelia',
     icon: encodeURI('/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia.webp'),
@@ -247,17 +234,17 @@ export const ENEMY_LABEL_VI: Record<EnemyKind, string> = {
 };
 
 export function getHeroAssetPack(
-  heroId: HeroId = 'artemis',
+  heroId: HeroId = DEFAULT_HERO_ID,
   skinId?: HeroSkinId
 ): CharacterAssetPack {
   if (skinId && skinId !== 'default') {
     const skinPack = SKIN_ASSET_PACKS[skinId];
     if (skinPack) return skinPack;
   }
-  return HERO_ASSET_PACKS[heroId] ?? HERO_ASSET_PACKS.artemis;
+  return HERO_ASSET_PACKS[normalizePlayableHeroId(heroId)];
 }
 
-export function getSkinAssetPack(skinId: HeroSkinId, fallbackHeroId: HeroId = 'artemis'): CharacterAssetPack {
+export function getSkinAssetPack(skinId: HeroSkinId, fallbackHeroId: HeroId = DEFAULT_HERO_ID): CharacterAssetPack {
   return getHeroAssetPack(fallbackHeroId, skinId);
 }
 

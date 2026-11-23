@@ -1023,14 +1023,14 @@ export function createLiveSpectatorMatch(
           {
             id: 'ai_linh_vu',
             displayName: 'Linh Vũ',
-            heroId: 'artemis',
+            heroId: 'aurelia',
             powerRating: 5400,
             personality: 'tactical',
           },
           {
             id: 'ai_te_thien',
             displayName: 'Tề Thiên',
-            heroId: 'hatsune_miku',
+            heroId: 'bellona',
             powerRating: 5650,
             personality: 'aggressive',
           },

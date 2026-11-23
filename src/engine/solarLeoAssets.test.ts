@@ -320,9 +320,8 @@ test('downloadSolarLeoArrayBuffer automatically falls back from High to Lite on 
   clearSolarLeoDownloadCache();
 });
 
-test('Catalogs, asset registry, initial save, and save migration unlock all 10 Solar Leo items while keeping Alice & Miku intact', () => {
-  assert.ok(HEROES.some((h) => h.id === 'artemis'));
-  assert.ok(HEROES.some((h) => h.id === 'hatsune_miku'));
+test('Catalogs, asset registry, initial save, and save migration unlock all 10 Solar Leo items with Aurelia as the starter', () => {
+  assert.deepEqual(HEROES.map(({ id }) => id), ['aurelia', 'bellona']);
   assert.ok(HEROES.some((h) => h.id === 'aurelia'));
 
   assert.equal(resolveSolarLeoHeroAssetId('aurelia'), 'aurelia');
@@ -399,7 +398,7 @@ test('Catalogs, asset registry, initial save, and save migration unlock all 10 S
     equippedHaloId: 'solar_crown' as const,
   };
   const migrated = migrateSaveData(legacySave);
-  assert.equal(migrated.selectedHeroId, 'hatsune_miku');
+  assert.equal(migrated.selectedHeroId, 'aurelia');
   assert.equal(migrated.equippedMountId, 'solarius');
   assert.equal(migrated.mountLevels?.solarius, 5);
   assert.deepEqual(migrated.unlockedMounts, ['solarius']);
@@ -1097,3 +1096,57 @@ test('Aurelia and all 4 Solar Leo outfits cycle unique playful actions, keep Aur
 
 
 
+
+test('Vulcan faces forward and Bellona bends her knees while following the saddle', async () => {
+  await withNodeGlbLoader(async (loader) => {
+    const loadRig = async (id: 'vulcan' | 'golden_fleece') => {
+      const bytes = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS[id].litePathSegments));
+      const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      const gltf = await loader.parseAsync(data, '');
+      return instantiateSolarLeoModel(prepareSolarLeoTemplate(id, gltf.scene, 1, { liteMode: true }));
+    };
+    const mount = await loadRig('vulcan');
+    const rider = await loadRig('golden_fleece');
+    assert.equal(SOLAR_LEO_SPECS.vulcan.facingYawOffset, -Math.PI / 2);
+    assert.ok(mount.size.z > mount.size.x * 1.6);
+    assert.ok(mount.saddle);
+    const seat = mount.saddle.getWorldPosition(new THREE.Vector3());
+    assert.ok(seat.y > mount.size.y * 0.56 && seat.y < mount.size.y * 0.65);
+    assert.ok(seat.z < 0 && seat.z > -0.15);
+
+    const root = new THREE.Group();
+    const mountGroup = new THREE.Group();
+    const bodyGroup = new THREE.Group();
+    root.add(bodyGroup, mountGroup);
+    bodyGroup.add(rider.group);
+    mountGroup.add(mount.group);
+    const { GameEngine } = await import('./GameEngine');
+    const engine = Object.assign(Object.create(GameEngine.prototype), {
+      hero: {root, bodyGroup, mountGroup},
+      solarLeoHeroRig: rider,
+      solarLeoMountRig: mount,
+      dragonSeat: new THREE.Vector3(),
+      vulcanRiderHip: new THREE.Vector3(),
+    });
+    const foreleg = mount.bones.legFL.rotation.x;
+    for (const mode of ['lobby', 'combat'] as const) {
+      for (let frame = 0; frame < 60; frame++) {
+        const elapsed = frame / 60;
+        root.rotation.y = elapsed;
+        updateSolarLeoMountPose(mount, elapsed, 1 / 60, mode === 'combat' ? 5 : 0, false, { mode });
+        updateSolarLeoHumanoidPose(rider, {
+          elapsed, dt: 1 / 60, speed: 0, riding: true,
+          shooting: false, shootRecoil: 0, dashing: false, ultBurst: 0.5, mode,
+        });
+        engine.alignVulcanRider();
+        const seatInRoot = root.worldToLocal(mount.saddle.getWorldPosition(new THREE.Vector3()));
+        const hipInRoot = root.worldToLocal(rider.bones.pelvis.getWorldPosition(new THREE.Vector3()));
+        assert.ok(hipInRoot.distanceTo(seatInRoot.add(new THREE.Vector3(0, 0.05, 0))) < 0.001);
+      }
+      assert.ok(rider.bones.shinL.rotation.x > 1.30 && rider.bones.shinR.rotation.x > 1.30);
+      assert.ok(rider.bones.legL.rotation.x < -0.8 && rider.bones.legR.rotation.x < -0.8);
+      assert.ok(Math.abs(rider.visualRoot.rotation.y) < 0.01);
+    }
+    assert.ok(Math.abs(mount.bones.legFL.rotation.x - foreleg) > 0.04);
+  });
+});

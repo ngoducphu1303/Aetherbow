@@ -250,7 +250,7 @@ import {
   touchFairActiveDays,
 } from './data/fairProgression30Day';
 import { getNightmareTierConfig, isNightmareUnlocked } from './data/phase5Data';
-import { HERO_MAP, getHeroStarUpgradeCost } from './data/heroesData';
+import { DEFAULT_HERO_ID, HERO_MAP, getHeroStarUpgradeCost, isPlayableHeroId } from './data/heroesData';
 import {
   ACHIEVEMENTS_CATALOG,
   BATTLE_PASS_MAX_TIER,
@@ -741,7 +741,7 @@ const INITIAL_HUD: HudSnapshot = {
   totalStages: 12,
   stageName: 'Thánh Điện Nhật Luân · Phòng 1',
   chapterName: '🦁 Sư Tử',
-  heroName: 'Alice',
+  heroName: HERO_MAP[DEFAULT_HERO_ID].name,
   enemiesRemaining: 0,
   portalOpen: false,
   isBossStage: false,
@@ -751,7 +751,7 @@ const INITIAL_HUD: HudSnapshot = {
   kills: 0,
   dashCooldownRatio: 0,
   ultCharge: 55,
-  ultName: 'Mưa Tên Trăng Bạc',
+  ultName: HERO_MAP[DEFAULT_HERO_ID].ultName,
   revivesLeft: 0,
   bossName: null,
   bossHp: 0,
@@ -1207,7 +1207,7 @@ export default function App() {
       : save.selectedHeroId;
 
   const heroVisualCfg = useMemo<HeroVisualConfig>(() => {
-    const hero = HERO_MAP[displayHeroId] ?? HERO_MAP.artemis;
+    const hero = HERO_MAP[displayHeroId] ?? HERO_MAP.aurelia;
     const wUid = save.equipped[GearSlot.WEAPON];
     const aUid = save.equipped[GearSlot.ARMOR];
     const wItem = save.inventory.find((g) => g.uid === wUid);
@@ -1526,7 +1526,7 @@ export default function App() {
 
   const buildCloudSummary = useCallback((targetSave: SaveData): PlayerCloudSummary => {
     const computed = computePlayerStats(targetSave);
-    const heroDef = HERO_MAP[targetSave.selectedHeroId] ?? HERO_MAP.artemis;
+    const heroDef = HERO_MAP[targetSave.selectedHeroId] ?? HERO_MAP.aurelia;
     const wb = normalizeWorldBoss(targetSave.worldBoss);
     const arenaState = normalizeArena(targetSave.arena);
     const vipLevel = Math.min(
@@ -3851,8 +3851,8 @@ export default function App() {
           },
         };
       });
-      const trialOppHero: HeroId = round === 2 ? 'hatsune_miku' : 'artemis';
-      const oppHeroDef = HERO_MAP[trialOppHero] ?? HERO_MAP.artemis;
+      const trialOppHero: HeroId = round === 2 ? 'bellona' : DEFAULT_HERO_ID;
+      const oppHeroDef = HERO_MAP[trialOppHero] ?? HERO_MAP.aurelia;
       const opp: ArenaOpponent = {
         id: `trial_r${round}_${kitId}`,
         name: roundDef.opponentTitle,
@@ -7205,6 +7205,7 @@ export default function App() {
 
   // Hero Handlers
   const handleSelectHero = (heroId: HeroId) => {
+    if (!isPlayableHeroId(heroId)) return;
     setSave((prev) => {
       if (!prev.unlockedHeroes.includes(heroId)) return prev;
       return { ...prev, selectedHeroId: heroId };
@@ -7212,6 +7213,7 @@ export default function App() {
   };
 
   const handleUnlockHero = (heroId: HeroId, currency: 'gold' | 'gems') => {
+    if (!isPlayableHeroId(heroId)) return;
     const hero = HERO_MAP[heroId];
     if (!hero) return;
     setSave((prev) => {
@@ -11450,7 +11452,7 @@ export default function App() {
             soundEngine.playUiClick();
             setGameMode(mode);
           }}
-          onPreviewHero={(heroId) => setPreviewHeroId(heroId)}
+          onPreviewHero={(heroId) => setPreviewHeroId(isPlayableHeroId(heroId) ? heroId : null)}
           onSelectChapter={handleSelectChapter}
           onStartTrial={handleStartTrial}
           onStartTower={handleStartTower}
@@ -11832,7 +11834,7 @@ export default function App() {
           masteryExpGained={runSummary?.masteryExpGained}
           masteryLeveledUpTo={runSummary?.masteryLeveledUpTo}
           runHighlights={runSummary?.runHighlights}
-          heroName={HERO_MAP[save.selectedHeroId]?.name ?? 'Alice'}
+          heroName={HERO_MAP[save.selectedHeroId]?.name ?? HERO_MAP[DEFAULT_HERO_ID].name}
           onQuickUpgradeWeapon={handleQuickUpgradeWeapon}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}
           onRetry={
@@ -12381,7 +12383,7 @@ export default function App() {
         <HonorLeaderboardModal
           save={save}
           powerRating={playerStats.powerRating}
-          heroName={(HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis).name}
+          heroName={(HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia).name}
           playerDisplayName={currentUser ? playerDisplayName : undefined}
           currentUid={currentUser?.uid ?? null}
           vipLevel={Math.min(

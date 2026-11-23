@@ -1066,6 +1066,7 @@ export class GameEngine {
   private artemisLoadedAsset?: string;
   private artemisFailedAsset?: string;
   private readonly dragonSeat = new THREE.Vector3();
+  private readonly vulcanRiderHip = new THREE.Vector3();
   // Chapter 1 Solar Leo 3D Character Pack (Aurelia + 4 skins, Solarius, Wings, Halo, Artifact, Astraeo)
   private solarLeoHeroRig?: InstantiatedSolarLeoModel;
   private solarLeoHeroKey?: string;
@@ -1090,7 +1091,7 @@ export class GameEngine {
   private solarLeoPetAttackRecoil = 0;
   private aureliaSolarShotCount = 0;
   private appearanceBlocked = false;
-  private bellonaFailedAsset?: string;
+  private solarLeoHeroFailedAsset?: string;
   private appearanceStatus: AppearanceStatus = 'loading';
   private heroShadow!: THREE.Mesh;
   private heroShieldMesh!: THREE.Mesh;
@@ -3542,7 +3543,7 @@ export class GameEngine {
       })
       .catch((err) => {
         if (this.disposed || seq !== this.solarLeoHeroSeq) return;
-        if (heroId === 'bellona') this.bellonaFailedAsset = assetId;
+        this.solarLeoHeroFailedAsset = assetId;
         console.warn(`Không tải được mô hình Anh hùng ${assetId}:`, err);
       })
       .finally(() => {
@@ -3887,16 +3888,16 @@ export class GameEngine {
       (this.artemisLoadedAsset !== asset || this.artemisModel?.parent !== this.hero.bodyGroup);
 
     const heroId = this.heroVisualCfg?.heroId ?? this.baseStats.heroId;
-    const bellonaAsset = heroId === 'bellona' ? resolveSolarLeoHeroAssetId(heroId, this.heroVisualCfg?.skinId) : null;
-    const bellonaPending = Boolean(bellonaAsset &&
-      (this.solarLeoHeroRig?.assetId !== bellonaAsset || this.solarLeoHeroRig.group.parent !== this.hero.bodyGroup));
+    const solarLeoAsset = resolveSolarLeoHeroAssetId(heroId, this.heroVisualCfg?.skinId);
+    const solarLeoPending = Boolean(solarLeoAsset &&
+      (this.solarLeoHeroRig?.assetId !== solarLeoAsset || this.solarLeoHeroRig.group.parent !== this.hero.bodyGroup));
 
-    this.appearanceBlocked = artemisPending || bellonaPending;
+    this.appearanceBlocked = artemisPending || solarLeoPending;
     this.hero.root.visible = !this.appearanceBlocked;
     if (this.heroShadow) this.heroShadow.visible = !this.appearanceBlocked;
     if (this.appearanceBlocked) {
       const failed = (artemisPending && this.artemisFailedAsset === asset) ||
-        (bellonaPending && this.bellonaFailedAsset === bellonaAsset);
+        (solarLeoPending && this.solarLeoHeroFailedAsset === solarLeoAsset);
       this.setAppearanceStatus(failed ? 'error' : 'loading');
     } else if (this.appearanceStatus === 'error') {
       this.setAppearanceStatus('loading');
@@ -3905,8 +3906,8 @@ export class GameEngine {
 
   public retryAppearance(): void {
     this.artemisFailedAsset = undefined;
-    this.bellonaFailedAsset = undefined;
-    if ((this.heroVisualCfg?.heroId ?? this.baseStats.heroId) === 'bellona') this.syncSolarLeoHeroVisual();
+    this.solarLeoHeroFailedAsset = undefined;
+    this.syncSolarLeoHeroVisual();
     this.chapter1MapFailCount = 0;
     if (this.wantsRiggedHeroModel()) this.useArtemisModel();
     this.ensureChapter1MapLoaded();
@@ -4048,6 +4049,23 @@ export class GameEngine {
       this.hero.rightLeg.rotation.set(-0.84, 0, 0.52);
     }
     return this.dragonSeat.y - (artemis || aurelia ? 0.86 : 0.44);
+  }
+
+  private alignVulcanRider(): void {
+    const mount = this.solarLeoMountRig;
+    if (mount?.assetId !== 'vulcan' || !mount.saddle || !this.hasDragonRide()) return;
+    const { root, bodyGroup } = this.hero;
+    const hip = this.solarLeoHeroRig?.group.parent === bodyGroup
+      ? this.solarLeoHeroRig.bones.pelvis
+      : this.artemisModel?.parent === bodyGroup
+      ? this.artemisModel.getObjectByName('Torso')
+      : undefined;
+    if (!hip) return;
+    root.worldToLocal(mount.saddle.getWorldPosition(this.dragonSeat));
+    root.worldToLocal(hip.getWorldPosition(this.vulcanRiderHip));
+    // Leave room for the saddle cushion below the pelvis.
+    this.dragonSeat.y += 0.05;
+    bodyGroup.position.add(this.dragonSeat.sub(this.vulcanRiderHip));
   }
 
   private buildHero(): void {
@@ -6034,13 +6052,13 @@ export class GameEngine {
     const resolvedAllies = [0, 1].map((idx) => {
       const liveAi = activeLiveSquad[idx];
       if (liveAi) {
-        const heroDef = HERO_MAP[liveAi.heroId] ?? fallbackAllies[idx] ?? HERO_MAP.artemis;
+        const heroDef = HERO_MAP[liveAi.heroId] ?? fallbackAllies[idx] ?? HERO_MAP.aurelia;
         return {
           heroDef,
           displayName: `${liveAi.displayName} [AI Live]`,
         };
       }
-      const fallback = fallbackAllies[idx] ?? HERO_MAP.artemis;
+      const fallback = fallbackAllies[idx] ?? HERO_MAP.aurelia;
       return {
         heroDef: fallback,
         displayName: fallback.name,
@@ -6428,7 +6446,7 @@ export class GameEngine {
     this.hero.root.position.set(this.px, 0, this.pz);
     this.heroShadow.position.set(this.px, 0.02, this.pz);
 
-    const oppHeroDef = HERO_MAP[opponent.heroId] ?? HERO_MAP.artemis;
+    const oppHeroDef = HERO_MAP[opponent.heroId] ?? HERO_MAP.aurelia;
     const rivalHeroRefs = createHeroModel({
       weaponAccentHex: opponent.accentHex,
       cloakColorHex: opponent.cloakHex,
@@ -6769,7 +6787,7 @@ export class GameEngine {
     const rolesToSpawn = this.aiSquadRoles.slice(0, 2);
     rolesToSpawn.forEach((role, idx) => {
       const cfg = AI_COMPANION_ROLES[role];
-      const allyDef = HERO_MAP[cfg.heroId] ?? HERO_MAP.artemis;
+      const allyDef = HERO_MAP[cfg.heroId] ?? HERO_MAP.aurelia;
       const ax = this.px + (idx === 0 ? -3.0 : 3.0);
       const az = Math.min(ARENA_HALF_D - 1.2, this.pz + 1.4);
       const allyModel = createHeroModel({
@@ -6832,7 +6850,7 @@ export class GameEngine {
     tierOverride?: AiDuelDifficultyTier
   ): void {
     const activeTier = tierOverride ?? this.aiDuelTier ?? 'master';
-    const oppHero = HERO_MAP[opponent.heroId] ?? HERO_MAP.artemis;
+    const oppHero = HERO_MAP[opponent.heroId] ?? HERO_MAP.aurelia;
     const powerRatio = Math.max(0.85, Math.min(1.45, opponent.powerRating / Math.max(1200, stats.powerRating)));
     const syntheticOpponent: ArenaOpponent = {
       id: opponent.id,
@@ -7384,7 +7402,7 @@ export class GameEngine {
     this.hero.root.position.set(this.px, 0, this.pz);
     this.heroShadow.position.set(this.px, 0.02, this.pz);
 
-    const oppHeroDef = HERO_MAP[rivalDef.heroId] ?? HERO_MAP.artemis;
+    const oppHeroDef = HERO_MAP[rivalDef.heroId] ?? HERO_MAP.aurelia;
     const rivalHeroRefs = createHeroModel({
       weaponAccentHex: rivalDef.accentHex,
       cloakColorHex: rivalDef.cloakHex,
@@ -7571,7 +7589,7 @@ export class GameEngine {
 
   public previewLobbyUltimate(heroId: HeroId): void {
     if (this.phase !== GamePhase.TITLE) return;
-    const heroDef = HERO_MAP[heroId] ?? HERO_MAP.artemis;
+    const heroDef = HERO_MAP[heroId] ?? HERO_MAP.aurelia;
     const hx = this.hero.root.position.x;
     const hz = this.hero.root.position.z;
     soundEngine.unlock();
@@ -11343,7 +11361,7 @@ export class GameEngine {
     }
     this.ultCharge = 0;
 
-    const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.artemis;
+    const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.aurelia;
     const atkPower = this.baseStats.attack * this.getCurrentAtkMultiplier();
     const liveEnemies = this.enemies.filter((e) => e.spawnTimer <= 0);
 
@@ -11874,6 +11892,7 @@ export class GameEngine {
           lobbyPose: this.lobbyHeroPose,
         });
       }
+      if (onDragon) this.alignVulcanRider();
       if (this.lobbyHaloGroup) {
         this.lobbyHaloGroup.visible = true;
         this.lobbyHaloGroup.rotation.y += dt * 0.55;
@@ -14297,6 +14316,8 @@ export class GameEngine {
         celebrating: false,
       });
     }
+
+    if (onDragon) this.alignVulcanRider();
 
     if (entranceLocked) {
       this.volleyQueue.length = 0;
@@ -22883,7 +22904,7 @@ export class GameEngine {
     const ariesCampaign = this.currentChapter.id === 2 &&
       !this.isSideModeActiveForBossModel() && !this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode;
     const rival = this.enemies.find((e) => e.isArenaRival);
-    const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.artemis;
+    const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.aurelia;
     const elemDef = this.isElementalTowerMode ? ELEMENTAL_TOWER_MAP[this.elementalTowerId] : null;
     const isBossFloor = this.isTrainingMode || this.isArenaMode
       ? false

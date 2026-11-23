@@ -486,11 +486,11 @@ test('Chapter 1 Build Archetypes: SKILLS_CATALOG exposes distinct AoE and Boss b
   assert.ok(sustainSkills.length >= 2, 'Expected at least 2 Sustain skills');
 });
 
-test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DPS of Artemis on identical Ch.1 loadout', () => {
-  assert.equal(HEROES.length, 4);
+test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DPS of Aurelia on identical Ch.1 loadout', () => {
+  assert.equal(HEROES.length, 2);
   const fresh = createInitialSaveData();
-  const artemisDps = computeExpectedDps(
-    computePlayerStats({ ...fresh, selectedHeroId: 'artemis' })
+  const aureliaDps = computeExpectedDps(
+    computePlayerStats(fresh)
   );
 
   for (const hero of HEROES) {
@@ -510,10 +510,10 @@ test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DP
 
     const heroStats = computePlayerStats({ ...fresh, selectedHeroId: hero.id });
     const heroDps = computeExpectedDps(heroStats);
-    const deltaPct = Math.abs((heroDps - artemisDps) / artemisDps) * 100;
+    const deltaPct = Math.abs((heroDps - aureliaDps) / aureliaDps) * 100;
     assert.ok(
       deltaPct <= 12,
-      `${hero.id} standing DPS ${heroDps} deviates ${deltaPct.toFixed(2)}% from Artemis (${artemisDps})`
+      `${hero.id} standing DPS ${heroDps} deviates ${deltaPct.toFixed(2)}% from Aurelia (${aureliaDps})`
     );
   }
 });
@@ -928,8 +928,8 @@ test('Phase 4 · 3 Saved Loadout Presets: capture, 1-click apply, and graceful s
   };
   const save1: SaveData = {
     ...base,
-    unlockedHeroes: ['artemis', 'hatsune_miku'],
-    selectedHeroId: 'hatsune_miku',
+    unlockedHeroes: ['aurelia', 'bellona'],
+    selectedHeroId: 'bellona',
     inventory: [...base.inventory, extraWeapon, extraArmor],
     equipped: {
       ...base.equipped,
@@ -938,7 +938,7 @@ test('Phase 4 · 3 Saved Loadout Presets: capture, 1-click apply, and graceful s
     },
   };
 
-  // Capture preset_1 with Hatsune Miku + Dragon Knight Crossbow + Dragon Plate
+  // Capture preset_1 with Bellona + Dragon Knight Crossbow + Dragon Plate
   const withPresets: SaveData = {
     ...save1,
     loadoutPresets: captureLoadoutPreset(save1, 'preset_1'),
@@ -1089,7 +1089,7 @@ test('Phase 4 · Ch.7–12 Smart Valkyrie Drafting & Boss Phase III Punish Windo
 });
 
 test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
-  assert.equal(HEROES.length, 4);
+  assert.equal(HEROES.length, 2);
   const effectKinds = new Set<string>();
   for (const hero of HEROES) {
     const skill = getHeroActiveSkill(hero.id);
@@ -1106,7 +1106,7 @@ test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseli
   const fresh = createInitialSaveData();
   const pureBaseline = computePlayerStats({
     ...fresh,
-    unlockedHeroes: ['artemis', 'hatsune_miku'],
+    unlockedHeroes: ['aurelia'],
     unlockedSkins: [],
     pets: [],
     unlockedWings: [],
@@ -1114,9 +1114,9 @@ test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseli
     unlockedArtifacts: [],
     unlockedHalos: [],
   });
-  assert.equal(pureBaseline.attack, 80);
-  assert.equal(pureBaseline.maxHp, 439);
-  assert.equal(pureBaseline.powerRating, 547);
+  assert.equal(pureBaseline.attack, 81);
+  assert.equal(pureBaseline.maxHp, 442);
+  assert.equal(pureBaseline.powerRating, 552);
 });
 
 test('Phase 5 · Perfect Dodge Counter Rewards & Internal Cooldown Anti-Spam', () => {
@@ -1394,13 +1394,13 @@ test('AAA Ch.1–3 Seeded Economy Simulation: P10/P50/P90 Rare/Epic/S-Tier unloc
   assert.ok(percentile(sTierRolls, 0.5) <= 15, `S-tier P50 expected <= 15 rolls in Ch.4, got ${percentile(sTierRolls, 0.5)}`);
 });
 
-test('Alice Default Hero: default hero displays as Alice, restores legacy saves once, and respects explicit selection thereafter', () => {
-  const defaultHero = HEROES.find((h) => h.id === 'artemis');
+test('Aurelia is the starting hero, retired heroes are migrated, and unlocked Bellona stays selected', () => {
+  const defaultHero = HEROES.find((h) => h.id === 'aurelia');
   assert.ok(defaultHero, 'Default hero definition must exist');
-  assert.equal(defaultHero.name, 'Alice');
+  assert.equal(defaultHero.name, 'Aurelia');
 
   const fresh = createInitialSaveData();
-  assert.equal(fresh.selectedHeroId, 'artemis');
+  assert.equal(fresh.selectedHeroId, 'aurelia');
   assert.equal(fresh.aliceDefaultMigrated, true);
 
   // Legacy save that referenced removed heroes, removed mounts, and old skins
@@ -1416,9 +1416,9 @@ test('Alice Default Hero: default hero displays as Alice, restores legacy saves 
     equippedAstralSteedId: 'galaxy_pegasus',
   } as unknown as SaveData;
   const restored = migrateSaveData(legacySwitched);
-  assert.equal(restored.selectedHeroId, 'artemis');
+  assert.equal(restored.selectedHeroId, 'aurelia');
   assert.equal(restored.aliceDefaultMigrated, true);
-  assert.deepEqual(restored.unlockedHeroes, ['artemis', 'hatsune_miku', 'aurelia']);
+  assert.deepEqual(restored.unlockedHeroes, ['aurelia']);
   assert.deepEqual(restored.unlockedSkins, [
     'aurelia_oasis_dancer',
     'aurelia_temple_commander',
@@ -1430,15 +1430,16 @@ test('Alice Default Hero: default hero displays as Alice, restores legacy saves 
   assert.deepEqual(restored.unlockedAstralSteeds, []);
   assert.equal(restored.equippedAstralSteedId, null);
 
-  // Subsequent load after the player deliberately chooses Hatsune Miku must honor their choice
-  const deliberateChoice: SaveData = {
-    ...restored,
-    selectedHeroId: 'hatsune_miku',
-  };
-  const afterReload = migrateSaveData(deliberateChoice);
-  assert.equal(afterReload.selectedHeroId, 'hatsune_miku');
+  for (const retired of ['artemis', 'hatsune_miku'] as const) {
+    const migrated = migrateSaveData({ ...fresh, selectedHeroId: retired, unlockedHeroes: [retired] });
+    assert.equal(migrated.selectedHeroId, 'aurelia');
+    assert.deepEqual(migrated.unlockedHeroes, ['aurelia']);
+    assert.equal(migrated.gold, fresh.gold);
+    assert.deepEqual(migrated.inventory, fresh.inventory);
+  }
+  const afterReload = migrateSaveData({
+    ...restored, highestChapterCleared: 2, selectedHeroId: 'bellona',
+  });
+  assert.equal(afterReload.selectedHeroId, 'bellona');
+  assert.deepEqual(afterReload.unlockedHeroes, ['aurelia', 'bellona']);
 });
-
-
-
-

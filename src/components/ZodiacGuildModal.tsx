@@ -112,7 +112,7 @@ export const ZodiacGuildModal: React.FC<ZodiacGuildModalProps> = ({
   const expReq = getGuildLevelExpReq(guild.level);
   const expPct = Math.min(100, Math.round((guild.exp / Math.max(1, expReq)) * 100));
   const tributesLeft = Math.max(0, MAX_DAILY_GUILD_TRIBUTES - guild.tributeCountToday);
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const rankTier = getGuildBossRankTier(guild.bestGuildBossDamage);
   const playerLabel = playerDisplayName || activeHero.name;
 

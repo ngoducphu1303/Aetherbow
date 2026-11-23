@@ -98,7 +98,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
       : 1;
   const isEqualized = equalizedMode ?? fairProg.arenaEqualizedMode;
   const rankInfo = getArenaRankInfo(arena.rating);
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const displayName = playerDisplayName || `Bạn (${activeHero.name})`;
 
   useEffect(() => {
@@ -414,7 +414,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
                 ? liveOpponents
                 : fallbackOpponents.map((opp) => ({ opponent: opp, aiProfile: null }))
               ).map(({ opponent: opp, aiProfile }) => {
-                const hero = HERO_MAP[opp.heroId] ?? HERO_MAP.artemis;
+                const hero = HERO_MAP[opp.heroId] ?? HERO_MAP.aurelia;
                 const disabled = !aiProfile && arena.ticketsRemaining <= 0;
                 return (
                   <div
@@ -623,7 +623,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
             <div className="space-y-2">
               {ladderRows.map((row) => {
                 const idx = row.rank - 1;
-                const hero = HERO_MAP[row.heroId] ?? HERO_MAP.artemis;
+                const hero = HERO_MAP[row.heroId] ?? HERO_MAP.aurelia;
                 const tier = getArenaRankInfo(row.rating);
                 return (
                   <div
@@ -744,7 +744,7 @@ export const ArenaModal: React.FC<ArenaModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {EQUALIZED_TRIAL_KIT_LIST.map((kit) => {
                 const selected = selectedKitId === kit.id;
-                const hero = HERO_MAP[kit.heroId] ?? HERO_MAP.artemis;
+                const hero = HERO_MAP[kit.heroId] ?? HERO_MAP.aurelia;
                 return (
                   <button
                     key={kit.id}

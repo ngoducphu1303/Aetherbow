@@ -54,7 +54,7 @@ export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
 }) => {
   if (!player) return null;
 
-  const hero = HERO_MAP[player.heroId] ?? HERO_MAP.artemis;
+  const hero = HERO_MAP[player.heroId] ?? HERO_MAP.aurelia;
   const personality = PERSONALITY_META[player.personality] ?? PERSONALITY_META.tactical;
   const build = player.buildSnapshot ?? {
     weaponName: 'Cung Ánh Trăng Thần Thoại',

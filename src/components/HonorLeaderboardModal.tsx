@@ -163,7 +163,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
     });
   }, [heroName, playerDisplayName]);
 
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const displayHeroLabel = playerDisplayName ? `${playerDisplayName}` : heroName;
 
   const rows = useMemo(
@@ -375,7 +375,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                 {podiumOrder.map((profile) => {
-                  const pHero = HERO_MAP[profile.heroId] ?? HERO_MAP.artemis;
+                  const pHero = HERO_MAP[profile.heroId] ?? HERO_MAP.aurelia;
                   const pVipFrame = VIP_AVATAR_FRAME_MAP[profile.vipFrameId];
                   const isRank1 = profile.rank === 1;
                   return (
@@ -514,7 +514,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
             {rows.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {rows.slice(0, 3).map((entry) => {
-                  const heroDef = HERO_MAP[entry.heroId] ?? HERO_MAP.artemis;
+                  const heroDef = HERO_MAP[entry.heroId] ?? HERO_MAP.aurelia;
                   const medalColors =
                     entry.rank === 1
                       ? 'border-amber-300 bg-gradient-to-b from-amber-500/20 to-[#090d22]'
@@ -602,7 +602,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
                 </div>
               ) : (
                 rows.map((entry) => {
-                  const rowHero = HERO_MAP[entry.heroId] ?? HERO_MAP.artemis;
+                  const rowHero = HERO_MAP[entry.heroId] ?? HERO_MAP.aurelia;
                   return (
                     <div
                       key={entry.id}
@@ -1004,7 +1004,7 @@ export const HonorLeaderboardModal: React.FC<HonorLeaderboardModalProps> = ({
 
       {/* Wave 13: Top Player Build Inspector Drawer */}
       {inspectedProfile && (() => {
-        const heroDef = HERO_MAP[inspectedProfile.heroId] ?? HERO_MAP.artemis;
+        const heroDef = HERO_MAP[inspectedProfile.heroId] ?? HERO_MAP.aurelia;
         const bannerDef = WAR_BANNER_MAP[inspectedProfile.warBannerId];
         const vipFrameDef = VIP_AVATAR_FRAME_MAP[inspectedProfile.vipFrameId];
         const copied = copiedRank === inspectedProfile.rank;

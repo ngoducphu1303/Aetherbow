@@ -134,7 +134,7 @@ export const WEEKLY_BOSS_LOANER_GEAR: WeeklyBossLoanerGearItem[] = [
  * VIP, paid packs, mounts, wings, pets, halos, and personal gear are completely excluded.
  */
 export const WEEKLY_BOSS_LOANER_STATS: ComputedPlayerStats = {
-  heroId: 'artemis',
+  heroId: 'aurelia',
   heroName: 'Alice (Chuẩn Hóa)',
   heroStar: 1,
   weaponArchetype: 'bow',

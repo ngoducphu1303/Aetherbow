@@ -1,3 +1,4 @@
+import { normalizePlayableHeroId } from '../data/heroesData';
 import type {
   AiAdaptationSummarySnapshot,
   AiLiveActivityEvent,
@@ -70,7 +71,7 @@ function createInitialAiPlayers(nowMs: number): AiLivePlayerProfile[] {
       id: 'ai_player_01',
       displayName: 'ThiênXạSư',
       tag: '[AI Live]',
-      heroId: 'artemis',
+      heroId: 'aurelia',
       powerRating: 5840,
       highestChapterCleared: 8,
       worldBossBestDamage: 24500,
@@ -103,7 +104,7 @@ function createInitialAiPlayers(nowMs: number): AiLivePlayerProfile[] {
       id: 'ai_player_02',
       displayName: 'BăngTinhLinh',
       tag: '[AI Live]',
-      heroId: 'hatsune_miku',
+      heroId: 'bellona',
       powerRating: 5620,
       highestChapterCleared: 7,
       worldBossBestDamage: 21900,
@@ -169,7 +170,7 @@ function createInitialAiPlayers(nowMs: number): AiLivePlayerProfile[] {
       id: 'ai_player_04',
       displayName: 'NgânHàKiếm',
       tag: '[AI Live]',
-      heroId: 'artemis',
+      heroId: 'aurelia',
       powerRating: 4980,
       highestChapterCleared: 6,
       worldBossBestDamage: 18400,
@@ -194,7 +195,7 @@ function createInitialAiPlayers(nowMs: number): AiLivePlayerProfile[] {
       id: 'ai_player_05',
       displayName: 'LôiẢnhSát',
       tag: '[AI Live]',
-      heroId: 'hatsune_miku',
+      heroId: 'bellona',
       powerRating: 5340,
       highestChapterCleared: 7,
       worldBossBestDamage: 20100,
@@ -244,7 +245,7 @@ function createInitialAiPlayers(nowMs: number): AiLivePlayerProfile[] {
       id: 'ai_player_07',
       displayName: 'MộngTinhVũ',
       tag: '[AI Live]',
-      heroId: 'artemis',
+      heroId: 'aurelia',
       powerRating: 4720,
       highestChapterCleared: 5,
       worldBossBestDamage: 16800,
@@ -293,7 +294,7 @@ function createInitialGuildBoss(dateKey: string, nowMs: number): LiveGuildBossSt
         id: 'ai_player_01',
         displayName: 'ThiênXạSư [AI Live]',
         isHuman: false,
-        heroId: 'artemis',
+        heroId: 'aurelia',
         damage: 19_500,
         attacks: 3,
         lastHitAt: nowMs - 48_000,
@@ -302,7 +303,7 @@ function createInitialGuildBoss(dateKey: string, nowMs: number): LiveGuildBossSt
         id: 'ai_player_02',
         displayName: 'BăngTinhLinh [AI Live]',
         isHuman: false,
-        heroId: 'hatsune_miku',
+        heroId: 'bellona',
         damage: 14_700,
         attacks: 2,
         lastHitAt: nowMs - 65_000,
@@ -366,7 +367,7 @@ function createInitialServerBounty(dateKey: string, nowMs: number): LiveServerBo
         id: 'ai_player_01',
         displayName: 'ThiênXạSư [AI Live]',
         isHuman: false,
-        heroId: 'artemis',
+        heroId: 'aurelia',
         points: 260,
         lastContributedAt: nowMs - 55_000,
       },
@@ -374,7 +375,7 @@ function createInitialServerBounty(dateKey: string, nowMs: number): LiveServerBo
         id: 'ai_player_02',
         displayName: 'BăngTinhLinh [AI Live]',
         isHuman: false,
-        heroId: 'hatsune_miku',
+        heroId: 'bellona',
         points: 190,
         lastContributedAt: nowMs - 70_000,
       },
@@ -435,7 +436,7 @@ function createInitialState(nowMs = Date.now()): PersistedFallbackState {
           senderName: 'ThiênXạSư',
           senderTag: '[AI Live]',
           aiPlayerId: 'ai_player_01',
-          heroId: 'artemis',
+          heroId: 'aurelia',
           text: 'Chào mừng tới Điện Thần Tinh Giới! Ai muốn thử giao hữu 1v1 hoặc đi Boss Bang thì gọi mình nhé.',
           timestamp: nowMs - 90_000,
         },
@@ -445,7 +446,7 @@ function createInitialState(nowMs = Date.now()): PersistedFallbackState {
           senderName: 'BăngTinhLinh',
           senderTag: '[AI Live]',
           aiPlayerId: 'ai_player_02',
-          heroId: 'hatsune_miku',
+          heroId: 'bellona',
           text: 'Hôm nay Boss Tuần chuẩn hóa công bằng khá căng, nhớ né chuẩn nhịp để lấy thêm điểm kỹ năng!',
           timestamp: nowMs - 45_000,
         },
@@ -516,7 +517,13 @@ export class LiveAiLocalFallback {
         fresh.adaptationProfile = parsed.adaptationProfile ?? null;
         return fresh;
       }
-      return parsed;
+      return {
+        ...parsed,
+        players: parsed.players.map((profile) => ({
+          ...profile,
+          heroId: normalizePlayableHeroId(profile.heroId),
+        })),
+      };
     } catch {
       return createInitialState();
     }
@@ -1169,7 +1176,7 @@ export class LiveAiLocalFallback {
       typeof payload.playerName === 'string' && payload.playerName.trim()
         ? payload.playerName.trim().slice(0, 24)
         : this.playerDisplayName;
-    const heroId = (payload.heroId as HeroId) || 'artemis';
+    const heroId = normalizePlayableHeroId(payload.heroId);
     const damage = Math.max(100, Math.min(250_000, Math.round(Number(payload.damage) || 0)));
 
     const boss = this.state.guildBossLive;
@@ -1303,7 +1310,7 @@ export class LiveAiLocalFallback {
       typeof payload.playerName === 'string' && payload.playerName.trim()
         ? payload.playerName.trim().slice(0, 24)
         : this.playerDisplayName;
-    const heroId = (payload.heroId as HeroId) || 'artemis';
+    const heroId = normalizePlayableHeroId(payload.heroId);
     const powerRating = Math.max(500, Math.round(Number(payload.powerRating) || 2400));
     const duelRating = Math.max(800, Math.round(Number(payload.duelRating) || 1200));
 
@@ -1521,7 +1528,7 @@ export class LiveAiLocalFallback {
       typeof payload.playerName === 'string' && payload.playerName.trim()
         ? payload.playerName.trim().slice(0, 24)
         : this.playerDisplayName;
-    const heroId = (payload.heroId as HeroId) || 'artemis';
+    const heroId = normalizePlayableHeroId(payload.heroId);
     const points = Math.max(5, Math.min(1000, Math.round(Number(payload.points) || 0)));
 
     const b = this.state.serverBounty;
@@ -1617,7 +1624,7 @@ export class LiveAiLocalFallback {
         : this.playerDisplayName;
     const bastionId = (payload.bastionId as GuildWarBastionId) || 'solar_spire';
     const mode = payload.mode === 'assault_3d' ? 'assault_3d' : 'quick_strike';
-    const heroId = (payload.heroId as HeroId) || 'artemis';
+    const heroId = normalizePlayableHeroId(payload.heroId);
     const scoreGain = typeof payload.scoreGain === 'number' ? payload.scoreGain : undefined;
 
     const result = applyGuildWarBastionStrike(this.state.guildWarLive, {

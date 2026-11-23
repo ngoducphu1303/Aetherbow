@@ -230,7 +230,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   onChangePhotoLighting,
   onCaptureVictoryPhoto,
   runHighlights,
-  heroName = 'Alice',
+  heroName = 'Aurelia',
   isWeeklyRankedBossMode = false,
   weeklyBossIsPractice = false,
   weeklyBossDamage = 0,

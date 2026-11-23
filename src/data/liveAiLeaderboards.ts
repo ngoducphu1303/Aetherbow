@@ -55,7 +55,7 @@ export function buildMergedHonorLeaderboard(params: {
   currentUid?: string | null;
 }): MergedHonorRow[] {
   const { tab, filter, cloudPlayers, aiPlayers, save, powerRating, playerDisplayName, currentUid } = params;
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
 
   const cloudScore = (r: CloudPlayerSummaryRow) => {
     if (tab === 'power') return r.powerRating;
@@ -110,7 +110,7 @@ export function buildMergedHonorLeaderboard(params: {
   const aiRows: MergedHonorRow[] =
     filter === 'all'
       ? aiPlayers.map((ai) => {
-          const hero = HERO_MAP[ai.heroId] ?? HERO_MAP.artemis;
+          const hero = HERO_MAP[ai.heroId] ?? HERO_MAP.aurelia;
           const score =
             tab === 'power'
               ? ai.powerRating
@@ -398,7 +398,7 @@ export function buildLiveArenaOpponents(
   }
 
   return picks.map((ai, idx) => {
-    const hero = HERO_MAP[ai.heroId] ?? HERO_MAP.artemis;
+    const hero = HERO_MAP[ai.heroId] ?? HERO_MAP.aurelia;
     const scale = 0.92 + idx * 0.14;
     const effectivePower = Math.max(400, ai.powerRating);
     const ratio = Math.max(0.75, Math.min(1.45, effectivePower / Math.max(800, playerPower)));

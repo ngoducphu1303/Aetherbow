@@ -364,7 +364,8 @@ export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   golden_fleece: ariesAsset('golden_fleece', 'golden-fleece', 'Hoàng Bào Kim Dương', 'humanoid', 2.05),
   pyro: ariesAsset('pyro', 'pyro', 'Pyro', 'pet', 0.72),
   crimson_ram_wings: ariesAsset('crimson_ram_wings', 'crimson-ram-wings', 'Thần Dực Xích Dương', 'wings', 1.70),
-  vulcan: ariesAsset('vulcan', 'vulcan', 'Vulcan', 'quadruped_mount', 1.62),
+  // The source sculpt looks down +X. Mount locomotion and riders face +Z.
+  vulcan: ariesAsset('vulcan', 'vulcan', 'Vulcan', 'quadruped_mount', 1.62, -Math.PI / 2),
   war_horn: ariesAsset('war_horn', 'war-horn', 'Chiến Giác Hỏa Tinh', 'artifact', 0.65),
   aries_vanguard: ariesAsset('aries_vanguard', 'aries-halo', 'Hào Quang Tiên Phong Bạch Dương', 'halo', 1.48),
 
@@ -630,7 +631,8 @@ interface BoneBlueprint {
 
 function buildBoneBlueprints(
   rigType: SolarLeoRigType,
-  box: THREE.Box3
+  box: THREE.Box3,
+  articulatedKnees: boolean
 ): BoneBlueprint[] {
   const sx = Math.max(0.1, box.max.x - box.min.x);
   const sy = Math.max(0.1, box.max.y - box.min.y);
@@ -643,6 +645,8 @@ function buildBoneBlueprints(
     const legX = torsoW * 0.17;
     const armX = torsoW * 0.28;
     const handX = Math.max(torsoW * 0.52, sx * 0.42);
+    const kneeY = y0 + sy * 0.24;
+    const footY = y0 + sy * 0.02;
     return [
       // 0: root
       { name: 'root', parent: -1, head: [0, y0, 0], tail: [0, y0 + sy * 0.08, 0], radius: torsoW * 0.16, weightBoost: 0.15 },
@@ -663,11 +667,15 @@ function buildBoneBlueprints(
       // 8: handR (-X)
       { name: 'handR', parent: 7, head: [-armX * 1.25, y0 + sy * 0.58, sz * 0.05], tail: [-handX, y0 + sy * 0.48, sz * 0.24], radius: torsoW * 0.24, sideBias: 'right', weightBoost: 1.4 },
       // 9: legL (+X)
-      { name: 'legL', parent: 1, head: [legX, y0 + sy * 0.46, 0.02], tail: [legX * 1.05, y0 + sy * 0.02, 0.04], radius: torsoW * 0.24, sideBias: 'left', weightBoost: 1.45 },
+      { name: 'legL', parent: 1, head: [legX, y0 + sy * 0.46, 0.02], tail: [legX * 1.05, articulatedKnees ? kneeY : footY, 0.04], radius: torsoW * 0.24, sideBias: 'left', weightBoost: 1.45 },
       // 10: legR (-X)
-      { name: 'legR', parent: 1, head: [-legX, y0 + sy * 0.46, 0.02], tail: [-legX * 1.05, y0 + sy * 0.02, 0.04], radius: torsoW * 0.24, sideBias: 'right', weightBoost: 1.45 },
+      { name: 'legR', parent: 1, head: [-legX, y0 + sy * 0.46, 0.02], tail: [-legX * 1.05, articulatedKnees ? kneeY : footY, 0.04], radius: torsoW * 0.24, sideBias: 'right', weightBoost: 1.45 },
       // 11: cloak (trailing -Z)
       { name: 'cloak', parent: 2, head: [0, y0 + sy * 0.62, -sz * 0.14], tail: [0, y0 + sy * 0.06, -sz * 0.46], radius: torsoW * 0.32, sideBias: 'back', weightBoost: 1.35 },
+      ...(articulatedKnees ? [
+        { name: 'shinL', parent: 9, head: [legX * 1.05, kneeY, 0.04], tail: [legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'left', weightBoost: 1.7 } satisfies BoneBlueprint,
+        { name: 'shinR', parent: 10, head: [-legX * 1.05, kneeY, 0.04], tail: [-legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'right', weightBoost: 1.7 } satisfies BoneBlueprint,
+      ] : []),
     ];
   }
 
@@ -1333,7 +1341,8 @@ export function prepareSolarLeoTemplate(
     }
   });
 
-  const blueprints = buildBoneBlueprints(spec.rigType, normalizedBox);
+  const articulatedKnees = assetId === 'bellona' || assetId === 'golden_fleece';
+  const blueprints = buildBoneBlueprints(spec.rigType, normalizedBox, articulatedKnees);
   const hasSculptedDrawnBow = assetId === 'aurelia' && normalizedBox.max.z > 0.95;
   if (blueprints.length > 0) {
     for (const part of parts) {
@@ -1413,9 +1422,14 @@ export function instantiateSolarLeoModel(
 
     if (template.rigType === 'quadruped_mount' && bones.spine) {
       saddle = new THREE.Object3D();
-      saddle.name = 'solarius_saddle';
-      // Seat rider comfortably atop Solarius's armored mid-back right behind the golden mane
-      saddle.position.set(0, template.size.y * 0.25, -template.size.z * 0.03);
+      saddle.name = `${template.assetId}_saddle`;
+      if (template.assetId === 'vulcan') {
+        // Measured on the red saddle cushion after rotating the sculpt forward.
+        const spine = template.blueprints.find(({name}) => name === 'spine')!;
+        saddle.position.set(0, template.size.y * 0.61 - spine.head[1], -template.size.z * 0.055 - spine.head[2]);
+      } else {
+        saddle.position.set(0, template.size.y * 0.25, -template.size.z * 0.03);
+      }
       bones.spine.add(saddle);
     }
 
@@ -2310,6 +2324,16 @@ export function updateSolarLeoHumanoidPose(
     cloakPitch += 0.38 * u;
   }
 
+  const seatedWithKnees = riding && Boolean(b.shinL && b.shinR);
+  if (seatedWithKnees) {
+    rootY = 0;
+    rootYaw = 0;
+    pelvisRoll = 0;
+    legLPitch = legRPitch = -0.94;
+    legLRoll = 0.39;
+    legRRoll = -0.39;
+  }
+
   // For Aurelia's sculpted full-draw bow GLB, keep arm/hand bones strictly aligned with `chest`
   // so her arms, bow limbs, riser, arrow shaft, and bowstring move as one rigid archer assembly
   // without ever bending the bow or curving the arrow.
@@ -2351,6 +2375,12 @@ export function updateSolarLeoHumanoidPose(
   if (b.legR) {
     b.legR.rotation.x = THREE.MathUtils.damp(b.legR.rotation.x, legRPitch, lam, dt);
     b.legR.rotation.z = THREE.MathUtils.damp(b.legR.rotation.z, legRRoll, lam, dt);
+  }
+  if (b.shinL && b.shinR) {
+    const leftKnee = seatedWithKnees ? 1.46 : Math.max(0, s) * moveFactor * 0.37;
+    const rightKnee = seatedWithKnees ? 1.46 : Math.max(0, -s) * moveFactor * 0.37;
+    b.shinL.rotation.x = THREE.MathUtils.damp(b.shinL.rotation.x, leftKnee, lam, dt);
+    b.shinR.rotation.x = THREE.MathUtils.damp(b.shinR.rotation.x, rightKnee, lam, dt);
   }
   if (b.cloak) {
     b.cloak.rotation.x = THREE.MathUtils.damp(b.cloak.rotation.x, cloakPitch, lam, dt);

@@ -1,3 +1,4 @@
+import { isPlayableHeroId, normalizePlayableHeroId } from '../data/heroesData';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -123,7 +124,7 @@ function createInitialChatHistory(nowMs: number): {
         senderName: 'Tề Thiên',
         senderTag: '[AI Live]',
         aiPlayerId: 'ai_te_thien',
-        heroId: 'artemis',
+        heroId: 'aurelia',
         text: 'Ai vào Co-op 3D Thần Thoại săn mảnh Sử Thi cùng mình không?',
         timestamp: nowMs - 115_000,
       },
@@ -133,7 +134,7 @@ function createInitialChatHistory(nowMs: number): {
         senderName: 'Linh Vũ',
         senderTag: '[AI Live]',
         aiPlayerId: 'ai_linh_vu',
-        heroId: 'artemis',
+        heroId: 'aurelia',
         text: 'Boss Tuần này đọc vòng Quét Vòng né đúng nhịp ăn thêm +125 điểm Né Hoàn Hảo ngon lắm!',
         timestamp: nowMs - 68_000,
       },
@@ -143,7 +144,7 @@ function createInitialChatHistory(nowMs: number): {
         senderName: 'Cửu Thiên',
         senderTag: '[AI Live]',
         aiPlayerId: 'ai_cuu_thien',
-        heroId: 'hatsune_miku',
+        heroId: 'bellona',
         text: 'Đang mở phòng Arena 1v1 trực tiếp, anh em vào giao lưu kiểm tra đội hình nhé!',
         timestamp: nowMs - 24_000,
       },
@@ -155,7 +156,7 @@ function createInitialChatHistory(nowMs: number): {
         senderName: 'Tề Thiên',
         senderTag: '[AI Live]',
         aiPlayerId: 'ai_te_thien',
-        heroId: 'artemis',
+        heroId: 'aurelia',
         text: 'Anh em Bang Hoàng Đạo nhớ đánh đủ lượt Boss Bang Thái Cổ Ma Long lấy rương ngày nhé!',
         timestamp: nowMs - 95_000,
       },
@@ -165,7 +166,7 @@ function createInitialChatHistory(nowMs: number): {
         senderName: 'Sát Tinh',
         senderTag: '[AI Live]',
         aiPlayerId: 'ai_sat_tinh',
-        heroId: 'hatsune_miku',
+        heroId: 'bellona',
         text: 'Mình vừa đẩy mốc Boss Bang lên 129.400 ST, còn 1 mốc rương nữa là full tuần!',
         timestamp: nowMs - 41_000,
       },
@@ -193,24 +194,24 @@ interface RosterSeed {
 }
 
 const INITIAL_AI_ROSTER: RosterSeed[] = [
-  { id: 'ai_te_thien', displayName: 'Tề Thiên', heroId: 'artemis', powerRating: 5910, highestChapterCleared: 10, worldBossBestDamage: 168400, bestTowerFloor: 48, personality: 'assassin', duelRating: 1620, weeklyPracticeBest: 15740, weeklyPracticeClearTimeMs: 31200, guildRole: 'Bang Chủ', guildContribution: 9850, guildBossDamage: 142600, titleBadge: 'Chí Tôn Tinh Giới', frameId: 'world_dragon' },
-  { id: 'ai_sat_tinh', displayName: 'Sát Tinh', heroId: 'hatsune_miku', powerRating: 5680, highestChapterCleared: 9, worldBossBestDamage: 154200, bestTowerFloor: 45, personality: 'assassin', duelRating: 1585, weeklyPracticeBest: 15380, weeklyPracticeClearTimeMs: 33400, guildRole: 'Phó Bang', guildContribution: 8620, guildBossDamage: 129400, titleBadge: 'Ảnh Sát Hoàng Đạo', frameId: 'royal_vip' },
-  { id: 'ai_cuu_thien', displayName: 'Cửu Thiên', heroId: 'hatsune_miku', powerRating: 5490, highestChapterCleared: 9, worldBossBestDamage: 146800, bestTowerFloor: 43, personality: 'aggressive', duelRating: 1540, weeklyPracticeBest: 14680, weeklyPracticeClearTimeMs: 36100, guildRole: 'Phó Bang', guildContribution: 8140, guildBossDamage: 121800, titleBadge: 'Lôi Thần Chinh Phạt', frameId: 'seraph_crown' },
-  { id: 'ai_hao_thien', displayName: 'Hạo Thiên', heroId: 'artemis', powerRating: 5340, highestChapterCleared: 8, worldBossBestDamage: 138500, bestTowerFloor: 41, personality: 'aggressive', duelRating: 1510, weeklyPracticeBest: 14920, weeklyPracticeClearTimeMs: 35300, guildRole: 'Tinh Anh', guildContribution: 7490, guildBossDamage: 114200, titleBadge: 'Hạo Nhật Thần Xạ', frameId: 'royal_vip' },
-  { id: 'ai_kiem_thanh', displayName: 'Kiếm Thánh', heroId: 'hatsune_miku', powerRating: 5120, highestChapterCleared: 8, worldBossBestDamage: 129600, bestTowerFloor: 39, personality: 'assassin', duelRating: 1495, weeklyPracticeBest: 14350, weeklyPracticeClearTimeMs: 38200, guildRole: 'Tinh Anh', guildContribution: 6980, guildBossDamage: 108500, titleBadge: 'Vô Song Kiếm Ảnh', frameId: 'crystal_guardian' },
-  { id: 'ai_loi_de', displayName: 'Lôi Đế', heroId: 'artemis', powerRating: 4980, highestChapterCleared: 7, worldBossBestDamage: 122400, bestTowerFloor: 37, personality: 'aggressive', duelRating: 1475, weeklyPracticeBest: 14120, weeklyPracticeClearTimeMs: 39400, guildRole: 'Tinh Anh', guildContribution: 6420, guildBossDamage: 99800, titleBadge: 'Lôi Đình Hộ Pháp', frameId: 'seraph_crown' },
-  { id: 'ai_linh_vu', displayName: 'Linh Vũ', heroId: 'artemis', powerRating: 4820, highestChapterCleared: 7, worldBossBestDamage: 118900, bestTowerFloor: 35, personality: 'tactical', duelRating: 1420, weeklyPracticeBest: 13850, weeklyPracticeClearTimeMs: 41100, guildRole: 'Tinh Anh', guildContribution: 6150, guildBossDamage: 94200, titleBadge: 'Thần Xạ Ngân Hà', frameId: 'astral_crescent' },
-  { id: 'ai_phong_van', displayName: 'Phong Vân', heroId: 'hatsune_miku', powerRating: 4720, highestChapterCleared: 6, worldBossBestDamage: 110500, bestTowerFloor: 33, personality: 'assassin', duelRating: 1460, weeklyPracticeBest: 13940, weeklyPracticeClearTimeMs: 40600, guildRole: 'Tinh Vệ', guildContribution: 5640, guildBossDamage: 87400, titleBadge: 'Liệt Phong Săn Boss', frameId: 'crystal_guardian' },
-  { id: 'ai_hoa_phuong', displayName: 'Hỏa Phượng', heroId: 'artemis', powerRating: 4610, highestChapterCleared: 6, worldBossBestDamage: 104200, bestTowerFloor: 31, personality: 'aggressive', duelRating: 1440, weeklyPracticeBest: 13560, weeklyPracticeClearTimeMs: 43200, guildRole: 'Tinh Vệ', guildContribution: 5210, guildBossDamage: 82900, titleBadge: 'Phượng Hoàng Cháy Rực', frameId: 'royal_vip' },
-  { id: 'ai_han_bang', displayName: 'Hàn Băng', heroId: 'hatsune_miku', powerRating: 4510, highestChapterCleared: 6, worldBossBestDamage: 98400, bestTowerFloor: 30, personality: 'tactical', duelRating: 1410, weeklyPracticeBest: 13290, weeklyPracticeClearTimeMs: 44800, guildRole: 'Tinh Vệ', guildContribution: 4890, guildBossDamage: 78600, titleBadge: 'Hàn Sương Thánh Nữ', frameId: 'astral_crescent' },
-  { id: 'ai_thanh_van', displayName: 'Thanh Vân', heroId: 'artemis', powerRating: 4460, highestChapterCleared: 5, worldBossBestDamage: 93200, bestTowerFloor: 28, personality: 'tactical', duelRating: 1390, weeklyPracticeBest: 13040, weeklyPracticeClearTimeMs: 46500, guildRole: 'Tinh Vệ', guildContribution: 4560, guildBossDamage: 74200, titleBadge: 'Thanh Vân Vệ Sĩ', frameId: 'default_gold' },
-  { id: 'ai_kiet_tac', displayName: 'Kiệt Tác', heroId: 'hatsune_miku', powerRating: 4320, highestChapterCleared: 5, worldBossBestDamage: 88600, bestTowerFloor: 26, personality: 'aggressive', duelRating: 1340, weeklyPracticeBest: 12650, weeklyPracticeClearTimeMs: 48900, guildRole: 'Tinh Vệ', guildContribution: 4180, guildBossDamage: 69500, titleBadge: 'Huyết Nguyệt Kỵ Sĩ', frameId: 'crystal_guardian' },
-  { id: 'ai_bach_tuyet', displayName: 'Bạch Tuyết', heroId: 'artemis', powerRating: 4190, highestChapterCleared: 5, worldBossBestDamage: 84100, bestTowerFloor: 25, personality: 'tactical', duelRating: 1365, weeklyPracticeBest: 12410, weeklyPracticeClearTimeMs: 50200, guildRole: 'Thành Viên', guildContribution: 3920, guildBossDamage: 65100, titleBadge: 'Băng Tuyết Pháp Sư', frameId: 'astral_crescent' },
-  { id: 'ai_duong_quang', displayName: 'Dương Quang', heroId: 'hatsune_miku', powerRating: 3960, highestChapterCleared: 4, worldBossBestDamage: 76500, bestTowerFloor: 22, personality: 'aggressive', duelRating: 1325, weeklyPracticeBest: 12100, weeklyPracticeClearTimeMs: 52600, guildRole: 'Thành Viên', guildContribution: 3480, guildBossDamage: 58900, titleBadge: 'Nhật Luân Cung Thủ', frameId: 'default_gold' },
-  { id: 'ai_tinh_ha', displayName: 'Tinh Hà', heroId: 'artemis', powerRating: 3880, highestChapterCleared: 4, worldBossBestDamage: 71900, bestTowerFloor: 20, personality: 'tactical', duelRating: 1310, weeklyPracticeBest: 11890, weeklyPracticeClearTimeMs: 54100, guildRole: 'Thành Viên', guildContribution: 3190, guildBossDamage: 54300, titleBadge: 'Tinh Hà Chiêm Tinh', frameId: 'astral_crescent' },
-  { id: 'ai_nguyet_anh', displayName: 'Nguyệt Ảnh', heroId: 'artemis', powerRating: 3650, highestChapterCleared: 3, worldBossBestDamage: 64800, bestTowerFloor: 18, personality: 'tactical', duelRating: 1280, weeklyPracticeBest: 11200, weeklyPracticeClearTimeMs: 57900, guildRole: 'Thành Viên', guildContribution: 2840, guildBossDamage: 48600, titleBadge: 'Nguyệt Quang Xạ Thủ', frameId: 'default_gold' },
-  { id: 'ai_thien_duyen', displayName: 'Thiên Duyên', heroId: 'hatsune_miku', powerRating: 3420, highestChapterCleared: 3, worldBossBestDamage: 58200, bestTowerFloor: 15, personality: 'tactical', duelRating: 1245, weeklyPracticeBest: 10860, weeklyPracticeClearTimeMs: 61400, guildRole: 'Thành Viên', guildContribution: 2510, guildBossDamage: 43200, titleBadge: 'Thiên Duyên Hỏa Vũ', frameId: 'default_gold' },
-  { id: 'ai_minh_triet', displayName: 'Minh Triết', heroId: 'hatsune_miku', powerRating: 3290, highestChapterCleared: 2, worldBossBestDamage: 52400, bestTowerFloor: 13, personality: 'tactical', duelRating: 1215, weeklyPracticeBest: 10450, weeklyPracticeClearTimeMs: null, guildRole: 'Thành Viên', guildContribution: 2180, guildBossDamage: 38900, titleBadge: 'Tân Tinh Hoàng Đạo', frameId: 'default_gold' },
+  { id: 'ai_te_thien', displayName: 'Tề Thiên', heroId: 'aurelia', powerRating: 5910, highestChapterCleared: 10, worldBossBestDamage: 168400, bestTowerFloor: 48, personality: 'assassin', duelRating: 1620, weeklyPracticeBest: 15740, weeklyPracticeClearTimeMs: 31200, guildRole: 'Bang Chủ', guildContribution: 9850, guildBossDamage: 142600, titleBadge: 'Chí Tôn Tinh Giới', frameId: 'world_dragon' },
+  { id: 'ai_sat_tinh', displayName: 'Sát Tinh', heroId: 'bellona', powerRating: 5680, highestChapterCleared: 9, worldBossBestDamage: 154200, bestTowerFloor: 45, personality: 'assassin', duelRating: 1585, weeklyPracticeBest: 15380, weeklyPracticeClearTimeMs: 33400, guildRole: 'Phó Bang', guildContribution: 8620, guildBossDamage: 129400, titleBadge: 'Ảnh Sát Hoàng Đạo', frameId: 'royal_vip' },
+  { id: 'ai_cuu_thien', displayName: 'Cửu Thiên', heroId: 'bellona', powerRating: 5490, highestChapterCleared: 9, worldBossBestDamage: 146800, bestTowerFloor: 43, personality: 'aggressive', duelRating: 1540, weeklyPracticeBest: 14680, weeklyPracticeClearTimeMs: 36100, guildRole: 'Phó Bang', guildContribution: 8140, guildBossDamage: 121800, titleBadge: 'Lôi Thần Chinh Phạt', frameId: 'seraph_crown' },
+  { id: 'ai_hao_thien', displayName: 'Hạo Thiên', heroId: 'aurelia', powerRating: 5340, highestChapterCleared: 8, worldBossBestDamage: 138500, bestTowerFloor: 41, personality: 'aggressive', duelRating: 1510, weeklyPracticeBest: 14920, weeklyPracticeClearTimeMs: 35300, guildRole: 'Tinh Anh', guildContribution: 7490, guildBossDamage: 114200, titleBadge: 'Hạo Nhật Thần Xạ', frameId: 'royal_vip' },
+  { id: 'ai_kiem_thanh', displayName: 'Kiếm Thánh', heroId: 'bellona', powerRating: 5120, highestChapterCleared: 8, worldBossBestDamage: 129600, bestTowerFloor: 39, personality: 'assassin', duelRating: 1495, weeklyPracticeBest: 14350, weeklyPracticeClearTimeMs: 38200, guildRole: 'Tinh Anh', guildContribution: 6980, guildBossDamage: 108500, titleBadge: 'Vô Song Kiếm Ảnh', frameId: 'crystal_guardian' },
+  { id: 'ai_loi_de', displayName: 'Lôi Đế', heroId: 'aurelia', powerRating: 4980, highestChapterCleared: 7, worldBossBestDamage: 122400, bestTowerFloor: 37, personality: 'aggressive', duelRating: 1475, weeklyPracticeBest: 14120, weeklyPracticeClearTimeMs: 39400, guildRole: 'Tinh Anh', guildContribution: 6420, guildBossDamage: 99800, titleBadge: 'Lôi Đình Hộ Pháp', frameId: 'seraph_crown' },
+  { id: 'ai_linh_vu', displayName: 'Linh Vũ', heroId: 'aurelia', powerRating: 4820, highestChapterCleared: 7, worldBossBestDamage: 118900, bestTowerFloor: 35, personality: 'tactical', duelRating: 1420, weeklyPracticeBest: 13850, weeklyPracticeClearTimeMs: 41100, guildRole: 'Tinh Anh', guildContribution: 6150, guildBossDamage: 94200, titleBadge: 'Thần Xạ Ngân Hà', frameId: 'astral_crescent' },
+  { id: 'ai_phong_van', displayName: 'Phong Vân', heroId: 'bellona', powerRating: 4720, highestChapterCleared: 6, worldBossBestDamage: 110500, bestTowerFloor: 33, personality: 'assassin', duelRating: 1460, weeklyPracticeBest: 13940, weeklyPracticeClearTimeMs: 40600, guildRole: 'Tinh Vệ', guildContribution: 5640, guildBossDamage: 87400, titleBadge: 'Liệt Phong Săn Boss', frameId: 'crystal_guardian' },
+  { id: 'ai_hoa_phuong', displayName: 'Hỏa Phượng', heroId: 'aurelia', powerRating: 4610, highestChapterCleared: 6, worldBossBestDamage: 104200, bestTowerFloor: 31, personality: 'aggressive', duelRating: 1440, weeklyPracticeBest: 13560, weeklyPracticeClearTimeMs: 43200, guildRole: 'Tinh Vệ', guildContribution: 5210, guildBossDamage: 82900, titleBadge: 'Phượng Hoàng Cháy Rực', frameId: 'royal_vip' },
+  { id: 'ai_han_bang', displayName: 'Hàn Băng', heroId: 'bellona', powerRating: 4510, highestChapterCleared: 6, worldBossBestDamage: 98400, bestTowerFloor: 30, personality: 'tactical', duelRating: 1410, weeklyPracticeBest: 13290, weeklyPracticeClearTimeMs: 44800, guildRole: 'Tinh Vệ', guildContribution: 4890, guildBossDamage: 78600, titleBadge: 'Hàn Sương Thánh Nữ', frameId: 'astral_crescent' },
+  { id: 'ai_thanh_van', displayName: 'Thanh Vân', heroId: 'aurelia', powerRating: 4460, highestChapterCleared: 5, worldBossBestDamage: 93200, bestTowerFloor: 28, personality: 'tactical', duelRating: 1390, weeklyPracticeBest: 13040, weeklyPracticeClearTimeMs: 46500, guildRole: 'Tinh Vệ', guildContribution: 4560, guildBossDamage: 74200, titleBadge: 'Thanh Vân Vệ Sĩ', frameId: 'default_gold' },
+  { id: 'ai_kiet_tac', displayName: 'Kiệt Tác', heroId: 'bellona', powerRating: 4320, highestChapterCleared: 5, worldBossBestDamage: 88600, bestTowerFloor: 26, personality: 'aggressive', duelRating: 1340, weeklyPracticeBest: 12650, weeklyPracticeClearTimeMs: 48900, guildRole: 'Tinh Vệ', guildContribution: 4180, guildBossDamage: 69500, titleBadge: 'Huyết Nguyệt Kỵ Sĩ', frameId: 'crystal_guardian' },
+  { id: 'ai_bach_tuyet', displayName: 'Bạch Tuyết', heroId: 'aurelia', powerRating: 4190, highestChapterCleared: 5, worldBossBestDamage: 84100, bestTowerFloor: 25, personality: 'tactical', duelRating: 1365, weeklyPracticeBest: 12410, weeklyPracticeClearTimeMs: 50200, guildRole: 'Thành Viên', guildContribution: 3920, guildBossDamage: 65100, titleBadge: 'Băng Tuyết Pháp Sư', frameId: 'astral_crescent' },
+  { id: 'ai_duong_quang', displayName: 'Dương Quang', heroId: 'bellona', powerRating: 3960, highestChapterCleared: 4, worldBossBestDamage: 76500, bestTowerFloor: 22, personality: 'aggressive', duelRating: 1325, weeklyPracticeBest: 12100, weeklyPracticeClearTimeMs: 52600, guildRole: 'Thành Viên', guildContribution: 3480, guildBossDamage: 58900, titleBadge: 'Nhật Luân Cung Thủ', frameId: 'default_gold' },
+  { id: 'ai_tinh_ha', displayName: 'Tinh Hà', heroId: 'aurelia', powerRating: 3880, highestChapterCleared: 4, worldBossBestDamage: 71900, bestTowerFloor: 20, personality: 'tactical', duelRating: 1310, weeklyPracticeBest: 11890, weeklyPracticeClearTimeMs: 54100, guildRole: 'Thành Viên', guildContribution: 3190, guildBossDamage: 54300, titleBadge: 'Tinh Hà Chiêm Tinh', frameId: 'astral_crescent' },
+  { id: 'ai_nguyet_anh', displayName: 'Nguyệt Ảnh', heroId: 'aurelia', powerRating: 3650, highestChapterCleared: 3, worldBossBestDamage: 64800, bestTowerFloor: 18, personality: 'tactical', duelRating: 1280, weeklyPracticeBest: 11200, weeklyPracticeClearTimeMs: 57900, guildRole: 'Thành Viên', guildContribution: 2840, guildBossDamage: 48600, titleBadge: 'Nguyệt Quang Xạ Thủ', frameId: 'default_gold' },
+  { id: 'ai_thien_duyen', displayName: 'Thiên Duyên', heroId: 'bellona', powerRating: 3420, highestChapterCleared: 3, worldBossBestDamage: 58200, bestTowerFloor: 15, personality: 'tactical', duelRating: 1245, weeklyPracticeBest: 10860, weeklyPracticeClearTimeMs: 61400, guildRole: 'Thành Viên', guildContribution: 2510, guildBossDamage: 43200, titleBadge: 'Thiên Duyên Hỏa Vũ', frameId: 'default_gold' },
+  { id: 'ai_minh_triet', displayName: 'Minh Triết', heroId: 'bellona', powerRating: 3290, highestChapterCleared: 2, worldBossBestDamage: 52400, bestTowerFloor: 13, personality: 'tactical', duelRating: 1215, weeklyPracticeBest: 10450, weeklyPracticeClearTimeMs: null, guildRole: 'Thành Viên', guildContribution: 2180, guildBossDamage: 38900, titleBadge: 'Tân Tinh Hoàng Đạo', frameId: 'default_gold' },
 ];
 
 const SEED_BY_ID = new Map<string, RosterSeed>(INITIAL_AI_ROSTER.map((s) => [s.id, s]));
@@ -236,8 +237,7 @@ function normalizeAiPlayerProfile(
   nowMs: number
 ): AiLivePlayerProfile {
   const seed = SEED_BY_ID.get(raw.id) ?? INITIAL_AI_ROSTER[fallbackIndex % INITIAL_AI_ROSTER.length];
-  const validHeroes: HeroId[] = ['artemis', 'hatsune_miku', 'aurelia'];
-  const heroId: HeroId = validHeroes.includes(raw.heroId as HeroId) ? (raw.heroId as HeroId) : seed.heroId;
+  const heroId = isPlayableHeroId(raw.heroId) ? raw.heroId : seed.heroId;
   return {
     id: raw.id || seed.id,
     displayName: raw.displayName || seed.displayName,
@@ -395,11 +395,11 @@ export class LiveAiPlayersService {
           items.map((msg, idx) => ({
             ...msg,
             heroId:
-              msg.heroId === 'artemis' || msg.heroId === 'hatsune_miku' || msg.heroId === 'aurelia' || msg.heroId === 'bellona'
+              isPlayableHeroId(msg.heroId)
                 ? msg.heroId
                 : idx % 2 === 0
-                ? 'artemis'
-                : 'hatsune_miku',
+                ? 'aurelia'
+                : 'bellona',
           }));
         const chatHistory = {
           lobby:
@@ -1454,7 +1454,7 @@ export class LiveAiPlayersService {
         id: params.id,
         displayName: params.displayName,
         isHuman: params.isHuman,
-        heroId: params.heroId,
+        heroId: normalizePlayableHeroId(params.heroId),
         damage: dmg,
         attacks: 1,
         lastHitAt: params.nowMs,
@@ -1491,7 +1491,7 @@ export class LiveAiPlayersService {
       id: `human_${pKey}`,
       displayName: params.playerName,
       isHuman: true,
-      heroId: params.heroId ?? 'artemis',
+      heroId: normalizePlayableHeroId(params.heroId),
       damage: safeDmg,
       nowMs,
     });
@@ -1602,7 +1602,7 @@ export class LiveAiPlayersService {
       id: `human_${pKey}`,
       displayName: params.playerName,
       isHuman: true,
-      heroId: params.playerHeroId ?? 'artemis',
+      heroId: normalizePlayableHeroId(params.playerHeroId),
       powerRating: Math.max(500, Math.round(params.playerPowerRating ?? 1800)),
       duelRating: Math.max(900, Math.round(params.playerDuelRating ?? 1200)),
     };
@@ -2030,7 +2030,7 @@ export class LiveAiPlayersService {
         id: params.id,
         displayName: params.displayName,
         isHuman: params.isHuman,
-        heroId: params.heroId,
+        heroId: normalizePlayableHeroId(params.heroId),
         points: pts,
         lastContributedAt: params.nowMs,
       });
@@ -2067,7 +2067,7 @@ export class LiveAiPlayersService {
       id: `human_${pKey}`,
       displayName: params.playerName,
       isHuman: true,
-      heroId: params.heroId ?? 'artemis',
+      heroId: normalizePlayableHeroId(params.heroId),
       points: pts,
       nowMs,
     });
@@ -2243,7 +2243,7 @@ export class LiveAiPlayersService {
     const res = applyGuildWarBastionStrike(war, {
       actorId: `human_${pKey}`,
       actorName: params.playerName,
-      heroId: params.heroId ?? 'artemis',
+      heroId: normalizePlayableHeroId(params.heroId),
       isHuman: true,
       faction: 'zodiac_guild',
       bastionId: params.bastionId,

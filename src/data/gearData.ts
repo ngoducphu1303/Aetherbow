@@ -13,7 +13,7 @@ import {
   SocketGemInstance,
   WeaponArchetype,
 } from '../types/game';
-import { HERO_MAP } from './heroesData';
+import { DEFAULT_HERO_ID, HERO_MAP } from './heroesData';
 import { ACCOUNT_RESET_EPOCH } from '../services/accountHydrationPolicy';
 import {
   DEFAULT_SETTINGS,
@@ -803,7 +803,7 @@ export function getGearPowerScore(
 }
 
 export function computePlayerStats(save: SaveData): ComputedPlayerStats {
-  const hero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const hero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const heroStar = save.heroStars[hero.id] ?? 0;
   const starScale = 1 + heroStar * 0.14;
 
@@ -1280,12 +1280,10 @@ export function createInitialSaveData(): SaveData {
     petEssence: 0,
     highestChapterCleared: 0,
     bestStagePerChapter: {},
-    selectedHeroId: 'artemis',
+    selectedHeroId: DEFAULT_HERO_ID,
     aliceDefaultMigrated: true,
-    unlockedHeroes: ['artemis', 'hatsune_miku', 'aurelia'],
+    unlockedHeroes: [DEFAULT_HERO_ID],
     heroStars: {
-      artemis: 0,
-      hatsune_miku: 0,
       aurelia: 0,
     },
     equipped: {

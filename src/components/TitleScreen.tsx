@@ -695,7 +695,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const selectedChapter = CHAPTERS.find((c) => c.id === selectedChapterId) ?? CHAPTERS[0];
   const isChapterUnlocked = selectedChapter.id <= save.highestChapterCleared + 1;
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const heroStar = save.heroStars[activeHero.id] ?? 0;
   const bestStage = save.bestStagePerChapter[selectedChapter.id] ?? 0;
   const effectiveChapterRecPower = Math.round(

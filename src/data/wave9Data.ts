@@ -81,7 +81,7 @@ export function getArtifactUpgradeCost(level: number) {
 export const HERO_BONDS: HeroBondDefinition[] = [];
 
 export function evaluateHeroBonds(save: Pick<SaveData, 'unlockedHeroes' | 'heroStars'>) {
-  const owned = new Set<HeroId>(save.unlockedHeroes ?? ['artemis']);
+  const owned = new Set<HeroId>(save.unlockedHeroes ?? ['aurelia']);
   let atkPct = 0;
   let hpPct = 0;
   let crit = 0;

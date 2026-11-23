@@ -1244,7 +1244,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   const [artifactsBannerErr, setArtifactsBannerErr] = useState(false);
   const [halosBannerErr, setHalosBannerErr] = useState(false);
 
-  const hero = HERO_MAP[previewHeroId] ?? HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const hero = HERO_MAP[previewHeroId] ?? HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const unlocked = save.unlockedHeroes.includes(hero.id);
   const selected = save.selectedHeroId === hero.id;
   const star = save.heroStars[hero.id] ?? 0;
@@ -3147,7 +3147,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
 
   const selectedRune =
     save.runeInventory.find((r) => r.uid === selectedRuneUid) || save.runeInventory[0];
-  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const activeHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
 
   const canFuseRune = (rune: RuneInstance) => {
     const rIdx = RARITY_ORDER.indexOf(rune.rarity);

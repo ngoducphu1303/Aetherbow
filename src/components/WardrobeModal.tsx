@@ -75,7 +75,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
 }) => {
   const [tab, setTab] = useState<WardrobeTab>('halos');
 
-  const currentHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.artemis;
+  const currentHero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const equippedSkin = save.equippedSkinByHero?.[save.selectedHeroId] ?? 'default';
   const activeSkinPreview = preview.skinId ?? equippedSkin;
   const activeWingPreview = preview.wingId !== undefined ? preview.wingId : (save.equippedWingId ?? null);

@@ -1,3 +1,4 @@
+import { DEFAULT_HERO_ID, isPlayableHeroId, normalizePlayableHeroId } from './heroesData';
 import { grantChapter2Collection } from './chapter2Collection';
 import {
   ComputedPlayerStats,
@@ -345,23 +346,12 @@ export function migrateSaveData(raw: SaveData): SaveData {
     }
   }
 
-  // Keep Alice ('artemis'), Hatsune Miku ('hatsune_miku'), and Aurelia ('aurelia') all unlocked.
   const hasClearedAries = (raw.highestChapterCleared ?? 0) >= 2;
-  const VALID_HERO_IDS = new Set<HeroId>(['artemis', 'hatsune_miku', 'aurelia']);
-  if (hasClearedAries) VALID_HERO_IDS.add('bellona');
-  const filteredHeroes = (Array.isArray(raw.unlockedHeroes) ? raw.unlockedHeroes : []).filter(
-    (id): id is HeroId => VALID_HERO_IDS.has(id as HeroId)
-  );
-  const normalizedUnlockedHeroes: HeroId[] = Array.from(
-    new Set<HeroId>(['artemis', 'hatsune_miku', 'aurelia', ...filteredHeroes])
-  );
-  const resolvedHeroId: HeroId =
-    raw.selectedHeroId && VALID_HERO_IDS.has(raw.selectedHeroId as HeroId)
-      ? raw.selectedHeroId
-      : 'artemis';
+  const normalizedUnlockedHeroes: HeroId[] = hasClearedAries ? [DEFAULT_HERO_ID, 'bellona'] : [DEFAULT_HERO_ID];
+  const resolvedHeroId = isPlayableHeroId(raw.selectedHeroId) && normalizedUnlockedHeroes.includes(raw.selectedHeroId)
+    ? raw.selectedHeroId
+    : DEFAULT_HERO_ID;
   const normalizedHeroStars: Partial<Record<HeroId, number>> = {
-    artemis: Math.max(0, Math.floor(raw.heroStars?.artemis ?? 0)),
-    hatsune_miku: Math.max(0, Math.floor(raw.heroStars?.hatsune_miku ?? 0)),
     aurelia: Math.max(0, Math.floor(raw.heroStars?.aurelia ?? 0)),
     ...(hasClearedAries ? { bellona: Math.max(0, Math.floor(raw.heroStars?.bellona ?? 0)) } : {}),
   };
@@ -478,6 +468,8 @@ export function migrateSaveData(raw: SaveData): SaveData {
     aliceDefaultMigrated: true,
     unlockedHeroes: normalizedUnlockedHeroes,
     heroStars: normalizedHeroStars,
+    heroMastery: normalizeHeroMastery(raw.heroMastery),
+    loadoutPresets: normalizeLoadoutPresets(raw.loadoutPresets),
     pets: normalizedPets,
     equippedPetId: resolvedEquippedPetId,
     evolvedPets: normalizedEvolvedPets,
@@ -1744,7 +1736,7 @@ export function normalizeLoadoutPresets(raw?: LoadoutPreset[]): LoadoutPreset[] 
         typeof p.name === 'string' && p.name.trim().length > 0
           ? p.name.trim().slice(0, 28)
           : DEFAULT_LOADOUT_PRESET_SLOTS.find((s) => s.slotId === p.slotId)?.defaultName ?? 'Bộ Trang Bị',
-      heroId: p.heroId,
+      heroId: normalizePlayableHeroId(p.heroId),
       equipped: { ...(p.equipped ?? {}) },
       equippedRunes: Array.isArray(p.equippedRunes) ? p.equippedRunes.slice(0, 4) : [],
       equippedPetId: p.equippedPetId ?? null,

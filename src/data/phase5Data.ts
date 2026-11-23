@@ -1,3 +1,4 @@
+import { normalizePlayableHeroId } from './heroesData';
 import { CHAPTERS } from './chaptersData';
 import { getBossTelemetryKey, migrateSaveData, PUNISH_WINDOW_DAMAGE_BONUS, PUNISH_WINDOW_PHASE3_BONUS } from './earlyProgressionData';
 import { createInitialSaveData } from './gearData';
@@ -70,7 +71,7 @@ export const HERO_ACTIVE_SKILLS: Record<HeroId, HeroActiveSkillDef> = {
 };
 
 export function getHeroActiveSkill(heroId: HeroId): HeroActiveSkillDef {
-  return HERO_ACTIVE_SKILLS[heroId] ?? HERO_ACTIVE_SKILLS.artemis;
+  return HERO_ACTIVE_SKILLS[normalizePlayableHeroId(heroId)];
 }
 
 // ============================================================================
