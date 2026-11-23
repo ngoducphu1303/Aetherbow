@@ -78,6 +78,7 @@ function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
     artemis: 'Cung Ngân Hà Tinh Tú +20',
     hatsune_miku: 'Cung Nhịp Điệu +20',
     aurelia: 'Cung Thái Dương Regulus +20',
+    bellona: 'Cung Hỏa Sơn Bạch Dương',
   };
   const mountPool = ['Hắc Long'];
   const wingPool = [
@@ -394,7 +395,7 @@ export class LiveAiPlayersService {
           items.map((msg, idx) => ({
             ...msg,
             heroId:
-              msg.heroId === 'artemis' || msg.heroId === 'hatsune_miku' || msg.heroId === 'aurelia'
+              msg.heroId === 'artemis' || msg.heroId === 'hatsune_miku' || msg.heroId === 'aurelia' || msg.heroId === 'bellona'
                 ? msg.heroId
                 : idx % 2 === 0
                 ? 'artemis'

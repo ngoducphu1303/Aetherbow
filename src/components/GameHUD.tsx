@@ -1197,6 +1197,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <div className="w-full max-w-[270px] mx-auto rounded-xl px-2.5 py-1.5 bg-[#0a0d1d]/90 border border-rose-400/40 shadow-lg flex items-center gap-2.5">
             <EnemyPortraitBadge
               kind={hud.activeTargetKind}
+              chapterId={hud.activeTargetChapterId}
               variant="icon"
               alt={hud.activeTargetName || ENEMY_LABEL_VI[hud.activeTargetKind]}
               className="w-7 h-7 rounded-lg"

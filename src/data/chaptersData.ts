@@ -59,7 +59,7 @@ const RAW_ZODIAC_CHAPTERS: RawZodiacChapter[] = [
     zodiacIcon: '♈',
     zodiacName: 'Bạch Dương',
     regionName: 'Hỏa Sơn Sừng Đỏ',
-    subtitle: 'Chòm sao Bạch Dương bùng cháy giữa nham thạch, nơi Hỏa Dương Chiến Vương ngự trị.',
+    subtitle: 'Đối đầu Hỏa Dương Chiến Vương. Vượt chương để mở Bellona và Bộ Sưu Tập Hỏa Sơn Sừng Đỏ.',
     bossName: 'Hỏa Dương Chiến Vương',
     floorPrimary: '#381224',
     floorAccent: '#e11d48',
@@ -74,8 +74,8 @@ const RAW_ZODIAC_CHAPTERS: RawZodiacChapter[] = [
     dmgScale: 1.85,
     goldBonusMult: 1.55,
     recommendedPower: 4500,
-    subBossNames: ['Golem Dung Nham', 'Nữ Hoàng Nhện Độc'],
-    enemyFamily: [EnemyKind.DRAGON_WHELP, EnemyKind.GOLEM, EnemyKind.IMP_ARCHER],
+    subBossNames: ['Cinderhorn · Tiên Phong', 'Cinderhorn · Thống Lĩnh'],
+    enemyFamily: [EnemyKind.SKIRMISHER, EnemyKind.GOLEM, EnemyKind.IMP_ARCHER],
   },
   {
     id: 3,
@@ -443,7 +443,7 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
         for (let w = 0; w < waveCount; w++) {
           waves.push({
             enemies: [
-              { kind: e1, count: 2 + Math.floor(s / 4), isElite: s >= 5 && w === 0 },
+              { kind: ch.id === 2 && (s === 3 || w === 1) ? EnemyKind.DRAGON_WHELP : e1, count: 2 + Math.floor(s / 4), isElite: s >= 5 && w === 0 },
               { kind: e2, count: 1 + Math.floor(s / 3) },
               ...(s >= 3 ? [{ kind: e3, count: 1 + Math.floor(s / 5) }] : []),
             ],

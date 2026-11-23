@@ -21,8 +21,8 @@ const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 function assertAssetFileExists(publicPath: string, contextLabel: string) {
   const decodedPath = decodeURI(publicPath);
   assert.ok(
-    decodedPath.startsWith('/assets/apiaetherbow/') || decodedPath.startsWith('/assets/Chương 1/'),
-    `${contextLabel}: expected /assets/apiaetherbow/... or /assets/Chương 1/... path, got "${decodedPath}"`
+    decodedPath.startsWith('/assets/apiaetherbow/') || decodedPath.startsWith('/assets/Chương 1/') || decodedPath.startsWith('/assets/Chương 2/'),
+    `${contextLabel}: expected a character or chapter asset path, got "${decodedPath}"`
   );
   const absPath = path.join(PUBLIC_DIR, decodedPath.replace(/^\/+/, ''));
   assert.ok(
@@ -36,11 +36,11 @@ function assertAssetFileExists(publicPath: string, contextLabel: string) {
   );
 }
 
-test('Hero roster contains Alice, Hatsune Miku, and Aurelia with valid non-empty assets', () => {
+test('Hero roster contains Alice, Hatsune Miku, Aurelia, and Bellona with valid non-empty assets', () => {
   assert.deepEqual(
     HEROES.map((h) => h.id),
-    ['artemis', 'hatsune_miku', 'aurelia'],
-    'Expected Alice (artemis), Hatsune Miku (hatsune_miku), and Aurelia (aurelia)'
+    ['artemis', 'hatsune_miku', 'aurelia', 'bellona'],
+    'Expected the four playable heroes'
   );
   for (const hero of HEROES) {
     const pack = getHeroAssetPack(hero.id);
@@ -51,8 +51,8 @@ test('Hero roster contains Alice, Hatsune Miku, and Aurelia with valid non-empty
   }
 });
 
-test('HERO_SKINS contains Aurelia 4 Solar Leo skins and getSkinAssetPack falls back safely for Alice & Miku', () => {
-  assert.equal(HERO_SKINS.length, 4, 'Expected 4 Aurelia Solar Leo skins');
+test('HERO_SKINS contains the Solar Leo and Golden Fleece skins and getSkinAssetPack falls back safely for Alice & Miku', () => {
+  assert.equal(HERO_SKINS.length, 5, 'Expected four Aurelia skins and one Bellona skin');
   for (const skin of HERO_SKINS) {
     const pack = getSkinAssetPack(skin.id, skin.heroId ?? 'aurelia');
     assertAssetFileExists(pack.icon, `Skin ${skin.id} icon`);

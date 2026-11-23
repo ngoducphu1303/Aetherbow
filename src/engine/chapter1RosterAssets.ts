@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EnemyKind } from '../types/game';
 import {
   AUTO_RIG_CALIBRATION,
+  type AutoRigArchetype,
   AutoRigInstance,
   instantiateAutoRigModel,
   prepareAutoRigTemplate,
@@ -16,12 +17,17 @@ export type Chapter1RosterAssetId =
   | 'sun_spearman'
   | 'winged_solar_lion';
 
+export type Chapter2RosterAssetId =
+  | 'magma-ram' | 'obsidian-golem' | 'crimson-spirit' | 'aries-berserker' | 'cinderhorn' | 'kratos-aries';
+
+export type CampaignRosterAssetId = Chapter1RosterAssetId | Chapter2RosterAssetId;
+
 export type Chapter1RosterVariant = 'high' | 'lite';
 
 export type Chapter1RosterBurstType = 'none' | 'lunge' | 'slam' | 'cast' | 'roar';
 
 export interface Chapter1RosterSpec {
-  id: Chapter1RosterAssetId;
+  id: CampaignRosterAssetId;
   displayName: string;
   roleLabel: string;
   isSubBoss: boolean;
@@ -112,6 +118,50 @@ export const CHAPTER1_ROSTER_ASSET_IDS: readonly Chapter1RosterAssetId[] = [
   'winged_solar_lion',
 ];
 
+const CHAPTER2_ROSTER_RIGS = {
+  'magma-ram': 'fire_lion',
+  'obsidian-golem': 'stone_guardian',
+  'crimson-spirit': 'flame_spirit',
+  'aries-berserker': 'sun_spearman',
+  cinderhorn: 'winged_solar_lion',
+  'kratos-aries': 'stone_guardian',
+} as const satisfies Record<Chapter2RosterAssetId, AutoRigArchetype>;
+
+const CHAPTER2_ROSTER_DEFINITIONS = {
+  'magma-ram': ['Dương Hỏa Dung Nham', EnemyKind.SKIRMISHER, 1.60, 0, 0],
+  'obsidian-golem': ['Golem Hắc Diện', EnemyKind.GOLEM, 2.25, 0, 0],
+  'crimson-spirit': ['Hỏa Linh Xích Hỏa', EnemyKind.IMP_ARCHER, 1.75, 0.24, 0],
+  'aries-berserker': ['Cuồng Chiến Bạch Dương', EnemyKind.DRAGON_WHELP, 1.90, 0, 0],
+  cinderhorn: ['Cinderhorn', EnemyKind.WARDEN_BOSS, 2.70, 0.04, 0],
+  'kratos-aries': ['Kratos-Aries', EnemyKind.ZODIAC_BOSS, 3.25, 0, 0],
+} as const;
+
+export const CHAPTER2_ROSTER_ASSET_IDS = Object.keys(CHAPTER2_ROSTER_DEFINITIONS) as Chapter2RosterAssetId[];
+
+export function getCampaignRosterArchetype(id: CampaignRosterAssetId): AutoRigArchetype {
+  return CHAPTER2_ROSTER_RIGS[id as Chapter2RosterAssetId] ?? (id as Chapter1RosterAssetId);
+}
+
+function getCampaignRosterSpec(id: CampaignRosterAssetId): Chapter1RosterSpec {
+  const aries = CHAPTER2_ROSTER_DEFINITIONS[id as Chapter2RosterAssetId];
+  if (!aries) return CHAPTER1_ROSTER_SPECS[id as Chapter1RosterAssetId];
+
+  const [displayName, kind, targetHeight, hoverOffsetY, facingYawOffset] = aries;
+  return {
+    id,
+    displayName,
+    roleLabel: '',
+    isSubBoss: id === 'cinderhorn',
+    enemyKinds: id === 'cinderhorn' ? [kind, EnemyKind.TITAN_BOSS] : [kind],
+    highPathSegments: ['assets', 'Chương 2', 'Runtime', `${id}-high.glb`],
+    litePathSegments: ['assets', 'Chương 2', 'Runtime', `${id}-lite.glb`],
+    targetHeight,
+    hoverOffsetY,
+    facingYawOffset,
+    maxLiteBytes: 1_000_000,
+  };
+}
+
 export interface Chapter1RosterEncounterContext {
   chapterId: number;
   enemyKind: EnemyKind;
@@ -147,13 +197,19 @@ export function resolveChapter1RosterAssetId(
   }
 }
 
+export function resolveCampaignRosterAssetId(ctx: Chapter1RosterEncounterContext): CampaignRosterAssetId | null {
+  if (ctx.chapterId !== 2) return resolveChapter1RosterAssetId(ctx);
+  if (ctx.isSideModeActive || ctx.isTrainingDummy || ctx.isArenaRival) return null;
+  return CHAPTER2_ROSTER_ASSET_IDS.find((id) => getCampaignRosterSpec(id).enemyKinds.includes(ctx.enemyKind)) ?? null;
+}
+
 export function getChapter1RosterAssetUrl(
-  assetId: Chapter1RosterAssetId,
+  assetId: CampaignRosterAssetId,
   variant: Chapter1RosterVariant,
   baseUrl = '/',
   baseUri = 'http://localhost:3000/'
 ): URL {
-  const spec = CHAPTER1_ROSTER_SPECS[assetId];
+  const spec = getCampaignRosterSpec(assetId);
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const segments = variant === 'lite' ? spec.litePathSegments : spec.highPathSegments;
   const encodedPath = segments.map((seg) => encodeURIComponent(seg)).join('/');
@@ -183,7 +239,7 @@ export interface DownloadChapter1RosterOptions {
 
 const downloadCache = new Map<string, Promise<ArrayBuffer>>();
 
-function cacheKey(assetId: Chapter1RosterAssetId, variant: Chapter1RosterVariant): string {
+function cacheKey(assetId: CampaignRosterAssetId, variant: Chapter1RosterVariant): string {
   return `${assetId}:${variant}`;
 }
 
@@ -192,7 +248,7 @@ export function clearChapter1RosterDownloadCache(): void {
 }
 
 async function fetchRosterVariantBytes(
-  assetId: Chapter1RosterAssetId,
+  assetId: CampaignRosterAssetId,
   variant: Chapter1RosterVariant,
   options: DownloadChapter1RosterOptions
 ): Promise<ArrayBuffer> {
@@ -214,7 +270,7 @@ async function fetchRosterVariantBytes(
  * Downloads and caches the compressed GLB bytes. If 'high' fails, automatically falls back to 'lite'.
  */
 export function downloadChapter1RosterArrayBuffer(
-  assetId: Chapter1RosterAssetId,
+  assetId: CampaignRosterAssetId,
   variant: Chapter1RosterVariant,
   options: DownloadChapter1RosterOptions = {}
 ): Promise<ArrayBuffer> {
@@ -241,7 +297,7 @@ export function downloadChapter1RosterArrayBuffer(
 }
 
 export interface PreparedChapter1RosterTemplate {
-  assetId: Chapter1RosterAssetId;
+  assetId: CampaignRosterAssetId;
   variant: Chapter1RosterVariant;
   root: THREE.Group;
   rigTemplate: PreparedAutoRigTemplate;
@@ -252,7 +308,7 @@ export interface PreparedChapter1RosterTemplate {
 }
 
 export interface InstantiatedChapter1RosterModel {
-  assetId: Chapter1RosterAssetId;
+  assetId: CampaignRosterAssetId;
   group: THREE.Group;
   rigInstance: AutoRigInstance;
   hitMeshes: THREE.Mesh[];
@@ -265,18 +321,20 @@ export interface InstantiatedChapter1RosterModel {
  * as shared cached resources so multiple enemy instances share GPU memory cleanly on Dell E5430.
  */
 export function prepareChapter1RosterTemplate(
-  assetId: Chapter1RosterAssetId,
+  assetId: CampaignRosterAssetId,
   gltfScene: THREE.Object3D,
   maxAnisotropy = 4,
   options?: { liteMode?: boolean; facingYawOffset?: number }
 ): PreparedChapter1RosterTemplate {
-  const spec = CHAPTER1_ROSTER_SPECS[assetId];
+  const spec = getCampaignRosterSpec(assetId);
   const liteMode = Boolean(options?.liteMode);
   const variant: Chapter1RosterVariant = liteMode ? 'lite' : 'high';
 
-  const rigTemplate = prepareAutoRigTemplate(assetId, gltfScene, maxAnisotropy, {
+  const rigTemplate = prepareAutoRigTemplate(getCampaignRosterArchetype(assetId), gltfScene, maxAnisotropy, {
     liteMode,
     facingYawOffset: options?.facingYawOffset ?? spec.facingYawOffset,
+    targetHeight: spec.targetHeight,
+    hoverOffsetY: spec.hoverOffsetY,
   });
 
   // Dispose raw unbaked geometries from the temporary parsed GLTF scene (textures are retained by rigTemplate)
@@ -332,14 +390,14 @@ const parsedTemplateCache = new Map<string, Promise<PreparedChapter1RosterTempla
 const resolvedTemplates = new Map<string, PreparedChapter1RosterTemplate>();
 
 export function getCachedChapter1RosterTemplateSync(
-  assetId: Chapter1RosterAssetId,
+  assetId: CampaignRosterAssetId,
   variant: Chapter1RosterVariant
 ): PreparedChapter1RosterTemplate | null {
   return resolvedTemplates.get(cacheKey(assetId, variant)) ?? null;
 }
 
 export function loadChapter1RosterTemplate(
-  assetId: Chapter1RosterAssetId,
+  assetId: CampaignRosterAssetId,
   variant: Chapter1RosterVariant,
   maxAnisotropy: number,
   options: DownloadChapter1RosterOptions = {}
@@ -398,7 +456,7 @@ export function disposeChapter1RosterTemplateCache(): void {
 }
 
 export interface Chapter1RosterMotionInput {
-  assetId: Chapter1RosterAssetId;
+  assetId: CampaignRosterAssetId;
   elapsed: number;
   phaseAngle: number;
   speed: number;
@@ -446,7 +504,7 @@ export function computeChapter1RosterMotion(
   input: Chapter1RosterMotionInput
 ): Chapter1RosterMotionSnapshot {
   const {
-    assetId,
+    assetId: inputAssetId,
     elapsed,
     phaseAngle,
     speed,
@@ -459,6 +517,7 @@ export function computeChapter1RosterMotion(
     hitFlashTimer,
   } = input;
 
+  const assetId = getCampaignRosterArchetype(inputAssetId);
   const moveFactor = Math.min(1, speed / 3.4);
   const t = elapsed + phaseAngle;
 

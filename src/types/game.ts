@@ -29,7 +29,7 @@ export enum Rarity {
   MYTHIC = 'MYTHIC',
 }
 
-export type HeroId = 'artemis' | 'hatsune_miku' | 'aurelia';
+export type HeroId = 'artemis' | 'hatsune_miku' | 'aurelia' | 'bellona';
 
 export type CrownStyle =
   | 'crescent'
@@ -803,7 +803,7 @@ export type PetId =
   | 'eclipse_fox'
   | 'jade_turtle'
   | 'star_fairy'
-  | 'astraeo';
+  | 'astraeo' | 'pyro';
 
 export interface PetDefinition {
   id: PetId;
@@ -834,7 +834,7 @@ export type HeroSkinId =
   | 'aurelia_oasis_dancer'
   | 'aurelia_temple_commander'
   | 'aurelia_solaris_valkyrie'
-  | 'aurelia_winter_solstice';
+  | 'aurelia_winter_solstice' | 'golden_fleece';
 
 export interface HeroSkinDefinition {
   id: HeroSkinId;
@@ -1116,7 +1116,7 @@ export type WingId =
   | 'phoenix_blaze'
   | 'swan_nebula'
   | 'seraph_zodiac'
-  | 'solar_zenith';
+  | 'solar_zenith' | 'crimson_ram_wings';
 
 export interface WingDefinition {
   id: WingId;
@@ -1747,7 +1747,7 @@ export interface AiLiveHubSnapshot {
   spectatorMatch?: LiveSpectatorMatchSnapshot | null;
 }
 
-export type MountId = 'black_dragon' | 'solarius';
+export type MountId = 'black_dragon' | 'solarius' | 'vulcan';
 
 export interface MountDefinition {
   id: MountId;
@@ -1903,7 +1903,7 @@ export type ArtifactId =
   | 'phoenix_orb'
   | 'frost_prism'
   | 'eclipse_chalice'
-  | 'astrolabe_regulus';
+  | 'astrolabe_regulus' | 'war_horn';
 
 export interface MythicArtifactDefinition {
   id: ArtifactId;
@@ -2078,6 +2078,7 @@ export interface HudSnapshot {
   bossEnemyKind?: EnemyKind;
   weeklyBossId?: string;
   activeTargetKind?: EnemyKind;
+  activeTargetChapterId?: number;
   activeTargetName?: string;
   activeTargetHpPct?: number;
   bossHp: number;
@@ -2382,7 +2383,7 @@ export type HaloId =
   | 'lunar_eclipse'
   | 'stellar_wheel'
   | 'seraphim_glory'
-  | 'leo_sovereign';
+  | 'leo_sovereign' | 'aries_vanguard';
 
 export interface DivineHaloDefinition {
   id: HaloId;

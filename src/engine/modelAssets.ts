@@ -99,7 +99,7 @@ function getLabelForActiveModel(path: ModelAsset): string {
 
 function getHeroPreloadAssetForHeroId(heroId: HeroId): ModelAsset | null {
   if (heroId === 'hatsune_miku') return 'heroes/hatsune-miku.glb';
-  if (heroId === 'aurelia') return null; // Aurelia loads on-demand through solarLeoAssets Lite/High pipeline
+  if (heroId === 'aurelia' || heroId === 'bellona') return null; // Aurelia loads on-demand through solarLeoAssets Lite/High pipeline
   return 'heroes/golden-dress-girl.glb';
 }
 

@@ -12,7 +12,8 @@ export type SolarLeoAssetId =
   | 'solar_zenith'
   | 'solarius'
   | 'astrolabe_regulus'
-  | 'leo_sovereign';
+  | 'leo_sovereign'
+  | 'bellona' | 'golden_fleece' | 'pyro' | 'crimson_ram_wings' | 'vulcan' | 'war_horn' | 'aries_vanguard';
 
 export type SolarLeoVariant = 'high' | 'lite';
 
@@ -344,7 +345,29 @@ export interface SolarLeoHeroAuraRig {
   ribbonRing?: THREE.Mesh;
 }
 
+function ariesAsset(
+  id: SolarLeoAssetId, slug: string, name: string, rigType: SolarLeoRigType,
+  targetHeight: number, facingYawOffset = 0
+): SolarLeoAssetSpec {
+  return {
+    id, displayName: name, rigType, targetHeight, facingYawOffset,
+    highPathSegments: ['assets', 'Chương 2', 'Runtime', `${slug}-high.glb`],
+    litePathSegments: ['assets', 'Chương 2', 'Runtime', `${slug}-lite.glb`],
+    thumbnailPathSegments: ['assets', 'Chương 2', 'Runtime', `${slug}.webp`],
+    groundAtZero: rigType === 'humanoid' || rigType === 'quadruped_mount',
+    maxLiteBytes: 900_000,
+  };
+}
+
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
+  bellona: ariesAsset('bellona', 'bellona', 'Bellona', 'humanoid', 2.05),
+  golden_fleece: ariesAsset('golden_fleece', 'golden-fleece', 'Hoàng Bào Kim Dương', 'humanoid', 2.05),
+  pyro: ariesAsset('pyro', 'pyro', 'Pyro', 'pet', 0.72),
+  crimson_ram_wings: ariesAsset('crimson_ram_wings', 'crimson-ram-wings', 'Thần Dực Xích Dương', 'wings', 1.70),
+  vulcan: ariesAsset('vulcan', 'vulcan', 'Vulcan', 'quadruped_mount', 1.62),
+  war_horn: ariesAsset('war_horn', 'war-horn', 'Chiến Giác Hỏa Tinh', 'artifact', 0.65),
+  aries_vanguard: ariesAsset('aries_vanguard', 'aries-halo', 'Hào Quang Tiên Phong Bạch Dương', 'halo', 1.48),
+
   aurelia: {
     id: 'aurelia',
     displayName: 'Aurelia · Nữ Hoàng Thái Dương',
@@ -485,6 +508,7 @@ export function resolveSolarLeoHeroAssetId(
   heroId: HeroId | undefined,
   skinId?: HeroSkinId
 ): SolarLeoAssetId | null {
+  if (heroId === 'bellona') return skinId === 'golden_fleece' ? 'golden_fleece' : 'bellona';
   if (heroId !== 'aurelia') return null;
   if (
     skinId === 'aurelia_oasis_dancer' ||

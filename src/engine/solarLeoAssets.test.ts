@@ -330,17 +330,17 @@ test('Catalogs, asset registry, initial save, and save migration unlock all 10 S
   assert.equal(resolveSolarLeoHeroAssetId('artemis'), null);
   assert.equal(resolveSolarLeoHeroAssetId('hatsune_miku'), null);
 
-  // Pruned catalogs: only the Solar Leo pack survives in each pruned category
-  assert.deepEqual(PETS_CATALOG.map((p) => p.id), ['astraeo']);
+  // The chapter collections remain available without restoring pruned cosmetics.
+  assert.deepEqual(PETS_CATALOG.map((p) => p.id), ['pyro', 'astraeo']);
   assert.deepEqual(ZODIAC_AURAS, []);
-  assert.deepEqual(ZODIAC_WINGS.map((w) => w.id), ['solar_zenith']);
+  assert.deepEqual(ZODIAC_WINGS.map((w) => w.id), ['crimson_ram_wings', 'solar_zenith']);
   assert.deepEqual(CELESTIAL_WING_DEFS, []);
   assert.deepEqual(AVATAR_FRAMES, []);
-  assert.deepEqual(ZODIAC_MOUNTS.map((m) => m.id), ['solarius']);
+  assert.deepEqual(ZODIAC_MOUNTS.map((m) => m.id), ['vulcan', 'solarius']);
   assert.deepEqual(WEAPON_AURAS, []);
-  assert.deepEqual(MYTHIC_ARTIFACTS.map((a) => a.id), ['astrolabe_regulus']);
+  assert.deepEqual(MYTHIC_ARTIFACTS.map((a) => a.id), ['war_horn', 'astrolabe_regulus']);
   assert.deepEqual(HERO_BONDS, []);
-  assert.deepEqual(DIVINE_HALO_CATALOG.map((h) => h.id), ['leo_sovereign']);
+  assert.deepEqual(DIVINE_HALO_CATALOG.map((h) => h.id), ['aries_vanguard', 'leo_sovereign']);
   assert.equal(HERO_SKINS.filter((s) => s.heroId === 'aurelia').length, 4);
 
   // Thumbnails & Hero/Skin asset packs point to lightweight WebP files

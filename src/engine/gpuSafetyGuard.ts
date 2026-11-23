@@ -495,7 +495,7 @@ export function readPersistedLowEndSafetyMode(storage?: Storage | null): LowEndS
 export function readPersistedSelectedHeroId(storage?: Storage | null): HeroId {
   const parsed = readPersistedSaveSnapshot(storage);
   const id = parsed?.selectedHeroId;
-  if (id === 'artemis' || id === 'hatsune_miku' || id === 'aurelia') {
+  if (id === 'artemis' || id === 'hatsune_miku' || id === 'aurelia' || id === 'bellona') {
     return id;
   }
   return 'artemis';

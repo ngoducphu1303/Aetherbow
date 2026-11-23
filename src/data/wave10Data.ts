@@ -21,6 +21,13 @@ export const DIVINE_HALO_MAX_LEVEL = 12;
 
 export const DIVINE_HALO_CATALOG: DivineHaloDefinition[] = [
   {
+    id: 'aries_vanguard', name: 'Hào Quang Tiên Phong Bạch Dương', badge: 'CHƯƠNG 2 · HÀO QUANG 3D',
+    elementLabel: 'Bạch Dương · Hỏa Tinh', desc: 'Vòng lửa khắc huy hiệu Bạch Dương.',
+    primaryHex: 0xf97316, secondaryHex: 0xffba60,
+    baseAtkPct: 0.11, baseHpPct: 0.09, baseCritDmg: 0.22, baseDr: 0.045,
+    atkPctPerLv: 0.018, hpPctPerLv: 0.015, critDmgPerLv: 0.03, unlockGems: 0, unlockDivineCrystals: 0,
+  },
+  {
     id: 'leo_sovereign',
     name: 'Hào Quang Sư Tử Chí Tôn',
     badge: 'CHƯƠNG 1 · THẦN VỰC 3D',

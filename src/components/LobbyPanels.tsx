@@ -1,3 +1,4 @@
+import { canClaimChapter2Asset } from '../data/chapter2Collection';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpCircle,
@@ -1480,17 +1481,19 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   <>
                     <button
                       type="button"
-                      disabled={save.gold < hero.unlockGold}
+                      disabled={save.gold < hero.unlockGold || save.highestChapterCleared < (hero.unlockChapterReq ?? 0)}
                       onClick={() => onUnlockHero(hero.id, 'gold')}
                       className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                        save.gold >= hero.unlockGold
+                        save.gold >= hero.unlockGold && save.highestChapterCleared >= (hero.unlockChapterReq ?? 0)
                           ? 'a2-yellow-btn'
                           : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
                       }`}
                     >
                       <Lock className="w-3.5 h-3.5" />
                       <span className="font-mono-nums">
-                        {hero.unlockGold === 0 ? 'Chiêu Mộ Miễn Phí' : `Mở · ${hero.unlockGold} Vàng`}
+                        {save.highestChapterCleared < (hero.unlockChapterReq ?? 0)
+                          ? `Vượt Chương ${hero.unlockChapterReq} để mở`
+                          : hero.unlockGold === 0 ? 'Chiêu Mộ Miễn Phí' : `Mở · ${hero.unlockGold} Vàng`}
                       </span>
                     </button>
                     {hero.unlockGems > 0 && (
@@ -1795,7 +1798,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {PETS_CATALOG.map((pet) => {
+                {PETS_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((pet) => {
                   const inst = ownedPets.find((p) => p.petId === pet.id);
                   const lv = inst?.level ?? 1;
                   const isEquipped = save.equippedPetId === pet.id;
@@ -2226,7 +2229,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {ZODIAC_WINGS.map((w) => {
+                {ZODIAC_WINGS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((w) => {
                   const isOwned = unlockedWings.includes(w.id);
                   const isEquipped = equippedWingId === w.id;
                   const lv = wingLevels[w.id] ?? 1;
@@ -2443,7 +2446,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ZODIAC_MOUNTS.map((m) => {
+                {ZODIAC_MOUNTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((m) => {
                   const isOwned = unlockedMounts.includes(m.id);
                   const isEquipped = equippedMountId === m.id;
                   const lv = Math.max(1, mountLevels[m.id] ?? 1);
@@ -2755,7 +2758,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
 
               {/* 4 Mythic Artifacts */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {MYTHIC_ARTIFACTS.map((art) => {
+                {MYTHIC_ARTIFACTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((art) => {
                   const isOwned = unlockedArtifacts.includes(art.id);
                   const isEquipped = equippedArtifactId === art.id;
                   const lv = Math.max(1, artifactLevels[art.id] ?? 1);
@@ -2955,7 +2958,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {DIVINE_HALO_CATALOG.map((halo) => {
+                {DIVINE_HALO_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((halo) => {
                   const isOwned = unlockedHalos.includes(halo.id);
                   const isEquipped = equippedHaloId === halo.id;
                   const lv = Math.max(1, haloLevels[halo.id] ?? 1);

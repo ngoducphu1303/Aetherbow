@@ -28,6 +28,13 @@ export const MAX_WING_LEVEL = 15;
 
 export const ZODIAC_WINGS: WingDefinition[] = [
   {
+    id: 'crimson_ram_wings', name: 'Thần Dực Xích Dương', badge: 'CHƯƠNG 2 · CÁNH 3D', rarity: 'Thần Thoại',
+    desc: 'Cánh lửa của Bạch Dương, nhận khi vượt Hỏa Sơn Sừng Đỏ.',
+    featherStyle: 'seraph', primaryHex: 0xca3825, secondaryHex: 0xff912b, spineHex: 0xffdc8a,
+    baseAtk: 96, baseHp: 440, baseCrit: 0.095, baseAspd: 0.11,
+    atkPerLv: 24, hpPerLv: 110, unlockGems: 0, unlockFeathers: 0,
+  },
+  {
     id: 'solar_zenith',
     name: 'Thần Dực Đỉnh Thái Dương',
     badge: 'CHƯƠNG 1 · THẦN THOẠI 3D',

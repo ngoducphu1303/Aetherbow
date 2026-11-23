@@ -17,6 +17,14 @@ import { getTodayKey } from './questsData';
 
 export const PETS_CATALOG: PetDefinition[] = [
   {
+    id: 'pyro', name: 'Pyro', title: 'Tinh Linh Dương Hỏa', element: 'fire',
+    rarity: 'Huyền Thoại',
+    desc: 'Dương con hỏa vũ đồng hành với người chinh phục Hỏa Sơn Sừng Đỏ.',
+    skillName: 'Hỏa Tiễn', skillDesc: 'Bắn hỏa tiễn vào mục tiêu gần nhất.',
+    baseAtk: 26, baseHp: 125, baseCrit: 0.06, unlockGems: 0, unlockGold: 0,
+    primaryHex: 0xf97316, secondaryHex: 0xffdd8a, fireInterval: 0.92,
+  },
+  {
     id: 'astraeo',
     name: 'Astraeo',
     title: 'Tinh Linh Nhật Luân Sư Tử',
@@ -61,6 +69,11 @@ export function getPetUpgradeCost(level: number): { essence: number; gold: numbe
 }
 
 export const HERO_SKINS: HeroSkinDefinition[] = [
+  {
+    id: 'golden_fleece', heroId: 'bellona', name: 'Hoàng Bào Kim Dương',
+    badge: 'CHƯƠNG 2 · TRANG PHỤC', desc: 'Golden Fleece Empress Regalia dành riêng cho Bellona.',
+    unlockGems: 0, unlockGold: 0, atkBonus: 0, hpBonus: 0,
+  },
   {
     id: 'aurelia_oasis_dancer',
     heroId: 'aurelia',

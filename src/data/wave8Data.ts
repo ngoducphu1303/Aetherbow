@@ -23,6 +23,13 @@ export const MAX_WEAPON_AURA_LEVEL = 10;
 
 export const ZODIAC_MOUNTS: MountDefinition[] = [
   {
+    id: 'vulcan', name: 'Vulcan · Chiến Dương', badge: 'CHƯƠNG 2 · THÚ CƯỠI 3D', rarity: 'Huyền Thoại',
+    desc: 'Chiến dương của lò rèn Bạch Dương, có chuyển động khung xương bốn chân.',
+    bodyHex: 0x60291a, armorHex: 0xa72e25, maneHex: 0xf97316, glowHex: 0xffcf71,
+    baseAtk: 46, baseHp: 280, baseMoveSpeed: 0.14, baseDr: 0.05,
+    atkPerLv: 12, hpPerLv: 68, unlockGems: 0, unlockShards: 0,
+  },
+  {
     id: 'solarius',
     name: 'Solarius · Sư Tử Thái Dương',
     badge: 'CHƯƠNG 1 · HUYỀN THOẠI 3D',

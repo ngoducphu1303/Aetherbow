@@ -20,7 +20,29 @@ export interface BossAssetPack {
   portrait: string;
 }
 
+function ariesImage(assetKey: string): string {
+  return encodeURI(`/assets/Chương 2/Runtime/${assetKey}.webp`);
+}
+
+function ariesPortrait(assetKey: string): EnemyAssetPack {
+  const image = ariesImage(assetKey);
+  return { assetKey, icon: image, portrait: image };
+}
+
+function ariesCharacter(assetKey: string): CharacterAssetPack {
+  const pack = ariesPortrait(assetKey);
+  return { ...pack, skill: pack.icon, burst: pack.icon };
+}
+
+const ARIES_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }>> = {
+  [EnemyKind.SKIRMISHER]: { ...ariesPortrait('magma-ram'), name: 'Dương Hỏa Dung Nham' },
+  [EnemyKind.GOLEM]: { ...ariesPortrait('obsidian-golem'), name: 'Golem Hắc Diện' },
+  [EnemyKind.IMP_ARCHER]: { ...ariesPortrait('crimson-spirit'), name: 'Hỏa Linh Xích Hỏa' },
+  [EnemyKind.DRAGON_WHELP]: { ...ariesPortrait('aries-berserker'), name: 'Cuồng Chiến Bạch Dương' },
+};
+
 export const HERO_ASSET_PACKS: Record<HeroId, CharacterAssetPack> = {
+  bellona: ariesCharacter('bellona'),
   artemis: {
     assetKey: 'ganyu',
     icon: '/assets/apiaetherbow/characters/ganyu/icon.webp',
@@ -45,6 +67,7 @@ export const HERO_ASSET_PACKS: Record<HeroId, CharacterAssetPack> = {
 };
 
 export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> = {
+  golden_fleece: ariesCharacter('golden-fleece'),
   aurelia_oasis_dancer: {
     assetKey: 'aurelia-oasis-dancer',
     icon: encodeURI('/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer.webp'),
@@ -76,6 +99,11 @@ export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> =
 };
 
 export const SOLAR_LEO_ITEM_THUMBNAILS: Record<string, string> = {
+  pyro: ariesImage('pyro'),
+  crimson_ram_wings: ariesImage('crimson-ram-wings'),
+  vulcan: ariesImage('vulcan'),
+  war_horn: ariesImage('war-horn'),
+  aries_vanguard: ariesImage('aries-halo'),
   astraeo: encodeURI('/assets/Chương 1/Nhân vật/2. Tinh linh/Astraeo.webp'),
   solar_zenith: encodeURI('/assets/Chương 1/Nhân vật/3. Cánh/Wings of the Solar Zenith.webp'),
   solarius: encodeURI('/assets/Chương 1/Nhân vật/4. Thú cưỡi/Solarius.webp'),
@@ -186,7 +214,7 @@ export const WEEKLY_BOSS_CATALOG: Record<string, BossAssetPack> = {
 
 export const CHAPTER_BOSS_ASSETS: Record<number, BossAssetPack> = {
   1: WEEKLY_BOSS_CATALOG.azhdaha,
-  2: WEEKLY_BOSS_CATALOG['la-signora'],
+  2: ariesPortrait('kratos-aries'),
   3: WEEKLY_BOSS_CATALOG['lupus-boreas'],
   4: WEEKLY_BOSS_CATALOG['everlasting-lord-of-arcane-wisdom'],
   5: WEEKLY_BOSS_CATALOG['all-devouring-narwhal'],
@@ -233,7 +261,15 @@ export function getSkinAssetPack(skinId: HeroSkinId, fallbackHeroId: HeroId = 'a
   return getHeroAssetPack(fallbackHeroId, skinId);
 }
 
-export function getEnemyAssetPack(kind: EnemyKind): EnemyAssetPack {
+export function getEnemyLabel(kind: EnemyKind, chapterId?: number): string {
+  return (chapterId === 2 ? ARIES_ENEMIES[kind]?.name : undefined) ?? ENEMY_LABEL_VI[kind];
+}
+
+export function getEnemyAssetPack(kind: EnemyKind, chapterId?: number): EnemyAssetPack {
+  if (chapterId === 2) {
+    const pack = ARIES_ENEMIES[kind];
+    if (pack) return pack;
+  }
   return ENEMY_ASSET_PACKS[kind] ?? ENEMY_ASSET_PACKS[EnemyKind.SKIRMISHER];
 }
 
@@ -260,6 +296,10 @@ export function getBossAssetPack(opts: {
   if (opts.isGuildBoss) return WEEKLY_BOSS_CATALOG.azhdaha;
 
   const lower = (opts.bossName ?? '').toLowerCase();
+  if (opts.chapterId === 2) {
+    if (lower.startsWith('cinderhorn')) return ariesPortrait('cinderhorn');
+    if (lower.includes('hỏa dương chiến vương') || !lower) return CHAPTER_BOSS_ASSETS[2];
+  }
   if (lower.includes('boreas') || lower.includes('băng đế')) {
     return WEEKLY_BOSS_CATALOG['lupus-boreas'];
   }

@@ -4,7 +4,6 @@ import path from 'node:path';
 import test from 'node:test';
 import * as THREE from 'three';
 import {
-  CHAPTER2_MAP_CDN_URL,
   CHAPTER2_MAP_FLOOR_OFFSET_Y,
   CHAPTER2_MAP_FLOOR_Y_RAW,
   CHAPTER2_MAP_LITE_PATH_SEGMENTS,
@@ -78,7 +77,7 @@ test('Chapter 2 Lite GLB exists intact on disk, stays lightweight (~30k tris, 10
     '/assets/Ch%C6%B0%C6%A1ng%202/Map%20m%E1%BB%9Bi/Aries%20War-Forge%20Arena%20Lite.glb'
   );
   assert.equal(liteUrl.searchParams.get('v'), CHAPTER2_MAP_LITE_VERSION);
-  assert.equal(getChapter2MapHighAssetUrl().href, CHAPTER2_MAP_CDN_URL);
+  assert.equal(decodeURI(getChapter2MapHighAssetUrl().pathname), '/assets/Chương 2/Runtime/aries-arena-high.glb');
 });
 
 test('prepareChapter2MapModel calibrates canonical Aries War-Forge Arena bounds, floor elevation, and shadow flags', () => {
@@ -107,17 +106,17 @@ test('prepareChapter2MapModel calibrates canonical Aries War-Forge Arena bounds,
   assert.equal(mat.emissive.getHex(), 0x2a0c04);
 });
 
-test('fetchChapter2MapArrayBuffer loads CDN high map when healthy and automatically falls back to local Lite GLB on CDN failure', async () => {
-  const validCdnGlb = makeMinimalValidGlb();
+test('fetchChapter2MapArrayBuffer loads local High map when healthy and automatically falls back to local Lite GLB on High failure', async () => {
+  const validHighGlb = makeMinimalValidGlb();
   const validLiteGlb = makeMinimalValidGlb();
   const calls: string[] = [];
 
-  // 1. Healthy CDN load for 'full'
+  // 1. Healthy High load for 'full'
   const healthyFetch: typeof fetch = async (input) => {
     const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     calls.push(urlStr);
-    if (urlStr === CHAPTER2_MAP_CDN_URL) {
-      return new Response(validCdnGlb, {
+    if (urlStr === getChapter2MapHighAssetUrl('/', 'http://127.0.0.1:3000/').href) {
+      return new Response(validHighGlb, {
         status: 200,
         headers: { 'content-type': 'model/gltf-binary' },
       });
@@ -133,14 +132,14 @@ test('fetchChapter2MapArrayBuffer loads CDN high map when healthy and automatica
   assert.equal(okResult.resolvedVariant, 'full');
   assert.equal(okResult.fallbackUsed, false);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0], CHAPTER2_MAP_CDN_URL);
+  assert.equal(calls[0], getChapter2MapHighAssetUrl('/', 'http://127.0.0.1:3000/').href);
 
-  // 2. CDN failure falls back automatically to local Lite GLB
+  // 2. High failure falls back automatically to local Lite GLB
   const fallbackCalls: string[] = [];
-  const failingCdnFetch: typeof fetch = async (input) => {
+  const failingHighFetch: typeof fetch = async (input) => {
     const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     fallbackCalls.push(urlStr);
-    if (urlStr === CHAPTER2_MAP_CDN_URL) {
+    if (urlStr === getChapter2MapHighAssetUrl('/', 'http://127.0.0.1:3000/').href) {
       return new Response('Service Unavailable', { status: 503 });
     }
     if (urlStr.includes('Aries%20War-Forge%20Arena%20Lite.glb')) {
@@ -155,12 +154,12 @@ test('fetchChapter2MapArrayBuffer loads CDN high map when healthy and automatica
     variant: 'full',
     baseUrl: '/',
     baseUri: 'http://127.0.0.1:3000/',
-    fetchImpl: failingCdnFetch,
+    fetchImpl: failingHighFetch,
   });
   assert.equal(fallbackResult.resolvedVariant, 'lite');
   assert.equal(fallbackResult.fallbackUsed, true);
   assert.equal(fallbackCalls.length, 2);
-  assert.equal(fallbackCalls[0], CHAPTER2_MAP_CDN_URL);
+  assert.equal(fallbackCalls[0], getChapter2MapHighAssetUrl('/', 'http://127.0.0.1:3000/').href);
   assert.ok(fallbackCalls[1].includes('Aries%20War-Forge%20Arena%20Lite.glb'));
 });
 

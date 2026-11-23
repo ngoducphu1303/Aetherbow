@@ -522,7 +522,7 @@ export function prepareAutoRigTemplate(
   archetype: AutoRigArchetype,
   gltfScene: THREE.Object3D,
   maxAnisotropy = 4,
-  options?: { liteMode?: boolean; facingYawOffset?: number }
+  options?: { liteMode?: boolean; facingYawOffset?: number; targetHeight?: number; hoverOffsetY?: number }
 ): PreparedAutoRigTemplate {
   const calibration = AUTO_RIG_CALIBRATION[archetype];
   const schema = AUTO_RIG_SCHEMAS[archetype];
@@ -544,13 +544,15 @@ export function prepareAutoRigTemplate(
   rawBox.getCenter(rawCenter);
 
   const rawHeight = Math.max(0.001, rawSize.y);
-  const scale = calibration.targetHeight / rawHeight;
+  const targetHeight = options?.targetHeight ?? calibration.targetHeight;
+  const hoverOffsetY = options?.hoverOffsetY ?? calibration.hoverOffsetY;
+  const scale = targetHeight / rawHeight;
 
   // Transform placing model centered on X/Z, grounded flush at y = hoverOffsetY, height = targetHeight
   const normalizeMatrix = new THREE.Matrix4().compose(
     new THREE.Vector3(
       -rawCenter.x * scale,
-      -rawBox.min.y * scale + calibration.hoverOffsetY,
+      -rawBox.min.y * scale + hoverOffsetY,
       -rawCenter.z * scale
     ),
     new THREE.Quaternion(),

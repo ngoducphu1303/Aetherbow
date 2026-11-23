@@ -1,3 +1,4 @@
+import { canClaimChapter2Asset } from '../data/chapter2Collection';
 import React, { useState } from 'react';
 import {
   Camera,
@@ -211,7 +212,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
 
         <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pr-1">
           {tab === 'halos' &&
-            DIVINE_HALO_CATALOG.map((h) => {
+            DIVINE_HALO_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((h) => {
               const owned = unlockedHalos.has(h.id);
               const equipped = save.equippedHaloId === h.id;
               const isPreviewing = activeHaloPreview === h.id;
@@ -327,7 +328,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                 </div>
               </div>
 
-              {ZODIAC_MOUNTS.map((m) => {
+              {ZODIAC_MOUNTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((m) => {
                 const owned = unlockedMounts.has(m.id);
                 const equipped = equippedMountId === m.id;
                 const isPreviewing = activeMountPreview === m.id && activeSteedPreview === null;
@@ -475,7 +476,7 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
           )}
 
           {tab === 'wings' &&
-            ZODIAC_WINGS.map((w) => {
+            ZODIAC_WINGS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared)).map((w) => {
               const owned = unlockedWings.has(w.id);
               const equipped = save.equippedWingId === w.id;
               const isPreviewing = activeWingPreview === w.id;

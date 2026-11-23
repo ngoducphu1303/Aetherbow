@@ -7,6 +7,7 @@ import { HeroDefinition, HeroId } from '../types/game';
  * - Unlock costs align cleanly with the rebalanced Ch.1–3 Gold/Gem economy.
  */
 export const HEROES: HeroDefinition[] = [
+
   {
     id: 'artemis',
     name: 'Alice',
@@ -79,6 +80,22 @@ export const HEROES: HeroDefinition[] = [
     eyeColor: '#f59e0b',
     cheekColor: '#fb923c',
     crownStyle: 'cleo_crown',
+  },
+  {
+    id: 'bellona',
+    name: 'Bellona',
+    rarity: 'Legendary',
+    title: 'Chiến Nữ Hỏa Sơn',
+    skillName: 'Hỏa Mạch',
+    ultName: 'Phán Quyết Hỏa Sơn',
+    ultDesc: 'Gây 240% ATK quanh Bellona và thiêu đốt địch trong vùng trúng chiêu.',
+    role: 'Hỏa Công Diện Rộng',
+    roleTag: 'aoe',
+    unlockChapterReq: 2,
+    passiveDesc: 'Dùng Hỏa Mạch để giật sét qua nhiều mục tiêu trước khi kết liễu bằng Phán Quyết Hỏa Sơn.',
+    bonusAtk: 54, bonusHp: 220, unlockGold: 0, unlockGems: 0,
+    accentHex: 0xff682e, cloakHex: 0x991b1b, hairHex: 0xa22d20,
+    eyeColor: '#ffc062', cheekColor: '#fb7185', crownStyle: 'ranger_band',
   },
 ];
 

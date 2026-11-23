@@ -22,6 +22,13 @@ export const MAX_ARTIFACT_LEVEL = 10;
 
 export const MYTHIC_ARTIFACTS: MythicArtifactDefinition[] = [
   {
+    id: 'war_horn', name: 'Chiến Giác Hỏa Tinh', badge: 'CHƯƠNG 2 · THÁNH KHÍ 3D',
+    elementLabel: 'Bạch Dương · Hỏa Tinh', desc: 'Chiến giác đúc bằng đồng núi lửa.',
+    primaryHex: 0xfc602e, secondaryHex: 0xffcb75,
+    baseAtk: 68, baseHp: 420, baseCrit: 0.065, baseBossDmg: 0.14,
+    atkPerLv: 22, hpPerLv: 125, critPerLv: 0.011, unlockGems: 0, unlockArtifactShards: 0,
+  },
+  {
     id: 'astrolabe_regulus',
     name: 'Tinh Bàn Regulus',
     badge: 'CHƯƠNG 1 · THÁNH KHÍ 3D',

@@ -1,3 +1,4 @@
+import { grantChapter2Collection } from './chapter2Collection';
 import {
   ComputedPlayerStats,
   EarlyFeatureId,
@@ -345,7 +346,9 @@ export function migrateSaveData(raw: SaveData): SaveData {
   }
 
   // Keep Alice ('artemis'), Hatsune Miku ('hatsune_miku'), and Aurelia ('aurelia') all unlocked.
+  const hasClearedAries = (raw.highestChapterCleared ?? 0) >= 2;
   const VALID_HERO_IDS = new Set<HeroId>(['artemis', 'hatsune_miku', 'aurelia']);
+  if (hasClearedAries) VALID_HERO_IDS.add('bellona');
   const filteredHeroes = (Array.isArray(raw.unlockedHeroes) ? raw.unlockedHeroes : []).filter(
     (id): id is HeroId => VALID_HERO_IDS.has(id as HeroId)
   );
@@ -360,6 +363,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
     artemis: Math.max(0, Math.floor(raw.heroStars?.artemis ?? 0)),
     hatsune_miku: Math.max(0, Math.floor(raw.heroStars?.hatsune_miku ?? 0)),
     aurelia: Math.max(0, Math.floor(raw.heroStars?.aurelia ?? 0)),
+    ...(hasClearedAries ? { bellona: Math.max(0, Math.floor(raw.heroStars?.bellona ?? 0)) } : {}),
   };
 
   // Unlock all 4 Aurelia Solar Leo skins while validating equippedSkinByHero.
@@ -370,6 +374,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
     'aurelia_winter_solstice',
   ];
   const validSkinSet = new Set<string>(['default', ...SOLAR_LEO_SKINS]);
+  if (hasClearedAries) validSkinSet.add('golden_fleece');
   const normalizedUnlockedSkins = Array.from(
     new Set([
       ...SOLAR_LEO_SKINS,
@@ -384,7 +389,11 @@ export function migrateSaveData(raw: SaveData): SaveData {
     normalizedEquippedSkinByHero.aurelia = rawEquippedSkins.aurelia;
   }
 
-  // Keep only Solarius ('solarius') mount; safely migrate legacy Hắc Long saves to Solarius.
+  if (hasClearedAries && rawEquippedSkins.bellona === 'golden_fleece') {
+    normalizedEquippedSkinByHero.bellona = 'golden_fleece';
+  }
+
+  // Keep Solarius ('solarius') mount; safely migrate legacy Hắc Long saves to Solarius.
   const normalizedUnlockedMounts: NonNullable<SaveData['unlockedMounts']> = ['solarius'];
   const migratedSolariusLv = Math.max(
     1,
@@ -392,13 +401,15 @@ export function migrateSaveData(raw: SaveData): SaveData {
   );
   const normalizedMountLevels: NonNullable<SaveData['mountLevels']> = {
     solarius: migratedSolariusLv,
+    ...(hasClearedAries ? { vulcan: Math.max(1, Math.floor(raw.mountLevels?.vulcan ?? 1)) } : {}),
   };
   const resolvedEquippedMountId: SaveData['equippedMountId'] =
+    hasClearedAries && raw.equippedMountId === 'vulcan' ? 'vulcan' :
     raw.equippedMountId === null || raw.equippedMountId === undefined
       ? null
       : 'solarius';
 
-  // Keep only Astraeo pet, Wings of the Solar Zenith, Astrolabe of Regulus artifact, and Halo of the Leo Sovereign.
+  // Preserve starter equipment and the Aries collection once Chapter 2 is cleared.
   const existingAstraeo = Array.isArray(raw.pets)
     ? raw.pets.find((p) => p.petId === 'astraeo')
     : undefined;
@@ -408,17 +419,23 @@ export function migrateSaveData(raw: SaveData): SaveData {
       level: Math.max(1, Math.floor(existingAstraeo?.level ?? 1)),
     },
   ];
+  if (hasClearedAries) {
+    const pyro = Array.isArray(raw.pets) ? raw.pets.find((pet) => pet.petId === 'pyro') : undefined;
+    normalizedPets.push({ petId: 'pyro', level: Math.max(1, Math.floor(pyro?.level ?? 1)) });
+  }
   const resolvedEquippedPetId: SaveData['equippedPetId'] =
-    raw.equippedPetId ? 'astraeo' : null;
+    hasClearedAries && raw.equippedPetId === 'pyro' ? 'pyro' : raw.equippedPetId ? 'astraeo' : null;
   const normalizedEvolvedPets: NonNullable<SaveData['evolvedPets']> = (
     Array.isArray(raw.evolvedPets) ? raw.evolvedPets : []
-  ).filter((id): id is 'astraeo' => id === 'astraeo');
+  ).filter((id) => id === 'astraeo' || (hasClearedAries && id === 'pyro'));
 
   const normalizedUnlockedWings: NonNullable<SaveData['unlockedWings']> = ['solar_zenith'];
   const normalizedWingLevels: NonNullable<SaveData['wingLevels']> = {
     solar_zenith: Math.max(1, Math.floor(raw.wingLevels?.solar_zenith ?? 1)),
+    ...(hasClearedAries ? { crimson_ram_wings: Math.max(1, Math.floor(raw.wingLevels?.crimson_ram_wings ?? 1)) } : {}),
   };
   const resolvedEquippedWingId: SaveData['equippedWingId'] =
+    hasClearedAries && raw.equippedWingId === 'crimson_ram_wings' ? 'crimson_ram_wings' :
     raw.equippedWingId ? 'solar_zenith' : null;
 
   const normalizedUnlockedArtifacts: NonNullable<SaveData['unlockedArtifacts']> = [
@@ -426,15 +443,19 @@ export function migrateSaveData(raw: SaveData): SaveData {
   ];
   const normalizedArtifactLevels: NonNullable<SaveData['artifactLevels']> = {
     astrolabe_regulus: Math.max(1, Math.floor(raw.artifactLevels?.astrolabe_regulus ?? 1)),
+    ...(hasClearedAries ? { war_horn: Math.max(1, Math.floor(raw.artifactLevels?.war_horn ?? 1)) } : {}),
   };
   const resolvedEquippedArtifactId: SaveData['equippedArtifactId'] =
+    hasClearedAries && raw.equippedArtifactId === 'war_horn' ? 'war_horn' :
     raw.equippedArtifactId ? 'astrolabe_regulus' : null;
 
   const normalizedUnlockedHalos: NonNullable<SaveData['unlockedHalos']> = ['leo_sovereign'];
   const normalizedHaloLevels: NonNullable<SaveData['haloLevels']> = {
     leo_sovereign: Math.max(1, Math.floor(raw.haloLevels?.leo_sovereign ?? 1)),
+    ...(hasClearedAries ? { aries_vanguard: Math.max(1, Math.floor(raw.haloLevels?.aries_vanguard ?? 1)) } : {}),
   };
   const resolvedEquippedHaloId: SaveData['equippedHaloId'] =
+    hasClearedAries && raw.equippedHaloId === 'aries_vanguard' ? 'aries_vanguard' :
     raw.equippedHaloId ? 'leo_sovereign' : null;
 
   // Build synchronized visible inbox (never respawning deleted mails, always reflecting claimedMailIds)
@@ -500,7 +521,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
   };
 
   migratedBase.mailInbox = getVisibleMailInbox(migratedBase);
-  return migratedBase;
+  return grantChapter2Collection(migratedBase);
 }
 
 export function normalizeAiPreferences(

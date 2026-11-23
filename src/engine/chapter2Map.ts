@@ -11,12 +11,7 @@ export const CHAPTER2_MAP_LITE_PATH_SEGMENTS = [
   'Aries War-Forge Arena Lite.glb',
 ] as const;
 
-/**
- * Full 4K original Aries War-Forge Arena.glb (76.27 MiB, 1.49M tris) served from Uploadcare CDN.
- * Automatically falls back to the local Lite GLB if offline, timed out, or blocked.
- */
-export const CHAPTER2_MAP_CDN_URL =
-  'https://4b8e3qsds0.ucarecd.net/080f4abd-dab5-490e-aa33-ec7447b4500a/';
+const CHAPTER2_MAP_HIGH_PATH_SEGMENTS = ['assets', 'Chương 2', 'Runtime', 'aries-arena-high.glb'];
 
 export const CHAPTER2_MAP_LITE_VERSION = '1';
 export const CHAPTER2_MAP_HIGH_TIMEOUT_MS = 60_000;
@@ -49,8 +44,13 @@ export function getChapter2MapLiteAssetUrl(
   return url;
 }
 
-export function getChapter2MapHighAssetUrl(): URL {
-  return new URL(CHAPTER2_MAP_CDN_URL);
+export function getChapter2MapHighAssetUrl(
+  baseUrl = '/', baseUri = 'http://localhost:3000/'
+): URL {
+  const path = CHAPTER2_MAP_HIGH_PATH_SEGMENTS.map(encodeURIComponent).join('/');
+  const url = new URL(`${baseUrl.replace(/\/$/, '')}/${path}`, baseUri);
+  url.searchParams.set('v', '1');
+  return url;
 }
 
 export function isValidGlbBuffer(data: ArrayBuffer): boolean {
@@ -173,8 +173,7 @@ async function fetchGlbWithTimeout(
 /**
  * Loads the Chapter 2 Aries War-Forge Arena GLB:
  * - 'lite': loads the bundled ~1.31 MB local Lite GLB directly.
- * - 'full': loads the 76.3 MB 4K original from Uploadcare CDN, with automatic
- *   fallback to the bundled local Lite GLB on network/CORS/timeout failures.
+ * - 'full': loads the bundled high-quality GLB, falling back to Lite on failure.
  */
 export async function fetchChapter2MapArrayBuffer(
   options: FetchChapter2MapOptions
@@ -196,11 +195,11 @@ export async function fetchChapter2MapArrayBuffer(
     return { buffer, resolvedVariant: 'lite', fallbackUsed: false };
   }
 
-  const cdnUrl = options.cdnUrl ?? CHAPTER2_MAP_CDN_URL;
+  const highUrl = options.cdnUrl ?? getChapter2MapHighAssetUrl(baseUrl, baseUri);
   try {
     const buffer = await fetchGlbWithTimeout(
       fetchImpl,
-      cdnUrl,
+      highUrl,
       CHAPTER2_MAP_HIGH_TIMEOUT_MS,
       signal,
       options.onProgress

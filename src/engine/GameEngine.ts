@@ -1,3 +1,4 @@
+import { getEnemyLabel } from '../data/assetRegistry';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -254,13 +255,15 @@ import {
 } from './zodiacBossAi';
 import {
   CHAPTER1_ROSTER_ASSET_IDS,
-  Chapter1RosterAssetId,
+  CampaignRosterAssetId,
+  CHAPTER2_ROSTER_ASSET_IDS,
+  getCampaignRosterArchetype,
   Chapter1RosterBurstType,
   disposeChapter1RosterTemplateCache,
   getCachedChapter1RosterTemplateSync,
   instantiateChapter1RosterModel,
   loadChapter1RosterTemplate,
-  resolveChapter1RosterAssetId,
+  resolveCampaignRosterAssetId,
   updateChapter1RosterMotion,
 } from './chapter1RosterAssets';
 import {
@@ -695,7 +698,7 @@ interface EnemyEntity {
   solarLionVisualGroup?: THREE.Group;
   solarLionBurstType?: 'none' | 'lunge' | 'slam' | 'roar';
   solarLionBurstTimer?: number;
-  roster3dAssetId?: Chapter1RosterAssetId;
+  roster3dAssetId?: CampaignRosterAssetId;
   roster3dVisualGroup?: THREE.Group;
   roster3dBaseScale?: number;
   roster3dBurstType?: Chapter1RosterBurstType;
@@ -1087,6 +1090,7 @@ export class GameEngine {
   private solarLeoPetAttackRecoil = 0;
   private aureliaSolarShotCount = 0;
   private appearanceBlocked = false;
+  private bellonaFailedAsset?: string;
   private appearanceStatus: AppearanceStatus = 'loading';
   private heroShadow!: THREE.Mesh;
   private heroShieldMesh!: THREE.Mesh;
@@ -3516,6 +3520,11 @@ export class GameEngine {
       return;
     }
 
+    if (this.solarLeoHeroRig && this.solarLeoHeroRig.assetId !== assetId) {
+      this.releaseObject(this.solarLeoHeroRig.group);
+      this.solarLeoHeroRig = undefined;
+      this.solarLeoHeroKey = undefined;
+    }
     const seq = ++this.solarLeoHeroSeq;
     const baseUrl = import.meta.env.BASE_URL ?? '/';
     loadSolarLeoTemplate(assetId, variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
@@ -3532,16 +3541,19 @@ export class GameEngine {
         this.applySolarLeoHeroRig(this.solarLeoHeroRig);
       })
       .catch((err) => {
+        if (this.disposed || seq !== this.solarLeoHeroSeq) return;
+        if (heroId === 'bellona') this.bellonaFailedAsset = assetId;
         console.warn(`Không tải được mô hình Anh hùng ${assetId}:`, err);
+      })
+      .finally(() => {
+        if (!this.disposed && seq === this.solarLeoHeroSeq) this.refreshAppearanceGate();
       });
   }
 
   private syncSolarLeoMountVisual(): void {
     const mount = this.hero?.mountGroup;
-    const wantsSolarius =
-      Boolean(mount) &&
-      this.heroVisualCfg.mountId === 'solarius' &&
-      !this.heroVisualCfg.astralSteedId;
+    const assetId = this.heroVisualCfg.mountId;
+    const wantsSolarius = Boolean(mount) && (assetId === 'solarius' || assetId === 'vulcan') && !this.heroVisualCfg.astralSteedId;
 
     if (!wantsSolarius || !mount) {
       this.solarLeoMountSeq++;
@@ -3553,6 +3565,12 @@ export class GameEngine {
       return;
     }
 
+    if (this.solarLeoMountRig && this.solarLeoMountRig.assetId !== assetId) {
+      this.releaseObject(this.solarLeoMountRig.group);
+      this.solarLeoMountRig = undefined;
+      this.solarLeoMountVariant = undefined;
+    }
+
     const variant = this.getActiveSolarLeoVariant();
     const attachRig = (rig: InstantiatedSolarLeoModel) => {
       if (!this.hero?.mountGroup) return;
@@ -3561,12 +3579,12 @@ export class GameEngine {
       rig.group.visible = true;
     };
 
-    if (this.solarLeoMountRig && this.solarLeoMountVariant === variant) {
+    if (this.solarLeoMountRig?.assetId === assetId && this.solarLeoMountVariant === variant) {
       attachRig(this.solarLeoMountRig);
       return;
     }
 
-    const cached = getCachedSolarLeoTemplateSync('solarius', variant);
+    const cached = getCachedSolarLeoTemplateSync(assetId, variant);
     if (cached) {
       this.solarLeoMountSeq++;
       if (this.solarLeoMountRig) this.releaseObject(this.solarLeoMountRig.group);
@@ -3578,10 +3596,10 @@ export class GameEngine {
 
     const seq = ++this.solarLeoMountSeq;
     const baseUrl = import.meta.env.BASE_URL ?? '/';
-    loadSolarLeoTemplate('solarius', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+    loadSolarLeoTemplate(assetId, variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
       .then((tpl) => {
         if (this.disposed || seq !== this.solarLeoMountSeq || !this.hero?.mountGroup) return;
-        if (this.heroVisualCfg.mountId !== 'solarius' || this.heroVisualCfg.astralSteedId) return;
+        if (this.heroVisualCfg.mountId !== assetId || this.heroVisualCfg.astralSteedId) return;
         if (this.solarLeoMountRig) this.releaseObject(this.solarLeoMountRig.group);
         this.solarLeoMountRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
         this.solarLeoMountVariant = variant;
@@ -3594,7 +3612,8 @@ export class GameEngine {
 
   private syncSolarLeoWingVisual(): void {
     const wingGroup = this.hero?.wingGroup;
-    const wantsSolarWings = Boolean(wingGroup) && this.heroVisualCfg.wingId === 'solar_zenith';
+    const assetId = this.heroVisualCfg.wingId;
+    const wantsSolarWings = Boolean(wingGroup) && (assetId === 'solar_zenith' || assetId === 'crimson_ram_wings');
     // Never overlap default blue Celestial Wings behind the full 3D Wings of the Solar Zenith
     if (this.hero?.celestialWingGroup) {
       this.hero.celestialWingGroup.visible = !wantsSolarWings;
@@ -3614,6 +3633,12 @@ export class GameEngine {
       if (part !== this.solarLeoWingRig?.group) part.visible = false;
     }
 
+    if (this.solarLeoWingRig && this.solarLeoWingRig.assetId !== assetId) {
+      this.releaseObject(this.solarLeoWingRig.group);
+      this.solarLeoWingRig = undefined;
+      this.solarLeoWingVariant = undefined;
+    }
+
     const variant = this.getActiveSolarLeoVariant();
     const attachRig = (rig: InstantiatedSolarLeoModel) => {
       if (!this.hero?.wingGroup) return;
@@ -3624,12 +3649,12 @@ export class GameEngine {
       rig.group.visible = true;
     };
 
-    if (this.solarLeoWingRig && this.solarLeoWingVariant === variant) {
+    if (this.solarLeoWingRig?.assetId === assetId && this.solarLeoWingVariant === variant) {
       attachRig(this.solarLeoWingRig);
       return;
     }
 
-    const cached = getCachedSolarLeoTemplateSync('solar_zenith', variant);
+    const cached = getCachedSolarLeoTemplateSync(assetId, variant);
     if (cached) {
       this.solarLeoWingSeq++;
       if (this.solarLeoWingRig) this.releaseObject(this.solarLeoWingRig.group);
@@ -3644,10 +3669,10 @@ export class GameEngine {
 
     const seq = ++this.solarLeoWingSeq;
     const baseUrl = import.meta.env.BASE_URL ?? '/';
-    loadSolarLeoTemplate('solar_zenith', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+    loadSolarLeoTemplate(assetId, variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
       .then((tpl) => {
         if (this.disposed || seq !== this.solarLeoWingSeq || !this.hero?.wingGroup) return;
-        if (this.heroVisualCfg.wingId !== 'solar_zenith') return;
+        if (this.heroVisualCfg.wingId !== assetId) return;
         if (this.solarLeoWingRig) this.releaseObject(this.solarLeoWingRig.group);
         this.solarLeoWingRig = instantiateSolarLeoModel(tpl, {
           liteMode: variant === 'lite',
@@ -3663,7 +3688,8 @@ export class GameEngine {
 
   private syncSolarLeoHaloVisual(): void {
     const haloGroup = this.hero?.haloGroup;
-    const wantsLeoHalo = Boolean(haloGroup) && this.heroVisualCfg.haloId === 'leo_sovereign';
+    const assetId = this.heroVisualCfg.haloId;
+    const wantsLeoHalo = Boolean(haloGroup) && (assetId === 'leo_sovereign' || assetId === 'aries_vanguard');
     if (!wantsLeoHalo || !haloGroup) {
       this.solarLeoHaloSeq++;
       if (this.solarLeoHaloRig) {
@@ -3672,6 +3698,12 @@ export class GameEngine {
         this.solarLeoHaloVariant = undefined;
       }
       return;
+    }
+
+    if (this.solarLeoHaloRig && this.solarLeoHaloRig.assetId !== assetId) {
+      this.releaseObject(this.solarLeoHaloRig.group);
+      this.solarLeoHaloRig = undefined;
+      this.solarLeoHaloVariant = undefined;
     }
 
     const variant = this.getActiveSolarLeoVariant();
@@ -3683,12 +3715,12 @@ export class GameEngine {
       rig.group.visible = true;
     };
 
-    if (this.solarLeoHaloRig && this.solarLeoHaloVariant === variant) {
+    if (this.solarLeoHaloRig?.assetId === assetId && this.solarLeoHaloVariant === variant) {
       attachRig(this.solarLeoHaloRig);
       return;
     }
 
-    const cached = getCachedSolarLeoTemplateSync('leo_sovereign', variant);
+    const cached = getCachedSolarLeoTemplateSync(assetId, variant);
     if (cached) {
       this.solarLeoHaloSeq++;
       if (this.solarLeoHaloRig) this.releaseObject(this.solarLeoHaloRig.group);
@@ -3700,10 +3732,10 @@ export class GameEngine {
 
     const seq = ++this.solarLeoHaloSeq;
     const baseUrl = import.meta.env.BASE_URL ?? '/';
-    loadSolarLeoTemplate('leo_sovereign', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+    loadSolarLeoTemplate(assetId, variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
       .then((tpl) => {
         if (this.disposed || seq !== this.solarLeoHaloSeq || !this.hero?.haloGroup) return;
-        if (this.heroVisualCfg.haloId !== 'leo_sovereign') return;
+        if (this.heroVisualCfg.haloId !== assetId) return;
         if (this.solarLeoHaloRig) this.releaseObject(this.solarLeoHaloRig.group);
         this.solarLeoHaloRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
         this.solarLeoHaloVariant = variant;
@@ -3716,8 +3748,8 @@ export class GameEngine {
 
   private syncSolarLeoArtifactVisual(): void {
     const artifactGroup = this.hero?.artifactGroup;
-    const wantsAstrolabe =
-      Boolean(artifactGroup) && this.heroVisualCfg.artifactId === 'astrolabe_regulus';
+    const assetId = this.heroVisualCfg.artifactId;
+    const wantsAstrolabe = Boolean(artifactGroup) && (assetId === 'astrolabe_regulus' || assetId === 'war_horn');
     if (!wantsAstrolabe || !artifactGroup) {
       this.solarLeoArtifactSeq++;
       if (this.solarLeoArtifactRig) {
@@ -3726,6 +3758,12 @@ export class GameEngine {
         this.solarLeoArtifactVariant = undefined;
       }
       return;
+    }
+
+    if (this.solarLeoArtifactRig && this.solarLeoArtifactRig.assetId !== assetId) {
+      this.releaseObject(this.solarLeoArtifactRig.group);
+      this.solarLeoArtifactRig = undefined;
+      this.solarLeoArtifactVariant = undefined;
     }
 
     const variant = this.getActiveSolarLeoVariant();
@@ -3741,12 +3779,12 @@ export class GameEngine {
       rig.group.visible = true;
     };
 
-    if (this.solarLeoArtifactRig && this.solarLeoArtifactVariant === variant) {
+    if (this.solarLeoArtifactRig?.assetId === assetId && this.solarLeoArtifactVariant === variant) {
       attachRig(this.solarLeoArtifactRig);
       return;
     }
 
-    const cached = getCachedSolarLeoTemplateSync('astrolabe_regulus', variant);
+    const cached = getCachedSolarLeoTemplateSync(assetId, variant);
     if (cached) {
       this.solarLeoArtifactSeq++;
       if (this.solarLeoArtifactRig) this.releaseObject(this.solarLeoArtifactRig.group);
@@ -3758,12 +3796,12 @@ export class GameEngine {
 
     const seq = ++this.solarLeoArtifactSeq;
     const baseUrl = import.meta.env.BASE_URL ?? '/';
-    loadSolarLeoTemplate('astrolabe_regulus', variant, this.getSolarLeoAnisotropy(variant), {
+    loadSolarLeoTemplate(assetId, variant, this.getSolarLeoAnisotropy(variant), {
       baseUrl,
     })
       .then((tpl) => {
         if (this.disposed || seq !== this.solarLeoArtifactSeq || !this.hero?.artifactGroup) return;
-        if (this.heroVisualCfg.artifactId !== 'astrolabe_regulus') return;
+        if (this.heroVisualCfg.artifactId !== assetId) return;
         if (this.solarLeoArtifactRig) this.releaseObject(this.solarLeoArtifactRig.group);
         this.solarLeoArtifactRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
         this.solarLeoArtifactVariant = variant;
@@ -3776,7 +3814,8 @@ export class GameEngine {
 
   private syncSolarLeoPetVisual(): void {
     const petModel = this.petModel;
-    const wantsAstraeo = Boolean(petModel) && this.builtPetId === 'astraeo';
+    const assetId = this.builtPetId;
+    const wantsAstraeo = Boolean(petModel) && (assetId === 'astraeo' || assetId === 'pyro');
     if (!wantsAstraeo || !petModel) {
       this.solarLeoPetSeq++;
       if (this.solarLeoPetRig) {
@@ -3787,6 +3826,12 @@ export class GameEngine {
       return;
     }
 
+    if (this.solarLeoPetRig && this.solarLeoPetRig.assetId !== assetId) {
+      this.releaseObject(this.solarLeoPetRig.group);
+      this.solarLeoPetRig = undefined;
+      this.solarLeoPetVariant = undefined;
+    }
+
     const variant = this.getActiveSolarLeoVariant();
     const attachRig = (rig: InstantiatedSolarLeoModel) => {
       if (!this.petModel) return;
@@ -3795,12 +3840,12 @@ export class GameEngine {
       rig.group.visible = true;
     };
 
-    if (this.solarLeoPetRig && this.solarLeoPetVariant === variant) {
+    if (this.solarLeoPetRig?.assetId === assetId && this.solarLeoPetVariant === variant) {
       attachRig(this.solarLeoPetRig);
       return;
     }
 
-    const cached = getCachedSolarLeoTemplateSync('astraeo', variant);
+    const cached = getCachedSolarLeoTemplateSync(assetId, variant);
     if (cached) {
       this.solarLeoPetSeq++;
       if (this.solarLeoPetRig) this.releaseObject(this.solarLeoPetRig.group);
@@ -3812,10 +3857,10 @@ export class GameEngine {
 
     const seq = ++this.solarLeoPetSeq;
     const baseUrl = import.meta.env.BASE_URL ?? '/';
-    loadSolarLeoTemplate('astraeo', variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
+    loadSolarLeoTemplate(assetId, variant, this.getSolarLeoAnisotropy(variant), { baseUrl })
       .then((tpl) => {
         if (this.disposed || seq !== this.solarLeoPetSeq || !this.petModel) return;
-        if (this.builtPetId !== 'astraeo') return;
+        if (this.builtPetId !== assetId) return;
         if (this.solarLeoPetRig) this.releaseObject(this.solarLeoPetRig.group);
         this.solarLeoPetRig = instantiateSolarLeoModel(tpl, { liteMode: variant === 'lite' });
         this.solarLeoPetVariant = variant;
@@ -3841,11 +3886,17 @@ export class GameEngine {
     const artemisPending = this.wantsRiggedHeroModel() &&
       (this.artemisLoadedAsset !== asset || this.artemisModel?.parent !== this.hero.bodyGroup);
 
-    this.appearanceBlocked = artemisPending;
+    const heroId = this.heroVisualCfg?.heroId ?? this.baseStats.heroId;
+    const bellonaAsset = heroId === 'bellona' ? resolveSolarLeoHeroAssetId(heroId, this.heroVisualCfg?.skinId) : null;
+    const bellonaPending = Boolean(bellonaAsset &&
+      (this.solarLeoHeroRig?.assetId !== bellonaAsset || this.solarLeoHeroRig.group.parent !== this.hero.bodyGroup));
+
+    this.appearanceBlocked = artemisPending || bellonaPending;
     this.hero.root.visible = !this.appearanceBlocked;
     if (this.heroShadow) this.heroShadow.visible = !this.appearanceBlocked;
     if (this.appearanceBlocked) {
-      const failed = artemisPending && this.artemisFailedAsset === asset;
+      const failed = (artemisPending && this.artemisFailedAsset === asset) ||
+        (bellonaPending && this.bellonaFailedAsset === bellonaAsset);
       this.setAppearanceStatus(failed ? 'error' : 'loading');
     } else if (this.appearanceStatus === 'error') {
       this.setAppearanceStatus('loading');
@@ -3854,6 +3905,8 @@ export class GameEngine {
 
   public retryAppearance(): void {
     this.artemisFailedAsset = undefined;
+    this.bellonaFailedAsset = undefined;
+    if ((this.heroVisualCfg?.heroId ?? this.baseStats.heroId) === 'bellona') this.syncSolarLeoHeroVisual();
     this.chapter1MapFailCount = 0;
     if (this.wantsRiggedHeroModel()) this.useArtemisModel();
     this.ensureChapter1MapLoaded();
@@ -4468,7 +4521,8 @@ export class GameEngine {
     })();
   }
 
-  private prefetchChapter1RosterModels(): void {
+  private prefetchCampaignRosterModels(chapterId: number): void {
+    const assets = chapterId === 2 ? CHAPTER2_ROSTER_ASSET_IDS : CHAPTER1_ROSTER_ASSET_IDS;
     const variant = this.getActiveBoss3dModelVariant();
     if (variant === 'none') return;
     const baseUrl =
@@ -4478,7 +4532,7 @@ export class GameEngine {
     if (variant === 'lite') {
       // Sequential preload in Lite mode avoids CPU/RAM spikes on low-end laptops (e.g. Dell E5430)
       void (async () => {
-        for (const assetId of CHAPTER1_ROSTER_ASSET_IDS) {
+        for (const assetId of assets) {
           if (this.disposed) return;
           try {
             await loadChapter1RosterTemplate(assetId, variant, maxAniso, {
@@ -4493,7 +4547,7 @@ export class GameEngine {
       return;
     }
 
-    for (const assetId of CHAPTER1_ROSTER_ASSET_IDS) {
+    for (const assetId of assets) {
       void loadChapter1RosterTemplate(assetId, variant, maxAniso, {
         baseUrl,
         baseUri: document.baseURI,
@@ -4503,7 +4557,7 @@ export class GameEngine {
 
   private mountChapter1RosterInstance(
     entity: EnemyEntity,
-    assetId: Chapter1RosterAssetId,
+    assetId: CampaignRosterAssetId,
     template: NonNullable<ReturnType<typeof getCachedChapter1RosterTemplateSync>>
   ): void {
     const isStage8Titan = entity.kind === EnemyKind.TITAN_BOSS;
@@ -4541,7 +4595,7 @@ export class GameEngine {
     entity.roster3dBurstType = entity.isBoss ? 'roar' : 'none';
     entity.roster3dBurstTimer = entity.isBoss ? 0.42 : 0;
     if (inst.rigInstance.primaryTrailAnchors.length > 0) {
-      const cal = AUTO_RIG_CALIBRATION[assetId];
+      const cal = AUTO_RIG_CALIBRATION[getCampaignRosterArchetype(assetId)];
       entity.boneTrails = createBoneTrailController(
         inst.rigInstance.primaryTrailAnchors,
         {
@@ -4560,7 +4614,7 @@ export class GameEngine {
 
   private attachChapter1RosterModel(
     entity: EnemyEntity,
-    assetId: Chapter1RosterAssetId
+    assetId: CampaignRosterAssetId
   ): void {
     const variant = this.getActiveBoss3dModelVariant();
     if (variant === 'none') return;
@@ -4592,7 +4646,7 @@ export class GameEngine {
         clearBoss3dLoadInFlight();
         if (!this.disposed) {
           console.warn(
-            `Không tải được mô hình 3D Chương 1 (${assetId}:${variant}); giữ mô hình dự phòng.`,
+            `Không tải được mô hình chiến dịch 3D (${assetId}:${variant}); giữ mô hình dự phòng.`,
             error
           );
         }
@@ -4747,7 +4801,7 @@ export class GameEngine {
           assetUrl =
             resolvedVariant === 'lite'
               ? getChapter2MapLiteAssetUrl(baseUrl, baseUri)
-              : getChapter2MapHighAssetUrl();
+              : getChapter2MapHighAssetUrl(baseUrl, document.baseURI);
         }
 
         if (
@@ -5492,10 +5546,11 @@ export class GameEngine {
     this.baseStats = stats;
 
     this.buildArena(ch);
+    if (ch.id === 2) this.prefetchCampaignRosterModels(2);
     this.resetRunState(stats);
     if (ch.id === 1) {
       this.prefetchSolarLionBossModel();
-      this.prefetchChapter1RosterModels();
+      this.prefetchCampaignRosterModels(1);
     }
     const chapterRecPower = Math.round(ch.recommendedPower * (1 + this.nightmareTier * 0.35));
     this.activePowerPressure = computePowerPressure(stats.powerRating, chapterRecPower);
@@ -10196,10 +10251,11 @@ export class GameEngine {
     ) {
       this.attachSolarLionBossModel(spawnedEntity);
     } else if (spawnedEntity) {
-      const rosterAssetId = resolveChapter1RosterAssetId({
+      const rosterAssetId = resolveCampaignRosterAssetId({
         chapterId: this.currentChapter.id,
         enemyKind: kind,
-        isSideModeActive: this.isSideModeActiveForBossModel(),
+        isSideModeActive: this.isSideModeActiveForBossModel() ||
+          this.isWeeklyRankedBossMode || this.isWeeklyBossPracticeMode,
         isTrainingDummy: spawnedEntity.isTrainingDummy,
         isArenaRival: spawnedEntity.isArenaRival,
       });
@@ -11365,6 +11421,16 @@ export class GameEngine {
             }
             this.damageEnemy(e, atkPower * 2.1, true, false, false, false, false, undefined, 'ultimate');
           }
+        }
+        break;
+      }
+      case 'bellona': {
+        this.spawnShockwave(this.px, this.pz, 0xff682e, 6.2, 0.55);
+        for (const enemy of liveEnemies) {
+          if (enemy.dead || Math.hypot(enemy.x - this.px, enemy.z - this.pz) > 6.2) continue;
+          enemy.burnTimer = Math.max(enemy.burnTimer, 3);
+          enemy.burnDps = Math.max(enemy.burnDps, atkPower * 0.35);
+          this.damageEnemy(enemy, atkPower * 2.4, true, false, false, false, false, 'PHÁN QUYẾT!', 'ultimate');
         }
         break;
       }
@@ -22812,6 +22878,10 @@ export class GameEngine {
   private syncHudImmediate(): void {
     const stage = this.currentChapter.stages[this.stageIndex];
     const boss = this.enemies.find((e) => e.isBoss && !e.isArenaRival && !e.isTrainingDummy);
+    const nearestTarget = this.findNearestEnemy(this.px, this.pz, undefined, 18);
+    const target = nearestTarget && !nearestTarget.isBoss ? nearestTarget : undefined;
+    const ariesCampaign = this.currentChapter.id === 2 &&
+      !this.isSideModeActiveForBossModel() && !this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode;
     const rival = this.enemies.find((e) => e.isArenaRival);
     const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.artemis;
     const elemDef = this.isElementalTowerMode ? ELEMENTAL_TOWER_MAP[this.elementalTowerId] : null;
@@ -23013,16 +23083,12 @@ export class GameEngine {
         this.isWeeklyRankedBossMode || this.isWeeklyBossPracticeMode
           ? this.weeklyBossId ?? undefined
           : undefined,
-      activeTargetKind: (() => {
-        const nearest = this.findNearestEnemy(this.px, this.pz, undefined, 18);
-        return nearest && !nearest.isBoss ? nearest.kind : undefined;
-      })(),
-      activeTargetHpPct: (() => {
-        const nearest = this.findNearestEnemy(this.px, this.pz, undefined, 18);
-        return nearest && !nearest.isBoss
-          ? Math.max(0, Math.min(100, Math.round((nearest.hp / Math.max(1, nearest.maxHp)) * 100)))
-          : undefined;
-      })(),
+      activeTargetKind: target?.kind,
+      activeTargetChapterId: target && ariesCampaign ? 2 : undefined,
+      activeTargetName: target && ariesCampaign ? getEnemyLabel(target.kind, 2) : undefined,
+      activeTargetHpPct: target
+        ? Math.max(0, Math.min(100, Math.round((target.hp / Math.max(1, target.maxHp)) * 100)))
+        : undefined,
       bossHp: boss ? boss.hp : this.isChampionshipMode && rival ? rival.hp : 0,
       bossMaxHp: boss ? boss.maxHp : this.isChampionshipMode && rival ? rival.maxHp : 0,
       bossPhase: boss ? boss.bossPhase : 1,

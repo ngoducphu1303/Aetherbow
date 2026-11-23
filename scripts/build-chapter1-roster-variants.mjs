@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
 const RAW_TMP_DIR = '/tmp/aetherbow-ch1-roster-raw';
@@ -463,8 +464,25 @@ function buildVariant({
   );
 }
 
-async function processAsset(asset) {
-  const rawPath = downloadRawGlb(asset);
+function recoverDamagedPng(input) {
+  const repair = `
+import io, sys
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+image = Image.open(io.BytesIO(sys.stdin.buffer.read())).convert("RGB")
+bottom = image.getbbox()[3]
+if bottom < image.height:
+    valid = image.crop((0, 0, image.width, max(1, bottom - 24)))
+    fill = valid.resize((1, 1), Image.Resampling.BOX).getpixel((0, 0))
+    image = Image.new("RGB", image.size, fill)
+    image.paste(valid, (0, 0))
+image.save(sys.stdout.buffer, "PNG")
+`;
+  return execFileSync('python', ['-c', repair], { input, maxBuffer: 64 * 1024 * 1024 });
+}
+
+export async function processAsset(asset) {
+  const rawPath = asset.sourcePath ?? downloadRawGlb(asset);
   const srcStat = fs.statSync(rawPath);
   const srcBuf = fs.readFileSync(rawPath);
 
@@ -539,6 +557,10 @@ async function processAsset(asset) {
 
   const srcMat = gltf.materials?.[prim.material ?? 0] || gltf.materials?.[0] || {};
   const baseColorImg = getImg(srcMat.pbrMetallicRoughness?.baseColorTexture);
+  if (baseColorImg && asset.recoverAlbedo) {
+    baseColorImg.bytes = recoverDamagedPng(baseColorImg.bytes);
+    baseColorImg.mimeType = 'image/png';
+  }
   const mrImg = getImg(srcMat.pbrMetallicRoughness?.metallicRoughnessTexture);
   const normalImg = getImg(srcMat.normalTexture);
 
@@ -552,12 +574,14 @@ async function processAsset(asset) {
       mimeType: 'image/jpeg',
       bytes: resizeImage(baseColorImg.bytes, baseColorImg.mimeType, asset.highAlbedoSize, 'jpeg', 86),
     });
-    liteEntries.push({
-      role: 'albedo',
-      name: `${asset.id}_lite_albedo_${asset.liteAlbedoSize}`,
-      mimeType: 'image/jpeg',
-      bytes: resizeImage(baseColorImg.bytes, baseColorImg.mimeType, asset.liteAlbedoSize, 'jpeg', 82),
-    });
+    if (!asset.skipLite) {
+      liteEntries.push({
+        role: 'albedo',
+        name: `${asset.id}_lite_albedo_${asset.liteAlbedoSize}`,
+        mimeType: 'image/jpeg',
+        bytes: resizeImage(baseColorImg.bytes, baseColorImg.mimeType, asset.liteAlbedoSize, 'jpeg', 82),
+      });
+    }
   }
   if (mrImg) {
     highEntries.push({
@@ -594,26 +618,28 @@ async function processAsset(asset) {
     },
   });
 
-  buildVariant({
-    assetId: asset.id,
-    label: 'Lite',
-    outPath: path.join(asset.outDir, asset.liteFile),
-    targetTriangles: asset.liteTris,
-    maxAllowedTriangles: asset.liteMaxTris,
-    positions,
-    normals,
-    uvs,
-    indices,
-    attrs,
-    srcNode: gltf.nodes?.[0],
-    texturesSpec: {
-      includePbrMaps: false,
-      entries: liteEntries,
-    },
-  });
+  if (!asset.skipLite) {
+    buildVariant({
+      assetId: asset.id,
+      label: 'Lite',
+      outPath: path.join(asset.outDir, asset.liteFile),
+      targetTriangles: asset.liteTris,
+      maxAllowedTriangles: asset.liteMaxTris,
+      positions,
+      normals,
+      uvs,
+      indices,
+      attrs,
+      srcNode: gltf.nodes?.[0],
+      texturesSpec: {
+        includePbrMaps: false,
+        entries: liteEntries,
+      },
+    });
+  }
 
   // Remove the ~85MB raw staging file right away to keep /tmp lean
-  fs.rmSync(rawPath, { force: true });
+  if (!asset.sourcePath) fs.rmSync(rawPath, { force: true });
 }
 
 async function main() {
@@ -625,7 +651,9 @@ async function main() {
   console.log('\nAll 5 Chapter 1 Roster assets (10 High/Lite GLB variants) built cleanly!');
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

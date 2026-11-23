@@ -21,6 +21,14 @@ import {
 // ============================================================================
 
 export const HERO_ACTIVE_SKILLS: Record<HeroId, HeroActiveSkillDef> = {
+  bellona: {
+    heroId: 'bellona',
+    name: 'Hỏa Mạch',
+    shortLabel: 'Hỏa Mạch',
+    desc: 'Giật sét qua tối đa 4 mục tiêu trong tầm, gây 150% ATK mỗi mục tiêu.',
+    cooldownSec: 9, damageMult: 1.5, effectKind: 'thunder_arc',
+    accentHex: 0xff682e, accentCss: '#ff682e', radius: 6.5,
+  },
   artemis: {
     heroId: 'artemis',
     name: 'Nguyệt Tiễn Xuyên Giáp',

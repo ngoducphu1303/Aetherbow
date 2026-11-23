@@ -487,7 +487,7 @@ test('Chapter 1 Build Archetypes: SKILLS_CATALOG exposes distinct AoE and Boss b
 });
 
 test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DPS of Artemis on identical Ch.1 loadout', () => {
-  assert.equal(HEROES.length, 3);
+  assert.equal(HEROES.length, 4);
   const fresh = createInitialSaveData();
   const artemisDps = computeExpectedDps(
     computePlayerStats({ ...fresh, selectedHeroId: 'artemis' })
@@ -1089,7 +1089,7 @@ test('Phase 4 · Ch.7–12 Smart Valkyrie Drafting & Boss Phase III Punish Windo
 });
 
 test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
-  assert.equal(HEROES.length, 3);
+  assert.equal(HEROES.length, 4);
   const effectKinds = new Set<string>();
   for (const hero of HEROES) {
     const skill = getHeroActiveSkill(hero.id);

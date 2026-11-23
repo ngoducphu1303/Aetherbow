@@ -329,11 +329,12 @@ export const HeroCrestSvg: React.FC<{
 
 export const EnemyPortraitBadge: React.FC<{
   kind: EnemyKind;
+  chapterId?: number;
   variant?: 'icon' | 'portrait';
   alt?: string;
   className?: string;
-}> = ({ kind, variant = 'icon', alt, className = 'w-12 h-12 rounded-xl' }) => {
-  const pack = getEnemyAssetPack(kind);
+}> = ({ kind, chapterId, variant = 'icon', alt, className = 'w-12 h-12 rounded-xl' }) => {
+  const pack = getEnemyAssetPack(kind, chapterId);
   const src = variant === 'portrait' ? pack.portrait : pack.icon;
   return (
     <div
