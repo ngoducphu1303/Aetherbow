@@ -3,12 +3,13 @@ import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
+import {cdnBaseUrl} from './scripts/glb-manifest.json';
 import {parseGlbCdnBase} from './src/engine/glbAssetUrl.ts';
 
 export default defineConfig(({ mode }) => {
   const rootDir = import.meta.dirname;
   const env = loadEnv(mode, rootDir, 'VITE_');
-  const useGlbCdn = Boolean(parseGlbCdnBase(env.VITE_GLB_CDN_BASE_URL));
+  const useGlbCdn = Boolean(parseGlbCdnBase(env.VITE_GLB_CDN_BASE_URL ?? cdnBaseUrl));
   return {
     plugins: [
       react(),

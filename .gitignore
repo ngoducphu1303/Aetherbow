@@ -7,4 +7,4 @@ coverage/
 .env*
 !.env.example
 /public/assets/lobby-local/*
-!/public/assets/lobby-local/street-city.glb
+/public/assets/**/*.[gG][lL][bB]

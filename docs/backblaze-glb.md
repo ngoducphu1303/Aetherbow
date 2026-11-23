@@ -13,7 +13,7 @@ Game tải qua Cloudflare Worker. Worker ký yêu cầu tới bucket `aetherbow-
    node scripts/upload-glb-b2.mjs
    ```
 
-Script giữ nguyên đường dẫn tệp, đặt MIME `model/gltf-binary` và kiểm tra các object đã upload. Có thể chạy lại khi thêm hoặc thay tệp. Tùy chọn `--check` chỉ xác minh. Khi thay tệp tại cùng đường dẫn, tăng version tương ứng trong mã game để đổi khóa cache.
+Script quét các tệp GLB có sẵn trong `public/assets` ở máy chạy lệnh, giữ nguyên đường dẫn tệp, đặt MIME `model/gltf-binary` và kiểm tra các object đã upload. Có thể chạy lại khi thêm hoặc thay tệp. Tùy chọn `--check` chỉ xác minh. Khi thêm tệp hoặc đổi kích thước tệp, cập nhật đường dẫn và kích thước trong `scripts/glb-manifest.json`. Khi thay tệp tại cùng đường dẫn, tăng version tương ứng trong mã game để đổi khóa cache.
 
 ## Triển khai Worker
 
@@ -38,3 +38,15 @@ curl --fail --silent --show-error --dump-header - --output /dev/null \
 ```
 
 Build Vercel mặc định dùng Worker này và bỏ GLB khỏi `dist`. Biến `VITE_GLB_CDN_BASE_URL` có thể ghi đè URL nếu chuyển sang hostname khác. Có thể quay lại gói GLB nội bộ bằng cách đặt biến thành chuỗi rỗng cho lần build hoặc hoàn tác cấu hình Vercel.
+
+
+## Chạy local và kiểm thử
+
+Vite dùng CDN mặc định. Có thể chạy game ngay sau khi clone mà không cần tải kho GLB về máy. Để chạy kiểm thử cần tệp mô hình trên đĩa hoặc chỉnh sửa asset, tải từ CDN:
+
+```sh
+npm run sync:glb
+npm run check:glb
+```
+
+Thêm `-- --all` để tải cả mẫu gốc dung lượng lớn, hoặc dùng `-- --file "public/assets/…/Tên.glb"` để tải riêng một tệp. Nếu muốn game local đọc các tệp vừa tải, đặt `VITE_GLB_CDN_BASE_URL=""` trong `.env.local`. Các tệp tải về được Git bỏ qua. Bản gốc trước khi gỡ vẫn truy xuất được từ commit `3a1eda6`.

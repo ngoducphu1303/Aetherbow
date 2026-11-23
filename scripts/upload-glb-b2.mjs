@@ -1,14 +1,15 @@
-import { execFileSync, spawnSync } from 'node:child_process';
-import { openSync, readSync, closeSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { openSync, readSync, closeSync, statSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
 
-const paths = execFileSync('git', ['ls-files', '-z', '--', 'public/assets'], { encoding: 'utf8' })
-  .split('\0')
-  .filter((path) => path.toLowerCase().endsWith('.glb'));
-if (paths.length === 0) throw new Error('No tracked .glb files found under public/assets.');
+const paths = readdirSync('public/assets', { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.glb'))
+  .map((entry) => `${entry.parentPath}/${entry.name}`.replaceAll('\\', '/'))
+  .sort();
+if (paths.length === 0) throw new Error('No local .glb files found under public/assets. Run npm run sync:glb first.');
 
 const glbHeader = Buffer.alloc(12);
 let totalBytes = 0;

@@ -1,6 +1,9 @@
-const configuredBase = (import.meta as ImportMeta & {
+import { cdnBaseUrl } from '../../scripts/glb-manifest.json';
+
+const viteEnv = (import.meta as ImportMeta & {
   env?: { VITE_GLB_CDN_BASE_URL?: string };
-}).env?.VITE_GLB_CDN_BASE_URL;
+}).env;
+const configuredBase = viteEnv ? viteEnv.VITE_GLB_CDN_BASE_URL ?? cdnBaseUrl : undefined;
 
 export function parseGlbCdnBase(value: string | undefined): URL | undefined {
   const input = value?.trim();

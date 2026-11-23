@@ -1,23 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import manifest from './glb-manifest.json' with { type: 'json' };
 
-const DEFAULT_REPO = process.env.GITHUB_REPO || 'ngoducphu1303/Aetherbow';
-const DEFAULT_BRANCH = process.env.GITHUB_BRANCH || 'main';
-const MAX_RUNTIME_SIZE_BYTES = 25 * 1024 * 1024; // 25 MiB threshold for regular runtime GLBs
-
-// Explicitly whitelisted large (>25 MiB) GLBs that are actively used by runtime or tests
+const MAX_RUNTIME_SIZE_BYTES = 25 * 1024 * 1024;
+const RANGE_BYTES = 6 * 1024 * 1024;
 const EXTRA_RUNTIME_GLBS = new Set([
   'public/assets/Chương 1/Map mới/Chương 1.glb',
 ]);
-
-// Removed / deprecated GLB asset prefixes that must not be synced back
-const EXCLUDED_GLB_PREFIXES = [
-  'public/assets/lobby-local/',
-];
-
-function isExcludedGlb(repoPath) {
-  return EXCLUDED_GLB_PREFIXES.some((prefix) => repoPath.startsWith(prefix));
-}
 
 function parseArgs(argv) {
   const args = new Set(argv.slice(2));
@@ -28,8 +19,8 @@ function parseArgs(argv) {
   return {
     checkOnly: args.has('--check'),
     includeAllRaw: args.has('--all'),
-    repo: getFlagValue('--repo', DEFAULT_REPO),
-    branch: getFlagValue('--branch', DEFAULT_BRANCH),
+    cdn: getFlagValue('--cdn', process.env.VITE_GLB_CDN_BASE_URL || manifest.cdnBaseUrl),
+    file: getFlagValue('--file', undefined),
     concurrency: Math.max(1, Math.min(6, Number(getFlagValue('--concurrency', '4')) || 4)),
   };
 }
@@ -60,35 +51,40 @@ function isValidGlbFile(absPath, expectedSize) {
   return { ok: true, size: stat.size };
 }
 
-function buildRawGithubUrl(repo, branch, repoPath) {
-  const encoded = repoPath
-    .split('/')
-    .map((seg) => encodeURIComponent(seg))
-    .join('/');
-  return `https://raw.githubusercontent.com/${repo}/${encodeURIComponent(branch)}/${encoded}`;
+function buildCdnUrl(base, repoPath) {
+  const normalized = base.endsWith('/') ? base : `${base}/`;
+  const key = repoPath.slice('public/'.length).split('/').map(encodeURIComponent).join('/');
+  return new URL(key, normalized);
 }
 
-async function fetchRepoGlbList(repo, branch) {
-  const treeUrl = `https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'aetherbow-glb-sync',
-  };
-  if (process.env.GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+async function downloadFile(url, tmpPath, expectedSize) {
+  if (expectedSize < MAX_RUNTIME_SIZE_BYTES) {
+    const response = await fetch(url, { signal: AbortSignal.timeout(90_000) });
+    if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+    await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(tmpPath));
+    return;
   }
-  const res = await fetch(treeUrl, { headers });
-  if (!res.ok) {
-    throw new Error(`GitHub Trees API failed (${res.status}): ${await res.text()}`);
+
+  // Keep large raw models and the full Chapter 1 map inside per-request limits.
+  const file = await fs.promises.open(tmpPath, 'w');
+  try {
+    for (let start = 0; start < expectedSize; start += RANGE_BYTES) {
+      const end = Math.min(expectedSize - 1, start + RANGE_BYTES - 1);
+      const response = await fetch(url, {
+        headers: { Range: `bytes=${start}-${end}` },
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (response.status !== 206 || response.headers.get('content-range') !== `bytes ${start}-${end}/${expectedSize}`) {
+        await response.body?.cancel();
+        throw new Error(`Invalid CDN range ${start}-${end} (HTTP ${response.status})`);
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length !== end - start + 1) throw new Error('Incomplete CDN range');
+      await file.writeFile(bytes);
+    }
+  } finally {
+    await file.close();
   }
-  const payload = await res.json();
-  return (payload.tree || [])
-    .filter((entry) => entry.type === 'blob' && entry.path.toLowerCase().endsWith('.glb'))
-    .map((entry) => ({
-      path: entry.path,
-      size: Number(entry.size) || 0,
-    }))
-    .sort((a, b) => a.path.localeCompare(b.path));
 }
 
 async function downloadFileWithRetry(url, absPath, expectedSize, maxAttempts = 3) {
@@ -98,19 +94,13 @@ async function downloadFileWithRetry(url, absPath, expectedSize, maxAttempts = 3
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} for ${url}`);
-      }
-      const arrayBuf = await res.arrayBuffer();
-      const buf = Buffer.from(arrayBuf);
-      fs.writeFileSync(tmpPath, buf);
+      await downloadFile(url, tmpPath, expectedSize);
       const check = isValidGlbFile(tmpPath, expectedSize);
       if (!check.ok) {
         throw new Error(`Integrity check failed: ${check.reason}`);
       }
       fs.renameSync(tmpPath, absPath);
-      return buf.byteLength;
+      return check.size;
     } catch (error) {
       lastError = error;
       if (fs.existsSync(tmpPath)) {
@@ -134,14 +124,11 @@ function formatMB(bytes) {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const allGlbs = (await fetchRepoGlbList(opts.repo, opts.branch)).filter(
-    (entry) => !isExcludedGlb(entry.path)
-  );
-  const targetGlbs = opts.includeAllRaw
+  const allGlbs = opts.file ? manifest.files.filter(({ path }) => path === opts.file) : manifest.files;
+  if (allGlbs.length === 0) throw new Error('No GLB matches the requested path in the manifest.');
+  const targetGlbs = opts.includeAllRaw || opts.file
     ? allGlbs
-    : allGlbs.filter(
-        (entry) => entry.size < MAX_RUNTIME_SIZE_BYTES || EXTRA_RUNTIME_GLBS.has(entry.path)
-      );
+    : allGlbs.filter((entry) => entry.size < MAX_RUNTIME_SIZE_BYTES || EXTRA_RUNTIME_GLBS.has(entry.path));
 
   const skippedRawCount = allGlbs.length - targetGlbs.length;
   const toDownload = [];
@@ -158,7 +145,7 @@ async function main() {
   }
 
   console.log(
-    `[glb-sync] Repo: ${opts.repo}@${opts.branch} | Target: ${targetGlbs.length} GLB(s) ` +
+    `[glb-sync] CDN: ${opts.cdn} | Target: ${targetGlbs.length} GLB(s) ` +
       `(${validCount} ok, ${toDownload.length} missing/corrupt` +
       `${skippedRawCount > 0 ? `, ${skippedRawCount} raw source GLBs >= 25MB skipped unless --all` : ''})`
   );
@@ -184,7 +171,7 @@ async function main() {
   const worker = async () => {
     while (cursor < toDownload.length) {
       const item = toDownload[cursor++];
-      const url = buildRawGithubUrl(opts.repo, opts.branch, item.path);
+      const url = buildCdnUrl(opts.cdn, item.path);
       try {
         const bytes = await downloadFileWithRetry(url, item.absPath, item.size);
         downloadedBytes += bytes;

@@ -1,0 +1,473 @@
+{
+  "cdnBaseUrl": "https://aetherbow-glb.puugoo002.workers.dev/",
+  "files": [
+    {
+      "path": "public/assets/Chương 1/Boss mới/Sư tử boss mới High.glb",
+      "size": 3620884
+    },
+    {
+      "path": "public/assets/Chương 1/Boss mới/Sư tử boss mới Lite.glb",
+      "size": 736928
+    },
+    {
+      "path": "public/assets/Chương 1/Boss mới/Sư tử boss mới.glb",
+      "size": 87056812
+    },
+    {
+      "path": "public/assets/Chương 1/Boss phụ mới/1. Sư Tử Cánh Ánh Dương High.glb",
+      "size": 3616264
+    },
+    {
+      "path": "public/assets/Chương 1/Boss phụ mới/1. Sư Tử Cánh Ánh Dương Lite.glb",
+      "size": 655432
+    },
+    {
+      "path": "public/assets/Chương 1/Boss phụ mới/1. Sư Tử Cánh Ánh Dương.glb",
+      "size": 93737632
+    },
+    {
+      "path": "public/assets/Chương 1/Boss/Ares · Tướng Quân Hỏa Ngục.glb",
+      "size": 36026456
+    },
+    {
+      "path": "public/assets/Chương 1/Boss/Boreas · Tướng Quân Phong Băng.glb",
+      "size": 54771004
+    },
+    {
+      "path": "public/assets/Chương 1/Boss/Sư Vương Thái Dương (Boss Cuối).glb",
+      "size": 8697040
+    },
+    {
+      "path": "public/assets/Chương 1/Boss/Sư Vương Thái Dương Lite.glb",
+      "size": 426704
+    },
+    {
+      "path": "public/assets/Chương 1/Map mới/Chương 1 Lite.glb",
+      "size": 1384116
+    },
+    {
+      "path": "public/assets/Chương 1/Map mới/Chương 1.glb",
+      "size": 94747964
+    },
+    {
+      "path": "public/assets/Chương 1/Map/Meshy_AI_A_vast_floating_arena_made_of_fractured_20251119_texture.glb",
+      "size": 43322508
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia High.glb",
+      "size": 2653568
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia Lite.glb",
+      "size": 751964
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/1. Anh hùng/Aurelia.glb",
+      "size": 85585076
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/2. Tinh linh/Astraeo High.glb",
+      "size": 1144068
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/2. Tinh linh/Astraeo Lite.glb",
+      "size": 277304
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/2. Tinh linh/Astraeo.glb",
+      "size": 91692820
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/3. Cánh/Wings of the Solar Zenith High.glb",
+      "size": 1286424
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/3. Cánh/Wings of the Solar Zenith Lite.glb",
+      "size": 327784
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/3. Cánh/Wings of the Solar Zenith.glb",
+      "size": 89074516
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/4. Thú cưỡi/Solarius High.glb",
+      "size": 1762912
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/4. Thú cưỡi/Solarius Lite.glb",
+      "size": 417556
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/4. Thú cưỡi/Solarius.glb",
+      "size": 92843388
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/5. Thánh khí/Astrolabe of Regulus High.glb",
+      "size": 1173180
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/5. Thánh khí/Astrolabe of Regulus Lite.glb",
+      "size": 266664
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/5. Thánh khí/Astrolabe of Regulus.glb",
+      "size": 93454188
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/6. Hào quang/Halo of the Leo Sovereign High.glb",
+      "size": 1267564
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/6. Hào quang/Halo of the Leo Sovereign Lite.glb",
+      "size": 296264
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/6. Hào quang/Halo of the Leo Sovereign.glb",
+      "size": 93789308
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer High.glb",
+      "size": 2649596
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer Lite.glb",
+      "size": 774372
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Golden Oasis Sun Dancer.glb",
+      "size": 85267688
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Royal Sun-Temple Commander High.glb",
+      "size": 2723056
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Royal Sun-Temple Commander Lite.glb",
+      "size": 779448
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Royal Sun-Temple Commander.glb",
+      "size": 87415212
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Solaris Valkyrie Regalia High.glb",
+      "size": 2691760
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Solaris Valkyrie Regalia Lite.glb",
+      "size": 753864
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Solaris Valkyrie Regalia.glb",
+      "size": 88481432
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Winter Solstice Crystal Sovereign High.glb",
+      "size": 2637828
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Winter Solstice Crystal Sovereign Lite.glb",
+      "size": 739460
+    },
+    {
+      "path": "public/assets/Chương 1/Nhân vật/7. Trang phục/Winter Solstice Crystal Sovereign.glb",
+      "size": 82730876
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/1. Sư Tử Lửa Đền Thờ (cận chiến tốc độ cao).glb",
+      "size": 86414836
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/1. Sư Tử Lửa Đền Thờ High.glb",
+      "size": 1384836
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/1. Sư Tử Lửa Đền Thờ Lite.glb",
+      "size": 278432
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/2. Vệ Binh Đá Mặt Trời (tank giáp nặng).glb",
+      "size": 89581928
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/2. Vệ Binh Đá Mặt Trời High.glb",
+      "size": 1154576
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/2. Vệ Binh Đá Mặt Trời Lite.glb",
+      "size": 270060
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/3. Linh Hồn Lửa Hoàng Đạo (pháp sư tầm xa).glb",
+      "size": 87161344
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/3. Linh Hồn Lửa Hoàng Đạo High.glb",
+      "size": 1134904
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/3. Linh Hồn Lửa Hoàng Đạo Lite.glb",
+      "size": 273676
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/4. Chiến Binh Thương Ánh Dương (lính gác tầm trung).glb",
+      "size": 91313300
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/4. Chiến Binh Thương Ánh Dương High.glb",
+      "size": 1235124
+    },
+    {
+      "path": "public/assets/Chương 1/Quái mới/4. Chiến Binh Thương Ánh Dương Lite.glb",
+      "size": 279104
+    },
+    {
+      "path": "public/assets/Chương 1/Quái/Golem Đá Cổ Đại (Trâu máu · Dậm đất).glb",
+      "size": 2179232
+    },
+    {
+      "path": "public/assets/Chương 1/Quái/Lính Đá Tinh Linh (Áp sát nhanh).glb",
+      "size": 59575076
+    },
+    {
+      "path": "public/assets/Chương 1/Quái/Tiểu Long Lửa (Khạc cầu lửa 3 tia).glb",
+      "size": 103672604
+    },
+    {
+      "path": "public/assets/Chương 1/Quái/Xạ Thủ Quỷ Lùn (Bắn cầu năng lượng).glb",
+      "size": 16901096
+    },
+    {
+      "path": "public/assets/Chương 2/01_Dau_Truong/Aries War-Forge Arena.glb",
+      "size": 79975720
+    },
+    {
+      "path": "public/assets/Chương 2/02_Boss/1. Boss chính/Kratos-Aries.glb",
+      "size": 85638328
+    },
+    {
+      "path": "public/assets/Chương 2/02_Boss/2. Boss phụ/Cinderhorn.glb",
+      "size": 93985276
+    },
+    {
+      "path": "public/assets/Chương 2/03_Quai_Vat/1. Magma Ram Charger.glb",
+      "size": 85528116
+    },
+    {
+      "path": "public/assets/Chương 2/03_Quai_Vat/2. Obsidian Horned Golem.glb",
+      "size": 86594620
+    },
+    {
+      "path": "public/assets/Chương 2/03_Quai_Vat/3. Crimson Mars Flame Spirit.glb",
+      "size": 83674828
+    },
+    {
+      "path": "public/assets/Chương 2/03_Quai_Vat/4. Aries Flame Berserker.glb",
+      "size": 91054100
+    },
+    {
+      "path": "public/assets/Chương 2/04_Nu_Chinh/Bellona.glb",
+      "size": 82003216
+    },
+    {
+      "path": "public/assets/Chương 2/05_Trang_Bi_Ngoai_Trang/1. Tinh linh/Pyro.glb",
+      "size": 86584312
+    },
+    {
+      "path": "public/assets/Chương 2/05_Trang_Bi_Ngoai_Trang/2. Cánh/Wings of the Crimson Ram.glb",
+      "size": 91446620
+    },
+    {
+      "path": "public/assets/Chương 2/05_Trang_Bi_Ngoai_Trang/3. Thú cưỡi/Vulcan.glb",
+      "size": 87841468
+    },
+    {
+      "path": "public/assets/Chương 2/05_Trang_Bi_Ngoai_Trang/4. Thánh khí/War-Horn of Mars.glb",
+      "size": 96541536
+    },
+    {
+      "path": "public/assets/Chương 2/05_Trang_Bi_Ngoai_Trang/5. Hào quang/Halo of the Aries Vanguard.glb",
+      "size": 99822448
+    },
+    {
+      "path": "public/assets/Chương 2/06_Trang_Phuc/Golden Fleece Empress Regalia.glb",
+      "size": 82232832
+    },
+    {
+      "path": "public/assets/Chương 2/Map mới/Aries War-Forge Arena Lite.glb",
+      "size": 1376608
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/aries-arena-high.glb",
+      "size": 2747420
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/aries-berserker-high.glb",
+      "size": 1107508
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/aries-berserker-lite.glb",
+      "size": 266112
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/aries-halo-high.glb",
+      "size": 1243916
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/aries-halo-lite.glb",
+      "size": 267684
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/bellona-high.glb",
+      "size": 1905652
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/bellona-lite.glb",
+      "size": 565264
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/cinderhorn-high.glb",
+      "size": 1753500
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/cinderhorn-lite.glb",
+      "size": 356384
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/crimson-ram-wings-high.glb",
+      "size": 1147372
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/crimson-ram-wings-lite.glb",
+      "size": 272344
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/crimson-spirit-high.glb",
+      "size": 1112576
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/crimson-spirit-lite.glb",
+      "size": 231652
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/golden-fleece-high.glb",
+      "size": 1922788
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/golden-fleece-lite.glb",
+      "size": 547148
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/kratos-aries-high.glb",
+      "size": 1866612
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/kratos-aries-lite.glb",
+      "size": 567804
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/magma-ram-high.glb",
+      "size": 1071868
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/magma-ram-lite.glb",
+      "size": 279252
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/obsidian-golem-high.glb",
+      "size": 1044012
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/obsidian-golem-lite.glb",
+      "size": 254864
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/pyro-high.glb",
+      "size": 1120180
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/pyro-lite.glb",
+      "size": 247976
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/vulcan-high.glb",
+      "size": 1785456
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/vulcan-lite.glb",
+      "size": 374008
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/war-horn-high.glb",
+      "size": 1116292
+    },
+    {
+      "path": "public/assets/Chương 2/Runtime/war-horn-lite.glb",
+      "size": 238656
+    },
+    {
+      "path": "public/assets/genshin_impact_-_chevreuse/genshin_impact_-_chevreuse.glb",
+      "size": 6983484
+    },
+    {
+      "path": "public/assets/heroes/alice-ao-dai-hoa-mai-lite.glb",
+      "size": 379356
+    },
+    {
+      "path": "public/assets/heroes/alice-ao-dai-hoa-mai.glb",
+      "size": 1537028
+    },
+    {
+      "path": "public/assets/heroes/golden-dress-girl-lite.glb",
+      "size": 641648
+    },
+    {
+      "path": "public/assets/heroes/golden-dress-girl.glb",
+      "size": 2374120
+    },
+    {
+      "path": "public/assets/heroes/hatsune-miku-lite.glb",
+      "size": 3643700
+    },
+    {
+      "path": "public/assets/heroes/hatsune-miku.glb",
+      "size": 6332444
+    },
+    {
+      "path": "public/assets/heroes/star-rail/honkai_star_rail_-_cerydra.glb",
+      "size": 10184052
+    },
+    {
+      "path": "public/assets/heroes/star-rail/honkai_star_rail_-_hysilens.glb",
+      "size": 18666164
+    },
+    {
+      "path": "public/assets/heroes/star-rail/honkai_star_rail_-_the_herta.glb",
+      "size": 16247208
+    },
+    {
+      "path": "public/assets/heroes/star-rail/star_rail_-_ruan_mei.glb",
+      "size": 6164356
+    },
+    {
+      "path": "public/assets/heroes/star-rail/star_rail_-_xueyi.glb",
+      "size": 4453608
+    },
+    {
+      "path": "public/assets/heroes/van-tich-lite.glb",
+      "size": 270928
+    },
+    {
+      "path": "public/assets/heroes/van-tich.glb",
+      "size": 1418104
+    },
+    {
+      "path": "public/assets/lobby-local/street-city.glb",
+      "size": 17722712
+    },
+    {
+      "path": "public/assets/mounts/black-dragon.glb",
+      "size": 12554472
+    }
+  ]
+}
