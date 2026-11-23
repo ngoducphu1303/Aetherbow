@@ -17,7 +17,7 @@ Script rclone `node scripts/upload-glb-b2.mjs` vẫn có thể dùng cho đồng
 
 ## Triển khai Worker
 
-Tạo thêm một khóa **Read Only** cho bucket `aetherbow-assets`, có thể giới hạn prefix `assets/`. Đặt cặp giá trị vào Worker Secrets dưới tên `B2_READ_KEY_ID` và `B2_READ_APPLICATION_KEY`. Upload qua Worker dùng thêm `B2_WRITE_KEY_ID` và `B2_WRITE_APPLICATION_KEY` với quyền ghi giới hạn trong bucket này. Các secret được lưu trên Worker. `UPLOAD_GITHUB_USER_ID` trong `wrangler.jsonc` giới hạn quyền upload theo ID tài khoản GitHub.
+Tạo thêm một khóa **Read Only** cho bucket `aetherbow-assets`, có thể giới hạn prefix `assets/`. Đặt cặp giá trị vào Worker Secrets dưới tên `B2_READ_KEY_ID` và `B2_READ_APPLICATION_KEY`. Upload qua Worker dùng thêm `B2_WRITE_KEY_ID` và `B2_WRITE_APPLICATION_KEY` với quyền **đọc và ghi** giới hạn trong bucket này (quyền đọc cần cho bước HEAD xác minh đối tượng sau khi hoàn tất upload). Các secret được lưu trên Worker. `UPLOAD_GITHUB_USER_ID` trong `wrangler.jsonc` giới hạn quyền upload theo ID tài khoản GitHub.
 
 Nếu triển khai từ Codex Cloud, cho phép `api.cloudflare.com` và cấu hình `CLOUDFLARE_ACCOUNT_ID` cùng `CLOUDFLARE_API_TOKEN` có quyền sửa Workers trong account đích. Nếu dùng máy cá nhân, có thể đăng nhập Wrangler. Với biến bí mật đã nạp vào shell, triển khai và gắn khóa bằng:
 
@@ -61,7 +61,7 @@ Danh mục quản trị lấy các model có `"runtime": true` trong manifest. W
 
 ### Chuẩn bị tệp mới trước khi tích hợp
 
-Trong trang quản trị, mở **Tải asset mới**, chọn chương và nhóm, rồi tải một hoặc nhiều tệp GLB 2.0. Mỗi tệp tối đa 120 MB. Trang gửi từng phần 6 MiB và tự thử lại khi kết nối bị gián đoạn. Nếu cần bấm tải lại, giữ trang đang mở để tiếp tục từ phần chưa hoàn tất. Ví dụ, bản đồ Chương 3 được lưu dưới `assets/Chương 3/Asset mới/Bản đồ/<id>/<tên-tệp>.glb`. Tên tệp được giữ lại và mỗi lần tải có đường dẫn riêng.
+Trong trang quản trị, mở **Tải asset mới**, chọn chương và nhóm, rồi tải một hoặc nhiều tệp GLB 2.0. Mỗi tệp tối đa 120 MB. Cả **Tải asset mới** và **Thay model đã tích hợp** đều gửi từng phần 6 MiB qua Worker tới B2 Private, thay vì đẩy nguyên tệp qua một request. Worker lưu ETag đã được B2 xác nhận cho từng phần. Nếu bị gián đoạn, chọn lại chính tệp đó (giữ nguyên tên, kích thước và thời điểm sửa tệp) trong cùng phiên trình duyệt rồi bấm tải lại; các phần đã được ghi nhận sẽ được bỏ qua. Chỉ hiển thị 100% sau khi B2 và danh mục đã xác nhận hoàn tất. Ví dụ, bản đồ Chương 3 được lưu dưới `assets/Chương 3/Asset mới/Bản đồ/<id>/<tên-tệp>.glb`. Tên tệp được giữ lại và mỗi lần tải có đường dẫn riêng.
 
 Dùng **Sao chép danh sách cho AI** để gửi tên, nhóm, kích thước và các URL CDN cho agent tích hợp. **Tải thêm** mở các lần upload cũ hơn nếu danh sách có nhiều trang. Kho asset theo chương chỉ liệt kê cho tài khoản quản trị. Ai có URL CDN của tệp đều có thể tải qua Worker. Các tệp vào kho này chỉ xuất hiện trong game sau khi được tích hợp vào mã hoặc cấu hình của chương.
 
