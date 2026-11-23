@@ -265,7 +265,7 @@ test('multipart inbox upload retries a part and finalizes idempotently after a l
   for (let i = 0; i < 2; i++) {
     const response = await send('start', start, 'POST');
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { partSize, completed: null });
+    assert.deepEqual(await response.json(), { partSize, completed: null, uploadedParts: {} });
   }
   assert.equal(starts, 1);
   assert.equal((await send('start', { ...start, name: 'khac.glb' }, 'POST')).status, 409);
@@ -274,6 +274,10 @@ test('multipart inbox upload retries a part and finalizes idempotently after a l
     return send('part', { part: String(part) }, 'PUT', body, { 'x-glb-size': String(body.length) });
   };
   assert.equal((await put(1)).status, 200);
+  const resumed = await send('start', start, 'POST');
+  assert.deepEqual((await resumed.json()).uploadedParts, { 1: '1'.repeat(32) });
+  const premature = await send('finish', {}, 'POST', JSON.stringify({ etags: ['1'.repeat(32), '2'.repeat(32)] }));
+  assert.equal(premature.status, 409);
   const failure = await put(2);
   assert.equal(failure.status, 502);
   assert.equal(failure.headers.get('access-control-allow-origin'), adminOrigin);
@@ -351,12 +355,12 @@ test('both upload flows accept 120 MB and multipart replacements remain drafts',
   const input = {chapter:'3',group:'map',name:'size-test.glb',size:String(contentLength),
     id:'74f3d7ae-8c56-4ad9-9bee-000000000004'};
   assert.equal((await browserCall('inbox-upload/start',input,{})).status,200);
-  const finished = await browserCall('model-upload/finish',{id},{etags:Array(20).fill('a'.repeat(32))});
-  assert.equal(finished.status,201);
-  assert.equal((await finished.json()).size,contentLength);
+  // A fabricated ETag list cannot finalize a session without uploading its parts.
+  const premature = await browserCall('model-upload/finish',{id},{etags:Array(20).fill('a'.repeat(32))});
+  assert.equal(premature.status,409);
   assert.ok(b2Paths.some((value)=>value.includes('/.revisions/'+id)));
   const entry = await (await browserCall('entry',{path})).json();
   assert.equal(entry.active,null);
-  assert.equal(entry.draft.id,id);
+  assert.equal(entry.draft,null);
   assert.deepEqual((await (await browserCall('inbox',{chapter:'3'})).json()).files,[]);
 });
