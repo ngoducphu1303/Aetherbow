@@ -11,6 +11,12 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidUuidV4(id) {
+      return id is string
+        && id.size() == 36
+        && id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -25,6 +31,17 @@ service cloud.firestore {
 
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isGoogleAssetAdmin() {
+      return isSignedIn()
+        && request.auth.token.email == 'puugoo002@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    function isAssetAdmin() {
+      return isGoogleAssetAdmin()
+        || (isSignedIn() && exists(/databases/$(database)/documents/asset_admins/$(request.auth.uid)));
     }
 
     // Validation Blueprint 1: PlayerAccount (/players/{uid})
@@ -290,6 +307,90 @@ service cloud.firestore {
       && data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint 5: AssetAdminRecord (/asset_admins/{uid})
+    function isValidAssetAdminRecord(data, uid) {
+      return data.keys().hasAll([
+        'uid',
+        'handle',
+        'grantedBy',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid',
+        'handle',
+        'grantedBy',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.uid is string
+      && data.uid == uid
+      && isValidId(data.uid)
+      && data.handle is string
+      && data.handle in ['puugoo']
+      && data.grantedBy is string
+      && data.grantedBy == request.auth.uid
+      && isValidId(data.grantedBy)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint 6: AssetInboxItem (/asset_inbox/{assetId})
+    function isValidAssetInboxItem(data, assetId) {
+      return data.keys().hasAll([
+        'id',
+        'name',
+        'chapter',
+        'group',
+        'path',
+        'size',
+        'uploadedAt',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'id',
+        'name',
+        'chapter',
+        'group',
+        'path',
+        'size',
+        'uploadedAt',
+        'isPublic',
+        'createdAt',
+        'updatedAt'
+      ])
+      && isValidUuidV4(data.id)
+      && data.id == assetId
+      && data.name is string
+      && data.name.size() >= 5
+      && data.name.size() <= 120
+      && data.name.matches('^[^/\\\\]+\\.[gG][lL][bB]$')
+      && !data.name.matches('.*\\.\\..*')
+      && data.chapter is int
+      && data.chapter >= 1
+      && data.chapter <= 12
+      && data.group is string
+      && data.group in ['map', 'hero', 'enemy', 'boss', 'companion', 'other']
+      && data.path is string
+      && data.path.size() >= 15
+      && data.path.size() <= 320
+      && !data.path.matches('.*\\.\\..*')
+      && data.path.matches('^/assets/Chương ([1-9]|1[0-2])/Asset mới/[^/\\\\]+/' + data.id + '/[^/\\\\]+\\.[gG][lL][bB]$')
+      && data.size is int
+      && data.size >= 24
+      && data.size <= 120000000
+      && data.uploadedAt is string
+      && data.uploadedAt.size() >= 20
+      && data.uploadedAt.size() <= 32
+      && data.uploadedAt.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,3})?Z$')
+      && data.isPublic is bool
+      && data.isPublic == true
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
     // Collection 1: Private Player Accounts & Full Progression Saves (PII Isolated)
     match /players/{uid} {
       allow get: if isOwner(uid) && isValidId(uid);
@@ -454,6 +555,58 @@ service cloud.firestore {
           ])
         );
       allow delete: if false;
+    }
+
+    // Collection 5: Private Asset Admin Allowlist (Google Owner Managed Only)
+    match /asset_admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isGoogleAssetAdmin());
+      allow list: if false;
+      allow create: if isGoogleAssetAdmin()
+        && isValidId(uid)
+        && isValidAssetAdminRecord(incoming(), uid)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isGoogleAssetAdmin()
+        && isValidId(uid)
+        && isValidAssetAdminRecord(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'handle',
+          'grantedBy',
+          'updatedAt'
+        ]);
+      allow delete: if isGoogleAssetAdmin() && isValidId(uid);
+    }
+
+    // Collection 6: Public Read-Only Mirror of Uploaded GLB Inbox Metadata
+    match /asset_inbox/{assetId} {
+      allow get: if isValidUuidV4(assetId)
+        && ((resource != null && existing().isPublic == true) || isAssetAdmin());
+      allow list: if resource.data.isPublic == true;
+      allow create: if isAssetAdmin()
+        && isValidUuidV4(assetId)
+        && isValidAssetInboxItem(incoming(), assetId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAssetAdmin()
+        && isValidUuidV4(assetId)
+        && isValidAssetInboxItem(incoming(), assetId)
+        && incoming().id == existing().id
+        && incoming().path == existing().path
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'name',
+          'chapter',
+          'group',
+          'size',
+          'uploadedAt',
+          'isPublic',
+          'updatedAt'
+        ]);
+      allow delete: if isAssetAdmin() && isValidUuidV4(assetId);
     }
   }
 }

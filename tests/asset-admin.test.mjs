@@ -443,3 +443,59 @@ test('multipart replacement restores uploaded parts and publishes only after com
   }), env);
   assert.equal(published.status, 200);
 });
+
+test('public /__asset-inbox exposes read-only inbox index with URLs while keeping writes admin-only', async () => {
+  const binding = catalogBinding();
+  const stub = binding.get();
+  const id3 = '74f3d7ae-8c56-4ad9-9bee-000000000010';
+  const id4 = '74f3d7ae-8c56-4ad9-9bee-000000000011';
+  await stub.fetch('https://catalog.internal/inbox', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: id3,
+      name: 'Map Chương 3.glb',
+      chapter: 3,
+      group: 'map',
+      path: `/assets/Chương 3/Asset mới/Bản đồ/${id3}/Map Chương 3.glb`,
+      size: 123456,
+      uploadedAt: '2026-11-23T10:00:00.000Z',
+    }),
+  });
+  await stub.fetch('https://catalog.internal/inbox', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: id4,
+      name: 'Boss Chương 4.glb',
+      chapter: 4,
+      group: 'boss',
+      path: `/assets/Chương 4/Asset mới/Boss/${id4}/Boss Chương 4.glb`,
+      size: 654321,
+      uploadedAt: '2026-11-23T11:00:00.000Z',
+    }),
+  });
+  const env = { FIREBASE_PROJECT_ID: project, ADMIN_GOOGLE_EMAIL: email, ASSET_CATALOG: binding };
+
+  const ch3Response = await worker.fetch(new Request(cdn + '/__asset-inbox?chapter=3'), env);
+  assert.equal(ch3Response.status, 200);
+  assert.equal(ch3Response.headers.get('access-control-allow-origin'), '*');
+  const ch3 = await ch3Response.json();
+  assert.equal(ch3.files.length, 1);
+  assert.equal(ch3.files[0].id, id3);
+  assert.equal(ch3.files[0].chapter, 3);
+  assert.ok(ch3.files[0].url.startsWith(cdn + '/assets/'));
+  assert.equal(decodeURIComponent(new URL(ch3.files[0].url).pathname), ch3.files[0].path);
+
+  const allResponse = await worker.fetch(new Request(cdn + '/__asset-inbox'), env);
+  assert.equal(allResponse.status, 200);
+  const all = await allResponse.json();
+  assert.equal(all.files.length, 2);
+
+  assert.equal((await worker.fetch(new Request(cdn + '/__asset-inbox?chapter=0'), env)).status, 400);
+  assert.equal((await worker.fetch(new Request(cdn + '/__asset-inbox?chapter=13'), env)).status, 400);
+  assert.equal((await worker.fetch(new Request(cdn + '/__asset-inbox?cursor=inbox:3:bad'), env)).status, 400);
+  assert.equal((await worker.fetch(new Request(cdn + '/__asset-inbox?chapter=3&cursor=inbox:4:2026-11-23T10:00:00.000Z:' + id3), env)).status, 400);
+  assert.equal((await worker.fetch(new Request(cdn + '/__asset-inbox?chapter=3', { method: 'POST' }), env)).status, 405);
+  assert.equal((await worker.fetch(new Request(cdn + '/__asset-inbox?chapter=3', { method: 'PUT' }), env)).status, 405);
+  assert.equal((await worker.fetch(new Request(cdn + '/__admin/inbox?chapter=3', { method: 'PUT' }), env)).status, 401);
+});
+

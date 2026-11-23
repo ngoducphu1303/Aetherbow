@@ -63,8 +63,14 @@ Danh mục quản trị lấy các model có `"runtime": true` trong manifest. W
 
 Trong trang quản trị, mở **Tải asset mới**, chọn chương và nhóm, rồi tải một hoặc nhiều tệp GLB 2.0. Mỗi tệp tối đa 120 MB. Cả **Tải asset mới** và **Thay model đã tích hợp** đều gửi từng phần 6 MiB qua Worker tới B2 Private, thay vì đẩy nguyên tệp qua một request. Worker lưu ETag đã được B2 xác nhận cho từng phần. Nếu bị gián đoạn, chọn lại chính tệp đó (giữ nguyên tên, kích thước và thời điểm sửa tệp) trong cùng phiên trình duyệt rồi bấm tải lại; các phần đã được ghi nhận sẽ được bỏ qua. Chỉ hiển thị 100% sau khi B2 và danh mục đã xác nhận hoàn tất. Ví dụ, bản đồ Chương 3 được lưu dưới `assets/Chương 3/Asset mới/Bản đồ/<id>/<tên-tệp>.glb`. Tên tệp được giữ lại và mỗi lần tải có đường dẫn riêng.
 
-Dùng **Sao chép danh sách cho AI** để gửi tên, nhóm, kích thước và các URL CDN cho agent tích hợp. **Tải thêm** mở các lần upload cũ hơn nếu danh sách có nhiều trang. Kho asset theo chương chỉ liệt kê cho tài khoản quản trị. Ai có URL CDN của tệp đều có thể tải qua Worker. Các tệp vào kho này chỉ xuất hiện trong game sau khi được tích hợp vào mã hoặc cấu hình của chương.
+Dùng **Sao chép danh sách cho AI** nếu muốn gửi thủ công, hoặc dùng cơ chế tự động đọc kho asset:
 
+```sh
+npm run inbox:glb -- 3
+npm run inbox:glb -- 3 --download tmp/ch3-inbox
+```
+
+Worker cung cấp endpoint chỉ-đọc `GET /__asset-inbox?chapter=<1..12>` (hoặc bỏ `chapter` để liệt kê tất cả chương) trả về tên tệp, nhóm, kích thước và URL CDN công khai của các model trong kho mới, trong khi mọi thao tác upload/publish/rollback dưới `/__admin/*` vẫn yêu cầu xác thực quản trị. Sau khi triển khai Worker một lần bằng `npm run deploy:worker`, AI và script build có thể tự đọc và tải model mới cho mọi chương mà không cần sao chép link thủ công. Trang quản trị cũng tự động đồng bộ siêu dữ liệu kho sang Firestore (`/asset_inbox`) làm nguồn dự phòng chỉ-đọc khi `firestore.rules` đã được triển khai.
 
 ### Liên kết tài khoản quản trị puugoo
 

@@ -334,6 +334,120 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "AssetAdminRecord": {
+      "title": "AssetAdminRecord",
+      "description": "Authorized non-Google password admin UID granted by the verified Google owner to mirror uploaded GLB metadata into Firestore.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the linked password admin account."
+        },
+        "handle": {
+          "type": "string",
+          "enum": ["puugoo"],
+          "description": "Normalized admin handle."
+        },
+        "grantedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Verified Google owner UID that authorized this admin record."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was granted."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was last confirmed."
+        }
+      },
+      "required": [
+        "uid",
+        "handle",
+        "grantedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AssetInboxItem": {
+      "title": "AssetInboxItem",
+      "description": "Public read-only metadata mirror of GLB assets uploaded to /admin/assets so build scripts and AI tools can discover chapter uploads without manual link copying.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "UUIDv4 identifier matching the Cloudflare Worker upload record."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120,
+          "description": "Original .glb filename."
+        },
+        "chapter": {
+          "type": "integer",
+          "description": "Campaign chapter number (1 to 12)."
+        },
+        "group": {
+          "type": "string",
+          "enum": ["map", "hero", "enemy", "boss", "companion", "other"],
+          "description": "Asset category group."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 15,
+          "maxLength": 320,
+          "description": "Canonical CDN object path under /assets/Chương <n>/Asset mới/..."
+        },
+        "size": {
+          "type": "integer",
+          "description": "GLB file size in bytes (24 to 120000000)."
+        },
+        "uploadedAt": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 32,
+          "description": "ISO-8601 UTC timestamp reported by the upload worker."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Explicit public catalog visibility flag enforced by security rules."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the inbox metadata record was mirrored."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the inbox metadata record was last synced."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "chapter",
+        "group",
+        "path",
+        "size",
+        "uploadedAt",
+        "isPublic",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -352,6 +466,14 @@
     "/season_standings/{standingId}": {
       "schema": { "$ref": "#/entities/SeasonStanding" },
       "description": "Public PII-free Competitive Season standings keyed by {seasonId}_{uid}, readable when isPublic == true and writable only by the matching authenticated owner."
+    },
+    "/asset_admins/{uid}": {
+      "schema": { "$ref": "#/entities/AssetAdminRecord" },
+      "description": "Private allowlist of linked password admin UIDs managed exclusively by the verified Google owner."
+    },
+    "/asset_inbox/{assetId}": {
+      "schema": { "$ref": "#/entities/AssetInboxItem" },
+      "description": "Public read-only mirror of uploaded GLB inbox metadata (isPublic == true), writable exclusively by verified asset administrators."
     }
   }
 }

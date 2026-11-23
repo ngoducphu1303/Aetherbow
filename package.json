@@ -13,7 +13,9 @@
     "test": "node --max-old-space-size=256 --import tsx --test --test-concurrency=1 tests/*.test.mjs src/engine/*.test.ts",
     "check:glb": "node scripts/sync-glb-assets.mjs --check",
     "sync:glb": "node scripts/sync-glb-assets.mjs",
-    "upload:glb": "node scripts/upload-glb-worker.mjs"
+    "upload:glb": "node scripts/upload-glb-worker.mjs",
+    "inbox:glb": "node scripts/fetch-glb-inbox.mjs",
+    "deploy:worker": "npm exec --yes --package=wrangler -- wrangler deploy --config workers/glb-cdn/wrangler.jsonc"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",

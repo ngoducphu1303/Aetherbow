@@ -437,6 +437,65 @@ async function handleMultipartUpload(request, url, env, action, kind) {
   return adminResponse(await complete.json(), complete.ok ? 201 : complete.status);
 }
 
+function isValidInboxCursor(chapter, cursor) {
+  const prefix = 'inbox:' + chapter + ':';
+  const separator = cursor.lastIndexOf(':');
+  return cursor.startsWith(prefix)
+    && REVISION_ID.test(cursor.slice(separator + 1))
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(cursor.slice(prefix.length, separator));
+}
+
+function publicInboxItem(item, origin) {
+  if (!item || typeof item.path !== 'string') return null;
+  const encodedPath = item.path.slice(1).split('/').map(encodeURIComponent).join('/');
+  return {
+    id: item.id,
+    name: item.name,
+    chapter: item.chapter,
+    group: item.group,
+    path: item.path,
+    size: item.size,
+    uploadedAt: item.uploadedAt ?? null,
+    url: new URL(encodedPath, origin).href,
+  };
+}
+
+async function handlePublicAssetInbox(request, url, env) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: { ...CORS, 'access-control-max-age': '3600' } });
+  }
+  if (request.method !== 'GET') {
+    return error('Method not allowed', 405, { allow: 'GET, OPTIONS' });
+  }
+  const chapter = url.searchParams.get('chapter');
+  const cursor = url.searchParams.get('cursor');
+  const headers = { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' };
+  if (chapter !== null && !/^(?:[1-9]|1[0-2])$/.test(chapter)) {
+    return Response.json({ error: 'Chọn chương từ 1 đến 12.' }, { status: 400, headers });
+  }
+  if (cursor && !chapter) {
+    return Response.json({ error: 'Cần chọn chương khi phân trang.' }, { status: 400, headers });
+  }
+  if (cursor && chapter && !isValidInboxCursor(chapter, cursor)) {
+    return Response.json({ error: 'Trang danh sách không hợp lệ.' }, { status: 400, headers });
+  }
+  if (!env.ASSET_CATALOG) {
+    return Response.json({ files: [], nextCursor: null }, { headers });
+  }
+  const route = chapter
+    ? '/inbox?' + new URLSearchParams({ chapter, ...(cursor ? { cursor } : {}) })
+    : '/inbox-all';
+  const result = await catalog(env, route);
+  if (!result.ok) {
+    return Response.json({ error: 'Không đọc được danh sách asset.' }, { status: result.status, headers });
+  }
+  const payload = await result.json();
+  const files = (Array.isArray(payload.files) ? payload.files : [])
+    .map((item) => publicInboxItem(item, url.origin))
+    .filter(Boolean);
+  return Response.json({ files, nextCursor: payload.nextCursor ?? null }, { headers });
+}
+
 async function handleAssetInbox(request, url, env) {
   const chapter = url.searchParams.get('chapter') ?? '';
   if (!/^(?:[1-9]|1[0-2])$/.test(chapter)) return adminResponse({ error: 'Chọn chương từ 1 đến 12.' }, 400);
@@ -445,10 +504,7 @@ async function handleAssetInbox(request, url, env) {
     const cursor = url.searchParams.get('cursor');
     const parameters = new URLSearchParams({ chapter });
     if (cursor) {
-      const prefix = 'inbox:' + chapter + ':';
-      const separator = cursor.lastIndexOf(':');
-      if (!cursor.startsWith(prefix) || !REVISION_ID.test(cursor.slice(separator + 1)) ||
-          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(cursor.slice(prefix.length, separator))) {
+      if (!isValidInboxCursor(chapter, cursor)) {
         return adminResponse({ error: 'Trang danh sách không hợp lệ.' }, 400);
       }
       parameters.set('cursor', cursor);
@@ -491,7 +547,12 @@ async function handleAdmin(request, url, env) {
     return adminResponse({ error: 'Tài khoản puugoo chưa được liên kết quyền quản trị.' }, 403);
   }
   if (request.method === 'GET' && endpoint === '/session') {
-    return adminResponse({ allowed: true, canLinkPassword: googleAdmin && !passwordUid, passwordLinked: Boolean(passwordUid) });
+    return adminResponse({
+      allowed: true,
+      canLinkPassword: googleAdmin && !passwordUid,
+      passwordLinked: Boolean(passwordUid),
+      ...(googleAdmin && passwordUid ? { passwordUid } : {}),
+    });
   }
   if (request.method === 'POST' && endpoint === '/password-account') {
     if (!googleAdmin || Math.floor(Date.now() / 1000) - identity.auth_time > 300) {
@@ -513,7 +574,7 @@ async function handleAdmin(request, url, env) {
     const linked = await catalog(env, '/password-admin', 'POST', { uid: candidate.sub });
     if (linked.status === 409) return adminResponse({ error: 'Tài khoản mật khẩu đã được liên kết.' }, 409);
     if (!linked.ok) return adminResponse({ error: 'Không lưu được quyền quản trị.' }, 502);
-    return adminResponse({ passwordLinked: true });
+    return adminResponse({ passwordLinked: true, passwordUid: candidate.sub });
   }
   if (endpoint === '/inbox') return handleAssetInbox(request, url, env);
   if (endpoint.startsWith('/inbox-upload/')) {
@@ -586,6 +647,9 @@ export default {
       return new Response(result.body, { status: result.status, headers: {
         ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store',
       } });
+    }
+    if (url.pathname === '/__asset-inbox') {
+      return handlePublicAssetInbox(request, url, env);
     }
     if (url.pathname.startsWith(UPLOAD_PREFIX + '/')) return handleUpload(request, url, env);
     const objectPath = getObjectPath(url);

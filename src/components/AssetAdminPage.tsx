@@ -6,13 +6,14 @@ import manifest from '../../scripts/glb-manifest.json';
 import AssetInboxPanel from './AssetInboxPanel';
 import { adminHandle, credentialMessage, linkAssetAdminAccount, loginAssetAdmin } from './assetAdminCredentials';
 import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadAdminGlb } from './assetAdminApi';
+import { syncAssetAdminUidToFirestore } from '../services/assetInboxMirrorService';
 
 const Preview = lazy(() => import('./AssetAdminPreview'));
 const categories = ['Chương 1', 'Chương 2', 'Khác'] as const;
 type Category = typeof categories[number];
 
 type Revision = { path: string; id: string; size: number; uploadedAt: string };
-type AdminSession = { canLinkPassword: boolean; passwordLinked: boolean };
+type AdminSession = { canLinkPassword: boolean; passwordLinked: boolean; passwordUid?: string };
 type Entry = { active: Revision | null; previous: Revision | null; draft: Revision | null; canRollback: boolean };
 
 export default function AssetAdminPage() {
@@ -58,6 +59,9 @@ export default function AssetAdminPage() {
           setSessionInfo(info);
           setUser(nextUser);
           setSession('ready');
+          if (info.passwordUid) {
+            void syncAssetAdminUidToFirestore(nextUser, info.passwordUid);
+          }
         }
       }).catch((cause) => {
         if (listening && request === sequence) {

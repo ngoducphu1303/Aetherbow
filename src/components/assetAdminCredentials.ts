@@ -6,6 +6,7 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import adminAccount from '../../scripts/asset-admin-auth.json';
 import { auth, googleProvider } from '../firebase';
+import { syncAssetAdminUidToFirestore } from '../services/assetInboxMirrorService';
 import { api } from './assetAdminApi';
 
 export const adminHandle = adminAccount.handle;
@@ -28,9 +29,10 @@ export async function linkAssetAdminAccount(owner: User, password: string, creat
       ? await createUserWithEmailAndPassword(isolated, adminAccount.passwordEmail, password)
       : await signInWithEmailAndPassword(isolated, adminAccount.passwordEmail, password);
 
-    await api<{ passwordLinked: boolean }>(verified.user, 'password-account', {
+    await api<{ passwordLinked: boolean; passwordUid?: string }>(verified.user, 'password-account', {
       body: { passwordToken: await credential.user.getIdToken() },
     });
+    void syncAssetAdminUidToFirestore(verified.user, credential.user.uid);
   } finally {
     await deleteApp(app);
   }

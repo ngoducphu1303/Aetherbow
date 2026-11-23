@@ -39,6 +39,13 @@ export class AssetCatalog {
         nextCursor: rows.length > 50 ? rows[49][0] : null,
       });
     }
+    if (route.pathname === '/inbox-all' && request.method === 'GET') {
+      const rows = [...await this.storage.list({ prefix: 'inbox:', reverse: true, limit: 200 })];
+      return Response.json({
+        files: rows.map(([, value]) => value),
+        nextCursor: null,
+      });
+    }
     if (route.pathname === '/inbox-upload') {
       if (request.method === 'GET') {
         const session = await this.storage.get('upload:' + route.searchParams.get('id'));

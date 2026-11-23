@@ -3,10 +3,11 @@ import type { User } from 'firebase/auth';
 import { CloudUpload, Copy, ExternalLink, FolderOpen } from 'lucide-react';
 import assetGroups from '../../scripts/glb-inbox-groups.json';
 import { CHAPTERS } from '../data/chaptersData';
+import { mirrorAssetInboxItems } from '../services/assetInboxMirrorService';
 import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadAdminGlb } from './assetAdminApi';
 
 type Group = keyof typeof assetGroups;
-type Asset = { id: string; name: string; chapter: number; path: string; size: number; group: Group };
+type Asset = { id: string; name: string; chapter: number; path: string; size: number; group: Group; uploadedAt?: string };
 type AssetPage = { files: Asset[]; nextCursor: string | null };
 
 const selectClass = 'block min-h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 disabled:opacity-50';
@@ -50,7 +51,11 @@ export default function AssetInboxPanel({ user, onBusyChange }: { user: User; on
     setLoading(true);
     void api<AssetPage>(user, 'inbox', { query: { chapter: String(chapter) }, signal: controller.signal })
       .then((result) => {
-        if (!controller.signal.aborted) { setFiles(result.files); setCursor(result.nextCursor); }
+        if (!controller.signal.aborted) {
+          setFiles(result.files);
+          setCursor(result.nextCursor);
+          if (result.files.length > 0) void mirrorAssetInboxItems(result.files);
+        }
       }).catch((cause) => {
         if (!controller.signal.aborted) setError(message(cause));
       }).finally(() => {
@@ -67,6 +72,7 @@ export default function AssetInboxPanel({ user, onBusyChange }: { user: User; on
       const result = await api<AssetPage>(user, 'inbox', { query: { chapter: String(chapter), cursor } });
       setFiles((current) => [...current, ...result.files.filter((file) => !current.some(({id}) => id === file.id))]);
       setCursor(result.nextCursor);
+      if (result.files.length > 0) void mirrorAssetInboxItems(result.files);
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -101,6 +107,7 @@ export default function AssetInboxPanel({ user, onBusyChange }: { user: User; on
             chapter: String(chapter), group, name: file.name,
           }, file, update);
           setFiles((current) => [saved, ...current]);
+          void mirrorAssetInboxItems([saved]);
           completed += 1;
         } catch (cause) {
           failed.push({ file, reason: message(cause) });
