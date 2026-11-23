@@ -1,6 +1,9 @@
 const B2_ORIGIN = 'https://s3.us-east-005.backblazeb2.com';
 const SIGNING_REGION = 'us-east-005';
 const BUCKET = 'aetherbow-assets';
+const UPLOAD_PREFIX = '/__upload';
+const UPLOAD_EXPIRY_SECONDS = 300;
+const GLB_CONTENT_TYPE = 'model/gltf-binary';
 const CONTENT_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const CACHE_CONTROL = 'public, max-age=86400';
 const MAP_CHUNK_BYTES = 6 * 1024 * 1024;
@@ -44,26 +47,113 @@ async function hmac(key, value) {
   return crypto.subtle.sign('HMAC', imported, utf8.encode(value));
 }
 
-export async function signB2Download(url, method, keyId, applicationKey, now = new Date()) {
+function signingTime(now) {
   const dateTime = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const day = dateTime.slice(0, 8);
-  const scope = `${day}/${SIGNING_REGION}/s3/aws4_request`;
-  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
-  const canonicalHeaders = `host:${url.host}\nx-amz-content-sha256:${CONTENT_HASH}\nx-amz-date:${dateTime}\n`;
-  const canonicalRequest = [method, url.pathname, '', canonicalHeaders, signedHeaders, CONTENT_HASH].join('\n');
+  return { dateTime, day, scope: `${day}/${SIGNING_REGION}/s3/aws4_request` };
+}
+
+async function signB2Request(canonicalRequest, { dateTime, day, scope }, applicationKey) {
   const canonicalHash = hex(await crypto.subtle.digest('SHA-256', utf8.encode(canonicalRequest)));
   const stringToSign = ['AWS4-HMAC-SHA256', dateTime, scope, canonicalHash].join('\n');
   const dateKey = await hmac(utf8.encode(`AWS4${applicationKey}`), day);
   const regionKey = await hmac(dateKey, SIGNING_REGION);
   const serviceKey = await hmac(regionKey, 's3');
   const signingKey = await hmac(serviceKey, 'aws4_request');
-  const signature = hex(await hmac(signingKey, stringToSign));
+  return hex(await hmac(signingKey, stringToSign));
+}
+
+export async function signB2Download(url, method, keyId, applicationKey, now = new Date()) {
+  const time = signingTime(now);
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonicalHeaders = `host:${url.host}\nx-amz-content-sha256:${CONTENT_HASH}\nx-amz-date:${time.dateTime}\n`;
+  const canonicalRequest = [method, url.pathname, '', canonicalHeaders, signedHeaders, CONTENT_HASH].join('\n');
+  const signature = await signB2Request(canonicalRequest, time, applicationKey);
 
   return new Headers({
-    authorization: `AWS4-HMAC-SHA256 Credential=${keyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    authorization: `AWS4-HMAC-SHA256 Credential=${keyId}/${time.scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
     'x-amz-content-sha256': CONTENT_HASH,
-    'x-amz-date': dateTime,
+    'x-amz-date': time.dateTime,
   });
+}
+
+async function createUploadGrant(objectPath, keyId, applicationKey, size, md5) {
+  const url = new URL(`/${BUCKET}${objectPath.encoded}`, B2_ORIGIN);
+  const time = signingTime(new Date());
+  const headers = {
+    'cache-control': CACHE_CONTROL,
+    'content-length': String(size),
+    'content-md5': md5,
+    'content-type': GLB_CONTENT_TYPE,
+  };
+  const signed = { ...headers, host: url.host };
+  const headerNames = Object.keys(signed).sort();
+  const signedHeaders = headerNames.join(';');
+  const canonicalHeaders = headerNames.map((name) => `${name}:${signed[name]}\n`).join('');
+  const query = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${keyId}/${time.scope}`,
+    'X-Amz-Date': time.dateTime,
+    'X-Amz-Expires': String(UPLOAD_EXPIRY_SECONDS),
+    'X-Amz-SignedHeaders': signedHeaders,
+  };
+  const canonicalQuery = Object.keys(query).sort()
+    .map((name) => `${encodeS3Segment(name)}=${encodeS3Segment(query[name])}`).join('&');
+  const canonical = ['PUT', url.pathname, canonicalQuery, canonicalHeaders, signedHeaders, 'UNSIGNED-PAYLOAD'].join('\n');
+  const signature = await signB2Request(canonical, time, applicationKey);
+  return { url: `${url.href}?${canonicalQuery}&X-Amz-Signature=${signature}`, headers };
+}
+
+async function handleUpload(request, url, env) {
+  if (request.method !== 'POST') return uploadReply('Method not allowed', 405);
+  if (url.search) return uploadReply('Invalid upload path', 400);
+  const objectPath = getObjectPath(new URL(url.origin + url.pathname.slice(UPLOAD_PREFIX.length)));
+  if (!objectPath) return uploadReply('Invalid GLB path', 404);
+
+  const token = request.headers.get('authorization')?.match(/^Bearer ([a-zA-Z0-9._~+\/-]+=*)$/i)?.[1];
+  if (!token || token.length > 512) return uploadReply('Sign in with GitHub CLI before uploading', 401);
+
+  const rawSize = request.headers.get('x-glb-size') ?? '';
+  const size = Number(rawSize);
+  const md5 = request.headers.get('x-glb-md5') ?? '';
+  if (!/^\d{1,10}$/.test(rawSize) || size < 20 || size > 0xffffffff || !/^[a-zA-Z0-9+/]{22}==$/.test(md5)) {
+    return uploadReply('Invalid GLB size or checksum', 400);
+  }
+
+  const allowedUid = env.UPLOAD_GITHUB_USER_ID;
+  const keyId = env.B2_WRITE_KEY_ID?.trim();
+  const applicationKey = env.B2_WRITE_APPLICATION_KEY?.trim();
+  if (!allowedUid || !keyId || !applicationKey) return uploadReply('Upload service is not configured', 503);
+
+  try {
+    const identity = await fetch('https://api.github.com/user', {
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.github+json',
+        'user-agent': 'Aetherbow GLB uploader',
+      },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!identity.ok) {
+      await identity.body?.cancel();
+      if (identity.status === 401) return uploadReply('GitHub session is invalid', 401);
+      if (identity.status === 403) return uploadReply('GitHub session does not have access to a user profile', 403);
+      return uploadReply('GitHub identity service unavailable', 502);
+    }
+    const account = await identity.json();
+    if (String(account.id) !== allowedUid || account.type !== 'User') {
+      return uploadReply('This GitHub account cannot upload Aetherbow assets', 403);
+    }
+    const grant = await createUploadGrant(objectPath, keyId, applicationKey, size, md5);
+    return Response.json(grant, { headers: { 'cache-control': 'no-store' } });
+  } catch {
+    return uploadReply('Upload authorization unavailable', 502);
+  }
+}
+
+function uploadReply(message, status) {
+  return new Response(message, { status, headers: { 'cache-control': 'no-store' } });
 }
 
 function cacheRequest(url, objectPath, method, range) {
@@ -91,6 +181,7 @@ function error(message, status, extraHeaders) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith(UPLOAD_PREFIX + '/')) return handleUpload(request, url, env);
     const objectPath = getObjectPath(url);
     if (!objectPath) return error('Not found', 404);
     const method = request.method;
@@ -143,7 +234,7 @@ export default {
     }
 
     const responseHeaders = new Headers({
-      ...CORS, 'content-type': 'model/gltf-binary', 'cache-control': CACHE_CONTROL,
+      ...CORS, 'content-type': GLB_CONTENT_TYPE, 'cache-control': CACHE_CONTROL,
     });
     for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
       const value = upstream.headers.get(name);

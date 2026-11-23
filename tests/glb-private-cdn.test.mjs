@@ -71,3 +71,46 @@ test('private CDN streams, caches and restores range responses without exposing 
   assert.equal(head.headers.get('content-length'), '40');
   assert.equal(head.body, null);
 });
+
+test('upload grants require the authorized GitHub user and bind one GLB, size and checksum', async (t) => {
+  const ownerId = '245531723';
+  const md5 = 'XUFAKrxLKna5cZ2REBfFkg==';
+  const env = {
+    UPLOAD_GITHUB_USER_ID: ownerId,
+    B2_WRITE_KEY_ID: 'write-id',
+    B2_WRITE_APPLICATION_KEY: 'write-secret',
+  };
+  const now = 'https://cdn.example/__upload/assets/Chương 1/New.glb';
+  const headers = { 'x-glb-size': '400', 'x-glb-md5': md5 };
+  const github = t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'https://api.github.com/user');
+    assert.equal(options.redirect, 'manual');
+    const token = options.headers.authorization;
+    if (token === 'Bearer invalid') return new Response(null, { status: 401 });
+    return Response.json({ id: token === 'Bearer owner' ? Number(ownerId) : 123, type: 'User' });
+  });
+  const request = (token) => new Request(now, {
+    method: 'POST',
+    headers: { ...headers, ...(token ? {authorization:'Bearer '+token} : {}) },
+  });
+  assert.equal((await worker.fetch(request(), env)).status, 401);
+  assert.equal(github.mock.callCount(), 0);
+  assert.equal((await worker.fetch(new Request(now), env)).status, 405);
+  assert.equal((await worker.fetch(request('invalid'), env)).status, 401);
+  assert.equal((await worker.fetch(request('someone_else'), env)).status, 403);
+  const result = await worker.fetch(request('owner'), env);
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get('cache-control'), 'no-store');
+  assert.equal(result.headers.get('access-control-allow-origin'), null);
+  const body = await result.text();
+  assert.ok(!body.includes(env.B2_WRITE_APPLICATION_KEY));
+  const grant = JSON.parse(body);
+  const upload = new URL(grant.url);
+  assert.equal(upload.origin, 'https://s3.us-east-005.backblazeb2.com');
+  assert.equal(decodeURIComponent(upload.pathname), '/aetherbow-assets/assets/Chương 1/New.glb');
+  assert.equal(upload.searchParams.get('X-Amz-Expires'), '300');
+  assert.equal(upload.searchParams.get('X-Amz-SignedHeaders'), 'cache-control;content-length;content-md5;content-type;host');
+  assert.match(upload.searchParams.get('X-Amz-Signature'), /^[a-f0-9]{64}$/);
+  assert.equal(grant.headers['content-length'], '400');
+  assert.equal(grant.headers['content-md5'], md5);
+});

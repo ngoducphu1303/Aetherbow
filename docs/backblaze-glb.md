@@ -2,22 +2,22 @@
 
 Game tải qua Cloudflare Worker. Worker ký yêu cầu tới bucket `aetherbow-assets` ở vùng `us-east-005`, giữ khóa ở phía máy chủ và cho trình duyệt tải các tệp `.glb` qua HTTPS. Bucket B2 vẫn ở chế độ **Private**. Worker phục vụ GLB cho người chơi và hỗ trợ tải theo đoạn cho bản đồ lớn Chương 1.
 
-## Upload 3D vào Backblaze
+## Upload hoặc thay GLB từ máy local
 
-1. Trong **Application Keys → Add a New Application Key**, chọn bucket **aetherbow-assets**, quyền **Read and Write**. Lưu giá trị **keyID** vào `B2_KEY_ID` và **applicationKey** vào `B2_APPLICATION_KEY` trong cấu hình bảo mật của môi trường upload. Backblaze chỉ hiện giá trị applicationKey khi tạo khóa.
-2. Cho môi trường upload truy cập `s3.us-east-005.backblazeb2.com` qua HTTPS. Có thể giữ CORS của B2 nguyên vì Worker truy cập B2 từ máy chủ.
-3. Chạy từ repo với Git, Node.js và rclone.
+Đăng nhập GitHub CLI bằng tài khoản chủ repo Aetherbow, sau đó đặt tệp GLB đúng thư mục `public/assets`.
 
-   ```sh
-   node scripts/upload-glb-b2.mjs --list
-   node scripts/upload-glb-b2.mjs
-   ```
+```sh
+gh auth login --hostname github.com --web
+npm run upload:glb -- "public/assets/Chương 2/Runtime/bellona-lite.glb"
+```
 
-Script quét các tệp GLB có sẵn trong `public/assets` ở máy chạy lệnh, giữ nguyên đường dẫn tệp, đặt MIME `model/gltf-binary` và kiểm tra các object đã upload. Có thể chạy lại khi thêm hoặc thay tệp. Tùy chọn `--check` chỉ xác minh. Khi thêm tệp hoặc đổi kích thước tệp, cập nhật đường dẫn và kích thước trong `scripts/glb-manifest.json`. Khi thay tệp tại cùng đường dẫn, tăng version tương ứng trong mã game để đổi khóa cache.
+Worker kiểm tra tài khoản GitHub trước khi cấp quyền tải lên đúng một tệp. URL có chữ ký hết hạn sau 5 phút và chỉ dùng được với kích thước và checksum đã gửi. Script truyền tệp trực tiếp tới Backblaze và xác minh qua CDN. Cập nhật `scripts/glb-manifest.json` nếu đường dẫn mới hoặc kích thước thay đổi. Khi thay nội dung ở cùng đường dẫn, tăng version tương ứng trong mã game để làm mới cache.
+
+Script rclone `node scripts/upload-glb-b2.mjs` vẫn có thể dùng cho đồng bộ hàng loạt trực tiếp với B2 nếu môi trường có cặp khóa upload. Tùy chọn `--list` kiểm tra tệp local và `--check` đối chiếu tệp local với B2.
 
 ## Triển khai Worker
 
-Tạo thêm một khóa **Read Only** cho bucket `aetherbow-assets`, có thể giới hạn prefix `assets/`. Đặt cặp giá trị vào Worker Secrets dưới tên `B2_READ_KEY_ID` và `B2_READ_APPLICATION_KEY`.
+Tạo thêm một khóa **Read Only** cho bucket `aetherbow-assets`, có thể giới hạn prefix `assets/`. Đặt cặp giá trị vào Worker Secrets dưới tên `B2_READ_KEY_ID` và `B2_READ_APPLICATION_KEY`. Upload qua Worker dùng thêm `B2_WRITE_KEY_ID` và `B2_WRITE_APPLICATION_KEY` với quyền ghi giới hạn trong bucket này. Các secret được lưu trên Worker. `UPLOAD_GITHUB_USER_ID` trong `wrangler.jsonc` giới hạn quyền upload theo ID tài khoản GitHub.
 
 Nếu triển khai từ Codex Cloud, cho phép `api.cloudflare.com` và cấu hình `CLOUDFLARE_ACCOUNT_ID` cùng `CLOUDFLARE_API_TOKEN` có quyền sửa Workers trong account đích. Nếu dùng máy cá nhân, có thể đăng nhập Wrangler. Với biến bí mật đã nạp vào shell, triển khai và gắn khóa bằng:
 
@@ -25,6 +25,8 @@ Nếu triển khai từ Codex Cloud, cho phép `api.cloudflare.com` và cấu h�
 npm exec --yes --package=wrangler -- wrangler deploy --config workers/glb-cdn/wrangler.jsonc
 printf '%s' "$B2_READ_KEY_ID" | npm exec --yes --package=wrangler -- wrangler secret put B2_READ_KEY_ID --config workers/glb-cdn/wrangler.jsonc
 printf '%s' "$B2_READ_APPLICATION_KEY" | npm exec --yes --package=wrangler -- wrangler secret put B2_READ_APPLICATION_KEY --config workers/glb-cdn/wrangler.jsonc
+printf '%s' "$B2_WRITE_KEY_ID" | npm exec --yes --package=wrangler -- wrangler secret put B2_WRITE_KEY_ID --config workers/glb-cdn/wrangler.jsonc
+printf '%s' "$B2_WRITE_APPLICATION_KEY" | npm exec --yes --package=wrangler -- wrangler secret put B2_WRITE_APPLICATION_KEY --config workers/glb-cdn/wrangler.jsonc
 ```
 
 ## Chuyển game sang Worker

@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "test": "node --max-old-space-size=256 --import tsx --test --test-concurrency=1 tests/*.test.mjs src/engine/*.test.ts",
     "check:glb": "node scripts/sync-glb-assets.mjs --check",
-    "sync:glb": "node scripts/sync-glb-assets.mjs"
+    "sync:glb": "node scripts/sync-glb-assets.mjs",
+    "upload:glb": "node scripts/upload-glb-worker.mjs"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",
