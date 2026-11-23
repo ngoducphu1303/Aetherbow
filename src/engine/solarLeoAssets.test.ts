@@ -1099,20 +1099,24 @@ test('Aurelia and all 4 Solar Leo outfits cycle unique playful actions, keep Aur
 
 test('Aurelia and Bellona stay seated as their mounts turn, walk and lift the saddle', async () => {
   await withNodeGlbLoader(async (loader) => {
-    const loadRig = async (id: 'vulcan' | 'solarius' | 'aurelia' | 'golden_fleece', liteMode = true) => {
+    const loadRig = async (id: 'vulcan' | 'solarius' | 'aurelia' | 'bellona' | 'golden_fleece', liteMode = true) => {
       const spec = SOLAR_LEO_SPECS[id];
       const bytes = fs.readFileSync(path.join(PUBLIC_DIR, ...(liteMode ? spec.litePathSegments : spec.highPathSegments)));
       const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       const gltf = await loader.parseAsync(data, '');
-      return instantiateSolarLeoModel(prepareSolarLeoTemplate(id, gltf.scene, 1, { liteMode }));
+      const template = prepareSolarLeoTemplate(id, gltf.scene, 1, { liteMode });
+      return { rig: instantiateSolarLeoModel(template), blueprints: template.blueprints };
     };
     for (const [mountId, riderId, liteMode] of [
       ['solarius', 'aurelia', true],
       ['vulcan', 'aurelia', false],
+      ['vulcan', 'bellona', true],
+      ['vulcan', 'bellona', false],
       ['vulcan', 'golden_fleece', true],
+      ['vulcan', 'golden_fleece', false],
     ] as const) {
-      const mount = await loadRig(mountId);
-      const rider = await loadRig(riderId, liteMode);
+      const { rig: mount } = await loadRig(mountId);
+      const { rig: rider, blueprints } = await loadRig(riderId, liteMode);
       assert.equal(SOLAR_LEO_SPECS[mountId].facingYawOffset, -Math.PI / 2);
       assert.ok(mount.size.z > mount.size.x * 1.6);
       assert.ok(mount.saddle);
@@ -1153,22 +1157,22 @@ test('Aurelia and Bellona stay seated as their mounts turn, walk and lift the sa
           const hipInRoot = root.worldToLocal(rider.bones.pelvis.getWorldPosition(new THREE.Vector3()));
           assert.ok(hipInRoot.distanceTo(seatInRoot.add(new THREE.Vector3(0, 0.05, 0))) < 0.001);
         }
-        if (riderId === 'aurelia') {
-          const localJoint = (joint: string) => root.worldToLocal(rider.bones[joint].getWorldPosition(new THREE.Vector3()));
-          const hip = localJoint('pelvis');
-          const leftFoot = localJoint('footL');
-          const rightFoot = localJoint('footR');
-          assert.ok(Math.abs(leftFoot.y - rightFoot.y) < 0.08, 'Both feet hang at a similar height');
-          for (const [side, direction] of [['L', 1], ['R', -1]] as const) {
-            const knee = localJoint(`shin${side}`);
-            const foot = side === 'L' ? leftFoot : rightFoot;
-            assert.ok((knee.x - hip.x) * direction > 0.22, 'Knee clears its side of the saddle');
-            assert.ok((foot.x - hip.x) * direction > 0.22, 'Boot stays on the same side as the knee');
-            assert.ok(knee.z - hip.z > 0.18 && knee.y - foot.y > 0.37, 'Thigh reaches forward and boot hangs below the knee');
-          }
-        } else {
-          assert.ok(rider.bones.shinL.rotation.x > 1.30 && rider.bones.shinR.rotation.x > 1.30);
-          assert.ok(rider.bones.legL.rotation.x < -0.8 && rider.bones.legR.rotation.x < -0.8);
+        const localJoint = (joint: string) => root.worldToLocal(rider.bones[joint].getWorldPosition(new THREE.Vector3()));
+        const hip = localJoint('pelvis');
+        const leftFoot = localJoint('footL');
+        const rightFoot = localJoint('footR');
+        assert.ok(Math.abs(leftFoot.y - rightFoot.y) < 0.1, `${riderId} feet hang at a similar height`);
+        for (const [side, direction] of [['L', 1], ['R', -1]] as const) {
+          const knee = localJoint(`shin${side}`);
+          const foot = side === 'L' ? leftFoot : rightFoot;
+          const footBone = rider.bones[`foot${side}`];
+          const footBlueprint = blueprints.find(({ name }) => name === footBone.name)!;
+          const toeOffset = new THREE.Vector3(...footBlueprint.tail).sub(new THREE.Vector3(...footBlueprint.head));
+          const toe = root.worldToLocal(footBone.localToWorld(toeOffset));
+          assert.ok((knee.x - hip.x) * direction > 0.21, `${riderId} knee clears its side of the saddle`);
+          assert.ok((foot.x - hip.x) * direction > 0.22, `${riderId} boot stays on the same side as the knee`);
+          assert.ok(knee.z - hip.z > 0.18 && knee.y - foot.y > 0.37, `${riderId} foot hangs below the knee`);
+          assert.ok(toe.sub(foot).normalize().z > 0.84, `${riderId} boot points toward the mount's head`);
         }
         assert.ok(Math.abs(rider.visualRoot.rotation.y) < 0.01);
       }

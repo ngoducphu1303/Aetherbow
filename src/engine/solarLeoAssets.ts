@@ -629,20 +629,30 @@ interface BoneBlueprint {
   weightBoost?: number;
 }
 
-// Measured on Aurelia's normalized bind mesh. Her rear boot crosses behind
-// the planted leg, so left/right cannot be inferred from vertex X alone.
-const AURELIA_LEGS = [
-  { side: 'L', thighIndex: 9, shinIndex: 12, hip: [0.09, 0.89, 0.02], knee: [-0.01, 0.57, 0.17], ankle: [-0.08, 0.085, 0.22], toe: [-0.08, 0.025, 0.29] },
-  { side: 'R', thighIndex: 10, shinIndex: 13, hip: [-0.14, 0.89, 0.02], knee: [-0.19, 0.62, 0.32], ankle: [-0.08, 0.405, -0.10], toe: [-0.08, 0.285, -0.17] },
-] satisfies Array<{
+interface RiderLegCalibration {
   side: 'L' | 'R';
-  thighIndex: number;
-  shinIndex: number;
   hip: BoneBlueprint['head'];
   knee: BoneBlueprint['head'];
   ankle: BoneBlueprint['head'];
   toe: BoneBlueprint['head'];
-}>;
+}
+
+// Joint coordinates measured in the normalized bind meshes. Aurelia crosses
+// her legs and Bellona's default armor is sculpted in a wide, staggered stance.
+const RIDER_LEGS: Partial<Record<SolarLeoAssetId, RiderLegCalibration[]>> = {
+  aurelia: [
+    { side: 'L', hip: [0.09, 0.89, 0.02], knee: [-0.01, 0.57, 0.17], ankle: [-0.08, 0.085, 0.22], toe: [-0.08, 0.025, 0.29] },
+    { side: 'R', hip: [-0.14, 0.89, 0.02], knee: [-0.19, 0.62, 0.32], ankle: [-0.08, 0.405, -0.10], toe: [-0.08, 0.285, -0.17] },
+  ],
+  bellona: [
+    { side: 'L', hip: [0.10, 0.96, 0.08], knee: [0.20, 0.58, 0.33], ankle: [0.29, 0.09, 0.48], toe: [0.36, 0.02, 0.57] },
+    { side: 'R', hip: [-0.14, 0.96, -0.02], knee: [-0.36, 0.60, 0.03], ankle: [-0.57, 0.10, 0.015], toe: [-0.65, 0.02, 0.08] },
+  ],
+  golden_fleece: [
+    { side: 'L', hip: [0.10, 0.94, 0.07], knee: [0.077, 0.59, 0.16], ankle: [0.067, 0.10, 0.06], toe: [0.07, 0.02, 0.17] },
+    { side: 'R', hip: [-0.10, 0.94, 0.07], knee: [-0.075, 0.59, 0.16], ankle: [-0.08, 0.10, 0.06], toe: [-0.09, 0.02, 0.17] },
+  ],
+};
 
 function buildBoneBlueprints(
   assetId: SolarLeoAssetId,
@@ -660,8 +670,6 @@ function buildBoneBlueprints(
     const legX = torsoW * 0.17;
     const armX = torsoW * 0.28;
     const handX = Math.max(torsoW * 0.52, sx * 0.42);
-    const articulatedKnees = assetId === 'aurelia' || assetId === 'bellona' || assetId === 'golden_fleece';
-    const kneeY = y0 + sy * 0.24;
     const footY = y0 + sy * 0.02;
     const blueprints: BoneBlueprint[] = [
       // 0: root
@@ -683,24 +691,21 @@ function buildBoneBlueprints(
       // 8: handR (-X)
       { name: 'handR', parent: 7, head: [-armX * 1.25, y0 + sy * 0.58, sz * 0.05], tail: [-handX, y0 + sy * 0.48, sz * 0.24], radius: torsoW * 0.24, sideBias: 'right', weightBoost: 1.4 },
       // 9: legL (+X)
-      { name: 'legL', parent: 1, head: [legX, y0 + sy * 0.46, 0.02], tail: [legX * 1.05, articulatedKnees ? kneeY : footY, 0.04], radius: torsoW * 0.24, sideBias: 'left', weightBoost: 1.45 },
+      { name: 'legL', parent: 1, head: [legX, y0 + sy * 0.46, 0.02], tail: [legX * 1.05, footY, 0.04], radius: torsoW * 0.24, sideBias: 'left', weightBoost: 1.45 },
       // 10: legR (-X)
-      { name: 'legR', parent: 1, head: [-legX, y0 + sy * 0.46, 0.02], tail: [-legX * 1.05, articulatedKnees ? kneeY : footY, 0.04], radius: torsoW * 0.24, sideBias: 'right', weightBoost: 1.45 },
+      { name: 'legR', parent: 1, head: [-legX, y0 + sy * 0.46, 0.02], tail: [-legX * 1.05, footY, 0.04], radius: torsoW * 0.24, sideBias: 'right', weightBoost: 1.45 },
       // 11: cloak (trailing -Z)
       { name: 'cloak', parent: 2, head: [0, y0 + sy * 0.62, -sz * 0.14], tail: [0, y0 + sy * 0.06, -sz * 0.46], radius: torsoW * 0.32, sideBias: 'back', weightBoost: 1.35 },
     ];
-    if (articulatedKnees) {
+    for (const { side, hip, knee, ankle, toe } of RIDER_LEGS[assetId] ?? []) {
+      const thighIndex = side === 'L' ? 9 : 10;
+      const shinIndex = blueprints.length;
+      const sideBias = assetId === 'aurelia' ? undefined : side === 'L' ? 'left' : 'right';
+      blueprints[thighIndex] = { name: `leg${side}`, parent: 1, head: hip, tail: knee, radius: 0.11, weightBoost: 1.6, sideBias };
       blueprints.push(
-        { name: 'shinL', parent: 9, head: [legX * 1.05, kneeY, 0.04], tail: [legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'left', weightBoost: 1.7 },
-        { name: 'shinR', parent: 10, head: [-legX * 1.05, kneeY, 0.04], tail: [-legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'right', weightBoost: 1.7 }
+        { name: `shin${side}`, parent: thighIndex, head: knee, tail: ankle, radius: 0.065, weightBoost: 2.1, sideBias },
+        { name: `foot${side}`, parent: shinIndex, head: ankle, tail: toe, radius: 0.06, weightBoost: 1.8, sideBias }
       );
-    }
-    if (assetId === 'aurelia') {
-      for (const { hip, knee, ankle, toe, thighIndex, shinIndex, side } of AURELIA_LEGS) {
-        blueprints[thighIndex] = { name: `leg${side}`, parent: 1, head: hip, tail: knee, radius: 0.11, weightBoost: 1.6 };
-        blueprints[shinIndex] = { name: `shin${side}`, parent: thighIndex, head: knee, tail: ankle, radius: 0.065, weightBoost: 2.1 };
-        blueprints.push({ name: `foot${side}`, parent: shinIndex, head: ankle, tail: toe, radius: 0.06, weightBoost: 1.8 });
-      }
     }
     return blueprints;
   }
@@ -1025,15 +1030,23 @@ interface RiderLegPose {
 
 const neutralFootRotation = new THREE.Quaternion();
 
-function createAureliaRidingPose(bones: Record<string, THREE.Bone>): RiderLegPose[] {
-  return AURELIA_LEGS.map(({ side, ankle, toe }) => {
+function createRidingLegPose(
+  bones: Record<string, THREE.Bone>,
+  legs: RiderLegCalibration[],
+  assetId: SolarLeoAssetId
+): RiderLegPose[] {
+  return legs.map(({ side, ankle, toe }) => {
     const direction = side === 'L' ? 1 : -1;
     const thigh = bones[`leg${side}`];
     const shin = bones[`shin${side}`];
     const foot = bones[`foot${side}`];
+    const isAurelia = assetId === 'aurelia';
+    const thighDirection = isAurelia
+      ? new THREE.Vector3(direction * 0.52, -0.36, 0.77)
+      : new THREE.Vector3(direction * 0.53, -0.45, 0.72);
     const thighRotation = new THREE.Quaternion().setFromUnitVectors(
       shin.position.clone().normalize(),
-      new THREE.Vector3(direction * 0.52, -0.36, 0.77).normalize()
+      thighDirection.normalize()
     );
     const shinRotation = new THREE.Quaternion().setFromUnitVectors(
       foot.position.clone().normalize(),
@@ -1558,6 +1571,7 @@ export function instantiateSolarLeoModel(
     group.add(heroAuraRig.group);
   }
 
+  const legCalibration = RIDER_LEGS[template.assetId];
   return {
     assetId: template.assetId,
     rigType: template.rigType,
@@ -1568,7 +1582,7 @@ export function instantiateSolarLeoModel(
     skinnedMeshes,
     hitMeshes,
     saddle,
-    ridingLegPose: bones.footL ? createAureliaRidingPose(bones) : undefined,
+    ridingLegPose: legCalibration ? createRidingLegPose(bones, legCalibration, template.assetId) : undefined,
     hasSculptedDrawnBow: template.hasSculptedDrawnBow,
     bowStringRig,
     petAuraRig,
