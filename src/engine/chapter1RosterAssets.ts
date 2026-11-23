@@ -140,7 +140,8 @@ const CHAPTER2_ROSTER_RIGS = {
 } as const satisfies Record<Chapter2RosterAssetId, AutoRigArchetype>;
 
 const CHAPTER2_ROSTER_DEFINITIONS = {
-  'magma-ram': ['Dương Hỏa Dung Nham', EnemyKind.SKIRMISHER, 1.60, 0, 0],
+  // Source sculpt runs tail(-X) -> horned head(+X); -PI/2 aligns nose to +Z and matches fire_lion AutoRig spine/legs.
+  'magma-ram': ['Dương Hỏa Dung Nham', EnemyKind.SKIRMISHER, 1.60, 0, -Math.PI / 2],
   'obsidian-golem': ['Golem Hắc Diện', EnemyKind.GOLEM, 2.25, 0, 0],
   'crimson-spirit': ['Hỏa Linh Xích Hỏa', EnemyKind.IMP_ARCHER, 1.75, 0.24, 0],
   'aries-berserker': ['Cuồng Chiến Bạch Dương', EnemyKind.DRAGON_WHELP, 1.90, 0, 0],
@@ -179,14 +180,106 @@ export function getCampaignRosterArchetype(id: CampaignRosterAssetId): AutoRigAr
   );
 }
 
-function getCampaignRosterSpec(id: CampaignRosterAssetId): Chapter1RosterSpec {
+export interface CampaignRosterVisualTheme {
+  readonly chapterId: 1 | 2 | 3;
+  readonly archetype: AutoRigArchetype;
+  readonly isFloatingSpirit: boolean;
+  readonly isWingedSubBoss: boolean;
+  readonly trailColorHex: number;
+  readonly trailAccentHex: number;
+  readonly dustHex: number;
+  readonly titanTintHex: number;
+}
+
+const ARCHETYPE_ROLE_LABELS: Record<AutoRigArchetype, string> = {
+  fire_lion: 'Cận chiến tốc độ cao',
+  stone_guardian: 'Tank giáp nặng',
+  flame_spirit: 'Pháp sư tầm xa',
+  sun_spearman: 'Chiến binh xung kích',
+  winged_solar_lion: 'Boss Phụ Hoàng Đạo',
+  solar_lion_boss: 'Boss Chương Hoàng Đạo',
+};
+
+export function resolveCampaignRosterVisualTheme(
+  id: CampaignRosterAssetId
+): CampaignRosterVisualTheme {
+  const archetype = getCampaignRosterArchetype(id);
+  const isFloatingSpirit = archetype === 'flame_spirit';
+  const isWingedSubBoss = archetype === 'winged_solar_lion';
+
+  if (id in CHAPTER2_ROSTER_DEFINITIONS) {
+    const trailColorHex =
+      archetype === 'fire_lion'
+        ? 0xef4444
+        : archetype === 'stone_guardian'
+        ? 0xf43f5e
+        : archetype === 'flame_spirit'
+        ? 0xfb7185
+        : archetype === 'sun_spearman'
+        ? 0xf97316
+        : 0xf43f5e;
+    return {
+      chapterId: 2,
+      archetype,
+      isFloatingSpirit,
+      isWingedSubBoss,
+      trailColorHex,
+      trailAccentHex: 0xfde047,
+      dustHex: isWingedSubBoss || id === 'kratos-aries' ? 0xf97316 : 0xb45309,
+      titanTintHex: 0x7f1d1d,
+    };
+  }
+
+  if (id in CHAPTER3_ROSTER_DEFINITIONS) {
+    const trailColorHex =
+      archetype === 'fire_lion'
+        ? 0x10b981
+        : archetype === 'stone_guardian'
+        ? 0x059669
+        : archetype === 'flame_spirit'
+        ? 0x34d399
+        : archetype === 'sun_spearman'
+        ? 0x6ee7b7
+        : 0x10b981;
+    return {
+      chapterId: 3,
+      archetype,
+      isFloatingSpirit,
+      isWingedSubBoss,
+      trailColorHex,
+      trailAccentHex: 0xfbbf24,
+      dustHex: isWingedSubBoss || id === 'dia-than-kim-nguu' ? 0x34d399 : 0x6ee7b7,
+      titanTintHex: 0x065f46,
+    };
+  }
+
+  const cal = AUTO_RIG_CALIBRATION[archetype];
+  return {
+    chapterId: 1,
+    archetype,
+    isFloatingSpirit,
+    isWingedSubBoss,
+    trailColorHex: cal.trailColorHex,
+    trailAccentHex: cal.trailAccentHex,
+    dustHex: isWingedSubBoss ? 0xfbbf24 : 0xa8a29e,
+    titanTintHex: 0x7c2d12,
+  };
+}
+
+export function getCampaignRosterSpec(id: CampaignRosterAssetId): Chapter1RosterSpec {
   const aries = CHAPTER2_ROSTER_DEFINITIONS[id as Chapter2RosterAssetId];
   if (aries) {
     const [displayName, kind, targetHeight, hoverOffsetY, facingYawOffset] = aries;
+    const roleLabel =
+      id === 'kratos-aries'
+        ? 'Boss Chương 2'
+        : id === 'cinderhorn'
+        ? 'Boss Phụ Chương 2'
+        : ARCHETYPE_ROLE_LABELS[CHAPTER2_ROSTER_RIGS[id as Chapter2RosterAssetId]];
     return {
       id,
       displayName,
-      roleLabel: '',
+      roleLabel,
       isSubBoss: id === 'cinderhorn',
       enemyKinds: id === 'cinderhorn' ? [kind, EnemyKind.TITAN_BOSS] : [kind],
       highPathSegments: ['assets', 'Chương 2', 'Runtime', `${id}-high.glb`],
@@ -201,10 +294,16 @@ function getCampaignRosterSpec(id: CampaignRosterAssetId): Chapter1RosterSpec {
   const taurus = CHAPTER3_ROSTER_DEFINITIONS[id as Chapter3RosterAssetId];
   if (taurus) {
     const [displayName, kind, targetHeight, hoverOffsetY, facingYawOffset] = taurus;
+    const roleLabel =
+      id === 'dia-than-kim-nguu'
+        ? 'Boss Chương 3'
+        : id === 'ngoc-nguu-duc-thu'
+        ? 'Boss Phụ Chương 3'
+        : ARCHETYPE_ROLE_LABELS[CHAPTER3_ROSTER_RIGS[id as Chapter3RosterAssetId]];
     return {
       id,
       displayName,
-      roleLabel: '',
+      roleLabel,
       isSubBoss: id === 'ngoc-nguu-duc-thu',
       enemyKinds: id === 'ngoc-nguu-duc-thu' ? [kind, EnemyKind.TITAN_BOSS] : [kind],
       highPathSegments: ['assets', 'Chương 3', 'Runtime', `${id}-high.glb`],

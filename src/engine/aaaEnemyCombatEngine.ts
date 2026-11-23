@@ -1112,3 +1112,62 @@ export function computeSafeFlankBlinkTarget(
   out.z = bestZ;
   return out;
 }
+
+export interface ChapterMobSkillTheme {
+  readonly pounceHex: number;
+  readonly swipeHex: number;
+  readonly swipeSparkHex: number;
+  readonly slamHex: number;
+  readonly tremorHex: number;
+  readonly volleyHex: number;
+  readonly mortarHex: number;
+  readonly mortarOwnerName: string;
+  readonly spearDashHex: number;
+  readonly spearFanHex: number;
+}
+
+const CHAPTER_MOB_SKILL_THEMES: Record<1 | 2 | 3, ChapterMobSkillTheme> = {
+  1: {
+    pounceHex: 0xff6b2b,
+    swipeHex: 0xffaa2b,
+    swipeSparkHex: 0xfbbf24,
+    slamHex: 0xf97316,
+    tremorHex: 0xf59e0b,
+    volleyHex: 0xf43f5e,
+    mortarHex: 0xf59e0b,
+    mortarOwnerName: 'Linh Hồn Lửa Hoàng Đạo',
+    spearDashHex: 0x38bdf8,
+    spearFanHex: 0xf97316,
+  },
+  2: {
+    pounceHex: 0xef4444,
+    swipeHex: 0xf43f5e,
+    swipeSparkHex: 0xf97316,
+    slamHex: 0xdc2626,
+    tremorHex: 0xf97316,
+    volleyHex: 0xfb7185,
+    mortarHex: 0xef4444,
+    mortarOwnerName: 'Hỏa Linh Xích Hỏa',
+    spearDashHex: 0xf97316,
+    spearFanHex: 0xf43f5e,
+  },
+  3: {
+    pounceHex: 0x10b981,
+    swipeHex: 0x34d399,
+    swipeSparkHex: 0xfbbf24,
+    slamHex: 0x059669,
+    tremorHex: 0x10b981,
+    volleyHex: 0x34d399,
+    mortarHex: 0x10b981,
+    mortarOwnerName: 'Linh Hồn Lục Bảo',
+    spearDashHex: 0x34d399,
+    spearFanHex: 0xfbbf24,
+  },
+};
+
+export function resolveChapterMobSkillTheme(chapterId: number): ChapterMobSkillTheme {
+  if (chapterId === 2) return CHAPTER_MOB_SKILL_THEMES[2];
+  if (chapterId === 3) return CHAPTER_MOB_SKILL_THEMES[3];
+  return CHAPTER_MOB_SKILL_THEMES[1];
+}
+

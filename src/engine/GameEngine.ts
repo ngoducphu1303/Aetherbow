@@ -20,6 +20,7 @@ import {
   dampShortestYaw,
   getAaaMobVfxBudget,
   planAaaMobSkill,
+  resolveChapterMobSkillTheme,
   stepDirectionalRecoil,
   stepMobPhysicalDash,
 } from './aaaEnemyCombatEngine';
@@ -257,6 +258,7 @@ import {
   CHAPTER1_ROSTER_ASSET_IDS,
   CampaignRosterAssetId,
   CHAPTER2_ROSTER_ASSET_IDS,
+  CHAPTER3_ROSTER_ASSET_IDS,
   getCampaignRosterArchetype,
   Chapter1RosterBurstType,
   disposeChapter1RosterTemplateCache,
@@ -264,6 +266,7 @@ import {
   instantiateChapter1RosterModel,
   loadChapter1RosterTemplate,
   resolveCampaignRosterAssetId,
+  resolveCampaignRosterVisualTheme,
   updateChapter1RosterMotion,
 } from './chapter1RosterAssets';
 import {
@@ -4562,7 +4565,12 @@ export class GameEngine {
   }
 
   private prefetchCampaignRosterModels(chapterId: number): void {
-    const assets = chapterId === 2 ? CHAPTER2_ROSTER_ASSET_IDS : CHAPTER1_ROSTER_ASSET_IDS;
+    const assets: readonly CampaignRosterAssetId[] =
+      chapterId === 3
+        ? CHAPTER3_ROSTER_ASSET_IDS
+        : chapterId === 2
+        ? CHAPTER2_ROSTER_ASSET_IDS
+        : CHAPTER1_ROSTER_ASSET_IDS;
     const variant = this.getActiveBoss3dModelVariant();
     if (variant === 'none') return;
     const baseUrl =
@@ -4600,10 +4608,11 @@ export class GameEngine {
     assetId: CampaignRosterAssetId,
     template: NonNullable<ReturnType<typeof getCachedChapter1RosterTemplateSync>>
   ): void {
+    const visualTheme = resolveCampaignRosterVisualTheme(assetId);
     const isStage8Titan = entity.kind === EnemyKind.TITAN_BOSS;
     const heightMultiplier = isStage8Titan ? 1.18 : entity.isElite && !entity.isBoss ? 1.12 : 1.0;
     const emissiveTintHex = isStage8Titan
-      ? 0x7c2d12
+      ? visualTheme.titanTintHex
       : entity.isElite && !entity.isBoss
       ? 0x4c1d95
       : undefined;
@@ -4635,12 +4644,12 @@ export class GameEngine {
     entity.roster3dBurstType = entity.isBoss ? 'roar' : 'none';
     entity.roster3dBurstTimer = entity.isBoss ? 0.42 : 0;
     if (inst.rigInstance.primaryTrailAnchors.length > 0) {
-      const cal = AUTO_RIG_CALIBRATION[getCampaignRosterArchetype(assetId)];
+      const cal = AUTO_RIG_CALIBRATION[visualTheme.archetype];
       entity.boneTrails = createBoneTrailController(
         inst.rigInstance.primaryTrailAnchors,
         {
-          colorHex: cal.trailColorHex,
-          accentHex: cal.trailAccentHex,
+          colorHex: visualTheme.trailColorHex,
+          accentHex: visualTheme.trailAccentHex,
           width: cal.trailWidth * heightMultiplier,
           liteMode: this.lowEndGpu,
         }
@@ -5585,7 +5594,12 @@ export class GameEngine {
     this.arenaGroup.visible = this.phase !== GamePhase.TITLE;
   }
 
-  public startChapter(chapterId: number, stats: ComputedPlayerStats, nightmareTier = 0): void {
+  public startChapter(
+    chapterId: number,
+    stats: ComputedPlayerStats,
+    nightmareTier = 0,
+    initialStageIndex = 0
+  ): void {
     const ch = CHAPTERS.find((c) => c.id === chapterId) || CHAPTERS[0];
     this.isTowerMode = false;
     this.towerFloor = 0;
@@ -5613,7 +5627,9 @@ export class GameEngine {
     this.baseStats = stats;
 
     this.buildArena(ch);
-    if (ch.id === 2) this.prefetchCampaignRosterModels(2);
+    if (ch.id === 2 || ch.id === 3) {
+      this.prefetchCampaignRosterModels(ch.id);
+    }
     this.resetRunState(stats);
     if (ch.id === 1) {
       this.prefetchSolarLionBossModel();
@@ -5623,7 +5639,11 @@ export class GameEngine {
     this.activePowerPressure = computePowerPressure(stats.powerRating, chapterRecPower);
 
     this.rebuildCompanions();
-    this.loadStage(0);
+    const clampedStageIdx = Math.max(
+      0,
+      Math.min(ch.stages.length - 1, Math.floor(initialStageIndex || 0))
+    );
+    this.loadStage(clampedStageIdx);
     if (this.nightmareTier > 0) {
       soundEngine.playNightmareActivate();
       const mutLabel = this.nightmareConfig.mutators.map((m) => m.name).join(' + ');
@@ -15993,6 +16013,22 @@ export class GameEngine {
         e.vz = 0;
         e.mobDashActive = false;
         e.mobVisualHeightY = 0;
+        if (e.telegraphType === 'lane') {
+          if (e.isBoss) {
+            this.dangerLanePool.forEach((l) => {
+              l.active = false;
+              l.mesh.visible = false;
+            });
+          } else {
+            e.laneAngles.forEach((_, lIdx) => {
+              const lane = this.dangerLanePool[(e.id + lIdx) % this.dangerLanePool.length];
+              if (lane) {
+                lane.active = false;
+                lane.mesh.visible = false;
+              }
+            });
+          }
+        }
         e.telegraphType = 'none';
         e.telegraphGroup.visible = false;
         e.laserLine.visible = false;
@@ -16550,6 +16586,9 @@ export class GameEngine {
           ) {
             e.slamX = e.x;
             e.slamZ = e.z;
+          } else if (e.mobActiveSkill === 'flank_crescent_swipe') {
+            e.slamX = THREE.MathUtils.clamp(e.x + e.aimX * 1.4, -ARENA_HALF_W + 1.2, ARENA_HALF_W - 1.2);
+            e.slamZ = THREE.MathUtils.clamp(e.z + e.aimZ * 1.4, -ARENA_HALF_D + 1.2, ARENA_HALF_D - 1.2);
           }
         }
 
@@ -16763,12 +16802,12 @@ export class GameEngine {
             } else if (plan.skillId === 'flank_crescent_swipe') {
               e.telegraphType = 'lunge';
               e.slamX = THREE.MathUtils.clamp(
-                e.x + plan.aimX * 1.95,
+                e.x + plan.aimX * 1.4,
                 -ARENA_HALF_W + 1.2,
                 ARENA_HALF_W - 1.2
               );
               e.slamZ = THREE.MathUtils.clamp(
-                e.z + plan.aimZ * 1.95,
+                e.z + plan.aimZ * 1.4,
                 -ARENA_HALF_D + 1.2,
                 ARENA_HALF_D - 1.2
               );
@@ -17149,15 +17188,16 @@ export class GameEngine {
       const bossHeightY = e.bossAiState ? e.bossAiState.visualHeightY : 0;
       const entityHeightY = Math.max(bossHeightY, e.mobVisualHeightY ?? 0);
       e.model.root.position.set(e.x, entityHeightY, e.z);
+      const isBossDashingNow = e.bossAiState?.activeAction?.kind === 'dash';
       const targetFacingYaw =
-        e.bossAiState?.activeAction?.kind === 'dash'
+        isBossDashingNow && e.bossAiState?.activeAction
           ? Math.atan2(e.bossAiState.activeAction.dirX, e.bossAiState.activeAction.dirZ)
           : e.mobDashActive
           ? Math.atan2(e.mobDashDirX ?? dirX, e.mobDashDirZ ?? dirZ)
           : e.telegraphType !== 'none'
           ? Math.atan2(e.aimX || dirX, e.aimZ || dirZ)
           : Math.atan2(dirX, dirZ);
-      const turnLambda = e.mobDashActive ? 16.5 : e.isBoss ? 8.8 : 10.8;
+      const turnLambda = e.mobDashActive || isBossDashingNow ? 16.5 : e.isBoss ? 8.8 : 10.8;
       e.model.root.rotation.y = dampShortestYaw(
         e.model.root.rotation.y,
         targetFacingYaw,
@@ -17189,9 +17229,17 @@ export class GameEngine {
           : 0;
 
       const bScale = e.baseScale ?? 1;
+      const squashY = e.hitSquashY ?? 1;
+      const stretchXZ = e.hitStretchXZ ?? 1;
       if (e.hitFlashTimer > 0) {
         const s = 1 + e.hitFlashTimer * 1.25;
-        e.model.root.scale.set(bScale * s, bScale / Math.sqrt(s), bScale * s);
+        e.model.root.scale.set(
+          bScale * stretchXZ * s,
+          bScale * squashY / Math.sqrt(s),
+          bScale * stretchXZ * s
+        );
+      } else if (Math.abs(squashY - 1) > 0.004 || Math.abs(stretchXZ - 1) > 0.004) {
+        e.model.root.scale.set(bScale * stretchXZ, bScale * squashY, bScale * stretchXZ);
       } else {
         e.model.root.scale.setScalar(bScale);
       }
@@ -17356,13 +17404,13 @@ export class GameEngine {
             recoilRoll: recoilStep.recoilRoll,
             isDashing: isDashingNow,
           });
+          const rosterTheme = resolveCampaignRosterVisualTheme(e.roster3dAssetId);
           if (
             e.autoRig.state.footstepTriggered &&
-            e.roster3dAssetId !== 'flame_spirit' &&
+            !rosterTheme.isFloatingSpirit &&
             Math.random() < aaaMobBudget.footstepDustChance * 1.4
           ) {
-            const dustHex = e.roster3dAssetId === 'winged_solar_lion' ? 0xfbbf24 : 0xa8a29e;
-            this.spawnParticles(e.x, 0.12, e.z, dustHex, this.lowEndGpu ? 1 : 2);
+            this.spawnParticles(e.x, 0.12, e.z, rosterTheme.dustHex, this.lowEndGpu ? 1 : 2);
           }
           if (e.boneTrails) {
             const trailEnergy =
@@ -17370,10 +17418,10 @@ export class GameEngine {
                 ? 1.0
                 : e.telegraphType !== 'none'
                 ? 0.48 + teleProgressAll * 0.4
-                : e.roster3dAssetId === 'winged_solar_lion'
+                : rosterTheme.isWingedSubBoss || e.isBoss
                 ? 0.28 + Math.min(0.24, entitySpeed * 0.04)
-                : e.roster3dAssetId === 'flame_spirit'
-                ? 0.22
+                : rosterTheme.isFloatingSpirit
+                ? 0.24
                 : 0.0;
             e.model.root.updateMatrixWorld(true);
             updateBoneTrailController(e.boneTrails, trailEnergy, dt);
@@ -17616,19 +17664,24 @@ export class GameEngine {
     const baseYaw = Math.atan2(e.aimX, e.aimZ);
     const dmg = this.getEffectiveBossAttackDamage(e, skill.damageMult);
 
-    if (skill.kind === 'leap_slam') {
+    const triggerBossBurst = (burst: Chapter1RosterBurstType, dur: number) => {
       if (e.solarLionVisualGroup) {
-        e.solarLionBurstType = 'slam';
-        e.solarLionBurstTimer = 0.45;
+        e.solarLionBurstType = burst === 'cast' ? 'roar' : burst;
+        e.solarLionBurstTimer = dur;
       }
       if (e.roster3dVisualGroup) {
-        e.roster3dBurstType = 'slam';
-        e.roster3dBurstTimer = 0.45;
+        e.roster3dBurstType = burst;
+        e.roster3dBurstTimer = dur;
       }
+    };
+
+    if (skill.kind === 'leap_slam') {
+      const leapDur = skill.leapDurationSec ?? 0.34;
+      triggerBossBurst('lunge', leapDur);
       bossAi.activeAction = {
         kind: 'leap',
         elapsed: 0,
-        duration: skill.leapDurationSec ?? 0.34,
+        duration: leapDur,
         startX: e.x,
         startZ: e.z,
         targetX: e.slamX,
@@ -17652,19 +17705,13 @@ export class GameEngine {
     }
 
     if (skill.kind === 'dash_charge') {
-      if (e.solarLionVisualGroup) {
-        e.solarLionBurstType = 'lunge';
-        e.solarLionBurstTimer = 0.46;
-      }
-      if (e.roster3dVisualGroup) {
-        e.roster3dBurstType = 'lunge';
-        e.roster3dBurstTimer = 0.44;
-      }
+      const dashDur = skill.dashDurationSec ?? 0.54;
+      triggerBossBurst('lunge', Math.max(0.46, dashDur));
       const laneYaw = e.laneAngles[0] ?? baseYaw;
       bossAi.activeAction = {
         kind: 'dash',
         elapsed: 0,
-        duration: skill.dashDurationSec ?? 0.54,
+        duration: dashDur,
         startX: e.x,
         startZ: e.z,
         targetX: e.x,
@@ -17688,14 +17735,7 @@ export class GameEngine {
     }
 
     if (skill.kind === 'lane_sweep' || skill.kind === 'blink_strike') {
-      if (e.solarLionVisualGroup) {
-        e.solarLionBurstType = 'roar';
-        e.solarLionBurstTimer = 0.36;
-      }
-      if (e.roster3dVisualGroup) {
-        e.roster3dBurstType = 'roar';
-        e.roster3dBurstTimer = 0.36;
-      }
+      triggerBossBurst('roar', 0.38);
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
       soundEngine.playMeteorImpact(computeSpatialPan(e.x, ARENA_HALF_W));
       const baseSpd = (skill.projectileSpeed ?? 14.2) * projMult;
@@ -17729,10 +17769,7 @@ export class GameEngine {
     }
 
     if (skill.kind === 'petal_spiral') {
-      if (e.solarLionVisualGroup) {
-        e.solarLionBurstType = 'roar';
-        e.solarLionBurstTimer = 0.42;
-      }
+      triggerBossBurst('roar', 0.44);
       const orbCount = scaleOrbCountForBudget(skill.count ?? 8, e.bossPhase, this.lowEndGpu);
       const speed = (skill.projectileSpeed ?? 9.8) * projMult;
       const totalWaves = Math.max(1, (skill.waves ?? 3) - (this.lowEndGpu ? 1 : 0));
@@ -17778,14 +17815,7 @@ export class GameEngine {
     }
 
     if (skill.kind === 'strafe_barrage') {
-      if (e.solarLionVisualGroup) {
-        e.solarLionBurstType = 'roar';
-        e.solarLionBurstTimer = 0.34;
-      }
-      if (e.roster3dVisualGroup) {
-        e.roster3dBurstType = 'roar';
-        e.roster3dBurstTimer = 0.34;
-      }
+      triggerBossBurst('cast', 0.38);
       const count = Math.max(3, Math.round((skill.count ?? 5) * budget.orbCountScale));
       const speed = (skill.projectileSpeed ?? 12.0) * projMult;
       const totalWaves = Math.max(1, skill.waves ?? 2);
@@ -17820,14 +17850,7 @@ export class GameEngine {
     }
 
     if (skill.kind === 'tectonic_pulse') {
-      if (e.solarLionVisualGroup) {
-        e.solarLionBurstType = 'slam';
-        e.solarLionBurstTimer = 0.44;
-      }
-      if (e.roster3dVisualGroup) {
-        e.roster3dBurstType = 'slam';
-        e.roster3dBurstTimer = 0.44;
-      }
+      triggerBossBurst('slam', 0.46);
       const waves = Math.max(2, (skill.waves ?? 3) - (this.lowEndGpu ? 1 : 0));
       const interval = skill.waveIntervalSec ?? 0.4;
       const baseRadius = e.slamRadius;
@@ -17865,10 +17888,7 @@ export class GameEngine {
     }
 
     if (skill.kind === 'hazard_ring') {
-      if (e.solarLionVisualGroup) {
-        e.solarLionBurstType = 'roar';
-        e.solarLionBurstTimer = 0.36;
-      }
+      triggerBossBurst('roar', 0.42);
       const hazardCount = this.lowEndGpu ? 2 : isEnraged ? 3 : 2;
       const hKind = skill.hazardKind ?? bossAi.hazardFlavor;
       for (let h = 0; h < hazardCount; h++) {
@@ -17898,6 +17918,7 @@ export class GameEngine {
 
     // Meteor cascade already launched pooled delayed circles on telegraph start; add light aimed orb pressure
     if (skill.kind === 'meteor_cascade') {
+      triggerBossBurst('cast', 0.4);
       const orbCount = this.lowEndGpu ? 3 : 5;
       const speed = 10.8 * projMult;
       for (let k = 0; k < orbCount; k++) {
@@ -17982,6 +18003,14 @@ export class GameEngine {
     e: EnemyEntity,
     act: NonNullable<BossAiRuntimeState['activeAction']>
   ): void {
+    if (e.solarLionVisualGroup) {
+      e.solarLionBurstType = 'slam';
+      e.solarLionBurstTimer = 0.42;
+    }
+    if (e.roster3dVisualGroup) {
+      e.roster3dBurstType = 'slam';
+      e.roster3dBurstTimer = 0.42;
+    }
     const budget = getBossPerformanceBudget(this.lowEndGpu);
     const pan = computeSpatialPan(e.x, ARENA_HALF_W);
     this.spawnShockwave(e.x, e.z, act.colorHex, act.slamRadius + 0.65, 0.44);
@@ -18045,6 +18074,14 @@ export class GameEngine {
     e: EnemyEntity,
     act: NonNullable<BossAiRuntimeState['activeAction']>
   ): void {
+    if (e.solarLionVisualGroup) {
+      e.solarLionBurstType = 'roar';
+      e.solarLionBurstTimer = 0.42;
+    }
+    if (e.roster3dVisualGroup) {
+      e.roster3dBurstType = 'roar';
+      e.roster3dBurstTimer = 0.42;
+    }
     const budget = getBossPerformanceBudget(this.lowEndGpu);
     soundEngine.playMeteorImpact(computeSpatialPan(e.x, ARENA_HALF_W));
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.3);
@@ -18433,6 +18470,8 @@ export class GameEngine {
       const perpZ = e.aimX * sideSign;
       const pan = computeSpatialPan(e.x, ARENA_HALF_W);
 
+      const mobTheme = resolveChapterMobSkillTheme(this.currentChapter.id);
+
       const triggerBurst = (burst: Chapter1RosterBurstType, dur = 0.32) => {
         e.mobBurstTimer = dur;
         if (e.roster3dVisualGroup) {
@@ -18451,31 +18490,31 @@ export class GameEngine {
         e.mobDashSpeed = 16.5;
         e.mobDashHitPlayer = false;
         e.mobDashHopHeight = 0.85;
-        e.mobDashColorHex = 0xff6b2b;
+        e.mobDashColorHex = mobTheme.pounceHex;
         soundEngine.playDash();
-        this.spawnParticles(e.x, 0.35, e.z, 0xff6b2b, Math.max(3, Math.round(7 * vfxBudget.trailParticleScale)));
+        this.spawnParticles(e.x, 0.35, e.z, mobTheme.pounceHex, Math.max(3, Math.round(7 * vfxBudget.trailParticleScale)));
         return;
       }
 
       if (skill === 'flank_crescent_swipe') {
         triggerBurst('lunge', 0.3);
-        const cx = e.x + e.aimX * 1.4;
-        const cz = e.z + e.aimZ * 1.4;
-        this.spawnShockwave(cx, cz, 0xffaa2b, 2.55, 0.28);
-        this.spawnParticles(cx, 0.55, cz, 0xfbbf24, Math.max(4, Math.round(9 * vfxBudget.trailParticleScale)));
+        const cx = THREE.MathUtils.clamp(e.x + e.aimX * 1.4, -ARENA_HALF_W + 1.2, ARENA_HALF_W - 1.2);
+        const cz = THREE.MathUtils.clamp(e.z + e.aimZ * 1.4, -ARENA_HALF_D + 1.2, ARENA_HALF_D - 1.2);
+        this.spawnShockwave(cx, cz, mobTheme.swipeHex, 2.55, 0.28);
+        this.spawnParticles(cx, 0.55, cz, mobTheme.swipeSparkHex, Math.max(4, Math.round(9 * vfxBudget.trailParticleScale)));
         if (Math.hypot(this.px - cx, this.pz - cz) <= 2.35) {
           this.damagePlayer(
             e.damage * 0.95,
             {
               code: 'melee_swarm',
-              label: 'Trảm Nguyệt Lửa cận chiến',
+              label: 'Trảm Nguyệt Cận Chiến',
               tip: 'Bước lùi hoặc lướt chéo ngược chiều né cú chém bán nguyệt của quái cận chiến.',
             },
             e.x,
             e.z
           );
         }
-        // Short fiery crescent sparks
+        // Short chapter-themed crescent sparks
         for (const offset of [-0.26, 0.26]) {
           const a = baseYaw + offset;
           this.fireEnemyOrb(
@@ -18484,7 +18523,7 @@ export class GameEngine {
             Math.sin(a) * 9.8 * pveSpdMult,
             Math.cos(a) * 9.8 * pveSpdMult,
             Math.round(e.damage * 0.65),
-            0xffaa2b,
+            mobTheme.swipeHex,
             'ranged_barrage'
           );
         }
@@ -18497,7 +18536,7 @@ export class GameEngine {
       if (skill === 'seismic_fissure_slam' || skill === 'juggernaut_advance_slam') {
         triggerBurst('slam', 0.4);
         const slamR = skill === 'seismic_fissure_slam' ? 3.55 : 2.85;
-        const slamColor = skill === 'seismic_fissure_slam' ? 0xf97316 : 0xf59e0b;
+        const slamColor = skill === 'seismic_fissure_slam' ? mobTheme.slamHex : mobTheme.tremorHex;
         this.spawnShockwave(e.x, e.z, slamColor, slamR + 0.4, 0.38);
         this.spawnImpactDecal(e.x, e.z, slamColor, slamR * 0.82, 1.4);
         this.spawnParticles(e.x, 0.35, e.z, slamColor, Math.max(5, Math.round(14 * vfxBudget.trailParticleScale)));
@@ -18525,12 +18564,12 @@ export class GameEngine {
               Math.sin(a) * 8.9 * pveSpdMult,
               Math.cos(a) * 8.9 * pveSpdMult,
               Math.round(e.damage * 0.78),
-              0xf97316,
+              mobTheme.slamHex,
               'ranged_barrage'
             );
           }
           if (vfxBudget.allowFissureSparks) {
-            this.spawnParticles(e.x + e.aimX * 1.6, 0.25, e.z + e.aimZ * 1.6, 0xfbbf24, 6);
+            this.spawnParticles(e.x + e.aimX * 1.6, 0.25, e.z + e.aimZ * 1.6, mobTheme.swipeSparkHex, 6);
           }
         } else {
           // 4-way compact radial tremor orbs
@@ -18542,7 +18581,7 @@ export class GameEngine {
               Math.sin(a) * 8.2 * pveSpdMult,
               Math.cos(a) * 8.2 * pveSpdMult,
               Math.round(e.damage * 0.72),
-              0xf59e0b,
+              mobTheme.tremorHex,
               'ranged_barrage'
             );
           }
@@ -18560,7 +18599,7 @@ export class GameEngine {
             Math.sin(a) * 9.8 * pveSpdMult,
             Math.cos(a) * 9.8 * pveSpdMult,
             Math.round(e.damage * 0.85),
-            0xf43f5e,
+            mobTheme.volleyHex,
             'ranged_barrage'
           );
         }
@@ -18569,7 +18608,7 @@ export class GameEngine {
         e.mobSideHopDirX = perpX;
         e.mobSideHopDirZ = perpZ;
         if (e.tacticalRole === 'arcane_sniper') {
-          this.spawnParticles(e.x, 1.0, e.z, 0xc084fc, 8);
+          this.spawnParticles(e.x, 1.0, e.z, mobTheme.volleyHex, 8);
         }
         return;
       }
@@ -18585,10 +18624,10 @@ export class GameEngine {
           delaySec: 0,
           duration: 0.78,
           damage: Math.round(e.damage * 1.05),
-          colorHex: 0xf59e0b,
-          ownerName: 'Pháp Sư Tinh Tú',
+          colorHex: mobTheme.mortarHex,
+          ownerName: mobTheme.mortarOwnerName,
         });
-        this.spawnParticles(e.x, 1.1, e.z, 0xf59e0b, Math.max(3, Math.round(7 * vfxBudget.trailParticleScale)));
+        this.spawnParticles(e.x, 1.1, e.z, mobTheme.mortarHex, Math.max(3, Math.round(7 * vfxBudget.trailParticleScale)));
         e.mobSideHopTimer = 0.26;
         e.mobSideHopDirX = perpX;
         e.mobSideHopDirZ = perpZ;
@@ -18605,23 +18644,23 @@ export class GameEngine {
         e.mobDashSpeed = 18.2;
         e.mobDashHitPlayer = false;
         e.mobDashHopHeight = 0.24;
-        e.mobDashColorHex = 0x38bdf8;
+        e.mobDashColorHex = mobTheme.spearDashHex;
         soundEngine.playDash();
-        // Fast piercing solar lance bolt straight down the thrust lane
+        // Fast piercing lance bolt straight down the thrust lane
         this.fireEnemyOrb(
           e.x + e.aimX * 0.7,
           e.z + e.aimZ * 0.7,
           e.aimX * 13.0 * pveSpdMult,
           e.aimZ * 13.0 * pveSpdMult,
           Math.round(e.damage * 0.9),
-          0x38bdf8,
+          mobTheme.spearDashHex,
           'ranged_barrage'
         );
         return;
       }
 
       if (skill === 'sweeping_lance_fan') {
-        triggerBurst('lunge', 0.3);
+        triggerBurst('cast', 0.32);
         for (const offset of [-0.22, 0, 0.22]) {
           const a = baseYaw + offset;
           this.fireEnemyOrb(
@@ -18630,7 +18669,7 @@ export class GameEngine {
             Math.sin(a) * 10.6 * pveSpdMult,
             Math.cos(a) * 10.6 * pveSpdMult,
             Math.round(e.damage * 0.85),
-            0xf97316,
+            mobTheme.spearFanHex,
             'ranged_barrage'
           );
         }
@@ -20333,12 +20372,30 @@ export class GameEngine {
           m.group.visible = false;
         });
       } else if (e.isElite) {
+        if (e.telegraphType === 'lane') {
+          e.laneAngles.forEach((_, lIdx) => {
+            const lane = this.dangerLanePool[(e.id + lIdx) % this.dangerLanePool.length];
+            if (lane) {
+              lane.active = false;
+              lane.mesh.visible = false;
+            }
+          });
+        }
         soundEngine.playShockwave(killPan);
         this.spawnImpactLight(e.x, 1.4, e.z, 'super_crit');
         this.spawnParticles(e.x, 1.15, e.z, 0xfde047, 14);
         this.hitstopTimer = Math.max(this.hitstopTimer, 0.036);
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.24);
       } else {
+        if (e.telegraphType === 'lane') {
+          e.laneAngles.forEach((_, lIdx) => {
+            const lane = this.dangerLanePool[(e.id + lIdx) % this.dangerLanePool.length];
+            if (lane) {
+              lane.active = false;
+              lane.mesh.visible = false;
+            }
+          });
+        }
         this.hitstopTimer = Math.max(this.hitstopTimer, 0.016);
         this.shakeIntensity = Math.max(this.shakeIntensity, 0.11);
       }
@@ -22974,8 +23031,11 @@ export class GameEngine {
     const boss = this.enemies.find((e) => e.isBoss && !e.isArenaRival && !e.isTrainingDummy);
     const nearestTarget = this.findNearestEnemy(this.px, this.pz, undefined, 18);
     const target = nearestTarget && !nearestTarget.isBoss ? nearestTarget : undefined;
-    const ariesCampaign = this.currentChapter.id === 2 &&
-      !this.isSideModeActiveForBossModel() && !this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode;
+    const campaignChapterId =
+      (this.currentChapter.id === 1 || this.currentChapter.id === 2 || this.currentChapter.id === 3) &&
+      !this.isSideModeActiveForBossModel() && !this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode
+        ? this.currentChapter.id
+        : undefined;
     const rival = this.enemies.find((e) => e.isArenaRival);
     const heroDef = HERO_MAP[this.baseStats.heroId] ?? HERO_MAP.aurelia;
     const elemDef = this.isElementalTowerMode ? ELEMENTAL_TOWER_MAP[this.elementalTowerId] : null;
@@ -23178,8 +23238,8 @@ export class GameEngine {
           ? this.weeklyBossId ?? undefined
           : undefined,
       activeTargetKind: target?.kind,
-      activeTargetChapterId: target && ariesCampaign ? 2 : undefined,
-      activeTargetName: target && ariesCampaign ? getEnemyLabel(target.kind, 2) : undefined,
+      activeTargetChapterId: target && campaignChapterId ? campaignChapterId : undefined,
+      activeTargetName: target && campaignChapterId ? getEnemyLabel(target.kind, campaignChapterId) : undefined,
       activeTargetHpPct: target
         ? Math.max(0, Math.min(100, Math.round((target.hp / Math.max(1, target.maxHp)) * 100)))
         : undefined,

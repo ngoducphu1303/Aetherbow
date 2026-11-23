@@ -49,11 +49,24 @@ function taurusCharacter(assetKey: string): CharacterAssetPack {
   return { ...pack, skill: pack.icon, burst: pack.icon };
 }
 
+const LEO_ENEMY_LABELS: Partial<Record<EnemyKind, string>> = {
+  [EnemyKind.SKIRMISHER]: 'Sư Tử Lửa Đền Thờ',
+  [EnemyKind.GOLEM]: 'Vệ Binh Đá Mặt Trời',
+  [EnemyKind.IMP_ARCHER]: 'Linh Hồn Lửa Hoàng Đạo',
+  [EnemyKind.DRAGON_WHELP]: 'Chiến Binh Thương Ánh Dương',
+  [EnemyKind.WARDEN_BOSS]: 'Sư Tử Cánh Ánh Dương',
+  [EnemyKind.TITAN_BOSS]: 'Sư Tử Cánh Ánh Dương',
+  [EnemyKind.ZODIAC_BOSS]: 'Sư Vương Thái Dương',
+};
+
 const ARIES_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }>> = {
   [EnemyKind.SKIRMISHER]: { ...ariesPortrait('magma-ram'), name: 'Dương Hỏa Dung Nham' },
   [EnemyKind.GOLEM]: { ...ariesPortrait('obsidian-golem'), name: 'Golem Hắc Diện' },
   [EnemyKind.IMP_ARCHER]: { ...ariesPortrait('crimson-spirit'), name: 'Hỏa Linh Xích Hỏa' },
   [EnemyKind.DRAGON_WHELP]: { ...ariesPortrait('aries-berserker'), name: 'Cuồng Chiến Bạch Dương' },
+  [EnemyKind.WARDEN_BOSS]: { ...ariesPortrait('cinderhorn'), name: 'Cinderhorn' },
+  [EnemyKind.TITAN_BOSS]: { ...ariesPortrait('cinderhorn'), name: 'Cinderhorn' },
+  [EnemyKind.ZODIAC_BOSS]: { ...ariesPortrait('kratos-aries'), name: 'Hỏa Dương Chiến Vương' },
 };
 
 const TAURUS_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }>> = {
@@ -61,6 +74,9 @@ const TAURUS_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string 
   [EnemyKind.GOLEM]: { ...taurusPortrait('ve-binh-ngoc-luc-bao'), name: 'Vệ Binh Ngọc Lục Bảo' },
   [EnemyKind.IMP_ARCHER]: { ...taurusPortrait('linh-hon-luc-bao'), name: 'Linh Hồn Lục Bảo' },
   [EnemyKind.DRAGON_WHELP]: { ...taurusPortrait('chien-binh-kich-luc-bao'), name: 'Chiến Binh Kích Lục Bảo' },
+  [EnemyKind.WARDEN_BOSS]: { ...taurusPortrait('ngoc-nguu-duc-thu'), name: 'Ngọc Ngưu Dực Thú' },
+  [EnemyKind.TITAN_BOSS]: { ...taurusPortrait('ngoc-nguu-duc-thu'), name: 'Ngọc Ngưu Dực Thú' },
+  [EnemyKind.ZODIAC_BOSS]: { ...taurusPortrait('dia-than-kim-nguu'), name: 'Địa Thần Kim Ngưu' },
 };
 
 export const HERO_ASSET_PACKS: Record<PlayableHeroId, CharacterAssetPack> = {
@@ -277,6 +293,7 @@ export function getSkinAssetPack(skinId: HeroSkinId, fallbackHeroId: HeroId = DE
 }
 
 export function getEnemyLabel(kind: EnemyKind, chapterId?: number): string {
+  if (chapterId === 1) return LEO_ENEMY_LABELS[kind] ?? ENEMY_LABEL_VI[kind];
   if (chapterId === 2) return ARIES_ENEMIES[kind]?.name ?? ENEMY_LABEL_VI[kind];
   if (chapterId === 3) return TAURUS_ENEMIES[kind]?.name ?? ENEMY_LABEL_VI[kind];
   return ENEMY_LABEL_VI[kind];

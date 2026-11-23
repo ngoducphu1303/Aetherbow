@@ -398,10 +398,9 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
     } else {
       const waveCount = s >= 7 ? 2 : 1;
       const waves: ChapterStageDef['waves'] = [];
-      if (ch.id === 1) {
-        // Chapter 1 showcases all 4 dedicated Solar Temple 3D mobs in role-matched formations:
-        // SKIRMISHER = Sư Tử Lửa Đền Thờ, GOLEM = Vệ Binh Đá Mặt Trời,
-        // IMP_ARCHER = Linh Hồn Lửa Hoàng Đạo, DRAGON_WHELP = Chiến Binh Thương Ánh Dương
+      if (ch.id === 1 || ch.id === 2 || ch.id === 3) {
+        // Chapters 1, 2 & 3 showcase all 4 dedicated 3D mob archetypes in balanced role formations:
+        // SKIRMISHER (fast flanker), GOLEM (heavy tank), IMP_ARCHER (floating mage), DRAGON_WHELP (lancer/berserker)
         for (let w = 0; w < waveCount; w++) {
           const enemies: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> = [];
           if (s === 1) {
@@ -422,7 +421,7 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
               { kind: EnemyKind.GOLEM, count: 1 }
             );
           } else {
-            // Stages 5–7 & 9–11 mix all 4 Solar Temple archetypes cleanly
+            // Stages 5–7 & 9–11 mix all 4 chapter-unique 3D archetypes cleanly
             enemies.push(
               { kind: EnemyKind.SKIRMISHER, count: 2 + Math.floor(s / 6), isElite: s >= 5 && w === 0 },
               { kind: EnemyKind.IMP_ARCHER, count: 1 + Math.floor(s / 5) },
@@ -443,7 +442,7 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
         for (let w = 0; w < waveCount; w++) {
           waves.push({
             enemies: [
-              { kind: (ch.id === 2 || ch.id === 3) && (s === 3 || w === 1) ? EnemyKind.DRAGON_WHELP : e1, count: 2 + Math.floor(s / 4), isElite: s >= 5 && w === 0 },
+              { kind: e1, count: 2 + Math.floor(s / 4), isElite: s >= 5 && w === 0 },
               { kind: e2, count: 1 + Math.floor(s / 3) },
               ...(s >= 3 ? [{ kind: e3, count: 1 + Math.floor(s / 5) }] : []),
             ],

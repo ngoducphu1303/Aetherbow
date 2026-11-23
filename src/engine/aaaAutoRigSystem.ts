@@ -587,7 +587,7 @@ export function prepareAutoRigTemplate(
       geo,
       schema,
       normalizedSize,
-      calibration.hoverOffsetY
+      hoverOffsetY
     );
     if (!computedHeads) {
       computedHeads = boneWorldHeads;
@@ -641,7 +641,7 @@ export function prepareAutoRigTemplate(
       (bp) =>
         new THREE.Vector3(
           bp.headNorm[0] * normalizedSize.x,
-          bp.headNorm[1] * normalizedSize.y + calibration.hoverOffsetY,
+          bp.headNorm[1] * normalizedSize.y + hoverOffsetY,
           bp.headNorm[2] * normalizedSize.z
         )
     );
@@ -1032,32 +1032,95 @@ export function updateAutoRigPose(instance: AutoRigInstance, input: AutoRigPoseI
     let handRx = 0.12;
 
     if (tele > 0.01) {
-      // Raise massive stone arms & hammer high overhead before slam
       const c = tele * (0.35 + tp * 0.65);
-      pelvisOffY += 0.06 * c;
-      spinePitch -= 0.24 * c;
-      chestPitch -= 0.18 * c;
-      armLx = -1.45 * c;
-      armRx = -1.65 * c;
-      armLz = -0.25 * c;
-      armRz = 0.25 * c;
-      handLx = -0.3 * c;
-      handRx = -0.4 * c;
+      if (input.telegraphType === 'lane' || input.telegraphType === 'lunge') {
+        // Low bull/ram horn-charging stance: drop hips, lower horns/head forward, coil arms back
+        pelvisOffY -= 0.14 * c;
+        pelvisOffZ -= 0.14 * c;
+        spinePitch += 0.24 * c;
+        chestPitch += 0.18 * c;
+        headPitch += 0.26 * c;
+        armLx = 0.42 * c;
+        armRx = 0.48 * c;
+        armLz = -0.34 * c;
+        armRz = 0.34 * c;
+        handLx = -0.22 * c;
+        handRx = -0.22 * c;
+      } else if (input.telegraphType === 'shot' || input.telegraphType === 'spiral') {
+        // Wide chest-open boulder / magma eruption windup
+        pelvisOffY += 0.05 * c;
+        spinePitch -= 0.18 * c;
+        chestPitch -= 0.16 * c;
+        headPitch -= 0.2 * c;
+        armLx = -0.58 * c;
+        armRx = -0.82 * c;
+        armLz = -0.66 * c;
+        armRz = 0.66 * c;
+        handRx = -0.35 * c;
+      } else {
+        // Raise massive stone/obsidian/jade arms & weapon high overhead before slam
+        pelvisOffY += 0.06 * c;
+        spinePitch -= 0.24 * c;
+        chestPitch -= 0.18 * c;
+        armLx = -1.45 * c;
+        armRx = -1.65 * c;
+        armLz = -0.25 * c;
+        armRz = 0.25 * c;
+        handLx = -0.3 * c;
+        handRx = -0.4 * c;
+      }
     }
 
-    if (strike > 0.01) {
-      // Crushing downward seismic slam impact
-      pelvisOffY -= 0.18 * strike;
-      spinePitch += 0.42 * strike;
-      chestPitch += 0.26 * strike;
-      armLx = 0.85 * strike;
-      armRx = 0.98 * strike;
-      handRx = 0.42 * strike;
+    if (strike > 0.01 || input.isDashing) {
+      const s = Math.max(strike, input.isDashing ? 0.94 : 0);
+      if (input.isDashing || input.burstType === 'lunge') {
+        // Ferocious bull/ram gore charge with rapid driving leg pump
+        const dashPump = Math.sin(t * 22);
+        pelvisOffY -= 0.08 * s;
+        pelvisOffZ += 0.28 * s;
+        spinePitch += 0.34 * s;
+        chestPitch += 0.22 * s;
+        headPitch += 0.28 * s;
+        armLx = 0.62 * s;
+        armRx = 0.72 * s;
+        armLz = -0.36 * s;
+        armRz = 0.36 * s;
+        legLx = dashPump * 0.62 * s;
+        legRx = -dashPump * 0.62 * s;
+      } else if (input.burstType === 'roar') {
+        // Triumphant chest-out war roar & magma/jade eruption
+        pelvisOffY += 0.16 * s;
+        spinePitch -= 0.22 * s;
+        chestPitch -= 0.18 * s;
+        headPitch -= 0.42 * s;
+        armLx = -0.58 * s;
+        armRx = -0.58 * s;
+        armLz = -0.82 * s;
+        armRz = 0.82 * s;
+      } else if (input.burstType === 'cast') {
+        // Forceful right-arm boulder / flame volley hurl
+        pelvisOffZ += 0.16 * s;
+        chestYaw += 0.36 * s;
+        spinePitch += 0.16 * s;
+        armLx = -0.35 * s;
+        armRx = 0.88 * s;
+        handRx = 0.38 * s;
+      } else {
+        // Crushing downward seismic slam impact
+        pelvisOffY -= 0.18 * s;
+        spinePitch += 0.42 * s;
+        chestPitch += 0.26 * s;
+        armLx = 0.85 * s;
+        armRx = 0.98 * s;
+        handRx = 0.42 * s;
+      }
     }
 
     if (stun > 0.01) {
       pelvisOffY -= 0.22 * stun;
       spinePitch += 0.34 * stun;
+      headPitch += 0.26 * stun;
+      headRoll += Math.sin(t * 15) * 0.16 * stun;
       armLx = 0.28 * stun;
       armRx = 0.28 * stun;
     }
@@ -1235,6 +1298,13 @@ export function updateAutoRigPose(instance: AutoRigInstance, input: AutoRigPoseI
         wingInnerZ = 0.58 * s;
         wingOuterZ = 0.28 * s;
         wingSweepY = -0.35 * s;
+      } else if (input.burstType === 'cast') {
+        // Sweeping forward wing-snap volley burst
+        pelvisOffZ += 0.16 * s;
+        chestPitch += 0.14 * s;
+        wingInnerZ = -0.28 * s;
+        wingOuterZ = -0.24 * s;
+        wingSweepY = -0.58 * s;
       } else {
         // Dive lunge
         pelvisOffZ += 0.24 * s;

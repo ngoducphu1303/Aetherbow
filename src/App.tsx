@@ -6991,7 +6991,7 @@ export default function App() {
     document.body.dataset.state = stateLabel;
   }, [phase]);
 
-  // Support ?autostart=1 to skip TitleScreen/SplashGate and start gameplay directly
+  // Support ?autostart=1 (and optional &chapter=1..12&stage=1..12) to start gameplay directly
   const autostartDoneRef = useRef<boolean>(false);
   useEffect(() => {
     if (autostartDoneRef.current) return;
@@ -7000,9 +7000,18 @@ export default function App() {
       autostartDoneRef.current = true;
       setEnteredGame(true);
       setOnboardingOpen(false);
-      handleStartTrial();
+      const chapterParam = Number.parseInt(params.get('chapter') ?? '', 10);
+      const stageParam = Number.parseInt(params.get('stage') ?? '', 10);
+      if (Number.isFinite(chapterParam) && chapterParam >= 1 && chapterParam <= CHAPTERS.length) {
+        const stageIdx = Number.isFinite(stageParam) && stageParam >= 1 ? stageParam - 1 : 0;
+        setSelectedChapterId(chapterParam);
+        setPhase(GamePhase.PLAYING);
+        engineRef.current.startChapter(chapterParam, playerStats, 0, stageIdx);
+      } else {
+        handleStartTrial();
+      }
     }
-  }, [canEnterGame, handleStartTrial]);
+  }, [canEnterGame, handleStartTrial, playerStats]);
 
   const handleQuickSweepChapter = useCallback((chapterId: number) => {
     const ch = CHAPTERS.find((c) => c.id === chapterId);
