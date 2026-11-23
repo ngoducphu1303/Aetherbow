@@ -364,3 +364,82 @@ test('both upload flows accept 120 MB and multipart replacements remain drafts',
   assert.equal(entry.draft,null);
   assert.deepEqual((await (await browserCall('inbox',{chapter:'3'})).json()).files,[]);
 });
+
+test('multipart replacement restores uploaded parts and publishes only after complete', async (t) => {
+  const partSize = 6 * 1024 * 1024;
+  const glb = Buffer.alloc(partSize + 24);
+  model().copy(glb);
+  glb.writeUInt32LE(glb.length, 8);
+  const partData = new Map();
+  let committed = false;
+  let starts = 0;
+  const original = globalThis.FixedLengthStream;
+  globalThis.FixedLengthStream = class extends TransformStream { constructor() { super(); } };
+  t.after(() => { globalThis.FixedLengthStream = original; });
+  const env = {
+    FIREBASE_PROJECT_ID: project, ADMIN_GOOGLE_EMAIL: email, ASSET_CATALOG: catalogBinding(),
+    B2_WRITE_KEY_ID: 'write-id', B2_WRITE_APPLICATION_KEY: 'write-secret',
+  };
+  t.mock.method(globalThis, 'fetch', async (input, options) => {
+    const url = new URL(input);
+    if (url.hostname === 'www.googleapis.com') return Response.json({ keys: [publicKey] });
+    assert.equal(url.hostname, 's3.us-east-005.backblazeb2.com');
+    assert.match(decodeURIComponent(url.pathname), /\/assets\/\.revisions\//);
+    if (url.searchParams.has('uploads')) {
+      starts += 1;
+      return new Response('<UploadId>replacement-session</UploadId>');
+    }
+    if (options.method === 'HEAD') {
+      return new Response(null, { status: committed ? 200 : 404, headers: { 'content-length': String(glb.length) } });
+    }
+    assert.equal(url.searchParams.get('uploadId'), 'replacement-session');
+    if (options.method === 'PUT') {
+      const part = Number(url.searchParams.get('partNumber'));
+      const bytes = Buffer.from(await new Response(options.body).arrayBuffer());
+      assert.deepEqual(bytes, glb.subarray((part - 1) * partSize, part * partSize));
+      partData.set(part, bytes);
+      return new Response(null, { headers: { ETag: '"' + String(part).repeat(32) + '"' } });
+    }
+    assert.equal(options.method, 'POST');
+    assert.match(options.body, /<PartNumber>1<\/PartNumber><ETag>"1{32}"<\/ETag>/);
+    assert.match(options.body, /<PartNumber>2<\/PartNumber><ETag>"2{32}"<\/ETag>/);
+    assert.equal(partData.size, 2);
+    committed = true;
+    return new Response('<CompleteMultipartUploadResult/>');
+  });
+  const id = '74f3d7ae-8c56-4ad9-9bee-000000000005';
+  const send = (action, query, method, body, headers = {}) => worker.fetch(new Request(
+    cdn + '/__admin/model-upload/' + action + '?' + new URLSearchParams({ ...query, id }),
+    { method, body, headers: { Authorization: 'Bearer ' + token(), Origin: adminOrigin, ...headers } },
+  ), env);
+  const first = await send('start', { path, size: String(glb.length) }, 'POST');
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), { partSize, completed: null, uploadedParts: {} });
+  assert.equal(starts, 1);
+  const firstChunk = glb.subarray(0, partSize);
+  assert.equal((await send('part', { part:'1' }, 'PUT', firstChunk, { 'X-GLB-Size': String(firstChunk.length) })).status, 200);
+  const resumed = await send('start', { path, size: String(glb.length) }, 'POST');
+  assert.deepEqual((await resumed.json()).uploadedParts, { '1': '1'.repeat(32) });
+  assert.equal(starts, 1);
+  const tampered = await send('finish', {}, 'POST', JSON.stringify({ etags: ['0'.repeat(32), '2'.repeat(32)] }));
+  assert.equal(tampered.status, 409);
+  const lastChunk = glb.subarray(partSize);
+  assert.equal((await send('part', { part:'2' }, 'PUT', lastChunk, { 'X-GLB-Size': String(lastChunk.length) })).status, 200);
+  const finished = await send('finish', {}, 'POST', JSON.stringify({ etags: ['1'.repeat(32), '2'.repeat(32)] }));
+  assert.equal(finished.status, 201);
+  const revision = await finished.json();
+  assert.equal(revision.id, id);
+  assert.equal(revision.size, glb.length);
+  assert.equal(revision.b2Id, undefined);
+  assert.equal(revision.parts, undefined);
+  assert.deepEqual((await (await send('start', { path, size: String(glb.length) }, 'POST')).json()).completed, revision);
+  const entry = await worker.fetch(new Request(cdn + '/__admin/entry?path=' + encodeURIComponent(path), {
+    headers: { Authorization: 'Bearer ' + token(), Origin: adminOrigin },
+  }), env);
+  assert.equal((await entry.json()).draft.id, id);
+  const published = await worker.fetch(new Request(cdn + '/__admin/publish?path=' + encodeURIComponent(path), {
+    method:'POST', body:JSON.stringify({ id, expected: null }),
+    headers: { Authorization: 'Bearer ' + token(), Origin: adminOrigin },
+  }), env);
+  assert.equal(published.status, 200);
+});
