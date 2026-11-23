@@ -1066,7 +1066,7 @@ export class GameEngine {
   private artemisLoadedAsset?: string;
   private artemisFailedAsset?: string;
   private readonly dragonSeat = new THREE.Vector3();
-  private readonly vulcanRiderHip = new THREE.Vector3();
+  private readonly mountedRiderHip = new THREE.Vector3();
   // Chapter 1 Solar Leo 3D Character Pack (Aurelia + 4 skins, Solarius, Wings, Halo, Artifact, Astraeo)
   private solarLeoHeroRig?: InstantiatedSolarLeoModel;
   private solarLeoHeroKey?: string;
@@ -4051,9 +4051,9 @@ export class GameEngine {
     return this.dragonSeat.y - (artemis || aurelia ? 0.86 : 0.44);
   }
 
-  private alignVulcanRider(): void {
+  private alignMountedRider(): void {
     const mount = this.solarLeoMountRig;
-    if (mount?.assetId !== 'vulcan' || !mount.saddle || !this.hasDragonRide()) return;
+    if (!mount?.saddle || !this.hasDragonRide()) return;
     const { root, bodyGroup } = this.hero;
     const hip = this.solarLeoHeroRig?.group.parent === bodyGroup
       ? this.solarLeoHeroRig.bones.pelvis
@@ -4062,10 +4062,10 @@ export class GameEngine {
       : undefined;
     if (!hip) return;
     root.worldToLocal(mount.saddle.getWorldPosition(this.dragonSeat));
-    root.worldToLocal(hip.getWorldPosition(this.vulcanRiderHip));
+    root.worldToLocal(hip.getWorldPosition(this.mountedRiderHip));
     // Leave room for the saddle cushion below the pelvis.
     this.dragonSeat.y += 0.05;
-    bodyGroup.position.add(this.dragonSeat.sub(this.vulcanRiderHip));
+    bodyGroup.position.add(this.dragonSeat.sub(this.mountedRiderHip));
   }
 
   private buildHero(): void {
@@ -11892,7 +11892,7 @@ export class GameEngine {
           lobbyPose: this.lobbyHeroPose,
         });
       }
-      if (onDragon) this.alignVulcanRider();
+      if (onDragon) this.alignMountedRider();
       if (this.lobbyHaloGroup) {
         this.lobbyHaloGroup.visible = true;
         this.lobbyHaloGroup.rotation.y += dt * 0.55;
@@ -14317,7 +14317,7 @@ export class GameEngine {
       });
     }
 
-    if (onDragon) this.alignVulcanRider();
+    if (onDragon) this.alignMountedRider();
 
     if (entranceLocked) {
       this.volleyQueue.length = 0;

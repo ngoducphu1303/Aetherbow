@@ -629,10 +629,25 @@ interface BoneBlueprint {
   weightBoost?: number;
 }
 
+// Measured on Aurelia's normalized bind mesh. Her rear boot crosses behind
+// the planted leg, so left/right cannot be inferred from vertex X alone.
+const AURELIA_LEGS = [
+  { side: 'L', thighIndex: 9, shinIndex: 12, hip: [0.09, 0.89, 0.02], knee: [-0.01, 0.57, 0.17], ankle: [-0.08, 0.085, 0.22], toe: [-0.08, 0.025, 0.29] },
+  { side: 'R', thighIndex: 10, shinIndex: 13, hip: [-0.14, 0.89, 0.02], knee: [-0.19, 0.62, 0.32], ankle: [-0.08, 0.405, -0.10], toe: [-0.08, 0.285, -0.17] },
+] satisfies Array<{
+  side: 'L' | 'R';
+  thighIndex: number;
+  shinIndex: number;
+  hip: BoneBlueprint['head'];
+  knee: BoneBlueprint['head'];
+  ankle: BoneBlueprint['head'];
+  toe: BoneBlueprint['head'];
+}>;
+
 function buildBoneBlueprints(
+  assetId: SolarLeoAssetId,
   rigType: SolarLeoRigType,
-  box: THREE.Box3,
-  articulatedKnees: boolean
+  box: THREE.Box3
 ): BoneBlueprint[] {
   const sx = Math.max(0.1, box.max.x - box.min.x);
   const sy = Math.max(0.1, box.max.y - box.min.y);
@@ -645,9 +660,10 @@ function buildBoneBlueprints(
     const legX = torsoW * 0.17;
     const armX = torsoW * 0.28;
     const handX = Math.max(torsoW * 0.52, sx * 0.42);
+    const articulatedKnees = assetId === 'aurelia' || assetId === 'bellona' || assetId === 'golden_fleece';
     const kneeY = y0 + sy * 0.24;
     const footY = y0 + sy * 0.02;
-    return [
+    const blueprints: BoneBlueprint[] = [
       // 0: root
       { name: 'root', parent: -1, head: [0, y0, 0], tail: [0, y0 + sy * 0.08, 0], radius: torsoW * 0.16, weightBoost: 0.15 },
       // 1: pelvis
@@ -672,11 +688,21 @@ function buildBoneBlueprints(
       { name: 'legR', parent: 1, head: [-legX, y0 + sy * 0.46, 0.02], tail: [-legX * 1.05, articulatedKnees ? kneeY : footY, 0.04], radius: torsoW * 0.24, sideBias: 'right', weightBoost: 1.45 },
       // 11: cloak (trailing -Z)
       { name: 'cloak', parent: 2, head: [0, y0 + sy * 0.62, -sz * 0.14], tail: [0, y0 + sy * 0.06, -sz * 0.46], radius: torsoW * 0.32, sideBias: 'back', weightBoost: 1.35 },
-      ...(articulatedKnees ? [
-        { name: 'shinL', parent: 9, head: [legX * 1.05, kneeY, 0.04], tail: [legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'left', weightBoost: 1.7 } satisfies BoneBlueprint,
-        { name: 'shinR', parent: 10, head: [-legX * 1.05, kneeY, 0.04], tail: [-legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'right', weightBoost: 1.7 } satisfies BoneBlueprint,
-      ] : []),
     ];
+    if (articulatedKnees) {
+      blueprints.push(
+        { name: 'shinL', parent: 9, head: [legX * 1.05, kneeY, 0.04], tail: [legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'left', weightBoost: 1.7 },
+        { name: 'shinR', parent: 10, head: [-legX * 1.05, kneeY, 0.04], tail: [-legX * 1.1, footY, 0.04], radius: torsoW * 0.18, sideBias: 'right', weightBoost: 1.7 }
+      );
+    }
+    if (assetId === 'aurelia') {
+      for (const { hip, knee, ankle, toe, thighIndex, shinIndex, side } of AURELIA_LEGS) {
+        blueprints[thighIndex] = { name: `leg${side}`, parent: 1, head: hip, tail: knee, radius: 0.11, weightBoost: 1.6 };
+        blueprints[shinIndex] = { name: `shin${side}`, parent: thighIndex, head: knee, tail: ankle, radius: 0.065, weightBoost: 2.1 };
+        blueprints.push({ name: `foot${side}`, parent: shinIndex, head: ankle, tail: toe, radius: 0.06, weightBoost: 1.8 });
+      }
+    }
+    return blueprints;
   }
 
   if (rigType === 'quadruped_mount') {
@@ -988,6 +1014,39 @@ export interface PreparedSolarLeoTemplate {
   bowStringAnchors?: SculptedBowStringAnchors;
 }
 
+interface RiderLegPose {
+  thigh: THREE.Bone;
+  shin: THREE.Bone;
+  foot: THREE.Bone;
+  thighRotation: THREE.Quaternion;
+  shinRotation: THREE.Quaternion;
+  footRotation: THREE.Quaternion;
+}
+
+const neutralFootRotation = new THREE.Quaternion();
+
+function createAureliaRidingPose(bones: Record<string, THREE.Bone>): RiderLegPose[] {
+  return AURELIA_LEGS.map(({ side, ankle, toe }) => {
+    const direction = side === 'L' ? 1 : -1;
+    const thigh = bones[`leg${side}`];
+    const shin = bones[`shin${side}`];
+    const foot = bones[`foot${side}`];
+    const thighRotation = new THREE.Quaternion().setFromUnitVectors(
+      shin.position.clone().normalize(),
+      new THREE.Vector3(direction * 0.52, -0.36, 0.77).normalize()
+    );
+    const shinRotation = new THREE.Quaternion().setFromUnitVectors(
+      foot.position.clone().normalize(),
+      new THREE.Vector3(direction * 0.08, -1, -0.22).normalize().applyQuaternion(thighRotation.clone().invert())
+    );
+    const footRotation = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(...toe).sub(new THREE.Vector3(...ankle)).normalize(),
+      new THREE.Vector3(0, -0.38, 1).normalize().applyQuaternion(thighRotation.clone().multiply(shinRotation).invert())
+    );
+    return { thigh, shin, foot, thighRotation, shinRotation, footRotation };
+  });
+}
+
 export interface InstantiatedSolarLeoModel {
   assetId: SolarLeoAssetId;
   rigType: SolarLeoRigType;
@@ -998,6 +1057,7 @@ export interface InstantiatedSolarLeoModel {
   skinnedMeshes: THREE.SkinnedMesh[];
   hitMeshes: THREE.Mesh[];
   saddle?: THREE.Object3D;
+  ridingLegPose?: RiderLegPose[];
   hasSculptedDrawnBow?: boolean;
   bowStringRig?: SolarLeoBowStringRig;
   petAuraRig?: SolarLeoPetAuraRig;
@@ -1341,8 +1401,7 @@ export function prepareSolarLeoTemplate(
     }
   });
 
-  const articulatedKnees = assetId === 'bellona' || assetId === 'golden_fleece';
-  const blueprints = buildBoneBlueprints(spec.rigType, normalizedBox, articulatedKnees);
+  const blueprints = buildBoneBlueprints(assetId, spec.rigType, normalizedBox);
   const hasSculptedDrawnBow = assetId === 'aurelia' && normalizedBox.max.z > 0.95;
   if (blueprints.length > 0) {
     for (const part of parts) {
@@ -1423,13 +1482,12 @@ export function instantiateSolarLeoModel(
     if (template.rigType === 'quadruped_mount' && bones.spine) {
       saddle = new THREE.Object3D();
       saddle.name = `${template.assetId}_saddle`;
-      if (template.assetId === 'vulcan') {
-        // Measured on the red saddle cushion after rotating the sculpt forward.
-        const spine = template.blueprints.find(({name}) => name === 'spine')!;
-        saddle.position.set(0, template.size.y * 0.61 - spine.head[1], -template.size.z * 0.055 - spine.head[2]);
-      } else {
-        saddle.position.set(0, template.size.y * 0.25, -template.size.z * 0.03);
-      }
+      // Each anchor sits on the sculpted cushion, in the animated spine's local space.
+      const spine = template.blueprints.find(({ name }) => name === 'spine')!;
+      const isVulcan = template.assetId === 'vulcan';
+      const cushionY = template.size.y * (isVulcan ? 0.61 : 0.63);
+      const cushionZ = template.size.z * (isVulcan ? -0.055 : 0.03);
+      saddle.position.set(0, cushionY - spine.head[1], cushionZ - spine.head[2]);
       bones.spine.add(saddle);
     }
 
@@ -1510,6 +1568,7 @@ export function instantiateSolarLeoModel(
     skinnedMeshes,
     hitMeshes,
     saddle,
+    ridingLegPose: bones.footL ? createAureliaRidingPose(bones) : undefined,
     hasSculptedDrawnBow: template.hasSculptedDrawnBow,
     bowStringRig,
     petAuraRig,
@@ -2368,19 +2427,37 @@ export function updateSolarLeoHumanoidPose(
     b.armR.rotation.z = THREE.MathUtils.damp(b.armR.rotation.z, armRRoll, lam, dt);
   }
   if (b.handR) b.handR.rotation.x = THREE.MathUtils.damp(b.handR.rotation.x, handRPitch, lam, dt);
-  if (b.legL) {
-    b.legL.rotation.x = THREE.MathUtils.damp(b.legL.rotation.x, legLPitch, lam, dt);
-    b.legL.rotation.z = THREE.MathUtils.damp(b.legL.rotation.z, legLRoll, lam, dt);
-  }
-  if (b.legR) {
-    b.legR.rotation.x = THREE.MathUtils.damp(b.legR.rotation.x, legRPitch, lam, dt);
-    b.legR.rotation.z = THREE.MathUtils.damp(b.legR.rotation.z, legRRoll, lam, dt);
-  }
-  if (b.shinL && b.shinR) {
-    const leftKnee = seatedWithKnees ? 1.46 : Math.max(0, s) * moveFactor * 0.37;
-    const rightKnee = seatedWithKnees ? 1.46 : Math.max(0, -s) * moveFactor * 0.37;
-    b.shinL.rotation.x = THREE.MathUtils.damp(b.shinL.rotation.x, leftKnee, lam, dt);
-    b.shinR.rotation.x = THREE.MathUtils.damp(b.shinR.rotation.x, rightKnee, lam, dt);
+  const ridingLegPose = rig.ridingLegPose;
+  const poseBlend = 1 - Math.exp(-lam * dt);
+  if (riding && ridingLegPose) {
+    for (const leg of ridingLegPose) {
+      leg.thigh.quaternion.slerp(leg.thighRotation, poseBlend);
+      leg.shin.quaternion.slerp(leg.shinRotation, poseBlend);
+      leg.foot.quaternion.slerp(leg.footRotation, poseBlend);
+    }
+  } else {
+    if (b.legL) {
+      b.legL.rotation.x = THREE.MathUtils.damp(b.legL.rotation.x, legLPitch, lam, dt);
+      b.legL.rotation.z = THREE.MathUtils.damp(b.legL.rotation.z, legLRoll, lam, dt);
+    }
+    if (b.legR) {
+      b.legR.rotation.x = THREE.MathUtils.damp(b.legR.rotation.x, legRPitch, lam, dt);
+      b.legR.rotation.z = THREE.MathUtils.damp(b.legR.rotation.z, legRRoll, lam, dt);
+    }
+    if (b.shinL && b.shinR) {
+      const leftKnee = seatedWithKnees ? 1.46 : Math.max(0, s) * moveFactor * 0.37;
+      const rightKnee = seatedWithKnees ? 1.46 : Math.max(0, -s) * moveFactor * 0.37;
+      b.shinL.rotation.x = THREE.MathUtils.damp(b.shinL.rotation.x, leftKnee, lam, dt);
+      b.shinR.rotation.x = THREE.MathUtils.damp(b.shinR.rotation.x, rightKnee, lam, dt);
+    }
+    if (ridingLegPose) {
+      for (const { thigh, shin, foot } of ridingLegPose) {
+        thigh.rotation.y = THREE.MathUtils.damp(thigh.rotation.y, 0, lam, dt);
+        shin.rotation.y = THREE.MathUtils.damp(shin.rotation.y, 0, lam, dt);
+        shin.rotation.z = THREE.MathUtils.damp(shin.rotation.z, 0, lam, dt);
+        foot.quaternion.slerp(neutralFootRotation, poseBlend);
+      }
+    }
   }
   if (b.cloak) {
     b.cloak.rotation.x = THREE.MathUtils.damp(b.cloak.rotation.x, cloakPitch, lam, dt);

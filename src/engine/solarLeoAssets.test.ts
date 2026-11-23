@@ -158,7 +158,7 @@ test('All 10 real Solar Leo Lite GLBs calibrate, auto-rig into valid SkinnedMesh
       const instance = instantiateSolarLeoModel(template, { liteMode: true });
 
       if (spec.rigType === 'humanoid') {
-        assert.equal(Object.keys(instance.bones).length, 12, `${id} should have 12 humanoid bones`);
+        assert.equal(Object.keys(instance.bones).length, id === 'aurelia' ? 16 : 12, `${id} humanoid bone count`);
         assert.ok(instance.skinnedMeshes.length >= 1, `${id} should instantiate SkinnedMesh`);
         const geo = instance.skinnedMeshes[0].geometry;
         const pos = geo.attributes.position;
@@ -1097,56 +1097,82 @@ test('Aurelia and all 4 Solar Leo outfits cycle unique playful actions, keep Aur
 
 
 
-test('Vulcan faces forward and Bellona bends her knees while following the saddle', async () => {
+test('Aurelia and Bellona stay seated as their mounts turn, walk and lift the saddle', async () => {
   await withNodeGlbLoader(async (loader) => {
-    const loadRig = async (id: 'vulcan' | 'golden_fleece') => {
-      const bytes = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS[id].litePathSegments));
+    const loadRig = async (id: 'vulcan' | 'solarius' | 'aurelia' | 'golden_fleece', liteMode = true) => {
+      const spec = SOLAR_LEO_SPECS[id];
+      const bytes = fs.readFileSync(path.join(PUBLIC_DIR, ...(liteMode ? spec.litePathSegments : spec.highPathSegments)));
       const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       const gltf = await loader.parseAsync(data, '');
-      return instantiateSolarLeoModel(prepareSolarLeoTemplate(id, gltf.scene, 1, { liteMode: true }));
+      return instantiateSolarLeoModel(prepareSolarLeoTemplate(id, gltf.scene, 1, { liteMode }));
     };
-    const mount = await loadRig('vulcan');
-    const rider = await loadRig('golden_fleece');
-    assert.equal(SOLAR_LEO_SPECS.vulcan.facingYawOffset, -Math.PI / 2);
-    assert.ok(mount.size.z > mount.size.x * 1.6);
-    assert.ok(mount.saddle);
-    const seat = mount.saddle.getWorldPosition(new THREE.Vector3());
-    assert.ok(seat.y > mount.size.y * 0.56 && seat.y < mount.size.y * 0.65);
-    assert.ok(seat.z < 0 && seat.z > -0.15);
-
-    const root = new THREE.Group();
-    const mountGroup = new THREE.Group();
-    const bodyGroup = new THREE.Group();
-    root.add(bodyGroup, mountGroup);
-    bodyGroup.add(rider.group);
-    mountGroup.add(mount.group);
-    const { GameEngine } = await import('./GameEngine');
-    const engine = Object.assign(Object.create(GameEngine.prototype), {
-      hero: {root, bodyGroup, mountGroup},
-      solarLeoHeroRig: rider,
-      solarLeoMountRig: mount,
-      dragonSeat: new THREE.Vector3(),
-      vulcanRiderHip: new THREE.Vector3(),
-    });
-    const foreleg = mount.bones.legFL.rotation.x;
-    for (const mode of ['lobby', 'combat'] as const) {
-      for (let frame = 0; frame < 60; frame++) {
-        const elapsed = frame / 60;
-        root.rotation.y = elapsed;
-        updateSolarLeoMountPose(mount, elapsed, 1 / 60, mode === 'combat' ? 5 : 0, false, { mode });
-        updateSolarLeoHumanoidPose(rider, {
-          elapsed, dt: 1 / 60, speed: 0, riding: true,
-          shooting: false, shootRecoil: 0, dashing: false, ultBurst: 0.5, mode,
-        });
-        engine.alignVulcanRider();
-        const seatInRoot = root.worldToLocal(mount.saddle.getWorldPosition(new THREE.Vector3()));
-        const hipInRoot = root.worldToLocal(rider.bones.pelvis.getWorldPosition(new THREE.Vector3()));
-        assert.ok(hipInRoot.distanceTo(seatInRoot.add(new THREE.Vector3(0, 0.05, 0))) < 0.001);
+    for (const [mountId, riderId, liteMode] of [
+      ['solarius', 'aurelia', true],
+      ['vulcan', 'aurelia', false],
+      ['vulcan', 'golden_fleece', true],
+    ] as const) {
+      const mount = await loadRig(mountId);
+      const rider = await loadRig(riderId, liteMode);
+      assert.equal(SOLAR_LEO_SPECS[mountId].facingYawOffset, -Math.PI / 2);
+      assert.ok(mount.size.z > mount.size.x * 1.6);
+      assert.ok(mount.saddle);
+      const seat = mount.saddle.getWorldPosition(new THREE.Vector3());
+      assert.ok(seat.y > mount.size.y * 0.56 && seat.y < mount.size.y * 0.65);
+      if (mountId === 'vulcan') {
+        assert.ok(seat.z < 0 && seat.z > -0.15);
+      } else {
+        assert.ok(seat.z >= 0 && seat.z < 0.15);
       }
-      assert.ok(rider.bones.shinL.rotation.x > 1.30 && rider.bones.shinR.rotation.x > 1.30);
-      assert.ok(rider.bones.legL.rotation.x < -0.8 && rider.bones.legR.rotation.x < -0.8);
-      assert.ok(Math.abs(rider.visualRoot.rotation.y) < 0.01);
+
+      const root = new THREE.Group();
+      const mountGroup = new THREE.Group();
+      const bodyGroup = new THREE.Group();
+      root.add(bodyGroup, mountGroup);
+      bodyGroup.add(rider.group);
+      mountGroup.add(mount.group);
+      const { GameEngine } = await import('./GameEngine');
+      const engine = Object.assign(Object.create(GameEngine.prototype), {
+        hero: {root, bodyGroup, mountGroup},
+        solarLeoHeroRig: rider,
+        solarLeoMountRig: mount,
+        dragonSeat: new THREE.Vector3(),
+        mountedRiderHip: new THREE.Vector3(),
+      });
+      const foreleg = mount.bones.legFL.rotation.x;
+      for (const mode of ['lobby', 'combat'] as const) {
+        for (let frame = 0; frame < 60; frame++) {
+          const elapsed = frame / 60;
+          root.rotation.y = elapsed;
+          updateSolarLeoMountPose(mount, elapsed, 1 / 60, mode === 'combat' ? 5 : 0, false, { mode });
+          updateSolarLeoHumanoidPose(rider, {
+            elapsed, dt: 1 / 60, speed: 0, riding: true,
+            shooting: false, shootRecoil: 0, dashing: false, ultBurst: 0.5, mode,
+          });
+          engine.alignMountedRider();
+          const seatInRoot = root.worldToLocal(mount.saddle.getWorldPosition(new THREE.Vector3()));
+          const hipInRoot = root.worldToLocal(rider.bones.pelvis.getWorldPosition(new THREE.Vector3()));
+          assert.ok(hipInRoot.distanceTo(seatInRoot.add(new THREE.Vector3(0, 0.05, 0))) < 0.001);
+        }
+        if (riderId === 'aurelia') {
+          const localJoint = (joint: string) => root.worldToLocal(rider.bones[joint].getWorldPosition(new THREE.Vector3()));
+          const hip = localJoint('pelvis');
+          const leftFoot = localJoint('footL');
+          const rightFoot = localJoint('footR');
+          assert.ok(Math.abs(leftFoot.y - rightFoot.y) < 0.08, 'Both feet hang at a similar height');
+          for (const [side, direction] of [['L', 1], ['R', -1]] as const) {
+            const knee = localJoint(`shin${side}`);
+            const foot = side === 'L' ? leftFoot : rightFoot;
+            assert.ok((knee.x - hip.x) * direction > 0.22, 'Knee clears its side of the saddle');
+            assert.ok((foot.x - hip.x) * direction > 0.22, 'Boot stays on the same side as the knee');
+            assert.ok(knee.z - hip.z > 0.18 && knee.y - foot.y > 0.37, 'Thigh reaches forward and boot hangs below the knee');
+          }
+        } else {
+          assert.ok(rider.bones.shinL.rotation.x > 1.30 && rider.bones.shinR.rotation.x > 1.30);
+          assert.ok(rider.bones.legL.rotation.x < -0.8 && rider.bones.legR.rotation.x < -0.8);
+        }
+        assert.ok(Math.abs(rider.visualRoot.rotation.y) < 0.01);
+      }
+      assert.ok(Math.abs(mount.bones.legFL.rotation.x - foreleg) > 0.04);
     }
-    assert.ok(Math.abs(mount.bones.legFL.rotation.x - foreleg) > 0.04);
   });
 });
