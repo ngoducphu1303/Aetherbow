@@ -57,8 +57,26 @@ function putGlb<T>(url: URL, token: string, body: Blob, onProgress: (value: numb
   });
 }
 
-type AssetTransfer = { id: string; etags: string[] };
+type AssetTransfer = { id: string };
 const assetTransfers = new WeakMap<File, Map<string, AssetTransfer>>();
+const ETAG = /^[a-f0-9]{32}$/;
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function savedUploadId(key: string) {
+  try {
+    const id = sessionStorage.getItem(key);
+    if (id && SESSION_ID.test(id)) return id;
+  } catch { /* Browser storage unavailable. */ }
+  return crypto.randomUUID();
+}
+
+function rememberUpload(key: string, id: string) {
+  try { sessionStorage.setItem(key, id); } catch { /* Use in-memory state. */ }
+}
+
+function forgetUpload(key: string) {
+  try { sessionStorage.removeItem(key); } catch { /* Ignore unavailable storage. */ }
+}
 
 async function retryUpload<T>(operation: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
@@ -76,44 +94,72 @@ async function retryUpload<T>(operation: () => Promise<T>): Promise<T> {
 export async function uploadAdminGlb<T extends {id: string}>(
   user: User, target: 'inbox-upload' | 'model-upload', query: Record<string, string>, file: File, onProgress: (value: number) => void,
 ) {
+  if (!file.name.toLowerCase().endsWith('.glb') || file.size < 24 || file.size > MAX_BYTES) {
+    throw new Error('Chọn tệp .glb hợp lệ, tối đa 120 MB.');
+  }
   const destination = JSON.stringify([target, query]);
+  // The same file can resume after reselecting it on a refreshed admin page.
+  const storageKey = 'aetherbow:upload:v1:' + JSON.stringify([target, query, file.name, file.size, file.lastModified]);
   const files = assetTransfers.get(file) ?? new Map<string, AssetTransfer>();
   assetTransfers.set(file, files);
-  const transfer = files.get(destination) ?? { id: crypto.randomUUID(), etags: [] };
+  const transfer = files.get(destination) ?? { id: savedUploadId(storageKey) };
   files.set(destination, transfer);
-  const {id, etags} = transfer;
+  const { id } = transfer;
+  rememberUpload(storageKey, id);
 
-  const start = await retryUpload(() => api<{partSize: number; completed: T | null}>(user, target + '/start', {
+  const start = await retryUpload(() => api<{partSize: number; completed: T | null; uploadedParts: Record<string, string>}>(user, target + '/start', {
     query: { ...query, id, size: String(file.size) }, body: {}, signal: AbortSignal.timeout(35000),
   }));
   if (start.completed) {
     files.delete(destination);
+    forgetUpload(storageKey);
     onProgress(100);
     return start.completed;
   }
-  const {partSize} = start;
-  if (!Number.isInteger(partSize) || partSize <= 0) throw new Error('Phiên tải không hợp lệ.');
+  const { partSize, uploadedParts } = start;
+  if (!Number.isInteger(partSize) || partSize < 5_000_000 || partSize > 8 * 1024 * 1024 ||
+      !uploadedParts || typeof uploadedParts !== 'object') {
+    throw new Error('Phiên tải không hợp lệ.');
+  }
+  const count = Math.ceil(file.size / partSize);
+  const etags: string[] = Array(count);
+  let confirmed = 0;
+  for (let i = 0; i < count; i += 1) {
+    const tag = uploadedParts[String(i + 1)];
+    if (typeof tag === 'string' && ETAG.test(tag)) {
+      etags[i] = tag;
+      confirmed += Math.min(partSize, file.size - i * partSize);
+    }
+  }
+  onProgress(Math.min(99, Math.round(100 * confirmed / file.size)));
 
-  for (let startByte = etags.length * partSize; startByte < file.size; startByte += partSize) {
+  for (let index = 0; index < count; index += 1) {
+    if (etags[index]) continue;
+    const startByte = index * partSize;
     const part = file.slice(startByte, Math.min(startByte + partSize, file.size));
-    const partNumber = String(1 + Math.floor(startByte / partSize));
+    const partNumber = String(index + 1);
     try {
       const response = await retryUpload(async () => {
         const token = await user.getIdToken();
         return putGlb<{etag: string}>(endpoint(target + '/part', undefined, { id, part: partNumber }), token, part,
-          (progress) => onProgress(Math.min(99, Math.round(100 * (startByte + part.size * progress / 100) / file.size))));
+          (progress) => onProgress(Math.min(99, Math.round(100 * (confirmed + part.size * progress / 100) / file.size))));
       });
-      if (!/^[a-f0-9]{32}$/.test(response.etag)) throw new Error('Worker chưa xác nhận phần tải.');
-      etags.push(response.etag);
+      if (!ETAG.test(response.etag)) throw new Error('Worker chưa xác nhận phần tải.');
+      etags[index] = response.etag;
+      confirmed += part.size;
+      onProgress(Math.min(99, Math.round(100 * confirmed / file.size)));
     } catch (cause) {
-      throw new Error(`Phần ${partNumber} chưa tải xong. ${message(cause)} Hãy bấm Tải lên để tiếp tục.`);
+      throw new Error('Phần ' + partNumber + ' chưa tải xong. ' + message(cause) + ' Hãy bấm Tải lên để tiếp tục.');
     }
   }
-  onProgress(100);
+
+  // 100% means the B2 object AND the catalog were successfully committed.
   const completed = await retryUpload(() => api<T>(user, target + '/finish', {
     query: { id }, body: { etags }, signal: AbortSignal.timeout(70000),
   }));
   files.delete(destination);
+  forgetUpload(storageKey);
+  onProgress(100);
   return completed;
 }
 
