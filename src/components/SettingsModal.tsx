@@ -1264,20 +1264,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* Chapter 1 3D Map Mode */}
+          {/* Unified Chapter 1–2 3D Map Mode */}
           <div className="space-y-1.5 pt-1">
             <div className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="font-bold text-slate-200">Bản Đồ 3D Chương 1</span>
+              <span className="font-bold text-slate-200">Bản Đồ 3D Chương 1–2</span>
               <span className="text-[10px] text-slate-400 font-mono-nums">
                 {(() => {
-                  if (!gpuProfile) return 'Bản Đồ 3D Chương 1';
+                  if (!gpuProfile) return 'Bản Đồ 3D Chương 1–2';
                   const activeVariant = resolveChapter1MapVariant(
                     gpuProfile,
                     settings.chapter1MapMode ?? 'auto',
                     settings.lowEndSafetyMode ?? 'auto'
                   );
-                  if (activeVariant === 'full') return 'Đang dùng Bản Gốc 90,3 MB';
-                  if (activeVariant === 'lite') return 'Đang dùng 3D Lite (~1,3 MB)';
+                  if (activeVariant === 'full') return 'Đang dùng Bản Gốc 4K (Ch.1–2)';
+                  if (activeVariant === 'lite') return 'Đang dùng 3D Lite (~1,3 MB · Ch.1–2)';
                   return 'Đang dùng Sân Đấu Nhẹ';
                 })()}
               </span>
@@ -1286,9 +1286,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {(
                 [
                   { id: 'auto', label: 'Tự động', hint: 'Máy yếu tự dùng Lite' },
-                  { id: 'lite_3d', label: '3D Lite', hint: '~1,3 MB · 30k mặt' },
+                  { id: 'lite_3d', label: '3D Lite', hint: '~1,3 MB cục bộ · 30k mặt' },
                   { id: 'light', label: 'Sân Nhẹ', hint: 'Nhẹ nhất · 0 MB' },
-                  { id: 'high_3d', label: 'Bản Gốc 90MB', hint: 'Chi tiết 4K đầy đủ' },
+                  { id: 'high_3d', label: 'Bản Gốc 4K', hint: 'Ch.1 90MB · Ch.2 76MB CDN' },
                 ] as Array<{ id: Chapter1MapMode; label: string; hint: string }>
               ).map((opt) => {
                 const active = (settings.chapter1MapMode ?? 'auto') === opt.id;
@@ -1330,7 +1330,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {confirmHeavyMapOverride && (
               <div className="rounded-xl bg-rose-950/50 border border-rose-400/40 p-2.5 space-y-2 text-[11px]">
                 <div className="text-rose-100 font-semibold leading-relaxed">
-                  Máy hiện tại thuộc nhóm GPU tích hợp yếu/cũ. Nạp bản gốc 90,3 MB (3 texture 4K · 1,5 triệu mặt) có thể gây đơ, đen màn hình hoặc tắt nguồn do quá nhiệt. Khuyên dùng bản 3D Lite (~1,3 MB) — bạn vẫn muốn bật bản gốc?
+                  Máy hiện tại thuộc nhóm GPU tích hợp yếu/cũ. Nạp Bản Gốc 4K (Ch.1 90,3 MB · Ch.2 76,3 MB CDN · ~1,5 triệu mặt) có thể gây đơ, đen màn hình hoặc tắt nguồn do quá nhiệt. Khuyên dùng bản 3D Lite (~1,3 MB cục bộ) — bạn vẫn muốn bật Bản Gốc?
                 </div>
                 <div className="flex items-center justify-end gap-2">
                   <button
@@ -1353,7 +1353,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }}
                     className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-bold cursor-pointer whitespace-nowrap"
                   >
-                    Vẫn Bật 90MB
+                    Vẫn Bật Bản Gốc
                   </button>
                 </div>
               </div>

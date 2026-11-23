@@ -347,6 +347,14 @@ import {
   prepareChapter1MapModel,
 } from './chapter1Map';
 import {
+  createChapter2WarForgeAtmosphere,
+  getChapter2MapHighAssetUrl,
+  getChapter2MapLiteAssetUrl,
+  prepareChapter2MapModel,
+  updateChapter2WarForgeAtmosphere,
+  type Chapter2ForgeAtmosphereRig,
+} from './chapter2Map';
+import {
   downloadChapter1BossArrayBuffer,
   getChapter1BossAssetUrl,
   isSolarLionBossEncounter,
@@ -372,8 +380,10 @@ import {
 } from './gpuSafetyGuard';
 import {
   discardChapter1MapDownload,
+  discardChapter2MapDownload,
   discardModelDownload,
   downloadChapter1Map,
+  downloadChapter2Map,
   downloadModel,
   getModelAssetUrl,
   type ModelAsset,
@@ -1023,6 +1033,10 @@ export class GameEngine {
   private arenaGroup = new THREE.Group();
   private proceduralArenaShell: THREE.Group | null = null;
   private chapter1MapModel: THREE.Group | null = null;
+  private chapterMapLoadedChapterId: 1 | 2 | null = null;
+  private chapterMapLoadingChapterId: 1 | 2 | null = null;
+  private chapterMapRequestedVariant: 'none' | 'lite' | 'full' = 'none';
+  private chapterMapRequestToken = 0;
   private chapter1MapLoadedVariant: 'none' | 'lite' | 'full' = 'none';
   private chapter1MapLoadingVariant: 'none' | 'lite' | 'full' = 'none';
   private chapter1MapLoading = false;
@@ -1034,6 +1048,7 @@ export class GameEngine {
   private lastRawFrameDt = 1 / 60;
   private chapter1MapInFlightMarked = false;
   private chapter1MapStableFrames = 0;
+  private chapter2ForgeAtmosphere: Chapter2ForgeAtmosphereRig | null = null;
   private entitiesGroup = new THREE.Group();
   private projectilesGroup = new THREE.Group();
   private particlesGroup = new THREE.Group();
@@ -4588,6 +4603,7 @@ export class GameEngine {
   private unloadChapter1MapModel(): void {
     if (this.chapter1MapInFlightMarked) {
       clearChapter1MapLoadInFlight();
+      clearHeavyAssetLoadInFlight();
       this.chapter1MapInFlightMarked = false;
       this.chapter1MapStableFrames = 0;
     }
@@ -4598,6 +4614,8 @@ export class GameEngine {
       this.releaseObject(this.chapter1MapModel);
       this.chapter1MapModel = null;
     }
+    this.chapterMapLoadedChapterId = null;
+    this.chapterMapRequestedVariant = 'none';
     this.chapter1MapLoadedVariant = 'none';
     if (this.proceduralArenaShell) {
       this.proceduralArenaShell.visible = true;
@@ -4626,12 +4644,18 @@ export class GameEngine {
     return this.gpuProfile;
   }
 
+  private getCustomMapChapterId(chapterId = this.currentChapter.id): 1 | 2 | null {
+    return chapterId === 1 || chapterId === 2 ? chapterId : null;
+  }
+
   private applyChapter1MapState(): void {
     const targetVariant = this.getActiveChapter1MapVariant();
+    const activeChapterId = this.getCustomMapChapterId();
     const wantsCustomMap =
-      this.currentChapter.id === 1 &&
+      activeChapterId !== null &&
       targetVariant !== 'none' &&
-      this.chapter1MapLoadedVariant === targetVariant &&
+      this.chapterMapLoadedChapterId === activeChapterId &&
+      this.chapterMapRequestedVariant === targetVariant &&
       !!this.chapter1MapModel;
     if (wantsCustomMap && this.chapter1MapModel) {
       if (this.chapter1MapModel.parent !== this.arenaGroup) {
@@ -4651,94 +4675,179 @@ export class GameEngine {
     }
   }
 
-  private ensureChapter1MapLoaded(): void {
+  private ensureChapter1MapLoaded(explicitChapterId?: number): void {
+    const targetChapterId = this.getCustomMapChapterId(explicitChapterId);
     const targetVariant = this.getActiveChapter1MapVariant();
-    if (targetVariant === 'none') {
-      // Software WebGL, crash-tripped GPU, or user-selected Light Arena:
-      // keep the ultra-light procedural arena and never upload external map textures.
+    if (targetChapterId === null || targetVariant === 'none') {
+      // Single-VRAM residency: unload heavy custom arena maps on chapters without custom GLB
+      // or when Light Arena / Safe Mode is active.
+      this.chapterMapRequestToken += 1;
       this.unloadChapter1MapModel();
-      this.setChapter1MapStatus('ready');
+      if (targetChapterId === 1 || targetVariant === 'none') {
+        this.setChapter1MapStatus('ready');
+      }
       this.applyChapter1MapState();
       return;
     }
-    if (this.chapter1MapModel && this.chapter1MapLoadedVariant === targetVariant) {
-      this.setChapter1MapStatus('ready');
+    if (
+      this.chapter1MapModel &&
+      this.chapterMapLoadedChapterId === targetChapterId &&
+      this.chapterMapRequestedVariant === targetVariant
+    ) {
+      if (targetChapterId === 1) {
+        this.setChapter1MapStatus('ready');
+      }
       this.applyChapter1MapState();
       return;
     }
-    if (this.chapter1MapModel && this.chapter1MapLoadedVariant !== targetVariant) {
+    if (
+      this.chapter1MapModel &&
+      (this.chapterMapLoadedChapterId !== targetChapterId ||
+        this.chapterMapRequestedVariant !== targetVariant)
+    ) {
+      // Release previous chapter's 3D map before allocating the next one (max 1 map in VRAM)
       this.unloadChapter1MapModel();
     }
     if (
-      (this.chapter1MapLoading && this.chapter1MapLoadingVariant === targetVariant) ||
+      (this.chapter1MapLoading &&
+        this.chapterMapLoadingChapterId === targetChapterId &&
+        this.chapter1MapLoadingVariant === targetVariant) ||
       this.chapter1MapFailCount >= 3
     ) {
       return;
     }
+
+    const requestToken = ++this.chapterMapRequestToken;
     this.chapter1MapLoading = true;
+    this.chapterMapLoadingChapterId = targetChapterId;
     this.chapter1MapLoadingVariant = targetVariant;
-    this.setChapter1MapStatus('loading');
+    if (targetChapterId === 1) {
+      this.setChapter1MapStatus('loading');
+    }
+
     const baseUrl =
       (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
-    const assetUrl =
-      targetVariant === 'lite'
-        ? getChapter1MapLiteAssetUrl(baseUrl, document.baseURI)
-        : getChapter1MapAssetUrl(baseUrl, document.baseURI);
+    const baseUri = typeof document !== 'undefined' ? document.baseURI : 'http://localhost:3000/';
+
     void (async () => {
       let data: ArrayBuffer | undefined;
+      let resolvedVariant: 'lite' | 'full' = targetVariant;
       try {
-        data = await downloadChapter1Map(targetVariant);
-        if (this.disposed || this.getActiveChapter1MapVariant() !== targetVariant) {
-          if (!this.disposed && this.getActiveChapter1MapVariant() === 'none') {
+        let assetUrl: URL;
+        if (targetChapterId === 1) {
+          assetUrl =
+            targetVariant === 'lite'
+              ? getChapter1MapLiteAssetUrl(baseUrl, baseUri)
+              : getChapter1MapAssetUrl(baseUrl, baseUri);
+          data = await downloadChapter1Map(targetVariant);
+        } else {
+          const ch2Result = await downloadChapter2Map(targetVariant);
+          data = ch2Result.buffer;
+          resolvedVariant = ch2Result.resolvedVariant;
+          assetUrl =
+            resolvedVariant === 'lite'
+              ? getChapter2MapLiteAssetUrl(baseUrl, baseUri)
+              : getChapter2MapHighAssetUrl();
+        }
+
+        if (
+          this.disposed ||
+          this.chapterMapRequestToken !== requestToken ||
+          this.getActiveChapter1MapVariant() !== targetVariant
+        ) {
+          if (!this.disposed && targetChapterId === 1 && this.getActiveChapter1MapVariant() === 'none') {
             this.setChapter1MapStatus('ready');
           }
           return;
         }
+
         // Latch crash sentinel right before decoding GLB geometry & uploading textures.
         // Cleared automatically after 2 stable frames render without webglcontextlost.
-        markChapter1MapLoadInFlight();
+        if (targetChapterId === 1) {
+          markChapter1MapLoadInFlight();
+        } else {
+          markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 2 · Lò Rèn Bạch Dương');
+        }
         this.chapter1MapInFlightMarked = true;
         this.chapter1MapStableFrames = 0;
 
-        const gltf = await new GLTFLoader().parseAsync(data, new URL('.', assetUrl).href);
-        if (this.disposed || this.getActiveChapter1MapVariant() !== targetVariant) {
+        const parseBaseHref =
+          assetUrl.protocol === 'http:' || assetUrl.protocol === 'https:'
+            ? new URL('.', assetUrl).href
+            : '';
+        const gltf = await new GLTFLoader().parseAsync(data, parseBaseHref);
+        if (
+          this.disposed ||
+          this.chapterMapRequestToken !== requestToken ||
+          this.getActiveChapter1MapVariant() !== targetVariant
+        ) {
           this.releaseObject(gltf.scene);
           clearChapter1MapLoadInFlight();
+          clearHeavyAssetLoadInFlight();
           this.chapter1MapInFlightMarked = false;
-          if (!this.disposed && this.getActiveChapter1MapVariant() === 'none') {
+          if (!this.disposed && targetChapterId === 1 && this.getActiveChapter1MapVariant() === 'none') {
             this.setChapter1MapStatus('ready');
           }
           return;
         }
+
         const budget = this.getActiveSystemBudget();
         const maxAniso = budget.liteActive ? 1 : Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
-        const prepared = prepareChapter1MapModel(gltf.scene, maxAniso, {
-          liteMode: targetVariant === 'lite' || budget.liteActive,
-        });
+        const useLiteMaterial = resolvedVariant === 'lite' || budget.liteActive;
+        const prepared =
+          targetChapterId === 1
+            ? prepareChapter1MapModel(gltf.scene, maxAniso, { liteMode: useLiteMaterial })
+            : prepareChapter2MapModel(gltf.scene, maxAniso, { liteMode: useLiteMaterial });
         sanitizeLoadedObjectForBudget(prepared.group, budget, { disableShadows: true });
+
         this.unloadChapter1MapModel();
+        // Re-arm in-flight sentinel latch until 2 stable rendered frames confirm no GPU TDR
+        if (targetChapterId === 1) {
+          markChapter1MapLoadInFlight();
+        } else {
+          markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 2 · Lò Rèn Bạch Dương');
+        }
+        this.chapter1MapInFlightMarked = true;
+        this.chapter1MapStableFrames = 0;
+
         this.chapter1MapModel = prepared.group;
-        this.chapter1MapLoadedVariant = targetVariant;
+        this.chapterMapLoadedChapterId = targetChapterId;
+        this.chapterMapRequestedVariant = targetVariant;
+        this.chapter1MapLoadedVariant = resolvedVariant;
         this.chapter1MapFailCount = 0;
         this.applyChapter1MapState();
-        this.setChapter1MapStatus('ready');
+        if (targetChapterId === 1) {
+          this.setChapter1MapStatus('ready');
+        }
       } catch (error) {
         clearChapter1MapLoadInFlight();
+        clearHeavyAssetLoadInFlight();
         this.chapter1MapInFlightMarked = false;
         if (data) {
-          discardChapter1MapDownload(targetVariant, data);
+          if (targetChapterId === 1) {
+            discardChapter1MapDownload(targetVariant, data);
+          } else {
+            discardChapter2MapDownload(targetVariant, data);
+          }
         }
-        if (!this.disposed && this.getActiveChapter1MapVariant() === targetVariant) {
+        if (
+          !this.disposed &&
+          this.chapterMapRequestToken === requestToken &&
+          this.getActiveChapter1MapVariant() === targetVariant
+        ) {
           this.chapter1MapFailCount += 1;
-          this.setChapter1MapStatus('error');
+          if (targetChapterId === 1) {
+            this.setChapter1MapStatus('error');
+          }
           console.warn(
-            `Không tải được Map Chương 1 GLB (${targetVariant}); giữ sân đấu mặc định.`,
+            `Không tải được Map Chương ${targetChapterId} GLB (${targetVariant}); giữ sân đấu mặc định.`,
             error
           );
         }
       } finally {
-        if (this.chapter1MapLoadingVariant === targetVariant) {
+        if (this.chapterMapRequestToken === requestToken) {
           this.chapter1MapLoading = false;
+          this.chapterMapLoadingChapterId = null;
           this.chapter1MapLoadingVariant = 'none';
         }
       }
@@ -4755,8 +4864,12 @@ export class GameEngine {
     this.skyDomeMesh = null;
     this.skyDomeMat = null;
     this.proceduralArenaShell = null;
-    // Detach cached Chapter 1 GLB map before clearing procedural arena children so it is never disposed mid-session.
-    if (this.chapter1MapModel?.parent === this.arenaGroup) {
+    this.chapter2ForgeAtmosphere = null;
+    // Keep cached custom 3D map detached only if it matches the chapter being built;
+    // otherwise unload it immediately so at most one heavy 3D arena resides in VRAM.
+    if (this.chapter1MapModel && this.chapterMapLoadedChapterId !== chapter.id) {
+      this.unloadChapter1MapModel();
+    } else if (this.chapter1MapModel?.parent === this.arenaGroup) {
       this.arenaGroup.remove(this.chapter1MapModel);
     }
     while (this.arenaGroup.children.length > 0) {
@@ -5330,8 +5443,20 @@ export class GameEngine {
       this.arenaGroup.add(constGroup);
     }
 
-    if (chapter.id === 1 && loadCustomMap) {
-      this.ensureChapter1MapLoaded();
+    if (chapter.id === 2) {
+      // Chapter 2 Aries War-Forge Arena: warm lava perimeter glow + rising embers & drifting ash
+      this.chapter2ForgeAtmosphere = createChapter2WarForgeAtmosphere({
+        liteActive: arenaBudget.liteActive,
+        isSoftwareGl: this.isSoftwareGl,
+      });
+      this.arenaGroup.add(this.chapter2ForgeAtmosphere.group);
+      this.keyLight.color.setHex(0xffd2a6);
+      this.hemiLight.color.setHex(0xffb48a);
+      this.hemiLight.groundColor.setHex(0x4a120a);
+    }
+
+    if ((chapter.id === 1 || chapter.id === 2) && loadCustomMap) {
+      this.ensureChapter1MapLoaded(chapter.id);
     } else {
       this.applyChapter1MapState();
     }
@@ -10515,7 +10640,7 @@ export class GameEngine {
         this.unloadChapter1MapModel();
         this.setChapter1MapStatus('ready');
       } else {
-        this.ensureChapter1MapLoaded();
+        this.ensureChapter1MapLoaded(this.currentChapter.id);
       }
       this.applyChapter1MapState();
     }
@@ -11292,6 +11417,7 @@ export class GameEngine {
           this.chapter1MapStableFrames += 1;
           if (this.chapter1MapStableFrames >= 2) {
             clearChapter1MapLoadInFlight();
+            clearHeavyAssetLoadInFlight();
             this.chapter1MapInFlightMarked = false;
           }
         }
@@ -11852,6 +11978,14 @@ export class GameEngine {
         if (this.chapterWeatherPoints) {
           this.chapterWeatherPoints.visible = !inGuard;
         }
+        if (this.chapter2ForgeAtmosphere) {
+          if (this.chapter2ForgeAtmosphere.emberMesh) {
+            this.chapter2ForgeAtmosphere.emberMesh.visible = !inGuard;
+          }
+          if (this.chapter2ForgeAtmosphere.ashMesh) {
+            this.chapter2ForgeAtmosphere.ashMesh.visible = !inGuard;
+          }
+        }
         if (activeBudget.shadowMapSize > 0 && this.graphicsQuality !== 'low') {
           const allowShadows = !inGuard;
           this.renderer.shadowMap.enabled = allowShadows;
@@ -11895,6 +12029,9 @@ export class GameEngine {
         this.arenaDustMesh.setMatrixAt(i, _dummy.matrix);
       }
       this.arenaDustMesh.instanceMatrix.needsUpdate = true;
+    }
+    if (this.chapter2ForgeAtmosphere && this.arenaGroup.visible) {
+      updateChapter2WarForgeAtmosphere(this.chapter2ForgeAtmosphere, this.elapsed);
     }
 
     this.hero.bowGroup.visible = true;

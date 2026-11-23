@@ -381,7 +381,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
             {gpuProfile && chapter1Variant !== 'full' && (
               <p className="mt-2 text-[11px] leading-relaxed text-slate-300/90">
                 {chapter1Variant === 'lite'
-                  ? 'Chế độ tối ưu máy yếu · Đang dùng Bản Đồ 3D Chương 1 Lite (~1,3 MB · 30k mặt) để chạy mượt 30 FPS'
+                  ? 'Chế độ tối ưu máy yếu · Đang dùng Bản Đồ 3D Chương 1–2 Lite (~1,3 MB · 30k mặt) để chạy mượt 30 FPS'
                   : 'Chế độ bảo vệ phần cứng · Đang dùng Sân Đấu 3D Nhẹ để tránh quá tải GPU'}
                 {gpuProfile.safetyReason ? ` · ${gpuProfile.safetyReason}` : ''}
                 {' · '}Có thể điều chỉnh trong Cài Đặt.
