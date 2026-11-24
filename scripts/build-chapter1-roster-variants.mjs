@@ -213,6 +213,8 @@ function buildVariant({
   attrs,
   srcNode,
   texturesSpec,
+  chapterPrefix = 'Ch1',
+  generatorChapterLabel = 'Chapter 1 Roster',
 }) {
   const targetIndexCount = targetTriangles * 3;
   const attrWeights = [0.35, 0.35, 0.35, 0.9, 0.9];
@@ -349,7 +351,7 @@ function buildVariant({
   };
 
   const material = {
-    name: `Ch1_${assetId}_${label}_Material`,
+    name: `${chapterPrefix}_${assetId}_${label}_Material`,
     doubleSided: true,
     pbrMetallicRoughness,
     ...(texturesSpec.includePbrMaps && texIndexByRole.normal !== undefined
@@ -360,7 +362,7 @@ function buildVariant({
   const outGltf = {
     asset: {
       version: '2.0',
-      generator: `Aetherbow Chapter 1 Roster ${label} Pipeline (meshoptimizer)`,
+      generator: `Aetherbow ${generatorChapterLabel} ${label} Pipeline (meshoptimizer)`,
     },
     scene: 0,
     scenes: [{ name: 'Scene', nodes: [0] }],
@@ -376,7 +378,7 @@ function buildVariant({
     materials: [material],
     meshes: [
       {
-        name: `Ch1_${assetId}_${label}`,
+        name: `${chapterPrefix}_${assetId}_${label}`,
         primitives: [
           {
             attributes: {
@@ -451,7 +453,14 @@ function buildVariant({
 
   const finalGlb = Buffer.concat([glbHeader, jsonHeader, jsonChunk, binHeader, binChunk]);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, finalGlb);
+  const tmpOutPath = `${outPath}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(tmpOutPath, finalGlb);
+    fs.renameSync(tmpOutPath, outPath);
+  } catch (err) {
+    fs.rmSync(tmpOutPath, { force: true });
+    throw err;
+  }
 
   const outStat = fs.statSync(outPath);
   const sizeX = (maxPos[0] - minPos[0]).toFixed(2);
@@ -600,23 +609,27 @@ export async function processAsset(asset) {
     });
   }
 
-  buildVariant({
-    assetId: asset.id,
-    label: 'High',
-    outPath: path.join(asset.outDir, asset.highFile),
-    targetTriangles: asset.highTris,
-    maxAllowedTriangles: asset.highMaxTris,
-    positions,
-    normals,
-    uvs,
-    indices,
-    attrs,
-    srcNode: gltf.nodes?.[0],
-    texturesSpec: {
-      includePbrMaps: true,
-      entries: highEntries,
-    },
-  });
+  if (!asset.skipHigh) {
+    buildVariant({
+      assetId: asset.id,
+      label: 'High',
+      outPath: path.join(asset.outDir, asset.highFile),
+      targetTriangles: asset.highTris,
+      maxAllowedTriangles: asset.highMaxTris,
+      positions,
+      normals,
+      uvs,
+      indices,
+      attrs,
+      srcNode: gltf.nodes?.[0],
+      chapterPrefix: asset.chapterPrefix,
+      generatorChapterLabel: asset.generatorChapterLabel,
+      texturesSpec: {
+        includePbrMaps: true,
+        entries: highEntries,
+      },
+    });
+  }
 
   if (!asset.skipLite) {
     buildVariant({
@@ -631,6 +644,8 @@ export async function processAsset(asset) {
       indices,
       attrs,
       srcNode: gltf.nodes?.[0],
+      chapterPrefix: asset.chapterPrefix,
+      generatorChapterLabel: asset.generatorChapterLabel,
       texturesSpec: {
         includePbrMaps: false,
         entries: liteEntries,
