@@ -10,7 +10,7 @@ import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadAdminGlb
 import { syncAssetAdminUidToFirestore } from '../services/assetInboxMirrorService';
 
 const Preview = lazy(() => import('./AssetAdminPreview'));
-const categories = ['Chương 1', 'Chương 2', 'Chương 3', 'Khác'] as const;
+const categories = ['Chương 1', 'Chương 2', 'Chương 3', 'Chương 4', 'Khác'] as const;
 type Category = typeof categories[number];
 
 type Revision = { path: string; id: string; size: number; uploadedAt: string };

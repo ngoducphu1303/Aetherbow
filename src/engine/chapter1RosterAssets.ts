@@ -29,10 +29,19 @@ export type Chapter3RosterAssetId =
   | 'ngoc-nguu-duc-thu'
   | 'dia-than-kim-nguu';
 
+export type Chapter4RosterAssetId =
+  | 'linh-mieu-ung-gio'
+  | 've-binh-guong-song-sinh'
+  | 'linh-hon-mat-na-song-sinh'
+  | 'chien-binh-song-dao-phong-anh'
+  | 'song-thu-canh-gio'
+  | 'than-vuong-song-tu';
+
 export type CampaignRosterAssetId =
   | Chapter1RosterAssetId
   | Chapter2RosterAssetId
-  | Chapter3RosterAssetId;
+  | Chapter3RosterAssetId
+  | Chapter4RosterAssetId;
 
 export type Chapter1RosterVariant = 'high' | 'lite';
 
@@ -172,16 +181,38 @@ const CHAPTER3_ROSTER_DEFINITIONS = {
 
 export const CHAPTER3_ROSTER_ASSET_IDS = Object.keys(CHAPTER3_ROSTER_DEFINITIONS) as Chapter3RosterAssetId[];
 
+const CHAPTER4_ROSTER_RIGS = {
+  'linh-mieu-ung-gio': 'fire_lion',
+  've-binh-guong-song-sinh': 'stone_guardian',
+  'linh-hon-mat-na-song-sinh': 'flame_spirit',
+  'chien-binh-song-dao-phong-anh': 'sun_spearman',
+  'song-thu-canh-gio': 'winged_solar_lion',
+  'than-vuong-song-tu': 'stone_guardian',
+} as const satisfies Record<Chapter4RosterAssetId, AutoRigArchetype>;
+
+const CHAPTER4_ROSTER_DEFINITIONS = {
+  // Source sculpt runs tail(-X) -> head(+X); -PI/2 aligns nose to +Z and matches fire_lion AutoRig spine/legs.
+  'linh-mieu-ung-gio': ['Linh Miêu Ưng Gió', EnemyKind.SKIRMISHER, 1.62, 0, -Math.PI / 2],
+  've-binh-guong-song-sinh': ['Vệ Binh Gương Song Sinh', EnemyKind.GOLEM, 2.28, 0, 0],
+  'linh-hon-mat-na-song-sinh': ['Linh Hồn Mặt Nạ Song Sinh', EnemyKind.IMP_ARCHER, 1.80, 0.26, 0],
+  'chien-binh-song-dao-phong-anh': ['Chiến Binh Song Đao Phong Ảnh', EnemyKind.DRAGON_WHELP, 1.92, 0, 0],
+  'song-thu-canh-gio': ['Song Thú Cánh Gió', EnemyKind.WARDEN_BOSS, 2.76, 0.08, 0],
+  'than-vuong-song-tu': ['Thần Vương Song Tử', EnemyKind.ZODIAC_BOSS, 3.35, 0, 0],
+} as const;
+
+export const CHAPTER4_ROSTER_ASSET_IDS = Object.keys(CHAPTER4_ROSTER_DEFINITIONS) as Chapter4RosterAssetId[];
+
 export function getCampaignRosterArchetype(id: CampaignRosterAssetId): AutoRigArchetype {
   return (
     CHAPTER2_ROSTER_RIGS[id as Chapter2RosterAssetId] ??
     CHAPTER3_ROSTER_RIGS[id as Chapter3RosterAssetId] ??
+    CHAPTER4_ROSTER_RIGS[id as Chapter4RosterAssetId] ??
     (id as Chapter1RosterAssetId)
   );
 }
 
 export interface CampaignRosterVisualTheme {
-  readonly chapterId: 1 | 2 | 3;
+  readonly chapterId: 1 | 2 | 3 | 4;
   readonly archetype: AutoRigArchetype;
   readonly isFloatingSpirit: boolean;
   readonly isWingedSubBoss: boolean;
@@ -253,6 +284,29 @@ export function resolveCampaignRosterVisualTheme(
     };
   }
 
+  if (id in CHAPTER4_ROSTER_DEFINITIONS) {
+    const trailColorHex =
+      archetype === 'fire_lion'
+        ? 0x38bdf8
+        : archetype === 'stone_guardian'
+        ? 0x818cf8
+        : archetype === 'flame_spirit'
+        ? 0xa78bfa
+        : archetype === 'sun_spearman'
+        ? 0x67e8f9
+        : 0x38bdf8;
+    return {
+      chapterId: 4,
+      archetype,
+      isFloatingSpirit,
+      isWingedSubBoss,
+      trailColorHex,
+      trailAccentHex: 0xc4b5fd,
+      dustHex: isWingedSubBoss || id === 'than-vuong-song-tu' ? 0x38bdf8 : 0xa78bfa,
+      titanTintHex: 0x312e81,
+    };
+  }
+
   const cal = AUTO_RIG_CALIBRATION[archetype];
   return {
     chapterId: 1,
@@ -315,6 +369,30 @@ export function getCampaignRosterSpec(id: CampaignRosterAssetId): Chapter1Roster
     };
   }
 
+  const gemini = CHAPTER4_ROSTER_DEFINITIONS[id as Chapter4RosterAssetId];
+  if (gemini) {
+    const [displayName, kind, targetHeight, hoverOffsetY, facingYawOffset] = gemini;
+    const roleLabel =
+      id === 'than-vuong-song-tu'
+        ? 'Boss Chương 4'
+        : id === 'song-thu-canh-gio'
+        ? 'Boss Phụ Chương 4'
+        : ARCHETYPE_ROLE_LABELS[CHAPTER4_ROSTER_RIGS[id as Chapter4RosterAssetId]];
+    return {
+      id,
+      displayName,
+      roleLabel,
+      isSubBoss: id === 'song-thu-canh-gio',
+      enemyKinds: id === 'song-thu-canh-gio' ? [kind, EnemyKind.TITAN_BOSS] : [kind],
+      highPathSegments: ['assets', 'Chương 4', 'Runtime', `${id}-high.glb`],
+      litePathSegments: ['assets', 'Chương 4', 'Runtime', `${id}-lite.glb`],
+      targetHeight,
+      hoverOffsetY,
+      facingYawOffset,
+      maxLiteBytes: 1_000_000,
+    };
+  }
+
   return CHAPTER1_ROSTER_SPECS[id as Chapter1RosterAssetId];
 }
 
@@ -360,6 +438,9 @@ export function resolveCampaignRosterAssetId(ctx: Chapter1RosterEncounterContext
   }
   if (ctx.chapterId === 3) {
     return CHAPTER3_ROSTER_ASSET_IDS.find((id) => getCampaignRosterSpec(id).enemyKinds.includes(ctx.enemyKind)) ?? null;
+  }
+  if (ctx.chapterId === 4) {
+    return CHAPTER4_ROSTER_ASSET_IDS.find((id) => getCampaignRosterSpec(id).enemyKinds.includes(ctx.enemyKind)) ?? null;
   }
   return resolveChapter1RosterAssetId(ctx);
 }
@@ -427,7 +508,10 @@ async function fetchRosterVariantBytes(
   try {
     return await fetchAndValidate(url);
   } catch (error) {
-    if (options.signal?.aborted || !(assetId in CHAPTER3_ROSTER_DEFINITIONS)) {
+    if (
+      options.signal?.aborted ||
+      (!(assetId in CHAPTER3_ROSTER_DEFINITIONS) && !(assetId in CHAPTER4_ROSTER_DEFINITIONS))
+    ) {
       throw error;
     }
     const spec = getCampaignRosterSpec(assetId);

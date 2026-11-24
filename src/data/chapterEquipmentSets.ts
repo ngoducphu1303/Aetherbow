@@ -50,6 +50,18 @@ export const CHAPTER_EQUIPMENT_SETS: readonly ChapterEquipmentSet[] = [
       equippedHaloId: 'emerald_taurus_halo',
     },
   },
+  {
+    chapterId: 4,
+    unlockChapter: 4,
+    equipment: {
+      selectedHeroId: 'celeste',
+      equippedPetId: 'twin_astral_spirits',
+      equippedWingId: 'dual_gemini_wings',
+      equippedMountId: 'celestial_wind_mount',
+      equippedArtifactId: 'twin_hourglass_relic',
+      equippedHaloId: 'gemini_halo',
+    },
+  },
 ];
 
 const GEAR_SLOTS = Object.values(GearSlot);

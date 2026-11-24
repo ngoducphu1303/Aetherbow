@@ -21,6 +21,24 @@ export const DIVINE_HALO_MAX_LEVEL = 12;
 
 export const DIVINE_HALO_CATALOG: DivineHaloDefinition[] = [
   {
+    id: 'gemini_halo',
+    name: 'Pháp Trận Song Tử',
+    badge: 'CHƯƠNG 4 · HÀO QUANG 3D',
+    elementLabel: 'Song Tử · Kính Giới Tinh Vân',
+    desc: 'Pháp trận Song Tử song luân khắc ấn tinh vân xoay sau lưng, tăng mạnh Công, Máu, Bạo Thương và Giảm Thương.',
+    primaryHex: 0x38bdf8,
+    secondaryHex: 0xa78bfa,
+    baseAtkPct: 0.12,
+    baseHpPct: 0.11,
+    baseCritDmg: 0.24,
+    baseDr: 0.055,
+    atkPctPerLv: 0.02,
+    hpPctPerLv: 0.017,
+    critDmgPerLv: 0.034,
+    unlockGems: 0,
+    unlockDivineCrystals: 0,
+  },
+  {
     id: 'emerald_taurus_halo',
     name: 'Pháp Trận Lục Bảo Kim Ngưu',
     badge: 'CHƯƠNG 3 · HÀO QUANG 3D',

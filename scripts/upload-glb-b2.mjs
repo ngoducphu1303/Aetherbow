@@ -32,6 +32,7 @@ function getFlagValue(flag) {
 const rawPrefix = getFlagValue('--prefix');
 const normalizedPrefix = rawPrefix
   ? rawPrefix
+      .normalize('NFC')
       .replaceAll('\\', '/')
       .replace(/^\/+/, '')
       .replace(/^public\//, '')
@@ -44,7 +45,7 @@ const allPaths = readdirSync('public/assets', { recursive: true, withFileTypes: 
   .sort();
 
 const paths = normalizedPrefix
-  ? allPaths.filter((path) => path.slice('public/assets/'.length).startsWith(normalizedPrefix))
+  ? allPaths.filter((path) => path.slice('public/assets/'.length).normalize('NFC').startsWith(normalizedPrefix))
   : allPaths;
 
 if (paths.length === 0) {

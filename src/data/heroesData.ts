@@ -10,7 +10,7 @@ export type PlayableHeroId = Exclude<HeroId, 'artemis' | 'hatsune_miku'>;
 export const DEFAULT_HERO_ID: PlayableHeroId = 'aurelia';
 
 export function isPlayableHeroId(value: unknown): value is PlayableHeroId {
-  return value === 'aurelia' || value === 'bellona' || value === 'sylvia';
+  return value === 'aurelia' || value === 'bellona' || value === 'sylvia' || value === 'celeste';
 }
 
 export function normalizePlayableHeroId(value: unknown): PlayableHeroId {
@@ -80,6 +80,31 @@ export const HEROES: HeroDefinition[] = [
     hairHex: 0xd1fae5,
     eyeColor: '#34d399',
     cheekColor: '#6ee7b7',
+    crownStyle: 'rolla_tiara',
+  },
+  {
+    id: 'celeste',
+    name: 'Celeste',
+    rarity: 'Legendary',
+    title: 'Thánh Nữ Song Tử',
+    skillName: 'Song Kính Tinh Tú',
+    ultName: 'Kính Giới Song Tử',
+    ultDesc:
+      'Khai mở Song Kính Tinh Tú phát nổ 270% ATK quanh Celeste, phóng 14 mảnh gương tinh vân truy kích địch và tạo khiên tinh tú 16% HP.',
+    role: 'Song Kính Tinh Tú & Cơ Động',
+    roleTag: 'hybrid',
+    unlockChapterReq: 4,
+    passiveDesc:
+      'Khai mở sức mạnh Đấu Trường Song Tử giúp tăng bạo kích, tung Song Kính Tinh Tú phản xạ sát thương qua đội hình địch.',
+    bonusAtk: 58,
+    bonusHp: 226,
+    unlockGold: 0,
+    unlockGems: 0,
+    accentHex: 0x38bdf8,
+    cloakHex: 0x312e81,
+    hairHex: 0xe0f2fe,
+    eyeColor: '#38bdf8',
+    cheekColor: '#c4b5fd',
     crownStyle: 'rolla_tiara',
   },
 ];

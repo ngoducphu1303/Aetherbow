@@ -22,6 +22,24 @@ export const MAX_ARTIFACT_LEVEL = 10;
 
 export const MYTHIC_ARTIFACTS: MythicArtifactDefinition[] = [
   {
+    id: 'twin_hourglass_relic',
+    name: 'Đồng Hồ Cát Gương Thiên Hà',
+    badge: 'CHƯƠNG 4 · THÁNH KHÍ 3D',
+    elementLabel: 'Song Tử · Tinh Vân',
+    desc: 'Đồng hồ cát gương thiên hà xoay nghịch thời gian sau vai, tăng mạnh Công, Chí Mạng và Sát Thương Boss.',
+    primaryHex: 0x38bdf8,
+    secondaryHex: 0xa78bfa,
+    baseAtk: 78,
+    baseHp: 490,
+    baseCrit: 0.075,
+    baseBossDmg: 0.16,
+    atkPerLv: 25,
+    hpPerLv: 142,
+    critPerLv: 0.012,
+    unlockGems: 0,
+    unlockArtifactShards: 0,
+  },
+  {
     id: 'jade_heart_relic',
     name: 'Tâm Ngọc Kim Ngưu',
     badge: 'CHƯƠNG 3 · THÁNH KHÍ 3D',

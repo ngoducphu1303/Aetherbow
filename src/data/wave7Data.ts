@@ -28,6 +28,25 @@ export const MAX_WING_LEVEL = 15;
 
 export const ZODIAC_WINGS: WingDefinition[] = [
   {
+    id: 'dual_gemini_wings',
+    name: 'Thần Dực Song Tử Nhị Nguyên',
+    badge: 'CHƯƠNG 4 · CÁNH 3D',
+    rarity: 'Thần Thoại',
+    desc: 'Đôi thần dực nhị nguyên mang hai sắc tinh vân lam - tím của Đấu Trường Song Tử, nhận khi vượt Chương 4.',
+    featherStyle: 'crystal',
+    primaryHex: 0x38bdf8,
+    secondaryHex: 0xa78bfa,
+    spineHex: 0xe0f2fe,
+    baseAtk: 108,
+    baseHp: 510,
+    baseCrit: 0.105,
+    baseAspd: 0.12,
+    atkPerLv: 26,
+    hpPerLv: 124,
+    unlockGems: 0,
+    unlockFeathers: 0,
+  },
+  {
     id: 'emerald_taurus_wings',
     name: 'Thần Dực Lục Bảo Kim Ngưu',
     badge: 'CHƯƠNG 3 · CÁNH 3D',

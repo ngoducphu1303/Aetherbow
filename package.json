@@ -18,6 +18,8 @@
     "build:chapter3": "node scripts/build-chapter3-variants.mjs",
     "verify:chapter3": "node scripts/build-chapter3-variants.mjs --verify",
     "portraits:chapter3": "node scripts/render-chapter3-portraits.mjs",
+    "build:chapter4": "node scripts/build-chapter4-variants.mjs",
+    "verify:chapter4": "node scripts/build-chapter4-variants.mjs --verify",
     "deploy:worker": "npm exec --yes --package=wrangler -- wrangler deploy --config workers/glb-cdn/wrangler.jsonc"
   },
   "dependencies": {

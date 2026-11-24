@@ -15,7 +15,8 @@ export type SolarLeoAssetId =
   | 'astrolabe_regulus'
   | 'leo_sovereign'
   | 'bellona' | 'golden_fleece' | 'pyro' | 'crimson_ram_wings' | 'vulcan' | 'war_horn' | 'aries_vanguard'
-  | 'sylvia' | 'venus_incarnate' | 'jade_calf' | 'emerald_taurus_wings' | 'jade_bull' | 'jade_heart_relic' | 'emerald_taurus_halo';
+  | 'sylvia' | 'venus_incarnate' | 'jade_calf' | 'emerald_taurus_wings' | 'jade_bull' | 'jade_heart_relic' | 'emerald_taurus_halo'
+  | 'celeste' | 'astral_mirror_queen' | 'twin_astral_spirits' | 'dual_gemini_wings' | 'celestial_wind_mount' | 'twin_hourglass_relic' | 'gemini_halo';
 
 export type SolarLeoVariant = 'high' | 'lite';
 
@@ -375,6 +376,20 @@ function taurusAsset(
   };
 }
 
+function geminiAsset(
+  id: SolarLeoAssetId, slug: string, name: string, rigType: SolarLeoRigType,
+  targetHeight: number, facingYawOffset = 0
+): SolarLeoAssetSpec {
+  return {
+    id, displayName: name, rigType, targetHeight, facingYawOffset,
+    highPathSegments: ['assets', 'Chương 4', 'Runtime', `${slug}-high.glb`],
+    litePathSegments: ['assets', 'Chương 4', 'Runtime', `${slug}-lite.glb`],
+    thumbnailPathSegments: ['assets', 'Chương 4', 'Runtime', `${slug}.webp`],
+    groundAtZero: rigType === 'humanoid' || rigType === 'quadruped_mount',
+    maxLiteBytes: 900_000,
+  };
+}
+
 export const CHAPTER3_SOLAR_LEO_ASSET_IDS = [
   'sylvia',
   'venus_incarnate',
@@ -383,6 +398,16 @@ export const CHAPTER3_SOLAR_LEO_ASSET_IDS = [
   'jade_bull',
   'jade_heart_relic',
   'emerald_taurus_halo',
+] as const satisfies readonly SolarLeoAssetId[];
+
+export const CHAPTER4_SOLAR_LEO_ASSET_IDS = [
+  'celeste',
+  'astral_mirror_queen',
+  'twin_astral_spirits',
+  'dual_gemini_wings',
+  'celestial_wind_mount',
+  'twin_hourglass_relic',
+  'gemini_halo',
 ] as const satisfies readonly SolarLeoAssetId[];
 
 export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
@@ -403,6 +428,15 @@ export const SOLAR_LEO_SPECS: Record<SolarLeoAssetId, SolarLeoAssetSpec> = {
   jade_bull: taurusAsset('jade_bull', 'jade-bull', 'Chiến Ngưu Ngọc Bích', 'quadruped_mount', 1.66, Math.PI / 2),
   jade_heart_relic: taurusAsset('jade_heart_relic', 'jade-heart-relic', 'Tâm Ngọc Kim Ngưu', 'artifact', 0.66),
   emerald_taurus_halo: taurusAsset('emerald_taurus_halo', 'emerald-taurus-halo', 'Pháp Trận Lục Bảo Kim Ngưu', 'halo', 1.50),
+
+  celeste: geminiAsset('celeste', 'celeste', 'Celeste · Thánh Nữ Song Tử', 'humanoid', 2.05),
+  astral_mirror_queen: geminiAsset('astral_mirror_queen', 'astral-mirror-queen', 'Nữ Hoàng Gương Tinh Tú', 'humanoid', 2.05),
+  twin_astral_spirits: geminiAsset('twin_astral_spirits', 'twin-astral-spirits', 'Cặp Tinh Linh Song Sinh', 'pet', 0.80),
+  dual_gemini_wings: geminiAsset('dual_gemini_wings', 'dual-gemini-wings', 'Thần Dực Song Tử Nhị Nguyên', 'wings', 1.72),
+  // Source sculpt faces +X; -PI/2 aligns head and saddle cleanly to +Z forward.
+  celestial_wind_mount: geminiAsset('celestial_wind_mount', 'celestial-wind-mount', 'Thiên Mã Gió Tinh Tú', 'quadruped_mount', 1.66, -Math.PI / 2),
+  twin_hourglass_relic: geminiAsset('twin_hourglass_relic', 'twin-hourglass-relic', 'Đồng Hồ Cát Gương Thiên Hà', 'artifact', 0.66),
+  gemini_halo: geminiAsset('gemini_halo', 'gemini-halo', 'Pháp Trận Song Tử', 'halo', 1.50),
 
   aurelia: {
     id: 'aurelia',
@@ -546,6 +580,7 @@ export function resolveSolarLeoHeroAssetId(
 ): SolarLeoAssetId | null {
   if (heroId === 'bellona') return skinId === 'golden_fleece' ? 'golden_fleece' : 'bellona';
   if (heroId === 'sylvia') return skinId === 'venus_incarnate' ? 'venus_incarnate' : 'sylvia';
+  if (heroId === 'celeste') return skinId === 'astral_mirror_queen' ? 'astral_mirror_queen' : 'celeste';
   if (heroId !== 'aurelia') return null;
   if (
     skinId === 'aurelia_oasis_dancer' ||
@@ -622,7 +657,8 @@ async function fetchSolarLeoVariantBytes(
     return await fetchAndValidate(url);
   } catch (error) {
     const isChapter3 = (CHAPTER3_SOLAR_LEO_ASSET_IDS as readonly string[]).includes(assetId);
-    if (options.signal?.aborted || !isChapter3) {
+    const isChapter4 = (CHAPTER4_SOLAR_LEO_ASSET_IDS as readonly string[]).includes(assetId);
+    if (options.signal?.aborted || (!isChapter3 && !isChapter4)) {
       throw error;
     }
     const spec = SOLAR_LEO_SPECS[assetId];

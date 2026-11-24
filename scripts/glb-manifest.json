@@ -608,6 +608,146 @@
       "runtime": true
     },
     {
+      "path": "public/assets/Chương 4/Runtime/astral-mirror-queen-high.glb",
+      "size": 2108868,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/astral-mirror-queen-lite.glb",
+      "size": 570484,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/celeste-high.glb",
+      "size": 1939028,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/celeste-lite.glb",
+      "size": 588056,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/celestial-wind-mount-high.glb",
+      "size": 1771992,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/celestial-wind-mount-lite.glb",
+      "size": 537904,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/chien-binh-song-dao-phong-anh-high.glb",
+      "size": 1130828,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/chien-binh-song-dao-phong-anh-lite.glb",
+      "size": 271788,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/dual-gemini-wings-high.glb",
+      "size": 1167024,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/dual-gemini-wings-lite.glb",
+      "size": 271228,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/gemini-arena-high.glb",
+      "size": 3357492,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/gemini-arena-lite.glb",
+      "size": 1866620,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/gemini-halo-high.glb",
+      "size": 1335688,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/gemini-halo-lite.glb",
+      "size": 255912,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/linh-hon-mat-na-song-sinh-high.glb",
+      "size": 1156144,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/linh-hon-mat-na-song-sinh-lite.glb",
+      "size": 269608,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/linh-mieu-ung-gio-high.glb",
+      "size": 1163412,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/linh-mieu-ung-gio-lite.glb",
+      "size": 277056,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/song-thu-canh-gio-high.glb",
+      "size": 1777948,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/song-thu-canh-gio-lite.glb",
+      "size": 575488,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/than-vuong-song-tu-high.glb",
+      "size": 2089916,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/than-vuong-song-tu-lite.glb",
+      "size": 607880,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/twin-astral-spirits-high.glb",
+      "size": 975904,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/twin-astral-spirits-lite.glb",
+      "size": 257444,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/twin-hourglass-relic-high.glb",
+      "size": 965976,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/twin-hourglass-relic-lite.glb",
+      "size": 229264,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/ve-binh-guong-song-sinh-high.glb",
+      "size": 1186292,
+      "runtime": true
+    },
+    {
+      "path": "public/assets/Chương 4/Runtime/ve-binh-guong-song-sinh-lite.glb",
+      "size": 277212,
+      "runtime": true
+    },
+    {
       "path": "public/assets/genshin_impact_-_chevreuse/genshin_impact_-_chevreuse.glb",
       "size": 6983484
     },

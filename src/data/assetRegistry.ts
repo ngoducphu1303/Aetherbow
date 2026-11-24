@@ -49,6 +49,20 @@ function taurusCharacter(assetKey: string): CharacterAssetPack {
   return { ...pack, skill: pack.icon, burst: pack.icon };
 }
 
+function geminiImage(assetKey: string): string {
+  return encodeURI(`/assets/Chương 4/Runtime/${assetKey}.webp`);
+}
+
+function geminiPortrait(assetKey: string): EnemyAssetPack {
+  const image = geminiImage(assetKey);
+  return { assetKey, icon: image, portrait: image };
+}
+
+function geminiCharacter(assetKey: string): CharacterAssetPack {
+  const pack = geminiPortrait(assetKey);
+  return { ...pack, skill: pack.icon, burst: pack.icon };
+}
+
 const LEO_ENEMY_LABELS: Partial<Record<EnemyKind, string>> = {
   [EnemyKind.SKIRMISHER]: 'Sư Tử Lửa Đền Thờ',
   [EnemyKind.GOLEM]: 'Vệ Binh Đá Mặt Trời',
@@ -79,7 +93,18 @@ const TAURUS_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string 
   [EnemyKind.ZODIAC_BOSS]: { ...taurusPortrait('dia-than-kim-nguu'), name: 'Địa Thần Kim Ngưu' },
 };
 
+const GEMINI_ENEMIES: Partial<Record<EnemyKind, EnemyAssetPack & { name: string }>> = {
+  [EnemyKind.SKIRMISHER]: { ...geminiPortrait('linh-mieu-ung-gio'), name: 'Linh Miêu Ưng Gió' },
+  [EnemyKind.GOLEM]: { ...geminiPortrait('ve-binh-guong-song-sinh'), name: 'Vệ Binh Gương Song Sinh' },
+  [EnemyKind.IMP_ARCHER]: { ...geminiPortrait('linh-hon-mat-na-song-sinh'), name: 'Linh Hồn Mặt Nạ Song Sinh' },
+  [EnemyKind.DRAGON_WHELP]: { ...geminiPortrait('chien-binh-song-dao-phong-anh'), name: 'Chiến Binh Song Đao Phong Ảnh' },
+  [EnemyKind.WARDEN_BOSS]: { ...geminiPortrait('song-thu-canh-gio'), name: 'Song Thú Cánh Gió' },
+  [EnemyKind.TITAN_BOSS]: { ...geminiPortrait('song-thu-canh-gio'), name: 'Song Thú Cánh Gió' },
+  [EnemyKind.ZODIAC_BOSS]: { ...geminiPortrait('than-vuong-song-tu'), name: 'Thần Vương Song Tử' },
+};
+
 export const HERO_ASSET_PACKS: Record<PlayableHeroId, CharacterAssetPack> = {
+  celeste: geminiCharacter('celeste'),
   sylvia: taurusCharacter('sylvia'),
   bellona: ariesCharacter('bellona'),
   aurelia: {
@@ -92,6 +117,7 @@ export const HERO_ASSET_PACKS: Record<PlayableHeroId, CharacterAssetPack> = {
 };
 
 export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> = {
+  astral_mirror_queen: geminiCharacter('astral-mirror-queen'),
   venus_incarnate: taurusCharacter('venus-incarnate'),
   golden_fleece: ariesCharacter('golden-fleece'),
   aurelia_oasis_dancer: {
@@ -125,6 +151,11 @@ export const SKIN_ASSET_PACKS: Partial<Record<HeroSkinId, CharacterAssetPack>> =
 };
 
 export const SOLAR_LEO_ITEM_THUMBNAILS: Record<string, string> = {
+  twin_astral_spirits: geminiImage('twin-astral-spirits'),
+  dual_gemini_wings: geminiImage('dual-gemini-wings'),
+  celestial_wind_mount: geminiImage('celestial-wind-mount'),
+  twin_hourglass_relic: geminiImage('twin-hourglass-relic'),
+  gemini_halo: geminiImage('gemini-halo'),
   jade_calf: taurusImage('jade-calf'),
   emerald_taurus_wings: taurusImage('emerald-taurus-wings'),
   jade_bull: taurusImage('jade-bull'),
@@ -247,7 +278,7 @@ export const CHAPTER_BOSS_ASSETS: Record<number, BossAssetPack> = {
   1: WEEKLY_BOSS_CATALOG.azhdaha,
   2: ariesPortrait('kratos-aries'),
   3: taurusPortrait('dia-than-kim-nguu'),
-  4: WEEKLY_BOSS_CATALOG['everlasting-lord-of-arcane-wisdom'],
+  4: geminiPortrait('than-vuong-song-tu'),
   5: WEEKLY_BOSS_CATALOG['all-devouring-narwhal'],
   6: WEEKLY_BOSS_CATALOG['guardian-of-apep-s-oasis'],
   7: WEEKLY_BOSS_CATALOG['magatsu-mitake-narukami-no-mikoto'],
@@ -296,6 +327,7 @@ export function getEnemyLabel(kind: EnemyKind, chapterId?: number): string {
   if (chapterId === 1) return LEO_ENEMY_LABELS[kind] ?? ENEMY_LABEL_VI[kind];
   if (chapterId === 2) return ARIES_ENEMIES[kind]?.name ?? ENEMY_LABEL_VI[kind];
   if (chapterId === 3) return TAURUS_ENEMIES[kind]?.name ?? ENEMY_LABEL_VI[kind];
+  if (chapterId === 4) return GEMINI_ENEMIES[kind]?.name ?? ENEMY_LABEL_VI[kind];
   return ENEMY_LABEL_VI[kind];
 }
 
@@ -306,6 +338,10 @@ export function getEnemyAssetPack(kind: EnemyKind, chapterId?: number): EnemyAss
   }
   if (chapterId === 3) {
     const pack = TAURUS_ENEMIES[kind];
+    if (pack) return pack;
+  }
+  if (chapterId === 4) {
+    const pack = GEMINI_ENEMIES[kind];
     if (pack) return pack;
   }
   return ENEMY_ASSET_PACKS[kind] ?? ENEMY_ASSET_PACKS[EnemyKind.SKIRMISHER];
@@ -341,6 +377,10 @@ export function getBossAssetPack(opts: {
   if (opts.chapterId === 3) {
     if (lower.includes('ngọc ngưu dực thú')) return taurusPortrait('ngoc-nguu-duc-thu');
     if (lower.includes('địa thần kim ngưu') || !lower) return CHAPTER_BOSS_ASSETS[3];
+  }
+  if (opts.chapterId === 4) {
+    if (lower.includes('song thú cánh gió')) return geminiPortrait('song-thu-canh-gio');
+    if (lower.includes('thần vương song tử') || !lower) return CHAPTER_BOSS_ASSETS[4];
   }
   if (lower.includes('boreas') || lower.includes('băng đế')) {
     return WEEKLY_BOSS_CATALOG['lupus-boreas'];

@@ -109,8 +109,8 @@ const RAW_ZODIAC_CHAPTERS: RawZodiacChapter[] = [
     zodiacIcon: '🎭',
     zodiacName: 'Song Tử',
     regionName: 'Song Thành Ảo Ảnh',
-    subtitle: 'Thành trì tinh vân song sinh ẩn chứa ảo ảnh của Song Tử Huyễn Vương.',
-    bossName: 'Song Tử Huyễn Vương',
+    subtitle: 'Đấu trường gương tinh tú song sinh nơi Thần Vương Song Tử và Song Thú Cánh Gió trấn giữ kho báu của Thánh Nữ Celeste.',
+    bossName: 'Thần Vương Song Tử',
     floorPrimary: '#162542',
     floorAccent: '#67e8f9',
     stoneHex: 0x243b66,
@@ -124,8 +124,8 @@ const RAW_ZODIAC_CHAPTERS: RawZodiacChapter[] = [
     dmgScale: 3.85,
     goldBonusMult: 3.3,
     recommendedPower: 20000,
-    subBossNames: ['Kẻ Dệt Lưới Ảo Ảnh', 'Cổ Long Thiên Không'],
-    enemyFamily: [EnemyKind.SHADOW_STALKER, EnemyKind.WISP, EnemyKind.IMP_ARCHER],
+    subBossNames: ['Song Thú Cánh Gió · Tiên Phong', 'Song Thú Cánh Gió · Thống Lĩnh'],
+    enemyFamily: [EnemyKind.SKIRMISHER, EnemyKind.GOLEM, EnemyKind.IMP_ARCHER],
   },
   {
     id: 5,
@@ -398,8 +398,8 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
     } else {
       const waveCount = s >= 7 ? 2 : 1;
       const waves: ChapterStageDef['waves'] = [];
-      if (ch.id === 1 || ch.id === 2 || ch.id === 3) {
-        // Chapters 1, 2 & 3 showcase all 4 dedicated 3D mob archetypes in balanced role formations:
+      if (ch.id === 1 || ch.id === 2 || ch.id === 3 || ch.id === 4) {
+        // Chapters 1, 2, 3 & 4 showcase all 4 dedicated 3D mob archetypes in balanced role formations:
         // SKIRMISHER (fast flanker), GOLEM (heavy tank), IMP_ARCHER (floating mage), DRAGON_WHELP (lancer/berserker)
         for (let w = 0; w < waveCount; w++) {
           const enemies: Array<{ kind: EnemyKind; count: number; isElite?: boolean }> = [];

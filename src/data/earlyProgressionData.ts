@@ -1,6 +1,7 @@
 import { DEFAULT_HERO_ID, isPlayableHeroId, normalizePlayableHeroId } from './heroesData';
 import { grantChapter2Collection } from './chapter2Collection';
 import { grantChapter3Collection } from './chapter3Collection';
+import { grantChapter4Collection } from './chapter4Collection';
 import { normalizeChapterEquipmentPresets } from './chapterEquipmentSets';
 import {
   ComputedPlayerStats,
@@ -350,10 +351,12 @@ export function migrateSaveData(raw: SaveData): SaveData {
 
   const hasClearedAries = (raw.highestChapterCleared ?? 0) >= 2;
   const hasClearedTaurus = (raw.highestChapterCleared ?? 0) >= 3;
+  const hasClearedGemini = (raw.highestChapterCleared ?? 0) >= 4;
   const normalizedUnlockedHeroes: HeroId[] = [
     DEFAULT_HERO_ID,
     ...(hasClearedAries ? (['bellona'] as HeroId[]) : []),
     ...(hasClearedTaurus ? (['sylvia'] as HeroId[]) : []),
+    ...(hasClearedGemini ? (['celeste'] as HeroId[]) : []),
   ];
   const resolvedHeroId = isPlayableHeroId(raw.selectedHeroId) && normalizedUnlockedHeroes.includes(raw.selectedHeroId)
     ? raw.selectedHeroId
@@ -362,6 +365,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
     aurelia: Math.max(0, Math.floor(raw.heroStars?.aurelia ?? 0)),
     ...(hasClearedAries ? { bellona: Math.max(0, Math.floor(raw.heroStars?.bellona ?? 0)) } : {}),
     ...(hasClearedTaurus ? { sylvia: Math.max(0, Math.floor(raw.heroStars?.sylvia ?? 0)) } : {}),
+    ...(hasClearedGemini ? { celeste: Math.max(0, Math.floor(raw.heroStars?.celeste ?? 0)) } : {}),
   };
 
   // Unlock all 4 Aurelia Solar Leo skins while validating equippedSkinByHero.
@@ -374,6 +378,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
   const validSkinSet = new Set<string>(['default', ...SOLAR_LEO_SKINS]);
   if (hasClearedAries) validSkinSet.add('golden_fleece');
   if (hasClearedTaurus) validSkinSet.add('venus_incarnate');
+  if (hasClearedGemini) validSkinSet.add('astral_mirror_queen');
   const normalizedUnlockedSkins = Array.from(
     new Set([
       ...SOLAR_LEO_SKINS,
@@ -394,6 +399,9 @@ export function migrateSaveData(raw: SaveData): SaveData {
   if (hasClearedTaurus && rawEquippedSkins.sylvia === 'venus_incarnate') {
     normalizedEquippedSkinByHero.sylvia = 'venus_incarnate';
   }
+  if (hasClearedGemini && rawEquippedSkins.celeste === 'astral_mirror_queen') {
+    normalizedEquippedSkinByHero.celeste = 'astral_mirror_queen';
+  }
 
   // Keep Solarius ('solarius') mount; safely migrate legacy Hắc Long saves to Solarius.
   const normalizedUnlockedMounts: NonNullable<SaveData['unlockedMounts']> = ['solarius'];
@@ -405,15 +413,19 @@ export function migrateSaveData(raw: SaveData): SaveData {
     solarius: migratedSolariusLv,
     ...(hasClearedAries ? { vulcan: Math.max(1, Math.floor(raw.mountLevels?.vulcan ?? 1)) } : {}),
     ...(hasClearedTaurus ? { jade_bull: Math.max(1, Math.floor(raw.mountLevels?.jade_bull ?? 1)) } : {}),
+    ...(hasClearedGemini
+      ? { celestial_wind_mount: Math.max(1, Math.floor(raw.mountLevels?.celestial_wind_mount ?? 1)) }
+      : {}),
   };
   const resolvedEquippedMountId: SaveData['equippedMountId'] =
+    hasClearedGemini && raw.equippedMountId === 'celestial_wind_mount' ? 'celestial_wind_mount' :
     hasClearedTaurus && raw.equippedMountId === 'jade_bull' ? 'jade_bull' :
     hasClearedAries && raw.equippedMountId === 'vulcan' ? 'vulcan' :
     raw.equippedMountId === null || raw.equippedMountId === undefined
       ? null
       : 'solarius';
 
-  // Preserve starter equipment and the Chapter 2 / Chapter 3 collections once cleared.
+  // Preserve starter equipment and the Chapter 2 / Chapter 3 / Chapter 4 collections once cleared.
   const existingAstraeo = Array.isArray(raw.pets)
     ? raw.pets.find((p) => p.petId === 'astraeo')
     : undefined;
@@ -431,20 +443,38 @@ export function migrateSaveData(raw: SaveData): SaveData {
     const jadeCalf = Array.isArray(raw.pets) ? raw.pets.find((pet) => pet.petId === 'jade_calf') : undefined;
     normalizedPets.push({ petId: 'jade_calf', level: Math.max(1, Math.floor(jadeCalf?.level ?? 1)) });
   }
+  if (hasClearedGemini) {
+    const twinSpirits = Array.isArray(raw.pets)
+      ? raw.pets.find((pet) => pet.petId === 'twin_astral_spirits')
+      : undefined;
+    normalizedPets.push({
+      petId: 'twin_astral_spirits',
+      level: Math.max(1, Math.floor(twinSpirits?.level ?? 1)),
+    });
+  }
   const resolvedEquippedPetId: SaveData['equippedPetId'] =
+    hasClearedGemini && raw.equippedPetId === 'twin_astral_spirits' ? 'twin_astral_spirits' :
     hasClearedTaurus && raw.equippedPetId === 'jade_calf' ? 'jade_calf' :
     hasClearedAries && raw.equippedPetId === 'pyro' ? 'pyro' : raw.equippedPetId ? 'astraeo' : null;
   const normalizedEvolvedPets: NonNullable<SaveData['evolvedPets']> = (
     Array.isArray(raw.evolvedPets) ? raw.evolvedPets : []
-  ).filter((id) => id === 'astraeo' || (hasClearedAries && id === 'pyro') || (hasClearedTaurus && id === 'jade_calf'));
+  ).filter(
+    (id) =>
+      id === 'astraeo' ||
+      (hasClearedAries && id === 'pyro') ||
+      (hasClearedTaurus && id === 'jade_calf') ||
+      (hasClearedGemini && id === 'twin_astral_spirits')
+  );
 
   const normalizedUnlockedWings: NonNullable<SaveData['unlockedWings']> = ['solar_zenith'];
   const normalizedWingLevels: NonNullable<SaveData['wingLevels']> = {
     solar_zenith: Math.max(1, Math.floor(raw.wingLevels?.solar_zenith ?? 1)),
     ...(hasClearedAries ? { crimson_ram_wings: Math.max(1, Math.floor(raw.wingLevels?.crimson_ram_wings ?? 1)) } : {}),
     ...(hasClearedTaurus ? { emerald_taurus_wings: Math.max(1, Math.floor(raw.wingLevels?.emerald_taurus_wings ?? 1)) } : {}),
+    ...(hasClearedGemini ? { dual_gemini_wings: Math.max(1, Math.floor(raw.wingLevels?.dual_gemini_wings ?? 1)) } : {}),
   };
   const resolvedEquippedWingId: SaveData['equippedWingId'] =
+    hasClearedGemini && raw.equippedWingId === 'dual_gemini_wings' ? 'dual_gemini_wings' :
     hasClearedTaurus && raw.equippedWingId === 'emerald_taurus_wings' ? 'emerald_taurus_wings' :
     hasClearedAries && raw.equippedWingId === 'crimson_ram_wings' ? 'crimson_ram_wings' :
     raw.equippedWingId ? 'solar_zenith' : null;
@@ -456,8 +486,10 @@ export function migrateSaveData(raw: SaveData): SaveData {
     astrolabe_regulus: Math.max(1, Math.floor(raw.artifactLevels?.astrolabe_regulus ?? 1)),
     ...(hasClearedAries ? { war_horn: Math.max(1, Math.floor(raw.artifactLevels?.war_horn ?? 1)) } : {}),
     ...(hasClearedTaurus ? { jade_heart_relic: Math.max(1, Math.floor(raw.artifactLevels?.jade_heart_relic ?? 1)) } : {}),
+    ...(hasClearedGemini ? { twin_hourglass_relic: Math.max(1, Math.floor(raw.artifactLevels?.twin_hourglass_relic ?? 1)) } : {}),
   };
   const resolvedEquippedArtifactId: SaveData['equippedArtifactId'] =
+    hasClearedGemini && raw.equippedArtifactId === 'twin_hourglass_relic' ? 'twin_hourglass_relic' :
     hasClearedTaurus && raw.equippedArtifactId === 'jade_heart_relic' ? 'jade_heart_relic' :
     hasClearedAries && raw.equippedArtifactId === 'war_horn' ? 'war_horn' :
     raw.equippedArtifactId ? 'astrolabe_regulus' : null;
@@ -467,8 +499,10 @@ export function migrateSaveData(raw: SaveData): SaveData {
     leo_sovereign: Math.max(1, Math.floor(raw.haloLevels?.leo_sovereign ?? 1)),
     ...(hasClearedAries ? { aries_vanguard: Math.max(1, Math.floor(raw.haloLevels?.aries_vanguard ?? 1)) } : {}),
     ...(hasClearedTaurus ? { emerald_taurus_halo: Math.max(1, Math.floor(raw.haloLevels?.emerald_taurus_halo ?? 1)) } : {}),
+    ...(hasClearedGemini ? { gemini_halo: Math.max(1, Math.floor(raw.haloLevels?.gemini_halo ?? 1)) } : {}),
   };
   const resolvedEquippedHaloId: SaveData['equippedHaloId'] =
+    hasClearedGemini && raw.equippedHaloId === 'gemini_halo' ? 'gemini_halo' :
     hasClearedTaurus && raw.equippedHaloId === 'emerald_taurus_halo' ? 'emerald_taurus_halo' :
     hasClearedAries && raw.equippedHaloId === 'aries_vanguard' ? 'aries_vanguard' :
     raw.equippedHaloId ? 'leo_sovereign' : null;
@@ -539,7 +573,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
   };
 
   migratedBase.mailInbox = getVisibleMailInbox(migratedBase);
-  return grantChapter3Collection(grantChapter2Collection(migratedBase));
+  return grantChapter4Collection(grantChapter3Collection(grantChapter2Collection(migratedBase)));
 }
 
 export function normalizeAiPreferences(

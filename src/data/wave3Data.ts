@@ -17,6 +17,24 @@ import { getTodayKey } from './questsData';
 
 export const PETS_CATALOG: PetDefinition[] = [
   {
+    id: 'twin_astral_spirits',
+    name: 'Cặp Tinh Linh Song Sinh',
+    title: 'Tinh Linh Song Tử Tinh Vân',
+    element: 'star',
+    rarity: 'Huyền Thoại',
+    desc: 'Cặp tinh linh Song Tử phản chiếu ánh sáng gương tinh vân, bay hộ vệ và phóng song tiễn tinh tú tăng bạo kích.',
+    skillName: 'Song Tiễn Tinh Vân',
+    skillDesc: 'Phóng song tia tinh quang mỗi 0.88s gây 98% ATK và tăng 7% Chí Mạng.',
+    baseAtk: 30,
+    baseHp: 142,
+    baseCrit: 0.07,
+    unlockGems: 0,
+    unlockGold: 0,
+    primaryHex: 0x38bdf8,
+    secondaryHex: 0xa78bfa,
+    fireInterval: 0.88,
+  },
+  {
     id: 'jade_calf',
     name: 'Tiểu Ngưu Ngọc Bích',
     title: 'Tinh Linh Ngọc Lục Bảo',
@@ -87,6 +105,20 @@ export function getPetUpgradeCost(level: number): { essence: number; gold: numbe
 }
 
 export const HERO_SKINS: HeroSkinDefinition[] = [
+  {
+    id: 'astral_mirror_queen',
+    heroId: 'celeste',
+    name: 'Nữ Hoàng Gương Tinh Tú',
+    badge: 'CHƯƠNG 4 · TRANG PHỤC',
+    desc: 'Lễ phục Nữ Hoàng Gương Tinh Tú dệt từ ánh sao Song Tử và pha lê phản chiếu dành riêng cho Thánh Nữ Celeste.',
+    unlockGems: 0,
+    unlockGold: 0,
+    cloakHex: 0x312e81,
+    accentHex: 0x38bdf8,
+    hairHex: 0xe0f2fe,
+    atkBonus: 28,
+    hpBonus: 135,
+  },
   {
     id: 'venus_incarnate',
     heroId: 'sylvia',

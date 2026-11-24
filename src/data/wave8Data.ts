@@ -23,6 +23,25 @@ export const MAX_WEAPON_AURA_LEVEL = 10;
 
 export const ZODIAC_MOUNTS: MountDefinition[] = [
   {
+    id: 'celestial_wind_mount',
+    name: 'Thiên Mã Gió Tinh Tú',
+    badge: 'CHƯƠNG 4 · THÚ CƯỠI 3D',
+    rarity: 'Huyền Thoại',
+    desc: 'Thần thú Thiên Mã Song Tử lướt trên luồng gió tinh vân với khung xương tứ chi 3D thanh thoát và thần tốc.',
+    bodyHex: 0x1e3a8a,
+    armorHex: 0x38bdf8,
+    maneHex: 0xc4b5fd,
+    glowHex: 0x7dd3fc,
+    baseAtk: 54,
+    baseHp: 350,
+    baseMoveSpeed: 0.15,
+    baseDr: 0.06,
+    atkPerLv: 14,
+    hpPerLv: 78,
+    unlockGems: 0,
+    unlockShards: 0,
+  },
+  {
     id: 'jade_bull',
     name: 'Chiến Ngưu Ngọc Bích',
     badge: 'CHƯƠNG 3 · THÚ CƯỠI 3D',

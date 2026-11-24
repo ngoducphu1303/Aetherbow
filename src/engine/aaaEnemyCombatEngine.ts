@@ -1126,7 +1126,7 @@ export interface ChapterMobSkillTheme {
   readonly spearFanHex: number;
 }
 
-const CHAPTER_MOB_SKILL_THEMES: Record<1 | 2 | 3, ChapterMobSkillTheme> = {
+const CHAPTER_MOB_SKILL_THEMES: Record<1 | 2 | 3 | 4, ChapterMobSkillTheme> = {
   1: {
     pounceHex: 0xff6b2b,
     swipeHex: 0xffaa2b,
@@ -1163,11 +1163,24 @@ const CHAPTER_MOB_SKILL_THEMES: Record<1 | 2 | 3, ChapterMobSkillTheme> = {
     spearDashHex: 0x34d399,
     spearFanHex: 0xfbbf24,
   },
+  4: {
+    pounceHex: 0x38bdf8,
+    swipeHex: 0xa78bfa,
+    swipeSparkHex: 0x67e8f9,
+    slamHex: 0x6366f1,
+    tremorHex: 0x38bdf8,
+    volleyHex: 0xc084fc,
+    mortarHex: 0x38bdf8,
+    mortarOwnerName: 'Linh Hồn Mặt Nạ Song Sinh',
+    spearDashHex: 0x38bdf8,
+    spearFanHex: 0xa78bfa,
+  },
 };
 
 export function resolveChapterMobSkillTheme(chapterId: number): ChapterMobSkillTheme {
   if (chapterId === 2) return CHAPTER_MOB_SKILL_THEMES[2];
   if (chapterId === 3) return CHAPTER_MOB_SKILL_THEMES[3];
+  if (chapterId === 4) return CHAPTER_MOB_SKILL_THEMES[4];
   return CHAPTER_MOB_SKILL_THEMES[1];
 }
 

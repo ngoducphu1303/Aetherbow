@@ -81,6 +81,7 @@ function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
     aurelia: 'Cung Thái Dương Regulus +20',
     bellona: 'Cung Hỏa Sơn Bạch Dương',
     sylvia: 'Cung Ngọc Lục Bảo Kim Ngưu',
+    celeste: 'Cung Gương Tinh Tú Song Tử',
   };
   const mountPool = ['Hắc Long'];
   const wingPool = [

@@ -259,6 +259,7 @@ import {
   CampaignRosterAssetId,
   CHAPTER2_ROSTER_ASSET_IDS,
   CHAPTER3_ROSTER_ASSET_IDS,
+  CHAPTER4_ROSTER_ASSET_IDS,
   getCampaignRosterArchetype,
   Chapter1RosterBurstType,
   disposeChapter1RosterTemplateCache,
@@ -369,6 +370,14 @@ import {
   type Chapter3SanctuaryAtmosphereRig,
 } from './chapter3Map';
 import {
+  createChapter4GeminiSanctuaryAtmosphere,
+  getChapter4MapHighAssetUrl,
+  getChapter4MapLiteAssetUrl,
+  prepareChapter4MapModel,
+  updateChapter4GeminiSanctuaryAtmosphere,
+  type Chapter4GeminiAtmosphereRig,
+} from './chapter4Map';
+import {
   downloadChapter1BossArrayBuffer,
   getChapter1BossAssetUrl,
   isSolarLionBossEncounter,
@@ -396,10 +405,12 @@ import {
   discardChapter1MapDownload,
   discardChapter2MapDownload,
   discardChapter3MapDownload,
+  discardChapter4MapDownload,
   discardModelDownload,
   downloadChapter1Map,
   downloadChapter2Map,
   downloadChapter3Map,
+  downloadChapter4Map,
   downloadModel,
   getModelAssetUrl,
   type ModelAsset,
@@ -1049,8 +1060,8 @@ export class GameEngine {
   private arenaGroup = new THREE.Group();
   private proceduralArenaShell: THREE.Group | null = null;
   private chapter1MapModel: THREE.Group | null = null;
-  private chapterMapLoadedChapterId: 1 | 2 | 3 | null = null;
-  private chapterMapLoadingChapterId: 1 | 2 | 3 | null = null;
+  private chapterMapLoadedChapterId: 1 | 2 | 3 | 4 | null = null;
+  private chapterMapLoadingChapterId: 1 | 2 | 3 | 4 | null = null;
   private chapterMapRequestedVariant: 'none' | 'lite' | 'full' = 'none';
   private chapterMapRequestToken = 0;
   private chapter1MapLoadedVariant: 'none' | 'lite' | 'full' = 'none';
@@ -1066,6 +1077,7 @@ export class GameEngine {
   private chapter1MapStableFrames = 0;
   private chapter2ForgeAtmosphere: Chapter2ForgeAtmosphereRig | null = null;
   private chapter3SanctuaryAtmosphere: Chapter3SanctuaryAtmosphereRig | null = null;
+  private chapter4GeminiAtmosphere: Chapter4GeminiAtmosphereRig | null = null;
   private entitiesGroup = new THREE.Group();
   private projectilesGroup = new THREE.Group();
   private particlesGroup = new THREE.Group();
@@ -3570,7 +3582,10 @@ export class GameEngine {
     const assetId = this.heroVisualCfg.mountId;
     const wantsSolarius =
       Boolean(mount) &&
-      (assetId === 'solarius' || assetId === 'vulcan' || assetId === 'jade_bull') &&
+      (assetId === 'solarius' ||
+        assetId === 'vulcan' ||
+        assetId === 'jade_bull' ||
+        assetId === 'celestial_wind_mount') &&
       !this.heroVisualCfg.astralSteedId;
 
     if (!wantsSolarius || !mount) {
@@ -3633,7 +3648,10 @@ export class GameEngine {
     const assetId = this.heroVisualCfg.wingId;
     const wantsSolarWings =
       Boolean(wingGroup) &&
-      (assetId === 'solar_zenith' || assetId === 'crimson_ram_wings' || assetId === 'emerald_taurus_wings');
+      (assetId === 'solar_zenith' ||
+        assetId === 'crimson_ram_wings' ||
+        assetId === 'emerald_taurus_wings' ||
+        assetId === 'dual_gemini_wings');
     // Never overlap default blue Celestial Wings behind the full 3D Wings of the Solar Zenith
     if (this.hero?.celestialWingGroup) {
       this.hero.celestialWingGroup.visible = !wantsSolarWings;
@@ -3711,7 +3729,10 @@ export class GameEngine {
     const assetId = this.heroVisualCfg.haloId;
     const wantsLeoHalo =
       Boolean(haloGroup) &&
-      (assetId === 'leo_sovereign' || assetId === 'aries_vanguard' || assetId === 'emerald_taurus_halo');
+      (assetId === 'leo_sovereign' ||
+        assetId === 'aries_vanguard' ||
+        assetId === 'emerald_taurus_halo' ||
+        assetId === 'gemini_halo');
     if (!wantsLeoHalo || !haloGroup) {
       this.solarLeoHaloSeq++;
       if (this.solarLeoHaloRig) {
@@ -3773,7 +3794,10 @@ export class GameEngine {
     const assetId = this.heroVisualCfg.artifactId;
     const wantsAstrolabe =
       Boolean(artifactGroup) &&
-      (assetId === 'astrolabe_regulus' || assetId === 'war_horn' || assetId === 'jade_heart_relic');
+      (assetId === 'astrolabe_regulus' ||
+        assetId === 'war_horn' ||
+        assetId === 'jade_heart_relic' ||
+        assetId === 'twin_hourglass_relic');
     if (!wantsAstrolabe || !artifactGroup) {
       this.solarLeoArtifactSeq++;
       if (this.solarLeoArtifactRig) {
@@ -3841,7 +3865,10 @@ export class GameEngine {
     const assetId = this.builtPetId;
     const wantsAstraeo =
       Boolean(petModel) &&
-      (assetId === 'astraeo' || assetId === 'pyro' || assetId === 'jade_calf');
+      (assetId === 'astraeo' ||
+        assetId === 'pyro' ||
+        assetId === 'jade_calf' ||
+        assetId === 'twin_astral_spirits');
     if (!wantsAstraeo || !petModel) {
       this.solarLeoPetSeq++;
       if (this.solarLeoPetRig) {
@@ -4566,7 +4593,9 @@ export class GameEngine {
 
   private prefetchCampaignRosterModels(chapterId: number): void {
     const assets: readonly CampaignRosterAssetId[] =
-      chapterId === 3
+      chapterId === 4
+        ? CHAPTER4_ROSTER_ASSET_IDS
+        : chapterId === 3
         ? CHAPTER3_ROSTER_ASSET_IDS
         : chapterId === 2
         ? CHAPTER2_ROSTER_ASSET_IDS
@@ -4747,8 +4776,10 @@ export class GameEngine {
     return this.gpuProfile;
   }
 
-  private getCustomMapChapterId(chapterId = this.currentChapter.id): 1 | 2 | 3 | null {
-    return chapterId === 1 || chapterId === 2 || chapterId === 3 ? chapterId : null;
+  private getCustomMapChapterId(chapterId = this.currentChapter.id): 1 | 2 | 3 | 4 | null {
+    return chapterId === 1 || chapterId === 2 || chapterId === 3 || chapterId === 4
+      ? chapterId
+      : null;
   }
 
   private applyChapter1MapState(): void {
@@ -4851,7 +4882,7 @@ export class GameEngine {
             resolvedVariant === 'lite'
               ? getChapter2MapLiteAssetUrl(baseUrl, baseUri)
               : getChapter2MapHighAssetUrl(baseUrl, document.baseURI);
-        } else {
+        } else if (targetChapterId === 3) {
           const ch3Result = await downloadChapter3Map(targetVariant);
           data = ch3Result.buffer;
           resolvedVariant = ch3Result.resolvedVariant;
@@ -4859,6 +4890,14 @@ export class GameEngine {
             resolvedVariant === 'lite'
               ? getChapter3MapLiteAssetUrl(baseUrl, baseUri)
               : getChapter3MapHighAssetUrl(baseUrl, baseUri);
+        } else {
+          const ch4Result = await downloadChapter4Map(targetVariant);
+          data = ch4Result.buffer;
+          resolvedVariant = ch4Result.resolvedVariant;
+          assetUrl =
+            resolvedVariant === 'lite'
+              ? getChapter4MapLiteAssetUrl(baseUrl, baseUri)
+              : getChapter4MapHighAssetUrl(baseUrl, baseUri);
         }
 
         if (
@@ -4878,8 +4917,10 @@ export class GameEngine {
           markChapter1MapLoadInFlight();
         } else if (targetChapterId === 2) {
           markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 2 · Lò Rèn Bạch Dương');
-        } else {
+        } else if (targetChapterId === 3) {
           markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 3 · Thánh Địa Ngọc Lục Bảo');
+        } else {
+          markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 4 · Đấu Trường Song Tử');
         }
         this.chapter1MapInFlightMarked = true;
         this.chapter1MapStableFrames = 0;
@@ -4912,7 +4953,9 @@ export class GameEngine {
             ? prepareChapter1MapModel(gltf.scene, maxAniso, { liteMode: useLiteMaterial })
             : targetChapterId === 2
               ? prepareChapter2MapModel(gltf.scene, maxAniso, { liteMode: useLiteMaterial })
-              : prepareChapter3MapModel(gltf.scene, maxAniso, { liteMode: useLiteMaterial });
+              : targetChapterId === 3
+                ? prepareChapter3MapModel(gltf.scene, maxAniso, { liteMode: useLiteMaterial })
+                : prepareChapter4MapModel(gltf.scene, maxAniso, { liteMode: useLiteMaterial });
         sanitizeLoadedObjectForBudget(prepared.group, budget, { disableShadows: true });
 
         this.unloadChapter1MapModel();
@@ -4921,8 +4964,10 @@ export class GameEngine {
           markChapter1MapLoadInFlight();
         } else if (targetChapterId === 2) {
           markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 2 · Lò Rèn Bạch Dương');
-        } else {
+        } else if (targetChapterId === 3) {
           markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 3 · Thánh Địa Ngọc Lục Bảo');
+        } else {
+          markHeavyAssetLoadInFlight('Bản Đồ 3D Chương 4 · Đấu Trường Song Tử');
         }
         this.chapter1MapInFlightMarked = true;
         this.chapter1MapStableFrames = 0;
@@ -4945,8 +4990,10 @@ export class GameEngine {
             discardChapter1MapDownload(targetVariant, data);
           } else if (targetChapterId === 2) {
             discardChapter2MapDownload(targetVariant, data);
-          } else {
+          } else if (targetChapterId === 3) {
             discardChapter3MapDownload(targetVariant, data);
+          } else {
+            discardChapter4MapDownload(targetVariant, data);
           }
         }
         if (
@@ -4985,6 +5032,7 @@ export class GameEngine {
     this.proceduralArenaShell = null;
     this.chapter2ForgeAtmosphere = null;
     this.chapter3SanctuaryAtmosphere = null;
+    this.chapter4GeminiAtmosphere = null;
     // Keep cached custom 3D map detached only if it matches the chapter being built;
     // otherwise unload it immediately so at most one heavy 3D arena resides in VRAM.
     if (this.chapter1MapModel && this.chapterMapLoadedChapterId !== chapter.id) {
@@ -5583,9 +5631,19 @@ export class GameEngine {
       this.keyLight.color.setHex(0xd8fbe8);
       this.hemiLight.color.setHex(0x86efac);
       this.hemiLight.groundColor.setHex(0x0b2a1c);
+    } else if (chapter.id === 4) {
+      // Chapter 4 Gemini Astral Mirror Arena: twin cyan & violet mirror shards, stardust & astral sanctuary lights
+      this.chapter4GeminiAtmosphere = createChapter4GeminiSanctuaryAtmosphere({
+        liteActive: arenaBudget.liteActive,
+        isSoftwareGl: this.isSoftwareGl,
+      });
+      this.arenaGroup.add(this.chapter4GeminiAtmosphere.group);
+      this.keyLight.color.setHex(0xe0f2fe);
+      this.hemiLight.color.setHex(0x7dd3fc);
+      this.hemiLight.groundColor.setHex(0x1e1b4b);
     }
 
-    if ((chapter.id === 1 || chapter.id === 2 || chapter.id === 3) && loadCustomMap) {
+    if ((chapter.id === 1 || chapter.id === 2 || chapter.id === 3 || chapter.id === 4) && loadCustomMap) {
       this.ensureChapter1MapLoaded(chapter.id);
     } else {
       this.applyChapter1MapState();
@@ -5627,7 +5685,7 @@ export class GameEngine {
     this.baseStats = stats;
 
     this.buildArena(ch);
-    if (ch.id === 2 || ch.id === 3) {
+    if (ch.id === 2 || ch.id === 3 || ch.id === 4) {
       this.prefetchCampaignRosterModels(ch.id);
     }
     this.resetRunState(stats);
@@ -11534,6 +11592,23 @@ export class GameEngine {
         }
         break;
       }
+      case 'celeste': {
+        this.solarLeoUltBurst = 1.0;
+        this.shield = Math.min(this.maxHp * 0.45, this.shield + this.maxHp * 0.16);
+        this.spawnUltColumn(this.px, this.pz, 0x38bdf8, 1.05);
+        this.spawnShockwave(this.px, this.pz, 0xa78bfa, 7.0, 0.55);
+        this.spawnParticles(this.px, 1.35, this.pz, 0x7dd3fc, 24);
+        for (let i = 0; i < 14; i++) {
+          const yaw = (i / 14) * Math.PI * 2;
+          this.firePlayerArrow(yaw, 0, true, 'ultimate');
+        }
+        for (const enemy of liveEnemies) {
+          if (enemy.dead || Math.hypot(enemy.x - this.px, enemy.z - this.pz) > 7.0) continue;
+          this.spawnShockwave(enemy.x, enemy.z, 0x38bdf8, 2.0, 0.32);
+          this.damageEnemy(enemy, atkPower * 2.7, true, false, false, false, false, 'KÍNH GIỚI!', 'ultimate');
+        }
+        break;
+      }
       case 'aurelia': {
         this.solarLeoUltBurst = 1.0;
         this.alexOverdriveTimer = Math.max(this.alexOverdriveTimer, 5.0);
@@ -12161,6 +12236,14 @@ export class GameEngine {
             this.chapter3SanctuaryAtmosphere.pollenMesh.visible = !inGuard;
           }
         }
+        if (this.chapter4GeminiAtmosphere) {
+          if (this.chapter4GeminiAtmosphere.shardMesh) {
+            this.chapter4GeminiAtmosphere.shardMesh.visible = !inGuard;
+          }
+          if (this.chapter4GeminiAtmosphere.stardustMesh) {
+            this.chapter4GeminiAtmosphere.stardustMesh.visible = !inGuard;
+          }
+        }
         if (activeBudget.shadowMapSize > 0 && this.graphicsQuality !== 'low') {
           const allowShadows = !inGuard;
           this.renderer.shadowMap.enabled = allowShadows;
@@ -12210,6 +12293,9 @@ export class GameEngine {
     }
     if (this.chapter3SanctuaryAtmosphere && this.arenaGroup.visible) {
       updateChapter3EmeraldSanctuaryAtmosphere(this.chapter3SanctuaryAtmosphere, this.elapsed);
+    }
+    if (this.chapter4GeminiAtmosphere && this.arenaGroup.visible) {
+      updateChapter4GeminiSanctuaryAtmosphere(this.chapter4GeminiAtmosphere, this.elapsed);
     }
 
     this.hero.bowGroup.visible = true;
@@ -23032,7 +23118,10 @@ export class GameEngine {
     const nearestTarget = this.findNearestEnemy(this.px, this.pz, undefined, 18);
     const target = nearestTarget && !nearestTarget.isBoss ? nearestTarget : undefined;
     const campaignChapterId =
-      (this.currentChapter.id === 1 || this.currentChapter.id === 2 || this.currentChapter.id === 3) &&
+      (this.currentChapter.id === 1 ||
+        this.currentChapter.id === 2 ||
+        this.currentChapter.id === 3 ||
+        this.currentChapter.id === 4) &&
       !this.isSideModeActiveForBossModel() && !this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode
         ? this.currentChapter.id
         : undefined;

@@ -1,6 +1,7 @@
 import { applyChapterEquipmentSet, saveChapterEquipmentSet } from './data/chapterEquipmentSets';
 import { canClaimChapter2Asset, grantChapter2Collection } from './data/chapter2Collection';
 import { canClaimChapter3Asset, grantChapter3Collection } from './data/chapter3Collection';
+import { canClaimChapter4Asset, grantChapter4Collection } from './data/chapter4Collection';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { soundEngine } from './audio/soundEngine';
@@ -3325,7 +3326,7 @@ export default function App() {
                 : 0;
             campaignRunStartAtRef.current = 0;
             activeNightmareTierRef.current = 0;
-            const withTelemetry: SaveData = withMastery(grantChapter3Collection(grantChapter2Collection({
+            const withTelemetry: SaveData = withMastery(grantChapter4Collection(grantChapter3Collection(grantChapter2Collection({
               ...withMilestones,
               playtestMetrics: recordPlaytestRunEnd(withMilestones.playtestMetrics, {
                 chapterId: summary.chapterId,
@@ -3334,13 +3335,16 @@ export default function App() {
                 elapsedSeconds,
                 activeSynergies: summary.activeSynergies,
               }),
-            })));
+            }))));
             const notes: string[] = [...msSummary.titles];
             if (victory && summary.chapterId === 2 && prev.highestChapterCleared < 2) {
               notes.push('Đã mở Bellona và Bộ Sưu Tập Hỏa Sơn Sừng Đỏ');
             }
             if (victory && summary.chapterId === 3 && prev.highestChapterCleared < 3) {
               notes.push('Đã mở Sylvia và Bộ Sưu Tập Thánh Địa Ngọc Lục Bảo');
+            }
+            if (victory && summary.chapterId === 4 && prev.highestChapterCleared < 4) {
+              notes.push('Đã mở Celeste và Bộ Sưu Tập Đấu Trường Song Tử');
             }
             if (nightmareCfg && victory) {
               notes.push(`Chinh phục ${nightmareCfg.label} · Thưởng x${nightmareCfg.goldRewardMult.toFixed(2)} Vàng`);
@@ -7231,7 +7235,7 @@ export default function App() {
     const hero = HERO_MAP[heroId];
     if (!hero) return;
     setSave((prev) => {
-      if (!canClaimChapter2Asset(heroId, prev.highestChapterCleared) || !canClaimChapter3Asset(heroId, prev.highestChapterCleared)) return prev;
+      if (!canClaimChapter2Asset(heroId, prev.highestChapterCleared) || !canClaimChapter3Asset(heroId, prev.highestChapterCleared) || !canClaimChapter4Asset(heroId, prev.highestChapterCleared)) return prev;
       if (prev.unlockedHeroes.includes(heroId)) return prev;
       if (currency === 'gold' && prev.gold < hero.unlockGold) return prev;
       if (currency === 'gems' && prev.gems < hero.unlockGems) return prev;
@@ -8317,7 +8321,7 @@ export default function App() {
     const def = PET_MAP[petId];
     if (!def) return;
     setSave((prev) => {
-      if (!canClaimChapter2Asset(petId, prev.highestChapterCleared) || !canClaimChapter3Asset(petId, prev.highestChapterCleared)) return prev;
+      if (!canClaimChapter2Asset(petId, prev.highestChapterCleared) || !canClaimChapter3Asset(petId, prev.highestChapterCleared) || !canClaimChapter4Asset(petId, prev.highestChapterCleared)) return prev;
       const pets = normalizePets(prev.pets);
       if (pets.some((p) => p.petId === petId)) return prev;
       if (currency === 'gold' && (def.unlockGold <= 0 || prev.gold < def.unlockGold)) return prev;
@@ -8369,7 +8373,7 @@ export default function App() {
     const skin = SKIN_MAP[skinId];
     if (!skin) return;
     setSave((prev) => {
-      if (!canClaimChapter2Asset(skinId, prev.highestChapterCleared) || !canClaimChapter3Asset(skinId, prev.highestChapterCleared)) return prev;
+      if (!canClaimChapter2Asset(skinId, prev.highestChapterCleared) || !canClaimChapter3Asset(skinId, prev.highestChapterCleared) || !canClaimChapter4Asset(skinId, prev.highestChapterCleared)) return prev;
       const unlocked = prev.unlockedSkins ?? ['default'];
       if (unlocked.includes(skinId)) return prev;
       const targetHero = heroId ?? prev.selectedHeroId;
@@ -9526,7 +9530,7 @@ export default function App() {
     const def = WING_MAP[wingId];
     if (!def) return;
     setSave((prev) => {
-      if (!canClaimChapter2Asset(wingId, prev.highestChapterCleared) || !canClaimChapter3Asset(wingId, prev.highestChapterCleared)) return prev;
+      if (!canClaimChapter2Asset(wingId, prev.highestChapterCleared) || !canClaimChapter3Asset(wingId, prev.highestChapterCleared) || !canClaimChapter4Asset(wingId, prev.highestChapterCleared)) return prev;
       const unlocked = prev.unlockedWings ?? [];
       if (unlocked.includes(wingId)) return prev;
       const feathers = prev.wingFeathers ?? 0;
@@ -10084,7 +10088,7 @@ export default function App() {
     const def = MOUNT_MAP[mountId];
     if (!def) return;
     setSave((prev) => {
-      if (!canClaimChapter2Asset(mountId, prev.highestChapterCleared) || !canClaimChapter3Asset(mountId, prev.highestChapterCleared)) return prev;
+      if (!canClaimChapter2Asset(mountId, prev.highestChapterCleared) || !canClaimChapter3Asset(mountId, prev.highestChapterCleared) || !canClaimChapter4Asset(mountId, prev.highestChapterCleared)) return prev;
       const unlocked = prev.unlockedMounts ?? [];
       if (unlocked.includes(mountId)) return prev;
       const shards = prev.mountShards ?? 0;
@@ -10494,7 +10498,7 @@ export default function App() {
       const def = ARTIFACT_MAP[artifactId];
       if (!def) return;
       setSave((prev) => {
-      if (!canClaimChapter2Asset(artifactId, prev.highestChapterCleared) || !canClaimChapter3Asset(artifactId, prev.highestChapterCleared)) return prev;
+      if (!canClaimChapter2Asset(artifactId, prev.highestChapterCleared) || !canClaimChapter3Asset(artifactId, prev.highestChapterCleared) || !canClaimChapter4Asset(artifactId, prev.highestChapterCleared)) return prev;
         const unlocked = prev.unlockedArtifacts ?? [];
         if (unlocked.includes(artifactId)) return prev;
         const mx = normalizeMysticExchange(prev.mysticExchange);
@@ -10756,7 +10760,7 @@ export default function App() {
     const def = DIVINE_HALO_MAP[haloId];
     if (!def) return;
     setSave((prev) => {
-      if (!canClaimChapter2Asset(haloId, prev.highestChapterCleared) || !canClaimChapter3Asset(haloId, prev.highestChapterCleared)) return prev;
+      if (!canClaimChapter2Asset(haloId, prev.highestChapterCleared) || !canClaimChapter3Asset(haloId, prev.highestChapterCleared) || !canClaimChapter4Asset(haloId, prev.highestChapterCleared)) return prev;
       const unlocked = prev.unlockedHalos ?? [];
       if (unlocked.includes(haloId)) return prev;
       const crystals = prev.divineCrystals ?? 0;
