@@ -25,3 +25,19 @@ Thay vì xả toàn bộ 7 vật phẩm khi vừa vượt Ải 12 lần đầu (
 - Hàm `migrateSaveData()` trong `src/data/earlyProgressionData.ts` giữ nguyên 100% tướng, trang phục, tinh linh, cánh, thú cưỡi, thánh khí, hào quang và `chapterEquipmentPresets` của người chơi đã mở từ phiên bản trước.
 - Hàm `normalizeChapterMilestones()` tự động quy đổi ngược các món người chơi đã sở hữu thành mốc sao ★1–★4 tương ứng để hiển thị đồng bộ trên Sảnh (`LobbyPanels.tsx`).
 - Mọi bản lưu đều đi qua `validateAndSanitizeSaveIntegrity()` để loại bỏ giá trị lỗi (`NaN`, số âm, vượt trần, sao không hợp lệ) mà không ảnh hưởng dữ liệu hợp lệ.
+
+---
+
+## 4. Lộ Trình 60 Phút Đầu Tiên & 19 Thành Tựu Tinh Thông (Đợt 3)
+
+Nhằm nâng cao khả năng giữ chân người chơi tự nhiên (**Player Retention**) mà không sử dụng cơ chế ép buộc hay dark pattern, Đợt 3 bổ sung hệ thống định hướng thực tế gắn với thanh Hồ Sơ (`src/data/onboardingAndMasteryData.ts`, `src/components/ProfileCodexModal.tsx`):
+
+1. **Lộ Trình 60 Phút Đầu Tiên (`5p → 15p → 30p → 60p`):**
+   - **Mốc 5 phút:** Làm chủ nhịp bắn & hạ 15 mục tiêu đầu tiên.
+   - **Mốc 15 phút:** Sở hữu trang bị Hiếm hoặc nâng cường hóa vũ khí lên cấp 3+.
+   - **Mốc 30 phút:** Chinh phục trọn vẹn Chương 1 (Sư Tử Nhật Luân) hoặc kích hoạt 1 Cơ quan Đấu trường.
+   - **Mốc 60 phút:** Khám phá ít nhất 1 nhánh Tiến Hóa Kỹ Năng và mở khóa Tháp Vô Tận (Tầng 1+).
+2. **Mở rộng lên 19 Thành Tựu Tinh Thông (`src/data/liveOpsData.ts`):**
+   - Bổ sung 7 cột mốc dài hạn gắn trực tiếp với kỹ năng chiến đấu và khám phá: leo Tháp Tầng 30 (`ach_tower_30`), khám phá 3 & 12 nhánh Tiến Hóa (`ach_evo_3`, `ach_evo_12`), thu thập 10 Sao Chương (`ach_stars_10`), kích hoạt 15 Cơ quan Đấu trường (`ach_mech_15`), thực hiện 10 pha Ngắt Chiêu Boss (`ach_interrupt_10`), và kích hoạt 25 Hiệu Ứng Bộ Trang Bị (`ach_set_proc_25`).
+   - Toàn bộ 3 bộ đếm sự nghiệp mới (`arenaMechanismsTriggered`, `bossInterruptsTotal`, `setProcsTriggered`) đều được kiểm chuẩn và chống giả mạo an toàn trong `src/data/saveIntegrity.ts`, tương thích ngược 100% với bản lưu cũ.
+

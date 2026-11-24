@@ -230,6 +230,36 @@ export function validateAndSanitizeSaveIntegrity(save: SaveData): SaveIntegrityR
     cleanDiscoveredEvolutions = validEvos;
   }
 
+  // Sanitize Pass 3 career telemetry counters without breaking legacy saves
+  let cleanCareer = save.career;
+  if (save.career && typeof save.career === 'object') {
+    const c = save.career;
+    const mechCount =
+      c.arenaMechanismsTriggered !== undefined
+        ? clampSafeInt(c.arenaMechanismsTriggered, 0, 1_000_000, 'career.arenaMechanismsTriggered', repairs)
+        : undefined;
+    const intCount =
+      c.bossInterruptsTotal !== undefined
+        ? clampSafeInt(c.bossInterruptsTotal, 0, 1_000_000, 'career.bossInterruptsTotal', repairs)
+        : undefined;
+    const procCount =
+      c.setProcsTriggered !== undefined
+        ? clampSafeInt(c.setProcsTriggered, 0, 1_000_000, 'career.setProcsTriggered', repairs)
+        : undefined;
+    if (
+      mechCount !== c.arenaMechanismsTriggered ||
+      intCount !== c.bossInterruptsTotal ||
+      procCount !== c.setProcsTriggered
+    ) {
+      cleanCareer = {
+        ...c,
+        ...(mechCount !== undefined ? { arenaMechanismsTriggered: mechCount } : {}),
+        ...(intCount !== undefined ? { bossInterruptsTotal: intCount } : {}),
+        ...(procCount !== undefined ? { setProcsTriggered: procCount } : {}),
+      };
+    }
+  }
+
   const sanitizedSave: SaveData =
     repairs.length === 0
       ? save
@@ -248,6 +278,7 @@ export function validateAndSanitizeSaveIntegrity(save: SaveData): SaveIntegrityR
             : save.heroStars,
           chapterMilestones: cleanChapterMilestones,
           discoveredEvolutions: cleanDiscoveredEvolutions,
+          career: cleanCareer,
         };
 
   return {

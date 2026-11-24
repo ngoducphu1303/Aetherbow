@@ -2079,6 +2079,23 @@ export default function App() {
             return { ...prev, discoveredEvolutions: [...existing, evoId] };
           });
         },
+        onCombatMilestoneEvent: (kind) => {
+          setSave((prev) => {
+            const career = normalizeCareer(prev.career);
+            return {
+              ...prev,
+              career: {
+                ...career,
+                arenaMechanismsTriggered:
+                  (career.arenaMechanismsTriggered ?? 0) + (kind === 'arena_mechanism' ? 1 : 0),
+                bossInterruptsTotal:
+                  (career.bossInterruptsTotal ?? 0) + (kind === 'cast_interrupt' ? 1 : 0),
+                setProcsTriggered:
+                  (career.setProcsTriggered ?? 0) + (kind === 'set_proc' ? 1 : 0),
+              },
+            };
+          });
+        },
         onRequestSkillDraft: (currentSkills) => {
           const pendingEvo = engine.getPendingEvolutionOffer();
           const rolled = rollSkillChoices(currentSkills, 3, undefined, {
@@ -11826,6 +11843,21 @@ export default function App() {
       {hud.gpuWatchdogNotice && phase === GamePhase.PLAYING && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-4 py-2 rounded-xl border border-sky-400/60 bg-[#071226]/95 text-sky-100 text-xs font-bold shadow-lg max-w-md text-center">
           {hud.gpuWatchdogNotice}
+        </div>
+      )}
+
+      {phase === GamePhase.PLAYING && (hud.activeSetProcBanner || hud.activeArenaMechanismLabel) && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center gap-1 text-center">
+          {hud.activeSetProcBanner && (
+            <div className="px-3 py-1 rounded-lg border border-amber-400/50 bg-[#0b1120]/90 text-amber-200 text-xs font-semibold tracking-wide">
+              {hud.activeSetProcBanner}
+            </div>
+          )}
+          {hud.activeArenaMechanismLabel && (
+            <div className="text-[11px] font-medium text-slate-200/90 bg-[#070d1c]/85 border border-slate-700/60 px-2.5 py-0.5 rounded-md tabular-nums">
+              Cơ quan: {hud.activeArenaMechanismLabel} · {hud.activeArenaMechanismReady ? 'Sẵn sàng kích hoạt' : 'Đang hồi nạp'}
+            </div>
+          )}
         </div>
       )}
 

@@ -28,7 +28,31 @@ import {
   computeSquadCoordinationVector,
   evaluateCastInterrupt,
   getChapterBossPhasePlan,
+  resolveEnemyTacticalArchetype,
 } from './tacticalCombatChoreography';
+import {
+  ArenaMechanismInstance,
+  ARENA_MECHANISM_SPECS,
+  resolveMechanismRenderBudget,
+  spawnChapterArenaMechanisms,
+  stepArenaMechanisms,
+  tryTriggerArenaMechanism,
+} from './chapterArenaMechanisms';
+import {
+  applyAttackReleaseRecoil,
+  applyDirectionalHitRecoil,
+  CombatKinematicPose,
+  CombatKinematicTransformDelta,
+  createCombatKinematicPose,
+  stepCombatKinematicPose,
+} from './combatAnimationKinematics';
+import {
+  createGearSetProcRuntime,
+  evaluateGearSetProcEvent,
+  GearSetProcRuntimeState,
+  GearSetProcTriggerEvent,
+  stepGearSetProcCooldowns,
+} from './gearSetCombatProcs';
 import {
   AUTO_RIG_CALIBRATION,
   AutoRigInstance,
@@ -916,6 +940,7 @@ export interface EngineCallbacks {
   onGpuSafetyTriggered?: (profile: GpuProfileSummary) => void;
   onToggleAutoPilotKey?: () => void;
   onEvolutionUnlocked?: (evoId: SkillEvolutionId) => void;
+  onCombatMilestoneEvent?: (kind: 'arena_mechanism' | 'cast_interrupt' | 'set_proc') => void;
   onHudUpdate: (hud: HudSnapshot) => void;
   onFloatingDamage: (dmg: FloatingDamage) => void;
   onJoystickUpdate: (joy: JoystickState) => void;
@@ -1474,6 +1499,33 @@ export class GameEngine {
   private wave9PropAtkBonusPct = 0;
   private wave9PropAspdBonusPct = 0;
   private wave9PropBuffLabel: string | null = null;
+  // Pass 3: Chapter Interactive Arena Mechanisms (Ch.1-12, Dell E5430 Lite-safe)
+  private chapterMechanisms: Array<{
+    data: ArenaMechanismInstance;
+    group: THREE.Group;
+    core: THREE.Mesh;
+    ring: THREE.Mesh;
+  }> = [];
+  private mechanismBuffTimer = 0;
+  private mechanismAtkBonusPct = 0;
+  private mechanismAspdBonusPct = 0;
+  private mechanismMoveBonusPct = 0;
+  private mechanismDrBonusPct = 0;
+  // Pass 3: Unique Gear Set Combat Procs runtime
+  private gearSetProcRuntime: GearSetProcRuntimeState = createGearSetProcRuntime([]);
+  private setProcBannerText: string | null = null;
+  private setProcBannerTimer = 0;
+  private setProcBuffTimer = 0;
+  private setProcAspdBonus = 0;
+  private setProcMoveBonus = 0;
+  // Pass 3: Zero-GC Procedural Combat Animation Kinematics
+  private heroKinematicPose: CombatKinematicPose = createCombatKinematicPose();
+  private readonly heroKinematicDelta: CombatKinematicTransformDelta = {
+    offsetY: 0,
+    rotX: 0,
+    rotZ: 0,
+    scaleY: 1,
+  };
   private bossPhaseCounterTimer = 0;
   private bossPhaseCounterLevel: 2 | 3 | null = null;
   private executionFinisherTimer = 0;
@@ -8292,6 +8344,13 @@ export class GameEngine {
     this.coopSynergyClock = createCoopSynergyClock();
     this.lastBossTelegraphKey = '';
     this.kinestheticsClock = createDeterministicKinestheticsClock();
+    this.gearSetProcRuntime = createGearSetProcRuntime(stats.activeGearSets);
+    this.setProcBannerText = null;
+    this.setProcBannerTimer = 0;
+    this.setProcBuffTimer = 0;
+    this.setProcAspdBonus = 0;
+    this.setProcMoveBonus = 0;
+    this.heroKinematicPose = createCombatKinematicPose();
     this.autoPilotUsedInRun =
       this.autoPilotEnabled &&
       !(this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode);
@@ -8947,6 +9006,13 @@ export class GameEngine {
     this.resonanceTraps = [];
     this.wave9Props?.forEach((p) => this.releaseObject(p.group));
     this.wave9Props = [];
+    this.chapterMechanisms?.forEach((m) => this.releaseObject(m.group));
+    this.chapterMechanisms = [];
+    this.mechanismBuffTimer = 0;
+    this.mechanismAtkBonusPct = 0;
+    this.mechanismAspdBonusPct = 0;
+    this.mechanismMoveBonusPct = 0;
+    this.mechanismDrBonusPct = 0;
     this.wave11Hazards?.forEach((h) => this.releaseObject(h.group));
     this.wave11Hazards = [];
     if (this.weaponOverdriveRingMesh) {
@@ -9672,6 +9738,94 @@ export class GameEngine {
           ring: groundBeacon,
         });
       });
+    }
+
+    // Pass 3: Chapter Interactive Arena Mechanisms (Ch.1-12, zero extra PointLights for Dell E5430 Lite safety)
+    if (!this.isTrainingMode && !this.isArenaMode) {
+      const mechIsBoss = this.isTowerMode
+        ? this.towerFloor % 3 === 0
+        : this.stageIndex >= this.currentChapter.stages.length - 1;
+      const mechInstances = spawnChapterArenaMechanisms({
+        chapterId: this.currentChapter.id,
+        stageIndex: this.stageIndex,
+        arenaHalfW: ARENA_HALF_W,
+        arenaHalfD: ARENA_HALF_D,
+        obstacles: this.obstacles
+          .filter((o) => o.intact !== false)
+          .map((o) => ({ x: o.x, z: o.z, radius: o.radius })),
+        isBossStage: mechIsBoss,
+      });
+      const renderBudget = resolveMechanismRenderBudget({
+        isLiteMode: this.lowEndGpu,
+        watchdogStage: this.gpuWatchdog.stage,
+        reducedMotion: this.reducedMotionEnabled,
+      });
+      for (const inst of mechInstances) {
+        const spec = ARENA_MECHANISM_SPECS[inst.kind];
+        const group = new THREE.Group();
+        group.position.set(inst.x, 0, inst.z);
+
+        const baseMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.62, 0.78, 0.28, renderBudget.cylinderSegments),
+          new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.78,
+            metalness: 0.24,
+          })
+        );
+        baseMesh.position.y = 0.14;
+
+        const pillarMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.24, 0.36, 1.05, renderBudget.cylinderSegments),
+          new THREE.MeshStandardMaterial({
+            color: spec.accentHex,
+            emissive: spec.accentHex,
+            emissiveIntensity: 0.28,
+            roughness: 0.42,
+            metalness: 0.55,
+          })
+        );
+        pillarMesh.position.y = 0.78;
+
+        const coreGeo =
+          inst.kind === 'astral_prism' || inst.kind === 'emerald_crystal'
+            ? new THREE.OctahedronGeometry(0.34, 0)
+            : new THREE.DodecahedronGeometry(0.32, 0);
+        const coreMesh = new THREE.Mesh(
+          coreGeo,
+          new THREE.MeshStandardMaterial({
+            color: spec.secondaryHex,
+            emissive: spec.accentHex,
+            emissiveIntensity: 0.55,
+            roughness: 0.25,
+            metalness: 0.4,
+          })
+        );
+        coreMesh.position.y = 1.56;
+
+        const ringMesh = new THREE.Mesh(
+          new THREE.RingGeometry(spec.triggerRadius * 0.62, spec.triggerRadius * 0.72, renderBudget.ringSegments),
+          new THREE.MeshBasicMaterial({
+            color: spec.accentHex,
+            transparent: true,
+            opacity: 0.62,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          })
+        );
+        ringMesh.rotation.x = -Math.PI / 2;
+        ringMesh.position.y = 0.04;
+
+        group.add(baseMesh, pillarMesh, coreMesh, ringMesh);
+        this.entitiesGroup.add(group);
+        this.chapterMechanisms.push({
+          data: inst,
+          group,
+          core: coreMesh,
+          ring: ringMesh,
+        });
+      }
     }
 
     // Wave 11: Composite 5-part PBR 3D Interactive Battlefield Hazards (Frost Crystal / Magma Brazier / Volt Obelisk)
@@ -11390,7 +11544,157 @@ export class GameEngine {
     this.spawnShockwave(this.px, this.pz, 0xfde047, 4.15, 0.36);
     this.spawnParticles(this.px, 0.9, this.pz, 0x38bdf8, 16);
     this.emitFloatingNumber(this.px, 2.25, this.pz, 0, true, false, 'ice', 'PHẢN KÍCH THỜI GIAN! ×2');
+    this.handleGearSetProc('perfect_dodge');
     this.syncHudImmediate();
+  }
+
+  private handleGearSetProc(
+    event: GearSetProcTriggerEvent,
+    context?: { hpRatio?: number; targetX?: number; targetZ?: number }
+  ): void {
+    const outcome = evaluateGearSetProcEvent(this.gearSetProcRuntime, event, context);
+    if (!outcome) return;
+
+    this.setProcBannerText = outcome.bannerText;
+    this.setProcBannerTimer = 2.4;
+    this.callbacks.onCombatMilestoneEvent?.('set_proc');
+
+    const baseAtk = this.baseStats.attack * this.getCurrentAtkMultiplier();
+    const originX = context?.targetX ?? this.px;
+    const originZ = context?.targetZ ?? this.pz;
+
+    if (outcome.shieldMaxHpPct > 0) {
+      const shieldGain = Math.round(this.maxHp * outcome.shieldMaxHpPct);
+      this.shield = Math.min(this.maxHp * 0.65, this.shield + shieldGain);
+    }
+    if (outcome.ultChargeGain > 0) {
+      this.ultCharge = Math.min(100, this.ultCharge + outcome.ultChargeGain * 100);
+    }
+    if (outcome.buffDurationSec > 0 && (outcome.tempAtkSpeedBonus > 0 || outcome.tempMoveSpeedBonus > 0)) {
+      this.setProcBuffTimer = Math.max(this.setProcBuffTimer, outcome.buffDurationSec);
+      this.setProcAspdBonus = Math.max(this.setProcAspdBonus, outcome.tempAtkSpeedBonus);
+      this.setProcMoveBonus = Math.max(this.setProcMoveBonus, outcome.tempMoveSpeedBonus);
+    }
+
+    if (outcome.aoeDamageAtkMult > 0 && outcome.aoeRadius > 0) {
+      const blastDmg = Math.max(10, Math.round(baseAtk * outcome.aoeDamageAtkMult));
+      if (!this.reducedMotionEnabled) {
+        this.spawnShockwave(originX, originZ, outcome.accentHex, outcome.aoeRadius, 0.34);
+        this.spawnParticles(originX, 1.0, originZ, outcome.accentHex, this.lowEndGpu ? 6 : 14);
+      }
+      for (const en of [...this.enemies]) {
+        if (!en || en.dead || en.spawnTimer > 0) continue;
+        if (Math.hypot(en.x - originX, en.z - originZ) <= outcome.aoeRadius + en.radius) {
+          this.damageEnemy(
+            en,
+            blastDmg,
+            false,
+            outcome.procId === 'destruction_nova' || outcome.procId === 'dragon_knight_aegis',
+            false,
+            false,
+            false,
+            outcome.name,
+            'elemental',
+            undefined,
+            {
+              attackerX: originX,
+              attackerZ: originZ,
+            }
+          );
+        }
+      }
+    } else if (outcome.extraPierceArrowAtkMult > 0) {
+      const nearest = this.findNearestEnemy(this.px, this.pz);
+      const aimYaw = nearest ? Math.atan2(nearest.x - this.px, nearest.z - this.pz) : this.pFacing;
+      this.firePlayerArrow(aimYaw, 0, true, 'elemental', false, true);
+      if (!this.reducedMotionEnabled) {
+        this.spawnShockwave(this.px, this.pz, outcome.accentHex, 2.1, 0.24);
+      }
+    }
+
+    this.emitFloatingNumber(this.px, 2.35, this.pz, 0, true, false, 'storm', outcome.name);
+  }
+
+  private executeArenaMechanismTrigger(
+    probeX: number,
+    probeZ: number,
+    extraRadius = 0
+  ): boolean {
+    if (this.chapterMechanisms.length === 0) return false;
+    const rawList = this.chapterMechanisms.map((m) => m.data);
+    const hit = tryTriggerArenaMechanism(rawList, probeX, probeZ, extraRadius);
+    if (!hit) return false;
+
+    const { spec } = hit;
+    this.callbacks.onCombatMilestoneEvent?.('arena_mechanism');
+    this.stageBannerText = hit.bannerText;
+    this.stageBannerTimer = 2.2;
+    soundEngine.playBossGuardBreak(computeSpatialPan(hit.x, ARENA_HALF_W));
+    if (!this.reducedMotionEnabled) {
+      this.spawnShockwave(hit.x, hit.z, spec.accentHex, spec.effectRadius, 0.42);
+      this.spawnParticles(hit.x, 1.2, hit.z, spec.secondaryHex, this.lowEndGpu ? 8 : 18);
+    }
+
+    if (spec.healPct > 0) {
+      const healAmt = Math.round(this.maxHp * spec.healPct);
+      this.hp = Math.min(this.maxHp, this.hp + healAmt);
+      this.emitFloatingNumber(this.px, 2.0, this.pz, healAmt, false, true);
+    }
+    if (spec.shieldPct > 0) {
+      this.shield = Math.min(this.maxHp * 0.65, this.shield + Math.round(this.maxHp * spec.shieldPct));
+    }
+    if (spec.ultChargeBonus > 0) {
+      this.ultCharge = Math.min(100, this.ultCharge + spec.ultChargeBonus * 100);
+    }
+    if (spec.resetDash) {
+      this.dashCooldown = 0;
+    }
+
+    this.mechanismBuffTimer = Math.max(this.mechanismBuffTimer, spec.buffDurationSec);
+    this.mechanismAtkBonusPct = Math.max(this.mechanismAtkBonusPct, spec.atkBonusPct);
+    this.mechanismAspdBonusPct = Math.max(this.mechanismAspdBonusPct, spec.atkSpeedBonusPct);
+    this.mechanismMoveBonusPct = Math.max(this.mechanismMoveBonusPct, spec.moveSpeedBonusPct);
+    this.mechanismDrBonusPct = Math.max(this.mechanismDrBonusPct, spec.drBonusPct);
+
+    if (spec.damageAtkMult > 0) {
+      const mechDmg = Math.max(12, Math.round(this.baseStats.attack * this.getCurrentAtkMultiplier() * spec.damageAtkMult));
+      for (const en of [...this.enemies]) {
+        if (!en || en.dead || en.spawnTimer > 0) continue;
+        if (Math.hypot(en.x - hit.x, en.z - hit.z) <= spec.effectRadius + en.radius) {
+          if (!en.isBoss && spec.stunSec > 0) {
+            en.stunTimer = Math.max(en.stunTimer ?? 0, spec.stunSec);
+          }
+          if (en.isBoss && this.bossStaggerState && spec.bossStaggerRatio > 0) {
+            this.bossStaggerState.current = Math.min(
+              this.bossStaggerState.max,
+              this.bossStaggerState.current + this.bossStaggerState.max * spec.bossStaggerRatio
+            );
+          }
+          if (spec.armorSunderSec > 0) {
+            en.exposedTimer = Math.max(en.exposedTimer ?? 0, spec.armorSunderSec);
+          }
+          this.damageEnemy(
+            en,
+            mechDmg,
+            true,
+            spec.burnDurationSec > 0 || hit.kind === 'solar_obelisk',
+            hit.kind === 'emerald_crystal',
+            hit.kind === 'astral_prism',
+            false,
+            spec.shortLabel,
+            'elemental',
+            undefined,
+            {
+              attackerX: hit.x,
+              attackerZ: hit.z,
+            }
+          );
+        }
+      }
+    }
+
+    this.emitFloatingNumber(hit.x, 2.35, hit.z, 0, true, false, 'storm', hit.bannerText, true);
+    return true;
   }
 
   public triggerHeroActiveSkill(): void {
@@ -13373,6 +13677,30 @@ export class GameEngine {
         this.wave9PropBuffLabel = null;
       }
     }
+    if (this.chapterMechanisms.length > 0) {
+      stepArenaMechanisms(this.chapterMechanisms.map((m) => m.data), dt);
+    }
+    if (this.mechanismBuffTimer > 0) {
+      this.mechanismBuffTimer = Math.max(0, this.mechanismBuffTimer - dt);
+      if (this.mechanismBuffTimer <= 0) {
+        this.mechanismAtkBonusPct = 0;
+        this.mechanismAspdBonusPct = 0;
+        this.mechanismMoveBonusPct = 0;
+        this.mechanismDrBonusPct = 0;
+      }
+    }
+    stepGearSetProcCooldowns(this.gearSetProcRuntime, dt);
+    if (this.setProcBannerTimer > 0) {
+      this.setProcBannerTimer = Math.max(0, this.setProcBannerTimer - dt);
+      if (this.setProcBannerTimer <= 0) this.setProcBannerText = null;
+    }
+    if (this.setProcBuffTimer > 0) {
+      this.setProcBuffTimer = Math.max(0, this.setProcBuffTimer - dt);
+      if (this.setProcBuffTimer <= 0) {
+        this.setProcAspdBonus = 0;
+        this.setProcMoveBonus = 0;
+      }
+    }
     if (this.arenaEntryFlyTimer > 0) {
       this.arenaEntryFlyTimer = Math.max(0, this.arenaEntryFlyTimer - dt);
     }
@@ -13896,6 +14224,9 @@ export class GameEngine {
     if (this.wave9PropBuffTimer > 0 && this.wave9PropAtkBonusPct > 0) {
       mult *= 1 + this.wave9PropAtkBonusPct / 100;
     }
+    if (this.mechanismBuffTimer > 0 && this.mechanismAtkBonusPct > 0) {
+      mult *= 1 + this.mechanismAtkBonusPct;
+    }
     if (this.weaponOverdriveBuffs.atkMult > 1) {
       mult *= this.weaponOverdriveBuffs.atkMult;
     }
@@ -14152,6 +14483,7 @@ export class GameEngine {
       this.dashGhostEmitTimer = 0;
       this.spawnDashGhost(this.px, this.pz, this.pFacing, dashAccentHex);
       this.spawnDashScorch(this.px, this.pz, Math.atan2(this.dashDirX, this.dashDirZ), dashAccentHex);
+      this.handleGearSetProc('dash_used');
     }
 
     if (this.windBeaconSpeedTimer > 0) {
@@ -14161,6 +14493,8 @@ export class GameEngine {
       (this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.playerSpeedMult : 1.0) *
       (this.alexCadenceTimer > 0 ? 1.15 : 1.0) *
       (this.windBeaconSpeedTimer > 0 ? 1.22 : 1.0) *
+      (this.mechanismBuffTimer > 0 ? 1 + this.mechanismMoveBonusPct : 1.0) *
+      (this.setProcBuffTimer > 0 ? 1 + this.setProcMoveBonus : 1.0) *
       (this.activeRoomChaosEvent?.id === 'wind_frenzy' ? 1.22 : 1.0);
     const frostSlowMult = this.playerFrostSlowTimer > 0 ? 0.72 : 1.0;
     const effectiveMoveSpeed = this.baseStats.moveSpeed * moveMult * frostSlowMult;
@@ -14210,6 +14544,10 @@ export class GameEngine {
       -ARENA_HALF_D + pRadius,
       ARENA_HALF_D - pRadius
     );
+    // Pass 3: Proximity activation of Chapter Interactive Arena Mechanisms
+    if (this.chapterMechanisms.length > 0) {
+      this.executeArenaMechanismTrigger(this.px, this.pz, 0.35);
+    }
 
     for (const obs of this.obstacles) {
       if (obs.intact === false) continue;
@@ -14347,13 +14685,28 @@ export class GameEngine {
     this.hero.capeTail.rotation.z = THREE.MathUtils.damp(this.hero.capeTail.rotation.z, cloakPose.rotZ, 14, dt);
     this.hero.capeTail.scale.z = THREE.MathUtils.damp(this.hero.capeTail.scale.z, cloakPose.scaleZ, 12, dt);
 
-    // Subtle volume-preserving squash-and-stretch on dash takeoff and shot release
+    // Subtle volume-preserving squash-and-stretch + Pass 3 zero-GC procedural combat kinematics
+    const heroKin = stepCombatKinematicPose(
+      this.heroKinematicPose,
+      dt,
+      {
+        isVictory: this.phase === GamePhase.VICTORY,
+        reducedMotion: this.reducedMotionEnabled,
+      },
+      this.heroKinematicDelta
+    );
     this.heroSquashY = THREE.MathUtils.damp(this.heroSquashY, 1, 14, dt);
-    if (!onDragon && Math.abs(this.heroSquashY - 1) > 0.002) {
-      const xzScale = 1 / Math.sqrt(Math.max(0.7, this.heroSquashY));
-      this.hero.bodyGroup.scale.set(xzScale, this.heroSquashY, xzScale);
+    const combinedScaleY = this.heroSquashY * heroKin.scaleY;
+    if (!onDragon && Math.abs(combinedScaleY - 1) > 0.002) {
+      const xzScale = 1 / Math.sqrt(Math.max(0.7, combinedScaleY));
+      this.hero.bodyGroup.scale.set(xzScale, combinedScaleY, xzScale);
     } else {
       this.hero.bodyGroup.scale.set(1, 1, 1);
+    }
+    if (!onDragon && this.heroKinematicPose.active) {
+      this.hero.bodyGroup.rotation.x += heroKin.rotX;
+      this.hero.bodyGroup.rotation.z += heroKin.rotZ;
+      this.hero.bodyGroup.position.y += heroKin.offsetY;
     }
 
     const combatTurnBank = THREE.MathUtils.clamp(-heroTurnRate * 0.08, -0.38, 0.38);
@@ -14515,6 +14868,8 @@ export class GameEngine {
         (this.alexAspdBuffTimer > 0 ? 0.15 : 0) +
         (this.alexCadenceTimer > 0 ? 0.28 : 0) +
         (this.alexOverdriveTimer > 0 ? 0.45 : 0) +
+        (this.mechanismBuffTimer > 0 ? this.mechanismAspdBonusPct : 0) +
+        (this.setProcBuffTimer > 0 ? this.setProcAspdBonus : 0) +
         (this.activeRoomChaosEvent?.id === 'wind_frenzy' ? 0.35 : 0)) *
       this.weaponOverdriveBuffs.aspdMult *
       evoModsSpeed.attackSpeedMult;
@@ -14719,6 +15074,8 @@ export class GameEngine {
 
     // Atreus every 4th shot bonus piercing wave trigger handled on arrow launch
     this.atreusShotCount++;
+    applyAttackReleaseRecoil(this.heroKinematicPose, 0.85, this.reducedMotionEnabled);
+    this.handleGearSetProc('basic_volley');
     if (this.solarLeoHeroRig?.group.parent === this.hero.bodyGroup) {
       this.solarLeoShootRecoil = 1.0;
     }
@@ -17410,7 +17767,16 @@ export class GameEngine {
             playerX: mobTargetX,
             playerZ: mobTargetZ,
             flankSign: e.mobFlankSign ?? (e.id % 2 === 0 ? 1 : -1),
-            neighbors: enemySnapshot,
+            neighbors: enemySnapshot.map((nb) => ({
+              id: nb.id,
+              x: nb.x,
+              z: nb.z,
+              radius: nb.radius,
+              archetype: resolveEnemyTacticalArchetype(nb.kind),
+            })),
+            obstacles: this.obstacles
+              .filter((ob) => ob.intact !== false)
+              .map((ob) => ({ x: ob.x, z: ob.z, radius: ob.radius })),
           });
           e.vx = THREE.MathUtils.lerp(e.vx, squadVec.vx * slowMult, Math.min(1, dt * 6));
           e.vz = THREE.MathUtils.lerp(e.vz, squadVec.vz * slowMult, Math.min(1, dt * 6));
@@ -19474,6 +19840,10 @@ export class GameEngine {
           break;
         }
       }
+      // Pass 3: Shootable Chapter Interactive Arena Mechanisms
+      if (this.chapterMechanisms.length > 0) {
+        this.executeArenaMechanismTrigger(p.x, p.z, p.radius + 0.15);
+      }
 
       // Wave 11: Shootable 3D Interactive Battlefield Hazards (Frost Crystal / Magma Brazier / Volt Obelisk)
       let detonatedHazard = false;
@@ -19952,6 +20322,8 @@ export class GameEngine {
         resolvedLabel = interruptOutcome.floatingLabel;
         soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
         soundEngine.playInterruptFanfare();
+        this.callbacks.onCombatMilestoneEvent?.('cast_interrupt');
+        this.handleGearSetProc('cast_interrupt', { targetX: e.x, targetZ: e.z });
         if (!this.reducedMotionEnabled) {
           this.spawnShockwave(e.x, e.z, 0x38bdf8, e.isBoss ? 3.0 : 2.0, 0.26);
         }
@@ -20024,6 +20396,9 @@ export class GameEngine {
       );
       e.hitRecoilX = THREE.MathUtils.clamp((e.hitRecoilX ?? 0) + imp.impulseX, -1.25, 1.25);
       e.hitRecoilZ = THREE.MathUtils.clamp((e.hitRecoilZ ?? 0) + imp.impulseZ, -1.25, 1.25);
+    }
+    if (isCrit && coopAllyIndex === undefined && dmgSource === 'basic') {
+      this.handleGearSetProc('crit_hit', { targetX: e.x, targetZ: e.z });
     }
 
     // Wave 5 Pillar 1/2: Elemental Arrow Impact Bursts (fire / ice / lightning / poison)
@@ -21745,6 +22120,7 @@ export class GameEngine {
     const effectiveDr = Math.min(
       drCap,
       this.baseStats.damageReduction +
+        (this.mechanismBuffTimer > 0 ? this.mechanismDrBonusPct : 0) +
         (this.isChampionshipMode ? this.championshipDrBonus : 0) +
         (this.isCoopRaidMode && this.coopRoleSynergy ? this.coopRoleSynergy.damageReductionBonus : 0)
     );
@@ -21761,6 +22137,19 @@ export class GameEngine {
       dmg -= absorbed;
     }
     this.hp = Math.max(0, this.hp - dmg);
+    if (sourceX !== undefined && sourceZ !== undefined) {
+      applyDirectionalHitRecoil(
+        this.heroKinematicPose,
+        this.px - sourceX,
+        this.pz - sourceZ,
+        this.pFacing,
+        1.0,
+        this.reducedMotionEnabled
+      );
+    }
+    if (this.hp > 0 && this.hp / Math.max(1, this.maxHp) <= 0.5) {
+      this.handleGearSetProc('low_hp_hit', { hpRatio: this.hp / Math.max(1, this.maxHp) });
+    }
     this.emitFloatingNumber(this.px, 1.9, this.pz, dmg, false, false, 'playerHit');
 
     if (this.hp <= 0) {
@@ -22900,6 +23289,22 @@ export class GameEngine {
       }
     }
 
+    // 3b-ii. Pass 3 Chapter Interactive Arena Mechanisms idle hover & cooldown visual state
+    if (this.chapterMechanisms.length > 0) {
+      for (let i = 0; i < this.chapterMechanisms.length; i++) {
+        const mech = this.chapterMechanisms[i];
+        const ready = mech.data.state === 'ready';
+        if (!this.reducedMotionEnabled) {
+          mech.core.rotation.y += simDt * (ready ? 2.1 : 0.45);
+          mech.core.position.y = 1.56 + Math.sin(mech.data.pulsePhase) * (ready ? 0.11 : 0.03);
+        }
+        const cMat = mech.core.material as THREE.MeshStandardMaterial;
+        cMat.emissiveIntensity = ready ? 0.55 + Math.sin(mech.data.pulsePhase * 1.4) * 0.2 : 0.08;
+        const rMat = mech.ring.material as THREE.MeshBasicMaterial;
+        rMat.opacity = ready ? 0.58 + Math.sin(mech.data.pulsePhase * 1.6) * 0.16 : 0.14;
+      }
+    }
+
     // 3c. Wave 11 Interactive 3D Battlefield Hazards animation
     if (this.wave11Hazards) {
       for (let i = 0; i < this.wave11Hazards.length; i++) {
@@ -23752,6 +24157,14 @@ export class GameEngine {
       })(),
       activeArenaHazardLabel:
         this.arenaHazards.length > 0 ? ARENA_HAZARD_META[this.arenaHazards[0].kind].label : undefined,
+      activeArenaMechanismLabel:
+        this.chapterMechanisms.length > 0
+          ? ARENA_MECHANISM_SPECS[this.chapterMechanisms[0].data.kind].name
+          : undefined,
+      activeArenaMechanismReady:
+        this.chapterMechanisms.some((m) => m.data.state === 'ready'),
+      activeSetProcBanner:
+        this.setProcBannerTimer > 0 ? this.setProcBannerText : null,
       isTowerMode: this.isTowerMode,
       towerFloor: this.towerFloor,
       isBossRushMode: this.isBossRushMode,

@@ -233,6 +233,9 @@ export function normalizeCareer(c?: Partial<CareerStats>): CareerStats {
     totalChestsOpened: c?.totalChestsOpened ?? 0,
     seenEnemies: Array.isArray(c?.seenEnemies) ? c.seenEnemies : [],
     seenSkills: Array.isArray(c?.seenSkills) ? c.seenSkills : [],
+    arenaMechanismsTriggered: Math.max(0, Math.floor(c?.arenaMechanismsTriggered ?? 0)),
+    bossInterruptsTotal: Math.max(0, Math.floor(c?.bossInterruptsTotal ?? 0)),
+    setProcsTriggered: Math.max(0, Math.floor(c?.setProcsTriggered ?? 0)),
   };
 }
 
@@ -351,6 +354,72 @@ export const ACHIEVEMENTS_CATALOG: AchievementDefinition[] = [
     rewardGold: 600,
     rewardGems: 35,
   },
+  {
+    id: 'ach_tower_30',
+    title: 'Vô Địch Thiên Tháp',
+    desc: 'Chinh phục Tầng 30 tại Tháp Vô Tận (cột mốc Endgame).',
+    metric: 'bestTowerFloor',
+    target: 30,
+    rewardGold: 2200,
+    rewardGems: 90,
+    unlockTitle: 'Bá Chủ Thiên Tháp',
+  },
+  {
+    id: 'ach_evo_3',
+    title: 'Kẻ Thức Tỉnh Nhánh Kỹ Năng',
+    desc: 'Khai mở ít nhất 3 Tiến Hóa Kỹ Năng rẽ nhánh khác nhau.',
+    metric: 'discoveredEvolutions',
+    target: 3,
+    rewardGold: 650,
+    rewardGems: 35,
+  },
+  {
+    id: 'ach_evo_12',
+    title: 'Đại Sư Toàn Năng',
+    desc: 'Khám phá trọn vẹn 12/12 Tiến Hóa Kỹ Năng Hoàng Đạo.',
+    metric: 'discoveredEvolutions',
+    target: 12,
+    rewardGold: 2400,
+    rewardGems: 110,
+    unlockTitle: 'Đại Sư Tiến Hóa',
+  },
+  {
+    id: 'ach_stars_10',
+    title: 'Ngôi Sao Chinh Phạt',
+    desc: 'Tích lũy tổng cộng 10 Sao Thử Thách Chương (★1–★4).',
+    metric: 'chapterStarsEarned',
+    target: 10,
+    rewardGold: 950,
+    rewardGems: 48,
+  },
+  {
+    id: 'ach_mech_15',
+    title: 'Bậc Thầy Cơ Quan Đấu Trường',
+    desc: 'Kích hoạt 15 lần Cơ Quan Đấu Trường theo Chương trong thực chiến.',
+    metric: 'arenaMechanismsTriggered',
+    target: 15,
+    rewardGold: 720,
+    rewardGems: 38,
+  },
+  {
+    id: 'ach_interrupt_10',
+    title: 'Khắc Tinh Phản Đòn',
+    desc: 'Thực hiện thành công 10 pha Ngắt Chiêu kẻ địch hoặc Boss.',
+    metric: 'bossInterruptsTotal',
+    target: 10,
+    rewardGold: 850,
+    rewardGems: 45,
+    unlockTitle: 'Bậc Thầy Ngắt Chiêu',
+  },
+  {
+    id: 'ach_set_proc_25',
+    title: 'Cộng Hưởng Thần Khí',
+    desc: 'Kích hoạt nội tại chiến đấu của Bộ Trang Bị 25 lần trong trận.',
+    metric: 'setProcsTriggered',
+    target: 25,
+    rewardGold: 780,
+    rewardGems: 40,
+  },
 ];
 
 export function getAchievementCurrentValue(
@@ -371,6 +440,19 @@ export function getAchievementCurrentValue(
       return save.highestChapterCleared;
     case 'bestTowerFloor':
       return save.bestTowerFloor ?? 0;
+    case 'discoveredEvolutions':
+      return (save.discoveredEvolutions ?? []).length;
+    case 'chapterStarsEarned':
+      return Object.values(save.chapterMilestones ?? {}).reduce(
+        (sum, entry) => sum + (Array.isArray(entry?.starsEarned) ? entry.starsEarned.length : 0),
+        0
+      );
+    case 'arenaMechanismsTriggered':
+      return career.arenaMechanismsTriggered ?? 0;
+    case 'bossInterruptsTotal':
+      return career.bossInterruptsTotal ?? 0;
+    case 'setProcsTriggered':
+      return career.setProcsTriggered ?? 0;
   }
 }
 

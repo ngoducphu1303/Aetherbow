@@ -46,3 +46,32 @@ Mọi điều chỉnh từ tab **Cân Bằng LiveOps** đều bị chặn cứng
 - `forgeShardMult`: `0.50x .. 3.00x`
 - `enemyHpMult` & `enemyDmgMult`: `0.60x .. 2.00x`
 - `chestEpicRateBonus`: `-5% .. +20%` · `pitySoftCapOffset`: `-5 .. +5`
+
+---
+
+## 4. Kiểm Toán Đợt 3: 5 Hiệu Ứng Bộ Trang Bị Độc Nhất & Kinh Tế 100 Giờ (`evaluatePass3EconomyAndSetBalance`)
+
+Kết quả đo trực tiếp từ mô-đun `src/data/onboardingAndMasteryData.ts` và `src/engine/gearSetCombatProcs.ts` (được kiểm chứng tự động trong `tests/gear-set-procs-and-100h-audit.test.mjs`):
+
+| Chỉ số kiểm toán Đợt 3 | Giá trị đo thực tế | Ngưỡng nghiệm thu | Trạng thái |
+|---|---:|---|---|
+| **Lực chiến khởi điểm tài khoản mới** | **702 CP** | `702 CP` (không nhảy cóc) | **ĐẠT** |
+| **Số hiệu ứng Bộ Trang Bị kích hoạt ở Bộ Khởi Đầu** | **0** | `0` (bảo toàn Chương 1) | **ĐẠT** |
+| **Số Bộ Trang Bị Trung–Cuối Game có Hiệu Ứng Độc Nhất** | **5 bộ** | Đủ 5 bộ (`Destruction`, `Echo`, `Dragon Knight`, `Oracle`, `Griffin`) | **ĐẠT** |
+| **Tỷ số chênh lệch điểm DPS giữa Bộ mạnh nhất / yếu nhất** | **1.26x** | `≤ 1.45x` (không bộ nào thống trị tuyệt đối) | **ĐẠT** |
+| **Lực chiến mốc 100 giờ (`simulate100HourJourney`)** | **158,062 CP** | Hội tụ Endgame, chống Power Creep | **ĐẠT** |
+| **Tổng Vàng kiếm được sau 100 giờ** | **4,726,963 Vàng** | Đối chiếu nguồn/tiêu thụ thực tế | **ĐẠT** |
+| **Tổng nhu cầu tiêu thụ Vàng Endgame (Sink)** | **5,036,976 Vàng** | Tỷ lệ bao phủ **`107%` (`1.07x > 1.0x`)** — không lạm phát | **ĐẠT** |
+| **Phát hiện chênh lệch giá Flash Deal (`flashDealArbitrageDetected`)** | **`false`** | Không có vòng lặp trục lợi vô hạn | **ĐẠT** |
+| **TTK Chương 12 & Cân bằng lối chơi kỹ năng** | **`true` / `true`** | Đạt chuẩn chiến thuật Endgame | **ĐẠT** |
+
+### Ma Trận 5 Hiệu Ứng Chiến Đấu Độc Nhất Của Bộ Trang Bị (Kèm Hồi Chiêu Nội Tại ICD)
+
+| Bộ Trang Bị | Hiệu Ứng Độc Nhất | Điều kiện kích hoạt | Chỉ số (2 món / 3 món) | Hồi chiêu (ICD) |
+|---|---|---|---|---:|
+| **Bộ Hủy Diệt (`Destruction Set`)** | *Xung Kích Hủy Diệt* | Mỗi đòn Chí Mạng thứ 4 | Sóng lửa diện rộng `135% ATK` (bán kính `4.0m`) | `4.5s` |
+| **Bộ Vọng Âm (`Echo Set`)** | *Mũi Tên Vọng Ảnh* | Mỗi loạt bắn thứ 5 | Bắn thêm 1 mũi tên xuyên thấu `85% ATK` (**`115% ATK`** ở 3 món) | `3.0s` |
+| **Bộ Long Kỵ [S] (`Dragon Knight Set`)** | *Vảy Rồng Bất Khuất* | Né Hoàn Hảo hoặc trúng đòn khi `HP ≤ 50%` | Khiên `14% HP` (**`20%`** ở 3 món) + sóng lửa `120%` (**`145%`**) ATK | `7.5s` |
+| **Bộ Tiên Tri Oracle [S] (`Oracle Set`)** | *Luồng Tinh Tri* | Ngắt Chiêu hoặc mỗi 12 đòn trúng | Hồi `+12%` (**`+18%`** ở 3 món) Nộ + `+18%` (**`+22%`**) Tốc Bắn (`3.5s`) | `6.0s` |
+| **Bộ Điểu Sư [S] (`Griffin Set`)** | *Xé Gió Điểu Sư* | Sau khi Lướt Né (`Dash`) | Bắn tia gió xuyên thấu `140% ATK` + `+20%` Tốc Chạy (`2.5s`) | `4.5s` |
+

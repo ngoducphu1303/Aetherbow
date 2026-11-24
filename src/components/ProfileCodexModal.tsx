@@ -38,6 +38,7 @@ import {
   normalizeCareer,
 } from '../data/liveOpsData';
 import { ALL_SKILLS_LIST, SKILL_RARITY_META } from '../data/skillsData';
+import { evaluateFirstHourRoadmap } from '../data/onboardingAndMasteryData';
 import {
   SEASON_MEDALS,
   countClaimableSeasonMedals,
@@ -533,8 +534,52 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
             </div>
           )}
 
-          {tab === 'achievements' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {tab === 'achievements' && (() => {
+            const ftue = evaluateFirstHourRoadmap(save);
+            return (
+            <div className="space-y-4">
+              <div className="rounded-2xl p-4 border border-amber-400/25 bg-[#090f20]/90">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 pb-2 border-b border-slate-800">
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-amber-200">
+                      Lộ Trình 60 Phút Đầu Tiên
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {ftue.nextMilestone
+                        ? `Mục tiêu kế tiếp (${ftue.nextMilestone.timeLabel}): ${ftue.nextMilestone.title}`
+                        : 'Bạn đã hoàn tất toàn bộ 4 cột mốc khởi đầu và sẵn sàng cho nội dung Endgame.'}
+                    </p>
+                  </div>
+                  <span className="font-mono-nums text-xs font-bold text-emerald-300">
+                    {ftue.completedCount}/{ftue.totalCount} cột mốc
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3">
+                  {ftue.milestones.map((ms) => (
+                    <div
+                      key={ms.id}
+                      className={`p-2.5 rounded-xl border ${
+                        ms.completed
+                          ? 'border-emerald-500/35 bg-emerald-950/20'
+                          : ftue.nextMilestone?.id === ms.id
+                          ? 'border-amber-400/45 bg-amber-950/20'
+                          : 'border-slate-800 bg-slate-950/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 text-[11px] font-mono-nums">
+                        <span className="font-bold text-slate-300">{ms.timeLabel}</span>
+                        <span className={ms.completed ? 'text-emerald-300 font-semibold' : 'text-slate-400'}>
+                          {ms.completed ? 'Hoàn thành' : ms.progressLabel}
+                        </span>
+                      </div>
+                      <div className="text-xs font-bold text-white mt-1">{ms.title}</div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">{ms.goalDesc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {ACHIEVEMENTS_CATALOG.map((ach) => {
                 const cur = getAchievementCurrentValue(save, ach.metric);
                 const done = cur >= ach.target;
@@ -612,8 +657,10 @@ export const ProfileCodexModal: React.FC<ProfileCodexModalProps> = ({
                   </div>
                 );
               })}
+              </div>
             </div>
-          )}
+            );
+          })()}
 
           {tab === 'history' && (
             <div className="space-y-5">

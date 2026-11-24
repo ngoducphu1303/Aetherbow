@@ -45,3 +45,22 @@
 - **Nâng cấp `src/components/SettingsModal.tsx`, `src/engine/aaaWave6Director.ts`, `src/data/liveOpsData.ts`:** Cỡ chữ 3 mức (`100% / 115% / 130%`), thêm phím tắt `toggleAutoPilot (V)`, công tắc Watchdog GPU, Nhạc Nền Động và Hình Học Mù Màu.
 - **Nâng cấp `src/data/phase5Data.ts` & `src/components/CodexGuideModal.tsx`:** Thêm tab **Tiến Hóa (12)** và đồng bộ **Biên Niên Sử Hoàng Đạo, 3 Pha Boss, Mẹo Ngắt Chiêu, Mốc Sao ★1–★4**.
 - **Kiểm thử mở rộng:** Thêm 4 bộ kiểm thử mới → **313/313 pass (0 fail, 0 skip)**, `tsc --noEmit` 0 lỗi, `vite build` thành công.
+
+---
+
+## Phiên bản 24/11/2026 — Đợt 3: Cơ Quan Đấu Trường Hoàng Đạo, AI Đội Hình & Vật Lý An Toàn, Động Học Zero-GC, Hiệu Ứng Bộ Trang Bị & Lộ Trình 60 Phút
+
+### 1. Cơ Quan Đấu Trường Tương Tác Toàn Hệ Thống Chương 1–12
+- **Tạo mới `src/engine/chapterArenaMechanisms.ts` & tích hợp `src/engine/GameEngine.ts`, `src/App.tsx`:** 4 cơ quan Hoàng Đạo (`solar_obelisk`, `magma_vent`, `emerald_crystal`, `astral_prism`) tự chọn vị trí an toàn tránh điểm sinh/cột/tường, kích hoạt bằng mũi tên hoặc áp sát kèm hồi chiêu. Cam kết ngân sách GPU E5430 (`allowPointLight: false`, hình khối low-poly khi Lite hoặc Watchdog ≥ Bậc 2) và dọn tài nguyên sạch khi đổi phòng.
+
+### 2. AI Phối Hợp Đội Hình, Né Vật Cản & An Toàn Vật Lý
+- **Nâng cấp `src/engine/tacticalCombatChoreography.ts` & tích hợp `src/engine/GameEngine.ts`:** Bổ sung `Obstacle-Aware Steering` cho quái tự vòng tránh cột, đội hình phối hợp Tiên phong–Xạ thủ/Pháp sư (`formationSynergyActive`), `resolveObstacleFreeSpawnPosition` chống sinh quái trong vật cản và `clampKnockbackInsideArena` chống đẩy lùi xuyên tường/cột.
+
+### 3. Động Học Hoạt Ảnh Chiến Đấu Zero-GC
+- **Tạo mới `src/engine/combatAnimationKinematics.ts` & tích hợp `src/engine/GameEngine.ts`:** Hệ lò xo hàm mũ không cấp phát bộ nhớ tạo giật ngược có hướng khi trúng đòn, giật cung khi bắn, khụy gối khi choáng và nhún ăn mừng; tự giảm còn 25% biên độ khi người chơi bật `reducedMotion`.
+
+### 4. Hiệu Ứng Độc Nhất Cho 5 Bộ Trang Bị Trung–Cuối Game & Lộ Trình 60 Phút / 19 Thành Tựu
+- **Tạo mới `src/engine/gearSetCombatProcs.ts` & tích hợp `src/engine/GameEngine.ts`, `src/components/LobbyPanels.tsx`, `src/App.tsx`:** 5 hiệu ứng chiến đấu độc nhất (`Destruction Set`, `Echo Set`, `Dragon Knight Set`, `Oracle Set`, `Griffin Set`) kèm nâng bậc 3 món và hồi chiêu nội tại ICD chặt chẽ (không tích điểm ngầm trong lúc hồi chiêu); loại trừ Bộ Khởi Đầu để bảo toàn mốc `702 CP`.
+- **Tạo mới `src/data/onboardingAndMasteryData.ts` & nâng cấp `src/data/liveOpsData.ts`, `src/data/saveIntegrity.ts`, `src/components/ProfileCodexModal.tsx`:** Hiển thị thanh **Lộ Trình 60 Phút Đầu (`5p → 15p → 30p → 60p`)**, mở rộng lên **19 Thành Tựu Tinh Thông**, nối bộ đếm sự nghiệp thực tế (`arenaMechanismsTriggered`, `bossInterruptsTotal`, `setProcsTriggered`) và làm sạch an toàn trong `saveIntegrity.ts`.
+- **Kiểm thử & Kiểm toán 100h:** Thêm 4 bộ kiểm thử Đợt 3 (`chapter-arena-mechanisms`, `squad-ai-physics-safety`, `combat-animation-kinematics`, `gear-set-procs-and-100h-audit`) → **328/328 pass (0 fail, 0 skip)**, `tsc --noEmit` 0 lỗi, `vite build` sạch, `eslint firestore.rules` 0 lỗi.
+

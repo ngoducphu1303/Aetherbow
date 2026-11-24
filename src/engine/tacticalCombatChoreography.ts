@@ -7,6 +7,13 @@ export interface SquadNeighborSample {
   x: number;
   z: number;
   radius: number;
+  archetype?: EnemyTacticalArchetype;
+}
+
+export interface ArenaPhysicsObstacle {
+  x: number;
+  z: number;
+  radius: number;
 }
 
 export interface SquadCoordinationInput {
@@ -20,6 +27,7 @@ export interface SquadCoordinationInput {
   playerZ: number;
   flankSign: number;
   neighbors: readonly SquadNeighborSample[];
+  obstacles?: readonly ArenaPhysicsObstacle[];
 }
 
 export interface SquadCoordinationVector {
@@ -27,6 +35,8 @@ export interface SquadCoordinationVector {
   vx: number;
   vz: number;
   separationApplied: boolean;
+  obstacleAvoidanceApplied: boolean;
+  formationSynergyActive: boolean;
 }
 
 export interface CastInterruptInput {
@@ -150,6 +160,10 @@ export function computeSquadCoordinationVector(
   let sepX = 0;
   let sepZ = 0;
   let separationApplied = false;
+  let formX = 0;
+  let formZ = 0;
+  let formationSynergyActive = false;
+
   for (let i = 0; i < input.neighbors.length; i++) {
     const nb = input.neighbors[i];
     if (nb.id === input.selfId) continue;
@@ -163,10 +177,63 @@ export function computeSquadCoordinationVector(
       sepZ += (nz / nd) * push;
       separationApplied = true;
     }
+
+    // Coordinated Squad Formation Synergy:
+    // - Ranged & Casters seek shelter behind nearby friendly Vanguards relative to the player.
+    // - Vanguards step toward the intercept line between the player and nearby allied backline units.
+    if (nb.archetype && nd > 0.5 && nd < 7.8) {
+      if ((archetype === 'ranged' || archetype === 'caster') && nb.archetype === 'vanguard') {
+        const anchorX = nb.x - dirX * 2.8;
+        const anchorZ = nb.z - dirZ * 2.8;
+        const ax = anchorX - input.x;
+        const az = anchorZ - input.z;
+        const ad = Math.hypot(ax, az);
+        if (ad > 0.4) {
+          formX += (ax / ad) * 0.42;
+          formZ += (az / ad) * 0.42;
+          formationSynergyActive = true;
+        }
+      } else if (archetype === 'vanguard' && (nb.archetype === 'ranged' || nb.archetype === 'caster')) {
+        const shieldX = nb.x + dirX * 2.4;
+        const shieldZ = nb.z + dirZ * 2.4;
+        const sx = shieldX - input.x;
+        const sz = shieldZ - input.z;
+        const sd = Math.hypot(sx, sz);
+        if (sd > 0.5) {
+          formX += (sx / sd) * 0.28;
+          formZ += (sz / sd) * 0.28;
+          formationSynergyActive = true;
+        }
+      }
+    }
   }
 
-  const combX = desiredX + sepX;
-  const combZ = desiredZ + sepZ;
+  // Obstacle-Aware Steering (smooth tangential detour around arena pillars)
+  let obsX = 0;
+  let obsZ = 0;
+  let obstacleAvoidanceApplied = false;
+  if (input.obstacles && input.obstacles.length > 0) {
+    for (let i = 0; i < input.obstacles.length; i++) {
+      const ob = input.obstacles[i];
+      const ox = input.x - ob.x;
+      const oz = input.z - ob.z;
+      const od = Math.hypot(ox, oz);
+      const safeDist = ob.radius + input.radius + 1.35;
+      if (od > 0.0001 && od < safeDist) {
+        const weight = ((safeDist - od) / safeDist) * 1.9;
+        const radX = ox / od;
+        const radZ = oz / od;
+        // Blend outward push + tangential slide so mobs smoothly route around pillars
+        const slideSign = input.flankSign >= 0 ? 1 : -1;
+        obsX += (radX * 0.85 - radZ * 0.55 * slideSign) * weight;
+        obsZ += (radZ * 0.85 + radX * 0.55 * slideSign) * weight;
+        obstacleAvoidanceApplied = true;
+      }
+    }
+  }
+
+  const combX = desiredX + sepX + formX + obsX;
+  const combZ = desiredZ + sepZ + formZ + obsZ;
   const mag = Math.hypot(combX, combZ) || 1;
   const speedFactor =
     archetype === 'vanguard' ? 0.96 : archetype === 'flanker' ? 1.08 : 0.92;
@@ -176,7 +243,90 @@ export function computeSquadCoordinationVector(
     vx: (combX / mag) * input.baseSpeed * speedFactor,
     vz: (combZ / mag) * input.baseSpeed * speedFactor,
     separationApplied,
+    obstacleAvoidanceApplied,
+    formationSynergyActive,
   };
+}
+
+/**
+ * Guarantees an enemy or prop spawn point is strictly inside the playable arena and outside
+ * every obstacle pillar with safety margin (zero trapped-in-wall spawns).
+ */
+export function resolveObstacleFreeSpawnPosition(
+  targetX: number,
+  targetZ: number,
+  entityRadius: number,
+  arenaHalfW: number,
+  arenaHalfD: number,
+  obstacles: readonly ArenaPhysicsObstacle[]
+): { x: number; z: number; adjusted: boolean } {
+  const maxX = Math.max(1, arenaHalfW - entityRadius - 0.65);
+  const maxZ = Math.max(1, arenaHalfD - entityRadius - 0.65);
+  let x = Math.max(-maxX, Math.min(maxX, targetX));
+  let z = Math.max(-maxZ, Math.min(maxZ, targetZ));
+  let adjusted = x !== targetX || z !== targetZ;
+
+  for (let pass = 0; pass < 3; pass++) {
+    let pushedThisPass = false;
+    for (let i = 0; i < obstacles.length; i++) {
+      const ob = obstacles[i];
+      const dx = x - ob.x;
+      const dz = z - ob.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = ob.radius + entityRadius + 0.55;
+      if (dist < minDist) {
+        const angle = dist > 0.001 ? Math.atan2(dz, dx) : (pass + i + 1) * 1.1;
+        x = ob.x + Math.cos(angle) * (minDist + 0.15);
+        z = ob.z + Math.sin(angle) * (minDist + 0.15);
+        x = Math.max(-maxX, Math.min(maxX, x));
+        z = Math.max(-maxZ, Math.min(maxZ, z));
+        adjusted = true;
+        pushedThisPass = true;
+      }
+    }
+    if (!pushedThisPass) break;
+  }
+
+  return { x, z, adjusted };
+}
+
+/**
+ * Applies knockback displacement while guaranteeing zero wall-tunneling and zero obstacle clipping.
+ */
+export function clampKnockbackInsideArena(
+  x: number,
+  z: number,
+  impulseX: number,
+  impulseZ: number,
+  entityRadius: number,
+  arenaHalfW: number,
+  arenaHalfD: number,
+  obstacles: readonly ArenaPhysicsObstacle[]
+): { x: number; z: number; hitWall: boolean } {
+  const maxX = Math.max(1, arenaHalfW - entityRadius - 0.5);
+  const maxZ = Math.max(1, arenaHalfD - entityRadius - 0.5);
+  const rawX = x + impulseX;
+  const rawZ = z + impulseZ;
+  let clampedX = Math.max(-maxX, Math.min(maxX, rawX));
+  let clampedZ = Math.max(-maxZ, Math.min(maxZ, rawZ));
+  let hitWall = clampedX !== rawX || clampedZ !== rawZ;
+
+  for (let i = 0; i < obstacles.length; i++) {
+    const ob = obstacles[i];
+    const dx = clampedX - ob.x;
+    const dz = clampedZ - ob.z;
+    const dist = Math.hypot(dx, dz);
+    const minDist = ob.radius + entityRadius + 0.15;
+    if (dist < minDist) {
+      const nx = dist > 0.001 ? dx / dist : 1;
+      const nz = dist > 0.001 ? dz / dist : 0;
+      clampedX = Math.max(-maxX, Math.min(maxX, ob.x + nx * minDist));
+      clampedZ = Math.max(-maxZ, Math.min(maxZ, ob.z + nz * minDist));
+      hitWall = true;
+    }
+  }
+
+  return { x: clampedX, z: clampedZ, hitWall };
 }
 
 /**

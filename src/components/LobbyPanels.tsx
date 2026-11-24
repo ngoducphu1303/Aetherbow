@@ -75,6 +75,7 @@ import {
   getUpgradeCost,
 } from '../data/gearData';
 import { computeWeeklyFairnessSummary } from '../data/progressionAdvisor';
+import { GEAR_SET_COMBAT_PROCS } from '../engine/gearSetCombatProcs';
 import { HEROES, HERO_MAP, getHeroStarUpgradeCost } from '../data/heroesData';
 import { getTodayKey } from '../data/questsData';
 import {
@@ -541,37 +542,42 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                       <span className="font-black text-amber-300 uppercase tracking-wider text-[10px]">
                         Bộ Trang Bị:
                       </span>
-                      {gearSetEval.sets.map((setEntry) => (
-                        <span
-                          key={setEntry.setId}
-                          className="font-mono-nums text-slate-200"
-                          title={
-                            setEntry.nextTier
-                              ? `Mốc ${setEntry.nextTier.piecesRequired} món: ${setEntry.nextTier.label}`
-                              : setEntry.unlockedTiers.map((t) => t.label).join(' · ')
-                          }
-                        >
-                          <strong
-                            className={
-                              setEntry.unlockedTiers.length > 0
-                                ? 'text-emerald-300'
-                                : 'text-sky-300'
+                      {gearSetEval.sets.map((setEntry) => {
+                        const procDef = GEAR_SET_COMBAT_PROCS[setEntry.setId];
+                        return (
+                          <span
+                            key={setEntry.setId}
+                            className="font-mono-nums text-slate-200"
+                            title={
+                              procDef
+                                ? `Nội tại bộ (${procDef.name}): ${procDef.shortDesc}`
+                                : setEntry.unlockedTiers.map((t) => t.label).join(' · ')
                             }
                           >
-                            {setEntry.displayName} ({setEntry.equippedCount}/{setEntry.maxPieces})
-                          </strong>
-                          {setEntry.unlockedTiers.length > 0 ? (
-                            <span className="text-amber-200">
-                              {' · '}
-                              {setEntry.unlockedTiers.map((t) => t.label).join(' · ')}
-                            </span>
-                          ) : setEntry.nextTier ? (
-                            <span className="text-slate-400">
-                              {' · '}Mốc {setEntry.nextTier.piecesRequired}: {setEntry.nextTier.label}
-                            </span>
-                          ) : null}
-                        </span>
-                      ))}
+                            <strong
+                              className={
+                                setEntry.unlockedTiers.length > 0
+                                  ? 'text-emerald-300'
+                                  : 'text-sky-300'
+                              }
+                            >
+                              {setEntry.displayName} ({setEntry.equippedCount}/{setEntry.maxPieces})
+                            </strong>
+                            {setEntry.unlockedTiers.length > 0 ? (
+                              <span className="text-amber-200">
+                                {' · '}
+                                {setEntry.unlockedTiers.map((t) => t.label).join(' · ')}
+                                {procDef ? ` · Nội tại: ${procDef.name} (${procDef.triggerLabel})` : ''}
+                              </span>
+                            ) : setEntry.nextTier ? (
+                              <span className="text-slate-400">
+                                {' · '}Mốc {setEntry.nextTier.piecesRequired}: {setEntry.nextTier.label}
+                                {procDef ? ` · Mở ${procDef.name}` : ''}
+                              </span>
+                            ) : null}
+                          </span>
+                        );
+                      })}
                     </div>
                   );
                 })()}

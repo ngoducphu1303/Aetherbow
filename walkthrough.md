@@ -18,6 +18,11 @@
    - **Tiến Hóa Kỹ Năng Rẽ Nhánh (`src/engine/skillEvolutionEngine.ts`):** 12 nhánh tiến hóa (Boss vs AoE) trên 6 kỹ năng cốt lõi, chọn nhánh trực tiếp trong trận (`SkillDraftModal.tsx`), hỗ trợ AI Auto-Pilot và lưu kho khám phá vào Codex.
    - **Nhạc Nền Động Hoàng Đạo (`src/audio/zodiacMusicDirector.ts`):** Chủ đề nhạc nền riêng cho từng Chương 1–12 + cao trào Boss 3 Pha + hiệu ứng kèn/chuông Ngắt Chiêu (`playInterruptFanfare`), 100% Web Audio.
    - **Tiếp Cận & Sổ Tay Thế Giới (`src/engine/colorblindTelegraphs.ts`, `CodexGuideModal.tsx`, `SettingsModal.tsx`):** Hình học cảnh báo an toàn mù màu, cỡ chữ 3 mức (`100% / 115% / 130%`), phím tắt `V` bật/tắt Tự Động Chiến Đấu, và hồ sơ 3 Pha/Lore/Ngắt Chiêu/★1–★4 trong Codex.
+6. **Cơ Quan Đấu Trường, AI Đội Hình, Động Học Zero-GC, Hiệu Ứng Bộ Trang Bị & Giữ Chân Người Chơi (Đợt 3):**
+   - **Cơ Quan Đấu Trường Hoàng Đạo (`src/engine/chapterArenaMechanisms.ts`):** 4 cơ quan tương tác cho toàn bộ Chương 1–12, đặt tránh cột/tường, tuyệt đối không thêm `PointLight` và tự hạ low-poly trên Dell Latitude E5430 Lite / Watchdog ≥ Bậc 2.
+   - **AI Né Vật Cản, Phối Hợp Đội Hình & Vật Lý An Toàn (`src/engine/tacticalCombatChoreography.ts`):** Quái tự vòng tránh cột, Tiên phong che chắn Xạ thủ/Pháp sư, chặn sinh quái trong cột và chặn đẩy lùi xuyên tường.
+   - **Động Học Hoạt Ảnh Zero-GC (`src/engine/combatAnimationKinematics.ts`):** Giật ngược có hướng khi trúng đòn, giật cung, khụy gối choáng và nhún ăn mừng không tạo rác bộ nhớ, tôn trọng `reducedMotion` (25%).
+   - **5 Hiệu Ứng Bộ Trang Bị Độc Nhất & Lộ Trình 60p / 19 Thành Tựu (`src/engine/gearSetCombatProcs.ts`, `src/data/onboardingAndMasteryData.ts`, `ProfileCodexModal.tsx`, `LobbyPanels.tsx`):** Kích hoạt thật trong chiến đấu với ICD chuẩn (tỷ số DPS `1.26x`, bảo toàn khởi điểm `702 CP`, sink Vàng 100h đạt `107%`).
 
 ---
 
@@ -25,16 +30,17 @@
 
 - **Siết quyền API đồng bộ CDN (`src/server/assetDeployService.ts`):** Đóng lỗ hổng trước đó cho phép tài khoản mật khẩu trùng email `puugoo` đi qua mà không xác minh trạng thái liên kết trên Worker. Mọi đăng nhập mật khẩu hiện bắt buộc xác thực qua `verifyWorkerAdminSession(token)`; bổ sung giới hạn tốc độ (`30 req/phút` cho `/status`, `6 req/phút` cho `/upload-b2` và `/deploy-worker`).
 - **Quy tắc Cloud Firestore (`firestore.rules`, `firebase-blueprint.json`, `security_spec.md`):** Bổ sung đầy đủ schema và quy tắc kiểm tra chặt chẽ cho `/asset_admins/{uid}` và `/asset_inbox/{itemId}` cùng quyền LiveOps có biên số an toàn. Đạt **0 lỗi / 0 cảnh báo** với `npx eslint firestore.rules`.
-- **Toàn vẹn bản lưu người chơi (`src/data/saveIntegrity.ts`):** Bổ sung kiểm chuẩn cho cả `chapterMilestones` và `discoveredEvolutions` để loại bỏ giá trị lỗi/giả mạo mà vẫn bảo toàn 100% dữ liệu hợp lệ.
+- **Toàn vẹn bản lưu người chơi (`src/data/saveIntegrity.ts`):** Bổ sung kiểm chuẩn cho `chapterMilestones`, `discoveredEvolutions` và 3 bộ đếm sự nghiệp mới (`arenaMechanismsTriggered`, `bossInterruptsTotal`, `setProcsTriggered`) để loại bỏ giá trị lỗi/giả mạo mà vẫn bảo toàn 100% dữ liệu hợp lệ.
 
 ---
 
 ## PoC Verification
 
 1. **Chặn tài khoản mật khẩu chưa liên kết gọi API đồng bộ CDN:** `tests/security-hardening.test.mjs` (6/6 pass).
-2. **Chặn dữ liệu bản lưu giả mạo / hỏng:** `validateAndSanitizeSaveIntegrity()` làm sạch `chapterMilestones` & `discoveredEvolutions` (`tests/security-hardening.test.mjs`, `tests/accessibility-codex-pass2.test.mjs`).
-3. **Kiểm chứng toàn bộ hệ thống & build (Đợt 2):**
+2. **Chặn dữ liệu bản lưu giả mạo / hỏng:** `validateAndSanitizeSaveIntegrity()` làm sạch `chapterMilestones`, `discoveredEvolutions` & bộ đếm sự nghiệp mới (`tests/security-hardening.test.mjs`, `tests/accessibility-codex-pass2.test.mjs`, `tests/gear-set-procs-and-100h-audit.test.mjs`).
+3. **Kiểm chứng toàn bộ hệ thống & build (Đợt 3):**
    - `npx eslint firestore.rules`: **0 lỗi, 0 cảnh báo**.
-   - `npm test`: **313 / 313 pass (0 fail, 0 skip)**.
+   - `npm test`: **328 / 328 pass (0 fail, 0 skip)**.
    - `npm run lint` (`tsc --noEmit`): **0 lỗi**.
    - `npm run build` (`vite build`): **thành công**.
+

@@ -730,6 +730,9 @@ export interface CareerStats {
   totalChestsOpened: number;
   seenEnemies: string[];
   seenSkills: string[];
+  arenaMechanismsTriggered?: number;
+  bossInterruptsTotal?: number;
+  setProcsTriggered?: number;
 }
 
 export interface AchievementDefinition {
@@ -742,7 +745,12 @@ export interface AchievementDefinition {
     | 'maxComboEver'
     | 'totalChestsOpened'
     | 'highestChapterCleared'
-    | 'bestTowerFloor';
+    | 'bestTowerFloor'
+    | 'discoveredEvolutions'
+    | 'chapterStarsEarned'
+    | 'arenaMechanismsTriggered'
+    | 'bossInterruptsTotal'
+    | 'setProcsTriggered';
   target: number;
   rewardGold: number;
   rewardGems: number;
@@ -2192,6 +2200,9 @@ export interface HudSnapshot {
   gpuWatchdogNotice?: string | null;
   activeEliteAffixLabel?: string;
   activeArenaHazardLabel?: string;
+  activeArenaMechanismLabel?: string;
+  activeArenaMechanismReady?: boolean;
+  activeSetProcBanner?: string | null;
   activeSynergies?: SkillSynergyId[];
   activeEvolutions?: SkillEvolutionId[];
   isTowerMode: boolean;
