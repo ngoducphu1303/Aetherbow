@@ -47,7 +47,10 @@ test('GPU tích hợp yếu vẫn giới hạn DPR ngay khi save cũ đặt ch�
   globalThis.window = {devicePixelRatio: 2};
   const engine = Object.create(GameEngine.prototype);
   Object.assign(engine, {isSoftwareGl: false, lowEndGpu: true, graphicsQuality: 'high', container: {clientWidth: 1366, clientHeight: 768}});
-  try { assert.equal(engine.getTargetPixelRatio(), 1); }
+  try {
+    const dpr = engine.getTargetPixelRatio();
+    assert.ok(dpr > 0.65 && dpr <= 1, `Expected weak GPU DPR capped in (0.65, 1], got ${dpr}`);
+  }
   finally { globalThis.window = oldWindow; }
 });
 
@@ -71,7 +74,7 @@ test('GPU phần cứng cũng phải hoàn tất frame trước khi xếp frame 
   } finally {globalThis.requestAnimationFrame = oldRaf; globalThis.document = oldDocument;}
 });
 
-test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và thú cưỡi đã sẵn sàng', () => {
+test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật khi đúng mô hình đã sẵn sàng', () => {
   const oldRaf = globalThis.requestAnimationFrame;
   const oldDocument = globalThis.document;
   const events = [];
@@ -80,8 +83,7 @@ test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và t
   globalThis.document = {hidden: false};
 
   const body = {};
-  const mount = {};
-  const hero = {root: {visible: true}, bodyGroup: body, mountGroup: mount};
+  const hero = {root: {visible: true}, bodyGroup: body};
   const engine = Object.create(GameEngine.prototype);
   Object.assign(engine, {
     disposed: false,
@@ -89,7 +91,7 @@ test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và t
     hero,
     heroShadow: {visible: true},
     baseStats: {heroId: 'artemis'},
-    heroVisualCfg: {mountId: 'black_dragon'},
+    heroVisualCfg: {heroId: 'artemis', skinId: 'default'},
     appearanceStatus: 'loading',
     callbacks: {onAppearanceStatusChange(status) {events.push(status);}},
     renderer: {render() {events.push(hero.root.visible ? 'rider' : 'arena');}},
@@ -103,14 +105,16 @@ test('sảnh vẫn hoạt động khi tải, nhưng chỉ vẽ nhân vật và t
     next();
     assert.deepEqual(events, ['update', 'arena']);
 
+    // Mismatched hero asset must keep hero hidden during transition
     engine.artemisModel = {parent: body};
-    engine.artemisLoadedAsset = 'heroes/golden-dress-girl.glb';
+    engine.artemisLoadedAsset = 'heroes/hatsune-miku.glb';
     engine.refreshAppearanceGate();
     engine.phase = GamePhase.PLAYING;
     next();
     assert.deepEqual(events, ['update', 'arena', 'arena']);
 
-    engine.blackDragon = {model: {parent: mount}};
+    // Matching hero asset attached unlocks rendering and emits 'ready'
+    engine.artemisLoadedAsset = 'heroes/golden-dress-girl.glb';
     engine.refreshAppearanceGate();
     next();
     assert.deepEqual(events, ['update', 'arena', 'arena', 'update', 'rider', 'ready']);

@@ -321,7 +321,7 @@ test('downloadSolarLeoArrayBuffer automatically falls back from High to Lite on 
 });
 
 test('Catalogs, asset registry, initial save, and save migration unlock all 10 Solar Leo items with Aurelia as the starter', () => {
-  assert.deepEqual(HEROES.map(({ id }) => id), ['aurelia', 'bellona', 'sylvia']);
+  assert.deepEqual(HEROES.map(({ id }) => id), ['aurelia', 'bellona', 'sylvia', 'celeste']);
   assert.ok(HEROES.some((h) => h.id === 'aurelia'));
 
   assert.equal(resolveSolarLeoHeroAssetId('aurelia'), 'aurelia');
@@ -332,16 +332,16 @@ test('Catalogs, asset registry, initial save, and save migration unlock all 10 S
   assert.equal(resolveSolarLeoHeroAssetId('hatsune_miku'), null);
 
   // The chapter collections remain available without restoring pruned cosmetics.
-  assert.deepEqual(PETS_CATALOG.map((p) => p.id), ['jade_calf', 'pyro', 'astraeo']);
+  assert.deepEqual(PETS_CATALOG.map((p) => p.id), ['twin_astral_spirits', 'jade_calf', 'pyro', 'astraeo']);
   assert.deepEqual(ZODIAC_AURAS, []);
-  assert.deepEqual(ZODIAC_WINGS.map((w) => w.id), ['emerald_taurus_wings', 'crimson_ram_wings', 'solar_zenith']);
+  assert.deepEqual(ZODIAC_WINGS.map((w) => w.id), ['dual_gemini_wings', 'emerald_taurus_wings', 'crimson_ram_wings', 'solar_zenith']);
   assert.deepEqual(CELESTIAL_WING_DEFS, []);
   assert.deepEqual(AVATAR_FRAMES, []);
-  assert.deepEqual(ZODIAC_MOUNTS.map((m) => m.id), ['jade_bull', 'vulcan', 'solarius']);
+  assert.deepEqual(ZODIAC_MOUNTS.map((m) => m.id), ['celestial_wind_mount', 'jade_bull', 'vulcan', 'solarius']);
   assert.deepEqual(WEAPON_AURAS, []);
-  assert.deepEqual(MYTHIC_ARTIFACTS.map((a) => a.id), ['jade_heart_relic', 'war_horn', 'astrolabe_regulus']);
+  assert.deepEqual(MYTHIC_ARTIFACTS.map((a) => a.id), ['twin_hourglass_relic', 'jade_heart_relic', 'war_horn', 'astrolabe_regulus']);
   assert.deepEqual(HERO_BONDS, []);
-  assert.deepEqual(DIVINE_HALO_CATALOG.map((h) => h.id), ['emerald_taurus_halo', 'aries_vanguard', 'leo_sovereign']);
+  assert.deepEqual(DIVINE_HALO_CATALOG.map((h) => h.id), ['gemini_halo', 'emerald_taurus_halo', 'aries_vanguard', 'leo_sovereign']);
   assert.equal(HERO_SKINS.filter((s) => s.heroId === 'aurelia').length, 4);
 
   // Thumbnails & Hero/Skin asset packs point to lightweight WebP files

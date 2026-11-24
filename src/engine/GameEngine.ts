@@ -25,6 +25,11 @@ import {
   stepMobPhysicalDash,
 } from './aaaEnemyCombatEngine';
 import {
+  computeSquadCoordinationVector,
+  evaluateCastInterrupt,
+  getChapterBossPhasePlan,
+} from './tacticalCombatChoreography';
+import {
   AUTO_RIG_CALIBRATION,
   AutoRigInstance,
   updateAutoRigPose,
@@ -671,6 +676,8 @@ interface EnemyEntity {
   breakShield?: number;
   maxBreakShield?: number;
   stunTimer?: number;
+  exposedTimer?: number;
+  interruptCdTimer?: number;
   punishWindowTimer?: number;
   punishWindowMax?: number;
   bossParts?: BossBreakablePart[];
@@ -1006,6 +1013,11 @@ export interface EngineCallbacks {
       combatTelemetry?: PlayerCombatTelemetryInput;
       isEqualizedRiftMode?: boolean;
       equalizedRiftFloor?: number;
+      endHpRatio?: number;
+      revivesUsed?: number;
+      perfectDodges?: number;
+      bossGuardBreaks?: number;
+      castInterrupts?: number;
     }
   ) => void;
   onProgressEvent?: (ev: {
@@ -1472,6 +1484,8 @@ export class GameEngine {
   private runTrapsTriggered = 0;
   private runBountiesCompleted = 0;
   private runBossBreaksCount = 0;
+  private runCastInterrupts = 0;
+  private runRevivesUsed = 0;
   private runDamageTakenCount = 0;
   // Wave 10: Dynamic Sky Shader, Boss Breakable Parts, Elemental Resonance, Trial Gauntlet, Adaptive AI & Live Guild War Skirmish
   private skyDomeMesh: THREE.Mesh | null = null;
@@ -1808,6 +1822,9 @@ export class GameEngine {
   private maxRunCombo = 0;
   private graphicsQuality: GraphicsQuality = 'high';
   private screenShakeEnabled = true;
+  private reducedMotionEnabled = false;
+  private liveOpsEnemyHpMult = 1.0;
+  private liveOpsEnemyDmgMult = 1.0;
   private showDamageNumbersEnabled = true;
   private hapticsEnabled = true;
   private highContrastTelegraphs = false;
@@ -4443,8 +4460,13 @@ export class GameEngine {
 
   private getActiveSystemBudget(): SystemLiteBudget {
     if (!this.systemBudget) {
+      const effectiveProfile = this.gpuProfile ?? {
+        tier: this.isSoftwareGl ? 'software' : this.lowEndGpu ? 'integrated' : 'discrete',
+        lowPowerLegacyGpu: Boolean(this.lowEndGpu || this.isSoftwareGl),
+        deviceTier: this.isSoftwareGl ? 'ultra_lite' : this.lowEndGpu ? 'lite' : 'high',
+      };
       this.systemBudget = resolveSystemLiteBudget(
-        this.gpuProfile,
+        effectiveProfile,
         this.lowEndSafetyMode,
         this.chapter1MapMode
       );
@@ -8366,6 +8388,8 @@ export class GameEngine {
     this.runTrapsTriggered = 0;
     this.runBountiesCompleted = 0;
     this.runBossBreaksCount = 0;
+    this.runCastInterrupts = 0;
+    this.runRevivesUsed = 0;
     this.runDamageTakenCount = 0;
     this.bossStaggerState = null;
     this.bossStaggerOwnerId = null;
@@ -9698,8 +9722,8 @@ export class GameEngine {
     this.waveIndex = waveIdx;
 
     const towerScale = getEndlessTowerScaling(this.towerFloor, this.towerHighestCleared);
-    const hpMult = towerScale.enemyHpScale;
-    const dmgMult = towerScale.enemyDmgScale;
+    const hpMult = towerScale.enemyHpScale * this.liveOpsEnemyHpMult;
+    const dmgMult = towerScale.enemyDmgScale * this.liveOpsEnemyDmgMult;
     const bossTitle = `Thủ Lĩnh Tầng ${this.towerFloor} · ${this.currentChapter.bossName}`;
     this.spawnEnemyGroups(groups, hpMult, dmgMult, bossTitle);
   }
@@ -9713,8 +9737,9 @@ export class GameEngine {
     const stageMult = 1 + this.stageIndex * 0.14;
     const nmHpMult = this.nightmareTier > 0 ? this.nightmareConfig.enemyHpMult : 1;
     const nmDmgMult = this.nightmareTier > 0 ? this.nightmareConfig.enemyDmgMult : 1;
-    const hpMult = this.currentChapter.hpScale * stageMult * nmHpMult;
-    const dmgMult = this.currentChapter.dmgScale * (1 + this.stageIndex * 0.085) * nmDmgMult;
+    const hpMult = this.currentChapter.hpScale * stageMult * nmHpMult * this.liveOpsEnemyHpMult;
+    const dmgMult =
+      this.currentChapter.dmgScale * (1 + this.stageIndex * 0.085) * nmDmgMult * this.liveOpsEnemyDmgMult;
     this.spawnEnemyGroups(wave.enemies, hpMult, dmgMult, stage.bossTitle);
   }
 
@@ -10676,8 +10701,10 @@ export class GameEngine {
   private spawnSurpriseAmbushBoss(): void {
     const sx = (Math.random() < 0.5 ? -1 : 1) * 4.2;
     const sz = -4.2;
-    const hpMult = this.currentChapter.hpScale * (1 + this.stageIndex * 0.16) * 1.45;
-    const dmgMult = this.currentChapter.dmgScale * (1 + this.stageIndex * 0.1);
+    const hpMult =
+      this.currentChapter.hpScale * (1 + this.stageIndex * 0.16) * 1.45 * this.liveOpsEnemyHpMult;
+    const dmgMult =
+      this.currentChapter.dmgScale * (1 + this.stageIndex * 0.1) * this.liveOpsEnemyDmgMult;
     this.createEnemy(EnemyKind.SHADOW_STALKER, sx, sz, hpMult, dmgMult, true, 'Sát Thủ Truy Nã');
     const spawned = this.enemies[this.enemies.length - 1];
     if (spawned) {
@@ -10797,7 +10824,9 @@ export class GameEngine {
       isLobby: this.phase === GamePhase.TITLE,
       adaptiveResolutionGuard: this.adaptiveResolutionGuard,
       adaptiveResScale: this.adaptiveResScale,
-      governorDprScale: getAdaptiveFpsModifiers(this.adaptiveFpsGovernor).dprScale,
+      governorDprScale: this.adaptiveFpsGovernor
+        ? getAdaptiveFpsModifiers(this.adaptiveFpsGovernor).dprScale
+        : 1,
     });
   }
 
@@ -10816,6 +10845,9 @@ export class GameEngine {
     adaptiveResolutionGuard?: boolean;
     chapter1MapMode?: Chapter1MapMode;
     lowEndSafetyMode?: LowEndSafetyMode;
+    reducedMotion?: boolean;
+    liveOpsEnemyHpMult?: number;
+    liveOpsEnemyDmgMult?: number;
   }): void {
     const prevLiteActive = this.systemBudget?.liteActive ?? this.lowEndGpu;
     if (cfg.lowEndSafetyMode) {
@@ -10848,7 +10880,14 @@ export class GameEngine {
 
     const quality = this.isSoftwareGl || this.lowEndGpu || budget.liteActive ? 'low' : cfg.graphicsQuality;
     this.graphicsQuality = quality;
-    this.screenShakeEnabled = cfg.screenShake;
+    this.reducedMotionEnabled = Boolean(cfg.reducedMotion);
+    this.screenShakeEnabled = this.reducedMotionEnabled ? false : cfg.screenShake;
+    if (typeof cfg.liveOpsEnemyHpMult === 'number' && Number.isFinite(cfg.liveOpsEnemyHpMult)) {
+      this.liveOpsEnemyHpMult = Math.max(0.6, Math.min(2.0, cfg.liveOpsEnemyHpMult));
+    }
+    if (typeof cfg.liveOpsEnemyDmgMult === 'number' && Number.isFinite(cfg.liveOpsEnemyDmgMult)) {
+      this.liveOpsEnemyDmgMult = Math.max(0.6, Math.min(2.0, cfg.liveOpsEnemyDmgMult));
+    }
     this.showDamageNumbersEnabled = cfg.showDamageNumbers;
     this.hapticsEnabled = cfg.hapticsEnabled !== false;
     this.highContrastTelegraphs = Boolean(cfg.highContrastTelegraphs);
@@ -10872,13 +10911,20 @@ export class GameEngine {
         this.adaptiveFpsGovernor.tier = 'full';
       }
     }
-    this.bloomEnabled = budget.bloomAllowed && cfg.bloomEnabled !== false;
-    this.starfallEnabled = !this.lowEndGpu && !this.isSoftwareGl && !budget.liteActive && cfg.starfallWeather !== false;
+    this.bloomEnabled = budget.bloomAllowed && cfg.bloomEnabled !== false && !this.reducedMotionEnabled;
+    this.starfallEnabled =
+      !this.lowEndGpu &&
+      !this.isSoftwareGl &&
+      !budget.liteActive &&
+      !this.reducedMotionEnabled &&
+      cfg.starfallWeather !== false;
     if (this.starfallMesh) {
       this.starfallMesh.visible = this.starfallEnabled;
     }
     const baseParticleDensity =
-      (quality === 'low' ? 0.45 : quality === 'medium' ? 0.75 : 1.0) * budget.particleBudgetMult;
+      (quality === 'low' ? 0.45 : quality === 'medium' ? 0.75 : 1.0) *
+      budget.particleBudgetMult *
+      (this.reducedMotionEnabled ? 0.55 : 1.0);
     const govMods = getAdaptiveFpsModifiers(this.adaptiveFpsGovernor);
     this.particleDensityScale = Math.max(0.2, baseParticleDensity * govMods.particleScale);
 
@@ -16178,6 +16224,8 @@ export class GameEngine {
       const rawSlowMult = e.chillTimer > 0 ? (superFreeze ? 0.42 : 0.58) : 1.0;
       const slowMult = clampBossChillSlowMult(rawSlowMult, e.isBoss && !e.isArenaRival);
       if (e.chillTimer > 0) e.chillTimer -= dt;
+      if (e.exposedTimer && e.exposedTimer > 0) e.exposedTimer = Math.max(0, e.exposedTimer - dt);
+      if (e.interruptCdTimer && e.interruptCdTimer > 0) e.interruptCdTimer = Math.max(0, e.interruptCdTimer - dt);
 
       // Phase 2: 3D Boss Punish Window emerald halo tick
       if (e.isBoss && e.punishWindowTimer && e.punishWindowTimer > 0) {
@@ -17169,6 +17217,21 @@ export class GameEngine {
               }
             }
           }
+        } else if (!e.isBoss && !e.isArenaRival && !e.isVaultPillar && !e.isTrainingDummy) {
+          const squadVec = computeSquadCoordinationVector({
+            selfId: e.id,
+            kind: e.kind,
+            x: e.x,
+            z: e.z,
+            radius: e.radius,
+            baseSpeed: e.speed,
+            playerX: mobTargetX,
+            playerZ: mobTargetZ,
+            flankSign: e.mobFlankSign ?? (e.id % 2 === 0 ? 1 : -1),
+            neighbors: enemySnapshot,
+          });
+          e.vx = THREE.MathUtils.lerp(e.vx, squadVec.vx * slowMult, Math.min(1, dt * 6));
+          e.vz = THREE.MathUtils.lerp(e.vz, squadVec.vz * slowMult, Math.min(1, dt * 6));
         }
 
         if (!e.chargerDashing) {
@@ -19624,11 +19687,20 @@ export class GameEngine {
         if (!resolvedLabel) resolvedLabel = 'VỎ GIÁP!';
       }
     }
+    if (e.exposedTimer && e.exposedTimer > 0) {
+      mult *= 1.2;
+    }
     if (e.isBoss && !e.isArenaRival && e.stunTimer && e.stunTimer > 0) {
       mult *= 1.45;
     } else if (e.isBoss && !e.isArenaRival && e.punishWindowTimer && e.punishWindowTimer > 0) {
-      const basePunish =
-        e.bossPhase === 3 ? PUNISH_WINDOW_PHASE3_BONUS : PUNISH_WINDOW_DAMAGE_BONUS;
+      const chapterBossPlan = getChapterBossPhasePlan(
+        this.currentChapter.id,
+        e.hp / Math.max(1, e.maxHp)
+      );
+      const basePunish = Math.max(
+        chapterBossPlan.punishDamageBonus,
+        e.bossPhase === 3 ? PUNISH_WINDOW_PHASE3_BONUS : PUNISH_WINDOW_DAMAGE_BONUS
+      );
       const punishBonus =
         basePunish * (this.nightmareTier > 0 ? this.nightmareConfig.punishBonusMult : 1);
       mult *= 1 + punishBonus;
@@ -19638,6 +19710,47 @@ export class GameEngine {
       soundEngine.playPunishHit();
       if (!resolvedLabel && isCrit) {
         resolvedLabel = e.bossPhase === 3 ? 'PHẢN ĐÒN TỐI THƯỢNG!' : 'PHẢN ĐÒN!';
+      }
+    }
+
+    // Cast Interrupt ("Ngắt Chiêu"): rewards timed Ultimate / Counter / Elemental Crit against telegraphs
+    if (e.telegraphType !== 'none' && e.telegraphTimer > 0 && coopAllyIndex === undefined) {
+      const interruptOutcome = evaluateCastInterrupt({
+        isBoss: e.isBoss,
+        isElite: Boolean(e.isElite),
+        isTrainingDummy: e.isTrainingDummy,
+        telegraphType: e.telegraphType,
+        telegraphTimer: e.telegraphTimer,
+        interruptCooldownSec: e.interruptCdTimer ?? 0,
+        dmgSource,
+        isCrit,
+        isElemental: blaze || frost || storm || poison,
+        isCounterShot: Boolean(resolvedLabel && resolvedLabel.includes('PHẢN')),
+      });
+      if (interruptOutcome.interrupted) {
+        this.runCastInterrupts += 1;
+        e.interruptCdTimer = interruptOutcome.nextInterruptCooldownSec;
+        e.exposedTimer = Math.max(e.exposedTimer ?? 0, interruptOutcome.exposedDurationSec);
+        if (interruptOutcome.cancelTelegraph) {
+          e.telegraphType = 'none';
+          e.telegraphTimer = 0;
+          e.telegraphGroup.visible = false;
+        }
+        if (interruptOutcome.stunDurationSec > 0) {
+          e.stunTimer = Math.max(e.stunTimer ?? 0, interruptOutcome.stunDurationSec);
+        }
+        if (e.isBoss && this.bossStaggerState && interruptOutcome.bossStaggerBonusRatio > 0) {
+          this.bossStaggerState.current = Math.min(
+            this.bossStaggerState.max,
+            this.bossStaggerState.current + this.bossStaggerState.max * interruptOutcome.bossStaggerBonusRatio
+          );
+        }
+        mult *= 1 + interruptOutcome.exposedDamageBonus;
+        resolvedLabel = interruptOutcome.floatingLabel;
+        soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
+        if (!this.reducedMotionEnabled) {
+          this.spawnShockwave(e.x, e.z, 0x38bdf8, e.isBoss ? 3.0 : 2.0, 0.26);
+        }
       }
     }
 
@@ -21316,6 +21429,11 @@ export class GameEngine {
         maxCombo: this.maxRunCombo,
         damageBreakdown: this.getDamageBreakdownSnapshot(),
         activeSynergies: evaluateActiveSynergies(this.activeSkills),
+        endHpRatio: Math.max(0, Math.min(1, this.hp / Math.max(1, this.maxHp))),
+        revivesUsed: this.runRevivesUsed,
+        perfectDodges: this.perfectDodgeCount,
+        bossGuardBreaks: this.runBossBreaksCount,
+        castInterrupts: this.runCastInterrupts,
       });
       return;
     }
@@ -21406,6 +21524,7 @@ export class GameEngine {
     if (this.hp <= 0) {
       if (this.revivesLeft > 0) {
         this.revivesLeft--;
+        this.runRevivesUsed += 1;
         const restorePct = this.hasFullRevive ? 1.0 : 0.55;
         this.hp = Math.round(this.maxHp * restorePct);
         this.invulnTimer = 2.0;

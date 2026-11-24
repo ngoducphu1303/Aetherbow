@@ -11,8 +11,24 @@ import {
   WeeklyBossServiceError,
 } from './src/server/weeklyBossService.ts';
 import { LiveAiPlayersService } from './src/server/liveAiPlayersService.ts';
-import { mountAssetDeployRoutes } from './src/server/assetDeployService.ts';
 import type { WeeklyBossLeaderboardEntry } from './src/data/weeklyBossData.ts';
+import {
+  applySecurityHeadersMiddleware,
+  clampWsBountyPoints,
+  clampWsDuelDurationSec,
+  clampWsGuildBossDamage,
+  clampWsGuildWarScore,
+  createApiRateLimitMiddleware,
+  isVerifiedAdminClaims,
+  SlidingWindowRateLimiter,
+  WS_SECURITY_LIMITS,
+} from './src/server/serverSecurity.ts';
+import {
+  DEFAULT_LIVEOPS_CONFIG,
+  sanitizeLiveOpsConfig,
+  type LiveOpsConfig,
+} from './src/data/liveOpsConfig.ts';
+import { verifyWorkerAdminSession } from './src/server/assetDeployService.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +60,8 @@ if (projectId) {
 interface VerifiedRequestUser {
   uid: string;
   displayName: string;
+  email?: string;
+  emailVerified?: boolean;
 }
 
 function sanitizeServerDisplayName(raw: unknown, fallbackEmail?: string): string {
@@ -85,6 +103,8 @@ async function resolveBearerUser(
     return {
       uid: decoded.uid,
       displayName,
+      email: typeof decoded.email === 'string' ? decoded.email : undefined,
+      emailVerified: decoded.email_verified === true,
     };
   } catch {
     throw new WeeklyBossServiceError(
@@ -327,9 +347,25 @@ export function attachLiveAiWebSocketServer(
   liveAiService: LiveAiPlayersService,
   options?: { tickIntervalMs?: number; chatReplyDelayMs?: number }
 ): LiveAiWsHubHandle {
-  const wss = new WebSocketServer({ server, path: '/ws/live-ai' });
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws/live-ai',
+    maxPayload: WS_SECURITY_LIMITS.maxPayloadBytes,
+  });
   const clientNames = new Map<WebSocket, string>();
   const clientLastChatAt = new Map<WebSocket, number>();
+  const clientMsgLimiter = new SlidingWindowRateLimiter({
+    maxRequests: WS_SECURITY_LIMITS.generalMaxMsgsPer10s,
+    windowMs: 10_000,
+    maxBuckets: 1000,
+  });
+  const clientActionLimiter = new SlidingWindowRateLimiter({
+    maxRequests: WS_SECURITY_LIMITS.actionBurstMaxPer10s,
+    windowMs: 10_000,
+    maxBuckets: 2000,
+  });
+  const clientSocketIds = new Map<WebSocket, string>();
+  let nextSocketSeq = 1;
   const clientAuctionLots = new Map<
     WebSocket,
     Array<{
@@ -408,11 +444,21 @@ export function attachLiveAiWebSocketServer(
   };
 
   wss.on('connection', (ws) => {
+    const socketId = `ws_${nextSocketSeq++}`;
+    clientSocketIds.set(ws, socketId);
     clientNames.set(ws, 'Chiến Binh Tinh Giới');
     emitSnapshotTo(ws);
 
     ws.on('message', (raw) => {
       try {
+        const msgVerdict = clientMsgLimiter.consume(socketId);
+        if (!msgVerdict.allowed) {
+          sendJson(ws, {
+            type: 'security:rate_limited',
+            payload: { retryAfterMs: msgVerdict.retryAfterMs },
+          });
+          return;
+        }
         const parsed = JSON.parse(String(raw)) as {
           type?: string;
           payload?: Record<string, unknown>;
@@ -535,7 +581,7 @@ export function attachLiveAiWebSocketServer(
             payload.challengerName ?? clientNames.get(ws)
           );
           const playerWon = Boolean(payload.playerWon);
-          const durationSec = Math.max(1, Number(payload.durationSec ?? 15));
+          const durationSec = clampWsDuelDurationSec(payload.durationSec);
           const rawTier = String(payload.aiDuelTier ?? 'challenger');
           const aiDuelTier: 'challenger' | 'master' | 'sovereign' | 'mythic' =
             rawTier === 'challenger' ||
@@ -712,12 +758,16 @@ export function attachLiveAiWebSocketServer(
         }
 
         if (type === 'guild_boss:attack') {
+          if (!clientActionLimiter.consume(`${socketId}:guild_boss`).allowed) {
+            sendJson(ws, { type: 'security:rate_limited', payload: { action: 'guild_boss:attack' } });
+            return;
+          }
           const playerName = sanitizeServerDisplayName(
             payload.playerName ?? clientNames.get(ws)
           );
-          const damage = Number(payload.damage ?? 0);
+          const damage = clampWsGuildBossDamage(payload.damage);
           const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
-          if (!Number.isFinite(damage) || damage <= 0) return;
+          if (damage === null) return;
           const res = liveAiService.recordHumanGuildBossAttack({
             playerName,
             heroId: heroId as any,
@@ -853,16 +903,20 @@ export function attachLiveAiWebSocketServer(
         }
 
         if (type === 'bounty:contribute') {
+          if (!clientActionLimiter.consume(`${socketId}:bounty`).allowed) {
+            sendJson(ws, { type: 'security:rate_limited', payload: { action: 'bounty:contribute' } });
+            return;
+          }
           const playerName = sanitizeServerDisplayName(
             payload.playerName ?? clientNames.get(ws)
           );
-          const points = Number(payload.points ?? 0);
+          const points = clampWsBountyPoints(payload.points);
           const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
           const sourceLabel =
             typeof payload.sourceLabel === 'string'
               ? payload.sourceLabel.slice(0, 48)
               : undefined;
-          if (!Number.isFinite(points) || points <= 0) return;
+          if (points === null) return;
           const res = liveAiService.recordHumanBountyContribution({
             playerName,
             heroId: heroId as any,
@@ -958,6 +1012,13 @@ export function attachLiveAiWebSocketServer(
         }
 
         if (type === 'guild_war:capture_strike') {
+          if (!clientActionLimiter.consume(`${socketId}:guild_war`).allowed) {
+            sendJson(ws, {
+              type: 'security:rate_limited',
+              payload: { action: 'guild_war:capture_strike' },
+            });
+            return;
+          }
           const playerName = sanitizeServerDisplayName(
             payload.playerName ?? clientNames.get(ws)
           );
@@ -968,13 +1029,13 @@ export function attachLiveAiWebSocketServer(
               : 'solar_spire';
           const mode = payload.mode === 'assault_3d' ? 'assault_3d' : 'quick_strike';
           const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
-          const scoreGain = Number(payload.scoreGain ?? (mode === 'assault_3d' ? 145 : 65));
+          const scoreGain = clampWsGuildWarScore(payload.scoreGain, mode);
           const res = liveAiService.strikeGuildWarBastion({
             playerName,
             heroId: heroId as any,
             bastionId,
             mode,
-            scoreGain: Number.isFinite(scoreGain) ? scoreGain : undefined,
+            scoreGain,
           });
           for (const client of wss.clients) {
             if (client.readyState === WebSocket.OPEN) {
@@ -1088,6 +1149,14 @@ export function attachLiveAiWebSocketServer(
     });
 
     ws.on('close', () => {
+      const closedId = clientSocketIds.get(ws);
+      if (closedId) {
+        clientMsgLimiter.reset(closedId);
+        clientActionLimiter.reset(`${closedId}:guild_boss`);
+        clientActionLimiter.reset(`${closedId}:bounty`);
+        clientActionLimiter.reset(`${closedId}:guild_war`);
+        clientSocketIds.delete(ws);
+      }
       clientNames.delete(ws);
       clientAuctionLots.delete(ws);
       clientLastChatAt.delete(ws);
@@ -1231,7 +1300,31 @@ function handleApiError(res: express.Response, err: unknown): void {
 
 async function startServer() {
   const app = express();
+  app.disable('x-powered-by');
+  app.use(applySecurityHeadersMiddleware);
   app.use(express.json({ limit: '128kb' }));
+
+  const liveOpsConfigPath = path.resolve(__dirname, '.data/liveops-config.json');
+  const readServerLiveOpsConfig = (): LiveOpsConfig => {
+    try {
+      if (fs.existsSync(liveOpsConfigPath)) {
+        const raw = JSON.parse(fs.readFileSync(liveOpsConfigPath, 'utf8'));
+        return sanitizeLiveOpsConfig(raw);
+      }
+    } catch {
+      // Fallback safely to default LiveOps config
+    }
+    return { ...DEFAULT_LIVEOPS_CONFIG };
+  };
+  const writeServerLiveOpsConfig = (config: LiveOpsConfig): void => {
+    const dir = path.dirname(liveOpsConfigPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tmpPath = `${liveOpsConfigPath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
+    fs.renameSync(tmpPath, liveOpsConfigPath);
+  };
 
   const liveAiService = new LiveAiPlayersService(
     path.resolve(__dirname, '.data/live-ai-players.json')
@@ -1251,12 +1344,75 @@ async function startServer() {
       });
     }
   );
-  app.use('/api/weekly-boss', createWeeklyBossRouter(weeklyBossService));
+  app.use(
+    '/api/weekly-boss',
+    createApiRateLimitMiddleware({ scope: 'weekly-boss', maxRequests: 60, windowMs: 60_000 }),
+    createWeeklyBossRouter(weeklyBossService)
+  );
 
-  app.get('/api/live-ai/snapshot', (_req, res) => {
-    const humanCount = wsHub ? Math.max(1, wsHub.wss.clients.size) : 1;
-    res.json(liveAiService.getSnapshot(humanCount));
+  app.use(
+    '/api/liveops',
+    createApiRateLimitMiddleware({ scope: 'liveops', maxRequests: 60, windowMs: 60_000 })
+  );
+  app.get('/api/liveops/config', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.json({ ok: true, config: readServerLiveOpsConfig() });
   });
+  app.put('/api/liveops/config', async (req, res) => {
+    try {
+      const user = await resolveBearerUser(req);
+      if (!user) {
+        res.status(401).json({
+          error: 'AUTH_REQUIRED',
+          message: 'Cần đăng nhập tài khoản quản trị để cập nhật cấu hình LiveOps.',
+        });
+        return;
+      }
+      const rawAuthHeader = req.headers.authorization;
+      const bearerToken =
+        typeof rawAuthHeader === 'string' && rawAuthHeader.startsWith('Bearer ')
+          ? rawAuthHeader.slice('Bearer '.length).trim()
+          : '';
+      const isGoogleAdmin = isVerifiedAdminClaims({
+        email: user.email,
+        emailVerified: user.emailVerified,
+      });
+      const isLinkedWorkerAdmin =
+        !isGoogleAdmin && bearerToken.length > 0 && (await verifyWorkerAdminSession(bearerToken));
+      if (!isGoogleAdmin && !isLinkedWorkerAdmin) {
+        res.status(403).json({
+          error: 'ADMIN_FORBIDDEN',
+          message: 'Tài khoản này không có quyền quản trị LiveOps.',
+        });
+        return;
+      }
+      const prev = readServerLiveOpsConfig();
+      const rawBody =
+        req.body && typeof req.body === 'object' && 'config' in req.body
+          ? (req.body as { config: unknown }).config
+          : req.body;
+      const sanitized = sanitizeLiveOpsConfig({
+        ...prev,
+        ...(rawBody && typeof rawBody === 'object' ? (rawBody as Record<string, unknown>) : {}),
+        version: Math.max(prev.version + 1, Number((rawBody as Record<string, unknown>)?.version ?? 1)),
+        updatedAtMs: Date.now(),
+        updatedByEmail: 'Admin LiveOps',
+      });
+      writeServerLiveOpsConfig(sanitized);
+      res.json({ ok: true, config: sanitized });
+    } catch (err) {
+      handleApiError(res, err);
+    }
+  });
+
+  app.get(
+    '/api/live-ai/snapshot',
+    createApiRateLimitMiddleware({ scope: 'live-ai', maxRequests: 120, windowMs: 60_000 }),
+    (_req, res) => {
+      const humanCount = wsHub ? Math.max(1, wsHub.wss.clients.size) : 1;
+      res.json(liveAiService.getSnapshot(humanCount));
+    }
+  );
 
   app.get('/api/health', (_req, res) => {
     res.json({
@@ -1266,7 +1422,10 @@ async function startServer() {
     });
   });
 
-  mountAssetDeployRoutes(app, __dirname, projectId);
+  app.use(
+    '/api/assets',
+    createApiRateLimitMiddleware({ scope: 'assets', maxRequests: 240, windowMs: 60_000 })
+  );
 
   // Stream the uncompressed 90.3 MB Chapter 1 GLB map in <= 6 MiB byte chunks so
   // every HTTP/1.1 response stays safely under Cloud Run's 32 MiB response limit.

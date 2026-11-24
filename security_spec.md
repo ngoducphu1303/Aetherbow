@@ -7,10 +7,11 @@
 3. **Immutable Identity & Timestamps**: `uid`, `weekId`, `seasonId`, and `createdAt` can never be changed after creation. `createdAt == request.time` on `create` and `updatedAt == request.time` on both `create` and `update`.
 4. **Monotonic Competitive Integrity & Action-Based Updates**: Every `create` checks both `hasAll` and `hasOnly`. Every `update` invokes `isValid[Entity](incoming(), ...)` first, enforces non-decreasing high scores (`bestScore >= existing().bestScore`, `seasonPoints >= existing().seasonPoints`), and explicitly allowlists mutable keys via `incoming().diff(existing()).affectedKeys().hasOnly(...)`.
 5. **Path Hardening, Resource Bounds & Total Array Guarding**: Every single-doc operation validates `isValidId(...)` (`<= 128` chars, `^[a-zA-Z0-9_\-]+$`). Every string enforces `.size()` bounds, every number enforces numeric bounds, and `claimedMilestones` enforces `.size() <= 20` with first-element type checking.
-6. **Verified Asset Admin RBAC (`/asset_admins/{uid}`)**: Only the verified Google owner (`request.auth.token.email == 'puugoo002@gmail.com' && request.auth.token.email_verified == true`) may create, update, or delete `/asset_admins/{uid}` records. Collection-wide `list` is unconditionally denied; `get` is limited to the target UID owner or the Google owner.
-7. **Public Read-Only Asset Inbox Mirror (`/asset_inbox/{assetId}`)**: Public `get` and `list` require `resource.data.isPublic == true` and contain zero PII (only public CDN GLB path metadata). Writes (`create`, `update`, `delete`) require `isAssetAdmin()` (verified Google owner or UID present in `/asset_admins/{uid}`) with strict UUIDv4 ID binding, `.glb` path/name regex validation, size bounds (`24..120000000`), immutable `id`/`path`/`createdAt`, and server timestamps.
+6. **Verified Admin LiveOps Governance (`/liveops_config/{configId}`)**: Singleton document `global` is PII-free (stores non-PII `updatedByLabel`, never admin email). Any client may `get` `/liveops_config/global`, while `list`, `create`, and `update` strictly require `isAnyAuthorizedAdmin()` (either verified Google owner `isVerifiedAdmin()` or an explicitly linked UID in `/asset_admins/{uid}`), strict multiplier bounds (`0.5..3.0` rewards, `0.6..2.0` enemy scaling), monotonically increasing `version`, and `delete` is unconditionally denied.
+7. **Linked Asset Admin Registry (`/asset_admins/{uid}`)**: Only the verified Google owner (`isVerifiedAdmin()`) may create or update `/asset_admins/{uid}` records binding `puugoo` UIDs. Self-promotion by any other user is strictly denied, and `delete` is denied.
+8. **Asset Inbox Mirror (`/asset_inbox/{itemId}`)**: UUID-v4 keyed PII-free metadata for uploaded GLB files (`size` 24..120MB, `chapter` 1..12, strict group enum). Readable when `isPublic == true`; creatable/updatable exclusively by `isAnyAuthorizedAdmin()`.
 
-## 2. The "Dirty Dozen" + Asset Inbox Adversarial Payloads (Must Return PERMISSION_DENIED)
+## 2. The "Dirty Dozen" Adversarial Payloads (Must Return PERMISSION_DENIED)
 
 1. **Cross-User Private Read**: User B attempts `get(/players/userA)` -> DENIED (`request.auth.uid != uid`).
 2. **Private Collection Scraping**: Any user attempts `list(/players)` -> DENIED (`allow list: if false`).
@@ -22,8 +23,9 @@
 8. **ID Poisoning & Composite Key Spoofing**: User A writes `/boss_race_entries/2026-W47_userB` or a 200-char ID -> DENIED (`isValidId(entryId)` & `entryId == data.weekId + '_' + data.uid`).
 9. **Value Poisoning (Oversized String / Invalid Enum)**: User A writes `rankTier: "godmode"` or 500-char `displayName` -> DENIED (`data.rankTier in [...]` & `size() <= 24`).
 10. **Cross-User Competitive Hijack**: User B attempts to overwrite `/leaderboard/userA` or `/season_standings/S01_userA` -> DENIED (`existing().uid == request.auth.uid`).
-11. **Unfiltered Non-Public Query**: Client attempts `list(/boss_race_entries)` or `list(/season_standings)` or `list(/asset_inbox)` without `where('isPublic', '==', true)` -> DENIED (`resource.data.isPublic == true`).
+11. **Unfiltered Non-Public Query**: Client attempts `list(/boss_race_entries)` or `list(/season_standings)` without `where('isPublic', '==', true)` -> DENIED (`resource.data.isPublic == true`).
 12. **Array Exhaustion & Score Tampering**: User A writes `claimedMilestones` with 50 items or decreases `bestScore` below `existing().bestScore` or injects negative `seasonPoints` -> DENIED (Total Array Guard + monotonic & numeric bounds).
-13. **Admin Self-Escalation**: A regular authenticated player attempts `create(/asset_admins/myUid)` or `list(/asset_admins)` -> DENIED (`isGoogleAssetAdmin()` required & `allow list: if false`).
-14. **Unverified Email Spoofing**: An account with `email == 'puugoo002@gmail.com'` and `email_verified == false` attempts to write `/asset_inbox/{id}` -> DENIED (`request.auth.token.email_verified == true` required).
-15. **Path Traversal / Non-GLB Poisoning**: An admin client attempts to write `/asset_inbox/{id}` with `path: "/assets/../secret.txt"` or `group: "admin"` -> DENIED (strict path regex & group enum).
+13. **Unauthorized LiveOps Escalation**: Non-admin or unlinked user attempts to write `/liveops_config/global` -> DENIED (`isAnyAuthorizedAdmin()`).
+14. **Out-of-Bounds LiveOps Economy Sabotage**: Admin attempts to set `goldRewardMult: 999` or `enemyHpMult: 0.01` -> DENIED (strict numeric bounds in `isValidLiveOpsConfig`).
+15. **Self-Promotion to Asset Admin**: Regular or unlinked password user attempts to write `/asset_admins/{theirUid}` -> DENIED (`isVerifiedAdmin()` required).
+16. **Unauthorized Asset Inbox Tampering**: Non-admin attempts to inject a malicious GLB record into `/asset_inbox/{uuid}` -> DENIED (`isAnyAuthorizedAdmin()` + strict UUID/chapter/size validation).

@@ -5,6 +5,7 @@ import { auth, googleProvider } from '../firebase';
 import manifest from '../../scripts/glb-manifest.json';
 import AssetInboxPanel from './AssetInboxPanel';
 import AssetDeployPanel from './AssetDeployPanel';
+import AssetAdminLiveOpsTab from './AssetAdminLiveOpsTab';
 import { adminHandle, credentialMessage, linkAssetAdminAccount, loginAssetAdmin } from './assetAdminCredentials';
 import { api, MAX_BYTES, message, previewUrl, primary, secondary, uploadAdminGlb } from './assetAdminApi';
 import { syncAssetAdminUidToFirestore } from '../services/assetInboxMirrorService';
@@ -17,18 +18,18 @@ type Revision = { path: string; id: string; size: number; uploadedAt: string };
 type AdminSession = { canLinkPassword: boolean; passwordLinked: boolean; passwordUid?: string };
 type Entry = { active: Revision | null; previous: Revision | null; draft: Revision | null; canRollback: boolean };
 
-function initialAdminMode(): 'replace' | 'new' | 'deploy' {
+function initialAdminMode(): 'replace' | 'new' | 'deploy' | 'liveops' {
   const searchTab = new URLSearchParams(window.location.search).get('tab');
   const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
   const hashTab = new URLSearchParams(hashQuery).get('tab');
   const tab = searchTab || hashTab;
-  if (tab === 'new' || tab === 'deploy') return tab;
+  if (tab === 'new' || tab === 'deploy' || tab === 'liveops') return tab;
   return 'replace';
 }
 
 export default function AssetAdminPage() {
   const [session, setSession] = useState<'checking' | 'guest' | 'denied' | 'ready'>('checking');
-  const [mode, setMode] = useState<'replace' | 'new' | 'deploy'>(initialAdminMode);
+  const [mode, setMode] = useState<'replace' | 'new' | 'deploy' | 'liveops'>(initialAdminMode);
   const [workerAvailable, setWorkerAvailable] = useState(true);
   const [inboxBusy, setInboxBusy] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -248,8 +249,10 @@ export default function AssetAdminPage() {
                 onClick={() => setMode('replace')}>Thay model đã tích hợp</button>
             </>
           )}
-          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'deploy'} className={mode === 'deploy' ? primary : secondary}
+          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'deploy'} className={`${mode === 'deploy' ? primary : secondary} whitespace-nowrap`}
             onClick={() => setMode('deploy')}>Đồng bộ B2 &amp; Worker</button>
+          <button type="button" disabled={busy || inboxBusy} aria-pressed={mode === 'liveops'} className={`${mode === 'liveops' ? primary : secondary} whitespace-nowrap`}
+            onClick={() => setMode('liveops')}>Cân Bằng LiveOps</button>
         </nav>
       )}
 
@@ -341,6 +344,8 @@ export default function AssetAdminPage() {
         <AssetInboxPanel user={user} onBusyChange={setInboxBusy} />
       ) : mode === 'deploy' && user ? (
         <AssetDeployPanel user={user} onBusyChange={setInboxBusy} />
+      ) : mode === 'liveops' && user ? (
+        <AssetAdminLiveOpsTab user={user} onBusyChange={setInboxBusy} />
       ) : (
         <div className="mx-auto mt-6 grid max-w-6xl gap-4 lg:grid-cols-[minmax(260px,340px)_1fr]">
           <section className="self-start rounded-2xl border border-slate-800 bg-slate-900/85 p-4" aria-label="Danh mục model">

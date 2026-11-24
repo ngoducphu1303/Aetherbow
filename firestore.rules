@@ -11,12 +11,6 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isValidUuidV4(id) {
-      return id is string
-        && id.size() == 36
-        && id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
-    }
-
     function incoming() {
       return request.resource.data;
     }
@@ -33,15 +27,19 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    function isGoogleAssetAdmin() {
+    function isVerifiedAdmin() {
       return isSignedIn()
-        && request.auth.token.email == 'puugoo002@gmail.com'
+        && request.auth.token.email == 'ngoducphu1303@gmail.com'
         && request.auth.token.email_verified == true;
     }
 
-    function isAssetAdmin() {
-      return isGoogleAssetAdmin()
-        || (isSignedIn() && exists(/databases/$(database)/documents/asset_admins/$(request.auth.uid)));
+    function isLinkedAssetAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/asset_admins/$(request.auth.uid));
+    }
+
+    function isAnyAuthorizedAdmin() {
+      return isVerifiedAdmin() || isLinkedAssetAdmin();
     }
 
     // Validation Blueprint 1: PlayerAccount (/players/{uid})
@@ -307,8 +305,95 @@ service cloud.firestore {
       && data.updatedAt is timestamp;
     }
 
-    // Validation Blueprint 5: AssetAdminRecord (/asset_admins/{uid})
-    function isValidAssetAdminRecord(data, uid) {
+    // Validation Blueprint 5: LiveOpsConfig (/liveops_config/{configId})
+    function isValidLiveOpsConfig(data, configId) {
+      return data.keys().hasAll([
+        'configId',
+        'version',
+        'goldRewardMult',
+        'gemRewardMult',
+        'forgeShardMult',
+        'enemyHpMult',
+        'enemyDmgMult',
+        'chestEpicRateBonus',
+        'pitySoftCapOffset',
+        'weekendBlitzEnabled',
+        'doubleDropEventActive',
+        'announcementBanner',
+        'maintenanceNotice',
+        'balanceNote',
+        'updatedByUid',
+        'updatedByLabel',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'configId',
+        'version',
+        'goldRewardMult',
+        'gemRewardMult',
+        'forgeShardMult',
+        'enemyHpMult',
+        'enemyDmgMult',
+        'chestEpicRateBonus',
+        'pitySoftCapOffset',
+        'weekendBlitzEnabled',
+        'doubleDropEventActive',
+        'announcementBanner',
+        'maintenanceNotice',
+        'balanceNote',
+        'updatedByUid',
+        'updatedByLabel',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.configId is string
+      && data.configId == 'global'
+      && data.configId == configId
+      && data.version is int
+      && data.version >= 1
+      && data.version <= 100000
+      && data.goldRewardMult is number
+      && data.goldRewardMult >= 0.5
+      && data.goldRewardMult <= 3.0
+      && data.gemRewardMult is number
+      && data.gemRewardMult >= 0.5
+      && data.gemRewardMult <= 2.5
+      && data.forgeShardMult is number
+      && data.forgeShardMult >= 0.5
+      && data.forgeShardMult <= 3.0
+      && data.enemyHpMult is number
+      && data.enemyHpMult >= 0.6
+      && data.enemyHpMult <= 2.0
+      && data.enemyDmgMult is number
+      && data.enemyDmgMult >= 0.6
+      && data.enemyDmgMult <= 2.0
+      && data.chestEpicRateBonus is number
+      && data.chestEpicRateBonus >= -0.05
+      && data.chestEpicRateBonus <= 0.2
+      && data.pitySoftCapOffset is int
+      && data.pitySoftCapOffset >= -5
+      && data.pitySoftCapOffset <= 5
+      && data.weekendBlitzEnabled is bool
+      && data.doubleDropEventActive is bool
+      && data.announcementBanner is string
+      && data.announcementBanner.size() <= 180
+      && data.maintenanceNotice is string
+      && data.maintenanceNotice.size() <= 180
+      && data.balanceNote is string
+      && data.balanceNote.size() <= 240
+      && data.updatedByUid is string
+      && data.updatedByUid == request.auth.uid
+      && isValidId(data.updatedByUid)
+      && data.updatedByLabel is string
+      && data.updatedByLabel.size() >= 1
+      && data.updatedByLabel.size() <= 32
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint 6: AssetAdmin (/asset_admins/{uid})
+    function isValidAssetAdmin(data, uid) {
       return data.keys().hasAll([
         'uid',
         'handle',
@@ -327,7 +412,7 @@ service cloud.firestore {
       && data.uid == uid
       && isValidId(data.uid)
       && data.handle is string
-      && data.handle in ['puugoo']
+      && data.handle == 'puugoo'
       && data.grantedBy is string
       && data.grantedBy == request.auth.uid
       && isValidId(data.grantedBy)
@@ -335,8 +420,8 @@ service cloud.firestore {
       && data.updatedAt is timestamp;
     }
 
-    // Validation Blueprint 6: AssetInboxItem (/asset_inbox/{assetId})
-    function isValidAssetInboxItem(data, assetId) {
+    // Validation Blueprint 7: AssetInboxItem (/asset_inbox/{itemId})
+    function isValidAssetInboxItem(data, itemId) {
       return data.keys().hasAll([
         'id',
         'name',
@@ -361,13 +446,13 @@ service cloud.firestore {
         'createdAt',
         'updatedAt'
       ])
-      && isValidUuidV4(data.id)
-      && data.id == assetId
+      && data.id is string
+      && data.id == itemId
+      && data.id.size() == 36
+      && data.id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
       && data.name is string
       && data.name.size() >= 5
       && data.name.size() <= 120
-      && data.name.matches('^[^/\\\\]+\\.[gG][lL][bB]$')
-      && !data.name.matches('.*\\.\\..*')
       && data.chapter is int
       && data.chapter >= 1
       && data.chapter <= 12
@@ -376,15 +461,12 @@ service cloud.firestore {
       && data.path is string
       && data.path.size() >= 15
       && data.path.size() <= 320
-      && !data.path.matches('.*\\.\\..*')
-      && data.path.matches('^/assets/Chương ([1-9]|1[0-2])/Asset mới/[^/\\\\]+/' + data.id + '/[^/\\\\]+\\.[gG][lL][bB]$')
       && data.size is int
       && data.size >= 24
       && data.size <= 120000000
       && data.uploadedAt is string
       && data.uploadedAt.size() >= 20
-      && data.uploadedAt.size() <= 32
-      && data.uploadedAt.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,3})?Z$')
+      && data.uploadedAt.size() <= 30
       && data.isPublic is bool
       && data.isPublic == true
       && data.createdAt is timestamp
@@ -557,18 +639,57 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Collection 5: Private Asset Admin Allowlist (Google Owner Managed Only)
-    match /asset_admins/{uid} {
-      allow get: if isValidId(uid) && (isOwner(uid) || isGoogleAssetAdmin());
-      allow list: if false;
-      allow create: if isGoogleAssetAdmin()
-        && isValidId(uid)
-        && isValidAssetAdminRecord(incoming(), uid)
+    // Collection 5: PII-Free Global LiveOps Configuration (Verified & Linked Admins Only)
+    match /liveops_config/{configId} {
+      allow get: if isValidId(configId) && configId == 'global';
+      allow list: if isAnyAuthorizedAdmin();
+      allow create: if isAnyAuthorizedAdmin()
+        && isValidId(configId)
+        && configId == 'global'
+        && isValidLiveOpsConfig(incoming(), configId)
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
-      allow update: if isGoogleAssetAdmin()
+      allow update: if isAnyAuthorizedAdmin()
+        && isValidId(configId)
+        && configId == 'global'
+        && isValidLiveOpsConfig(incoming(), configId)
+        && incoming().configId == existing().configId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().version >= existing().version
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'version',
+          'goldRewardMult',
+          'gemRewardMult',
+          'forgeShardMult',
+          'enemyHpMult',
+          'enemyDmgMult',
+          'chestEpicRateBonus',
+          'pitySoftCapOffset',
+          'weekendBlitzEnabled',
+          'doubleDropEventActive',
+          'announcementBanner',
+          'maintenanceNotice',
+          'balanceNote',
+          'updatedByUid',
+          'updatedByLabel',
+          'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // Collection 6: Linked Asset Admin Registry (Google Owner Grants Only)
+    match /asset_admins/{uid} {
+      allow get: if isValidId(uid) && (isVerifiedAdmin() || isOwner(uid));
+      allow list: if isVerifiedAdmin();
+      allow create: if isVerifiedAdmin()
         && isValidId(uid)
-        && isValidAssetAdminRecord(incoming(), uid)
+        && isValidAssetAdmin(incoming(), uid)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedAdmin()
+        && isValidId(uid)
+        && isValidAssetAdmin(incoming(), uid)
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
@@ -577,36 +698,39 @@ service cloud.firestore {
           'grantedBy',
           'updatedAt'
         ]);
-      allow delete: if isGoogleAssetAdmin() && isValidId(uid);
+      allow delete: if false;
     }
 
-    // Collection 6: Public Read-Only Mirror of Uploaded GLB Inbox Metadata
-    match /asset_inbox/{assetId} {
-      allow get: if isValidUuidV4(assetId)
-        && ((resource != null && existing().isPublic == true) || isAssetAdmin());
-      allow list: if resource.data.isPublic == true;
-      allow create: if isAssetAdmin()
-        && isValidUuidV4(assetId)
-        && isValidAssetInboxItem(incoming(), assetId)
+    // Collection 7: Public PII-Free Asset Inbox Metadata (Admin Mirror Only)
+    match /asset_inbox/{itemId} {
+      allow get: if isValidId(itemId)
+        && (
+          (resource != null && existing().isPublic == true)
+          || isAnyAuthorizedAdmin()
+        );
+      allow list: if resource.data.isPublic == true || isAnyAuthorizedAdmin();
+      allow create: if isAnyAuthorizedAdmin()
+        && isValidId(itemId)
+        && isValidAssetInboxItem(incoming(), itemId)
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
-      allow update: if isAssetAdmin()
-        && isValidUuidV4(assetId)
-        && isValidAssetInboxItem(incoming(), assetId)
+      allow update: if isAnyAuthorizedAdmin()
+        && isValidId(itemId)
+        && isValidAssetInboxItem(incoming(), itemId)
         && incoming().id == existing().id
-        && incoming().path == existing().path
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly([
           'name',
           'chapter',
           'group',
+          'path',
           'size',
           'uploadedAt',
           'isPublic',
           'updatedAt'
         ]);
-      allow delete: if isAssetAdmin() && isValidUuidV4(assetId);
+      allow delete: if false;
     }
   }
 }

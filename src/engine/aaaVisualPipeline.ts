@@ -251,10 +251,11 @@ export function classifyGpuCapability(
  * Lobby, Endless Tower, Arena, World Boss, Heroes, Bosses, Mobs, and future content.
  */
 export function resolveSystemLiteBudget(
-  profile: GpuProfileSummary,
+  rawProfile?: Partial<GpuProfileSummary> | null,
   lowEndSafetyMode: LowEndSafetyMode = 'auto',
   chapter1MapMode: Chapter1MapMode = 'auto'
 ): SystemLiteBudget {
+  const profile: Partial<GpuProfileSummary> = rawProfile ?? {};
   const inferredTier: DeviceHardwareTier =
     profile.deviceTier ??
     (profile.tier === 'software' || profile.crashGuardTripped

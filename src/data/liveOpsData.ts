@@ -45,6 +45,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   compactHud: false,
   chapter1MapMode: 'auto',
   lowEndSafetyMode: 'auto',
+  reducedMotion: false,
+  uiTextScale: 'normal',
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
@@ -61,6 +63,7 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     rawSafetyMode === 'on' || rawSafetyMode === 'off' || rawSafetyMode === 'auto'
       ? rawSafetyMode
       : DEFAULT_SETTINGS.lowEndSafetyMode;
+  const uiTextScale = s?.uiTextScale === 'large' ? 'large' : 'normal';
   return {
     masterVol: s?.masterVol ?? DEFAULT_SETTINGS.masterVol,
     bgmVol: s?.bgmVol ?? DEFAULT_SETTINGS.bgmVol,
@@ -84,6 +87,8 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     compactHud: s?.compactHud ?? DEFAULT_SETTINGS.compactHud,
     chapter1MapMode,
     lowEndSafetyMode,
+    reducedMotion: Boolean(s?.reducedMotion ?? DEFAULT_SETTINGS.reducedMotion),
+    uiTextScale,
   };
 }
 
@@ -840,27 +845,27 @@ const ROTATING_DEALS_POOL: FlashDealItem[] = [
   },
   {
     id: 'deal_gold_vault',
-    title: 'Túi Vàng Tinh Giới ×500',
-    subtitle: 'Đổi nhanh Ngọc Hồn lấy 500 Vàng nâng cấp Bảng Thiên Phú.',
-    badge: 'GIẢM 45%',
+    title: 'Túi Vàng Tinh Giới ×450',
+    subtitle: 'Đổi nhanh Ngọc Hồn lấy 450 Vàng nâng cấp Bảng Thiên Phú (25 Vàng/Ngọc).',
+    badge: 'GIẢM 25%',
     currency: 'gems',
-    originalPrice: 20,
-    price: 11,
-    discountPct: 45,
+    originalPrice: 24,
+    price: 18,
+    discountPct: 25,
     rewardKind: 'gold',
-    amount: 500,
+    amount: 450,
   },
   {
     id: 'deal_gem_exchange',
-    title: 'Ngọc Hồn Chi Viện ×20',
-    subtitle: 'Ưu đãi đổi Vàng sang 20 Ngọc Hồn mỗi ngày cho thợ săn chăm chỉ.',
+    title: 'Ngọc Hồn Chi Viện ×15',
+    subtitle: 'Ưu đãi đổi Vàng dư sang 15 Ngọc Hồn mỗi ngày (chống chênh lệch tỷ giá).',
     badge: 'ĐỔI BẰNG VÀNG',
     currency: 'gold',
-    originalPrice: 360,
-    price: 220,
-    discountPct: 39,
+    originalPrice: 750,
+    price: 550,
+    discountPct: 27,
     rewardKind: 'gems',
-    amount: 20,
+    amount: 15,
   },
 ];
 

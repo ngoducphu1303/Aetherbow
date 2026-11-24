@@ -335,9 +335,122 @@
         "updatedAt"
       ]
     },
-    "AssetAdminRecord": {
-      "title": "AssetAdminRecord",
-      "description": "Authorized non-Google password admin UID granted by the verified Google owner to mirror uploaded GLB metadata into Firestore.",
+    "LiveOpsConfig": {
+      "title": "LiveOpsConfig",
+      "description": "PII-free global LiveOps balance multipliers, event switches, and lobby announcement notices writable only by verified admins.",
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string",
+          "enum": ["global"],
+          "description": "Singleton LiveOps configuration document identifier."
+        },
+        "version": {
+          "type": "integer",
+          "description": "Monotonically increasing configuration revision number."
+        },
+        "goldRewardMult": {
+          "type": "number",
+          "description": "Bounded Gold reward multiplier (0.5 to 3.0)."
+        },
+        "gemRewardMult": {
+          "type": "number",
+          "description": "Bounded Gem reward multiplier (0.5 to 2.5)."
+        },
+        "forgeShardMult": {
+          "type": "number",
+          "description": "Bounded Forge Shard reward multiplier (0.5 to 3.0)."
+        },
+        "enemyHpMult": {
+          "type": "number",
+          "description": "Bounded global enemy HP multiplier (0.6 to 2.0)."
+        },
+        "enemyDmgMult": {
+          "type": "number",
+          "description": "Bounded global enemy damage multiplier (0.6 to 2.0)."
+        },
+        "chestEpicRateBonus": {
+          "type": "number",
+          "description": "Bounded chest Epic drop rate bonus (-0.05 to 0.20)."
+        },
+        "pitySoftCapOffset": {
+          "type": "integer",
+          "description": "Bounded pity soft-cap offset (-5 to 5)."
+        },
+        "weekendBlitzEnabled": {
+          "type": "boolean",
+          "description": "Whether Weekend Blitz competitive event is enabled."
+        },
+        "doubleDropEventActive": {
+          "type": "boolean",
+          "description": "Whether Double Drop bonus event is active."
+        },
+        "announcementBanner": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 180,
+          "description": "Optional lobby announcement banner text."
+        },
+        "maintenanceNotice": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 180,
+          "description": "Optional maintenance notice banner text."
+        },
+        "balanceNote": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 240,
+          "description": "Internal revision note for LiveOps changes."
+        },
+        "updatedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the verified admin who saved this revision."
+        },
+        "updatedByLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Non-PII display label of the operator role."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of initial LiveOps document creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest LiveOps revision."
+        }
+      },
+      "required": [
+        "configId",
+        "version",
+        "goldRewardMult",
+        "gemRewardMult",
+        "forgeShardMult",
+        "enemyHpMult",
+        "enemyDmgMult",
+        "chestEpicRateBonus",
+        "pitySoftCapOffset",
+        "weekendBlitzEnabled",
+        "doubleDropEventActive",
+        "announcementBanner",
+        "maintenanceNotice",
+        "balanceNote",
+        "updatedByUid",
+        "updatedByLabel",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AssetAdmin": {
+      "title": "AssetAdmin",
+      "description": "Linked password-based Asset & LiveOps admin authorization record granted exclusively by the verified Google owner.",
       "type": "object",
       "properties": {
         "uid": {
@@ -345,42 +458,36 @@
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$",
-          "description": "Firebase Auth UID of the linked password admin account."
+          "description": "Firebase Authentication UID of the linked password admin."
         },
         "handle": {
           "type": "string",
           "enum": ["puugoo"],
-          "description": "Normalized admin handle."
+          "description": "Canonical non-PII admin handle."
         },
         "grantedBy": {
           "type": "string",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$",
-          "description": "Verified Google owner UID that authorized this admin record."
+          "description": "Firebase Auth UID of the verified Google owner who granted admin access."
         },
         "createdAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server timestamp when admin access was granted."
+          "description": "Server timestamp when the link was created."
         },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server timestamp when admin access was last confirmed."
+          "description": "Server timestamp when the link was last updated."
         }
       },
-      "required": [
-        "uid",
-        "handle",
-        "grantedBy",
-        "createdAt",
-        "updatedAt"
-      ]
+      "required": ["uid", "handle", "grantedBy", "createdAt", "updatedAt"]
     },
     "AssetInboxItem": {
       "title": "AssetInboxItem",
-      "description": "Public read-only metadata mirror of GLB assets uploaded to /admin/assets so build scripts and AI tools can discover chapter uploads without manual link copying.",
+      "description": "PII-free metadata mirror of newly uploaded 3D GLB assets stored in the Asset Inbox.",
       "type": "object",
       "properties": {
         "id": {
@@ -388,17 +495,17 @@
           "minLength": 36,
           "maxLength": 36,
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-          "description": "UUIDv4 identifier matching the Cloudflare Worker upload record."
+          "description": "UUID v4 identifier matching the document ID."
         },
         "name": {
           "type": "string",
           "minLength": 5,
           "maxLength": 120,
-          "description": "Original .glb filename."
+          "description": "Sanitized GLB filename."
         },
         "chapter": {
           "type": "integer",
-          "description": "Campaign chapter number (1 to 12)."
+          "description": "Target chapter index (1..12)."
         },
         "group": {
           "type": "string",
@@ -409,31 +516,31 @@
           "type": "string",
           "minLength": 15,
           "maxLength": 320,
-          "description": "Canonical CDN object path under /assets/Chương <n>/Asset mới/..."
+          "description": "Canonical public asset path inside /assets/Chương {chapter}/Asset mới/."
         },
         "size": {
           "type": "integer",
-          "description": "GLB file size in bytes (24 to 120000000)."
+          "description": "Validated GLB byte size (24..120000000)."
         },
         "uploadedAt": {
           "type": "string",
           "minLength": 20,
-          "maxLength": 32,
-          "description": "ISO-8601 UTC timestamp reported by the upload worker."
+          "maxLength": 30,
+          "description": "ISO-8601 UTC upload timestamp."
         },
         "isPublic": {
           "type": "boolean",
-          "description": "Explicit public catalog visibility flag enforced by security rules."
+          "description": "Explicit public visibility flag for runtime catalog discovery."
         },
         "createdAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server timestamp when the inbox metadata record was mirrored."
+          "description": "Server timestamp when the mirror record was created."
         },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server timestamp when the inbox metadata record was last synced."
+          "description": "Server timestamp when the mirror record was updated."
         }
       },
       "required": [
@@ -467,13 +574,17 @@
       "schema": { "$ref": "#/entities/SeasonStanding" },
       "description": "Public PII-free Competitive Season standings keyed by {seasonId}_{uid}, readable when isPublic == true and writable only by the matching authenticated owner."
     },
-    "/asset_admins/{uid}": {
-      "schema": { "$ref": "#/entities/AssetAdminRecord" },
-      "description": "Private allowlist of linked password admin UIDs managed exclusively by the verified Google owner."
+    "/liveops_config/{configId}": {
+      "schema": { "$ref": "#/entities/LiveOpsConfig" },
+      "description": "PII-free global LiveOps balance configuration (docId: global), readable by game clients and writable exclusively by verified administrators."
     },
-    "/asset_inbox/{assetId}": {
+    "/asset_admins/{uid}": {
+      "schema": { "$ref": "#/entities/AssetAdmin" },
+      "description": "Linked asset admin UID authorization registry writable only by the verified Google owner."
+    },
+    "/asset_inbox/{itemId}": {
       "schema": { "$ref": "#/entities/AssetInboxItem" },
-      "description": "Public read-only mirror of uploaded GLB inbox metadata (isPublic == true), writable exclusively by verified asset administrators."
+      "description": "Public PII-free uploaded 3D GLB asset inbox metadata writable exclusively by verified administrators."
     }
   }
 }

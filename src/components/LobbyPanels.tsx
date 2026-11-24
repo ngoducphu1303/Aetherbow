@@ -56,6 +56,7 @@ import {
   normalizeLoadoutPresets,
   RARITY_RANK,
 } from '../data/earlyProgressionData';
+import { getChapterMilestoneSummary } from '../data/chapterCollectionMilestones';
 import {
   CHEST_DROP_RATES,
   getDailyFlashDeals,
@@ -1695,19 +1696,32 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               {CHAPTER_EQUIPMENT_SETS.map((set) => {
                 const { chapterId } = set;
                 const status = getChapterEquipmentStatus(save, set);
+                const milestone = getChapterMilestoneSummary(save, chapterId);
                 const heroName = HERO_MAP[set.equipment.selectedHeroId].name;
                 const chapterName = CHAPTERS.find((chapter) => chapter.id === chapterId)?.regionName;
                 return (
                   <div key={chapterId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-[#070b1a]/90 p-2">
-                    <div>
-                      <h4 className="text-xs font-bold text-white">Chương {chapterId} · {chapterName}</h4>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-white">Chương {chapterId} · {chapterName}</h4>
+                        {milestone && (
+                          <span className="text-[11px] font-bold text-amber-300 tabular-nums whitespace-nowrap">
+                            ★{milestone.starCount}/{milestone.maxStars}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-slate-300">
                         {heroName} · {save.highestChapterCleared < set.unlockChapter
-                          ? `Hoàn thành Chương ${set.unlockChapter} để mở bộ`
+                          ? `Hoàn thành Chương ${set.unlockChapter} để mở ★1`
                           : status.wearingSavedSet
                             ? 'Đang mặc bộ đã lưu'
                             : `${status.wornCount}/${status.total} đang mặc · ${status.preset ? 'Đã lưu' : 'Chưa lưu'}`}
                       </p>
+                      {milestone?.nextStar && (
+                        <p className="text-[11px] text-amber-200/90 mt-0.5">
+                          Mốc kế ({milestone.nextStar.title}): {milestone.nextStar.requirementText} → {milestone.nextStar.rewardSummary}
+                        </p>
+                      )}
                       {status.missingGear > 0 && (
                         <p className="text-[11px] text-amber-300">Thiếu {status.missingGear} món đã lưu. Đổi bộ sẽ giữ đồ hiện tại ở ô đó.</p>
                       )}

@@ -108,13 +108,26 @@ test('Pillar 3: Target-Slot Forge crafts exact chosen slot across all 6 GearSlot
     assert.equal(res.item.rarity, Rarity.EPIC);
   }
 
-  // Verify [S] target-slot craft
+  // Verify [S] target-slot craft respects Ch.4 unlock gate (highestChapterCleared >= 3) & 30-blueprint cost
+  const earlySave = createInitialSaveData();
+  earlySave.highestChapterCleared = 2;
+  earlySave.earlyForgeProgress = {
+    rareShards: 100,
+    epicShards: 100,
+    sTierBlueprints: 30,
+    ch1AresRewardClaimed: true,
+    ch1BoreasRewardClaimed: true,
+    ch1ClearRewardClaimed: true,
+  };
+  const gatedRes = craftEarlyTargetGear(earlySave, 's_tier', () => 0.2, GearSlot.WEAPON);
+  assert.equal(gatedRes.ok, false, '[S] craft must remain locked before clearing Chapter 3');
+
   const sSave = createInitialSaveData();
-  sSave.highestChapterCleared = 2;
+  sSave.highestChapterCleared = 3;
   sSave.earlyForgeProgress = {
     rareShards: 100,
     epicShards: 100,
-    sTierBlueprints: 25,
+    sTierBlueprints: 30,
     ch1AresRewardClaimed: true,
     ch1BoreasRewardClaimed: true,
     ch1ClearRewardClaimed: true,

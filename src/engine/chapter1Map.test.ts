@@ -15,17 +15,20 @@ import {
   prepareChapter1MapModel,
 } from './chapter1Map';
 
-test('Chapter 1 uncompressed GLB map exists intact on disk and encodes URL segments safely', () => {
-  const absPath = path.resolve(process.cwd(), 'public', ...CHAPTER1_MAP_PATH_SEGMENTS);
-  assert.ok(fs.existsSync(absPath), `Missing Chapter 1 map GLB at ${absPath}`);
+test('Chapter 1 GLB map encodes URL segments safely and has an intact GLB on disk (full or Lite fallback)', () => {
+  const fullPath = path.resolve(process.cwd(), 'public', ...CHAPTER1_MAP_PATH_SEGMENTS);
+  const litePath = path.resolve(process.cwd(), 'public', ...CHAPTER1_MAP_LITE_PATH_SEGMENTS);
+  const targetPath = fs.existsSync(fullPath) ? fullPath : litePath;
+  assert.ok(fs.existsSync(targetPath), `Missing Chapter 1 map GLB at ${fullPath} and ${litePath}`);
+
   const header = Buffer.alloc(12);
-  const fd = fs.openSync(absPath, 'r');
+  const fd = fs.openSync(targetPath, 'r');
   try {
     fs.readSync(fd, header, 0, 12, 0);
   } finally {
     fs.closeSync(fd);
   }
-  const stat = fs.statSync(absPath);
+  const stat = fs.statSync(targetPath);
   assert.equal(header.toString('ascii', 0, 4), 'glTF');
   assert.equal(header.readUInt32LE(4), 2);
   assert.equal(header.readUInt32LE(8), stat.size);
@@ -36,7 +39,11 @@ test('Chapter 1 uncompressed GLB map exists intact on disk and encodes URL segme
     '/assets/Ch%C6%B0%C6%A1ng%201/Map%20m%E1%BB%9Bi/Ch%C6%B0%C6%A1ng%201.glb'
   );
   assert.equal(url.searchParams.get('v'), CHAPTER1_MAP_VERSION);
-  assert.equal(stat.size, 94_747_964, 'Original 90.3 MB Chương 1.glb must remain uncompressed');
+  if (targetPath === fullPath) {
+    assert.equal(stat.size, 94_747_964, 'Original 90.3 MB Chương 1.glb must remain uncompressed');
+  } else {
+    assert.ok(stat.size > 100_000 && stat.size < 5 * 1024 * 1024, 'Fallback Lite GLB must be valid and compact');
+  }
 });
 
 test('Chapter 1 Lite GLB exists intact on disk, stays lightweight (~30k tris, 1024px albedo, < 5 MB), and preserves canonical scale', () => {

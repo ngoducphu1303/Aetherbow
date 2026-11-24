@@ -218,6 +218,15 @@ export interface ChapterEquipmentPreset {
   equipped: SaveData['equipped'];
 }
 
+export interface ChapterMilestoneProgress {
+  chapterId: number;
+  clears: number;
+  starsEarned: number[];
+  bestEndHpRatio?: number;
+  bestPerfectDodges?: number;
+  bestBossGuardBreaks?: number;
+}
+
 export interface HeroMasteryProgress {
   level: number; // 1..10
   exp: number;
@@ -600,6 +609,8 @@ export interface GameSettings {
   compactHud?: boolean;
   chapter1MapMode?: Chapter1MapMode;
   lowEndSafetyMode?: LowEndSafetyMode;
+  reducedMotion?: boolean;
+  uiTextScale?: 'normal' | 'large';
 }
 
 export interface GachaPullHistoryEntry {
@@ -1344,6 +1355,7 @@ export interface SaveData {
   buildPresets?: BuildPreset[];
   loadoutPresets?: LoadoutPreset[];
   chapterEquipmentPresets?: ChapterEquipmentPreset[];
+  chapterMilestones?: Partial<Record<number, ChapterMilestoneProgress>>;
   activeLoadoutPresetId?: LoadoutPresetSlotId | null;
   heroMastery?: Partial<Record<HeroId, HeroMasteryProgress>>;
   guild?: GuildState;

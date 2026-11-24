@@ -1,8 +1,3 @@
-import { DEFAULT_HERO_ID, isPlayableHeroId, normalizePlayableHeroId } from './heroesData';
-import { grantChapter2Collection } from './chapter2Collection';
-import { grantChapter3Collection } from './chapter3Collection';
-import { grantChapter4Collection } from './chapter4Collection';
-import { normalizeChapterEquipmentPresets } from './chapterEquipmentSets';
 import {
   ComputedPlayerStats,
   EarlyFeatureId,
@@ -25,6 +20,9 @@ import {
   SideModeScaling,
   SkillSynergyId,
 } from '../types/game';
+import { validateAndSanitizeSaveIntegrity } from './saveIntegrity';
+import { normalizeChapterEquipmentPresets } from './chapterEquipmentSets';
+import { normalizeChapterMilestones } from './chapterCollectionMilestones';
 
 export const PROGRESSION_SCHEMA_VERSION = 3;
 export const PUNISH_WINDOW_DAMAGE_BONUS = 0.18;
@@ -349,163 +347,195 @@ export function migrateSaveData(raw: SaveData): SaveData {
     }
   }
 
-  const hasClearedAries = (raw.highestChapterCleared ?? 0) >= 2;
-  const hasClearedTaurus = (raw.highestChapterCleared ?? 0) >= 3;
-  const hasClearedGemini = (raw.highestChapterCleared ?? 0) >= 4;
-  const normalizedUnlockedHeroes: HeroId[] = [
-    DEFAULT_HERO_ID,
-    ...(hasClearedAries ? (['bellona'] as HeroId[]) : []),
-    ...(hasClearedTaurus ? (['sylvia'] as HeroId[]) : []),
-    ...(hasClearedGemini ? (['celeste'] as HeroId[]) : []),
-  ];
-  const resolvedHeroId = isPlayableHeroId(raw.selectedHeroId) && normalizedUnlockedHeroes.includes(raw.selectedHeroId)
-    ? raw.selectedHeroId
-    : DEFAULT_HERO_ID;
+  // Playable hero roster (Chapters 1-4): Aurelia (starter), Bellona (Ch.2), Sylvia (Ch.3), Celeste (Ch.4).
+  // Safely retire legacy Alice ('artemis') and Hatsune Miku ('hatsune_miku') back to Aurelia.
+  const VALID_HERO_IDS = new Set<HeroId>(['aurelia', 'bellona', 'sylvia', 'celeste']);
+  const filteredHeroes = (Array.isArray(raw.unlockedHeroes) ? raw.unlockedHeroes : []).filter(
+    (id): id is HeroId => VALID_HERO_IDS.has(id as HeroId)
+  );
+  const normalizedUnlockedHeroes: HeroId[] = Array.from(
+    new Set<HeroId>(['aurelia', ...filteredHeroes])
+  );
+  const resolvedHeroId: HeroId =
+    raw.selectedHeroId &&
+    VALID_HERO_IDS.has(raw.selectedHeroId as HeroId) &&
+    normalizedUnlockedHeroes.includes(raw.selectedHeroId as HeroId)
+      ? raw.selectedHeroId
+      : 'aurelia';
   const normalizedHeroStars: Partial<Record<HeroId, number>> = {
     aurelia: Math.max(0, Math.floor(raw.heroStars?.aurelia ?? 0)),
-    ...(hasClearedAries ? { bellona: Math.max(0, Math.floor(raw.heroStars?.bellona ?? 0)) } : {}),
-    ...(hasClearedTaurus ? { sylvia: Math.max(0, Math.floor(raw.heroStars?.sylvia ?? 0)) } : {}),
-    ...(hasClearedGemini ? { celeste: Math.max(0, Math.floor(raw.heroStars?.celeste ?? 0)) } : {}),
   };
+  for (const hId of normalizedUnlockedHeroes) {
+    if (hId !== 'aurelia') {
+      normalizedHeroStars[hId] = Math.max(0, Math.floor(raw.heroStars?.[hId] ?? 0));
+    }
+  }
 
-  // Unlock all 4 Aurelia Solar Leo skins while validating equippedSkinByHero.
+  // Unlock all 4 Aurelia Solar Leo skins and preserve any earned Chapter 2-4 signature skins.
   const SOLAR_LEO_SKINS: NonNullable<SaveData['unlockedSkins']> = [
     'aurelia_oasis_dancer',
     'aurelia_temple_commander',
     'aurelia_solaris_valkyrie',
     'aurelia_winter_solstice',
   ];
-  const validSkinSet = new Set<string>(['default', ...SOLAR_LEO_SKINS]);
-  if (hasClearedAries) validSkinSet.add('golden_fleece');
-  if (hasClearedTaurus) validSkinSet.add('venus_incarnate');
-  if (hasClearedGemini) validSkinSet.add('astral_mirror_queen');
+  const CHAPTER_SKINS = new Set<string>([
+    ...SOLAR_LEO_SKINS,
+    'golden_fleece',
+    'venus_incarnate',
+    'astral_mirror_queen',
+  ]);
+  const validSkinSet = new Set<string>(['default', ...CHAPTER_SKINS]);
   const normalizedUnlockedSkins = Array.from(
     new Set([
       ...SOLAR_LEO_SKINS,
       ...(Array.isArray(raw.unlockedSkins)
-        ? raw.unlockedSkins.filter((id) => validSkinSet.has(id) && id !== 'default')
+        ? raw.unlockedSkins.filter((id) => CHAPTER_SKINS.has(id))
         : []),
     ])
   ) as NonNullable<SaveData['unlockedSkins']>;
   const rawEquippedSkins = raw.equippedSkinByHero ?? {};
   const normalizedEquippedSkinByHero: NonNullable<SaveData['equippedSkinByHero']> = {};
-  if (rawEquippedSkins.aurelia && validSkinSet.has(rawEquippedSkins.aurelia)) {
-    normalizedEquippedSkinByHero.aurelia = rawEquippedSkins.aurelia;
+  for (const hId of normalizedUnlockedHeroes) {
+    const sk = rawEquippedSkins[hId];
+    if (sk && validSkinSet.has(sk)) {
+      normalizedEquippedSkinByHero[hId] = sk;
+    }
   }
 
-  if (hasClearedAries && rawEquippedSkins.bellona === 'golden_fleece') {
-    normalizedEquippedSkinByHero.bellona = 'golden_fleece';
-  }
-  if (hasClearedTaurus && rawEquippedSkins.sylvia === 'venus_incarnate') {
-    normalizedEquippedSkinByHero.sylvia = 'venus_incarnate';
-  }
-  if (hasClearedGemini && rawEquippedSkins.celeste === 'astral_mirror_queen') {
-    normalizedEquippedSkinByHero.celeste = 'astral_mirror_queen';
-  }
-
-  // Keep Solarius ('solarius') mount; safely migrate legacy Hắc Long saves to Solarius.
-  const normalizedUnlockedMounts: NonNullable<SaveData['unlockedMounts']> = ['solarius'];
+  // Preserve Chapters 1-4 Zodiac mounts (Solarius starter + Vulcan, Jade Bull, Celestial Wind Mount).
+  const VALID_MOUNTS = new Set<NonNullable<SaveData['equippedMountId']>>([
+    'solarius',
+    'vulcan',
+    'jade_bull',
+    'celestial_wind_mount',
+  ]);
+  const rawUnlockedMounts = Array.isArray(raw.unlockedMounts)
+    ? raw.unlockedMounts.filter((id) => VALID_MOUNTS.has(id))
+    : [];
+  const normalizedUnlockedMounts = Array.from(
+    new Set(['solarius', ...rawUnlockedMounts])
+  ) as NonNullable<SaveData['unlockedMounts']>;
   const migratedSolariusLv = Math.max(
     1,
     Math.floor(raw.mountLevels?.solarius ?? raw.mountLevels?.black_dragon ?? 1)
   );
   const normalizedMountLevels: NonNullable<SaveData['mountLevels']> = {
     solarius: migratedSolariusLv,
-    ...(hasClearedAries ? { vulcan: Math.max(1, Math.floor(raw.mountLevels?.vulcan ?? 1)) } : {}),
-    ...(hasClearedTaurus ? { jade_bull: Math.max(1, Math.floor(raw.mountLevels?.jade_bull ?? 1)) } : {}),
-    ...(hasClearedGemini
-      ? { celestial_wind_mount: Math.max(1, Math.floor(raw.mountLevels?.celestial_wind_mount ?? 1)) }
-      : {}),
   };
+  for (const mId of normalizedUnlockedMounts) {
+    if (mId !== 'solarius') {
+      normalizedMountLevels[mId] = Math.max(1, Math.floor(raw.mountLevels?.[mId] ?? 1));
+    }
+  }
   const resolvedEquippedMountId: SaveData['equippedMountId'] =
-    hasClearedGemini && raw.equippedMountId === 'celestial_wind_mount' ? 'celestial_wind_mount' :
-    hasClearedTaurus && raw.equippedMountId === 'jade_bull' ? 'jade_bull' :
-    hasClearedAries && raw.equippedMountId === 'vulcan' ? 'vulcan' :
-    raw.equippedMountId === null || raw.equippedMountId === undefined
-      ? null
-      : 'solarius';
+    raw.equippedMountId && normalizedUnlockedMounts.includes(raw.equippedMountId)
+      ? raw.equippedMountId
+      : raw.equippedMountId === 'black_dragon'
+      ? 'solarius'
+      : null;
 
-  // Preserve starter equipment and the Chapter 2 / Chapter 3 / Chapter 4 collections once cleared.
-  const existingAstraeo = Array.isArray(raw.pets)
-    ? raw.pets.find((p) => p.petId === 'astraeo')
-    : undefined;
-  const normalizedPets: NonNullable<SaveData['pets']> = [
-    {
-      petId: 'astraeo',
-      level: Math.max(1, Math.floor(existingAstraeo?.level ?? 1)),
-    },
-  ];
-  if (hasClearedAries) {
-    const pyro = Array.isArray(raw.pets) ? raw.pets.find((pet) => pet.petId === 'pyro') : undefined;
-    normalizedPets.push({ petId: 'pyro', level: Math.max(1, Math.floor(pyro?.level ?? 1)) });
+  // Preserve Chapters 1-4 pets (Astraeo starter + Pyro, Jade Calf, Twin Astral Spirits).
+  const VALID_PETS = new Set<NonNullable<SaveData['equippedPetId']>>([
+    'astraeo',
+    'pyro',
+    'jade_calf',
+    'twin_astral_spirits',
+  ]);
+  const existingPetMap = new Map<string, number>();
+  if (Array.isArray(raw.pets)) {
+    for (const p of raw.pets) {
+      if (p && VALID_PETS.has(p.petId)) {
+        existingPetMap.set(p.petId, Math.max(1, Math.floor(p.level ?? 1)));
+      }
+    }
   }
-  if (hasClearedTaurus) {
-    const jadeCalf = Array.isArray(raw.pets) ? raw.pets.find((pet) => pet.petId === 'jade_calf') : undefined;
-    normalizedPets.push({ petId: 'jade_calf', level: Math.max(1, Math.floor(jadeCalf?.level ?? 1)) });
-  }
-  if (hasClearedGemini) {
-    const twinSpirits = Array.isArray(raw.pets)
-      ? raw.pets.find((pet) => pet.petId === 'twin_astral_spirits')
-      : undefined;
-    normalizedPets.push({
-      petId: 'twin_astral_spirits',
-      level: Math.max(1, Math.floor(twinSpirits?.level ?? 1)),
-    });
-  }
+  if (!existingPetMap.has('astraeo')) existingPetMap.set('astraeo', 1);
+  const normalizedPets: NonNullable<SaveData['pets']> = Array.from(existingPetMap.entries()).map(
+    ([petId, level]) => ({ petId: petId as NonNullable<SaveData['equippedPetId']>, level })
+  );
   const resolvedEquippedPetId: SaveData['equippedPetId'] =
-    hasClearedGemini && raw.equippedPetId === 'twin_astral_spirits' ? 'twin_astral_spirits' :
-    hasClearedTaurus && raw.equippedPetId === 'jade_calf' ? 'jade_calf' :
-    hasClearedAries && raw.equippedPetId === 'pyro' ? 'pyro' : raw.equippedPetId ? 'astraeo' : null;
+    raw.equippedPetId && existingPetMap.has(raw.equippedPetId)
+      ? raw.equippedPetId
+      : raw.equippedPetId
+      ? 'astraeo'
+      : null;
   const normalizedEvolvedPets: NonNullable<SaveData['evolvedPets']> = (
     Array.isArray(raw.evolvedPets) ? raw.evolvedPets : []
-  ).filter(
-    (id) =>
-      id === 'astraeo' ||
-      (hasClearedAries && id === 'pyro') ||
-      (hasClearedTaurus && id === 'jade_calf') ||
-      (hasClearedGemini && id === 'twin_astral_spirits')
-  );
+  ).filter((id) => existingPetMap.has(id));
 
-  const normalizedUnlockedWings: NonNullable<SaveData['unlockedWings']> = ['solar_zenith'];
-  const normalizedWingLevels: NonNullable<SaveData['wingLevels']> = {
-    solar_zenith: Math.max(1, Math.floor(raw.wingLevels?.solar_zenith ?? 1)),
-    ...(hasClearedAries ? { crimson_ram_wings: Math.max(1, Math.floor(raw.wingLevels?.crimson_ram_wings ?? 1)) } : {}),
-    ...(hasClearedTaurus ? { emerald_taurus_wings: Math.max(1, Math.floor(raw.wingLevels?.emerald_taurus_wings ?? 1)) } : {}),
-    ...(hasClearedGemini ? { dual_gemini_wings: Math.max(1, Math.floor(raw.wingLevels?.dual_gemini_wings ?? 1)) } : {}),
-  };
+  // Preserve Chapters 1-4 wings
+  const VALID_WINGS = new Set<NonNullable<SaveData['equippedWingId']>>([
+    'solar_zenith',
+    'crimson_ram_wings',
+    'emerald_taurus_wings',
+    'dual_gemini_wings',
+  ]);
+  const normalizedUnlockedWings = Array.from(
+    new Set([
+      'solar_zenith',
+      ...(Array.isArray(raw.unlockedWings) ? raw.unlockedWings.filter((id) => VALID_WINGS.has(id)) : []),
+    ])
+  ) as NonNullable<SaveData['unlockedWings']>;
+  const normalizedWingLevels: NonNullable<SaveData['wingLevels']> = {};
+  for (const wId of normalizedUnlockedWings) {
+    normalizedWingLevels[wId] = Math.max(1, Math.floor(raw.wingLevels?.[wId] ?? 1));
+  }
   const resolvedEquippedWingId: SaveData['equippedWingId'] =
-    hasClearedGemini && raw.equippedWingId === 'dual_gemini_wings' ? 'dual_gemini_wings' :
-    hasClearedTaurus && raw.equippedWingId === 'emerald_taurus_wings' ? 'emerald_taurus_wings' :
-    hasClearedAries && raw.equippedWingId === 'crimson_ram_wings' ? 'crimson_ram_wings' :
-    raw.equippedWingId ? 'solar_zenith' : null;
+    raw.equippedWingId && normalizedUnlockedWings.includes(raw.equippedWingId)
+      ? raw.equippedWingId
+      : raw.equippedWingId
+      ? 'solar_zenith'
+      : null;
 
-  const normalizedUnlockedArtifacts: NonNullable<SaveData['unlockedArtifacts']> = [
+  // Preserve Chapters 1-4 artifacts
+  const VALID_ARTIFACTS = new Set<NonNullable<SaveData['equippedArtifactId']>>([
     'astrolabe_regulus',
-  ];
-  const normalizedArtifactLevels: NonNullable<SaveData['artifactLevels']> = {
-    astrolabe_regulus: Math.max(1, Math.floor(raw.artifactLevels?.astrolabe_regulus ?? 1)),
-    ...(hasClearedAries ? { war_horn: Math.max(1, Math.floor(raw.artifactLevels?.war_horn ?? 1)) } : {}),
-    ...(hasClearedTaurus ? { jade_heart_relic: Math.max(1, Math.floor(raw.artifactLevels?.jade_heart_relic ?? 1)) } : {}),
-    ...(hasClearedGemini ? { twin_hourglass_relic: Math.max(1, Math.floor(raw.artifactLevels?.twin_hourglass_relic ?? 1)) } : {}),
-  };
+    'war_horn',
+    'jade_heart_relic',
+    'twin_hourglass_relic',
+  ]);
+  const normalizedUnlockedArtifacts = Array.from(
+    new Set([
+      'astrolabe_regulus',
+      ...(Array.isArray(raw.unlockedArtifacts)
+        ? raw.unlockedArtifacts.filter((id) => VALID_ARTIFACTS.has(id))
+        : []),
+    ])
+  ) as NonNullable<SaveData['unlockedArtifacts']>;
+  const normalizedArtifactLevels: NonNullable<SaveData['artifactLevels']> = {};
+  for (const aId of normalizedUnlockedArtifacts) {
+    normalizedArtifactLevels[aId] = Math.max(1, Math.floor(raw.artifactLevels?.[aId] ?? 1));
+  }
   const resolvedEquippedArtifactId: SaveData['equippedArtifactId'] =
-    hasClearedGemini && raw.equippedArtifactId === 'twin_hourglass_relic' ? 'twin_hourglass_relic' :
-    hasClearedTaurus && raw.equippedArtifactId === 'jade_heart_relic' ? 'jade_heart_relic' :
-    hasClearedAries && raw.equippedArtifactId === 'war_horn' ? 'war_horn' :
-    raw.equippedArtifactId ? 'astrolabe_regulus' : null;
+    raw.equippedArtifactId && normalizedUnlockedArtifacts.includes(raw.equippedArtifactId)
+      ? raw.equippedArtifactId
+      : raw.equippedArtifactId
+      ? 'astrolabe_regulus'
+      : null;
 
-  const normalizedUnlockedHalos: NonNullable<SaveData['unlockedHalos']> = ['leo_sovereign'];
-  const normalizedHaloLevels: NonNullable<SaveData['haloLevels']> = {
-    leo_sovereign: Math.max(1, Math.floor(raw.haloLevels?.leo_sovereign ?? 1)),
-    ...(hasClearedAries ? { aries_vanguard: Math.max(1, Math.floor(raw.haloLevels?.aries_vanguard ?? 1)) } : {}),
-    ...(hasClearedTaurus ? { emerald_taurus_halo: Math.max(1, Math.floor(raw.haloLevels?.emerald_taurus_halo ?? 1)) } : {}),
-    ...(hasClearedGemini ? { gemini_halo: Math.max(1, Math.floor(raw.haloLevels?.gemini_halo ?? 1)) } : {}),
-  };
+  // Preserve Chapters 1-4 halos
+  const VALID_HALOS = new Set<NonNullable<SaveData['equippedHaloId']>>([
+    'leo_sovereign',
+    'aries_vanguard',
+    'emerald_taurus_halo',
+    'gemini_halo',
+  ]);
+  const normalizedUnlockedHalos = Array.from(
+    new Set([
+      'leo_sovereign',
+      ...(Array.isArray(raw.unlockedHalos) ? raw.unlockedHalos.filter((id) => VALID_HALOS.has(id)) : []),
+    ])
+  ) as NonNullable<SaveData['unlockedHalos']>;
+  const normalizedHaloLevels: NonNullable<SaveData['haloLevels']> = {};
+  for (const hId of normalizedUnlockedHalos) {
+    normalizedHaloLevels[hId] = Math.max(1, Math.floor(raw.haloLevels?.[hId] ?? 1));
+  }
   const resolvedEquippedHaloId: SaveData['equippedHaloId'] =
-    hasClearedGemini && raw.equippedHaloId === 'gemini_halo' ? 'gemini_halo' :
-    hasClearedTaurus && raw.equippedHaloId === 'emerald_taurus_halo' ? 'emerald_taurus_halo' :
-    hasClearedAries && raw.equippedHaloId === 'aries_vanguard' ? 'aries_vanguard' :
-    raw.equippedHaloId ? 'leo_sovereign' : null;
+    raw.equippedHaloId && normalizedUnlockedHalos.includes(raw.equippedHaloId)
+      ? raw.equippedHaloId
+      : raw.equippedHaloId
+      ? 'leo_sovereign'
+      : null;
 
   // Build synchronized visible inbox (never respawning deleted mails, always reflecting claimedMailIds)
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -527,9 +557,6 @@ export function migrateSaveData(raw: SaveData): SaveData {
     aliceDefaultMigrated: true,
     unlockedHeroes: normalizedUnlockedHeroes,
     heroStars: normalizedHeroStars,
-    heroMastery: normalizeHeroMastery(raw.heroMastery),
-    loadoutPresets: normalizeLoadoutPresets(raw.loadoutPresets),
-    chapterEquipmentPresets: normalizeChapterEquipmentPresets(raw.chapterEquipmentPresets),
     pets: normalizedPets,
     equippedPetId: resolvedEquippedPetId,
     evolvedPets: normalizedEvolvedPets,
@@ -570,10 +597,12 @@ export function migrateSaveData(raw: SaveData): SaveData {
     aiPreferences: normalizeAiPreferences(raw.aiPreferences),
     fairRoadmapClaimedIds: Array.isArray(raw.fairRoadmapClaimedIds) ? [...raw.fairRoadmapClaimedIds] : [],
     fairActiveDays: normalizedActiveDays,
+    chapterEquipmentPresets: normalizeChapterEquipmentPresets(raw.chapterEquipmentPresets),
   };
 
+  migratedBase.chapterMilestones = normalizeChapterMilestones(migratedBase);
   migratedBase.mailInbox = getVisibleMailInbox(migratedBase);
-  return grantChapter4Collection(grantChapter3Collection(grantChapter2Collection(migratedBase)));
+  return validateAndSanitizeSaveIntegrity(migratedBase).sanitizedSave;
 }
 
 export function normalizeAiPreferences(
@@ -1142,7 +1171,7 @@ export const EARLY_ROADMAP_STAGES: EarlyRoadmapStage[] = [
     title: 'Hạ Phụ Boss Ares (Ải 4 Ch.1)',
     requirement: 'Đánh bại Tướng Quân Hỏa Ngục Ares',
     unlocksSummary: 'Mở Rương Thần Thoại · Lò Rèn · Sổ Chiến Lệnh · Flash Sale',
-    guaranteedReward: 'Đủ 10/10 Mảnh rèn Vũ Khí Hiếm (Rare) đầu tiên + Thư Ải 4',
+    guaranteedReward: 'Tích đủ 12 Mảnh rèn Vũ Khí Hiếm (Rare) đầu tiên + Thư Ải 4',
     rarityCeilingLabel: 'Mở khóa Hiếm (Rare)',
     actionTarget: 'forge',
   },
@@ -1151,19 +1180,19 @@ export const EARLY_ROADMAP_STAGES: EarlyRoadmapStage[] = [
     stepNumber: '03',
     title: 'Chinh Phục Chương 1 (Sư Vương Ải 12)',
     requirement: 'Hoàn thành Chương 1 · Thánh Điện Nhật Luân',
-    unlocksSummary: 'Mở Quét Nhanh · Ngọc Khắc · Chương 2 Hỏa Sơn',
-    guaranteedReward: 'Ngọc Khắc Mưa Tên (Rare) · Danh Hiệu 3D · Đủ 15 Mảnh Sử Thi + Thư Epic',
+    unlocksSummary: 'Mở Quét Nhanh · Ngọc Khắc · Bí Cảnh · Tháp Vô Tận · Chương 2',
+    guaranteedReward: 'Ngọc Khắc Mưa Tên (Rare) · Danh Hiệu 3D · Đủ 20 Mảnh Sử Thi + Thư Epic',
     rarityCeilingLabel: 'Mở khóa Sử Thi (Epic) · Ngọc Khắc tối đa Sử Thi',
     actionTarget: 'runes',
   },
   {
     id: 'ch2_clear',
     stepNumber: '04',
-    title: 'Vượt Chương 2 · Bước Vào Chương 3',
-    requirement: 'Hoàn thành Chương 2 · Hỏa Sơn Sừng Đỏ',
-    unlocksSummary: 'Mở Mẫu [S] · Huyền Thoại · Gói Khởi Nghiệp [S] · Sự kiện Sảnh',
-    guaranteedReward: 'Cánh Thần Quang 3D · +10 Bản Vẽ [S] · Kích hoạt Pity [S] đã tích lũy',
-    rarityCeilingLabel: 'Mở khóa Mẫu [S] & Huyền Thoại (Legendary)',
+    title: 'Vượt Chương 2–3 · Tiến Vào Chương 4',
+    requirement: 'Hoàn thành Chương 2 (mở Arena) & Chương 3 (mở Mẫu [S])',
+    unlocksSummary: 'Mở Đấu Trường · Co-op Raid · Mẫu [S] (Ch.4) & Huyền Thoại (Ch.5)',
+    guaranteedReward: 'Thưởng cột mốc +10 Bản Vẽ [S] · Kích hoạt Pity [S] khi chạm Chương 4',
+    rarityCeilingLabel: 'Mở khóa Mẫu [S] (Ch.4) & Huyền Thoại (Ch.5)',
     actionTarget: 'shop',
   },
 ];
@@ -1796,7 +1825,7 @@ export function normalizeLoadoutPresets(raw?: LoadoutPreset[]): LoadoutPreset[] 
         typeof p.name === 'string' && p.name.trim().length > 0
           ? p.name.trim().slice(0, 28)
           : DEFAULT_LOADOUT_PRESET_SLOTS.find((s) => s.slotId === p.slotId)?.defaultName ?? 'Bộ Trang Bị',
-      heroId: normalizePlayableHeroId(p.heroId),
+      heroId: p.heroId,
       equipped: { ...(p.equipped ?? {}) },
       equippedRunes: Array.isArray(p.equippedRunes) ? p.equippedRunes.slice(0, 4) : [],
       equippedPetId: p.equippedPetId ?? null,

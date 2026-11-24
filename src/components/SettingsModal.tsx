@@ -71,6 +71,8 @@ interface SettingsModalProps {
   onResetPlaytestMetrics?: () => void;
   onImportSave?: (nextSave: SaveData) => void;
   onResetPlayerData?: () => Promise<void> | void;
+  isVerifiedAdmin?: boolean;
+  onOpenAdminLiveOps?: () => void;
   onClose: () => void;
 }
 
@@ -112,6 +114,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetPlaytestMetrics,
   onImportSave,
   onResetPlayerData,
+  isVerifiedAdmin,
+  onOpenAdminLiveOps,
   onClose,
 }) => {
   const [showPlaytestKpi, setShowPlaytestKpi] = useState(false);
@@ -1690,6 +1694,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {settings.showFpsOverlay ? 'Đang hiện góc HUD' : 'Đã tắt'}
               </div>
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                const next = !settings.reducedMotion;
+                onUpdateSettings({
+                  reducedMotion: next,
+                  ...(next ? { screenShake: false } : {}),
+                });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.reducedMotion
+                  ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-300'
+              }`}
+            >
+              <div className="text-xs font-black">Giảm Chuyển Động</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.reducedMotion ? 'Đang bật (Tắt rung & chớp)' : 'Tắt (Hiệu ứng chuẩn)'}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onUpdateSettings({
+                  uiTextScale: settings.uiTextScale === 'large' ? 'normal' : 'large',
+                });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.uiTextScale === 'large'
+                  ? 'bg-amber-500/15 border-amber-400/55 text-amber-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-300'
+              }`}
+            >
+              <div className="text-xs font-black">Cỡ Chữ Giao Diện</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.uiTextScale === 'large' ? 'Lớn (Dễ đọc 112%)' : 'Chuẩn (100%)'}
+              </div>
+            </button>
           </div>
 
           {/* AAA Wave 6: Customizable PC Combat Keybinds */}
@@ -1799,6 +1845,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>Sao Lưu / Khôi Phục Save</span>
               </button>
             </div>
+          )}
+          {isVerifiedAdmin && onOpenAdminLiveOps && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick(1.08);
+                onOpenAdminLiveOps();
+              }}
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-black text-amber-100 border border-amber-400/55 bg-amber-500/15 hover:bg-amber-500/25 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap transition-colors"
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-300 shrink-0" />
+              <span>Bảng Quản Trị &amp; Cân Bằng LiveOps</span>
+            </button>
           )}
           <button
             type="button"

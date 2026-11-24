@@ -7,6 +7,10 @@ import { getApp, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import adminAuth from '../../scripts/asset-admin-auth.json' with { type: 'json' };
 import manifest from '../../scripts/glb-manifest.json' with { type: 'json' };
+import {
+  createApiRateLimitMiddleware,
+  isVerifiedAdminClaims,
+} from './serverSecurity.ts';
 
 const execFileAsync = promisify(execFile);
 const SAFE_PREFIX_RE = /^[A-Za-z0-9\u00C0-\u1EF9._\-\/ ]{1,120}$/;
@@ -153,7 +157,7 @@ function spawnStreamingCommand(
   });
 }
 
-async function verifyWorkerAdminSession(token: string): Promise<boolean> {
+export async function verifyWorkerAdminSession(token: string): Promise<boolean> {
   const cdnBase = String(manifest.cdnBaseUrl || '').trim();
   if (!cdnBase) return false;
   try {
@@ -171,6 +175,60 @@ async function verifyWorkerAdminSession(token: string): Promise<boolean> {
   }
 }
 
+export interface DecodedAdminTokenClaims {
+  email?: string;
+  email_verified?: boolean;
+  firebase?: { sign_in_provider?: string };
+}
+
+/**
+ * Hardened admin authorization evaluator for Asset Deploy & CDN routes:
+ * - Verified Google owner (canonical verified admin or ADMIN_GOOGLE_EMAIL) is allowed directly.
+ * - Password admin (puugoo) MUST ALSO pass Worker `__admin/session` verification so an unlinked
+ *   or forged password account with matching email can never invoke B2 upload or Worker deploy.
+ * - Any other verified Google user is allowed only if Worker `__admin/session` confirms membership.
+ */
+export async function verifyAssetAdminAuthorization(params: {
+  decoded: DecodedAdminTokenClaims;
+  token: string;
+  allowedPasswordEmail?: string;
+  allowedGoogleEmail?: string;
+  verifyWorkerSession?: (token: string) => Promise<boolean>;
+}): Promise<boolean> {
+  const email = params.decoded.email?.toLowerCase().trim() ?? '';
+  const provider = params.decoded.firebase?.sign_in_provider;
+  const verifySession = params.verifyWorkerSession ?? verifyWorkerAdminSession;
+  const allowedPasswordEmail = (
+    params.allowedPasswordEmail ?? adminAuth.passwordEmail
+  )
+    .toLowerCase()
+    .trim();
+
+  if (provider === 'password') {
+    if (!email || email !== allowedPasswordEmail) {
+      return false;
+    }
+    return await verifySession(params.token);
+  }
+
+  if (params.decoded.email_verified === true && provider === 'google.com') {
+    if (isVerifiedAdminClaims({ email, emailVerified: true })) {
+      return true;
+    }
+    const allowedGoogleEmail = (
+      params.allowedGoogleEmail ?? process.env.ADMIN_GOOGLE_EMAIL ?? ''
+    )
+      .trim()
+      .toLowerCase();
+    if (allowedGoogleEmail && email === allowedGoogleEmail) {
+      return true;
+    }
+    return await verifySession(params.token);
+  }
+
+  return false;
+}
+
 export function mountAssetDeployRoutes(
   app: express.Application,
   rootDir: string,
@@ -178,6 +236,17 @@ export function mountAssetDeployRoutes(
 ): void {
   let activeTask: string | null = null;
   let currentJob: DeployJobState | null = null;
+
+  const statusRateLimit = createApiRateLimitMiddleware({
+    scope: 'asset-deploy-status',
+    maxRequests: 30,
+    windowMs: 60_000,
+  });
+  const deployMutationRateLimit = createApiRateLimitMiddleware({
+    scope: 'asset-deploy-mutation',
+    maxRequests: 6,
+    windowMs: 60_000,
+  });
 
   async function isAuthorizedAdmin(req: express.Request): Promise<boolean> {
     const authHeader = req.headers.authorization;
@@ -189,25 +258,10 @@ export function mountAssetDeployRoutes(
 
     try {
       const decoded = await getAuth(getApp()).verifyIdToken(token);
-      const email = decoded.email?.toLowerCase() ?? '';
-      const provider = decoded.firebase?.sign_in_provider;
-      const allowedPasswordEmail = adminAuth.passwordEmail.toLowerCase();
-      if (provider === 'password' && email === allowedPasswordEmail) {
-        return true;
-      }
-      const allowedGoogleEmail = process.env.ADMIN_GOOGLE_EMAIL?.trim().toLowerCase();
-      if (
-        allowedGoogleEmail &&
-        decoded.email_verified === true &&
-        provider === 'google.com' &&
-        email === allowedGoogleEmail
-      ) {
-        return true;
-      }
-      if (decoded.email_verified === true && provider === 'google.com') {
-        return await verifyWorkerAdminSession(token);
-      }
-      return false;
+      return await verifyAssetAdminAuthorization({
+        decoded,
+        token,
+      });
     } catch {
       return false;
     }
@@ -221,7 +275,7 @@ export function mountAssetDeployRoutes(
     }
   }
 
-  app.get('/api/admin/asset-deploy/status', async (req, res) => {
+  app.get('/api/admin/asset-deploy/status', statusRateLimit, async (req, res) => {
     if (!(await isAuthorizedAdmin(req))) {
       res.status(403).json({ error: 'Bạn không có quyền thực hiện thao tác đồng bộ CDN.' });
       return;
@@ -237,7 +291,7 @@ export function mountAssetDeployRoutes(
     });
   });
 
-  app.post('/api/admin/asset-deploy/upload-b2', async (req, res) => {
+  app.post('/api/admin/asset-deploy/upload-b2', deployMutationRateLimit, async (req, res) => {
     if (!(await isAuthorizedAdmin(req))) {
       res.status(403).json({ error: 'Bạn không có quyền đồng bộ Backblaze B2.' });
       return;
@@ -381,7 +435,7 @@ export function mountAssetDeployRoutes(
     });
   });
 
-  app.post('/api/admin/asset-deploy/deploy-worker', async (req, res) => {
+  app.post('/api/admin/asset-deploy/deploy-worker', deployMutationRateLimit, async (req, res) => {
     if (!(await isAuthorizedAdmin(req))) {
       res.status(403).json({ error: 'Bạn không có quyền deploy Cloudflare Worker.' });
       return;

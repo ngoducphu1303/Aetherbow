@@ -34,6 +34,7 @@ import {
   OperationType,
 } from '../firebase';
 import { AvatarFrameId, HeroId, SaveData } from '../types/game';
+import { validateAndSanitizeSaveIntegrity } from '../data/saveIntegrity';
 import { CURRENT_RESET_SAVE_VERSION } from './accountHydrationPolicy';
 
 export const PLAYER_DOMAIN_SUFFIX = '@artemis3d.player';
@@ -323,7 +324,8 @@ export async function savePlayerCloudState(
   );
   const username = formatAccountHandle(user.email).slice(0, 64);
   const authProvider = detectAuthProvider(user);
-  const sanitizedSave = sanitizeForFirestore(save);
+  const integrityChecked = validateAndSanitizeSaveIntegrity(save).sanitizedSave;
+  const sanitizedSave = sanitizeForFirestore(integrityChecked);
   const powerRating = clampNum(Math.round(summary.powerRating), 0, 1000000000);
   const highestChapterCleared = clampInt(summary.highestChapterCleared, 0, 100);
   const bestTowerFloor = clampInt(summary.bestTowerFloor, 0, 10000);

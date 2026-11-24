@@ -1,7 +1,8 @@
 import { applyChapterEquipmentSet, saveChapterEquipmentSet } from './data/chapterEquipmentSets';
-import { canClaimChapter2Asset, grantChapter2Collection } from './data/chapter2Collection';
-import { canClaimChapter3Asset, grantChapter3Collection } from './data/chapter3Collection';
-import { canClaimChapter4Asset, grantChapter4Collection } from './data/chapter4Collection';
+import { canClaimChapter2Asset } from './data/chapter2Collection';
+import { canClaimChapter3Asset } from './data/chapter3Collection';
+import { canClaimChapter4Asset } from './data/chapter4Collection';
+import { applyChapterCollectionMilestones } from './data/chapterCollectionMilestones';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { soundEngine } from './audio/soundEngine';
@@ -122,6 +123,9 @@ const DailyRewardsModal = lazy(() =>
 );
 const DestinyWheelModal = lazy(() =>
   import('./components/DestinyWheelModal').then((m) => ({ default: m.DestinyWheelModal }))
+);
+const AdminLiveOpsModal = lazy(() =>
+  import('./components/AdminLiveOpsModal').then((m) => ({ default: m.AdminLiveOpsModal }))
 );
 const DispatchModal = lazy(() =>
   import('./components/DispatchModal').then((m) => ({ default: m.DispatchModal }))
@@ -520,6 +524,12 @@ import {
   normalizeZodiacRelics,
   resolveAstralBoardRoll,
 } from './data/wave14Data';
+import {
+  applyLiveOpsRewardMultipliers,
+  DEFAULT_LIVEOPS_CONFIG,
+  type LiveOpsConfig,
+} from './data/liveOpsConfig';
+import { isVerifiedAdminUser, subscribeLiveOpsConfig } from './services/liveOpsConfigService';
 import { GameEngine, type AppearanceStatus } from './engine/GameEngine';
 import {
   detectStartupGpuProfile,
@@ -953,6 +963,12 @@ export default function App() {
   const [mailModalOpen, setMailModalOpen] = useState<boolean>(false);
   const [sweepResult, setSweepResult] = useState<SweepResultState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [adminLiveOpsOpen, setAdminLiveOpsOpen] = useState<boolean>(false);
+  const [liveOpsConfig, setLiveOpsConfig] = useState<LiveOpsConfig>(DEFAULT_LIVEOPS_CONFIG);
+  const [liveOpsSource, setLiveOpsSource] = useState<'firestore' | 'server' | 'local'>('local');
+  const liveOpsConfigRef = useRef<LiveOpsConfig>(liveOpsConfig);
+  liveOpsConfigRef.current = liveOpsConfig;
+  const [dismissedLiveOpsNotice, setDismissedLiveOpsNotice] = useState<string>('');
   const [codexGuideOpen, setCodexGuideOpen] = useState<boolean>(false);
   const [earlyRoadmapOpen, setEarlyRoadmapOpen] = useState<boolean>(false);
   const [onboardingOpen, setOnboardingOpen] = useState<boolean>(false);
@@ -2252,16 +2268,22 @@ export default function App() {
               : isCrystalVault
               ? 120 + vaultPillarsBroken * 35
               : bonusGold);
-          const totalGold = nightmareCfg
+          const preLiveOpsGold = nightmareCfg
             ? Math.round(baseTotalGold * nightmareCfg.goldRewardMult)
             : baseTotalGold;
-          const totalGems =
+          const preLiveOpsGems =
             summary.gems +
             (isDragonLair
               ? 12 + Math.floor(dragonScalesLooted * 1.4)
               : isCrystalVault
               ? vaultGemsLooted
               : bonusGems);
+          const scaledRunRewards = applyLiveOpsRewardMultipliers(
+            { gold: preLiveOpsGold, gems: preLiveOpsGems },
+            liveOpsConfigRef.current
+          );
+          const totalGold = scaledRunRewards.gold;
+          const totalGems = scaledRunRewards.gems;
           const baseStarDustGain =
             (isDailyRift || isBossRush) && sideModeScale
               ? Math.round((summary.starDust ?? 0) * sideModeScale.goldRewardMult) +
@@ -3326,26 +3348,27 @@ export default function App() {
                 : 0;
             campaignRunStartAtRef.current = 0;
             activeNightmareTierRef.current = 0;
-            const withTelemetry: SaveData = withMastery(grantChapter4Collection(grantChapter3Collection(grantChapter2Collection({
-              ...withMilestones,
-              playtestMetrics: recordPlaytestRunEnd(withMilestones.playtestMetrics, {
+            const chapterMilestoneOutcome = applyChapterCollectionMilestones(withMilestones, {
+              chapterId: summary.chapterId,
+              victory,
+              stageReached: summary.stageReached,
+              endHpRatio: summary.endHpRatio,
+              revivesUsed: summary.revivesUsed,
+              perfectDodges: summary.perfectDodges,
+              bossGuardBreaks: summary.bossGuardBreaks,
+              castInterrupts: summary.castInterrupts,
+            });
+            const withTelemetry: SaveData = withMastery({
+              ...chapterMilestoneOutcome.nextSave,
+              playtestMetrics: recordPlaytestRunEnd(chapterMilestoneOutcome.nextSave.playtestMetrics, {
                 chapterId: summary.chapterId,
                 stageReached: summary.stageReached,
                 victory,
                 elapsedSeconds,
                 activeSynergies: summary.activeSynergies,
               }),
-            }))));
-            const notes: string[] = [...msSummary.titles];
-            if (victory && summary.chapterId === 2 && prev.highestChapterCleared < 2) {
-              notes.push('Đã mở Bellona và Bộ Sưu Tập Hỏa Sơn Sừng Đỏ');
-            }
-            if (victory && summary.chapterId === 3 && prev.highestChapterCleared < 3) {
-              notes.push('Đã mở Sylvia và Bộ Sưu Tập Thánh Địa Ngọc Lục Bảo');
-            }
-            if (victory && summary.chapterId === 4 && prev.highestChapterCleared < 4) {
-              notes.push('Đã mở Celeste và Bộ Sưu Tập Đấu Trường Song Tử');
-            }
+            });
+            const notes: string[] = [...msSummary.titles, ...chapterMilestoneOutcome.newlyUnlockedLabels];
             if (nightmareCfg && victory) {
               notes.push(`Chinh phục ${nightmareCfg.label} · Thưởng x${nightmareCfg.goldRewardMult.toFixed(2)} Vàng`);
             }
@@ -3428,7 +3451,11 @@ export default function App() {
     );
 
     engineRef.current = engine;
-    engine.applyRuntimeSettings(normalizeSettings(save.settings));
+    engine.applyRuntimeSettings({
+      ...normalizeSettings(save.settings),
+      liveOpsEnemyHpMult: liveOpsConfigRef.current.enemyHpMult,
+      liveOpsEnemyDmgMult: liveOpsConfigRef.current.enemyDmgMult,
+    });
     return () => {
       if (transitionTimerRef.current) {
         window.clearTimeout(transitionTimerRef.current);
@@ -3496,8 +3523,30 @@ export default function App() {
       lowEndMode
     );
     setChapter1MapPreloadVariant(targetVariant);
-    engineRef.current?.applyRuntimeSettings(currentSettings);
-  }, [currentSettings, gpuProfile, save.selectedHeroId]);
+    engineRef.current?.applyRuntimeSettings({
+      ...currentSettings,
+      liveOpsEnemyHpMult: liveOpsConfig.enemyHpMult,
+      liveOpsEnemyDmgMult: liveOpsConfig.enemyDmgMult,
+    });
+  }, [currentSettings, gpuProfile, save.selectedHeroId, liveOpsConfig.enemyHpMult, liveOpsConfig.enemyDmgMult]);
+
+  // Subscribe to global LiveOps balance/event configuration (Firestore -> Express -> Local fallback)
+  useEffect(() => {
+    const unsub = subscribeLiveOpsConfig((cfg, source) => {
+      setLiveOpsConfig(cfg);
+      setLiveOpsSource(source);
+    });
+    return () => unsub();
+  }, []);
+
+  // Accessibility: apply optional larger UI font scale cleanly on root element
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.fontSize = currentSettings.uiTextScale === 'large' ? '112%' : '';
+    return () => {
+      document.documentElement.style.fontSize = '';
+    };
+  }, [currentSettings.uiTextScale]);
 
   // Clean up expired floating damage numbers
   useEffect(() => {
@@ -11442,6 +11491,38 @@ export default function App() {
         </div>
       )}
 
+      {phase === GamePhase.TITLE &&
+        enteredGame &&
+        (liveOpsConfig.maintenanceNotice || liveOpsConfig.announcementBanner) &&
+        dismissedLiveOpsNotice !==
+          `${liveOpsConfig.maintenanceNotice}|${liveOpsConfig.announcementBanner}` && (
+          <div className="pointer-events-none fixed top-14 left-1/2 z-40 w-[min(92vw,34rem)] -translate-x-1/2">
+            <div
+              className={`pointer-events-auto flex items-center justify-between gap-2.5 rounded-xl border px-3.5 py-2 text-xs font-semibold shadow-lg ${
+                liveOpsConfig.maintenanceNotice
+                  ? 'border-rose-400/55 bg-[#1a0a12]/95 text-rose-100'
+                  : 'border-amber-400/50 bg-[#0b1126]/95 text-amber-100'
+              }`}
+            >
+              <span className="truncate">
+                {liveOpsConfig.maintenanceNotice || liveOpsConfig.announcementBanner}
+              </span>
+              <button
+                type="button"
+                aria-label="Đóng thông báo LiveOps"
+                onClick={() =>
+                  setDismissedLiveOpsNotice(
+                    `${liveOpsConfig.maintenanceNotice}|${liveOpsConfig.announcementBanner}`
+                  )
+                }
+                className="shrink-0 rounded-lg border border-white/15 px-2 py-0.5 text-[11px] font-bold hover:bg-white/10 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        )}
+
       {phase === GamePhase.TITLE && enteredGame && (
         <TitleScreen
           save={save}
@@ -12259,7 +12340,22 @@ export default function App() {
           }
           onImportSave={handleImportSave}
           onResetPlayerData={handleResetAllPlayerData}
+          isVerifiedAdmin={isVerifiedAdminUser(currentUser)}
+          onOpenAdminLiveOps={() => {
+            setSettingsOpen(false);
+            setAdminLiveOpsOpen(true);
+          }}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {adminLiveOpsOpen && isVerifiedAdminUser(currentUser) && (
+        <AdminLiveOpsModal
+          authUser={currentUser}
+          activeConfig={liveOpsConfig}
+          configSource={liveOpsSource}
+          onConfigUpdated={(nextCfg) => setLiveOpsConfig(nextCfg)}
+          onClose={() => setAdminLiveOpsOpen(false)}
         />
       )}
 
