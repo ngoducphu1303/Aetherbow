@@ -1,27 +1,38 @@
-export const LIVEOPS_CONFIG_DOC_ID = 'global' as const;
-export const LIVEOPS_STORAGE_KEY = 'artemis_3d_liveops_config_v1';
-
-export const LIVEOPS_ADMIN_EMAILS: ReadonlySet<string> = new Set([
-  'ngoducphu1303@gmail.com',
-]);
-
 export interface LiveOpsConfig {
+  configId: 'global';
   version: number;
-  goldRewardMult: number; // 0.5 .. 3.0
-  gemRewardMult: number; // 0.5 .. 2.5
-  forgeShardMult: number; // 0.5 .. 3.0
-  enemyHpMult: number; // 0.6 .. 2.0
-  enemyDmgMult: number; // 0.6 .. 2.0
-  chestEpicRateBonus: number; // -0.05 .. 0.20
-  pitySoftCapOffset: number; // -5 .. +5
+  goldRewardMult: number;
+  gemRewardMult: number;
+  forgeShardMult: number;
+  enemyHpMult: number;
+  enemyDmgMult: number;
+  chestEpicRateBonus: number;
+  pitySoftCapOffset: number;
   weekendBlitzEnabled: boolean;
   doubleDropEventActive: boolean;
   announcementBanner: string;
   maintenanceNotice: string;
   balanceNote: string;
-  updatedByEmail: string;
   updatedAtMs: number;
+  updatedByEmail: string;
 }
+
+export interface LiveOpsSnapshotEntry {
+  snapshotId: string;
+  savedAtMs: number;
+  label: string;
+  source: 'firestore' | 'server' | 'local';
+  config: LiveOpsConfig;
+}
+
+export interface LiveOpsDiffItem {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+}
+
+export const MAX_LIVEOPS_SNAPSHOTS = 10;
 
 export const LIVEOPS_BOUNDS = {
   goldRewardMult: { min: 0.5, max: 3.0 },
@@ -31,11 +42,11 @@ export const LIVEOPS_BOUNDS = {
   enemyDmgMult: { min: 0.6, max: 2.0 },
   chestEpicRateBonus: { min: -0.05, max: 0.2 },
   pitySoftCapOffset: { min: -5, max: 5 },
-  maxBannerLen: 180,
-  maxNoteLen: 240,
+  version: { min: 1, max: 100000 },
 } as const;
 
 export const DEFAULT_LIVEOPS_CONFIG: LiveOpsConfig = {
+  configId: 'global',
   version: 1,
   goldRewardMult: 1.0,
   gemRewardMult: 1.0,
@@ -44,259 +55,254 @@ export const DEFAULT_LIVEOPS_CONFIG: LiveOpsConfig = {
   enemyDmgMult: 1.0,
   chestEpicRateBonus: 0,
   pitySoftCapOffset: 0,
-  weekendBlitzEnabled: true,
+  weekendBlitzEnabled: false,
   doubleDropEventActive: false,
   announcementBanner: '',
   maintenanceNotice: '',
-  balanceNote: 'Cấu hình cân bằng chuẩn AAA Mùa 1 (1.0x).',
-  updatedByEmail: 'system',
+  balanceNote: 'Cân bằng tiêu chuẩn Mùa Tinh Giới.',
   updatedAtMs: 0,
+  updatedByEmail: 'Hệ thống',
 };
 
-export interface LiveOpsPreset {
-  id: string;
-  label: string;
-  summary: string;
-  patch: Partial<LiveOpsConfig>;
-}
-
-export const LIVEOPS_PRESETS: LiveOpsPreset[] = [
-  {
-    id: 'balanced_default',
-    label: 'Chuẩn Cân Bằng (1.0x)',
-    summary: 'Đưa toàn bộ hệ số thưởng, rơi đồ và độ khó về mức chuẩn thiết kế.',
-    patch: {
-      goldRewardMult: 1.0,
-      gemRewardMult: 1.0,
-      forgeShardMult: 1.0,
-      enemyHpMult: 1.0,
-      enemyDmgMult: 1.0,
-      chestEpicRateBonus: 0,
-      pitySoftCapOffset: 0,
-      weekendBlitzEnabled: true,
-      doubleDropEventActive: false,
-      announcementBanner: '',
-      maintenanceNotice: '',
-      balanceNote: 'Chuẩn cân bằng AAA Mùa 1 (1.0x).',
-    },
-  },
-  {
-    id: 'weekend_festival',
-    label: 'Lễ Hội Cuối Tuần (x1.5 Vàng · x2 Rơi Mảnh)',
-    summary: 'Kích hoạt thưởng cuối tuần x1.5 Vàng, +5% tỷ lệ Sử Thi và sự kiện x2 rơi mảnh rèn.',
-    patch: {
-      goldRewardMult: 1.5,
-      gemRewardMult: 1.2,
-      forgeShardMult: 1.5,
-      enemyHpMult: 1.0,
-      enemyDmgMult: 1.0,
-      chestEpicRateBonus: 0.05,
-      pitySoftCapOffset: -2,
-      weekendBlitzEnabled: true,
-      doubleDropEventActive: true,
-      announcementBanner: 'Sự Kiện Cuối Tuần: +50% Vàng, +5% Sử Thi & Rơi Mảnh Rèn tăng cường!',
-      balanceNote: 'Preset Lễ Hội Cuối Tuần (kiểm soát trần <= 1.5x chống lạm phát).',
-    },
-  },
-  {
-    id: 'hardcore_season',
-    label: 'Thử Thách Chiến Thần (+25% HP/ATK · +40% Thưởng)',
-    summary: 'Tăng thử thách chiến thuật cho người chơi kỳ cựu kèm phần thưởng tương xứng.',
-    patch: {
-      goldRewardMult: 1.4,
-      gemRewardMult: 1.25,
-      forgeShardMult: 1.35,
-      enemyHpMult: 1.25,
-      enemyDmgMult: 1.2,
-      chestEpicRateBonus: 0.04,
-      pitySoftCapOffset: -1,
-      weekendBlitzEnabled: true,
-      doubleDropEventActive: false,
-      announcementBanner: 'Mùa Thử Thách Chiến Thần: Quái +25% HP / +20% ATK · Thưởng +40% Vàng!',
-      balanceNote: 'Preset Thử Thách Chiến Thần — cân bằng rủi ro & phần thưởng.',
-    },
-  },
-];
-
-function clampNumber(val: unknown, fallback: number, min: number, max: number, decimals = 2): number {
-  const n = Number(val);
+function clampNum(raw: unknown, min: number, max: number, fallback: number, digits = 2): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
   if (!Number.isFinite(n)) return fallback;
   const clamped = Math.max(min, Math.min(max, n));
-  const factor = Math.pow(10, decimals);
+  const factor = Math.pow(10, digits);
   return Math.round(clamped * factor) / factor;
 }
 
-function cleanText(val: unknown, fallback: string, maxLen: number): string {
-  if (typeof val !== 'string') return fallback;
-  return val.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, maxLen);
+function clampInt(raw: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
 }
 
-export function isVerifiedAdminIdentity(identity: {
-  email?: string | null;
-  emailVerified?: boolean | null;
-} | null | undefined): boolean {
-  if (!identity || typeof identity.email !== 'string') return false;
-  if (identity.emailVerified !== true) return false;
-  return LIVEOPS_ADMIN_EMAILS.has(identity.email.trim().toLowerCase());
+function cleanText(raw: unknown, maxLen: number, fallback = ''): string {
+  if (typeof raw !== 'string') return fallback;
+  return raw.replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, maxLen);
 }
 
-export function sanitizeLiveOpsConfig(raw?: Partial<LiveOpsConfig> | null): LiveOpsConfig {
-  const src = raw && typeof raw === 'object' ? raw : {};
-  const rawVer = Number(src.version);
-  const version =
-    Number.isFinite(rawVer) && rawVer >= 1 ? Math.min(1_000_000, Math.floor(rawVer)) : 1;
-
+export function sanitizeLiveOpsConfig(raw: Partial<LiveOpsConfig> | Record<string, unknown> | null | undefined): LiveOpsConfig {
+  const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
-    version,
-    goldRewardMult: clampNumber(
-      src.goldRewardMult,
-      DEFAULT_LIVEOPS_CONFIG.goldRewardMult,
-      LIVEOPS_BOUNDS.goldRewardMult.min,
-      LIVEOPS_BOUNDS.goldRewardMult.max,
-      2
-    ),
-    gemRewardMult: clampNumber(
-      src.gemRewardMult,
-      DEFAULT_LIVEOPS_CONFIG.gemRewardMult,
-      LIVEOPS_BOUNDS.gemRewardMult.min,
-      LIVEOPS_BOUNDS.gemRewardMult.max,
-      2
-    ),
-    forgeShardMult: clampNumber(
-      src.forgeShardMult,
-      DEFAULT_LIVEOPS_CONFIG.forgeShardMult,
-      LIVEOPS_BOUNDS.forgeShardMult.min,
-      LIVEOPS_BOUNDS.forgeShardMult.max,
-      2
-    ),
-    enemyHpMult: clampNumber(
-      src.enemyHpMult,
-      DEFAULT_LIVEOPS_CONFIG.enemyHpMult,
-      LIVEOPS_BOUNDS.enemyHpMult.min,
-      LIVEOPS_BOUNDS.enemyHpMult.max,
-      2
-    ),
-    enemyDmgMult: clampNumber(
-      src.enemyDmgMult,
-      DEFAULT_LIVEOPS_CONFIG.enemyDmgMult,
-      LIVEOPS_BOUNDS.enemyDmgMult.min,
-      LIVEOPS_BOUNDS.enemyDmgMult.max,
-      2
-    ),
-    chestEpicRateBonus: clampNumber(
-      src.chestEpicRateBonus,
-      DEFAULT_LIVEOPS_CONFIG.chestEpicRateBonus,
-      LIVEOPS_BOUNDS.chestEpicRateBonus.min,
-      LIVEOPS_BOUNDS.chestEpicRateBonus.max,
-      3
-    ),
-    pitySoftCapOffset: Math.round(
-      clampNumber(
-        src.pitySoftCapOffset,
-        DEFAULT_LIVEOPS_CONFIG.pitySoftCapOffset,
-        LIVEOPS_BOUNDS.pitySoftCapOffset.min,
-        LIVEOPS_BOUNDS.pitySoftCapOffset.max,
-        0
-      )
-    ),
-    weekendBlitzEnabled:
-      typeof src.weekendBlitzEnabled === 'boolean'
-        ? src.weekendBlitzEnabled
-        : DEFAULT_LIVEOPS_CONFIG.weekendBlitzEnabled,
-    doubleDropEventActive:
-      typeof src.doubleDropEventActive === 'boolean'
-        ? src.doubleDropEventActive
-        : DEFAULT_LIVEOPS_CONFIG.doubleDropEventActive,
-    announcementBanner: cleanText(
-      src.announcementBanner,
-      DEFAULT_LIVEOPS_CONFIG.announcementBanner,
-      LIVEOPS_BOUNDS.maxBannerLen
-    ),
-    maintenanceNotice: cleanText(
-      src.maintenanceNotice,
-      DEFAULT_LIVEOPS_CONFIG.maintenanceNotice,
-      LIVEOPS_BOUNDS.maxBannerLen
-    ),
-    balanceNote: cleanText(
-      src.balanceNote,
-      DEFAULT_LIVEOPS_CONFIG.balanceNote,
-      LIVEOPS_BOUNDS.maxNoteLen
-    ),
-    updatedByEmail: cleanText(src.updatedByEmail, DEFAULT_LIVEOPS_CONFIG.updatedByEmail, 80),
+    configId: 'global',
+    version: clampInt(src.version, LIVEOPS_BOUNDS.version.min, LIVEOPS_BOUNDS.version.max, DEFAULT_LIVEOPS_CONFIG.version),
+    goldRewardMult: clampNum(src.goldRewardMult, LIVEOPS_BOUNDS.goldRewardMult.min, LIVEOPS_BOUNDS.goldRewardMult.max, 1.0, 2),
+    gemRewardMult: clampNum(src.gemRewardMult, LIVEOPS_BOUNDS.gemRewardMult.min, LIVEOPS_BOUNDS.gemRewardMult.max, 1.0, 2),
+    forgeShardMult: clampNum(src.forgeShardMult, LIVEOPS_BOUNDS.forgeShardMult.min, LIVEOPS_BOUNDS.forgeShardMult.max, 1.0, 2),
+    enemyHpMult: clampNum(src.enemyHpMult, LIVEOPS_BOUNDS.enemyHpMult.min, LIVEOPS_BOUNDS.enemyHpMult.max, 1.0, 2),
+    enemyDmgMult: clampNum(src.enemyDmgMult, LIVEOPS_BOUNDS.enemyDmgMult.min, LIVEOPS_BOUNDS.enemyDmgMult.max, 1.0, 2),
+    chestEpicRateBonus: clampNum(src.chestEpicRateBonus, LIVEOPS_BOUNDS.chestEpicRateBonus.min, LIVEOPS_BOUNDS.chestEpicRateBonus.max, 0, 3),
+    pitySoftCapOffset: clampInt(src.pitySoftCapOffset, LIVEOPS_BOUNDS.pitySoftCapOffset.min, LIVEOPS_BOUNDS.pitySoftCapOffset.max, 0),
+    weekendBlitzEnabled: Boolean(src.weekendBlitzEnabled),
+    doubleDropEventActive: Boolean(src.doubleDropEventActive),
+    announcementBanner: cleanText(src.announcementBanner, 180, ''),
+    maintenanceNotice: cleanText(src.maintenanceNotice, 180, ''),
+    balanceNote: cleanText(src.balanceNote, 240, DEFAULT_LIVEOPS_CONFIG.balanceNote),
     updatedAtMs:
       typeof src.updatedAtMs === 'number' && Number.isFinite(src.updatedAtMs) && src.updatedAtMs >= 0
         ? Math.floor(src.updatedAtMs)
         : 0,
+    updatedByEmail: cleanText(src.updatedByEmail ?? src.updatedByLabel, 32, 'Admin LiveOps') || 'Admin LiveOps',
   };
 }
 
-export interface LiveOpsRewardInput {
-  gold: number;
-  gems: number;
-  rareShards?: number;
-  epicShards?: number;
-  sTierBlueprints?: number;
+export function applyLiveOpsRewardMultipliers(
+  rewards: { gold: number; gems: number; forgeShards?: number },
+  config: LiveOpsConfig
+): { gold: number; gems: number; forgeShards: number } {
+  const safeCfg = sanitizeLiveOpsConfig(config);
+  const doubleDropBoost = safeCfg.doubleDropEventActive ? 1.25 : 1.0;
+  const weekendGoldBoost = safeCfg.weekendBlitzEnabled ? 1.15 : 1.0;
+
+  const gold = Math.max(0, Math.round(Math.max(0, rewards.gold) * safeCfg.goldRewardMult * weekendGoldBoost));
+  const gems = Math.max(0, Math.round(Math.max(0, rewards.gems) * safeCfg.gemRewardMult));
+  const forgeShards = Math.max(
+    0,
+    Math.round(Math.max(0, rewards.forgeShards ?? 0) * safeCfg.forgeShardMult * doubleDropBoost)
+  );
+  return { gold, gems, forgeShards };
 }
 
-export interface LiveOpsRewardOutput {
-  gold: number;
-  gems: number;
-  rareShards: number;
-  epicShards: number;
-  sTierBlueprints: number;
-  appliedGoldMult: number;
-  appliedGemMult: number;
-  appliedShardMult: number;
+// ============================================================================
+// PHASE 4 PILLAR 5: LIVEOPS SNAPSHOT HISTORY & 1-CLICK ROLLBACK (PURE)
+// ============================================================================
+
+const NUMERIC_DIFF_FIELDS: Array<{
+  key: keyof Pick<
+    LiveOpsConfig,
+    | 'goldRewardMult'
+    | 'gemRewardMult'
+    | 'forgeShardMult'
+    | 'enemyHpMult'
+    | 'enemyDmgMult'
+    | 'chestEpicRateBonus'
+    | 'pitySoftCapOffset'
+  >;
+  label: string;
+  format: (v: number) => string;
+}> = [
+  { key: 'goldRewardMult', label: 'Hệ số Vàng', format: (v) => `×${v.toFixed(2)}` },
+  { key: 'gemRewardMult', label: 'Hệ số Ngọc', format: (v) => `×${v.toFixed(2)}` },
+  { key: 'forgeShardMult', label: 'Mảnh Rèn', format: (v) => `×${v.toFixed(2)}` },
+  { key: 'enemyHpMult', label: 'HP Quái/Boss', format: (v) => `×${v.toFixed(2)}` },
+  { key: 'enemyDmgMult', label: 'Sát thương Quái', format: (v) => `×${v.toFixed(2)}` },
+  {
+    key: 'chestEpicRateBonus',
+    label: 'Tỷ lệ Sử Thi Rương',
+    format: (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`,
+  },
+  {
+    key: 'pitySoftCapOffset',
+    label: 'Dịch chuyển Pity',
+    format: (v) => `${v >= 0 ? '+' : ''}${v}`,
+  },
+];
+
+export function computeLiveOpsConfigDiff(
+  current: LiveOpsConfig,
+  target: LiveOpsConfig
+): LiveOpsDiffItem[] {
+  const a = sanitizeLiveOpsConfig(current);
+  const b = sanitizeLiveOpsConfig(target);
+  const diffs: LiveOpsDiffItem[] = [];
+
+  for (const spec of NUMERIC_DIFF_FIELDS) {
+    const beforeVal = a[spec.key];
+    const afterVal = b[spec.key];
+    if (Math.abs(beforeVal - afterVal) > 0.0005) {
+      diffs.push({
+        field: spec.key,
+        label: spec.label,
+        before: spec.format(beforeVal),
+        after: spec.format(afterVal),
+      });
+    }
+  }
+
+  if (a.weekendBlitzEnabled !== b.weekendBlitzEnabled) {
+    diffs.push({
+      field: 'weekendBlitzEnabled',
+      label: 'Tăng tốc Cuối tuần',
+      before: a.weekendBlitzEnabled ? 'Bật' : 'Tắt',
+      after: b.weekendBlitzEnabled ? 'Bật' : 'Tắt',
+    });
+  }
+  if (a.doubleDropEventActive !== b.doubleDropEventActive) {
+    diffs.push({
+      field: 'doubleDropEventActive',
+      label: 'Nhân đôi Rơi đồ',
+      before: a.doubleDropEventActive ? 'Bật' : 'Tắt',
+      after: b.doubleDropEventActive ? 'Bật' : 'Tắt',
+    });
+  }
+  if (a.announcementBanner !== b.announcementBanner) {
+    diffs.push({
+      field: 'announcementBanner',
+      label: 'Thông báo sự kiện',
+      before: a.announcementBanner || '(Trống)',
+      after: b.announcementBanner || '(Trống)',
+    });
+  }
+  if (a.maintenanceNotice !== b.maintenanceNotice) {
+    diffs.push({
+      field: 'maintenanceNotice',
+      label: 'Cảnh báo bảo trì',
+      before: a.maintenanceNotice || '(Trống)',
+      after: b.maintenanceNotice || '(Trống)',
+    });
+  }
+
+  return diffs;
+}
+
+export function sanitizeLiveOpsSnapshotHistory(raw: unknown): LiveOpsSnapshotEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const valid: LiveOpsSnapshotEntry[] = [];
+  const seenIds = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const cfg = sanitizeLiveOpsConfig(rec.config as Record<string, unknown>);
+    const savedAtMs =
+      typeof rec.savedAtMs === 'number' && Number.isFinite(rec.savedAtMs) && rec.savedAtMs > 0
+        ? Math.floor(rec.savedAtMs)
+        : cfg.updatedAtMs || Date.now();
+    const snapshotId =
+      typeof rec.snapshotId === 'string' && rec.snapshotId.trim().length > 0
+        ? rec.snapshotId.trim().slice(0, 64)
+        : `v${cfg.version}_${savedAtMs}`;
+    if (seenIds.has(snapshotId)) continue;
+    seenIds.add(snapshotId);
+    const sourceRaw = rec.source;
+    const source: 'firestore' | 'server' | 'local' =
+      sourceRaw === 'firestore' || sourceRaw === 'server' ? sourceRaw : 'local';
+    valid.push({
+      snapshotId,
+      savedAtMs,
+      label: cleanText(rec.label, 96, `Bản v${cfg.version}`) || `Bản v${cfg.version}`,
+      source,
+      config: cfg,
+    });
+  }
+  valid.sort((a, b) => b.savedAtMs - a.savedAtMs || b.config.version - a.config.version);
+  return valid.slice(0, MAX_LIVEOPS_SNAPSHOTS);
+}
+
+export function recordLiveOpsSnapshot(
+  history: LiveOpsSnapshotEntry[],
+  publishedConfig: LiveOpsConfig,
+  options?: {
+    source?: 'firestore' | 'server' | 'local';
+    label?: string;
+    nowMs?: number;
+  }
+): LiveOpsSnapshotEntry[] {
+  const safeCfg = sanitizeLiveOpsConfig(publishedConfig);
+  const savedAtMs = options?.nowMs ?? (safeCfg.updatedAtMs > 0 ? safeCfg.updatedAtMs : Date.now());
+  const source = options?.source ?? 'local';
+  const entry: LiveOpsSnapshotEntry = {
+    snapshotId: `v${safeCfg.version}_${savedAtMs}`,
+    savedAtMs,
+    label:
+      cleanText(options?.label, 96, '') ||
+      (safeCfg.balanceNote ? `v${safeCfg.version} · ${safeCfg.balanceNote.slice(0, 56)}` : `Bản v${safeCfg.version}`),
+    source,
+    config: safeCfg,
+  };
+  const filtered = sanitizeLiveOpsSnapshotHistory(history).filter(
+    (s) => s.snapshotId !== entry.snapshotId
+  );
+  return [entry, ...filtered].slice(0, MAX_LIVEOPS_SNAPSHOTS);
 }
 
 /**
- * Applies active LiveOps multipliers deterministically to post-run rewards.
+ * Builds a validated rollback LiveOpsConfig from a historical snapshot,
+ * strictly incrementing version monotonically (`current.version + 1`) so
+ * existing Firestore security rules (`incoming().version >= existing().version`)
+ * accept the publish cleanly and all live clients immediately converge.
  */
-export function applyLiveOpsRewardMultipliers(
-  input: LiveOpsRewardInput,
-  config: LiveOpsConfig
-): LiveOpsRewardOutput {
-  const safe = sanitizeLiveOpsConfig(config);
-  const effectiveShardMult = safe.doubleDropEventActive
-    ? Math.min(LIVEOPS_BOUNDS.forgeShardMult.max, Number((safe.forgeShardMult * 1.5).toFixed(2)))
-    : safe.forgeShardMult;
-
-  return {
-    gold: Math.max(0, Math.round(Math.max(0, input.gold) * safe.goldRewardMult)),
-    gems: Math.max(0, Math.round(Math.max(0, input.gems) * safe.gemRewardMult)),
-    rareShards: Math.max(0, Math.round(Math.max(0, input.rareShards ?? 0) * effectiveShardMult)),
-    epicShards: Math.max(0, Math.round(Math.max(0, input.epicShards ?? 0) * effectiveShardMult)),
-    sTierBlueprints: Math.max(
-      0,
-      Math.round(Math.max(0, input.sTierBlueprints ?? 0) * effectiveShardMult)
-    ),
-    appliedGoldMult: safe.goldRewardMult,
-    appliedGemMult: safe.gemRewardMult,
-    appliedShardMult: effectiveShardMult,
-  };
-}
-
-export function getEffectiveLiveOpsPityThresholds(config: LiveOpsConfig): {
-  epicPityRolls: number;
-  sTierPityRolls: number;
-} {
-  const safe = sanitizeLiveOpsConfig(config);
-  return {
-    epicPityRolls: Math.max(6, Math.min(15, 10 + safe.pitySoftCapOffset)),
-    sTierPityRolls: Math.max(18, Math.min(30, 25 + safe.pitySoftCapOffset)),
-  };
-}
-
-export function parseLiveOpsConfigJson(
-  rawJson: string
-): { ok: true; config: LiveOpsConfig } | { ok: false; error: string } {
-  try {
-    const parsed = JSON.parse(rawJson);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { ok: false, error: 'Định dạng JSON cấu hình LiveOps không hợp lệ.' };
-    }
-    return { ok: true, config: sanitizeLiveOpsConfig(parsed as Partial<LiveOpsConfig>) };
-  } catch {
-    return { ok: false, error: 'Không thể phân tích cú pháp JSON LiveOps.' };
+export function buildRollbackLiveOpsConfig(
+  currentActive: LiveOpsConfig,
+  snapshot: LiveOpsSnapshotEntry,
+  options?: {
+    actorLabel?: string;
+    nowMs?: number;
   }
+): LiveOpsConfig {
+  const cur = sanitizeLiveOpsConfig(currentActive);
+  const target = sanitizeLiveOpsConfig(snapshot.config);
+  const nextVersion = Math.min(LIVEOPS_BOUNDS.version.max, Math.max(cur.version + 1, target.version + 1));
+  const actor = cleanText(options?.actorLabel, 32, 'Admin LiveOps') || 'Admin LiveOps';
+  const baseNote = target.balanceNote || 'Cấu hình ổn định';
+  const rollbackNote = cleanText(`Khôi phục từ v${target.version}: ${baseNote}`, 240);
+  return sanitizeLiveOpsConfig({
+    ...target,
+    configId: 'global',
+    version: nextVersion,
+    balanceNote: rollbackNote,
+    updatedAtMs: options?.nowMs ?? Date.now(),
+    updatedByEmail: actor,
+  });
 }

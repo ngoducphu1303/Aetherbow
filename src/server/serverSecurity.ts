@@ -1,66 +1,63 @@
-import type express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 
-export const AUTHORIZED_ADMIN_EMAILS: ReadonlySet<string> = new Set([
-  'ngoducphu1303@gmail.com',
-]);
+export const VERIFIED_ADMIN_EMAIL = 'ngoducphu1303@gmail.com';
 
-export interface VerifiedAdminCheck {
-  email?: string | null;
-  emailVerified?: boolean | null;
+export const WS_SECURITY_LIMITS = {
+  maxPayloadBytes: 32 * 1024,
+  generalMaxMsgsPer10s: 45,
+  actionBurstMaxPer10s: 12,
+  maxDuelDurationSec: 3600,
+  maxGuildBossDamage: 25_000_000,
+  maxBountyPoints: 5_000,
+  maxGuildWarScorePerAction: 2_500,
+} as const;
+
+export interface RateLimitOptions {
+  maxRequests: number;
+  windowMs: number;
+  maxBuckets?: number;
 }
 
-export function isVerifiedAdminClaims(claims: VerifiedAdminCheck | null | undefined): boolean {
-  if (!claims || typeof claims.email !== 'string') return false;
-  if (claims.emailVerified !== true) return false;
-  return AUTHORIZED_ADMIN_EMAILS.has(claims.email.trim().toLowerCase());
-}
-
-export interface RateLimitResult {
+export interface RateLimitVerdict {
   allowed: boolean;
   remaining: number;
   retryAfterMs: number;
 }
 
-/**
- * Memory-safe sliding-window rate limiter with automatic stale bucket eviction.
- */
 export class SlidingWindowRateLimiter {
   private readonly maxRequests: number;
   private readonly windowMs: number;
   private readonly maxBuckets: number;
   private readonly buckets = new Map<string, number[]>();
 
-  constructor(options: { maxRequests: number; windowMs: number; maxBuckets?: number }) {
+  constructor(options: RateLimitOptions) {
     this.maxRequests = Math.max(1, Math.floor(options.maxRequests));
     this.windowMs = Math.max(250, Math.floor(options.windowMs));
     this.maxBuckets = Math.max(64, Math.floor(options.maxBuckets ?? 2000));
   }
 
-  public consume(key: string, nowMs = Date.now()): RateLimitResult {
+  public consume(key: string, nowMs = Date.now()): RateLimitVerdict {
     const cutoff = nowMs - this.windowMs;
     const prev = this.buckets.get(key) ?? [];
-    const recent = prev.filter((ts) => ts > cutoff);
+    const active = prev.filter((ts) => ts > cutoff);
 
-    if (recent.length >= this.maxRequests) {
-      this.buckets.set(key, recent);
-      const oldest = recent[0] ?? nowMs;
+    if (active.length >= this.maxRequests) {
+      this.buckets.set(key, active);
+      const oldest = active[0] ?? nowMs;
       return {
         allowed: false,
         remaining: 0,
-        retryAfterMs: Math.max(50, oldest + this.windowMs - nowMs),
+        retryAfterMs: Math.max(50, this.windowMs - (nowMs - oldest)),
       };
     }
 
-    recent.push(nowMs);
-    this.buckets.set(key, recent);
-
-    if (this.buckets.size > this.maxBuckets) {
-      this.prune(nowMs);
-    }
+    active.push(nowMs);
+    this.buckets.set(key, active);
+    this.pruneIfNeeded(cutoff);
 
     return {
       allowed: true,
-      remaining: Math.max(0, this.maxRequests - recent.length),
+      remaining: Math.max(0, this.maxRequests - active.length),
       retryAfterMs: 0,
     };
   }
@@ -69,41 +66,58 @@ export class SlidingWindowRateLimiter {
     this.buckets.delete(key);
   }
 
-  public prune(nowMs = Date.now()): void {
-    const cutoff = nowMs - this.windowMs;
+  private pruneIfNeeded(cutoff: number): void {
+    if (this.buckets.size <= this.maxBuckets) return;
     for (const [k, list] of this.buckets.entries()) {
-      const filtered = list.filter((ts) => ts > cutoff);
-      if (filtered.length === 0) {
+      const kept = list.filter((ts) => ts > cutoff);
+      if (kept.length === 0) {
         this.buckets.delete(k);
       } else {
-        this.buckets.set(k, filtered);
+        this.buckets.set(k, kept);
       }
+      if (this.buckets.size <= Math.floor(this.maxBuckets * 0.8)) break;
     }
   }
-
-  public getBucketCount(): number {
-    return this.buckets.size;
-  }
 }
 
-export function extractClientKey(req: express.Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  const rawIp =
-    typeof forwarded === 'string'
-      ? forwarded.split(',')[0]?.trim()
-      : Array.isArray(forwarded)
-      ? forwarded[0]?.trim()
-      : req.ip || req.socket?.remoteAddress || 'unknown';
-  return (rawIp || 'unknown').slice(0, 64);
+export function createApiRateLimitMiddleware(options: {
+  scope: string;
+  maxRequests: number;
+  windowMs: number;
+}) {
+  const limiter = new SlidingWindowRateLimiter({
+    maxRequests: options.maxRequests,
+    windowMs: options.windowMs,
+    maxBuckets: 4000,
+  });
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipRaw =
+      typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : Array.isArray(forwarded)
+        ? forwarded[0]?.trim()
+        : req.ip || req.socket.remoteAddress || 'local';
+    const bucketKey = `${options.scope}:${ipRaw || 'local'}`;
+    const verdict = limiter.consume(bucketKey);
+    res.setHeader('X-RateLimit-Remaining', String(verdict.remaining));
+    if (!verdict.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(verdict.retryAfterMs / 1000)));
+      res.status(429).json({
+        error: 'RATE_LIMITED',
+        message: 'Bạn gửi yêu cầu quá nhanh. Vui lòng chờ giây lát và thử lại.',
+      });
+      return;
+    }
+    next();
+  };
 }
 
-/**
- * Security response headers middleware compatible with embedded AI Studio iframe previews.
- */
 export function applySecurityHeadersMiddleware(
-  _req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
+  _req: Request,
+  res: Response,
+  next: NextFunction
 ): void {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -112,87 +126,36 @@ export function applySecurityHeadersMiddleware(
   next();
 }
 
-export function createApiRateLimitMiddleware(options: {
-  maxRequests: number;
-  windowMs: number;
-  scope: string;
-}): express.RequestHandler {
-  const limiter = new SlidingWindowRateLimiter({
-    maxRequests: options.maxRequests,
-    windowMs: options.windowMs,
-  });
-
-  return (req, res, next) => {
-    const key = `${options.scope}:${extractClientKey(req)}`;
-    const verdict = limiter.consume(key);
-    res.setHeader('X-RateLimit-Limit', String(options.maxRequests));
-    res.setHeader('X-RateLimit-Remaining', String(verdict.remaining));
-    if (!verdict.allowed) {
-      const retrySec = Math.max(1, Math.ceil(verdict.retryAfterMs / 1000));
-      res.setHeader('Retry-After', String(retrySec));
-      res.status(429).json({
-        error: 'RATE_LIMIT_EXCEEDED',
-        message: 'Bạn thao tác quá nhanh. Vui lòng thử lại sau giây lát.',
-        retryAfterSec: retrySec,
-      });
-      return;
-    }
-    next();
-  };
+export function isVerifiedAdminClaims(claims?: {
+  email?: string | null;
+  emailVerified?: boolean;
+} | null): boolean {
+  if (!claims || !claims.email) return false;
+  return (
+    claims.email.trim().toLowerCase() === VERIFIED_ADMIN_EMAIL &&
+    claims.emailVerified === true
+  );
 }
 
-// ============================================================================
-// WEBSOCKET ANTI-CHEAT VALUE BOUNDS & ACTION COOLDOWNS
-// ============================================================================
-
-export const WS_SECURITY_LIMITS = {
-  maxPayloadBytes: 32 * 1024, // 32 KiB per WebSocket frame
-  generalMaxMsgsPer10s: 60,
-  actionBurstMaxPer10s: 12,
-  chatCooldownMs: 700,
-  guildBossAttackCooldownMs: 1200,
-  guildBossMaxDamagePerHit: 250_000,
-  bountyContributeCooldownMs: 1000,
-  bountyMaxPointsPerContribution: 12_000,
-  guildWarStrikeCooldownMs: 1200,
-  guildWarMaxQuickScore: 95,
-  guildWarMaxAssaultScore: 260,
-  duelMinDurationSec: 3,
-  duelMaxDurationSec: 300,
-  spectatorNextMatchCooldownMs: 2500,
-} as const;
-
-export function clampWsGuildBossDamage(raw: unknown): number | null {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.max(1, Math.min(WS_SECURITY_LIMITS.guildBossMaxDamagePerHit, Math.round(n)));
-}
-
-export function clampWsBountyPoints(raw: unknown): number | null {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.max(1, Math.min(WS_SECURITY_LIMITS.bountyMaxPointsPerContribution, Math.round(n)));
-}
-
-export function clampWsGuildWarScore(
-  raw: unknown,
-  mode: 'quick_strike' | 'assault_3d'
-): number {
-  const defaultVal = mode === 'assault_3d' ? 145 : 65;
-  const cap =
-    mode === 'assault_3d'
-      ? WS_SECURITY_LIMITS.guildWarMaxAssaultScore
-      : WS_SECURITY_LIMITS.guildWarMaxQuickScore;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return defaultVal;
-  return Math.max(10, Math.min(cap, Math.round(n)));
+function clampFinite(value: unknown, min: number, max: number, fallback = min): number {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(min, Math.min(max, num));
 }
 
 export function clampWsDuelDurationSec(raw: unknown): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return 15;
-  return Math.max(
-    WS_SECURITY_LIMITS.duelMinDurationSec,
-    Math.min(WS_SECURITY_LIMITS.duelMaxDurationSec, Math.round(n))
-  );
+  return Math.round(clampFinite(raw, 1, WS_SECURITY_LIMITS.maxDuelDurationSec, 30));
+}
+
+export function clampWsGuildBossDamage(raw: unknown): number {
+  return Math.round(clampFinite(raw, 0, WS_SECURITY_LIMITS.maxGuildBossDamage, 0));
+}
+
+export function clampWsBountyPoints(raw: unknown): number {
+  return Math.round(clampFinite(raw, 0, WS_SECURITY_LIMITS.maxBountyPoints, 0));
+}
+
+export function clampWsGuildWarScore(raw: unknown, mode?: string): number {
+  const cap = mode === 'boss_rush' ? 3500 : WS_SECURITY_LIMITS.maxGuildWarScorePerAction;
+  return Math.round(clampFinite(raw, 0, cap, 0));
 }

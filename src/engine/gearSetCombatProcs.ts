@@ -1,284 +1,195 @@
-import { ActiveGearSetBonus, GearSetId } from '../types/game';
+import type { GearSetId } from '../types/game';
+
+export type GearSetProcTriggerEvent =
+  | 'perfect_dodge'
+  | 'dash_used'
+  | 'basic_volley'
+  | 'cast_interrupt'
+  | 'crit_hit'
+  | 'low_hp_hit';
 
 export type GearSetProcId =
   | 'destruction_nova'
-  | 'echo_phantom_volley'
+  | 'echo_phantom_shot'
   | 'dragon_knight_aegis'
-  | 'oracle_astral_surge'
+  | 'oracle_time_surge'
   | 'griffin_gale_stride';
 
-export type GearSetProcTriggerEvent =
-  | 'crit_hit'
-  | 'basic_volley'
-  | 'perfect_dodge'
-  | 'low_hp_hit'
-  | 'cast_interrupt'
-  | 'dash_used';
-
-export interface GearSetProcDefinition {
-  procId: GearSetProcId;
+export interface GearSetCombatProcSpec {
   setId: GearSetId;
-  piecesRequired: 2 | 3;
+  procId: GearSetProcId;
   name: string;
-  shortDesc: string;
   triggerLabel: string;
-  internalCooldownSec: number;
-  /** Threshold count for counter-based procs (e.g. every 4th crit or 5th volley). */
-  triggerEveryN: number;
-  damageAtkMult: number;
-  aoeRadius: number;
+  shortDesc: string;
+  triggerEvent: GearSetProcTriggerEvent;
+  cooldownSec: number;
+  accentHex: number;
   shieldMaxHpPct: number;
   ultChargeGain: number;
+  buffDurationSec: number;
   tempAtkSpeedBonus: number;
   tempMoveSpeedBonus: number;
-  buffDurationSec: number;
-  accentHex: number;
-}
-
-export interface GearSetProcRuntimeState {
-  activeProcs: GearSetProcDefinition[];
-  cooldowns: Partial<Record<GearSetProcId, number>>;
-  critCounter: number;
-  volleyCounter: number;
-  hitCounter: number;
-  totalProcsTriggered: number;
-}
-
-export interface GearSetProcOutcome {
-  procId: GearSetProcId;
-  setId: GearSetId;
-  name: string;
-  bannerText: string;
   aoeDamageAtkMult: number;
   aoeRadius: number;
   extraPierceArrowAtkMult: number;
-  shieldMaxHpPct: number;
-  ultChargeGain: number;
-  tempAtkSpeedBonus: number;
-  tempMoveSpeedBonus: number;
-  buffDurationSec: number;
-  accentHex: number;
 }
 
-/**
- * Canonical Unique Combat Procs for the 5 Mid-to-Endgame Gear Sets.
- * Deliberately excludes the Starter Set so Chapter 1 fresh accounts (702 CP) remain untouched.
- */
-export const GEAR_SET_COMBAT_PROCS: Record<GearSetId, GearSetProcDefinition> = {
+export const GEAR_SET_COMBAT_PROCS: Record<GearSetId, GearSetCombatProcSpec> = {
   'Destruction Set': {
-    procId: 'destruction_nova',
     setId: 'Destruction Set',
-    piecesRequired: 2,
-    name: 'Xung Kích Hủy Diệt',
-    shortDesc: 'Mỗi đòn Chí Mạng thứ 4 kích nổ sóng lửa gây 135% ATK diện rộng (hồi 4.5s).',
-    triggerLabel: 'Mỗi 4 Chí Mạng',
-    internalCooldownSec: 4.5,
-    triggerEveryN: 4,
-    damageAtkMult: 1.35,
-    aoeRadius: 4.0,
+    procId: 'destruction_nova',
+    name: 'Hủy Diệt Bùng Nổ',
+    triggerLabel: 'Khi Chí Mạng',
+    shortDesc: 'Chí mạng kích hoạt sóng nổ lửa 160% ATK quanh mục tiêu (CD 6s).',
+    triggerEvent: 'crit_hit',
+    cooldownSec: 6.0,
+    accentHex: 0xf97316,
     shieldMaxHpPct: 0,
-    ultChargeGain: 0,
+    ultChargeGain: 0.06,
+    buffDurationSec: 0,
     tempAtkSpeedBonus: 0,
     tempMoveSpeedBonus: 0,
-    buffDurationSec: 0,
-    accentHex: 0xf97316,
+    aoeDamageAtkMult: 1.6,
+    aoeRadius: 3.4,
+    extraPierceArrowAtkMult: 0,
   },
   'Echo Set': {
-    procId: 'echo_phantom_volley',
     setId: 'Echo Set',
-    piecesRequired: 2,
-    name: 'Mũi Tên Vọng Ảnh',
-    shortDesc: 'Mỗi loạt bắn thứ 5 phóng thêm 1 mũi tên xuyên thấu 85% ATK (115% khi đủ 3 món, hồi 3s).',
-    triggerLabel: 'Mỗi 5 Loạt Bắn',
-    internalCooldownSec: 3.0,
-    triggerEveryN: 5,
-    damageAtkMult: 0.85,
-    aoeRadius: 0,
+    procId: 'echo_phantom_shot',
+    name: 'Vọng Âm Truy Ảnh',
+    triggerLabel: 'Khi Bắn Liên Hoàn',
+    shortDesc: 'Mỗi loạt bắn kích thêm mũi tên xuyên ảnh 125% ATK (CD 4.5s).',
+    triggerEvent: 'basic_volley',
+    cooldownSec: 4.5,
+    accentHex: 0x38bdf8,
     shieldMaxHpPct: 0,
-    ultChargeGain: 0,
-    tempAtkSpeedBonus: 0,
+    ultChargeGain: 0.04,
+    buffDurationSec: 2.5,
+    tempAtkSpeedBonus: 0.12,
     tempMoveSpeedBonus: 0,
-    buffDurationSec: 0,
-    accentHex: 0xc084fc,
+    aoeDamageAtkMult: 0,
+    aoeRadius: 0,
+    extraPierceArrowAtkMult: 1.25,
   },
   'Dragon Knight Set': {
-    procId: 'dragon_knight_aegis',
     setId: 'Dragon Knight Set',
-    piecesRequired: 2,
-    name: 'Vảy Rồng Bất Khuất',
-    shortDesc: 'Né Hoàn Hảo hoặc khi HP ≤ 50% tạo Khiên 14% HP (20% ở 3 món) + sóng lửa 120% ATK (hồi 7.5s).',
-    triggerLabel: 'Né Hoàn Hảo / HP ≤ 50%',
-    internalCooldownSec: 7.5,
-    triggerEveryN: 1,
-    damageAtkMult: 1.2,
-    aoeRadius: 4.4,
-    shieldMaxHpPct: 0.14,
-    ultChargeGain: 0,
+    procId: 'dragon_knight_aegis',
+    name: 'Long Giáp Hộ Thể',
+    triggerLabel: 'Trúng Đòn <50% HP',
+    shortDesc: 'Trúng đòn dưới 50% HP tạo khiên 18% Max HP và đẩy sóng lửa (CD 12s).',
+    triggerEvent: 'low_hp_hit',
+    cooldownSec: 12.0,
+    accentHex: 0xfbbf24,
+    shieldMaxHpPct: 0.18,
+    ultChargeGain: 0.1,
+    buffDurationSec: 3.5,
     tempAtkSpeedBonus: 0,
-    tempMoveSpeedBonus: 0,
-    buffDurationSec: 4.5,
-    accentHex: 0xf59e0b,
+    tempMoveSpeedBonus: 0.1,
+    aoeDamageAtkMult: 1.35,
+    aoeRadius: 4.0,
+    extraPierceArrowAtkMult: 0,
   },
   'Oracle Set': {
-    procId: 'oracle_astral_surge',
     setId: 'Oracle Set',
-    piecesRequired: 2,
-    name: 'Luồng Tinh Tri',
-    shortDesc: 'Ngắt Chiêu hoặc mỗi 12 đòn trúng hồi +12% Nộ (+18% ở 3 món) và +18% Tốc Bắn 3.5s (hồi 6s).',
-    triggerLabel: 'Ngắt Chiêu / 12 Đòn Trúng',
-    internalCooldownSec: 6.0,
-    triggerEveryN: 12,
-    damageAtkMult: 0,
-    aoeRadius: 0,
-    shieldMaxHpPct: 0,
-    ultChargeGain: 0.12,
+    procId: 'oracle_time_surge',
+    name: 'Thiên Cơ Cộng Hưởng',
+    triggerLabel: 'Né Hoàn Hảo / Ngắt Chiêu',
+    shortDesc: 'Né hoàn hảo hoặc Ngắt chiêu hồi 18% Nộ và tăng 18% tốc đánh (CD 6s).',
+    triggerEvent: 'perfect_dodge',
+    cooldownSec: 6.0,
+    accentHex: 0xc084fc,
+    shieldMaxHpPct: 0.08,
+    ultChargeGain: 0.18,
+    buffDurationSec: 4.0,
     tempAtkSpeedBonus: 0.18,
-    tempMoveSpeedBonus: 0,
-    buffDurationSec: 3.5,
-    accentHex: 0x38bdf8,
+    tempMoveSpeedBonus: 0.12,
+    aoeDamageAtkMult: 0,
+    aoeRadius: 0,
+    extraPierceArrowAtkMult: 0,
   },
   'Griffin Set': {
-    procId: 'griffin_gale_stride',
     setId: 'Griffin Set',
-    piecesRequired: 2,
-    name: 'Xé Gió Điểu Sư',
-    shortDesc: 'Sau khi Lướt Né bắn tia gió xuyên thấu 140% ATK và tăng +20% Tốc Chạy 2.5s (hồi 4.5s).',
-    triggerLabel: 'Sau khi Lướt Né',
-    internalCooldownSec: 4.5,
-    triggerEveryN: 1,
-    damageAtkMult: 1.4,
-    aoeRadius: 0,
-    shieldMaxHpPct: 0,
-    ultChargeGain: 0,
-    tempAtkSpeedBonus: 0,
-    tempMoveSpeedBonus: 0.2,
-    buffDurationSec: 2.5,
+    procId: 'griffin_gale_stride',
+    name: 'Phong Dực Xung Kích',
+    triggerLabel: 'Khi Lướt Né',
+    shortDesc: 'Lướt né tăng mạnh 24% tốc chạy & 16% tốc đánh trong 3.5s (CD 5.5s).',
+    triggerEvent: 'dash_used',
+    cooldownSec: 5.5,
     accentHex: 0x34d399,
+    shieldMaxHpPct: 0,
+    ultChargeGain: 0.05,
+    buffDurationSec: 3.5,
+    tempAtkSpeedBonus: 0.16,
+    tempMoveSpeedBonus: 0.24,
+    aoeDamageAtkMult: 0,
+    aoeRadius: 0,
+    extraPierceArrowAtkMult: 0,
   },
 };
 
-/**
- * Resolves active Unique Combat Procs from the player's currently equipped gear sets,
- * upgrading 3-piece sets (Echo, Dragon Knight, Oracle) automatically.
- */
-export function resolveActiveGearSetProcs(
-  activeGearSets?: ReadonlyArray<ActiveGearSetBonus>
-): GearSetProcDefinition[] {
-  if (!Array.isArray(activeGearSets) || activeGearSets.length === 0) return [];
-  const resolved: GearSetProcDefinition[] = [];
-  for (const entry of activeGearSets) {
-    if (entry.unlockedTiers.length === 0) continue;
-    const base = GEAR_SET_COMBAT_PROCS[entry.setId as GearSetId];
-    if (!base || entry.equippedCount < base.piecesRequired) continue;
+export interface GearSetProcRuntimeState {
+  activeSetIds: GearSetId[];
+  cooldowns: Partial<Record<GearSetId, number>>;
+}
 
-    // 3-piece empowerment scaling for 3-piece sets
-    if (entry.equippedCount >= 3) {
-      if (base.procId === 'echo_phantom_volley') {
-        resolved.push({ ...base, piecesRequired: 3, damageAtkMult: 1.15 });
-        continue;
-      }
-      if (base.procId === 'dragon_knight_aegis') {
-        resolved.push({ ...base, piecesRequired: 3, shieldMaxHpPct: 0.2, damageAtkMult: 1.45 });
-        continue;
-      }
-      if (base.procId === 'oracle_astral_surge') {
-        resolved.push({ ...base, piecesRequired: 3, ultChargeGain: 0.18, tempAtkSpeedBonus: 0.22 });
-        continue;
-      }
-    }
-    resolved.push(base);
-  }
-  return resolved;
+export interface GearSetProcOutcome extends GearSetCombatProcSpec {
+  bannerText: string;
 }
 
 export function createGearSetProcRuntime(
-  activeGearSets?: ReadonlyArray<ActiveGearSetBonus>
+  activeGearSets?: Array<{ setId: GearSetId; pieces?: number; unlockedTiers?: unknown[] }> | GearSetId[]
 ): GearSetProcRuntimeState {
+  const activeSetIds: GearSetId[] = [];
+  if (Array.isArray(activeGearSets)) {
+    for (const entry of activeGearSets) {
+      if (typeof entry === 'string') {
+        if (entry in GEAR_SET_COMBAT_PROCS && !activeSetIds.includes(entry as GearSetId)) {
+          activeSetIds.push(entry as GearSetId);
+        }
+      } else if (entry && typeof entry === 'object' && entry.setId in GEAR_SET_COMBAT_PROCS) {
+        const hasBonus =
+          (typeof entry.pieces === 'number' && entry.pieces >= 2) ||
+          (Array.isArray(entry.unlockedTiers) && entry.unlockedTiers.length > 0);
+        if (hasBonus && !activeSetIds.includes(entry.setId)) {
+          activeSetIds.push(entry.setId);
+        }
+      }
+    }
+  }
   return {
-    activeProcs: resolveActiveGearSetProcs(activeGearSets),
+    activeSetIds,
     cooldowns: {},
-    critCounter: 0,
-    volleyCounter: 0,
-    hitCounter: 0,
-    totalProcsTriggered: 0,
   };
 }
 
-export function stepGearSetProcCooldowns(runtime: GearSetProcRuntimeState, dt: number): void {
-  if (!Number.isFinite(dt) || dt <= 0) return;
-  const keys = Object.keys(runtime.cooldowns) as GearSetProcId[];
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i];
-    const rem = runtime.cooldowns[k] ?? 0;
-    if (rem > 0) {
-      runtime.cooldowns[k] = Math.max(0, rem - dt);
-    }
+export function stepGearSetProcCooldowns(state: GearSetProcRuntimeState, dt: number): void {
+  const safeDt = Math.max(0, dt);
+  for (const key of Object.keys(state.cooldowns) as GearSetId[]) {
+    const prev = state.cooldowns[key] ?? 0;
+    state.cooldowns[key] = Math.max(0, prev - safeDt);
   }
 }
 
 export function evaluateGearSetProcEvent(
-  runtime: GearSetProcRuntimeState,
+  state: GearSetProcRuntimeState,
   event: GearSetProcTriggerEvent,
-  context?: { hpRatio?: number }
+  context?: { hpRatio?: number; targetX?: number; targetZ?: number }
 ): GearSetProcOutcome | null {
-  if (runtime.activeProcs.length === 0) return null;
+  for (const setId of state.activeSetIds) {
+    const spec = GEAR_SET_COMBAT_PROCS[setId];
+    if (!spec) continue;
+    const matches =
+      spec.triggerEvent === event ||
+      (setId === 'Oracle Set' && event === 'cast_interrupt');
+    if (!matches) continue;
+    if (event === 'low_hp_hit' && (context?.hpRatio ?? 1) > 0.5) continue;
+    if ((state.cooldowns[setId] ?? 0) > 0) continue;
 
-  for (let i = 0; i < runtime.activeProcs.length; i++) {
-    const proc = runtime.activeProcs[i];
-    if ((runtime.cooldowns[proc.procId] ?? 0) > 0) continue;
-
-    let shouldTrigger = false;
-    if (proc.procId === 'destruction_nova' && event === 'crit_hit') {
-      runtime.critCounter += 1;
-      if (runtime.critCounter >= proc.triggerEveryN) {
-        runtime.critCounter = 0;
-        shouldTrigger = true;
-      }
-    } else if (proc.procId === 'echo_phantom_volley' && event === 'basic_volley') {
-      runtime.volleyCounter += 1;
-      if (runtime.volleyCounter >= proc.triggerEveryN) {
-        runtime.volleyCounter = 0;
-        shouldTrigger = true;
-      }
-    } else if (proc.procId === 'dragon_knight_aegis') {
-      if (event === 'perfect_dodge' || (event === 'low_hp_hit' && (context?.hpRatio ?? 1) <= 0.5)) {
-        shouldTrigger = true;
-      }
-    } else if (proc.procId === 'oracle_astral_surge') {
-      if (event === 'cast_interrupt') {
-        runtime.hitCounter = 0;
-        shouldTrigger = true;
-      } else if (event === 'crit_hit' || event === 'basic_volley') {
-        runtime.hitCounter += 1;
-        if (runtime.hitCounter >= proc.triggerEveryN) {
-          runtime.hitCounter = 0;
-          shouldTrigger = true;
-        }
-      }
-    } else if (proc.procId === 'griffin_gale_stride' && event === 'dash_used') {
-      shouldTrigger = true;
-    }
-
-    if (shouldTrigger) {
-      runtime.cooldowns[proc.procId] = proc.internalCooldownSec;
-      runtime.totalProcsTriggered += 1;
-      return {
-        procId: proc.procId,
-        setId: proc.setId,
-        name: proc.name,
-        bannerText: `Bộ Trang Bị · ${proc.name}!`,
-        aoeDamageAtkMult: proc.aoeRadius > 0 ? proc.damageAtkMult : 0,
-        aoeRadius: proc.aoeRadius,
-        extraPierceArrowAtkMult: proc.aoeRadius === 0 ? proc.damageAtkMult : 0,
-        shieldMaxHpPct: proc.shieldMaxHpPct,
-        ultChargeGain: proc.ultChargeGain,
-        tempAtkSpeedBonus: proc.tempAtkSpeedBonus,
-        tempMoveSpeedBonus: proc.tempMoveSpeedBonus,
-        buffDurationSec: proc.buffDurationSec,
-        accentHex: proc.accentHex,
-      };
-    }
+    state.cooldowns[setId] = spec.cooldownSec;
+    return {
+      ...spec,
+      bannerText: `NỘI TẠI BỘ · ${spec.name.toUpperCase()}!`,
+    };
   }
-
   return null;
 }

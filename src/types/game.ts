@@ -3515,6 +3515,8 @@ export interface RunCombatHighlights {
   peakCritDamage?: number;
   elementalReactionsCount?: number;
   damageTakenCount?: number;
+  castInterrupts?: number;
+  arenaMechanismsTriggered?: number;
 }
 
 // ============================================================================

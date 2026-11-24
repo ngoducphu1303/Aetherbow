@@ -12029,6 +12029,13 @@ export default function App() {
           masteryExpGained={runSummary?.masteryExpGained}
           masteryLeveledUpTo={runSummary?.masteryLeveledUpTo}
           runHighlights={runSummary?.runHighlights}
+          chapterId={runSummary?.chapterId ?? activeChapter.id}
+          playerPowerRating={playerStats.powerRating}
+          recommendedChapterPower={activeChapter.recommendedPower}
+          onOpenCodex={() => {
+            handleReturnTitle();
+            setCodexGuideOpen(true);
+          }}
           heroName={HERO_MAP[save.selectedHeroId]?.name ?? HERO_MAP[DEFAULT_HERO_ID].name}
           onQuickUpgradeWeapon={handleQuickUpgradeWeapon}
           onResume={phase === GamePhase.PAUSED ? handlePause : undefined}

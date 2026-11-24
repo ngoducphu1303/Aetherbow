@@ -10,6 +10,12 @@ import {
   resolveChapterBossStepDuration,
   resolveZodiacChapterMusic,
 } from './zodiacMusicDirector';
+import {
+  SfxPriorityMixer,
+  type SfxEventCategory,
+  type SfxMixDecision,
+  type SfxMixerStats,
+} from './sfxPriorityMixer';
 
 export type BgmMode = 'silent' | 'lobby' | 'combat' | 'boss';
 
@@ -41,6 +47,22 @@ class SoundEngine {
   private lastFootstepAt = 0;
   private lastBowCreakAt = 0;
   private lastPortalHumAt = 0;
+  private readonly sfxMixer = new SfxPriorityMixer();
+
+  public setLowEndAudioMode(lowEnd: boolean): void {
+    this.sfxMixer.setLowEndMode(lowEnd);
+  }
+
+  public getSfxMixerStats(): SfxMixerStats {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return this.sfxMixer.getStats(nowMs);
+  }
+
+  private gateSfx(category: SfxEventCategory): SfxMixDecision | null {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const verdict = this.sfxMixer.requestPlay(category, nowMs);
+    return verdict.allowed ? verdict : null;
+  }
 
   private ensureContext(): AudioContext | null {
     if (this.muted) return null;
@@ -213,6 +235,8 @@ class SoundEngine {
   }
 
   public playInterruptFanfare(): void {
+    const mix = this.gateSfx('boss_interrupt');
+    if (!mix) return;
     const ctx = this.ensureContext();
     const dest = this.getSfxDest(0, true);
     if (!ctx || !dest) return;
@@ -265,6 +289,8 @@ class SoundEngine {
    * fired when the player triggers a Perfect Dodge Counter-Window.
    */
   public playPerfectDodgeCounter(): void {
+    const mix = this.gateSfx('perfect_dodge');
+    if (!mix) return;
     const dest = this.getSfxDest(0, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -306,6 +332,8 @@ class SoundEngine {
    */
   public playBossPhaseStinger(phase: 2 | 3): void {
     this.setBossIntensity(phase);
+    const mix = this.gateSfx('boss_phase_stinger');
+    if (!mix) return;
     const dest = this.getSfxDest(0, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -773,42 +801,59 @@ class SoundEngine {
 
   // === COMBAT SFX ===
   public playBowShoot(pitchShift = 1, pan = 0): void {
+    const mix = this.gateSfx('bow_shoot');
+    if (!mix) return;
     const dest = this.getSfxDest(pan, false);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
+    const pitch = pitchShift * mix.pitchMult;
+    const gainScale = mix.gainScale;
 
     // Taut bowstring release twang + crisp filtered air whoosh
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(360 * pitchShift, now);
-    osc.frequency.exponentialRampToValueAtTime(132 * pitchShift, now + 0.08);
-    gain.gain.setValueAtTime(0.1, now);
+    osc.frequency.setValueAtTime(360 * pitch, now);
+    osc.frequency.exponentialRampToValueAtTime(132 * pitch, now + 0.08);
+    gain.gain.setValueAtTime(0.1 * gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.088);
     osc.connect(gain);
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.095);
 
-    this.playNoiseBurst(ctx, dest, now, 0.065, 'bandpass', 2400 * pitchShift, 980 * pitchShift, 0.055, 2.2);
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.065,
+      'bandpass',
+      2400 * pitch * mix.filterShift,
+      980 * pitch,
+      0.055 * gainScale,
+      2.2
+    );
   }
 
   public playHit(isCrit: boolean, comboCount = 0, pan = 0): void {
+    const mix = this.gateSfx(isCrit ? 'crit_hit' : 'hit');
+    if (!mix) return;
     const dest = this.getSfxDest(pan, isCrit);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
-    const comboPitch = computeComboHitPitch(comboCount);
+    const comboPitch = computeComboHitPitch(comboCount) * mix.pitchMult;
+    const gainScale = mix.gainScale;
 
     // Impact body thump
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = isCrit ? 'sawtooth' : 'sine';
+    osc.type = isCrit ? 'sawtooth' : mix.variantIndex % 2 === 0 ? 'sine' : 'triangle';
     osc.frequency.setValueAtTime((isCrit ? 580 : 215) * comboPitch, now);
     osc.frequency.exponentialRampToValueAtTime((isCrit ? 260 : 88) * comboPitch, now + 0.09);
 
-    gain.gain.setValueAtTime(isCrit ? 0.115 : 0.08, now);
+    gain.gain.setValueAtTime((isCrit ? 0.115 : 0.08) * gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
 
     osc.connect(gain);
@@ -817,7 +862,17 @@ class SoundEngine {
     osc.stop(now + 0.1);
 
     // Subtle crisp hit transient
-    this.playNoiseBurst(ctx, dest, now, 0.04, 'highpass', isCrit ? 2200 : 1500, 900, isCrit ? 0.055 : 0.03, 1.0);
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.04,
+      'highpass',
+      (isCrit ? 2200 : 1500) * mix.filterShift,
+      900,
+      (isCrit ? 0.055 : 0.03) * gainScale,
+      1.0
+    );
 
     if (isCrit) {
       // Sub-bass punch + crystalline golden harmonic ping
@@ -826,7 +881,7 @@ class SoundEngine {
       sub.type = 'sine';
       sub.frequency.setValueAtTime(130, now);
       sub.frequency.exponentialRampToValueAtTime(48, now + 0.085);
-      sGain.gain.setValueAtTime(0.11, now);
+      sGain.gain.setValueAtTime(0.11 * gainScale, now);
       sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
       sub.connect(sGain);
       sGain.connect(dest);
@@ -838,7 +893,7 @@ class SoundEngine {
       chime.type = 'triangle';
       chime.frequency.setValueAtTime(980 * comboPitch, now);
       chime.frequency.exponentialRampToValueAtTime(1380 * comboPitch, now + 0.11);
-      cGain.gain.setValueAtTime(0.065, now);
+      cGain.gain.setValueAtTime(0.065 * gainScale, now);
       cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.125);
       chime.connect(cGain);
       cGain.connect(dest);
@@ -847,7 +902,75 @@ class SoundEngine {
     }
   }
 
+  public playShieldHit(pan = 0): void {
+    const mix = this.gateSfx('shield_hit');
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(740 * mix.pitchMult, now);
+    osc.frequency.exponentialRampToValueAtTime(410 * mix.pitchMult, now + 0.09);
+    gain.gain.setValueAtTime(0.085 * mix.gainScale, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.11);
+    this.playNoiseBurst(ctx, dest, now, 0.045, 'bandpass', 2600 * mix.filterShift, 1300, 0.045 * mix.gainScale, 2.0);
+  }
+
+  public playSetProc(pan = 0): void {
+    const mix = this.gateSfx('set_proc');
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [523.25, 783.99, 1046.5].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx === 1 ? 'triangle' : 'sine';
+      const t = now + idx * 0.032;
+      osc.frequency.setValueAtTime(freq * mix.pitchMult, t);
+      gain.gain.setValueAtTime(0.085 * mix.gainScale, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    });
+  }
+
+  public playArenaMechanismTrigger(pan = 0): void {
+    const mix = this.gateSfx('arena_mechanism');
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    [392.0, 587.33, 880.0].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.035;
+      osc.frequency.setValueAtTime(freq * mix.pitchMult, t);
+      gain.gain.setValueAtTime(0.095 * mix.gainScale, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.24);
+    });
+    this.playNoiseBurst(ctx, dest, now, 0.11, 'bandpass', 1800 * mix.filterShift, 680, 0.07 * mix.gainScale, 1.5);
+  }
+
   public playPlayerHurt(): void {
+    const mix = this.gateSfx('player_hurt');
+    if (!mix) return;
     const dest = this.getSfxDest();
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -856,10 +979,10 @@ class SoundEngine {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(150, now);
-    osc.frequency.exponentialRampToValueAtTime(55, now + 0.18);
+    osc.frequency.setValueAtTime(150 * mix.pitchMult, now);
+    osc.frequency.exponentialRampToValueAtTime(55 * mix.pitchMult, now + 0.18);
 
-    gain.gain.setValueAtTime(0.16, now);
+    gain.gain.setValueAtTime(0.16 * mix.gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
 
     osc.connect(gain);
@@ -869,21 +992,23 @@ class SoundEngine {
   }
 
   public playDash(): void {
+    const mix = this.gateSfx('dash');
+    if (!mix) return;
     const dest = this.getSfxDest();
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
 
     // Airy celestial wind whoosh + upward kinetic sweep
-    this.playNoiseBurst(ctx, dest, now, 0.14, 'bandpass', 720, 2600, 0.075, 1.6);
+    this.playNoiseBurst(ctx, dest, now, 0.14, 'bandpass', 720 * mix.filterShift, 2600, 0.075 * mix.gainScale, 1.6);
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(210, now);
-    osc.frequency.exponentialRampToValueAtTime(520, now + 0.11);
+    osc.frequency.setValueAtTime(210 * mix.pitchMult, now);
+    osc.frequency.exponentialRampToValueAtTime(520 * mix.pitchMult, now + 0.11);
 
-    gain.gain.setValueAtTime(0.085, now);
+    gain.gain.setValueAtTime(0.085 * mix.gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.125);
 
     osc.connect(gain);
@@ -893,6 +1018,8 @@ class SoundEngine {
   }
 
   public playEnemyDefeated(isMajor = false, pan = 0): void {
+    const mix = this.gateSfx('enemy_defeated');
+    if (!mix) return;
     const dest = this.getSfxDest(pan, isMajor);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -905,19 +1032,31 @@ class SoundEngine {
       const gain = ctx.createGain();
       osc.type = idx === 0 ? 'triangle' : 'sine';
       const t = now + idx * 0.025;
-      osc.frequency.setValueAtTime(freq, t);
-      osc.frequency.exponentialRampToValueAtTime(freq * 1.12, t + (isMajor ? 0.22 : 0.12));
-      gain.gain.setValueAtTime(isMajor ? 0.085 : 0.065, t);
+      osc.frequency.setValueAtTime(freq * mix.pitchMult, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.12 * mix.pitchMult, t + (isMajor ? 0.22 : 0.12));
+      gain.gain.setValueAtTime((isMajor ? 0.085 : 0.065) * mix.gainScale, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + (isMajor ? 0.24 : 0.14));
       osc.connect(gain);
       gain.connect(dest);
       osc.start(t);
       osc.stop(t + (isMajor ? 0.26 : 0.15));
     });
-    this.playNoiseBurst(ctx, dest, now, isMajor ? 0.14 : 0.07, 'highpass', 1800, 620, isMajor ? 0.06 : 0.035, 1.2);
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      isMajor ? 0.14 : 0.07,
+      'highpass',
+      1800 * mix.filterShift,
+      620,
+      (isMajor ? 0.06 : 0.035) * mix.gainScale,
+      1.2
+    );
   }
 
   public playPickup(isGem = false): void {
+    const mix = this.gateSfx('pickup');
+    if (!mix) return;
     const dest = this.getSfxDest();
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -1020,6 +1159,8 @@ class SoundEngine {
   }
 
   public playMeteorImpact(pan = 0): void {
+    const mix = this.gateSfx('meteor_impact');
+    if (!mix) return;
     const dest = this.getSfxDest(pan, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -1027,18 +1168,20 @@ class SoundEngine {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(160, now);
-    osc.frequency.exponentialRampToValueAtTime(42, now + 0.25);
-    gain.gain.setValueAtTime(0.14, now);
+    osc.frequency.setValueAtTime(160 * mix.pitchMult, now);
+    osc.frequency.exponentialRampToValueAtTime(42 * mix.pitchMult, now + 0.25);
+    gain.gain.setValueAtTime(0.14 * mix.gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
     osc.connect(gain);
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.27);
-    this.playNoiseBurst(ctx, dest, now, 0.18, 'lowpass', 640, 140, 0.12, 1.1);
+    this.playNoiseBurst(ctx, dest, now, 0.18, 'lowpass', 640 * mix.filterShift, 140, 0.12 * mix.gainScale, 1.1);
   }
 
   public playSwordStrike(): void {
+    const mix = this.gateSfx('sword_strike');
+    if (!mix) return;
     const dest = this.getSfxDest();
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -1046,9 +1189,9 @@ class SoundEngine {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(920, now);
-    osc.frequency.exponentialRampToValueAtTime(420, now + 0.075);
-    gain.gain.setValueAtTime(0.07, now);
+    osc.frequency.setValueAtTime(920 * mix.pitchMult, now);
+    osc.frequency.exponentialRampToValueAtTime(420 * mix.pitchMult, now + 0.075);
+    gain.gain.setValueAtTime(0.07 * mix.gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
     osc.connect(gain);
     gain.connect(dest);
@@ -1139,6 +1282,8 @@ class SoundEngine {
   }
 
   public playShockwave(pan = 0): void {
+    const mix = this.gateSfx('shockwave');
+    if (!mix) return;
     const dest = this.getSfxDest(pan, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -1146,9 +1291,9 @@ class SoundEngine {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(38, now + 0.16);
-    gain.gain.setValueAtTime(0.11, now);
+    osc.frequency.setValueAtTime(140 * mix.pitchMult, now);
+    osc.frequency.exponentialRampToValueAtTime(38 * mix.pitchMult, now + 0.16);
+    gain.gain.setValueAtTime(0.11 * mix.gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
     osc.connect(gain);
     gain.connect(dest);
@@ -2179,13 +2324,24 @@ class SoundEngine {
   public playFootstep(pan = 0): void {
     const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (nowMs - this.lastFootstepAt < 210) return;
+    const mix = this.gateSfx('footstep');
+    if (!mix) return;
     this.lastFootstepAt = nowMs;
     const dest = this.getSfxDest(pan, false);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
-    const pitchJitter = 0.92 + Math.random() * 0.16;
-    this.playNoiseBurst(ctx, dest, now, 0.042, 'bandpass', 640 * pitchJitter, 240, 0.045, 2.2);
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.042,
+      'bandpass',
+      640 * mix.pitchMult * mix.filterShift,
+      240,
+      0.045 * mix.gainScale,
+      2.2
+    );
   }
 
   /**
@@ -2644,6 +2800,8 @@ class SoundEngine {
    * Wave 7 Pillar 1/2: Crystalline armor-shatter chord + sub-bass drop on Boss Guard Break (Phá Giáp).
    */
   public playBossGuardBreak(pan = 0): void {
+    const mix = this.gateSfx('boss_guard_break');
+    if (!mix) return;
     const dest = this.getSfxDest(pan, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;

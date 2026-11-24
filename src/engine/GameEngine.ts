@@ -168,6 +168,11 @@ import {
   stepGpuThermalWatchdog,
 } from './gpuThermalWatchdog';
 import { resolveGeometricTelegraphSpec } from './colorblindTelegraphs';
+import {
+  clampParticleBurstCount,
+  resolveDynamicVfxBudget,
+  resolveZodiacChapterLighting,
+} from './zodiacLightingVfxDirector';
 import type { SkillEvolutionId, SkillEvolutionOffer } from '../types/game';
 import {
   applyBossStaggerDamage,
@@ -1058,6 +1063,8 @@ export interface EngineCallbacks {
       perfectDodges?: number;
       bossGuardBreaks?: number;
       castInterrupts?: number;
+      arenaMechanismsTriggered?: number;
+      damageTakenCount?: number;
     }
   ) => void;
   onProgressEvent?: (ev: {
@@ -1557,6 +1564,7 @@ export class GameEngine {
   private runBountiesCompleted = 0;
   private runBossBreaksCount = 0;
   private runCastInterrupts = 0;
+  private runArenaMechanismsTriggered = 0;
   private runRevivesUsed = 0;
   private runDamageTakenCount = 0;
   // Wave 10: Dynamic Sky Shader, Boss Breakable Parts, Elemental Resonance, Trial Gauntlet, Adaptive AI & Live Guild War Skirmish
@@ -4472,6 +4480,8 @@ export class GameEngine {
       peakCritDamage: this.peakCritDmg,
       elementalReactionsCount: this.elementalReactionsCount,
       damageTakenCount: this.runDamageTakenCount,
+      castInterrupts: this.runCastInterrupts,
+      arenaMechanismsTriggered: this.runArenaMechanismsTriggered,
     };
   }
 
@@ -5139,12 +5149,15 @@ export class GameEngine {
     }
 
     const themeSpec = resolveZodiacArenaStyle(chapter.zodiacId);
+    const zodiacLight = resolveZodiacChapterLighting(chapter.id);
     this.arenaThemeSpec = themeSpec;
-    this.scene.background = new THREE.Color(chapter.skyHex);
-    this.scene.fog = new THREE.FogExp2(chapter.fogHex, 0.0175);
-    this.keyLight.color.setHex(chapter.keyLightHex);
-    this.hemiLight.color.setHex(chapter.hemiSkyHex);
-    this.hemiLight.groundColor.setHex(chapter.hemiGroundHex);
+    this.scene.background = new THREE.Color(zodiacLight.backdropHex);
+    this.scene.fog = new THREE.FogExp2(zodiacLight.fogHex, 0.0175);
+    this.keyLight.color.setHex(zodiacLight.keyLightHex);
+    this.keyLight.intensity = zodiacLight.keyIntensity;
+    this.hemiLight.color.setHex(zodiacLight.hemiSkyHex);
+    this.hemiLight.groundColor.setHex(zodiacLight.hemiGroundHex);
+    this.hemiLight.intensity = zodiacLight.hemiIntensity;
     this.rimLight.color.setHex(themeSpec.rimLightHex);
     if (this.arenaDustMesh) {
       const dustMat = this.arenaDustMesh.material as THREE.MeshBasicMaterial;
@@ -8470,6 +8483,8 @@ export class GameEngine {
     this.runBountiesCompleted = 0;
     this.runBossBreaksCount = 0;
     this.runCastInterrupts = 0;
+    this.runArenaMechanismsTriggered = 0;
+    soundEngine.setLowEndAudioMode(this.lowEndGpu || this.gpuWatchdog.stage >= 2);
     this.runRevivesUsed = 0;
     this.runDamageTakenCount = 0;
     this.bossStaggerState = null;
@@ -11558,6 +11573,7 @@ export class GameEngine {
     this.setProcBannerText = outcome.bannerText;
     this.setProcBannerTimer = 2.4;
     this.callbacks.onCombatMilestoneEvent?.('set_proc');
+    soundEngine.playSetProc(computeSpatialPan(context?.targetX ?? this.px, ARENA_HALF_W));
 
     const baseAtk = this.baseStats.attack * this.getCurrentAtkMultiplier();
     const originX = context?.targetX ?? this.px;
@@ -11626,10 +11642,11 @@ export class GameEngine {
     if (!hit) return false;
 
     const { spec } = hit;
+    this.runArenaMechanismsTriggered += 1;
     this.callbacks.onCombatMilestoneEvent?.('arena_mechanism');
     this.stageBannerText = hit.bannerText;
     this.stageBannerTimer = 2.2;
-    soundEngine.playBossGuardBreak(computeSpatialPan(hit.x, ARENA_HALF_W));
+    soundEngine.playArenaMechanismTrigger(computeSpatialPan(hit.x, ARENA_HALF_W));
     if (!this.reducedMotionEnabled) {
       this.spawnShockwave(hit.x, hit.z, spec.accentHex, spec.effectRadius, 0.42);
       this.spawnParticles(hit.x, 1.2, hit.z, spec.secondaryHex, this.lowEndGpu ? 8 : 18);
@@ -12753,6 +12770,7 @@ export class GameEngine {
           this.lowEndGpu = true;
           this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
         }
+        soundEngine.setLowEndAudioMode(this.lowEndGpu || this.gpuWatchdog.stage >= 2);
         if (wdStep.notice && !this.reducedMotionEnabled) {
           this.gpuWatchdogNotice = wdStep.notice;
           this.gpuWatchdogNoticeTimer = 4.2;
@@ -22391,6 +22409,11 @@ export class GameEngine {
             }).cause
           : this.lastDamageSource ?? undefined,
         activeSynergies: evaluateActiveSynergies(this.activeSkills),
+        perfectDodges: this.perfectDodgeCount,
+        bossGuardBreaks: this.runBossBreaksCount,
+        castInterrupts: this.runCastInterrupts,
+        arenaMechanismsTriggered: this.runArenaMechanismsTriggered,
+        damageTakenCount: this.runDamageTakenCount,
       });
     }
   }
@@ -22593,7 +22616,18 @@ export class GameEngine {
     colorHex: number,
     count: number
   ): void {
-    const scaledCount = Math.max(1, Math.round(count * this.particleDensityScale));
+    const vfxBudget = resolveDynamicVfxBudget({
+      watchdogStage: this.gpuWatchdog.stage,
+      isLowEndGpu: this.lowEndGpu,
+      reducedMotion: this.reducedMotionEnabled,
+      activeEnemies: this.enemies.length,
+      activeProjectiles: this.arrowPool.reduce((acc, p) => acc + (p.active ? 1 : 0), 0),
+    });
+    const scaledCount = clampParticleBurstCount(
+      Math.max(1, Math.round(count * this.particleDensityScale)),
+      vfxBudget
+    );
+    if (scaledCount <= 0) return;
     let spawned = 0;
     for (const pt of this.particlePool) {
       if (pt.active) continue;
@@ -22642,6 +22676,15 @@ export class GameEngine {
     maxRadius: number,
     duration = 0.38
   ): void {
+    const vfxBudget = resolveDynamicVfxBudget({
+      watchdogStage: this.gpuWatchdog.stage,
+      isLowEndGpu: this.lowEndGpu,
+      reducedMotion: this.reducedMotionEnabled,
+      activeEnemies: this.enemies.length,
+      activeProjectiles: this.arrowPool.reduce((acc, p) => acc + (p.active ? 1 : 0), 0),
+    });
+    const activeShockwaves = this.shockwavePool.reduce((acc, r) => acc + (r.active ? 1 : 0), 0);
+    if (activeShockwaves >= vfxBudget.maxActiveShockwaves) return;
     const ring = this.shockwavePool.find((r) => !r.active);
     if (!ring) return;
     ring.active = true;

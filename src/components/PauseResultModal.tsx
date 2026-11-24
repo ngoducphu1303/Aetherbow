@@ -13,6 +13,10 @@ import { evaluateMatchMvpReport } from '../data/wave11Data';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
 import { computePostRunDamageShares } from '../engine/aaaWave3Director';
 import { evaluateRunCombatMedals, renderAaaMedalCardPngDataUrl } from '../engine/aaaWave7Director';
+import {
+  analyzeDefeatDiagnostics,
+  type TacticalRecommendationTarget,
+} from '../engine/defeatDiagnostics';
 import { CombatCameraPreset, CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, PhotoLightingPreset, RunCombatHighlights, SaveData } from '../types/game';
 import {
   ArtifactRelicIcon,
@@ -28,9 +32,13 @@ import {
 
 interface PauseResultModalProps {
   phase: GamePhase.PAUSED | GamePhase.VICTORY | GamePhase.GAME_OVER;
+  chapterId?: number;
   chapterName: string;
   stageReached: number;
   totalStages: number;
+  playerPowerRating?: number;
+  recommendedChapterPower?: number;
+  onOpenCodex?: () => void;
   isTowerMode?: boolean;
   towerFloor?: number;
   isBossRushMode?: boolean;
@@ -137,9 +145,13 @@ interface PauseResultModalProps {
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   phase,
+  chapterId = 1,
   chapterName,
   stageReached,
   totalStages,
+  playerPowerRating = 0,
+  recommendedChapterPower = 1350,
+  onOpenCodex,
   isTowerMode = false,
   towerFloor = 1,
   isBossRushMode = false,
@@ -924,31 +936,148 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                 );
               })()}
 
-              {/* Defeat Cause Diagnostic & Wave 8 Fair Coaching Note */}
-              {!isVictory && defeatCause && (
-                <div className="pt-3 border-t border-rose-400/25 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2 text-xs font-bold text-rose-300">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      <span>
-                        Nguyên nhân thất bại: {defeatCause.label}
-                        {defeatCause.killerName ? ` · ${defeatCause.killerName}` : ''}
+              {/* Phase 4 Pillar 3: Tactical Failure-Cause Diagnostics & 2 Actionable Recommendations */}
+              {!isVictory && (() => {
+                const diagnostic = analyzeDefeatDiagnostics({
+                  chapterId,
+                  stageReached,
+                  totalStages,
+                  playerPowerRating,
+                  recommendedChapterPower,
+                  elapsedSeconds: damageBreakdown?.elapsedSeconds ?? 0,
+                  perfectDodges:
+                    runHighlights?.perfectDodgesCount ?? damageBreakdown?.perfectDodges ?? 0,
+                  damageTakenCount: runHighlights?.damageTakenCount ?? 0,
+                  castInterrupts: runHighlights?.castInterrupts ?? 0,
+                  bossGuardBreaks: runHighlights?.bossBreakCount ?? 0,
+                  arenaMechanismsTriggered: runHighlights?.arenaMechanismsTriggered ?? 0,
+                  defeatCause,
+                });
+
+                const triggerRecommendation = (target: TacticalRecommendationTarget) => {
+                  soundEngine.playUiClick(1.06);
+                  if (target === 'retry') {
+                    onRetry();
+                    return;
+                  }
+                  if (target === 'gear') {
+                    if (onUpgradeGuideAction) onUpgradeGuideAction('gear');
+                    else if (onQuickAction) onQuickAction('gear');
+                    else onReturnTitle();
+                    return;
+                  }
+                  if (target === 'talents') {
+                    if (onUpgradeGuideAction) onUpgradeGuideAction('talents');
+                    else onReturnTitle();
+                    return;
+                  }
+                  if (target === 'codex') {
+                    if (onOpenCodex) onOpenCodex();
+                    else onReturnTitle();
+                    return;
+                  }
+                  onReturnTitle();
+                };
+
+                return (
+                  <div
+                    className="pt-3 border-t border-rose-400/25 space-y-3"
+                    aria-label="Chẩn đoán nguyên nhân thất bại chiến thuật"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-rose-300 min-w-0">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>
+                          Chẩn đoán chính: {diagnostic.primaryCauseTitle}
+                          {defeatCause?.killerName ? ` · ${defeatCause.killerName}` : ''}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-amber-300 shrink-0 tabular-nums">
+                        {arenaRivalRemainingHpPct !== undefined
+                          ? `AI còn ${arenaRivalRemainingHpPct}% HP`
+                          : diagnostic.severityLabel}
                       </span>
-                    </span>
-                    {arenaRivalRemainingHpPct !== undefined && (
-                      <span className="font-mono-nums text-amber-300 shrink-0">
-                        AI còn {arenaRivalRemainingHpPct}% HP
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">{defeatCause.tip}</p>
-                  {coachingNote && (
-                    <p className="text-[11px] text-amber-200/95 leading-relaxed">
-                      Phân tích phản công: {coachingNote}
+                    </div>
+
+                    <p className="text-xs text-slate-200 leading-relaxed">
+                      {diagnostic.primaryCauseSummary}
                     </p>
-                  )}
-                </div>
-              )}
+
+                    {defeatCause?.tip && (
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Ghi nhận đòn kết liễu ({defeatCause.label}): {defeatCause.tip}
+                      </p>
+                    )}
+
+                    {coachingNote && (
+                      <p className="text-[11px] text-amber-200/95 leading-relaxed">
+                        Phân tích phản công: {coachingNote}
+                      </p>
+                    )}
+
+                    {/* Tabular-nums Real Match Diagnostic Metrics */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {diagnostic.metrics.map((metric) => (
+                        <div
+                          key={metric.id}
+                          className="rounded-lg border border-slate-800 bg-[#080d1d] px-2.5 py-2"
+                        >
+                          <div className="text-[10px] font-semibold text-slate-400">
+                            {metric.label}
+                          </div>
+                          <div
+                            className={`mt-0.5 text-xs font-bold tabular-nums ${
+                              metric.status === 'critical'
+                                ? 'text-rose-300'
+                                : metric.status === 'warn'
+                                ? 'text-amber-300'
+                                : 'text-emerald-300'
+                            }`}
+                          >
+                            {metric.value}
+                          </div>
+                          <div className="text-[10px] text-slate-500 tabular-nums">
+                            {metric.target}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 2 Concrete Tactical Recommendations */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-amber-200">
+                        2 Đề Xuất Khắc Phục Ngay
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {diagnostic.recommendations.map((rec, idx) => (
+                          <div
+                            key={rec.id}
+                            className="flex flex-col justify-between gap-2 rounded-xl border border-slate-800 bg-[#0b1124] p-2.5"
+                          >
+                            <div>
+                              <div className="text-xs font-bold text-slate-100">
+                                <span className="text-amber-300 tabular-nums mr-1">{idx + 1}.</span>
+                                {rec.title}
+                              </div>
+                              <p className="mt-1 text-[11px] text-slate-300 leading-snug">
+                                {rec.detail}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => triggerRecommendation(rec.actionTarget)}
+                              className="self-start inline-flex items-center gap-1 rounded-lg border border-amber-400/35 bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 cursor-pointer"
+                            >
+                              <span>{rec.actionLabel}</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               {isVictory && isArenaMode && aiDuelTierLabel && aiRewardBonusPct > 0 && (
                 <div className="pt-3 border-t border-emerald-400/25 text-xs text-emerald-300 font-bold">
                   Thưởng Độ Khó AI {aiDuelTierLabel}: +{aiRewardBonusPct}% Vàng, Ngọc &amp; Bụi Sao!

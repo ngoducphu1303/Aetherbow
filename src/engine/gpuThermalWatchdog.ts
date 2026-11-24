@@ -1,271 +1,183 @@
-import type { GpuProfileSummary, GpuWatchdogStage } from '../types/game';
+import type { GpuWatchdogStage } from '../types/game';
 
-/**
- * Real-Time GPU Thermal & Frame-Time Auto-Downgrade Watchdog
- * Protects low-end laptops (e.g. Dell Latitude E5430 / Intel HD 4000) across ALL chapters
- * and future content updates by stepping down GPU load mid-run before TDR black screens or crashes.
- */
+export interface WatchdogGpuProfileInput {
+  isLowEnd?: boolean;
+  tier?: string;
+}
 
 export interface GpuWatchdogBudget {
   stage: GpuWatchdogStage;
-  label: string;
+  dprCap: number;
   bloomAllowed: boolean;
   starfallAllowed: boolean;
   shadowsAllowed: boolean;
-  particleBudgetScale: number;
-  dprCap: number;
   dynamicArenaLights: boolean;
-  forceLiteSafety: boolean;
+  particleBudgetScale: number;
 }
-
-export const GPU_WATCHDOG_STAGE_BUDGETS: Record<GpuWatchdogStage, GpuWatchdogBudget> = {
-  0: {
-    stage: 0,
-    label: 'Chuẩn',
-    bloomAllowed: true,
-    starfallAllowed: true,
-    shadowsAllowed: true,
-    particleBudgetScale: 1.0,
-    dprCap: 2.0,
-    dynamicArenaLights: true,
-    forceLiteSafety: false,
-  },
-  1: {
-    stage: 1,
-    label: 'Hạ Bậc 1 (Tắt Bloom & Thời Tiết)',
-    bloomAllowed: false,
-    starfallAllowed: false,
-    shadowsAllowed: true,
-    particleBudgetScale: 0.8,
-    dprCap: 1.5,
-    dynamicArenaLights: true,
-    forceLiteSafety: false,
-  },
-  2: {
-    stage: 2,
-    label: 'Hạ Bậc 2 (Tắt Đổ Bóng & Giảm 50% Hạt)',
-    bloomAllowed: false,
-    starfallAllowed: false,
-    shadowsAllowed: false,
-    particleBudgetScale: 0.5,
-    dprCap: 1.15,
-    dynamicArenaLights: true,
-    forceLiteSafety: false,
-  },
-  3: {
-    stage: 3,
-    label: 'Hạ Bậc 3 (DPR 0.75x & Tắt Đèn Động)',
-    bloomAllowed: false,
-    starfallAllowed: false,
-    shadowsAllowed: false,
-    particleBudgetScale: 0.3,
-    dprCap: 0.75,
-    dynamicArenaLights: false,
-    forceLiteSafety: false,
-  },
-  4: {
-    stage: 4,
-    label: 'Bảo Vệ Khẩn Cấp Lite (Chống Treo GPU)',
-    bloomAllowed: false,
-    starfallAllowed: false,
-    shadowsAllowed: false,
-    particleBudgetScale: 0.18,
-    dprCap: 0.65,
-    dynamicArenaLights: false,
-    forceLiteSafety: true,
-  },
-};
 
 export interface GpuWatchdogState {
   enabled: boolean;
   stage: GpuWatchdogStage;
-  minFloorStage: GpuWatchdogStage;
-  lagAccumSec: number;
-  healthyAccumSec: number;
+  lowEndStart: boolean;
+  slowFrameStreakMs: number;
+  healthyFrameStreakMs: number;
   contextLostCount: number;
-  ewmaFrameMs: number;
-  lastTransitionReason: string | null;
+  latchPersisted: boolean;
 }
 
 export interface GpuWatchdogStepResult {
   next: GpuWatchdogState;
   changed: boolean;
-  direction: 'none' | 'downgrade' | 'recover';
   budget: GpuWatchdogBudget;
   notice: string | null;
   shouldPersistSafeLatch: boolean;
 }
 
-const LAG_TRIGGER_FRAME_MS = 38.0; // < ~26.3 FPS sustained
-const SEVERE_LAG_FRAME_MS = 65.0; // < ~15.4 FPS severe stall
-const DOWNGRADE_WINDOW_SEC = 3.5;
-const SEVERE_DOWNGRADE_WINDOW_SEC = 1.6;
-const RECOVERY_FRAME_MS = 19.5; // >= ~51.3 FPS sustained
-const RECOVERY_WINDOW_SEC = 10.0;
+const STAGE_BUDGETS: Record<GpuWatchdogStage, GpuWatchdogBudget> = {
+  0: {
+    stage: 0,
+    dprCap: 1.5,
+    bloomAllowed: true,
+    starfallAllowed: true,
+    shadowsAllowed: true,
+    dynamicArenaLights: true,
+    particleBudgetScale: 1.0,
+  },
+  1: {
+    stage: 1,
+    dprCap: 1.25,
+    bloomAllowed: false,
+    starfallAllowed: true,
+    shadowsAllowed: true,
+    dynamicArenaLights: true,
+    particleBudgetScale: 0.78,
+  },
+  2: {
+    stage: 2,
+    dprCap: 1.0,
+    bloomAllowed: false,
+    starfallAllowed: false,
+    shadowsAllowed: false,
+    dynamicArenaLights: true,
+    particleBudgetScale: 0.56,
+  },
+  3: {
+    stage: 3,
+    dprCap: 0.85,
+    bloomAllowed: false,
+    starfallAllowed: false,
+    shadowsAllowed: false,
+    dynamicArenaLights: false,
+    particleBudgetScale: 0.36,
+  },
+  4: {
+    stage: 4,
+    dprCap: 0.75,
+    bloomAllowed: false,
+    starfallAllowed: false,
+    shadowsAllowed: false,
+    dynamicArenaLights: false,
+    particleBudgetScale: 0.22,
+  },
+};
+
+export function resolveGpuWatchdogBudget(stage: GpuWatchdogStage): GpuWatchdogBudget {
+  return STAGE_BUDGETS[stage] ?? STAGE_BUDGETS[2];
+}
 
 export function createGpuWatchdogState(
-  profile?: GpuProfileSummary | null,
+  profile: WatchdogGpuProfileInput | null,
   enabled = true
 ): GpuWatchdogState {
-  let minFloorStage: GpuWatchdogStage = 0;
-  if (profile) {
-    if (profile.tier === 'software' || profile.crashGuardTripped) {
-      minFloorStage = 4;
-    } else if (profile.lowPowerLegacyGpu || profile.deviceTier === 'ultra_lite') {
-      // Dell Latitude E5430 / Intel HD 4000 begins directly at Stage 2 safety floor
-      minFloorStage = 2;
-    } else if (profile.deviceTier === 'lite') {
-      minFloorStage = 1;
-    }
-  }
+  const lowEndStart = Boolean(profile?.isLowEnd || profile?.tier === 'low');
+  const initialStage: GpuWatchdogStage = lowEndStart ? 2 : 0;
   return {
-    enabled,
-    stage: minFloorStage,
-    minFloorStage,
-    lagAccumSec: 0,
-    healthyAccumSec: 0,
+    enabled: Boolean(enabled),
+    stage: initialStage,
+    lowEndStart,
+    slowFrameStreakMs: 0,
+    healthyFrameStreakMs: 0,
     contextLostCount: 0,
-    ewmaFrameMs: 16.7,
-    lastTransitionReason: null,
+    latchPersisted: false,
   };
 }
 
-export function getGpuWatchdogBudget(stage: GpuWatchdogStage): GpuWatchdogBudget {
-  return GPU_WATCHDOG_STAGE_BUDGETS[stage];
-}
-
-/**
- * Feeds one real frame duration (in ms) into the watchdog.
- * Uses EWMA smoothing + hysteresis windows so single GC spikes never cause flicker,
- * while genuine sustained GPU overload steps down smoothly across all chapters.
- */
 export function stepGpuThermalWatchdog(
   state: GpuWatchdogState,
   rawFrameMs: number
 ): GpuWatchdogStepResult {
-  const clampedMs = Math.max(4, Math.min(250, Number.isFinite(rawFrameMs) ? rawFrameMs : 16.7));
-  const dtSec = Math.min(0.25, clampedMs / 1000);
-  const ewmaFrameMs = state.ewmaFrameMs * 0.88 + clampedMs * 0.12;
-
-  if (!state.enabled) {
-    const unchanged: GpuWatchdogState = {
-      ...state,
-      ewmaFrameMs,
-      lagAccumSec: 0,
-      healthyAccumSec: 0,
-    };
+  if (!state.enabled || !Number.isFinite(rawFrameMs) || rawFrameMs <= 0) {
     return {
-      next: unchanged,
+      next: state,
       changed: false,
-      direction: 'none',
-      budget: getGpuWatchdogBudget(unchanged.stage),
+      budget: resolveGpuWatchdogBudget(state.stage),
       notice: null,
       shouldPersistSafeLatch: false,
     };
   }
 
-  let lagAccumSec = state.lagAccumSec;
-  let healthyAccumSec = state.healthyAccumSec;
+  const clampedMs = Math.min(250, rawFrameMs);
+  const next: GpuWatchdogState = { ...state };
+  const slowThresholdMs = state.stage >= 2 ? 44 : 38;
+  const healthyThresholdMs = 24;
 
-  if (ewmaFrameMs >= LAG_TRIGGER_FRAME_MS || clampedMs >= SEVERE_LAG_FRAME_MS) {
-    lagAccumSec += dtSec;
-    healthyAccumSec = 0;
-  } else if (ewmaFrameMs <= RECOVERY_FRAME_MS) {
-    healthyAccumSec += dtSec;
-    lagAccumSec = Math.max(0, lagAccumSec - dtSec * 0.5);
+  if (clampedMs >= slowThresholdMs) {
+    next.slowFrameStreakMs += clampedMs;
+    next.healthyFrameStreakMs = 0;
+  } else if (clampedMs <= healthyThresholdMs) {
+    next.healthyFrameStreakMs += clampedMs;
+    next.slowFrameStreakMs = Math.max(0, next.slowFrameStreakMs - clampedMs * 0.5);
   } else {
-    lagAccumSec = Math.max(0, lagAccumSec - dtSec * 0.25);
-    healthyAccumSec = 0;
+    next.slowFrameStreakMs = Math.max(0, next.slowFrameStreakMs - clampedMs * 0.25);
   }
 
-  const requiredLagWindow =
-    ewmaFrameMs >= SEVERE_LAG_FRAME_MS ? SEVERE_DOWNGRADE_WINDOW_SEC : DOWNGRADE_WINDOW_SEC;
+  let changed = false;
+  let notice: string | null = null;
+  let shouldPersistSafeLatch = false;
 
-  if (lagAccumSec >= requiredLagWindow && state.stage < 4) {
-    const nextStage = (state.stage + 1) as GpuWatchdogStage;
-    const budget = getGpuWatchdogBudget(nextStage);
-    const estFps = Math.max(1, Math.round(1000 / ewmaFrameMs));
-    const notice =
-      nextStage === 4
-        ? `Watchdog GPU (${estFps} FPS): Đã bật Chế Độ Lite Khẩn Cấp để bảo vệ thiết bị.`
-        : `Watchdog GPU (${estFps} FPS): Tự động chuyển sang ${budget.label}.`;
-    return {
-      next: {
-        ...state,
-        stage: nextStage,
-        lagAccumSec: 0,
-        healthyAccumSec: 0,
-        ewmaFrameMs,
-        lastTransitionReason: notice,
-      },
-      changed: true,
-      direction: 'downgrade',
-      budget,
-      notice,
-      shouldPersistSafeLatch: nextStage === 4,
-    };
-  }
-
-  if (healthyAccumSec >= RECOVERY_WINDOW_SEC && state.stage > state.minFloorStage && state.contextLostCount === 0) {
-    const nextStage = (state.stage - 1) as GpuWatchdogStage;
-    const budget = getGpuWatchdogBudget(nextStage);
-    const notice = `Watchdog GPU: Hiệu năng ổn định, khôi phục về ${budget.label}.`;
-    return {
-      next: {
-        ...state,
-        stage: nextStage,
-        lagAccumSec: 0,
-        healthyAccumSec: 0,
-        ewmaFrameMs,
-        lastTransitionReason: notice,
-      },
-      changed: true,
-      direction: 'recover',
-      budget,
-      notice,
-      shouldPersistSafeLatch: false,
-    };
+  if (next.slowFrameStreakMs >= 1600 && next.stage < 4) {
+    next.stage = (next.stage + 1) as GpuWatchdogStage;
+    next.slowFrameStreakMs = 0;
+    next.healthyFrameStreakMs = 0;
+    changed = true;
+    notice = `Watchdog GPU (Bậc ${next.stage}/4): Đã tự động hạ hiệu ứng để giữ khung hình ổn định.`;
+    if (next.stage >= 3 && !next.latchPersisted) {
+      next.latchPersisted = true;
+      shouldPersistSafeLatch = true;
+    }
+  } else {
+    const floorStage: GpuWatchdogStage = next.lowEndStart ? 2 : 0;
+    if (next.healthyFrameStreakMs >= 9000 && next.stage > floorStage) {
+      next.stage = (next.stage - 1) as GpuWatchdogStage;
+      next.healthyFrameStreakMs = 0;
+      changed = true;
+      notice = null;
+    }
   }
 
   return {
-    next: {
-      ...state,
-      lagAccumSec,
-      healthyAccumSec,
-      ewmaFrameMs,
-    },
-    changed: false,
-    direction: 'none',
-    budget: getGpuWatchdogBudget(state.stage),
-    notice: null,
-    shouldPersistSafeLatch: false,
+    next,
+    changed,
+    budget: resolveGpuWatchdogBudget(next.stage),
+    notice,
+    shouldPersistSafeLatch,
   };
 }
 
-/**
- * Handles WebGL context loss immediately by jumping to Emergency Stage 4 Lite Mode
- * and requesting a persistent crash-safe latch for subsequent boots.
- */
-export function handleGpuWatchdogContextLost(
-  state: GpuWatchdogState
-): GpuWatchdogStepResult {
-  const budget = getGpuWatchdogBudget(4);
-  const notice =
-    'Phát hiện mất ngữ cảnh GPU (WebGL Context Lost) · Watchdog đã kích hoạt Chế Độ Lite An Toàn.';
+export function handleGpuWatchdogContextLost(state: GpuWatchdogState): {
+  next: GpuWatchdogState;
+  notice: string;
+} {
+  const next: GpuWatchdogState = {
+    ...state,
+    stage: 4,
+    contextLostCount: state.contextLostCount + 1,
+    slowFrameStreakMs: 0,
+    healthyFrameStreakMs: 0,
+    latchPersisted: true,
+  };
   return {
-    next: {
-      ...state,
-      stage: 4,
-      minFloorStage: 4,
-      lagAccumSec: 0,
-      healthyAccumSec: 0,
-      contextLostCount: state.contextLostCount + 1,
-      lastTransitionReason: notice,
-    },
-    changed: state.stage !== 4,
-    direction: state.stage !== 4 ? 'downgrade' : 'none',
-    budget,
-    notice,
-    shouldPersistSafeLatch: true,
+    next,
+    notice: 'Phát hiện gián đoạn WebGL · Watchdog GPU đã khóa Chế Độ Lite Bậc 4 để bảo vệ thiết bị.',
   };
 }
