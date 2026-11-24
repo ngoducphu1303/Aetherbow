@@ -1771,6 +1771,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </button>
 
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onUpdateSettings({ reduceScreenFlash: !settings.reduceScreenFlash });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.reduceScreenFlash
+                  ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-300'
+              }`}
+            >
+              <div className="text-xs font-black">Giảm Chớp Sáng (Anti-Flash)</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.reduceScreenFlash ? 'Đang bật (Giảm 75% lóe sáng)' : 'Tắt (Ánh sáng chuẩn)'}
+              </div>
+            </button>
+
             <div className="p-3 rounded-xl border bg-[#080d1e] border-slate-700/90 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-black text-white">Cỡ Chữ Giao Diện</div>

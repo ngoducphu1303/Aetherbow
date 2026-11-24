@@ -20,6 +20,7 @@ import {
   clampWsGuildWarScore,
   createApiRateLimitMiddleware,
   isVerifiedAdminClaims,
+  SecurityAnomalyTracker,
   SlidingWindowRateLimiter,
   WS_SECURITY_LIMITS,
 } from './src/server/serverSecurity.ts';
@@ -32,6 +33,15 @@ import { verifyWorkerAdminSession } from './src/server/assetDeployService.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const securityAnomalies = new SecurityAnomalyTracker(200);
+const recordApiRateLimit = (info: { scope: string; ip: string; retryAfterMs: number }) => {
+  securityAnomalies.record({
+    category: 'rate_limit',
+    scope: `api:${info.scope}`,
+    actor: info.ip,
+    detail: `HTTP 429 rate limit exceeded (retryAfter=${Math.ceil(info.retryAfterMs / 1000)}s)`,
+  });
+};
 
 interface FirebaseAppletConfig {
   projectId?: string;
@@ -582,6 +592,14 @@ export function attachLiveAiWebSocketServer(
           );
           const playerWon = Boolean(payload.playerWon);
           const durationSec = clampWsDuelDurationSec(payload.durationSec);
+          if (typeof payload.durationSec === 'number' && Number.isFinite(payload.durationSec) && Math.round(payload.durationSec) !== durationSec) {
+            securityAnomalies.record({
+              category: 'ws_clamped',
+              scope: 'ws:duel:complete',
+              actor: challengerName,
+              detail: `durationSec clamped ${payload.durationSec} -> ${durationSec}`,
+            });
+          }
           const rawTier = String(payload.aiDuelTier ?? 'challenger');
           const aiDuelTier: 'challenger' | 'master' | 'sovereign' | 'mythic' =
             rawTier === 'challenger' ||
@@ -759,6 +777,12 @@ export function attachLiveAiWebSocketServer(
 
         if (type === 'guild_boss:attack') {
           if (!clientActionLimiter.consume(`${socketId}:guild_boss`).allowed) {
+            securityAnomalies.record({
+              category: 'rate_limit',
+              scope: 'ws:guild_boss:attack',
+              actor: clientNames.get(ws) ?? socketId,
+              detail: 'WS guild_boss:attack burst limit exceeded',
+            });
             sendJson(ws, { type: 'security:rate_limited', payload: { action: 'guild_boss:attack' } });
             return;
           }
@@ -766,6 +790,14 @@ export function attachLiveAiWebSocketServer(
             payload.playerName ?? clientNames.get(ws)
           );
           const damage = clampWsGuildBossDamage(payload.damage);
+          if (typeof payload.damage === 'number' && Number.isFinite(payload.damage) && Math.round(payload.damage) !== damage) {
+            securityAnomalies.record({
+              category: 'ws_clamped',
+              scope: 'ws:guild_boss:attack',
+              actor: playerName,
+              detail: `damage clamped ${payload.damage} -> ${damage}`,
+            });
+          }
           const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
           if (damage === null) return;
           const res = liveAiService.recordHumanGuildBossAttack({
@@ -904,6 +936,12 @@ export function attachLiveAiWebSocketServer(
 
         if (type === 'bounty:contribute') {
           if (!clientActionLimiter.consume(`${socketId}:bounty`).allowed) {
+            securityAnomalies.record({
+              category: 'rate_limit',
+              scope: 'ws:bounty:contribute',
+              actor: clientNames.get(ws) ?? socketId,
+              detail: 'WS bounty:contribute burst limit exceeded',
+            });
             sendJson(ws, { type: 'security:rate_limited', payload: { action: 'bounty:contribute' } });
             return;
           }
@@ -911,6 +949,14 @@ export function attachLiveAiWebSocketServer(
             payload.playerName ?? clientNames.get(ws)
           );
           const points = clampWsBountyPoints(payload.points);
+          if (typeof payload.points === 'number' && Number.isFinite(payload.points) && Math.round(payload.points) !== points) {
+            securityAnomalies.record({
+              category: 'ws_clamped',
+              scope: 'ws:bounty:contribute',
+              actor: playerName,
+              detail: `points clamped ${payload.points} -> ${points}`,
+            });
+          }
           const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
           const sourceLabel =
             typeof payload.sourceLabel === 'string'
@@ -1030,6 +1076,14 @@ export function attachLiveAiWebSocketServer(
           const mode = payload.mode === 'assault_3d' ? 'assault_3d' : 'quick_strike';
           const heroId = typeof payload.heroId === 'string' ? payload.heroId : 'artemis';
           const scoreGain = clampWsGuildWarScore(payload.scoreGain, mode);
+          if (typeof payload.scoreGain === 'number' && Number.isFinite(payload.scoreGain) && Math.round(payload.scoreGain) !== scoreGain) {
+            securityAnomalies.record({
+              category: 'ws_clamped',
+              scope: 'ws:guild_war:strike',
+              actor: playerName,
+              detail: `scoreGain clamped ${payload.scoreGain} -> ${scoreGain} (${mode})`,
+            });
+          }
           const res = liveAiService.strikeGuildWarBastion({
             playerName,
             heroId: heroId as any,
@@ -1346,13 +1400,23 @@ async function startServer() {
   );
   app.use(
     '/api/weekly-boss',
-    createApiRateLimitMiddleware({ scope: 'weekly-boss', maxRequests: 60, windowMs: 60_000 }),
+    createApiRateLimitMiddleware({
+      scope: 'weekly-boss',
+      maxRequests: 60,
+      windowMs: 60_000,
+      onRateLimited: recordApiRateLimit,
+    }),
     createWeeklyBossRouter(weeklyBossService)
   );
 
   app.use(
     '/api/liveops',
-    createApiRateLimitMiddleware({ scope: 'liveops', maxRequests: 60, windowMs: 60_000 })
+    createApiRateLimitMiddleware({
+      scope: 'liveops',
+      maxRequests: 60,
+      windowMs: 60_000,
+      onRateLimited: recordApiRateLimit,
+    })
   );
   app.get('/api/liveops/config', (_req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
@@ -1362,6 +1426,12 @@ async function startServer() {
     try {
       const user = await resolveBearerUser(req);
       if (!user) {
+        securityAnomalies.record({
+          category: 'auth_invalid',
+          scope: 'api:liveops:put',
+          actor: req.ip || 'unknown',
+          detail: 'Missing or invalid Bearer token on PUT /api/liveops/config',
+        });
         res.status(401).json({
           error: 'AUTH_REQUIRED',
           message: 'Cần đăng nhập tài khoản quản trị để cập nhật cấu hình LiveOps.',
@@ -1380,6 +1450,12 @@ async function startServer() {
       const isLinkedWorkerAdmin =
         !isGoogleAdmin && bearerToken.length > 0 && (await verifyWorkerAdminSession(bearerToken));
       if (!isGoogleAdmin && !isLinkedWorkerAdmin) {
+        securityAnomalies.record({
+          category: 'admin_denied',
+          scope: 'api:liveops:put',
+          actor: user.email || user.uid || 'unknown',
+          detail: 'Non-admin attempted PUT /api/liveops/config',
+        });
         res.status(403).json({
           error: 'ADMIN_FORBIDDEN',
           message: 'Tài khoản này không có quyền quản trị LiveOps.',
@@ -1406,8 +1482,75 @@ async function startServer() {
   });
 
   app.get(
+    '/api/admin/security-anomalies',
+    createApiRateLimitMiddleware({
+      scope: 'admin-security',
+      maxRequests: 60,
+      windowMs: 60_000,
+      onRateLimited: recordApiRateLimit,
+    }),
+    async (req, res) => {
+      try {
+        const user = await resolveBearerUser(req);
+        if (!user) {
+          securityAnomalies.record({
+            category: 'auth_invalid',
+            scope: 'api:admin:security-anomalies',
+            actor: req.ip || 'unknown',
+            detail: 'Missing or invalid Bearer token on GET /api/admin/security-anomalies',
+          });
+          res.status(401).json({
+            error: 'AUTH_REQUIRED',
+            message: 'Cần đăng nhập tài khoản quản trị để xem giám sát an ninh.',
+          });
+          return;
+        }
+        const rawAuthHeader = req.headers.authorization;
+        const bearerToken =
+          typeof rawAuthHeader === 'string' && rawAuthHeader.startsWith('Bearer ')
+            ? rawAuthHeader.slice('Bearer '.length).trim()
+            : '';
+        const isGoogleAdmin = isVerifiedAdminClaims({
+          email: user.email,
+          emailVerified: user.emailVerified,
+        });
+        const isLinkedWorkerAdmin =
+          !isGoogleAdmin && bearerToken.length > 0 && (await verifyWorkerAdminSession(bearerToken));
+        if (!isGoogleAdmin && !isLinkedWorkerAdmin) {
+          securityAnomalies.record({
+            category: 'admin_denied',
+            scope: 'api:admin:security-anomalies',
+            actor: user.email || user.uid || 'unknown',
+            detail: 'Non-admin attempted GET /api/admin/security-anomalies',
+          });
+          res.status(403).json({
+            error: 'ADMIN_FORBIDDEN',
+            message: 'Tài khoản này không có quyền xem nhật ký an ninh máy chủ.',
+          });
+          return;
+        }
+        const limitRaw = Number(req.query.limit ?? 25);
+        const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.round(limitRaw))) : 25;
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({
+          ok: true,
+          summary: securityAnomalies.getSummary(),
+          recent: securityAnomalies.getRecent(limit),
+        });
+      } catch (err) {
+        handleApiError(res, err);
+      }
+    }
+  );
+
+  app.get(
     '/api/live-ai/snapshot',
-    createApiRateLimitMiddleware({ scope: 'live-ai', maxRequests: 120, windowMs: 60_000 }),
+    createApiRateLimitMiddleware({
+      scope: 'live-ai',
+      maxRequests: 120,
+      windowMs: 60_000,
+      onRateLimited: recordApiRateLimit,
+    }),
     (_req, res) => {
       const humanCount = wsHub ? Math.max(1, wsHub.wss.clients.size) : 1;
       res.json(liveAiService.getSnapshot(humanCount));
@@ -1424,7 +1567,12 @@ async function startServer() {
 
   app.use(
     '/api/assets',
-    createApiRateLimitMiddleware({ scope: 'assets', maxRequests: 240, windowMs: 60_000 })
+    createApiRateLimitMiddleware({
+      scope: 'assets',
+      maxRequests: 240,
+      windowMs: 60_000,
+      onRateLimited: recordApiRateLimit,
+    })
   );
 
   // Stream the uncompressed 90.3 MB Chapter 1 GLB map in <= 6 MiB byte chunks so

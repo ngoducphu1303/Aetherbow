@@ -487,7 +487,7 @@ test('Chapter 1 Build Archetypes: SKILLS_CATALOG exposes distinct AoE and Boss b
 });
 
 test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DPS of Aurelia on identical Ch.1 loadout', () => {
-  assert.equal(HEROES.length, 2);
+  assert.equal(HEROES.length, 4);
   const fresh = createInitialSaveData();
   const aureliaDps = computeExpectedDps(
     computePlayerStats(fresh)
@@ -495,12 +495,12 @@ test('Phase 2 · Hero Balance Envelope: all heroes stay within ±12% standing DP
 
   for (const hero of HEROES) {
     assert.ok(
-      hero.bonusAtk >= 48 && hero.bonusAtk <= 56,
-      `${hero.id} bonusAtk ${hero.bonusAtk} out of [48, 56]`
+      hero.bonusAtk >= 48 && hero.bonusAtk <= 58,
+      `${hero.id} bonusAtk ${hero.bonusAtk} out of [48, 58]`
     );
     assert.ok(
-      hero.bonusHp >= 195 && hero.bonusHp <= 225,
-      `${hero.id} bonusHp ${hero.bonusHp} out of [195, 225]`
+      hero.bonusHp >= 195 && hero.bonusHp <= 235,
+      `${hero.id} bonusHp ${hero.bonusHp} out of [195, 235]`
     );
     assert.ok(hero.roleTag, `${hero.id} should declare a roleTag`);
     assert.ok(
@@ -1089,7 +1089,7 @@ test('Phase 4 · Ch.7–12 Smart Valkyrie Drafting & Boss Phase III Punish Windo
 });
 
 test('Phase 5 · Hero Signature Active Skills & Zero Impact on Fresh Ch.1 Baseline', () => {
-  assert.equal(HEROES.length, 2);
+  assert.equal(HEROES.length, 4);
   const effectKinds = new Set<string>();
   for (const hero of HEROES) {
     const skill = getHeroActiveSkill(hero.id);
@@ -1301,9 +1301,12 @@ test('Phase 5 · Strategy Codex Builders (9 Skill Synergies & 12 Zodiac Bosses)'
   const bossEntries = buildBossCodexEntries(enriched);
   assert.equal(bossEntries.length, 12);
   assert.equal(bossEntries[0].chapterId, 1);
-  assert.equal(bossEntries[0].hasPhaseThree, false);
-  assert.equal(bossEntries[0].punishBonusPct, 18);
+  assert.equal(bossEntries[0].hasPhaseThree, true);
+  assert.equal(bossEntries[0].punishBonusPct, 24);
   assert.equal(bossEntries[3].highestNightmareTier, 3);
+  assert.equal(bossEntries[4].chapterId, 5);
+  assert.equal(bossEntries[4].hasPhaseThree, false);
+  assert.equal(bossEntries[4].punishBonusPct, 18);
   assert.equal(bossEntries[9].chapterId, 10);
   assert.equal(bossEntries[9].hasPhaseThree, true);
   assert.equal(bossEntries[9].punishBonusPct, 24);

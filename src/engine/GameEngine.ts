@@ -170,6 +170,7 @@ import {
 import { resolveGeometricTelegraphSpec } from './colorblindTelegraphs';
 import {
   clampParticleBurstCount,
+  resolveDynamicPointLightPolicy,
   resolveDynamicVfxBudget,
   resolveZodiacChapterLighting,
 } from './zodiacLightingVfxDirector';
@@ -1903,6 +1904,7 @@ export class GameEngine {
   private graphicsQuality: GraphicsQuality = 'high';
   private screenShakeEnabled = true;
   private reducedMotionEnabled = false;
+  private reduceScreenFlashEnabled = false;
   private liveOpsEnemyHpMult = 1.0;
   private liveOpsEnemyDmgMult = 1.0;
   private showDamageNumbersEnabled = true;
@@ -2059,15 +2061,14 @@ export class GameEngine {
 
     this.heroLight = new THREE.PointLight(0xfff3d1, 1.65, 11, 2);
     this.heroLight.position.set(1.8, 2.55, 7.6);
-    this.scene.add(this.heroLight);
 
     // 2 reusable pooled dynamic combat flash lights (zero GC per frame)
     for (let i = 0; i < 2; i++) {
       const impactLight = new THREE.PointLight(0xfbbf24, 0, 10, 2);
       impactLight.position.set(0, 1.4, 0);
-      this.scene.add(impactLight);
       this.impactLightPool.push({ light: impactLight, intensity: 0, decayRate: 12 });
     }
+    this.syncPointLightPolicy();
 
     this.scene.add(
       this.arenaGroup,
@@ -2231,22 +2232,70 @@ export class GameEngine {
     }
   }
 
+  private getActivePointLightPolicy() {
+    const budget = this.getActiveSystemBudget();
+    return resolveDynamicPointLightPolicy({
+      lowEndGpu: this.lowEndGpu,
+      isSoftwareGl: this.isSoftwareGl,
+      liteActive: budget.liteActive,
+      graphicsQuality: this.graphicsQuality,
+      watchdogStage: this.gpuWatchdog.stage,
+      reducedMotion: this.reducedMotionEnabled,
+      reduceScreenFlash: this.reduceScreenFlashEnabled,
+    });
+  }
+
+  /**
+   * Attaches or detaches scene PointLights dynamically so low-end devices (Dell E5430 /
+   * Intel HD 4000), Lite Mode, SoftwareGL, or throttled Watchdog >= 2 compile fragment
+   * shaders with strictly 0 PointLights.
+   */
+  private syncPointLightPolicy(): void {
+    const policy = this.getActivePointLightPolicy();
+    if (this.heroLight) {
+      const heroInScene = this.heroLight.parent === this.scene;
+      if (policy.enableHeroLight && !heroInScene) {
+        this.scene.add(this.heroLight);
+      } else if (!policy.enableHeroLight && heroInScene) {
+        this.heroLight.intensity = 0;
+        this.scene.remove(this.heroLight);
+      }
+    }
+    for (let i = 0; i < this.impactLightPool.length; i++) {
+      const slot = this.impactLightPool[i];
+      const shouldAttach = i < policy.maxImpactPointLights;
+      const inScene = slot.light.parent === this.scene;
+      if (shouldAttach && !inScene) {
+        this.scene.add(slot.light);
+      } else if (!shouldAttach && inScene) {
+        slot.intensity = 0;
+        slot.light.intensity = 0;
+        this.scene.remove(slot.light);
+      }
+    }
+  }
+
   private spawnImpactLight(x: number, y: number, z: number, kind: CombatFlashKind): void {
-    if (this.isSoftwareGl || this.graphicsQuality === 'low' || !this.impactLightPool?.length) return;
+    const policy = this.getActivePointLightPolicy();
+    if (policy.maxImpactPointLights <= 0 || policy.flashScale <= 0 || !this.impactLightPool?.length) {
+      return;
+    }
     const spec = computeImpactLightPulse(kind);
-    // Pick the dimmest slot to avoid popping an active brighter flash
+    const activeCount = Math.min(policy.maxImpactPointLights, this.impactLightPool.length);
+    // Pick the dimmest attached slot to avoid popping an active brighter flash
     let slot = this.impactLightPool[0];
-    for (let i = 1; i < this.impactLightPool.length; i++) {
+    for (let i = 1; i < activeCount; i++) {
       if (this.impactLightPool[i].intensity < slot.intensity) {
         slot = this.impactLightPool[i];
       }
     }
+    const scaledPeak = spec.peakIntensity * policy.flashScale;
     slot.light.position.set(x, y, z);
     slot.light.color.setHex(spec.colorHex);
     slot.light.distance = spec.distance;
-    slot.intensity = spec.peakIntensity;
+    slot.intensity = scaledPeak;
     slot.decayRate = spec.decayRate;
-    slot.light.intensity = spec.peakIntensity;
+    slot.light.intensity = scaledPeak;
   }
 
   private updateImpactLights(dt: number): void {
@@ -11090,6 +11139,7 @@ export class GameEngine {
     chapter1MapMode?: Chapter1MapMode;
     lowEndSafetyMode?: LowEndSafetyMode;
     reducedMotion?: boolean;
+    reduceScreenFlash?: boolean;
     liveOpsEnemyHpMult?: number;
     liveOpsEnemyDmgMult?: number;
   }): void {
@@ -11125,6 +11175,7 @@ export class GameEngine {
     const quality = this.isSoftwareGl || this.lowEndGpu || budget.liteActive ? 'low' : cfg.graphicsQuality;
     this.graphicsQuality = quality;
     this.reducedMotionEnabled = Boolean(cfg.reducedMotion);
+    this.reduceScreenFlashEnabled = Boolean(cfg.reduceScreenFlash);
     this.screenShakeEnabled = this.reducedMotionEnabled ? false : cfg.screenShake;
     if (typeof cfg.liveOpsEnemyHpMult === 'number' && Number.isFinite(cfg.liveOpsEnemyHpMult)) {
       this.liveOpsEnemyHpMult = Math.max(0.6, Math.min(2.0, cfg.liveOpsEnemyHpMult));
@@ -11207,6 +11258,7 @@ export class GameEngine {
     if (prevLiteActive !== budget.liteActive && this.phase === GamePhase.TITLE) {
       this.buildArena(this.currentChapter, this.currentChapter.id === 1);
     }
+    this.syncPointLightPolicy();
     this.syncSolarLeoVisuals();
     this.syncPostProcessingUniforms();
   }
@@ -11836,6 +11888,20 @@ export class GameEngine {
             e.burnTimer = Math.max(e.burnTimer, 3.2);
             e.burnDps = Math.max(e.burnDps, atkPower * 0.42);
             this.damageEnemy(e, skillDmg, false, true, false, false, false, 'HỎA NGỤC', 'ultimate');
+          });
+        break;
+      }
+      case 'jade_bastion': {
+        const shieldAdd = Math.round(this.maxHp * 0.12);
+        this.shield = Math.min(Math.round(this.maxHp * 0.65), this.shield + shieldAdd);
+        this.emitFloatingNumber(this.px, 1.85, this.pz, shieldAdd, false, true, 'ice', 'KHIÊN ĐỊA MẠCH');
+        this.spawnShockwave(this.px, this.pz, 0x10b981, skillDef.radius, 0.42);
+        this.spawnParticles(this.px, 1.1, this.pz, 0x34d399, 14);
+        liveEnemies
+          .filter((e) => Math.hypot(e.x - this.px, e.z - this.pz) <= skillDef.radius)
+          .forEach((e) => {
+            e.chillTimer = Math.max(e.chillTimer, 1.8);
+            this.damageEnemy(e, skillDmg, true, false, false, false, false, 'ĐỊA MẠCH', 'ultimate');
           });
         break;
       }
@@ -12770,6 +12836,7 @@ export class GameEngine {
           this.lowEndGpu = true;
           this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
         }
+        this.syncPointLightPolicy();
         soundEngine.setLowEndAudioMode(this.lowEndGpu || this.gpuWatchdog.stage >= 2);
         if (wdStep.notice && !this.reducedMotionEnabled) {
           this.gpuWatchdogNotice = wdStep.notice;

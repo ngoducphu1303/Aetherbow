@@ -664,6 +664,7 @@ export interface GameSettings {
   chapter1MapMode?: Chapter1MapMode;
   lowEndSafetyMode?: LowEndSafetyMode;
   reducedMotion?: boolean;
+  reduceScreenFlash?: boolean;
   uiTextScale?: UiTextScaleMode;
 }
 
@@ -3396,7 +3397,8 @@ export type HeroActiveSkillEffectKind =
   | 'abyssal_aegis'
   | 'cudgel_vault'
   | 'electro_rose_lantern'
-  | 'storm_convergence';
+  | 'storm_convergence'
+  | 'jade_bastion';
 
 export interface HeroActiveSkillDef {
   heroId: HeroId;

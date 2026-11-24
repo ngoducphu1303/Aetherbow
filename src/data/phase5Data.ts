@@ -37,7 +37,7 @@ export const HERO_ACTIVE_SKILLS: Record<HeroId, HeroActiveSkillDef> = {
     desc: 'Triệu hồi Địa Mạch Lục Bảo gây 165% ATK diện rộng quanh mục tiêu và tạo khiên hộ thể 12% HP.',
     cooldownSec: 8.5,
     damageMult: 1.65,
-    effectKind: 'ember_nova',
+    effectKind: 'jade_bastion',
     accentHex: 0x10b981,
     accentCss: '#10b981',
     radius: 6.4,

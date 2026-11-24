@@ -23,6 +23,12 @@ import {
 } from './gearData';
 import { getTodayKey } from './questsData';
 import { getTalentLevel, getTalentUpgradeCost, TALENTS } from './talentsData';
+import { grantChapter2Collection } from './chapter2Collection';
+import { grantChapter3Collection } from './chapter3Collection';
+import { grantChapter4Collection } from './chapter4Collection';
+import { normalizeBlessingAltar, normalizeMythicWeapon } from './wave12Data';
+import { normalizeSoulRings } from './wave13Data';
+import { normalizeGuildSanctuary, normalizeZodiacRelics } from './wave14Data';
 import { createSeededRng } from '../engine/fixedTimestep';
 import {
   ComputedPlayerStats,
@@ -984,7 +990,18 @@ export function simulate30DayFairProgression(options: {
         save = { ...save, constellations: nextConst };
       }
     }
-    // Elemental Towers (unlocked Ch.4+) -> Hero Stars + Gems
+    // Chapter 2-4 Collection grants on campaign clear (real F2P unlocks)
+    if (chCleared >= 2) {
+      save = grantChapter2Collection(save);
+    }
+    if (chCleared >= 3) {
+      save = grantChapter3Collection(save);
+    }
+    if (chCleared >= 4) {
+      save = grantChapter4Collection(save);
+    }
+
+    // Elemental Towers (unlocked Ch.4+) -> Hero Stars + Gems + Blessing Altar
     if (isEarlyFeatureUnlocked(save, 'elemental_towers').unlocked) {
       goldToday += Math.round(620 * chFactor);
       gemsToday += 42;
@@ -997,8 +1014,21 @@ export function simulate30DayFairProgression(options: {
           };
         }
       }
+      const altar = normalizeBlessingAltar(save.blessingAltar);
+      const altarIds = Object.keys(altar.levels) as Array<keyof typeof altar.levels>;
+      const targetAltar = altarIds[(day - 1) % altarIds.length];
+      if ((altar.levels[targetAltar] ?? 0) < 12) {
+        save = {
+          ...save,
+          blessingAltar: {
+            ...altar,
+            levels: { ...altar.levels, [targetAltar]: (altar.levels[targetAltar] ?? 0) + 1 },
+            totalSacrifices: altar.totalSacrifices + 1,
+          },
+        };
+      }
     }
-    // World Boss & Crystal Defense (unlocked Ch.5+) -> Wings 3D
+    // World Boss & Crystal Defense (unlocked Ch.5+) -> Wings 3D + Mythic Weapon Transcendence
     if (isEarlyFeatureUnlocked(save, 'world_boss').unlocked) {
       goldToday += Math.round(880 * chFactor);
       gemsToday += 48;
@@ -1016,6 +1046,14 @@ export function simulate30DayFairProgression(options: {
         if (curLv < 10 && day % 2 === 0) {
           save = { ...save, wingLevels: { ...(save.wingLevels ?? {}), [wingId]: curLv + 1 } };
         }
+      }
+      const mw = normalizeMythicWeapon(save.mythicWeapon);
+      const targetTier = Math.min(5, Math.max(mw.tier, Math.floor((chCleared - 4) / 1.4) + 1));
+      if (targetTier > mw.tier) {
+        save = {
+          ...save,
+          mythicWeapon: { ...mw, tier: targetTier },
+        };
       }
     }
     // Blood Moon (unlocked Ch.6+) -> Mount 3D
@@ -1037,7 +1075,7 @@ export function simulate30DayFairProgression(options: {
         }
       }
     }
-    // Abyssal Gauntlet (unlocked Ch.7+) -> Artifact 3D
+    // Abyssal Gauntlet (unlocked Ch.7+) -> Artifact 3D + Soul Rings
     if (isEarlyFeatureUnlocked(save, 'abyssal_gauntlet').unlocked) {
       goldToday += Math.round(1150 * chFactor);
       const artId = 'astrolabe_regulus';
@@ -1055,8 +1093,21 @@ export function simulate30DayFairProgression(options: {
           save = { ...save, artifactLevels: { ...(save.artifactLevels ?? {}), [artId]: curLv + 1 } };
         }
       }
+      const sr = normalizeSoulRings(save.soulRings);
+      const ringIds = Object.keys(sr.levels) as Array<keyof typeof sr.levels>;
+      const targetRing = ringIds[(day - 1) % ringIds.length];
+      if ((sr.levels[targetRing] ?? 0) < 10) {
+        save = {
+          ...save,
+          soulRings: {
+            ...sr,
+            levels: { ...sr.levels, [targetRing]: (sr.levels[targetRing] ?? 0) + 1 },
+            totalFusions: sr.totalFusions + 1,
+          },
+        };
+      }
     }
-    // Pantheon & Dragon Lair (unlocked Ch.8+) -> Halo 3D + Soul Rings
+    // Pantheon & Dragon Lair (unlocked Ch.8+) -> Halo 3D + Zodiac Relics + Guild Sanctuary
     if (isEarlyFeatureUnlocked(save, 'pantheon_expedition').unlocked) {
       goldToday += Math.round(1650 * chFactor);
       gemsToday += 68;
@@ -1074,6 +1125,41 @@ export function simulate30DayFairProgression(options: {
         if (curLv < 10) {
           save = { ...save, haloLevels: { ...(save.haloLevels ?? {}), [haloId]: curLv + 1 } };
         }
+      }
+      const relics = normalizeZodiacRelics(save.zodiacRelics);
+      const relicPool = [
+        'relic_aries_horn',
+        'relic_leo_suncrest',
+        'relic_libra_scale',
+        'relic_scorpio_sting',
+        'relic_sagittarius_bow',
+        'relic_aquarius_chalice',
+      ] as const;
+      const targetRelic = relicPool[(day - 1) % relicPool.length];
+      const curRelicLv = relics.levels[targetRelic] ?? 0;
+      if (curRelicLv < 5) {
+        save = {
+          ...save,
+          zodiacRelics: {
+            ...relics,
+            levels: { ...relics.levels, [targetRelic]: curRelicLv + 1 },
+          },
+        };
+      }
+      const sanc = normalizeGuildSanctuary(save.guildSanctuary);
+      const monIds = Object.keys(sanc.monumentLevels) as Array<keyof typeof sanc.monumentLevels>;
+      const targetMon = monIds[(day - 1) % monIds.length];
+      if ((sanc.monumentLevels[targetMon] ?? 0) < 10) {
+        save = {
+          ...save,
+          guildSanctuary: {
+            ...sanc,
+            monumentLevels: {
+              ...sanc.monumentLevels,
+              [targetMon]: (sanc.monumentLevels[targetMon] ?? 0) + 1,
+            },
+          },
+        };
       }
     }
     // Crystal Vault & Sky Citadel (unlocked Ch.9-10+) -> Endgame gold & Mythic gear awakening
@@ -1279,7 +1365,7 @@ export function simulate30DayFairProgression(options: {
     // 4. Spend Gold systematically: balance Gear Enhancement (65%) and Talents (35%)
     const talentsUnlocked = isEarlyFeatureUnlocked(save, 'talents').unlocked;
     let safetyLoop = 0;
-    while (safetyLoop < 80) {
+    while (safetyLoop < 140) {
       safetyLoop++;
       // Find lowest-level equipped item that hasn't hit rarity maxLevel
       let bestGear: GearInstance | null = null;

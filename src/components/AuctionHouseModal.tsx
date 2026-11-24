@@ -250,13 +250,11 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
               </div>
             </div>
             <div className="px-3 py-1.5 rounded-xl bg-[#091128] border border-amber-400/40 text-xs font-mono-nums font-black text-amber-200 flex items-center gap-2">
-              <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>{aiPlayers.length} AI Live đang săn đồ · {ah.totalTrades} giao dịch</span>
             </div>
           </div>
           {liveBidEvents.length > 0 && (
             <div className="px-3.5 py-2 border-t border-sky-400/25 bg-[#061124]/95 flex items-center gap-2 text-[11px] text-sky-100">
-              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="font-black text-sky-300 shrink-0">
                 {liveBidEvents[0].bidderName} {liveBidEvents[0].bidderTag}
               </span>

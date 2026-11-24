@@ -49,6 +49,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   chapter1MapMode: 'auto',
   lowEndSafetyMode: 'auto',
   reducedMotion: false,
+  reduceScreenFlash: false,
   uiTextScale: 'normal',
 };
 
@@ -101,6 +102,7 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     chapter1MapMode,
     lowEndSafetyMode,
     reducedMotion: Boolean(s?.reducedMotion ?? DEFAULT_SETTINGS.reducedMotion),
+    reduceScreenFlash: Boolean(s?.reduceScreenFlash ?? DEFAULT_SETTINGS.reduceScreenFlash),
     uiTextScale,
   };
 }

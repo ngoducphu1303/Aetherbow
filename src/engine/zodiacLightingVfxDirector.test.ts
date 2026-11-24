@@ -79,3 +79,53 @@ test('ZodiacLightingVfxDirector: dynamically scales particle & shockwave caps ac
   assert.ok(clampParticleBurstCount(24, criticalBudget) <= criticalBudget.maxParticlesPerBurst);
   assert.equal(clampParticleBurstCount(0, highBudget), 0);
 });
+
+test('ZodiacLightingVfxDirector: enforces true 0-PointLight shader mode on Dell E5430 / Lite / Watchdog >= 2 and supports Anti-Flash', async () => {
+  const { resolveDynamicPointLightPolicy } = await import('./zodiacLightingVfxDirector');
+
+  const e5430Lite = resolveDynamicPointLightPolicy({
+    lowEndGpu: true,
+    isSoftwareGl: false,
+    liteActive: true,
+    graphicsQuality: 'low',
+    watchdogStage: 0,
+  });
+  assert.equal(e5430Lite.enableHeroLight, false);
+  assert.equal(e5430Lite.maxImpactPointLights, 0);
+  assert.equal(e5430Lite.totalScenePointLights, 0);
+  assert.equal(e5430Lite.flashScale, 0);
+
+  const watchdogStressed = resolveDynamicPointLightPolicy({
+    lowEndGpu: false,
+    isSoftwareGl: false,
+    liteActive: false,
+    graphicsQuality: 'high',
+    watchdogStage: 2,
+  });
+  assert.equal(watchdogStressed.totalScenePointLights, 0);
+
+  const highEndNormal = resolveDynamicPointLightPolicy({
+    lowEndGpu: false,
+    isSoftwareGl: false,
+    liteActive: false,
+    graphicsQuality: 'high',
+    watchdogStage: 0,
+    reduceScreenFlash: false,
+  });
+  assert.equal(highEndNormal.enableHeroLight, true);
+  assert.equal(highEndNormal.maxImpactPointLights, 2);
+  assert.equal(highEndNormal.totalScenePointLights, 3);
+  assert.equal(highEndNormal.flashScale, 1.0);
+
+  const highEndAntiFlash = resolveDynamicPointLightPolicy({
+    lowEndGpu: false,
+    isSoftwareGl: false,
+    liteActive: false,
+    graphicsQuality: 'high',
+    watchdogStage: 0,
+    reduceScreenFlash: true,
+  });
+  assert.equal(highEndAntiFlash.enableHeroLight, true);
+  assert.equal(highEndAntiFlash.maxImpactPointLights, 1);
+  assert.equal(highEndAntiFlash.flashScale, 0.25);
+});

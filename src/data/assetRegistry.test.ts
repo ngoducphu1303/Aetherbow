@@ -21,7 +21,11 @@ const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 function assertAssetFileExists(publicPath: string, contextLabel: string) {
   const decodedPath = decodeURI(publicPath);
   assert.ok(
-    decodedPath.startsWith('/assets/apiaetherbow/') || decodedPath.startsWith('/assets/Chương 1/') || decodedPath.startsWith('/assets/Chương 2/'),
+    decodedPath.startsWith('/assets/apiaetherbow/') ||
+      decodedPath.startsWith('/assets/Chương 1/') ||
+      decodedPath.startsWith('/assets/Chương 2/') ||
+      decodedPath.startsWith('/assets/Chương 3/') ||
+      decodedPath.startsWith('/assets/Chương 4/'),
     `${contextLabel}: expected a character or chapter asset path, got "${decodedPath}"`
   );
   const absPath = path.join(PUBLIC_DIR, decodedPath.replace(/^\/+/, ''));
@@ -36,10 +40,10 @@ function assertAssetFileExists(publicPath: string, contextLabel: string) {
   );
 }
 
-test('Hero roster contains Aurelia and Bellona with valid non-empty assets', () => {
+test('Hero roster contains Aurelia, Bellona, Sylvia, and Celeste with valid non-empty assets', () => {
   assert.deepEqual(
     HEROES.map((h) => h.id),
-    ['aurelia', 'bellona'],
+    ['aurelia', 'bellona', 'sylvia', 'celeste'],
     'Expected the four playable heroes'
   );
   for (const hero of HEROES) {
@@ -51,8 +55,8 @@ test('Hero roster contains Aurelia and Bellona with valid non-empty assets', () 
   }
 });
 
-test('HERO_SKINS contains the Solar Leo and Golden Fleece skins and getSkinAssetPack falls back safely for Alice & Miku', () => {
-  assert.equal(HERO_SKINS.length, 5, 'Expected four Aurelia skins and one Bellona skin');
+test('HERO_SKINS contains Chapter 1-4 Zodiac skins and getSkinAssetPack falls back safely for Alice & Miku', () => {
+  assert.equal(HERO_SKINS.length, 7, 'Expected 7 Zodiac skins across Chapters 1-4 heroes');
   for (const skin of HERO_SKINS) {
     const pack = getSkinAssetPack(skin.id, skin.heroId ?? 'aurelia');
     assertAssetFileExists(pack.icon, `Skin ${skin.id} icon`);

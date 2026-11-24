@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
 import {
   AlertTriangle,
   CheckCircle2,
   Database,
   History,
+  RefreshCw,
   RotateCcw,
   Save,
   ShieldAlert,
@@ -78,6 +79,61 @@ export default function AssetAdminLiveOpsTab({
   const [statusMsg, setStatusMsg] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [showAllIssues, setShowAllIssues] = useState(false);
+  const [anomalyLoading, setAnomalyLoading] = useState(false);
+  const [anomalyError, setAnomalyError] = useState('');
+  const [anomalyData, setAnomalyData] = useState<{
+    summary: {
+      totalRecorded: number;
+      retainedCount: number;
+      maxCapacity: number;
+      countsByCategory: {
+        rate_limit: number;
+        ws_clamped: number;
+        auth_invalid: number;
+        admin_denied: number;
+      };
+      lastEventAtMs: number | null;
+    };
+    recent: Array<{
+      id: string;
+      ts: number;
+      category: 'rate_limit' | 'ws_clamped' | 'auth_invalid' | 'admin_denied';
+      scope: string;
+      actor: string;
+      detail: string;
+    }>;
+  } | null>(null);
+
+  const loadSecurityAnomalies = useCallback(async () => {
+    setAnomalyLoading(true);
+    setAnomalyError('');
+    try {
+      const token = await user.getIdToken();
+      const resp = await fetch('/api/admin/security-anomalies?limit=20', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        setAnomalyError(`Không thể tải nhật ký an ninh (HTTP ${resp.status}).`);
+        return;
+      }
+      const json = (await resp.json()) as {
+        ok?: boolean;
+        summary?: NonNullable<typeof anomalyData>['summary'];
+        recent?: NonNullable<typeof anomalyData>['recent'];
+      };
+      if (json.ok && json.summary && Array.isArray(json.recent)) {
+        setAnomalyData({ summary: json.summary, recent: json.recent });
+      }
+    } catch {
+      setAnomalyError('Không thể kết nối máy chủ giám sát an ninh.');
+    } finally {
+      setAnomalyLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void loadSecurityAnomalies();
+  }, [loadSecurityAnomalies]);
 
   useEffect(() => {
     if (externalActiveConfig) {
@@ -588,6 +644,102 @@ export default function AssetAdminLiveOpsTab({
               ))}
             </ul>
           </div>
+        )}
+      </section>
+
+      {/* Section 4: Server Security Anomaly Monitor (Read-only Admin Telemetry) */}
+      <section
+        aria-label="Giám sát bất thường và an ninh máy chủ"
+        className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-amber-300" />
+            <h3 className="text-sm font-bold text-slate-100">
+              Giám Sát Bất Thường &amp; An Ninh Máy Chủ
+            </h3>
+          </div>
+          <button
+            type="button"
+            disabled={anomalyLoading}
+            onClick={() => void loadSecurityAnomalies()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={anomalyLoading ? 'animate-spin' : ''} />
+            Làm mới
+          </button>
+        </div>
+
+        {anomalyError ? (
+          <p className="mt-3 text-xs text-rose-300">{anomalyError}</p>
+        ) : !anomalyData ? (
+          <p className="mt-3 text-xs text-slate-400">
+            {anomalyLoading ? 'Đang tải dữ liệu giám sát an ninh...' : 'Chưa có dữ liệu giám sát.'}
+          </p>
+        ) : (
+          <>
+            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4 tabular-nums">
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <div className="text-[11px] font-semibold text-slate-400">Chặn Rate Limit (429)</div>
+                <div className="mt-1 text-lg font-bold text-amber-300">
+                  {anomalyData.summary.countsByCategory.rate_limit}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <div className="text-[11px] font-semibold text-slate-400">WS Payload Bị Kẹp Trần</div>
+                <div className="mt-1 text-lg font-bold text-sky-300">
+                  {anomalyData.summary.countsByCategory.ws_clamped}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <div className="text-[11px] font-semibold text-slate-400">Token Không Hợp Lệ (401)</div>
+                <div className="mt-1 text-lg font-bold text-orange-300">
+                  {anomalyData.summary.countsByCategory.auth_invalid}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <div className="text-[11px] font-semibold text-slate-400">Từ Chối Quyền Admin (403)</div>
+                <div className="mt-1 text-lg font-bold text-rose-300">
+                  {anomalyData.summary.countsByCategory.admin_denied}
+                </div>
+              </div>
+            </div>
+
+            {anomalyData.recent.length === 0 ? (
+              <p className="mt-3 text-xs text-emerald-300">
+                Không ghi nhận sự kiện bất thường nào kể từ lần khởi động máy chủ gần nhất (bộ đệm tối đa {anomalyData.summary.maxCapacity} sự kiện).
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-xs tabular-nums">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400">
+                      <th className="py-2 pr-3 font-semibold">Thời gian</th>
+                      <th className="py-2 px-3 font-semibold">Loại</th>
+                      <th className="py-2 px-3 font-semibold">Phạm vi</th>
+                      <th className="py-2 px-3 font-semibold">Nguồn</th>
+                      <th className="py-2 pl-3 font-semibold">Chi tiết</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70 text-slate-200">
+                    {anomalyData.recent.map((evt) => (
+                      <tr key={evt.id}>
+                        <td className="py-2 pr-3 text-slate-400 whitespace-nowrap">
+                          {formatTimeLabel(evt.ts)}
+                        </td>
+                        <td className="py-2 px-3 font-semibold text-amber-300 whitespace-nowrap">
+                          {evt.category}
+                        </td>
+                        <td className="py-2 px-3 text-slate-300 whitespace-nowrap">{evt.scope}</td>
+                        <td className="py-2 px-3 text-slate-400 whitespace-nowrap">{evt.actor}</td>
+                        <td className="py-2 pl-3 text-slate-300">{evt.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </section>
     </div>

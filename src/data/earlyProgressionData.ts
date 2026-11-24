@@ -353,8 +353,13 @@ export function migrateSaveData(raw: SaveData): SaveData {
   const filteredHeroes = (Array.isArray(raw.unlockedHeroes) ? raw.unlockedHeroes : []).filter(
     (id): id is HeroId => VALID_HERO_IDS.has(id as HeroId)
   );
+  const highestClearedForHeroes = Math.max(0, Math.floor(raw.highestChapterCleared ?? 0));
+  const chapterEarnedHeroes: HeroId[] = [];
+  if (highestClearedForHeroes >= 2) chapterEarnedHeroes.push('bellona');
+  if (highestClearedForHeroes >= 3) chapterEarnedHeroes.push('sylvia');
+  if (highestClearedForHeroes >= 4) chapterEarnedHeroes.push('celeste');
   const normalizedUnlockedHeroes: HeroId[] = Array.from(
-    new Set<HeroId>(['aurelia', ...filteredHeroes])
+    new Set<HeroId>(['aurelia', ...chapterEarnedHeroes, ...filteredHeroes])
   );
   const resolvedHeroId: HeroId =
     raw.selectedHeroId &&
@@ -430,7 +435,7 @@ export function migrateSaveData(raw: SaveData): SaveData {
   const resolvedEquippedMountId: SaveData['equippedMountId'] =
     raw.equippedMountId && normalizedUnlockedMounts.includes(raw.equippedMountId)
       ? raw.equippedMountId
-      : raw.equippedMountId === 'black_dragon'
+      : raw.equippedMountId
       ? 'solarius'
       : null;
 

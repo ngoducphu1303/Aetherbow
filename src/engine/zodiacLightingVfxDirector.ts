@@ -369,3 +369,53 @@ export function clampParticleBurstCount(requestedCount: number, budget: DynamicV
   const scaled = Math.round(requestedCount * budget.particleDensityScale);
   return Math.max(1, Math.min(budget.maxParticlesPerBurst, scaled));
 }
+
+export interface DynamicPointLightPolicy {
+  enableHeroLight: boolean;
+  maxImpactPointLights: number;
+  flashScale: number;
+  totalScenePointLights: number;
+}
+
+/**
+ * Resolves exact Three.js PointLight attachment policy so low-end / Intel HD 4000
+ * devices (Dell Latitude E5430), Lite Mode, SoftwareGL, or throttled Watchdog >= 2
+ * detach all PointLights from the scene (compiling fragment shaders with NUM_POINT_LIGHTS=0).
+ * Also applies independent Anti-Flash (reduceScreenFlash) damping on high-end devices.
+ */
+export function resolveDynamicPointLightPolicy(input: {
+  lowEndGpu: boolean;
+  isSoftwareGl: boolean;
+  liteActive: boolean;
+  graphicsQuality?: 'low' | 'medium' | 'high';
+  watchdogStage: GpuWatchdogStage;
+  reducedMotion?: boolean;
+  reduceScreenFlash?: boolean;
+}): DynamicPointLightPolicy {
+  const zeroPointLightMode =
+    input.lowEndGpu ||
+    input.isSoftwareGl ||
+    input.liteActive ||
+    input.graphicsQuality === 'low' ||
+    input.watchdogStage >= 2;
+
+  if (zeroPointLightMode) {
+    return {
+      enableHeroLight: false,
+      maxImpactPointLights: 0,
+      flashScale: 0,
+      totalScenePointLights: 0,
+    };
+  }
+
+  const antiFlash = Boolean(input.reduceScreenFlash || input.reducedMotion);
+  const maxImpactPointLights = antiFlash ? 1 : input.watchdogStage >= 1 ? 1 : 2;
+  const flashScale = antiFlash ? 0.25 : input.watchdogStage >= 1 ? 0.65 : 1.0;
+
+  return {
+    enableHeroLight: true,
+    maxImpactPointLights,
+    flashScale,
+    totalScenePointLights: 1 + maxImpactPointLights,
+  };
+}

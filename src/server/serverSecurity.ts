@@ -80,10 +80,98 @@ export class SlidingWindowRateLimiter {
   }
 }
 
+export type SecurityAnomalyCategory =
+  | 'rate_limit'
+  | 'ws_clamped'
+  | 'auth_invalid'
+  | 'admin_denied';
+
+export interface SecurityAnomalyEvent {
+  id: string;
+  ts: number;
+  category: SecurityAnomalyCategory;
+  scope: string;
+  actor: string;
+  detail: string;
+}
+
+export interface SecurityAnomalySummary {
+  totalRecorded: number;
+  retainedCount: number;
+  maxCapacity: number;
+  countsByCategory: Record<SecurityAnomalyCategory, number>;
+  lastEventAtMs: number | null;
+}
+
+/**
+ * Bounded in-memory ring buffer tracking server security anomalies (429 rate limits,
+ * clamped WS combat/score payloads, invalid Bearer tokens, and 403 admin denials).
+ */
+export class SecurityAnomalyTracker {
+  private readonly maxCapacity: number;
+  private readonly events: SecurityAnomalyEvent[] = [];
+  private totalRecorded = 0;
+  private seq = 0;
+  private readonly counts: Record<SecurityAnomalyCategory, number> = {
+    rate_limit: 0,
+    ws_clamped: 0,
+    auth_invalid: 0,
+    admin_denied: 0,
+  };
+
+  constructor(maxCapacity = 200) {
+    this.maxCapacity = Math.max(10, Math.min(1000, Math.floor(maxCapacity)));
+  }
+
+  public record(input: {
+    category: SecurityAnomalyCategory;
+    scope: string;
+    actor?: string;
+    detail: string;
+    ts?: number;
+  }): SecurityAnomalyEvent {
+    const cleanActor = (input.actor || 'anonymous').replace(/[^\w.:@-]/g, '').slice(0, 48) || 'anonymous';
+    const cleanScope = (input.scope || 'unknown').slice(0, 48);
+    const cleanDetail = (input.detail || '').slice(0, 160);
+    const event: SecurityAnomalyEvent = {
+      id: `sec_${++this.seq}`,
+      ts: typeof input.ts === 'number' && Number.isFinite(input.ts) ? input.ts : Date.now(),
+      category: input.category,
+      scope: cleanScope,
+      actor: cleanActor,
+      detail: cleanDetail,
+    };
+    this.totalRecorded += 1;
+    this.counts[input.category] += 1;
+    this.events.push(event);
+    if (this.events.length > this.maxCapacity) {
+      this.events.splice(0, this.events.length - this.maxCapacity);
+    }
+    return event;
+  }
+
+  public getRecent(limit = 30): SecurityAnomalyEvent[] {
+    const safeLimit = Math.max(1, Math.min(this.maxCapacity, Math.floor(limit)));
+    return this.events.slice(-safeLimit).reverse();
+  }
+
+  public getSummary(): SecurityAnomalySummary {
+    const last = this.events.length > 0 ? this.events[this.events.length - 1].ts : null;
+    return {
+      totalRecorded: this.totalRecorded,
+      retainedCount: this.events.length,
+      maxCapacity: this.maxCapacity,
+      countsByCategory: { ...this.counts },
+      lastEventAtMs: last,
+    };
+  }
+}
+
 export function createApiRateLimitMiddleware(options: {
   scope: string;
   maxRequests: number;
   windowMs: number;
+  onRateLimited?: (info: { scope: string; ip: string; retryAfterMs: number }) => void;
 }) {
   const limiter = new SlidingWindowRateLimiter({
     maxRequests: options.maxRequests,
@@ -99,10 +187,16 @@ export function createApiRateLimitMiddleware(options: {
         : Array.isArray(forwarded)
         ? forwarded[0]?.trim()
         : req.ip || req.socket.remoteAddress || 'local';
-    const bucketKey = `${options.scope}:${ipRaw || 'local'}`;
+    const safeIp = ipRaw || 'local';
+    const bucketKey = `${options.scope}:${safeIp}`;
     const verdict = limiter.consume(bucketKey);
     res.setHeader('X-RateLimit-Remaining', String(verdict.remaining));
     if (!verdict.allowed) {
+      options.onRateLimited?.({
+        scope: options.scope,
+        ip: safeIp,
+        retryAfterMs: verdict.retryAfterMs,
+      });
       res.setHeader('Retry-After', String(Math.ceil(verdict.retryAfterMs / 1000)));
       res.status(429).json({
         error: 'RATE_LIMITED',

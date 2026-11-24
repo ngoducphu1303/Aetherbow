@@ -1,0 +1,42 @@
+# AAAA GAME AUDIT — AETHERBOW: HOÀNG ĐẠO TRỖI DẬY (PHASE 1)
+
+- **Ngày kiểm toán**: 2026-11-24
+- **Phạm vi khảo sát**: Toàn bộ kho mã nguồn (`/src/**`, `/server.ts`, `/firestore.rules`, `/scripts/**`, `/tests/**`, `/tools/**`)
+- **Kiến trúc tổng thể**: React 19 + TypeScript + Vite 6 + Three.js WebGL 3D SPA + Express/WebSocket Live AI & Security Backend + Firebase Auth/Firestore + Backblaze B2 / Cloudflare Worker CDN (`scripts/glb-manifest.json`).
+
+---
+
+## 1. Tóm tắt Kiểm toán Toàn hệ thống (20 Phân hệ Cốt lõi)
+
+| # | Phân hệ | Tệp nguồn chính | Trạng thái trước cải tiến | Đánh giá & Vấn đề cốt lõi đã phát hiện |
+|---|---|---|---|---|
+| 1 | **Core Gameplay Loop & 3D Combat Engine** | `src/engine/GameEngine.ts`, `fixedTimestep.ts`, `combatFeelDirector.ts` | Mạnh (8.5/10) | Có Fixed Timestep 60Hz, Hitstop, Perfect Dodge, Boss Stagger, Boss Phase III Punish Window. Tuy nhiên Sylvia dùng trùng `effectKind: 'ember_nova'` với Aurelia thay vì kỹ năng Địa Mạch Lục Bảo riêng. |
+| 2 | **Input, Camera & Game Feel** | `src/engine/cameraCombatRig.ts`, `heroKinematicMotion.ts`, `aaaWave6Director.ts` | Mạnh (8.5/10) | Hỗ trợ WASD/Arrows, Dash/Skill E/Ult Q, tùy chỉnh phím tắt PC, Joystick cảm ứng di động, preset camera chiến thuật/điện ảnh. |
+| 3 | **Hệ thống Tướng & Cân bằng Sức mạnh** | `src/data/heroesData.ts`, `src/data/phase5Data.ts` | Tốt (8.0/10) | 4 tướng Hoàng Đạo (Aurelia Ch.1, Bellona Ch.2, Sylvia Ch.3, Celeste Ch.4) đạt chuẩn chênh lệch Standing DPS ≤ ±12%. Đã khắc phục lỗi `migrateSaveData` không giữ `selectedHeroId` sau reload khi mở tướng qua tiến độ chương. |
+| 4 | **Cấu trúc 12 Chương, Quái & Boss AI** | `src/data/chaptersData.ts`, `src/engine/bossArchetypePatterns.ts` | Mạnh (8.5/10) | 12 chương Hoàng Đạo có `hpScale` (1.35x → 320x), `dmgScale`, `recommendedPower` (1,350 LC → 285,000 LC), Boss Codex Phase III rõ ràng. |
+| 5 | **Tiến trình & Hệ thống RPG Meta** | `src/data/earlyProgressionData.ts`, `gearData.ts`, `talentsData.ts`, `wave12-14Data.ts` | Mạnh (8.5/10) | Rarity gating theo chương ngăn lạm phát đầu game; Free Enhancement Transfer; Pity không bị reset oan; 30-Day Fair Roadmap + Catch-Up. |
+| 6 | **Kinh tế (Sources vs Sinks) & Cân bằng 100h** | `src/data/economyTelemetry.ts` (mới), `fairProgression30Day.ts` | Trung bình-Khá → Tốt | Trước đây mới mô phỏng theo 30 ngày, chưa có mô phỏng mốc thời lượng `5m → 100h` & TTK/TTD. Kết quả mô phỏng mới phát hiện tồn kho Vàng ở mốc 100h (`Sink Ratio = 53.5%`) sau khi Talent chạm trần 160. |
+| 7 | **3D Rendering & Lighting Architecture** | `src/engine/GameEngine.ts`, `zodiacLightingVfxDirector.ts` | **Có lỗi P0 E5430** → Đã khắc phục | `GameEngine` từng gắn cứng `heroLight` + 2 `impactLightPool` `PointLight` vào `this.scene` ngay cả ở Lite/Low-end GPU (ép Intel HD 4000 biên dịch `NUM_POINT_LIGHTS = 3`). Đã sửa bằng `resolveDynamicPointLightPolicy` + `syncPointLightPolicy` tách hoàn toàn về **0 PointLights** trên Lite/E5430/SoftwareGL/Watchdog ≥ 2. |
+| 8 | **Low-End Hardware Safety (Dell Latitude E5430)** | `src/engine/gpuProfile.ts`, `gpuThermalWatchdog.ts`, `vfxBudgetGovernor.ts` | Mạnh (9.0/10) | Auto-detect Intel HD 4000 / SoftwareGL, Watchdog nhiệt 5 cấp (0→4), Crash Sentinel latch, DPR cap, Shadow off, 0-PointLight shader mode, và giảm audio voice trên máy yếu. |
+| 9 | **Asset Pipeline High / Lite & CDN** | `scripts/glb-manifest.json`, `src/engine/glbPipelineValidator.ts` | Tốt (8.2/10) | 173 tệp GLB trên B2/Cloudflare CDN (`58` High, `64` Lite, `57` cặp = `87.7%`, `e5430Safe: true`, tổng gói Lite `32.29 MB`). Còn 1 tệp legacy `hatsune-miku-lite.glb` (3.47 MB > soft cap 2.5 MB) và 1 bản đồ thiếu cặp Lite (`aries-arena-high.glb`). |
+| 10 | **VFX & Đọc Chiến Trường (Combat Readability)** | `src/engine/colorblindTelegraphs.ts`, `zodiacLightingVfxDirector.ts` | Mạnh (8.5/10) | Tách biệt màu + hình học theo phe (Player Kim Cương Vàng/Xanh, Enemy Vòng Đỏ/Cam, Boss Bát Giác Tím Hoàng Gia), có chế độ Mù Màu & Tương Phản Cao. |
+| 11 | **Audio Engine & Sound Design** | `src/audio/soundEngine.ts`, `soundEngine.test.ts` | Mạnh (8.5/10) | Procedural WebAudio SFX + Adaptive Chapter Music + Low-End Audio Throttling khi `lowEndGpu || watchdog >= 2`. 10/10 unit test pass. |
+| 12 | **UI/UX, HUD & Anti-AI-Slop Compliance** | `src/App.tsx`, `src/components/*.tsx` | Tốt → Mạnh | Đã rà soát và gỡ 2 chấm trang trí `animate-pulse` cuối cùng trong `AuctionHouseModal.tsx`. Không dùng `backdrop-blur` đè WebGL, dùng `tabular-nums` cho bảng số. |
+| 13 | **Accessibility (A11y)** | `src/components/SettingsModal.tsx`, `src/App.tsx` | Tốt → Mạnh | Có Cỡ Chữ 3 mức (`100%/115%/130%`), Giảm Chuyển Động, Chế độ Mù Màu, Tương Phản Cao, tùy chỉnh phím PC, và mới bổ sung **Giảm Chớp Sáng (Anti-Flash)** độc lập giảm 75% xung lóe sáng. |
+| 14 | **Save Persistence & Migration** | `src/data/earlyProgressionData.ts`, `src/data/saveIntegrity.ts` | Có 2 lỗi nhỏ → Đã khắc phục | Đã sửa bug di cư thú cưỡi cũ (`azure_dragon`, `aries_steed` → `solarius`) và bug giữ `selectedHeroId` qua tiến độ chương; gia cố `saveIntegrity.ts` (sửa fallback `artemis` → `aurelia`, kẹp trần `level 1..120`, `awakening 0..10`, `heroStars 0..10`, `pity`, khử trùng lặp `claimedMailIds`). |
+| 15 | **Firestore Security Rules** | `firestore.rules` | Rất mạnh (9.2/10) | 7 blueprint kiểm duyệt cấu trúc nghiêm ngặt (`players`, `leaderboard`, `boss_race_entries`, `season_standings`, `liveops_config`, `asset_admins`, `asset_inbox`), default-deny toàn cục, **0 lỗi ESLint**. |
+| 16 | **Backend Express & WebSocket Anti-Cheat** | `server.ts`, `src/server/serverSecurity.ts`, `weeklyBossService.ts` | Tốt → Mạnh | Security Headers, Sliding Window Rate Limiters, kẹp trần WS payload (`duel`, `guild_boss`, `bounty`, `guild_war`), xác thực Firebase ID Token + Admin email verified. Mới bổ sung `SecurityAnomalyTracker` (ring buffer 200 sự kiện) & API `GET /api/admin/security-anomalies`. |
+| 17 | **LiveOps & Admin Governance** | `src/data/liveOpsConfig.ts`, `src/components/AssetAdminLiveOpsTab.tsx` | Mạnh (8.8/10) | 10-snapshot Rollback + diff viewer, kiểm định GLB E5430 thời gian thực, và bảng mới **Giám Sát Bất Thường & An Ninh Máy Chủ** cho Admin. |
+| 18 | **Social / Guild / Co-op / PvP Modes** | `src/server/liveAiPlayersService.ts`, `src/data/wave13Data.ts`, `wave14Data.ts` | Tốt (8.0/10) | Có Live Guild Boss, Bounty, Guild War Bastions, Weekly Boss Leaderboard có chữ ký xác thực, Royal Dutch Auction. |
+| 19 | **Automated Testing & QA Infrastructure** | `tests/*.test.mjs`, `src/**/*.test.ts` | Có 8 test lệch contract → Đã đồng bộ | 8 bài test dữ liệu bị lỗi sau đợt cập nhật Chương 3–4 đã được đồng bộ 100% và bổ sung thêm test cho `economyTelemetry`, `saveIntegrity`, `serverSecurity`, và `PointLightPolicy`. Lưu ý: 27 bài test `src/engine/*.test.ts` đọc `.glb` trực tiếp trên đĩa báo `ENOENT` do tệp nhị phân lưu trên B2/Cloudflare CDN (ghi nhận trung thực trong `QA_TEST_REPORT.md`). |
+| 20 | **Build, TypeScript & Deployment Hygiene** | `package.json`, `vite.config.ts`, `tsconfig.json`, `.env.example` | Rất mạnh (9.0/10) | `tsc --noEmit` 0 lỗi, Vite production bundle sạch, không lộ bí mật trong mã client, `.env.example` chuẩn hóa. |
+
+---
+
+## 2. Các phát hiện trọng yếu & Hành động đã triển khai
+
+1. **P0 — Quá tải Fragment Shader trên Intel HD 4000 (Dell Latitude E5430)**: `heroLight` và `impactLightPool` trước đây được gắn cố định vào `THREE.Scene`. Đã tách động qua `syncPointLightPolicy()` để đạt đúng **0 PointLights** trên Lite/Low-end/SoftwareGL/Watchdog ≥ 2.
+2. **P0 — Lệch Contract & Lỗi Di Cư Dữ Liệu Lưu (Save Migration)**: Sửa `migrateSaveData` bảo toàn `selectedHeroId` theo chương mở khóa và bảo toàn thú cưỡi cũ về `solarius`; trao cho Sylvia kỹ năng chủ động riêng `'jade_bastion'` (Khiên Địa Mạch 12% HP + Sóng Ngọc Lục Bảo).
+3. **P1 — Khuyết Thiếu Dữ Liệu Kinh Tế 8 Mốc Thời Lượng & Tồn Kho Vàng Endgame**: Xây dựng `economyTelemetry.ts` + CLI `tools/simulate-playtime-milestones.ts` chạy toán học thực tế cho `5m → 100h`, phát hiện sớm rủi ro tồn kho Vàng ở mốc 100h (`53.5%` sink ratio) để lập lộ trình sink Endgame.
+4. **P1 — Giám Sát An Ninh Máy Chủ & Chống Gian Lận Save**: Bổ sung `SecurityAnomalyTracker` (ring buffer 200), endpoint bảo mật `GET /api/admin/security-anomalies`, giao diện quản trị đọc-duy-nhất và siết chặt `saveIntegrity.ts`.
+5. **P2 — Accessibility Chống Chớp Sáng (Anti-Flash) & Loại Bỏ Chi Tiết UI Nhiễu**: Bổ sung công tắc `reduceScreenFlash` độc lập trong Cài đặt và gỡ chấm `animate-pulse` cuối cùng trong `AuctionHouseModal.tsx`.
