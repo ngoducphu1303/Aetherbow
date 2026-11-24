@@ -1,5 +1,6 @@
 import { GearSlot, Rarity, SaveData } from '../types/game';
 import { GEAR_TEMPLATES, RARITY_META } from './gearData';
+import { sanitizeDiscoveredEvolutions } from '../engine/skillEvolutionEngine';
 
 export const SAVE_INTEGRITY_CAPS = {
   maxGold: 500_000_000,
@@ -219,6 +220,16 @@ export function validateAndSanitizeSaveIntegrity(save: SaveData): SaveIntegrityR
     cleanChapterMilestones = nextMap;
   }
 
+  // Sanitize discoveredEvolutions (preserve valid evolution IDs, strip corrupted entries)
+  let cleanDiscoveredEvolutions = save.discoveredEvolutions;
+  if (save.discoveredEvolutions !== undefined) {
+    const validEvos = sanitizeDiscoveredEvolutions(save.discoveredEvolutions);
+    if (!Array.isArray(save.discoveredEvolutions) || validEvos.length !== save.discoveredEvolutions.length) {
+      repairs.push('discoveredEvolutions: đã lọc mã tiến hóa kỹ năng không hợp lệ');
+    }
+    cleanDiscoveredEvolutions = validEvos;
+  }
+
   const sanitizedSave: SaveData =
     repairs.length === 0
       ? save
@@ -236,6 +247,7 @@ export function validateAndSanitizeSaveIntegrity(save: SaveData): SaveIntegrityR
             ? (cleanHeroStars as SaveData['heroStars'])
             : save.heroStars,
           chapterMilestones: cleanChapterMilestones,
+          discoveredEvolutions: cleanDiscoveredEvolutions,
         };
 
   return {

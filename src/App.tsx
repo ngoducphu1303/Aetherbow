@@ -1001,6 +1001,8 @@ export default function App() {
   });
 
   const [draftChoices, setDraftChoices] = useState<SkillDefinition[]>([]);
+  const [draftEvolutionOffer, setDraftEvolutionOffer] =
+    useState<import('./types/game').SkillEvolutionOffer | null>(null);
   const [draftStacks, setDraftStacks] = useState<Partial<Record<SkillId, number>>>({});
   const [rerollUsed, setRerollUsed] = useState<boolean>(false);
   const [encounterOffer, setEncounterOffer] = useState<EncounterOffer | null>(null);
@@ -1895,8 +1897,10 @@ export default function App() {
     setPhase(GamePhase.TITLE);
   }, [currentUser, performCloudSave, saveConflict]);
 
-  // Sync dynamic BGM track & 3-phase Boss symphony intensity to game state
+  // Sync dynamic Zodiac Chapter BGM track & 3-phase Boss symphony intensity to game state
   useEffect(() => {
+    soundEngine.setAdaptiveChapterMusic(currentSettings.adaptiveChapterMusic !== false);
+    soundEngine.setChapterTheme(hud.chapterId ?? selectedChapterId);
     if (!enteredGame) {
       soundEngine.setBgmMode('silent');
     } else if (phase === GamePhase.TITLE) {
@@ -1907,7 +1911,15 @@ export default function App() {
     } else {
       soundEngine.setBgmMode('combat');
     }
-  }, [enteredGame, phase, hud.bossName, hud.bossPhase]);
+  }, [
+    enteredGame,
+    phase,
+    hud.bossName,
+    hud.bossPhase,
+    hud.chapterId,
+    selectedChapterId,
+    currentSettings.adaptiveChapterMusic,
+  ]);
 
   // Detect newly unlocked achievements & trigger non-blocking Toast
   useEffect(() => {
@@ -2049,14 +2061,34 @@ export default function App() {
             return prev;
           });
         },
+        onToggleAutoPilotKey: () => {
+          setSave((prev) => {
+            const cur = normalizeAiPreferences(prev.aiPreferences);
+            const nextPrefs = {
+              ...cur,
+              autoPilotEnabled: !cur.autoPilotEnabled,
+            };
+            engine.setAutoPilot(nextPrefs.autoPilotEnabled, nextPrefs.tactic);
+            return { ...prev, aiPreferences: nextPrefs };
+          });
+        },
+        onEvolutionUnlocked: (evoId) => {
+          setSave((prev) => {
+            const existing = prev.discoveredEvolutions ?? [];
+            if (existing.includes(evoId)) return prev;
+            return { ...prev, discoveredEvolutions: [...existing, evoId] };
+          });
+        },
         onRequestSkillDraft: (currentSkills) => {
+          const pendingEvo = engine.getPendingEvolutionOffer();
           const rolled = rollSkillChoices(currentSkills, 3, undefined, {
             chapterId: selectedChapterIdRef.current,
           });
-          if (rolled.length === 0) {
+          if (!pendingEvo && rolled.length === 0) {
             engine.setPhase(GamePhase.PLAYING);
             return;
           }
+          setDraftEvolutionOffer(pendingEvo);
           setDraftStacks(currentSkills);
           setDraftChoices(rolled);
           setRerollUsed(false);
@@ -3539,10 +3571,15 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Accessibility: apply optional larger UI font scale cleanly on root element
+  // Accessibility: apply 3-step UI font scale (100% / 115% / 130%) cleanly on root element
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.documentElement.style.fontSize = currentSettings.uiTextScale === 'large' ? '112%' : '';
+    document.documentElement.style.fontSize =
+      currentSettings.uiTextScale === 'xlarge'
+        ? '130%'
+        : currentSettings.uiTextScale === 'large'
+        ? '115%'
+        : '';
     return () => {
       document.documentElement.style.fontSize = '';
     };
@@ -11786,20 +11823,34 @@ export default function App() {
         />
       )}
 
+      {hud.gpuWatchdogNotice && phase === GamePhase.PLAYING && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-4 py-2 rounded-xl border border-sky-400/60 bg-[#071226]/95 text-sky-100 text-xs font-bold shadow-lg max-w-md text-center">
+          {hud.gpuWatchdogNotice}
+        </div>
+      )}
+
       {draftModalMode && (
         <SkillDraftModal
           mode={draftModalMode}
           level={hud.level}
           skillChoices={draftChoices}
+          evolutionOffer={draftModalMode === 'skill' ? draftEvolutionOffer : null}
           currentStacks={draftStacks}
           rerollUsed={rerollUsed}
           encounterOffer={encounterOffer}
           autoPilotEnabled={Boolean(hud.autoPilotEnabled)}
           autoPilotTactic={currentAiPrefs.tactic}
           autoSkillPick={currentAiPrefs.autoSkillPick}
+          isBossStage={Boolean(hud.isBossStage)}
           onPickSkill={(skillId) => {
+            setDraftEvolutionOffer(null);
             setPhase(GamePhase.PLAYING);
             engineRef.current?.applySkillChoice(skillId);
+          }}
+          onPickEvolution={(evoId) => {
+            setDraftEvolutionOffer(null);
+            setPhase(GamePhase.PLAYING);
+            engineRef.current?.applyEvolutionChoice(evoId);
           }}
           onRerollSkills={() => {
             if (rerollUsed) return;

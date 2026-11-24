@@ -30,4 +30,9 @@ Toàn bộ cơ chế nhận diện phần cứng (`src/engine/hardwareProfile.ts
    - Giới hạn DPR, tắt UnrealBloom/Shadow nặng, thu nhỏ ngân sách hạt particle (`particleDensityScale`), giới hạn vòng nổ mortar & bụi chân (`aaaMobBudget`), và tôn trọng `reducedMotion` (tắt shockwave/rung màn hình khi Ngắt Chiêu).
 3. **Giải phóng bộ nhớ khi đổi màn/chương:** Gọi `disposeObjectResources` & `discardChapter*MapDownload` để tránh rò rỉ VRAM khi chuyển qua lại giữa Sảnh và Chương 1–4.
 4. **Hiệu năng AI & Chiến đấu mới:** `computeSquadCoordinationVector` và `evaluateCastInterrupt` sử dụng toán học vector thuần $O(N)$ không cấp phát đối tượng Three.js trong vòng lặp khung hình, tránh GC stutter.
-5. **Kiểm tra Build Production:** `vite build` hoàn tất trong **~6 giây**, toàn bộ các modal phụ (Admin LiveOps, Asset Admin, Shop, Sự kiện) đều được lazy-load theo chunk riêng.
+5. **Watchdog GPU Thời Gian Thực 5 Bậc (Đợt 2 — `src/engine/gpuThermalWatchdog.ts`):**
+   - Khởi động tự động tại **Bậc 2 (Tắt Bloom & Đổ Bóng)** đối với GPU tích hợp đời cũ như **Dell Latitude E5430 (Intel HD Graphics 4000)**.
+   - Giám sát thời gian khung hình EWMA trên **mọi chương và chế độ chơi**; khi tụt dưới `~26 FPS` (`> 38ms`) liên tục `3.5s` (hoặc nghẽn nặng `> 65ms` trong `1.6s`), Watchdog tự động hạ từng bậc: **Bậc 1 (Tắt Bloom & Thời tiết)** → **Bậc 2 (Tắt Đổ Bóng & Giảm 50% Hạt)** → **Bậc 3 (Hạ DPR 0.75x & Tắt Đèn Động)** → **Bậc 4 (Chế Độ Lite Khẩn Cấp + Chốt Bảo Vệ Phiên Sau)**.
+   - Chống dao động hồi phục (*hysteresis*): chỉ nâng lại 1 bậc sau `10s` chạy ổn định `≥ 51 FPS`; tự động chuyển thẳng Bậc 4 nếu trình duyệt báo mất ngữ cảnh `webglcontextlost`.
+   - Kiểm chứng tự động 4/4 ca kiểm thử trong `tests/gpu-thermal-watchdog.test.mjs`.
+6. **Kiểm tra Build Production:** `vite build` hoàn tất sạch, toàn bộ các modal phụ (Admin LiveOps, Asset Admin, Shop, Sự kiện) đều được lazy-load theo chunk riêng.

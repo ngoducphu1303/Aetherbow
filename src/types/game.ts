@@ -569,9 +569,60 @@ export type CombatKeybindAction =
   | 'activeSkill'
   | 'ultimate'
   | 'pause'
-  | 'cycleCamera';
+  | 'cycleCamera'
+  | 'toggleAutoPilot';
 
 export type CombatKeybinds = Record<CombatKeybindAction, string>;
+
+export type UiTextScaleMode = 'normal' | 'large' | 'xlarge';
+
+export type GpuWatchdogStage = 0 | 1 | 2 | 3 | 4;
+
+export type TelegraphShapeKind =
+  | 'aoe_ring'
+  | 'charge_lane'
+  | 'beam_reticle'
+  | 'interrupt_halo';
+
+export type SkillEvolutionId =
+  | 'evo_fire_solar_lance'
+  | 'evo_fire_inferno_ring'
+  | 'evo_ice_brittle_shatter'
+  | 'evo_ice_glacier_nova'
+  | 'evo_bolt_overload_arc'
+  | 'evo_bolt_storm_web'
+  | 'evo_multi_deadeye_rail'
+  | 'evo_multi_tempest_fan'
+  | 'evo_orbs_sentinel_bastion'
+  | 'evo_orbs_sawblade_vortex'
+  | 'evo_sword_boss_executioner'
+  | 'evo_sword_blade_storm';
+
+export type SkillEvolutionBranch = 'boss' | 'aoe';
+
+export interface SkillEvolutionDef {
+  id: SkillEvolutionId;
+  baseSkillId: SkillId;
+  branch: SkillEvolutionBranch;
+  name: string;
+  tagline: string;
+  description: string;
+  effectSummary: string;
+  accentColor: string;
+  accentHex: number;
+}
+
+export interface SkillEvolutionOffer {
+  baseSkillId: SkillId;
+  baseSkillName: string;
+  branchBoss: SkillEvolutionDef;
+  branchAoe: SkillEvolutionDef;
+}
+
+export interface SkillEvolutionCodexEntry extends SkillEvolutionDef {
+  baseSkillName: string;
+  discovered: boolean;
+}
 
 export type RoomBountyKind =
   | 'no_hit'
@@ -599,6 +650,9 @@ export interface GameSettings {
   bloomEnabled?: boolean;
   hapticsEnabled?: boolean;
   highContrastTelegraphs?: boolean;
+  colorblindTelegraphs?: boolean;
+  autoGpuWatchdog?: boolean;
+  adaptiveChapterMusic?: boolean;
   hudScale?: HudScaleMode;
   combatCameraPreset?: CombatCameraPreset;
   liveDpsMeter?: boolean;
@@ -610,7 +664,7 @@ export interface GameSettings {
   chapter1MapMode?: Chapter1MapMode;
   lowEndSafetyMode?: LowEndSafetyMode;
   reducedMotion?: boolean;
-  uiTextScale?: 'normal' | 'large';
+  uiTextScale?: UiTextScaleMode;
 }
 
 export interface GachaPullHistoryEntry {
@@ -1472,10 +1526,11 @@ export interface SaveData {
   earlyMilestonesClaimed?: string[];
   earlyForgeProgress?: EarlyForgeProgress;
   playtestMetrics?: PlaytestMetrics;
-  // Phase 5: Nightmare Ascension, Synergy Discovery Codex
+  // Phase 5: Nightmare Ascension, Synergy & Skill Evolution Discovery Codex
   nightmareClears?: Record<number, number>;
   selectedNightmareTier?: number;
   discoveredSynergies?: SkillSynergyId[];
+  discoveredEvolutions?: SkillEvolutionId[];
   // Wave 2 AAA + Real-Time AI Preferences & Duel Record
   aiPreferences?: AiPreferencesState;
   // Wave 6: Fair Progression Substat Gold Pity + Co-op AI Role Presets
@@ -2133,9 +2188,12 @@ export interface HudSnapshot {
   coopTacticalOrder?: CoopTacticalOrder;
   adaptiveFpsTier?: AdaptiveFpsTier;
   adaptiveFpsAvg?: number;
+  gpuWatchdogStage?: GpuWatchdogStage;
+  gpuWatchdogNotice?: string | null;
   activeEliteAffixLabel?: string;
   activeArenaHazardLabel?: string;
   activeSynergies?: SkillSynergyId[];
+  activeEvolutions?: SkillEvolutionId[];
   isTowerMode: boolean;
   towerFloor: number;
   isBossRushMode?: boolean;
@@ -3414,6 +3472,11 @@ export interface BossCodexEntry {
   hasPhaseThree: boolean;
   punishBonusPct: number;
   tacticalTip: string;
+  loreExcerpt: string;
+  phasesSummary: [string, string, string];
+  interruptTip: string;
+  starsEarned: number;
+  maxStars: number;
   cleared: boolean;
   attempts: number;
   highestNightmareTier: number;

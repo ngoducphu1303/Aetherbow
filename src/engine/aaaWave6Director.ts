@@ -12,6 +12,7 @@ export const DEFAULT_COMBAT_KEYBINDS: CombatKeybinds = {
   ultimate: 'KeyQ',
   pause: 'Escape',
   cycleCamera: 'KeyC',
+  toggleAutoPilot: 'KeyV',
 };
 
 const COMBAT_KEYBIND_ACTIONS: CombatKeybindAction[] = [
@@ -20,6 +21,7 @@ const COMBAT_KEYBIND_ACTIONS: CombatKeybindAction[] = [
   'ultimate',
   'pause',
   'cycleCamera',
+  'toggleAutoPilot',
 ];
 
 export const COMBAT_KEYBIND_META: Array<{
@@ -31,6 +33,7 @@ export const COMBAT_KEYBIND_META: Array<{
   { action: 'activeSkill', label: 'Kỹ Năng Chủ Động', hint: 'Chiêu đặc trưng của Anh Hùng' },
   { action: 'ultimate', label: 'Tuyệt Kỹ (Chiêu Cuối)', hint: 'Kích hoạt khi đầy 100% nộ' },
   { action: 'cycleCamera', label: 'Đổi Góc Camera Nhanh', hint: 'Chiến Thuật · Cận Cảnh · Toàn Cảnh' },
+  { action: 'toggleAutoPilot', label: 'Bật/Tắt Tự Động Chiến Đấu', hint: 'Chuyển nhanh tay chơi và AI hỗ trợ' },
   { action: 'pause', label: 'Tạm Dừng Trận', hint: 'Mở bảng tạm dừng & cài đặt' },
 ];
 

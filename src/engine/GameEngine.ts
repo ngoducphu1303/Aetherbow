@@ -133,6 +133,19 @@ import {
   updateRoomBountyProgress,
 } from './aaaWave6Director';
 import {
+  getEligibleEvolutionOffers,
+  resolveEvolutionCombatModifiers,
+  SKILL_EVOLUTION_MAP,
+} from './skillEvolutionEngine';
+import {
+  createGpuWatchdogState,
+  GpuWatchdogState,
+  handleGpuWatchdogContextLost,
+  stepGpuThermalWatchdog,
+} from './gpuThermalWatchdog';
+import { resolveGeometricTelegraphSpec } from './colorblindTelegraphs';
+import type { SkillEvolutionId, SkillEvolutionOffer } from '../types/game';
+import {
   applyBossStaggerDamage,
   BossStaggerState,
   createBossStaggerState,
@@ -901,6 +914,8 @@ export interface EngineCallbacks {
   onAppearanceStatusChange?: (status: AppearanceStatus) => void;
   onChapter1MapStatusChange?: (status: AppearanceStatus) => void;
   onGpuSafetyTriggered?: (profile: GpuProfileSummary) => void;
+  onToggleAutoPilotKey?: () => void;
+  onEvolutionUnlocked?: (evoId: SkillEvolutionId) => void;
   onHudUpdate: (hud: HudSnapshot) => void;
   onFloatingDamage: (dmg: FloatingDamage) => void;
   onJoystickUpdate: (joy: JoystickState) => void;
@@ -1162,6 +1177,11 @@ export class GameEngine {
   private bossFinisherName: string | null = null;
   private coopTacticalOrder: CoopTacticalOrder = 'focus_boss';
   private adaptiveFpsGovernor: AdaptiveFpsGovernor = createAdaptiveFpsGovernor(true);
+  private gpuWatchdog: GpuWatchdogState = createGpuWatchdogState(null, true);
+  private gpuWatchdogNotice: string | null = null;
+  private gpuWatchdogNoticeTimer = 0;
+  private colorblindTelegraphs = false;
+  private activeEvolutions: Set<SkillEvolutionId> = new Set();
   private elementalImpactVfxCd = 0;
   private synergyAwakenedName: string | null = null;
   private synergyAwakenedTimer = 0;
@@ -8342,6 +8362,8 @@ export class GameEngine {
     this.stageIndex = 0;
     this.waveIndex = 0;
     this.activeSkills = {};
+    this.activeEvolutions.clear();
+    this.gpuWatchdog = createGpuWatchdogState(this.gpuProfile, this.gpuWatchdog.enabled);
     this.furyBonusMult = 1.0;
     this.revivesLeft = this.hasRune('rune_valkyrie') ? 1 : 0;
     this.hasFullRevive = false;
@@ -8657,6 +8679,49 @@ export class GameEngine {
       }
     }
 
+    this.updateOrbitOrbVisibility();
+    this.phase = GamePhase.PLAYING;
+    this.syncHudImmediate();
+  }
+
+  public getActiveEvolutions(): SkillEvolutionId[] {
+    return Array.from(this.activeEvolutions);
+  }
+
+  public getPendingEvolutionOffer(): SkillEvolutionOffer | null {
+    const offers = getEligibleEvolutionOffers(this.activeSkills, this.activeEvolutions);
+    return offers.length > 0 ? offers[0] : null;
+  }
+
+  public applyEvolutionChoice(evoId: SkillEvolutionId): void {
+    const def = SKILL_EVOLUTION_MAP[evoId];
+    if (!def) {
+      this.phase = GamePhase.PLAYING;
+      return;
+    }
+    this.activeEvolutions.add(evoId);
+    this.callbacks.onEvolutionUnlocked?.(evoId);
+    soundEngine.playSynergyUnlock();
+    this.synergyAwakenedName = `TIẾN HÓA · ${def.name}`;
+    this.synergyAwakenedTimer = 2.8;
+    if (evoId === 'evo_orbs_sentinel_bastion') {
+      this.shield += Math.round(this.maxHp * 0.18);
+    }
+    if (!this.reducedMotionEnabled) {
+      this.spawnParticles(this.px, 1.35, this.pz, def.accentHex, 26);
+      this.spawnShockwave(this.px, this.pz, def.accentHex, 3.8, 0.42);
+    }
+    this.emitFloatingNumber(
+      this.px,
+      2.3,
+      this.pz,
+      0,
+      true,
+      false,
+      undefined,
+      `TIẾN HÓA · ${def.name.toUpperCase()}!`,
+      true
+    );
     this.updateOrbitOrbVisibility();
     this.phase = GamePhase.PLAYING;
     this.syncHudImmediate();
@@ -9275,6 +9340,10 @@ export class GameEngine {
       stageShield += Math.round(
         this.maxHp * 0.45 * (this.activeSkills.sacred_protection ?? 0)
       );
+    }
+    const evoShieldRatio = resolveEvolutionCombatModifiers(this.activeEvolutions).roomStartShieldRatio;
+    if (evoShieldRatio > 0) {
+      stageShield += Math.round(this.maxHp * evoShieldRatio);
     }
     this.shield = Math.max(this.shield, stageShield);
 
@@ -10768,6 +10837,10 @@ export class GameEngine {
     this.graphicsQuality = 'low';
     this.unloadChapter1MapModel();
     this.setChapter1MapStatus('ready');
+    const wdLost = handleGpuWatchdogContextLost(this.gpuWatchdog);
+    this.gpuWatchdog = wdLost.next;
+    this.gpuWatchdogNotice = wdLost.notice;
+    this.gpuWatchdogNoticeTimer = 5.0;
     this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
   };
 
@@ -10838,6 +10911,8 @@ export class GameEngine {
     bloomEnabled?: boolean;
     hapticsEnabled?: boolean;
     highContrastTelegraphs?: boolean;
+    colorblindTelegraphs?: boolean;
+    autoGpuWatchdog?: boolean;
     combatCameraPreset?: CombatCameraPreset;
     photoLightingPreset?: PhotoLightingPreset;
     keybinds?: Partial<CombatKeybinds>;
@@ -10891,6 +10966,12 @@ export class GameEngine {
     this.showDamageNumbersEnabled = cfg.showDamageNumbers;
     this.hapticsEnabled = cfg.hapticsEnabled !== false;
     this.highContrastTelegraphs = Boolean(cfg.highContrastTelegraphs);
+    if (typeof cfg.colorblindTelegraphs === 'boolean') {
+      this.colorblindTelegraphs = cfg.colorblindTelegraphs;
+    }
+    if (typeof cfg.autoGpuWatchdog === 'boolean') {
+      this.gpuWatchdog = createGpuWatchdogState(this.gpuProfile, cfg.autoGpuWatchdog);
+    }
     if (cfg.combatCameraPreset) {
       this.combatCameraPreset = cfg.combatCameraPreset;
     }
@@ -10997,6 +11078,8 @@ export class GameEngine {
       this.triggerHeroActiveSkill();
     } else if (code === kb.cycleCamera && !this.keys[code]) {
       this.quickCycleCombatCamera();
+    } else if (code === kb.toggleAutoPilot && !this.keys[code]) {
+      this.callbacks.onToggleAutoPilotKey?.();
     } else if (code === 'KeyX' && !this.keys[code]) {
       this.triggerWeaponOverdrive();
     } else if ((this.isCoopRaidMode || this.coopAllies.length > 0) && !this.keys[code]) {
@@ -12316,6 +12399,59 @@ export class GameEngine {
               this.composer.setPixelRatio(nextDpr);
             }
           }
+        }
+      }
+    }
+
+    // Real-Time GPU Thermal & Frame-Time Watchdog (Dell Latitude E5430 & All-Chapter Protection)
+    if (this.gpuWatchdogNoticeTimer > 0) {
+      this.gpuWatchdogNoticeTimer = Math.max(0, this.gpuWatchdogNoticeTimer - dt);
+      if (this.gpuWatchdogNoticeTimer === 0) {
+        this.gpuWatchdogNotice = null;
+      }
+    }
+    if (this.gpuWatchdog.enabled && this.phase === GamePhase.PLAYING && !this.isSoftwareGl) {
+      const wdStep = stepGpuThermalWatchdog(this.gpuWatchdog, this.lastRawFrameDt * 1000);
+      this.gpuWatchdog = wdStep.next;
+      if (wdStep.changed) {
+        const wb = wdStep.budget;
+        if (this.bloomPass) {
+          this.bloomPass.enabled = wb.bloomAllowed && this.bloomEnabled && activeBudget.bloomAllowed;
+        }
+        if (this.starfallMesh) {
+          this.starfallMesh.visible = wb.starfallAllowed && this.starfallEnabled;
+        }
+        if (!wb.shadowsAllowed) {
+          this.renderer.shadowMap.enabled = false;
+          this.keyLight.castShadow = false;
+        } else if (activeBudget.shadowMapSize > 0 && this.graphicsQuality !== 'low') {
+          this.renderer.shadowMap.enabled = true;
+          this.keyLight.castShadow = true;
+        }
+        this.particleDensityScale = Math.max(
+          0.16,
+          Math.min(this.particleDensityScale, wb.particleBudgetScale)
+        );
+        const cappedDpr = Math.min(this.getTargetPixelRatio(), wb.dprCap);
+        this.renderer.setPixelRatio(cappedDpr);
+        if (this.composer) {
+          this.composer.setPixelRatio(cappedDpr);
+        }
+        if (!wb.dynamicArenaLights && this.rimLight) {
+          this.rimLight.intensity = 0;
+        }
+        if (wdStep.shouldPersistSafeLatch) {
+          tripGpuCrashSentinel(
+            'Watchdog GPU phát hiện nghẽn khung hình kéo dài · Đã kích hoạt Chế Độ Lite An Toàn toàn hệ thống'
+          );
+          this.gpuProfile = refreshStartupGpuProfile();
+          this.lowEndSafetyMode = 'on';
+          this.lowEndGpu = true;
+          this.callbacks.onGpuSafetyTriggered?.(this.gpuProfile);
+        }
+        if (wdStep.notice && !this.reducedMotionEnabled) {
+          this.gpuWatchdogNotice = wdStep.notice;
+          this.gpuWatchdogNoticeTimer = 4.2;
         }
       }
     }
@@ -14371,6 +14507,7 @@ export class GameEngine {
       this.attackCooldown -= dt;
     }
 
+    const evoModsSpeed = resolveEvolutionCombatModifiers(this.activeEvolutions);
     const speedBonus =
       (1 +
         (this.activeSkills.aspd_boost ?? 0) * 0.24 +
@@ -14379,7 +14516,8 @@ export class GameEngine {
         (this.alexCadenceTimer > 0 ? 0.28 : 0) +
         (this.alexOverdriveTimer > 0 ? 0.45 : 0) +
         (this.activeRoomChaosEvent?.id === 'wind_frenzy' ? 0.35 : 0)) *
-      this.weaponOverdriveBuffs.aspdMult;
+      this.weaponOverdriveBuffs.aspdMult *
+      evoModsSpeed.attackSpeedMult;
     const baseAttackInterval = Math.max(
       0.13,
       0.56 / (this.baseStats.attackSpeedMult * speedBonus)
@@ -14568,6 +14706,11 @@ export class GameEngine {
     for (let i = 0; i < entries.length; i++) {
       this.volleyQueue.push(entries[i]);
     }
+    const evoVolley = resolveEvolutionCombatModifiers(this.activeEvolutions);
+    if (evoVolley.extraDiagonalArrows > 0) {
+      this.volleyQueue.push({ delay: 0, angleOffset: 0.42, lateral: 0, isPrimary: false });
+      this.volleyQueue.push({ delay: 0, angleOffset: -0.42, lateral: 0, isPrimary: false });
+    }
 
     const beatRes = advanceComboBeat(this.comboBeat);
     this.comboBeat = beatRes.nextBeat;
@@ -14729,7 +14872,9 @@ export class GameEngine {
       (isAtreusOrb ? 3 : 0) +
       (wave6Counter.piercing ? 3 : isCounterShot ? 2 : 0) +
       (isOvercharge ? 2 : isComboFinisher ? 1 : 0);
-    proj.ricochetLeft = (this.activeSkills.ricochet ?? 0) * 2;
+    proj.ricochetLeft =
+      (this.activeSkills.ricochet ?? 0) * 2 +
+      resolveEvolutionCombatModifiers(this.activeEvolutions).extraRicochet;
     proj.wallBounceLeft = (this.activeSkills.bouncy_wall ?? 0) * 2;
     proj.hitEnemyIds.clear();
     proj.blaze = blaze;
@@ -14928,20 +15073,26 @@ export class GameEngine {
       }
     }
 
-    // 2. Flying Swords / Sword of Time (+ Homing Blades Synergy)
+    // 2. Flying Swords / Sword of Time (+ Homing Blades Synergy + Branching Skill Evolutions)
     const swordStacks = (this.activeSkills.flying_swords ?? 0) + (this.hasRune('sword_of_time') ? 1 : 0);
     if (swordStacks > 0) {
       const hasHomingBlades = evaluateActiveSynergies(this.activeSkills).includes('homing_blades');
+      const evoSword = resolveEvolutionCombatModifiers(this.activeEvolutions);
       this.swordStrikeTimer += dt;
       const baseInterval = this.hasRune('sword_of_time') ? 1.45 : 1.7;
-      const interval = hasHomingBlades ? baseInterval * 0.8 : baseInterval;
+      const interval =
+        (hasHomingBlades ? baseInterval * 0.8 : baseInterval) * evoSword.swordCooldownMult;
       if (this.swordStrikeTimer >= interval) {
         this.swordStrikeTimer = 0;
         const twinMult = (this.activeSkills.twin_strike ?? 0) > 0 ? 2 : 1;
-        const count = Math.min(6, swordStacks * twinMult);
+        const count = Math.min(8, swordStacks * twinMult + evoSword.extraFlyingSwords);
         soundEngine.playSwordStrike();
+        const bossPriorityTarget =
+          evoSword.swordBossDamageMult > 1
+            ? [...liveEnemies].sort((a, b) => (b.isBoss ? 1e9 : b.hp) - (a.isBoss ? 1e9 : a.hp))[0]
+            : null;
         for (let i = 0; i < count; i++) {
-          const target = liveEnemies[i % liveEnemies.length];
+          const target = bossPriorityTarget ?? liveEnemies[i % liveEnemies.length];
           const proj = this.arrowPool.find((p) => !p.active);
           if (!proj) break;
           const dx = target.x - this.px;
@@ -14958,11 +15109,17 @@ export class GameEngine {
           proj.z = this.pz + Math.cos(yaw) * 0.7;
           proj.vx = Math.sin(yaw) * 26;
           proj.vz = Math.cos(yaw) * 26;
+          const executeMult =
+            target.isBoss && target.hp / Math.max(1, target.maxHp) < 0.35
+              ? 1 + evoSword.swordExecuteBonus
+              : 1.0;
           proj.damage =
             this.baseStats.attack *
             this.getCurrentAtkMultiplier() *
             1.22 *
-            (hasHomingBlades ? 1.2 : 1.0);
+            (hasHomingBlades ? 1.2 : 1.0) *
+            (target.isBoss ? evoSword.swordBossDamageMult : 1.0) *
+            executeMult;
           proj.radius = 0.35;
           proj.life = 1.8;
           proj.pierceLeft = 1;
@@ -15188,11 +15345,19 @@ export class GameEngine {
     if (count <= 0) return;
     const activeSynergies = evaluateActiveSynergies(this.activeSkills);
     const hasSolarOrbit = activeSynergies.includes('solar_orbit');
+    const evoOrbs = resolveEvolutionCombatModifiers(this.activeEvolutions);
     const orbitR = 2.45;
-    const speed = ((this.activeSkills.super_circle ?? 0) > 0 ? 4.8 : 3.8) * (hasSolarOrbit ? 1.28 : 1.0);
+    const speed =
+      ((this.activeSkills.super_circle ?? 0) > 0 ? 4.8 : 3.8) *
+      (hasSolarOrbit ? 1.28 : 1.0) *
+      evoOrbs.orbitSpeedMult;
     const baseAngle = this.elapsed * speed;
     const sawRune = this.hasRune('sawblade_circle');
-    const dmgMult = 0.72 * (sawRune ? 1.55 : 1.0) * (hasSolarOrbit ? 1.25 : 1.0);
+    const dmgMult =
+      0.72 *
+      (sawRune ? 1.55 : 1.0) *
+      (hasSolarOrbit ? 1.25 : 1.0) *
+      evoOrbs.orbitDamageMult;
 
     for (let i = 0; i < count; i++) {
       const a = baseAngle + (i * Math.PI * 2) / count;
@@ -16587,7 +16752,18 @@ export class GameEngine {
         const isImpactFlash = cue.inStrikeWindow || e.telegraphTimer <= 0.12;
         const strikeFlashHex = 0xfff7ed; // Crisp Hades white-gold flash in final 20%
 
-        const tp = resolveTelegraphPalette(this.highContrastTelegraphs);
+        const cbSafe = this.highContrastTelegraphs || this.colorblindTelegraphs;
+        const tp = resolveTelegraphPalette(cbSafe);
+        const geoSpec = resolveGeometricTelegraphSpec(
+          e.telegraphType === 'shot'
+            ? 'beam_reticle'
+            : e.telegraphType === 'lane'
+            ? 'charge_lane'
+            : e.isBoss && e.bossPhase >= 2
+            ? 'interrupt_halo'
+            : 'aoe_ring',
+          cbSafe
+        );
         if (e.telegraphType === 'shot') {
           e.laserLine.visible = true;
           const posAttr = e.laserLine.geometry.getAttribute(
@@ -16601,8 +16777,8 @@ export class GameEngine {
             cue.inStrikeWindow && aaaMobBudget.allowStrikeRingFlash
               ? strikeFlashHex
               : isImpactFlash
-              ? tp.imminentHex
-              : tp.laneHex
+              ? geoSpec.secondaryHex
+              : geoSpec.primaryHex
           );
           lMat.opacity = isImpactFlash ? 1.0 : 0.72 + progress * 0.22;
         } else if (e.telegraphType === 'slam' || e.telegraphType === 'lunge') {
@@ -16611,25 +16787,31 @@ export class GameEngine {
           e.telegraphGroup.scale.setScalar(
             e.slamRadius * (cue.inStrikeWindow ? cue.ringScaleBoost : 0.98 + pulse * 0.03)
           );
+          if (cbSafe) {
+            // Geometric differentiation: rotate double/octagonal floor cue smoothly when colorblind-safe mode is on
+            e.telegraphGroup.rotation.y = this.elapsed * (geoSpec.shape === 'interrupt_halo' ? 2.4 : 0.9);
+          }
           e.telegraphFill.scale.setScalar(0.15 + progress * 0.85);
           const fillMat = e.telegraphFill.material as THREE.MeshBasicMaterial;
           fillMat.color.setHex(
-            cue.inStrikeWindow ? strikeFlashHex : isImpactFlash ? tp.ringHex : tp.fillHex
+            cue.inStrikeWindow ? strikeFlashHex : isImpactFlash ? geoSpec.secondaryHex : geoSpec.primaryHex
           );
           fillMat.opacity = cue.fillOpacity;
           if (e.telegraphOuterRing) {
             const outMat = e.telegraphOuterRing.material as THREE.MeshBasicMaterial;
             outMat.color.setHex(
-              cue.inStrikeWindow ? strikeFlashHex : isImpactFlash ? tp.imminentHex : tp.ringHex
+              cue.inStrikeWindow ? strikeFlashHex : isImpactFlash ? geoSpec.accentHex : geoSpec.secondaryHex
             );
             outMat.opacity = cue.ringOpacity;
           }
           if (e.telegraphCountdownRing) {
             const cd = computeCountdownRingScale(progress);
-            e.telegraphCountdownRing.scale.setScalar(Math.min(cd.scale, cue.countdownScale));
+            e.telegraphCountdownRing.scale.setScalar(
+              Math.min(cd.scale, cue.countdownScale) * (cbSafe && geoSpec.useDoubleRing ? 0.88 : 1.0)
+            );
             const cdMat = e.telegraphCountdownRing.material as THREE.MeshBasicMaterial;
             cdMat.color.setHex(
-              cue.inStrikeWindow ? strikeFlashHex : cd.isImminent ? tp.imminentHex : tp.ringHex
+              cue.inStrikeWindow ? strikeFlashHex : cd.isImminent ? geoSpec.accentHex : geoSpec.primaryHex
             );
             cdMat.opacity = cue.inStrikeWindow || cd.isImminent ? 1.0 : 0.92;
           }
@@ -19624,10 +19806,17 @@ export class GameEngine {
     }
 
     const activeSynergies = evaluateActiveSynergies(this.activeSkills);
+    const evoMods = resolveEvolutionCombatModifiers(this.activeEvolutions);
     let mult = 1.0;
     if (this.markedEnemyIds.has(e.id)) mult += 0.2;
     if (e.isBoss && !e.isArenaRival && (this.baseStats.bossDamageBonus ?? 0) > 0) {
       mult += this.baseStats.bossDamageBonus;
+    }
+    if ((e.isBoss || e.isElite) && !e.isArenaRival && evoMods.bossDamageMult > 1) {
+      mult *= evoMods.bossDamageMult;
+    }
+    if (isCrit && evoMods.critDamageBonus > 0) {
+      mult *= 1 + evoMods.critDamageBonus;
     }
     if (this.isCoopRaidMode && e.isBoss) {
       mult *= getCoopResonanceDamageMult(this.coopSynergyClock);
@@ -19635,8 +19824,19 @@ export class GameEngine {
     if ((e.isBoss || e.isElite) && !e.isArenaRival && activeSynergies.includes('boss_barrage')) {
       mult += 0.14;
     }
-    if (e.chillTimer > 0 && ((this.activeSkills.super_freeze ?? 0) > 0 || this.hasRune('rune_frost'))) {
-      mult += 0.25;
+    if (e.chillTimer > 0) {
+      if ((this.activeSkills.super_freeze ?? 0) > 0 || this.hasRune('rune_frost')) {
+        mult += 0.25;
+      }
+      if (evoMods.chilledTargetDamageMult > 1) {
+        mult *= evoMods.chilledTargetDamageMult;
+      }
+    }
+    if (storm && evoMods.lightningDamageMult > 1) {
+      mult *= evoMods.lightningDamageMult;
+      if (e.isBoss && evoMods.ultChargeOnBossHitMult > 1 && coopAllyIndex === undefined) {
+        this.ultCharge = Math.min(100, this.ultCharge + 1.8);
+      }
     }
 
     // Constellation Elemental Mastery & Elemental Trial Tower Affinity (+50% matching element)
@@ -19742,12 +19942,16 @@ export class GameEngine {
         if (e.isBoss && this.bossStaggerState && interruptOutcome.bossStaggerBonusRatio > 0) {
           this.bossStaggerState.current = Math.min(
             this.bossStaggerState.max,
-            this.bossStaggerState.current + this.bossStaggerState.max * interruptOutcome.bossStaggerBonusRatio
+            this.bossStaggerState.current +
+              this.bossStaggerState.max *
+                interruptOutcome.bossStaggerBonusRatio *
+                evoMods.bossShieldBreakMult
           );
         }
         mult *= 1 + interruptOutcome.exposedDamageBonus;
         resolvedLabel = interruptOutcome.floatingLabel;
         soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
+        soundEngine.playInterruptFanfare();
         if (!this.reducedMotionEnabled) {
           this.spawnShockwave(e.x, e.z, 0x38bdf8, e.isBoss ? 3.0 : 2.0, 0.26);
         }
@@ -20243,14 +20447,48 @@ export class GameEngine {
       e.burnTimer = 2.8;
       e.burnDps = Math.max(
         e.burnDps,
-        finalDmg * 0.26 * superMult * flameRuneMult * infernoBurnMult
+        finalDmg * 0.26 * superMult * flameRuneMult * infernoBurnMult * evoMods.burnDamageMult
       );
+      if (evoMods.fireAoeRadius > 0 && coopAllyIndex === undefined) {
+        let spreadCount = 0;
+        for (const other of this.enemies) {
+          if (spreadCount >= 4) break;
+          if (!other || other.dead || other.id === e.id || other.spawnTimer > 0) continue;
+          if (Math.hypot(other.x - e.x, other.z - e.z) <= evoMods.fireAoeRadius) {
+            spreadCount += 1;
+            const ringDmg = Math.max(2, Math.round(finalDmg * 0.34));
+            other.hp -= ringDmg;
+            other.burnTimer = Math.max(other.burnTimer, 2.2);
+            other.burnDps = Math.max(other.burnDps, e.burnDps * 0.75);
+            this.dmgElemental += ringDmg;
+          }
+        }
+        if (spreadCount > 0 && !this.reducedMotionEnabled) {
+          this.spawnShockwave(e.x, e.z, 0xf97316, evoMods.fireAoeRadius, 0.22);
+        }
+      }
     }
     if (poison) {
       e.poisonDps = Math.max(e.poisonDps, finalDmg * 0.22 * flameRuneMult * venomSynergyMult);
     }
     if (frost) {
       e.chillTimer = 2.6;
+      if (evoMods.iceNovaRadius > 0 && coopAllyIndex === undefined) {
+        let frostedCount = 0;
+        for (const other of this.enemies) {
+          if (!other || other.dead || other.id === e.id || other.spawnTimer > 0) continue;
+          if (Math.hypot(other.x - e.x, other.z - e.z) <= evoMods.iceNovaRadius) {
+            frostedCount += 1;
+            other.chillTimer = Math.max(other.chillTimer, 2.8);
+            const novaDmg = Math.max(2, Math.round(finalDmg * 0.28));
+            other.hp -= novaDmg;
+            this.dmgElemental += novaDmg;
+          }
+        }
+        if (frostedCount > 0 && !this.reducedMotionEnabled) {
+          this.spawnShockwave(e.x, e.z, 0x67e8f9, evoMods.iceNovaRadius, 0.24);
+        }
+      }
     }
 
     const hitPan = computeSpatialPan(e.x, ARENA_HALF_W);
@@ -20481,12 +20719,15 @@ export class GameEngine {
     if (shouldChain) {
       const hasStormChain = activeSynergies.includes('storm_chain');
       const maxChains =
-        ((this.activeSkills.super_bolt ?? 0) > 0 ? 3 : 1) + (hasStormChain ? 1 : 0);
+        ((this.activeSkills.super_bolt ?? 0) > 0 ? 3 : 1) +
+        (hasStormChain ? 1 : 0) +
+        evoMods.lightningExtraJumps;
+      const chainRange = 6.2 * evoMods.lightningRangeMult;
       const chainExclude = new Set<number>([e.id]);
       let currX = e.x;
       let currZ = e.z;
       for (let c = 0; c < maxChains; c++) {
-        const nearby = this.findNearestEnemy(currX, currZ, chainExclude, 6.2);
+        const nearby = this.findNearestEnemy(currX, currZ, chainExclude, chainRange);
         if (!nearby) break;
         chainExclude.add(nearby.id);
         const arcDmg = Math.max(
@@ -21512,7 +21753,8 @@ export class GameEngine {
     const finalDr = effectiveDr * (1 - drPierce);
     const powerPressureMult =
       !this.isArenaMode && !this.isTrainingMode ? this.activePowerPressure.enemyDamageDealtMult : 1.0;
-    let dmg = Math.max(2, Math.round(rawAmount * powerPressureMult * (1 - finalDr)));
+    const evoDrMult = resolveEvolutionCombatModifiers(this.activeEvolutions).damageTakenMult;
+    let dmg = Math.max(2, Math.round(rawAmount * powerPressureMult * (1 - finalDr) * evoDrMult));
     if (this.shield > 0) {
       const absorbed = Math.min(this.shield, dmg);
       this.shield -= absorbed;
@@ -23575,6 +23817,8 @@ export class GameEngine {
       coopTacticalOrder: this.isCoopRaidMode ? this.coopTacticalOrder : undefined,
       adaptiveFpsTier: this.adaptiveFpsGovernor.tier,
       adaptiveFpsAvg: Math.round(this.adaptiveFpsGovernor.avgFps),
+      gpuWatchdogStage: this.gpuWatchdog.stage,
+      gpuWatchdogNotice: this.gpuWatchdogNotice,
       isElementalTowerMode: this.isElementalTowerMode,
       elementalTowerId: this.isElementalTowerMode ? this.elementalTowerId : undefined,
       elementalTowerFloor: this.isElementalTowerMode ? this.elementalTowerFloor : undefined,
@@ -23646,6 +23890,7 @@ export class GameEngine {
         : null,
       activeSkills: { ...this.activeSkills },
       activeSynergies: evaluateActiveSynergies(this.activeSkills),
+      activeEvolutions: Array.from(this.activeEvolutions),
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,
       comboTimerRatio: this.comboCount > 0 ? Math.max(0, this.comboTimer / this.comboWindow) : 0,

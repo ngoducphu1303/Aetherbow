@@ -522,14 +522,78 @@ export function buildSynergyCodexEntries(save: SaveData): SynergyCodexEntry[] {
   }));
 }
 
+const BOSS_CODEX_DOSSIERS: Record<
+  number,
+  {
+    loreExcerpt: string;
+    phasesSummary: [string, string, string];
+    interruptTip: string;
+  }
+> = {
+  1: {
+    loreExcerpt:
+      'Thánh Điện Sư Tử lưu giữ ngọn lửa Thái Dương cổ xưa. Khi Nhật Thạch rạn nứt, Sư Vương bị tà khí thiêu đốt và phong tỏa cửa ngõ Tinh Giới.',
+    phasesSummary: [
+      'Pha I (100–65% HP): Sóng lửa quạt & nhảy vồ đánh dấu vòng đỏ.',
+      'Pha II (65–30% HP): Vòng Nhật Hoa liên hoàn + gọi hộ vệ tinh anh.',
+      'Pha III (<30% HP): Cuồng Nộ Thái Dương — vận chiêu nổ toàn sân có thể Ngắt Chiêu.',
+    ],
+    interruptTip: 'Dùng Kỹ Năng Chủ Động (E) hoặc Tuyệt Kỹ (Q) khi vòng vàng Ngắt Chiêu xuất hiện ở Pha II–III để làm choáng 2.2s.',
+  },
+  2: {
+    loreExcerpt:
+      'Lò Rèn Hỏa Dương là nơi rèn chiến giáp cho quân đoàn Hoàng Đạo. Hỏa Dương Chiến Vương dẫn đầu đội quân dung nham thách thức mọi kẻ xâm nhập.',
+    phasesSummary: [
+      'Pha I (100–65% HP): Lao húc đường thẳng (Mũi Tên Đứt Khúc) kèm tia lửa.',
+      'Pha II (65–30% HP): Húc đôi đổi hướng + rải đá dung nham nổ chậm.',
+      'Pha III (<30% HP): Hỏa Khúc Chiến Trống — vận chiêu Địa Chấn Nóng Chảy có thể Ngắt Chiêu.',
+    ],
+    interruptTip: 'Lướt chéo góc 90° qua làn Lao Húc để kích Né Hoàn Hảo (-2s hồi E), sau đó tung E cắt ngang cú gầm nạp lực.',
+  },
+  3: {
+    loreExcerpt:
+      'Đền Thờ Ngọc Lục Bảo kết nối địa mạch sự sống. Địa Thần Kim Ngưu khoác giáp ngọc bảo vệ trái tim thánh địa trước cơn bão hỗn mang.',
+    phasesSummary: [
+      'Pha I (100–65% HP): Giậm đất tạo vòng chấn động đôi & ném đá ngọc.',
+      'Pha II (65–30% HP): Dựng Khiên Địa Mạch + gọi cột gai lục bảo theo vòng.',
+      'Pha III (<30% HP): Bão Ngọc Chấn Thiên — vận chiêu Địa Mạch Sụp Đổ có thể Ngắt Chiêu.',
+    ],
+    interruptTip: 'Giữ khoảng cách ngoài vòng đôi khi Boss giơ búa; dồn sát thương Băng/Phá Giáp lúc vòng Phá Chiêu mở ra.',
+  },
+  4: {
+    loreExcerpt:
+      'Gương Tinh Tú Song Tử phản chiếu hai dòng thời gian song song. Ảo Ảnh Vương phân tách thực tại để thử thách khả năng đọc trận địa của xạ thủ.',
+    phasesSummary: [
+      'Pha I (100–65% HP): Bắn song tia gương chữ thập & dịch chuyển biên sân.',
+      'Pha II (65–30% HP): Triệu hồi phân thân Song Ảnh bắn đạn đan lưới.',
+      'Pha III (<30% HP): Khúc Xạ Tinh Vân — tụ tia laser quét toàn sân có thể Ngắt Chiêu.',
+    ],
+    interruptTip: 'Ưu tiên nhánh Tiến Hóa AoE để dọn nhanh phân thân, sau đó ngắt chiêu tụ tia laser ở Pha III để mở cửa sổ Phản Đòn.',
+  },
+};
+
 export function buildBossCodexEntries(save: SaveData): BossCodexEntry[] {
   const bossStats = save.playtestMetrics?.bossAttempts ?? {};
   const nightmareClears = save.nightmareClears ?? {};
   return CHAPTERS.map((ch) => {
     const bossKey = getBossTelemetryKey(ch.id, ch.stages.length) ?? `ch${ch.id}_boss`;
     const stat = bossStats[bossKey];
-    const hasPhaseThree = ch.id >= 10;
+    const hasPhaseThree = ch.id <= 4 || ch.id >= 10;
     const cleared = Boolean(stat?.cleared) || save.highestChapterCleared >= ch.id;
+    const milestone = save.chapterMilestones?.[ch.id];
+    const starsEarned = milestone?.starsEarned?.length ?? (cleared ? 1 : 0);
+    const dossier = BOSS_CODEX_DOSSIERS[ch.id] ?? {
+      loreExcerpt: `${ch.name} là pháo đài Hoàng Đạo canh giữ bí mật cổ đại do ${ch.bossName} trấn thủ.`,
+      phasesSummary: [
+        'Pha I: Đòn đánh chuẩn xác với cảnh báo sàn 3D rõ ràng.',
+        'Pha II (<=50% HP): Tăng tốc nhịp chiêu và bổ sung bẫy địa hình.',
+        hasPhaseThree
+          ? 'Pha III (<=25% HP): Tối Thượng cuồng hóa — phần thưởng Phản Đòn tăng mạnh.'
+          : 'Giai đoạn kết liễu: Tận dụng cửa sổ Phản Đòn ngay sau loạt chiêu lớn.',
+      ] as [string, string, string],
+      interruptTip:
+        'Canh chuẩn Né Hoàn Hảo để rút ngắn hồi chiêu E và dồn sát thương trong Cửa Sổ Phản Đòn.',
+    };
     return {
       chapterId: ch.id,
       chapterName: ch.name,
@@ -541,6 +605,11 @@ export function buildBossCodexEntries(save: SaveData): BossCodexEntry[] {
       ),
       tacticalTip:
         BOSS_TACTICAL_TIPS[ch.id] ?? 'Quan sát vòng cảnh báo 3D trên sàn và tận dụng cửa sổ Phản Đòn.',
+      loreExcerpt: dossier.loreExcerpt,
+      phasesSummary: dossier.phasesSummary,
+      interruptTip: dossier.interruptTip,
+      starsEarned: Math.min(4, Math.max(0, starsEarned)),
+      maxStars: 4,
       cleared,
       attempts: stat?.attempts ?? (cleared ? 1 : 0),
       highestNightmareTier: nightmareClears[ch.id] ?? 0,

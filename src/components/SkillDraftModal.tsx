@@ -23,12 +23,15 @@ import {
 import { computeSkillSynergyProgress } from '../engine/aaaWave3Director';
 import { explainAiSkillChoice } from '../engine/aaaFivePillarsDirector';
 import { selectBestSkillChoice } from '../engine/aiCombatBrain';
+import { selectAiEvolutionBranch } from '../engine/skillEvolutionEngine';
 import {
   AiAutoPilotTactic,
   EncounterOffer,
   SkillBuildTag,
   SkillCategory,
   SkillDefinition,
+  SkillEvolutionId,
+  SkillEvolutionOffer,
   SkillId,
   WheelOutcome,
 } from '../types/game';
@@ -37,13 +40,16 @@ interface SkillDraftModalProps {
   mode: 'skill' | 'valkyrie' | 'angel' | 'devil' | 'wheel';
   level: number;
   skillChoices: SkillDefinition[];
+  evolutionOffer?: SkillEvolutionOffer | null;
   currentStacks: Partial<Record<SkillId, number>>;
   rerollUsed: boolean;
   encounterOffer: EncounterOffer | null;
   autoPilotEnabled?: boolean;
   autoPilotTactic?: AiAutoPilotTactic;
   autoSkillPick?: boolean;
+  isBossStage?: boolean;
   onPickSkill: (skillId: SkillId) => void;
+  onPickEvolution?: (evoId: SkillEvolutionId) => void;
   onRerollSkills: () => void;
   onAngelChoice: (choice: 'max_hp' | 'heal') => void;
   onDevilPact: (acceptSkill?: SkillId) => void;
@@ -162,13 +168,16 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   mode,
   level,
   skillChoices,
+  evolutionOffer = null,
   currentStacks,
   rerollUsed,
   encounterOffer,
   autoPilotEnabled = false,
   autoPilotTactic = 'balanced',
   autoSkillPick = true,
+  isBossStage = false,
   onPickSkill,
+  onPickEvolution,
   onRerollSkills,
   onAngelChoice,
   onDevilPact,
@@ -198,8 +207,13 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
     }, 1850);
   };
 
-  const isSkillMode = mode === 'skill' || mode === 'valkyrie';
+  const isEvolutionMode = mode === 'skill' && Boolean(evolutionOffer && onPickEvolution);
+  const isSkillMode = (mode === 'skill' || mode === 'valkyrie') && !isEvolutionMode;
   const activeSynergyIds = evaluateActiveSynergies(currentStacks);
+  const recommendedAutoEvolution =
+    isEvolutionMode && evolutionOffer && autoPilotEnabled && autoSkillPick && !autoCancelled
+      ? selectAiEvolutionBranch(evolutionOffer, autoPilotTactic, isBossStage)
+      : null;
   const recommendedAutoSkill =
     isSkillMode && autoPilotEnabled && autoSkillPick && !autoCancelled
       ? selectBestSkillChoice(skillChoices, currentStacks, autoPilotTactic)
@@ -208,6 +222,21 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   const autoSkillRationale = recommendedAutoSkill
     ? explainAiSkillChoice(recommendedAutoSkill, currentStacks, autoPilotTactic)
     : null;
+
+  useEffect(() => {
+    if (!recommendedAutoEvolution || !onPickEvolution) return;
+    setAutoCountdownMs(3500);
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      const left = Math.max(0, 3500 - (Date.now() - startedAt));
+      setAutoCountdownMs(left);
+      if (left <= 0) {
+        window.clearInterval(interval);
+        onPickEvolution(recommendedAutoEvolution.id);
+      }
+    }, 100);
+    return () => window.clearInterval(interval);
+  }, [recommendedAutoEvolution, onPickEvolution]);
 
   useEffect(() => {
     if (!recommendedAutoSkill) return;
@@ -223,6 +252,23 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
     }, 100);
     return () => window.clearInterval(interval);
   }, [recommendedAutoSkill, onPickSkill]);
+
+  useEffect(() => {
+    if (!isEvolutionMode || !evolutionOffer || !onPickEvolution) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return;
+      if (e.key === '1') {
+        e.preventDefault();
+        onPickEvolution(evolutionOffer.branchBoss.id);
+      } else if (e.key === '2') {
+        e.preventDefault();
+        onPickEvolution(evolutionOffer.branchAoe.id);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isEvolutionMode, evolutionOffer, onPickEvolution]);
 
   useEffect(() => {
     if (!isSkillMode) return;
@@ -277,8 +323,33 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
               </button>
             </div>
           )}
+          {recommendedAutoEvolution && (
+            <div className="mb-3 mx-auto max-w-2xl rounded-xl border border-amber-400/60 bg-[#191206]/95 px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-left text-xs">
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-amber-300">AI Tự Chơi chọn nhánh Tiến Hóa:</span>
+                  <span className="font-black text-white">{recommendedAutoEvolution.name}</span>
+                  <span className="font-mono-nums text-emerald-300">
+                    ({(autoCountdownMs / 1000).toFixed(1)}s)
+                  </span>
+                </div>
+                <div className="text-[11px] text-amber-100/85 leading-snug">
+                  {recommendedAutoEvolution.tagline} · {recommendedAutoEvolution.effectSummary}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoCancelled(true)}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-[11px] font-bold text-slate-200 hover:border-amber-300 hover:text-white cursor-pointer whitespace-nowrap shrink-0 self-start sm:self-center"
+              >
+                Hủy &amp; Tự Chọn
+              </button>
+            </div>
+          )}
           <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-amber-300 mb-1.5">
-            {mode === 'skill'
+            {isEvolutionMode && evolutionOffer
+              ? `Ngã Rẽ Tiến Hóa · ${evolutionOffer.baseSkillName}`
+              : mode === 'skill'
               ? `Thăng Cấp ${level} · Tinh Tú Ban Phước`
               : mode === 'valkyrie'
               ? 'Phước Lành Valkyrie'
@@ -289,7 +360,9 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
               : 'Vòng Quay Vận Mệnh'}
           </div>
           <h2 className="font-display text-2xl sm:text-3xl font-black text-white">
-            {mode === 'skill'
+            {isEvolutionMode
+              ? 'Chọn 1 Nhánh Tiến Hóa Kỹ Năng'
+              : mode === 'skill'
               ? 'Chọn 1 Thẻ Bài Kỹ Năng'
               : mode === 'valkyrie'
               ? 'Ban Phước Huyền Thoại'
@@ -300,7 +373,9 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
               : 'Vòng Quay Hoàng Đạo'}
           </h2>
           <p className="text-xs text-slate-300 mt-1">
-            {isSkillMode
+            {isEvolutionMode
+              ? 'Mỗi kỹ năng cốt lõi chỉ chọn 1 hướng tiến hóa cho cả trận: Tập Trung Đánh Boss hoặc Càn Quét Diện Rộng.'
+              : isSkillMode
               ? 'Kết hợp các thẻ bài cùng nguyên tố để kích hoạt Cộng Hưởng & Tiến Hóa đạn đạo 3D.'
               : mode === 'angel'
               ? 'Thiên thần ban tặng một nguồn hồi phục trước chặng đường phía trước.'
@@ -320,6 +395,53 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* BRANCHING SKILL EVOLUTION FORK (2 EXCLUSIVE PATHS) */}
+        {isEvolutionMode && evolutionOffer && onPickEvolution && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[
+              { def: evolutionOffer.branchBoss, keyNum: '1', pathLabel: 'NHÁNH A · ĐÁNH BOSS' },
+              { def: evolutionOffer.branchAoe, keyNum: '2', pathLabel: 'NHÁNH B · DIỆN RỘNG' },
+            ].map(({ def, keyNum, pathLabel }) => (
+              <button
+                key={def.id}
+                type="button"
+                onClick={() => {
+                  soundEngine.playLevelUp();
+                  onPickEvolution(def.id);
+                }}
+                className="group text-left rounded-2xl border-2 bg-[#0a1024] hover:bg-[#0f1734] p-5 transition-colors cursor-pointer flex flex-col justify-between gap-3"
+                style={{ borderColor: `${def.accentColor}99` }}
+              >
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wider">
+                    <span style={{ color: def.accentColor }}>{pathLabel}</span>
+                    <span className="font-mono-nums text-slate-400">[Phím {keyNum}]</span>
+                  </div>
+                  <h3 className="font-display text-xl font-black text-white group-hover:text-amber-200 transition-colors">
+                    {def.name}
+                  </h3>
+                  <div className="text-xs font-bold text-slate-300">{def.tagline}</div>
+                  <p className="text-xs text-slate-200/90 leading-relaxed pt-1 border-t border-slate-800">
+                    {def.description}
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-slate-800/90 flex items-center justify-between gap-2">
+                  <span
+                    className="text-xs font-black font-mono-nums"
+                    style={{ color: def.accentColor }}
+                  >
+                    {def.effectSummary}
+                  </span>
+                  <span className="text-xs font-black text-amber-300 whitespace-nowrap">
+                    Tiến Hóa →
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* AAA TAROT SKILL DRAFT CARDS */}
         {isSkillMode && (

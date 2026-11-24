@@ -25,3 +25,23 @@
 - Đồng bộ **137 tệp GLB hoạt động**, loại bỏ `public/assets/mounts/black-dragon.glb` (12.5 MB).
 - Tạo `tests/chapter-milestones-and-tactical-ai.test.mjs`, mở rộng `tests/security-hardening.test.mjs`, cập nhật `tests/miku-hero.test.mjs`, `src/engine/blackDragonRide.test.ts`, `src/engine/solarLeoAssets.test.ts`, `tests/model-preload-retry.test.mjs` → **298/298 pass (0 fail)**.
 - Cập nhật đồng bộ toàn bộ 10 báo cáo kiểm toán gốc và `walkthrough.md`.
+
+---
+
+## Phiên bản 24/11/2026 — Đợt 2: Tiến Hóa Kỹ Năng Rẽ Nhánh, Nhạc Động Hoàng Đạo, Watchdog GPU E5430 & Tiếp Cận
+
+### 1. Tiến Hóa Kỹ Năng Rẽ Nhánh (12 Nhánh Trên 6 Kỹ Năng Cốt Lõi)
+- **Tạo mới `src/engine/skillEvolutionEngine.ts`:** 12 nhánh tiến hóa (Đánh Boss vs Diện Rộng) cho Hỏa Tiễn, Băng Tiễn, Lôi Tiễn, Liên Xạ, Cầu Xoay, Phi Kiếm; bộ tính chỉ số chiến đấu (`resolveEvolutionCombatModifiers`), chọn nhánh AI (`selectAiEvolutionBranch`) và Codex (`buildEvolutionCodexEntries`).
+- **Tích hợp `src/engine/GameEngine.ts`, `src/components/SkillDraftModal.tsx`, `src/App.tsx`:** Mở Ngã Rẽ Tiến Hóa 2 cột (hỗ trợ phím `[1]`/`[2]` & AI Auto-Pilot), thay đổi hành vi chiến đấu thực tế (nổ AoE lửa/băng, tăng bước nhảy sét, thêm tia rộng/nảy, kết liễu Boss, khiên mỗi phòng), lưu vĩnh viễn vào `SaveData.discoveredEvolutions` và làm sạch trong `src/data/saveIntegrity.ts`.
+
+### 2. Nhạc Nền Động Hoàng Đạo & Âm Thanh Ngắt Chiêu
+- **Tạo mới `src/audio/zodiacMusicDirector.ts` & tích hợp `src/audio/soundEngine.ts`, `src/App.tsx`:** 100% Web Audio tổng hợp với giai điệu/âm giai/bassline riêng cho Chương 1–12, đẩy cao trào Boss Pha 1→2→3, và thêm âm thanh kèn/chuông `playInterruptFanfare()` khi Ngắt Chiêu thành công.
+
+### 3. Watchdog GPU Thời Gian Thực Cho Dell Latitude E5430 & Toàn Hệ Thống
+- **Tạo mới `src/engine/gpuThermalWatchdog.ts` & tích hợp `src/engine/GameEngine.ts`, `src/components/SettingsModal.tsx`:** Máy trạng thái 5 bậc (0→4) giám sát frame-time EWMA trên mọi chương, tự động hạ Bloom → Bóng/Hạt → DPR/Đèn → Chế Độ Lite Khẩn Cấp + xử lý `webglcontextlost`, có độ trễ chống dao động và thông báo tự ẩn.
+
+### 4. Tiếp Cận (Accessibility) & Sổ Tay Thế Giới / Boss
+- **Tạo mới `src/engine/colorblindTelegraphs.ts`:** Hình học cảnh báo an toàn mù màu (vòng đôi, làn mũi tên, tâm ngắm, vòng Ngắt Chiêu) tích hợp vào cảnh báo sàn 3D.
+- **Nâng cấp `src/components/SettingsModal.tsx`, `src/engine/aaaWave6Director.ts`, `src/data/liveOpsData.ts`:** Cỡ chữ 3 mức (`100% / 115% / 130%`), thêm phím tắt `toggleAutoPilot (V)`, công tắc Watchdog GPU, Nhạc Nền Động và Hình Học Mù Màu.
+- **Nâng cấp `src/data/phase5Data.ts` & `src/components/CodexGuideModal.tsx`:** Thêm tab **Tiến Hóa (12)** và đồng bộ **Biên Niên Sử Hoàng Đạo, 3 Pha Boss, Mẹo Ngắt Chiêu, Mốc Sao ★1–★4**.
+- **Kiểm thử mở rộng:** Thêm 4 bộ kiểm thử mới → **313/313 pass (0 fail, 0 skip)**, `tsc --noEmit` 0 lỗi, `vite build` thành công.

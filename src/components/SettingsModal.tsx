@@ -1502,6 +1502,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               Tự động tinh chỉnh tỷ lệ pixel GPU khi FPS xuống dưới 44 để giữ mượt khi đấu Đại Boss.
             </div>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onUpdateSettings({
+                autoGpuWatchdog: settings.autoGpuWatchdog === false,
+              });
+            }}
+            className={`col-span-2 p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+              settings.autoGpuWatchdog !== false
+                ? 'bg-sky-500/15 border-sky-400/55 text-sky-100'
+                : 'bg-[#080d1e] border-slate-700 text-slate-400'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-black">Watchdog GPU Tự Hạ Đồ Họa Toàn Hệ Thống (Laptop Yếu / E5430)</span>
+              <span className="text-[11px] font-bold shrink-0">
+                {settings.autoGpuWatchdog !== false ? 'Đang bảo vệ' : 'Đã tắt'}
+              </span>
+            </div>
+            <div className="text-[10px] mt-0.5 text-slate-300/90">
+              Tự động giảm Bloom → Bóng → Hạt VFX → DPR → Lite khẩn cấp nếu tụt dưới 26 FPS kéo dài ở mọi chương.
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              onUpdateSettings({
+                adaptiveChapterMusic: settings.adaptiveChapterMusic === false,
+              });
+            }}
+            className={`col-span-2 p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+              settings.adaptiveChapterMusic !== false
+                ? 'bg-amber-500/15 border-amber-400/55 text-amber-100'
+                : 'bg-[#080d1e] border-slate-700 text-slate-400'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-black">Nhạc Nền Động Hoàng Đạo Theo Chương &amp; Pha Boss</span>
+              <span className="text-[11px] font-bold shrink-0">
+                {settings.adaptiveChapterMusic !== false ? 'Đang bật' : 'Giai điệu chuẩn'}
+              </span>
+            </div>
+            <div className="text-[10px] mt-0.5 text-slate-300/90">
+              Mỗi Chương Hoàng Đạo (Ch.1–12) có chủ đề nhạc nền riêng và đẩy cao trào theo Pha Boss I–III.
+            </div>
+          </button>
         </div>
 
         {/* AAA Wave 4: Controls, Haptics & Accessibility */}
@@ -1546,19 +1596,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="button"
               onClick={() => {
                 soundEngine.playUiClick();
+                const next = !(settings.colorblindTelegraphs || settings.highContrastTelegraphs);
                 onUpdateSettings({
-                  highContrastTelegraphs: !settings.highContrastTelegraphs,
+                  highContrastTelegraphs: next,
+                  colorblindTelegraphs: next,
                 });
               }}
               className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
-                settings.highContrastTelegraphs
+                settings.colorblindTelegraphs || settings.highContrastTelegraphs
                   ? 'bg-sky-500/15 border-sky-400/65 text-sky-100'
                   : 'bg-[#080d1e] border-slate-700 text-slate-400'
               }`}
             >
-              <div className="text-xs font-black">Báo Đòn Tương Phản</div>
+              <div className="text-xs font-black">Hình Học Báo Đòn (Mù Màu)</div>
               <div className="text-[11px] mt-0.5 font-semibold">
-                {settings.highContrastTelegraphs ? 'Xanh Lam / Vàng' : 'Mặc định'}
+                {settings.colorblindTelegraphs || settings.highContrastTelegraphs
+                  ? 'Vòng Đôi · Xanh/Vàng'
+                  : 'Mặc định'}
               </div>
             </button>
 
@@ -1717,25 +1771,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                soundEngine.playUiClick();
-                onUpdateSettings({
-                  uiTextScale: settings.uiTextScale === 'large' ? 'normal' : 'large',
-                });
-              }}
-              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
-                settings.uiTextScale === 'large'
-                  ? 'bg-amber-500/15 border-amber-400/55 text-amber-100'
-                  : 'bg-[#080d1e] border-slate-700 text-slate-300'
-              }`}
-            >
-              <div className="text-xs font-black">Cỡ Chữ Giao Diện</div>
-              <div className="text-[11px] mt-0.5 font-semibold">
-                {settings.uiTextScale === 'large' ? 'Lớn (Dễ đọc 112%)' : 'Chuẩn (100%)'}
+            <div className="p-3 rounded-xl border bg-[#080d1e] border-slate-700/90 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-black text-white">Cỡ Chữ Giao Diện</div>
+                <span className="text-[10px] font-mono-nums text-amber-300 font-bold">
+                  {settings.uiTextScale === 'xlarge'
+                    ? '130%'
+                    : settings.uiTextScale === 'large'
+                    ? '115%'
+                    : '100%'}
+                </span>
               </div>
-            </button>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(
+                  [
+                    { id: 'normal', label: '100%' },
+                    { id: 'large', label: '115%' },
+                    { id: 'xlarge', label: '130%' },
+                  ] as const
+                ).map((opt) => {
+                  const active = (settings.uiTextScale ?? 'normal') === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.04);
+                        onUpdateSettings({ uiTextScale: opt.id });
+                      }}
+                      className={`py-1 px-1.5 rounded-lg text-[11px] font-black font-mono-nums border cursor-pointer transition-colors whitespace-nowrap ${
+                        active
+                          ? 'bg-amber-400/20 border-amber-300 text-amber-200'
+                          : 'bg-[#0b1126] border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* AAA Wave 6: Customizable PC Combat Keybinds */}

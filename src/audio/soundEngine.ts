@@ -5,6 +5,11 @@ import {
 } from './aaaAudioMix';
 import { computeBossBgmStepDuration } from '../engine/zodiacArena';
 import { resolveBossAudioLayers } from '../engine/aaaWave5Director';
+import {
+  buildInterruptFanfareNotes,
+  resolveChapterBossStepDuration,
+  resolveZodiacChapterMusic,
+} from './zodiacMusicDirector';
 
 export type BgmMode = 'silent' | 'lobby' | 'combat' | 'boss';
 
@@ -24,6 +29,8 @@ class SoundEngine {
   private sfxVol = 0.9;
 
   private bgmMode: BgmMode = 'silent';
+  private chapterThemeId = 1;
+  private adaptiveChapterMusic = true;
   private bossIntensity: 1 | 2 | 3 = 1;
   private combatCombo = 0;
   private combatHpRatio = 1;
@@ -196,6 +203,41 @@ class SoundEngine {
     this.bossIntensity = phase;
   }
 
+  public setChapterTheme(chapterId: number): void {
+    const clamped = Math.max(1, Math.min(12, Math.floor(chapterId || 1)));
+    this.chapterThemeId = clamped;
+  }
+
+  public setAdaptiveChapterMusic(enabled: boolean): void {
+    this.adaptiveChapterMusic = Boolean(enabled);
+  }
+
+  public playInterruptFanfare(): void {
+    const ctx = this.ensureContext();
+    const dest = this.getSfxDest(0, true);
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const notes = buildInterruptFanfareNotes();
+    for (const n of notes) {
+      const osc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      osc.type = n.wave;
+      osc.frequency.setValueAtTime(n.freq, now + n.delay);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(3400, now + n.delay);
+      g.gain.setValueAtTime(0.001, now + n.delay);
+      g.gain.linearRampToValueAtTime(n.gain, now + n.delay + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.001, now + n.delay + n.dur);
+      osc.connect(filter);
+      filter.connect(g);
+      g.connect(dest);
+      osc.start(now + n.delay);
+      osc.stop(now + n.delay + n.dur + 0.02);
+    }
+    this.playNoiseBurst(ctx, dest, now, 0.12, 'bandpass', 2400, 900, 0.1, 1.5);
+  }
+
   /**
    * Feeds live combat telemetry (combo tier, HP ratio, Perfect Dodge slow-mo)
    * into the adaptive BGM layer mixer and dynamic master low-pass filter.
@@ -362,11 +404,18 @@ class SoundEngine {
     if (!ctx || !dest || ctx.state !== 'running') return;
 
     const lookAhead = 0.26;
+    const chapterProfile = this.adaptiveChapterMusic
+      ? resolveZodiacChapterMusic(this.chapterThemeId)
+      : null;
     const stepDur =
       this.bgmMode === 'boss'
-        ? computeBossBgmStepDuration(this.bossIntensity)
+        ? chapterProfile
+          ? resolveChapterBossStepDuration(this.chapterThemeId, this.bossIntensity)
+          : computeBossBgmStepDuration(this.bossIntensity)
         : this.bgmMode === 'combat'
-        ? 0.24
+        ? chapterProfile
+          ? chapterProfile.combatStepSec
+          : 0.24
         : 0.36;
 
     while (this.bgmNextNoteTime < ctx.currentTime + lookAhead) {
@@ -431,18 +480,28 @@ class SoundEngine {
     }
 
     if (this.bgmMode === 'combat') {
-      // Adaptive Heroic Action Pulse: layers evolve dynamically with Combo Tier (0..3) + Low-HP heartbeat
+      // Adaptive Chapter Zodiac Action Pulse: unique biome melody/bass + Combo Tier (0..3) + Low-HP heartbeat
       const adaptive = computeAdaptiveCombatIntensity(this.combatCombo, this.combatHpRatio);
-      const melody = [
-        293.66, 0, 349.23, 440.0, 523.25, 0, 440.0, 392.0,
-        293.66, 0, 349.23, 440.0, 587.33, 523.25, 440.0, 392.0,
-      ];
-      const mFreq = melody[step];
+      const chapterProfile = this.adaptiveChapterMusic
+        ? resolveZodiacChapterMusic(this.chapterThemeId)
+        : null;
+      const melody = chapterProfile
+        ? chapterProfile.combatMelody
+        : [
+            293.66, 0, 349.23, 440.0, 523.25, 0, 440.0, 392.0,
+            293.66, 0, 349.23, 440.0, 587.33, 523.25, 440.0, 392.0,
+          ];
+      const mFreq = melody[step % melody.length];
       if (mFreq > 0) {
         const osc = ctx.createOscillator();
         const filter = ctx.createBiquadFilter();
         const g = ctx.createGain();
-        osc.type = adaptive.tier >= 2 ? 'sawtooth' : 'triangle';
+        osc.type =
+          adaptive.tier >= 2
+            ? 'sawtooth'
+            : chapterProfile
+            ? chapterProfile.leadWave
+            : 'triangle';
         osc.frequency.setValueAtTime(mFreq, time);
         filter.type = 'lowpass';
         filter.frequency.setValueAtTime(adaptive.filterCutoffHz, time);
@@ -469,7 +528,12 @@ class SoundEngine {
         }
       }
       if (step % 2 === 0) {
-        const root = step >= 8 ? 110 : 146.83;
+        const barIdx = Math.floor(step / 4) % 4;
+        const root = chapterProfile
+          ? chapterProfile.combatBass[barIdx]
+          : step >= 8
+          ? 110
+          : 146.83;
         const bass = ctx.createOscillator();
         const bg = ctx.createGain();
         bass.type = 'sine';
@@ -525,25 +589,34 @@ class SoundEngine {
       return;
     }
 
-    // Boss Encounter: Adaptive 3-phase orchestral minor ostinato + brassy power fifths + cathedral choir + war drum
+    // Boss Encounter: Chapter-themed Adaptive 3-phase orchestral ostinato + power fifths + cathedral choir + war drum
     const intensity = this.bossIntensity;
     const bossMix = resolveBossAudioLayers(intensity, this.combatCombo, this.combatHpRatio);
-    const bossSeq = [
-      220, 220, 261.63, 220, 293.66, 220, 329.63, 293.66,
-      196, 196, 246.94, 196, 261.63, 246.94, 220, 196,
-    ];
+    const chapterBossProfile = this.adaptiveChapterMusic
+      ? resolveZodiacChapterMusic(this.chapterThemeId)
+      : null;
+    const bossSeq = chapterBossProfile
+      ? chapterBossProfile.bossMelody
+      : [
+          220, 220, 261.63, 220, 293.66, 220, 329.63, 293.66,
+          196, 196, 246.94, 196, 261.63, 246.94, 220, 196,
+        ];
     const osc = ctx.createOscillator();
     const fifth = ctx.createOscillator();
     const g = ctx.createGain();
-    osc.type = 'sawtooth';
+    osc.type = chapterBossProfile ? chapterBossProfile.bossWave : 'sawtooth';
     fifth.type = intensity >= 3 ? 'sawtooth' : 'triangle';
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     const filterStart = bossMix.filterPeakHz;
     filter.frequency.setValueAtTime(filterStart, time);
     filter.frequency.exponentialRampToValueAtTime(Math.round(filterStart * 0.52), time + stepDur * 0.8);
-    osc.frequency.setValueAtTime(bossSeq[step], time);
-    fifth.frequency.setValueAtTime(bossSeq[step] * 1.498, time);
+    const bossFreq = bossSeq[step % bossSeq.length];
+    osc.frequency.setValueAtTime(bossFreq, time);
+    fifth.frequency.setValueAtTime(
+      bossFreq * (intensity >= 3 && chapterBossProfile ? chapterBossProfile.phase3HarmonicRatio : 1.498),
+      time
+    );
     g.gain.setValueAtTime(intensity === 3 ? 0.09 : intensity === 2 ? 0.082 : 0.075, time);
     g.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.82);
     osc.connect(filter);

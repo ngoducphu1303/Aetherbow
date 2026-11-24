@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, Flame, ShieldAlert, Sparkles, Skull, Trophy, X, Zap } from 'lucide-react';
+import { BookOpen, CheckCircle2, Flame, GitBranch, Sparkles, Skull, Star, Trophy, X, Zap } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 import { buildBossCodexEntries, buildSynergyCodexEntries } from '../data/phase5Data';
+import { buildEvolutionCodexEntries } from '../engine/skillEvolutionEngine';
 import {
   ELEMENTAL_REACTION_GUIDE,
   buildPersonalRecordsSummary,
@@ -11,7 +12,7 @@ import { BossPortraitBadge } from './GameIcons';
 
 interface CodexGuideModalProps {
   save: SaveData;
-  initialTab?: 'synergies' | 'bosses' | 'reactions';
+  initialTab?: 'synergies' | 'evolutions' | 'bosses' | 'reactions';
   onClose: () => void;
 }
 
@@ -22,15 +23,20 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
   initialTab = 'synergies',
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'synergies' | 'bosses' | 'reactions'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'synergies' | 'evolutions' | 'bosses' | 'reactions'>(initialTab);
 
   const synergyEntries = useMemo(() => buildSynergyCodexEntries(save), [save]);
+  const evolutionEntries = useMemo(() => buildEvolutionCodexEntries(save), [save]);
   const bossEntries = useMemo(() => buildBossCodexEntries(save), [save]);
   const personalRecords = useMemo(() => buildPersonalRecordsSummary(save), [save]);
 
   const discoveredCount = useMemo(
     () => synergyEntries.filter((entry) => entry.discovered).length,
     [synergyEntries]
+  );
+  const discoveredEvoCount = useMemo(
+    () => evolutionEntries.filter((entry) => entry.discovered).length,
+    [evolutionEntries]
   );
   const clearedBossCount = useMemo(
     () => bossEntries.filter((entry) => entry.cleared).length,
@@ -56,8 +62,9 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                 Sổ Tay Chiến Thuật &amp; Hoàng Đạo
               </h2>
               <p className="text-[11px] font-semibold text-slate-300 font-mono-nums truncate">
-                Cộng Hưởng: {discoveredCount}/{synergyEntries.length} đã kích hoạt · Boss Hoàng Đạo:{' '}
-                {clearedBossCount}/{bossEntries.length} đã hạ gục
+                Cộng Hưởng: {discoveredCount}/{synergyEntries.length} · Tiến Hóa:{' '}
+                {discoveredEvoCount}/{evolutionEntries.length} · Boss Hoàng Đạo:{' '}
+                {clearedBossCount}/{bossEntries.length}
               </p>
             </div>
           </div>
@@ -99,6 +106,24 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
             type="button"
             onClick={() => {
               soundEngine.playUiClick(1.04);
+              setActiveTab('evolutions');
+            }}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'evolutions'
+                ? 'bg-emerald-500/15 border-emerald-400 text-emerald-200'
+                : 'bg-[#0b1126] border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <GitBranch className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              Tiến Hóa (<span className="font-mono-nums">{discoveredEvoCount}/{evolutionEntries.length}</span>)
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick(1.04);
               setActiveTab('bosses');
             }}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-colors cursor-pointer whitespace-nowrap ${
@@ -109,7 +134,7 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
           >
             <Skull className="w-3.5 h-3.5 shrink-0" />
             <span>
-              Boss Hoàng Đạo (<span className="font-mono-nums">Ch.1–{bossEntries.length}</span>)
+              Boss &amp; Thế Giới (<span className="font-mono-nums">Ch.1–{bossEntries.length}</span>)
             </span>
           </button>
 
@@ -195,13 +220,54 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                 ))}
               </div>
             </div>
+          ) : activeTab === 'evolutions' ? (
+            <div className="space-y-3">
+              <div className="text-xs text-slate-300 leading-relaxed bg-[#0a1024] border border-emerald-400/25 rounded-xl px-3.5 py-2.5">
+                Khi nâng kỹ năng cốt lõi (Hỏa Tiễn, Băng Tiễn, Lôi Tiễn, Liên Xạ, Cầu Xoay, Phi Kiếm) đạt <strong className="text-amber-200">tầng 2+</strong> trong trận, bảng rút thẻ sẽ mở <strong className="text-emerald-300">Ngã Rẽ Tiến Hóa 2 Nhánh</strong> (Đánh Boss vs Diện Rộng).
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {evolutionEntries.map((evo) => (
+                  <div
+                    key={evo.id}
+                    className={`rounded-2xl border p-3.5 ${
+                      evo.discovered
+                        ? 'bg-[#0c1329] border-emerald-400/40'
+                        : 'bg-[#080d1c] border-slate-800/90'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold text-slate-400 truncate">
+                          Gốc: <span className="text-amber-300">{evo.baseSkillName}</span> ·{' '}
+                          <span style={{ color: evo.accentColor }}>
+                            {evo.branch === 'boss' ? 'Nhánh Boss' : 'Nhánh AoE'}
+                          </span>
+                        </div>
+                        <h3 className="font-display text-sm font-black text-white mt-0.5 truncate">
+                          {evo.name}
+                        </h3>
+                      </div>
+                      {evo.discovered ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <GitBranch className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-slate-200 leading-relaxed">{evo.description}</p>
+                    <div
+                      className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] font-bold font-mono-nums"
+                      style={{ color: evo.accentColor }}
+                    >
+                      {evo.effectSummary}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : activeTab === 'bosses' ? (
             <div className="space-y-3">
               <div className="text-xs text-slate-300 leading-relaxed bg-[#0a1024] border border-rose-400/20 rounded-xl px-3.5 py-2.5">
-                Boss Ch.1–9 mở <strong className="text-amber-200">Pha II (≤50% HP)</strong> kèm cửa
-                sổ Phản Đòn <strong className="text-emerald-300 font-mono-nums">+18%</strong>. Boss
-                Ch.10–12 mở thêm <strong className="text-rose-300">Pha III (≤25% HP)</strong> với
-                thưởng Phản Đòn <strong className="text-amber-300 font-mono-nums">+24%</strong>.
+                Hồ sơ chiến thuật &amp; biên niên sử Hoàng Đạo: Boss Ch.1–4 và Ch.10–12 sở hữu <strong className="text-rose-300">3 Pha chiến đấu</strong> kèm cửa sổ <strong className="text-sky-300">Ngắt Chiêu</strong> &amp; <strong className="text-emerald-300">Phản Đòn</strong>. Chinh phục đủ <strong className="text-amber-300">★1–★4</strong> để mở khóa trọn bộ sưu tập chương.
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -231,15 +297,16 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                           </h3>
                         </div>
                       </div>
-                      {boss.cleared ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                      ) : (
-                        <ShieldAlert className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-                      )}
+                      <div className="flex items-center gap-1 shrink-0 mt-0.5 font-mono-nums text-[11px] font-bold text-amber-300">
+                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        <span>
+                          {boss.starsEarned}/{boss.maxStars}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mt-1.5 text-[11px] font-semibold text-slate-400 font-mono-nums flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                      <span>{boss.hasPhaseThree ? 'Pha II & Pha III' : 'Pha II ≤50% HP'}</span>
+                      <span>{boss.hasPhaseThree ? '3 Pha Chiến Đấu' : 'Pha II ≤50% HP'}</span>
                       <span>·</span>
                       <span className="text-emerald-300">Phản Đòn +{boss.punishBonusPct}%</span>
                       <span>·</span>
@@ -255,9 +322,21 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                       )}
                     </div>
 
-                    <p className="mt-2 pt-2 border-t border-slate-800/80 text-xs text-slate-200 leading-relaxed">
-                      {boss.tacticalTip}
+                    <p className="mt-2 text-[11px] text-slate-300/95 italic leading-relaxed">
+                      {boss.loreExcerpt}
                     </p>
+
+                    <div className="mt-2 pt-2 border-t border-slate-800/80 space-y-1 text-[11px] text-slate-200 leading-snug">
+                      {boss.phasesSummary.map((pLine, pIdx) => (
+                        <div key={pIdx} className="text-slate-300">
+                          • {pLine}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-sky-200 leading-relaxed">
+                      <strong className="text-sky-300">Khắc chế &amp; Ngắt Chiêu:</strong> {boss.interruptTip}
+                    </div>
                   </div>
                 ))}
               </div>

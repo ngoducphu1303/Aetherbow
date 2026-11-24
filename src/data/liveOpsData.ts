@@ -35,6 +35,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   bloomEnabled: true,
   hapticsEnabled: true,
   highContrastTelegraphs: false,
+  colorblindTelegraphs: false,
+  autoGpuWatchdog: true,
+  adaptiveChapterMusic: true,
   hudScale: 'normal',
   combatCameraPreset: 'tactical',
   liveDpsMeter: false,
@@ -63,7 +66,12 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     rawSafetyMode === 'on' || rawSafetyMode === 'off' || rawSafetyMode === 'auto'
       ? rawSafetyMode
       : DEFAULT_SETTINGS.lowEndSafetyMode;
-  const uiTextScale = s?.uiTextScale === 'large' ? 'large' : 'normal';
+  const uiTextScale =
+    s?.uiTextScale === 'xlarge'
+      ? 'xlarge'
+      : s?.uiTextScale === 'large'
+      ? 'large'
+      : 'normal';
   return {
     masterVol: s?.masterVol ?? DEFAULT_SETTINGS.masterVol,
     bgmVol: s?.bgmVol ?? DEFAULT_SETTINGS.bgmVol,
@@ -76,6 +84,11 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     hapticsEnabled: s?.hapticsEnabled ?? DEFAULT_SETTINGS.hapticsEnabled,
     highContrastTelegraphs:
       s?.highContrastTelegraphs ?? DEFAULT_SETTINGS.highContrastTelegraphs,
+    colorblindTelegraphs:
+      s?.colorblindTelegraphs ?? DEFAULT_SETTINGS.colorblindTelegraphs,
+    autoGpuWatchdog: s?.autoGpuWatchdog ?? DEFAULT_SETTINGS.autoGpuWatchdog,
+    adaptiveChapterMusic:
+      s?.adaptiveChapterMusic ?? DEFAULT_SETTINGS.adaptiveChapterMusic,
     hudScale: s?.hudScale ?? DEFAULT_SETTINGS.hudScale,
     combatCameraPreset: s?.combatCameraPreset ?? DEFAULT_SETTINGS.combatCameraPreset,
     liveDpsMeter: s?.liveDpsMeter ?? DEFAULT_SETTINGS.liveDpsMeter,
