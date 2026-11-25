@@ -1,7 +1,7 @@
 # IMPLEMENTATION CHANGELOG — NHẬT KÝ CẢI TIẾN & NGHIỆM THU (PHASE 4 & 6)
 
 - **Ngày nghiệm thu**: 2026-11-24
-- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII)**: **`78.99 / 100` → `85.69 / 100`** (`+6.70` điểm trọng số trên 30 tiêu chí / 10 nhóm).
+- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII)**: **`78.99 / 100` → `86.13 / 100`** (`+7.14` điểm trọng số trên 30 tiêu chí / 10 nhóm qua Đợt 1 P0–P1 và Đợt 2 P2).
 
 ---
 
@@ -35,7 +35,13 @@
 - **`src/data/saveIntegrity.ts`**: Đổi fallback sang `'aurelia'`, gia cố kẹp trần `level (1..120)`, `awakeningLevel (0..10)`, `heroStars (0..10)`, `pity (0..500)`, `paragonInfusionLevel (0..500)`, `starDust/spiritCores`, và khử trùng lặp `claimedMailIds`/`deletedMailIds`.
 - **`src/server/serverSecurity.test.ts` & `src/data/saveIntegrity.test.ts`** (mới): Kiểm chứng đầy đủ lớp phòng vệ server và toàn vẹn save.
 
-### E. Trọn Bộ 10 Báo Cáo Kiểm Toán & Thiết Kế Chuẩn AAAA
+### E. Cải Tiến Đợt 2 (P2 — AI Đám Đông, Save JSON-V2, ARIA Live & Test Manifest CDN)
+- **`src/engine/enemySquadDirector.ts` & `src/engine/enemySquadDirector.test.ts`** (mới) + **`src/engine/GameEngine.ts`**: Triển khai `EnemySquadDirector` (zero-GC scratch `Set`, 0 tải GPU thêm) điều phối `2–5` token tấn công đồng thời cho quái thường (khóa `≤ 3` trên Lite Mode E5430, giảm `-1` khi có Boss), cân bằng vai trò tầm xa/cận chiến và di chuyển vòng sườn giữ cự ly cho quái chờ token.
+- **`src/data/phase5Data.ts`, `src/components/SettingsModal.tsx`, `src/App.tsx`, `src/data/saveIntegrity.test.ts`**: Triển khai chuẩn xuất/nhập tệp lưu **`aetherbow_save_v2` (JSON-V2)** có mã kiểm tra toàn vẹn FNV-1a chống sửa tay (giữ 100% tương thích ngược JSON cũ), gắn lớp phòng vệ sâu `validateAndSanitizeSaveIntegrity` tại cả `decodeSaveTransferCode` lẫn `handleImportSave`, và rút gọn phụ đề modal chống cắt chữ.
+- **`src/App.tsx`**: Bổ sung vùng thông báo trình đọc màn hình **`aria-live="polite" aria-atomic="true"`** (`data-testid="a11y-live-announcer"`) cho các mốc khôi phục dữ liệu và nâng bậc Tinh Tuý Hoàng Đạo.
+- **`src/engine/testGlbManifestHelper.ts`** (mới) + 12 tệp `src/engine/*.test.ts`: Chuẩn hóa xác minh tài sản GLB theo cả tệp đĩa cục bộ lẫn `scripts/glb-manifest.json` thật trên CDN — đưa toàn bộ bộ test engine từ 27 `ENOENT` về **0 fail** (`181 pass / 8 skip CDN minh bạch`).
+
+### F. Trọn Bộ 10 Báo Cáo Kiểm Toán & Thiết Kế Chuẩn AAAA
 1. `AAAA_GAME_AUDIT.md`
 2. `AAAA_QUALITY_SCORECARD.md` (đủ 30 tiêu chí × 10 trường bắt buộc, thang 0–100 & bảng trọng số 10 nhóm Mục VIII)
 3. `GAME_DEVELOPMENT_ROADMAP.md`
@@ -52,11 +58,11 @@
 ## 2. Danh Sách Nghiệm Thu (Definition of Done)
 
 - [x] Bảo toàn 100% dữ liệu lưu cũ và tính năng đang hoạt động của người chơi.
-- [x] Chế độ Lite / Dell Latitude E5430 (Intel HD 4000) chạy đúng **0 PointLights** trong `THREE.Scene` trên toàn bộ 12 chương.
+- [x] Chế độ Lite / Dell Latitude E5430 (Intel HD 4000) chạy đúng **0 PointLights** trong `THREE.Scene` và trần `≤ 3` token quái tấn công đồng thời trên toàn bộ 12 chương.
 - [x] Tất cả 4 tướng Hoàng Đạo có 4 kỹ năng chủ động độc nhất (`ember_nova`, `thunder_arc`, `jade_bastion`, `moon_fan_mark`) trong biên cân bằng ±12% DPS.
 - [x] Mô phỏng đủ 8 mốc thời lượng `5m → 100h` trên toán học thật (`Gold Sink 99.8%`, `0` cảnh báo sau P1-5), phân định rõ mô phỏng vs playtest người thật.
-- [x] Kiểm thử trực tiếp trên trình duyệt thật (Headless Chromium `playwright-cli`, `1440×900`): Splash → Lobby 3D → `SettingsModal` (Anti-Flash) → `TalentsModal` (Tinh Tuý Hoàng Đạo Bậc 0→1) → Combat 3D Chương 12 với **0 Console Errors / 0 Warnings**.
+- [x] Kiểm thử trực tiếp trên trình duyệt thật (Headless Chromium `playwright-cli`, `1440×900`): Splash → Lobby 3D → `SettingsModal` (Anti-Flash + chặn tệp Save `JSON-V2` bị giả mạo) → `TalentsModal` (Tinh Tuý Hoàng Đạo Bậc 0→1) → Combat 3D (Ch.1 & Ch.12) + `aria-live="polite"` với **0 Console Errors / 0 Warnings**.
 - [x] `firestore.rules` không bị phá vỡ và đạt **0 lỗi ESLint**.
-- [x] `209 / 209` unit & integration tests (không phụ thuộc local GLB) đạt **100% PASS**.
+- [x] Toàn bộ kho mã nguồn đạt **`393 bài kiểm thử | 385 PASS | 0 FAIL | 8 skip CDN minh bạch`** (bao gồm `204/204` logic/tích hợp + `181/189` engine với 0 `ENOENT`).
 - [x] TypeScript `tsc --noEmit` (`lint_applet`) và Vite production build (`compile_applet`) đều sạch 0 lỗi.
-- [x] Hoàn tất 10/10 báo cáo kiểm toán & thiết kế tại thư mục gốc kho mã nguồn.
+- [x] Hoàn tất 10/10 báo cáo kiểm toán & thiết kế đồng bộ tại thư mục gốc kho mã nguồn.

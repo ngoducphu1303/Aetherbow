@@ -3,6 +3,7 @@ import { canClaimChapter2Asset } from './data/chapter2Collection';
 import { canClaimChapter3Asset } from './data/chapter3Collection';
 import { canClaimChapter4Asset } from './data/chapter4Collection';
 import { applyChapterCollectionMilestones } from './data/chapterCollectionMilestones';
+import { validateAndSanitizeSaveIntegrity } from './data/saveIntegrity';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { soundEngine } from './audio/soundEngine';
@@ -806,6 +807,7 @@ export default function App() {
   const activeArenaOpponentRef = useRef<ArenaOpponent | null>(null);
 
   const [save, setSave] = useState<SaveData>(() => createFreshSaveData());
+  const [liveAnnouncement, setLiveAnnouncement] = useState<string>('');
   const vipActiveRef = useRef<boolean>(isVipActive(save.vip));
   const highestChapterClearedRef = useRef<number>(save.highestChapterCleared ?? 0);
   const [enteredGame, setEnteredGame] = useState<boolean>(false);
@@ -3701,8 +3703,13 @@ export default function App() {
   }, []);
 
   const handleImportSave = useCallback((nextSave: SaveData) => {
-    setSave(nextSave);
-    setSelectedChapterId(Math.min(CHAPTERS.length, Math.max(1, nextSave.highestChapterCleared + 1)));
+    const integrity = validateAndSanitizeSaveIntegrity(nextSave);
+    const cleanSave = integrity.sanitizedSave;
+    setSave(cleanSave);
+    setSelectedChapterId(Math.min(CHAPTERS.length, Math.max(1, cleanSave.highestChapterCleared + 1)));
+    setLiveAnnouncement(
+      `Đã khôi phục dữ liệu lưu Chương ${cleanSave.highestChapterCleared}, ${cleanSave.gold.toLocaleString('vi-VN')} Vàng.`
+    );
   }, []);
 
   const handleResetAllPlayerData = useCallback(async () => {
@@ -8424,6 +8431,7 @@ export default function App() {
   }, []);
 
   const handleUpgradeParagonInfusion = useCallback(() => {
+    let upgradedTo: number | null = null;
     setSave((prev) => {
       if (!isParagonInfusionUnlocked(prev.talents, prev.highestChapterCleared)) return prev;
       const curLevel = getParagonInfusionLevel(prev.paragonInfusionLevel);
@@ -8432,6 +8440,7 @@ export default function App() {
       if (prev.gold < cost) return prev;
       soundEngine.playLevelUp();
       const dq = normalizeDailyQuests(prev.dailyQuests);
+      upgradedTo = curLevel + 1;
       return {
         ...prev,
         gold: prev.gold - cost,
@@ -8439,6 +8448,9 @@ export default function App() {
         dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
       };
     });
+    if (upgradedTo !== null) {
+      setLiveAnnouncement(`Đã tinh luyện Tinh Tuý Hoàng Đạo lên Bậc ${upgradedTo}.`);
+    }
   }, []);
 
   // Wave 3 Handlers: Pets, Skins, Auras, VIP & Relic Forge
@@ -13047,6 +13059,15 @@ export default function App() {
           dailyRiftTitle={transitionState.dailyRiftTitle}
         />
       )}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="a11y-live-announcer"
+        className="sr-only"
+      >
+        {liveAnnouncement}
+      </div>
     </div>
   );
 }

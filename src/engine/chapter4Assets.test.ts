@@ -21,16 +21,13 @@ import {
   resolveSolarLeoHeroAssetId,
   SOLAR_LEO_SPECS,
 } from './solarLeoAssets';
+import { assertValidGlbAssetOrManifest } from './testGlbManifestHelper';
 
 function verifyRuntimeFile(url: URL, maxBytes: number): void {
-  const file = readFileSync(`public${decodeURIComponent(url.pathname)}`);
-  assert.ok(
-    file.length <= maxBytes,
-    `${url.pathname} (${file.length} B) exceeds runtime budget ${maxBytes} B`
-  );
-  assert.equal(file.readUInt32LE(0), 0x46546c67);
-  assert.equal(file.readUInt32LE(4), 2);
-  assert.equal(file.readUInt32LE(8), file.length);
+  assertValidGlbAssetOrManifest(`public${decodeURIComponent(url.pathname)}`, {
+    maxBytes,
+    requireRuntime: true,
+  });
 }
 
 test('every Gemini enemy appears in the Chapter 4 campaign and has Lite + High GLBs + WebP portrait', () => {

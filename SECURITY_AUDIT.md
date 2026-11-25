@@ -31,11 +31,13 @@
 
 ---
 
-## 3. Gia Cố Tính Toàn Vẹn Dữ Liệu Lưu (`src/data/saveIntegrity.ts`)
+## 3. Gia Cố Tính Toàn Vẹn Dữ Liệu Lưu & Chuẩn JSON-V2 (`saveIntegrity.ts`, `phase5Data.ts`, `App.tsx`)
 
-Các quy tắc kiểm duyệt & tự phục hồi đã được mở rộng và kiểm chứng qua `saveIntegrity.test.ts`:
+Các quy tắc kiểm duyệt & tự phục hồi đã được mở rộng và kiểm chứng qua `saveIntegrity.test.ts` (4/4 pass) và trình duyệt sống:
+- **Gói xuất/nhập JSON-V2 có Checksum (`aetherbow_save_v2`)**: `encodeSignedSaveJson` đóng gói `{ format, exportedAt, checksum, payload }` kèm mã kiểm tra toàn vẹn FNV-1a; `decodeSaveTransferCode` từ chối ngay tệp JSON-V2 bị chỉnh sửa thủ công (đã kiểm chứng thực tế trên giao diện `SettingsModal` khi thay đổi `gold` / `checksum`), đồng thời vẫn giữ **100% tương thích ngược** cho tệp JSON cũ và chuỗi `ABW5`.
+- **Phòng vệ hai lớp khi Import (`handleImportSave`)**: Cả `decodeSaveTransferCode` lẫn `handleImportSave` trong `App.tsx` đều chạy qua `validateAndSanitizeSaveIntegrity`.
 - Kẹp trần tiền tệ và tài nguyên: `gold (0..999,999,999)`, `gems / starDust / scrolls / spiritCores (0..99,999,999)`.
-- Kẹp trần tiến độ: `highestChapterCleared (0..12)`, `bestTowerFloor (0..10,000)`.
+- Kẹp trần tiến độ: `highestChapterCleared (0..12)`, `bestTowerFloor (0..10,000)`, `paragonInfusionLevel (0..500)`.
 - Khử trùng lặp `inventory` theo `uid`, kẹp trần `level (1..120)` và `awakeningLevel (0..10)` trên từng trang bị.
 - Sửa fallback danh sách tướng rỗng từ legacy `'artemis'` sang `'aurelia'`; kẹp trần `heroStars (0..10)`.
 - Kẹp trần toàn bộ bộ đếm `pity (0..500)` chống số âm/NaN; khử trùng lặp `claimedMailIds` và `deletedMailIds`.
@@ -46,6 +48,6 @@ Các quy tắc kiểm duyệt & tự phục hồi đã được mở rộng và 
 ## 4. Vệ Sinh Bí Mật & Rủi Ro Tồn Đọng
 
 - **Quản lý Secret**: Toàn bộ khóa Backblaze B2 (`B2_KEY_ID`, `B2_APPLICATION_KEY`) và Cloudflare (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`) chỉ đọc qua `process.env` tại phía server; không tồn tại trong bundle client hay `.env.example`.
-- **Rủi ro đã ghi nhận cho lộ trình P2/P3**:
+- **Rủi ro đã ghi nhận cho lộ trình P3**:
   1. `SecurityAnomalyTracker` và `SlidingWindowRateLimiter` lưu trên bộ nhớ đơn tiến trình (đủ cho quy mô triển khai hiện tại; chuyển Redis ở P3-4 khi scale đa pod).
-  2. Gói Export/Import Save thủ công hiện được kẹp trần bởi `saveIntegrity.ts`; sẽ bổ sung checksum xác thực toàn vẹn ở P2-4.
+  2. Checksum FNV-1a phía client bảo vệ chống sửa tay/lỗi truyền tải cho tệp Save xuất cục bộ; dữ liệu bảng xếp hạng & người chơi chính thức trên máy chủ vẫn do `firestore.rules` và Firebase Auth/Express xác thực độc lập.

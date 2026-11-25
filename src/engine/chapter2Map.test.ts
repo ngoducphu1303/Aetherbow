@@ -17,6 +17,7 @@ import {
   resolveChapter2ForgeAtmosphereBudget,
   updateChapter2WarForgeAtmosphere,
 } from './chapter2Map';
+import { assertValidGlbAssetOrManifest } from './testGlbManifestHelper';
 
 function makeMinimalValidGlb(): ArrayBuffer {
   const json = Buffer.from(JSON.stringify({ asset: { version: '2.0' } }), 'utf8');
@@ -34,42 +35,36 @@ function makeMinimalValidGlb(): ArrayBuffer {
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
 }
 
-test('Chapter 2 Lite GLB exists intact on disk, stays lightweight (~30k tris, 1024px JPEG albedo, < 3 MB), and preserves canonical bounds', () => {
+test('Chapter 2 Lite GLB exists intact on disk or CDN manifest, stays lightweight (< 3 MB), and preserves canonical bounds', () => {
   const absPath = path.resolve(process.cwd(), 'public', ...CHAPTER2_MAP_LITE_PATH_SEGMENTS);
-  assert.ok(fs.existsSync(absPath), `Missing Chapter 2 Lite GLB at ${absPath}`);
-  const buf = fs.readFileSync(absPath);
-  assert.equal(buf.toString('ascii', 0, 4), 'glTF');
-  assert.equal(buf.readUInt32LE(4), 2);
-  assert.equal(buf.readUInt32LE(8), buf.byteLength);
-  assert.ok(
-    isValidGlbBuffer(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)),
-    'isValidGlbBuffer should validate real Chapter 2 Lite GLB'
-  );
-  assert.ok(
-    buf.byteLength < 3 * 1024 * 1024,
-    `Expected Chapter 2 Lite GLB under 3 MB, got ${(buf.byteLength / (1024 * 1024)).toFixed(2)} MB`
-  );
+  const resolved = assertValidGlbAssetOrManifest(absPath, { maxBytes: 3 * 1024 * 1024, requireRuntime: true });
 
-  const jsonLen = buf.readUInt32LE(12);
-  const gltf = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
-  const prim = gltf.meshes[0].primitives[0];
-  const idxAcc = gltf.accessors[prim.indices];
-  const posAcc = gltf.accessors[prim.attributes.POSITION];
-  const triCount = idxAcc.count / 3;
-  assert.ok(
-    triCount >= 20_000 && triCount <= 40_000,
-    `Expected Chapter 2 Lite triangle count around 30k, got ${triCount}`
-  );
-  assert.equal(gltf.images.length, 1, 'Lite GLB should embed only 1 BaseColor albedo image');
-  assert.equal(gltf.images[0].mimeType, 'image/jpeg');
-  assert.equal(
-    Boolean(gltf.extensionsUsed?.includes('KHR_materials_specular')),
-    false,
-    'Lite GLB should use lightweight MeshStandardMaterial without KHR_materials_specular'
-  );
-  // Canonical raw bounds match Aries War-Forge Arena.glb
-  assert.ok(posAcc.min[0] < -0.52 && posAcc.max[0] > 0.52);
-  assert.ok(posAcc.min[1] < -0.52 && posAcc.max[1] > 0.52);
+  if (resolved.source === 'disk') {
+    const buf = fs.readFileSync(absPath);
+    assert.ok(
+      isValidGlbBuffer(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)),
+      'isValidGlbBuffer should validate real Chapter 2 Lite GLB'
+    );
+    const jsonLen = buf.readUInt32LE(12);
+    const gltf = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+    const prim = gltf.meshes[0].primitives[0];
+    const idxAcc = gltf.accessors[prim.indices];
+    const posAcc = gltf.accessors[prim.attributes.POSITION];
+    const triCount = idxAcc.count / 3;
+    assert.ok(
+      triCount >= 20_000 && triCount <= 40_000,
+      `Expected Chapter 2 Lite triangle count around 30k, got ${triCount}`
+    );
+    assert.equal(gltf.images.length, 1, 'Lite GLB should embed only 1 BaseColor albedo image');
+    assert.equal(gltf.images[0].mimeType, 'image/jpeg');
+    assert.equal(
+      Boolean(gltf.extensionsUsed?.includes('KHR_materials_specular')),
+      false,
+      'Lite GLB should use lightweight MeshStandardMaterial without KHR_materials_specular'
+    );
+    assert.ok(posAcc.min[0] < -0.52 && posAcc.max[0] > 0.52);
+    assert.ok(posAcc.min[1] < -0.52 && posAcc.max[1] > 0.52);
+  }
 
   const liteUrl = getChapter2MapLiteAssetUrl('/', 'http://127.0.0.1:3000/');
   assert.equal(

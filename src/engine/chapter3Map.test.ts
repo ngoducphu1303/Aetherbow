@@ -18,6 +18,7 @@ import {
   resolveChapter3SanctuaryAtmosphereBudget,
   updateChapter3EmeraldSanctuaryAtmosphere,
 } from './chapter3Map';
+import { assertValidGlbAssetOrManifest } from './testGlbManifestHelper';
 
 function makeMinimalValidGlb(): ArrayBuffer {
   const json = Buffer.from(JSON.stringify({ asset: { version: '2.0' } }), 'utf8');
@@ -35,41 +36,36 @@ function makeMinimalValidGlb(): ArrayBuffer {
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
 }
 
-test('Chapter 3 Lite & High GLBs exist intact on disk and meet Dell Latitude E5430 Lite GPU budgets', () => {
+test('Chapter 3 Lite & High GLBs exist intact on disk or CDN manifest and meet Dell Latitude E5430 Lite GPU budgets', () => {
   const liteAbsPath = path.resolve(process.cwd(), 'public', ...CHAPTER3_MAP_LITE_PATH_SEGMENTS);
-  assert.ok(fs.existsSync(liteAbsPath), `Missing Chapter 3 Lite GLB at ${liteAbsPath}`);
-  const liteBuf = fs.readFileSync(liteAbsPath);
-  assert.equal(liteBuf.toString('ascii', 0, 4), 'glTF');
-  assert.equal(liteBuf.readUInt32LE(4), 2);
-  assert.equal(liteBuf.readUInt32LE(8), liteBuf.byteLength);
-  assert.ok(
-    isValidChapter3GlbBuffer(liteBuf.buffer.slice(liteBuf.byteOffset, liteBuf.byteOffset + liteBuf.byteLength)),
-    'isValidChapter3GlbBuffer should validate real Chapter 3 Lite GLB'
-  );
-  assert.ok(
-    liteBuf.byteLength < 2.2 * 1024 * 1024,
-    `Expected Chapter 3 Lite GLB under 2.2 MB, got ${(liteBuf.byteLength / (1024 * 1024)).toFixed(2)} MB`
-  );
-
-  const jsonLen = liteBuf.readUInt32LE(12);
-  const gltf = JSON.parse(liteBuf.subarray(20, 20 + jsonLen).toString('utf8'));
-  const prim = gltf.meshes[0].primitives[0];
-  const idxAcc = gltf.accessors[prim.indices];
-  const triCount = idxAcc.count / 3;
-  assert.ok(
-    triCount >= 15_000 && triCount <= 42_000,
-    `Expected Chapter 3 Lite triangle count <= 42k for E5430, got ${triCount}`
-  );
-  assert.equal(gltf.images.length, 1, 'Lite GLB should embed only 1 BaseColor albedo image');
-  assert.equal(gltf.images[0].mimeType, 'image/jpeg');
+  const liteRes = assertValidGlbAssetOrManifest(liteAbsPath, { maxBytes: 2.2 * 1024 * 1024, requireRuntime: true });
+  if (liteRes.source === 'disk') {
+    const liteBuf = fs.readFileSync(liteAbsPath);
+    assert.ok(
+      isValidChapter3GlbBuffer(liteBuf.buffer.slice(liteBuf.byteOffset, liteBuf.byteOffset + liteBuf.byteLength)),
+      'isValidChapter3GlbBuffer should validate real Chapter 3 Lite GLB'
+    );
+    const jsonLen = liteBuf.readUInt32LE(12);
+    const gltf = JSON.parse(liteBuf.subarray(20, 20 + jsonLen).toString('utf8'));
+    const prim = gltf.meshes[0].primitives[0];
+    const idxAcc = gltf.accessors[prim.indices];
+    const triCount = idxAcc.count / 3;
+    assert.ok(
+      triCount >= 15_000 && triCount <= 42_000,
+      `Expected Chapter 3 Lite triangle count <= 42k for E5430, got ${triCount}`
+    );
+    assert.equal(gltf.images.length, 1, 'Lite GLB should embed only 1 BaseColor albedo image');
+    assert.equal(gltf.images[0].mimeType, 'image/jpeg');
+  }
 
   const highAbsPath = path.resolve(process.cwd(), 'public', ...CHAPTER3_MAP_HIGH_PATH_SEGMENTS);
-  assert.ok(fs.existsSync(highAbsPath), `Missing Chapter 3 High GLB at ${highAbsPath}`);
-  const highBuf = fs.readFileSync(highAbsPath);
-  assert.ok(
-    isValidChapter3GlbBuffer(highBuf.buffer.slice(highBuf.byteOffset, highBuf.byteOffset + highBuf.byteLength))
-  );
-  assert.ok(highBuf.byteLength < 4.5 * 1024 * 1024);
+  const highRes = assertValidGlbAssetOrManifest(highAbsPath, { maxBytes: 4.5 * 1024 * 1024, requireRuntime: true });
+  if (highRes.source === 'disk') {
+    const highBuf = fs.readFileSync(highAbsPath);
+    assert.ok(
+      isValidChapter3GlbBuffer(highBuf.buffer.slice(highBuf.byteOffset, highBuf.byteOffset + highBuf.byteLength))
+    );
+  }
 
   const liteUrl = getChapter3MapLiteAssetUrl('/', 'http://127.0.0.1:3000/');
   assert.equal(

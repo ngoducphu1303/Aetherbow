@@ -39,7 +39,7 @@ import {
 } from '../data/earlyProgressionData';
 import { evaluateEquippedGearSets } from '../data/gearData';
 import { HERO_MAP } from '../data/heroesData';
-import { decodeSaveTransferCode, encodeSaveTransferCode } from '../data/phase5Data';
+import { decodeSaveTransferCode, encodeSaveTransferCode, encodeSignedSaveJson } from '../data/phase5Data';
 import { SKILL_SYNERGIES, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import {
   Chapter1MapMode,
@@ -258,7 +258,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleDownloadSaveJson = () => {
     if (!save) return;
     soundEngine.playUiClick(1.08);
-    const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' });
+    const blob = new Blob([encodeSignedSaveJson(save)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -306,7 +306,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   Sao Lưu &amp; Khôi Phục Mã Save
                 </h2>
                 <p className="text-[11px] text-slate-400 font-semibold truncate">
-                  Chuẩn ABW5 có kiểm tra toàn vẹn checksum hoặc tệp .JSON
+                  Chuẩn ABW5 &amp; JSON-V2 · Kiểm tra checksum toàn vẹn
                 </p>
               </div>
             </div>

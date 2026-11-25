@@ -50,23 +50,25 @@ Tài liệu này tổng hợp lộ trình kỹ thuật và nội dung cho **Aeth
 
 ---
 
-### P2 — Chuẩn Hóa Kho Tài Sản 3D, Bảo Trì Kiến Trúc & Mở Rộng Nội Dung
+### P2 — Chuẩn Hóa Kho Tài Sản 3D, AI Đám Đông, Gia Cố Save & Bảo Trì Kiến Trúc
 
-| Mã | Hạng mục | Mục tiêu đo lường | Effort dự kiến |
+| Mã | Hạng mục | Mục tiêu đo lường | Trạng thái / Effort |
 |---|---|---|---|
-| **P2-1** | **Đạt 100% Cặp High/Lite Trong `glb-manifest.json`**: Chuẩn hóa `aries-arena-lite.glb` trong `Chương 2/Runtime/` và nén lại tệp legacy `hatsune-miku-lite.glb` (3.47 MB → ≤ 2.2 MB). | `pairCoveragePct >= 98%`, `0` warning vượt 2.5 MB | 1 ngày |
-| **P2-2** | **Tách Bộ Test GLB Local vs CDN Manifest**: Cho phép `src/engine/*.test.ts` chạy 100% xanh trên CI không cần commit nhị phân `.glb` lên git. | 0 `ENOENT` trên CI không có binary cục bộ | 0.5 ngày |
+| **P2-2** | **Tách Bộ Test GLB Local vs CDN Manifest (`testGlbManifestHelper.ts`)**: Xác minh thực thể thật trong `scripts/glb-manifest.json` trên CI không cần nhị phân cục bộ, đưa toàn bộ `src/engine/*.test.ts` từ 27 `ENOENT` về **0 fail** (`181 pass / 8 skip CDN`). | 0 `ENOENT` / 0 fail trên toàn bộ bộ test engine | **Hoàn thành & Đã test (Đợt 2)** |
+| **P2-4a** | **Mã Kiểm Tra Toàn Vẹn Save JSON-V2 (`aetherbow_save_v2`) & Defense-in-Depth Import**: Xuất `.JSON` có FNV-1a checksum chống sửa tay, kẹp biên tự động tại cả `decodeSaveTransferCode` và `handleImportSave`, giữ 100% tương thích ngược JSON cũ. | Chặn tệp sửa đổi live trên trình duyệt + unit test 100% | **Hoàn thành & Đã test (Đợt 2)** |
+| **P2-5a** | **Bộ Điều Phối Đội Hình & Bể Token Tấn Công Đám Đông (`EnemySquadDirector`)**: Giới hạn `2–5` quái thường tấn công đồng thời (`≤ 3` ở Lite E5430), cân bằng tầm xa/cận chiến và di chuyển vòng sườn tránh chồng đòn. | `enemySquadDirector.test.ts` 4/4 pass, 0 tải GPU thêm | **Hoàn thành & Đã test (Đợt 2)** |
+| **P2-1** | **Đạt 100% Cặp High/Lite Trong `glb-manifest.json`**: Chuẩn hóa `aries-arena-lite.glb` trong `Chương 2/Runtime/` và nén lại tệp legacy `hatsune-miku-lite.glb` (3.47 MB → ≤ 2.2 MB). | `pairCoveragePct >= 98%`, `0` warning vượt 2.5 MB | 1 ngày (Cần nguồn 3D) |
 | **P2-3** | **Tách Module Hóa `GameEngine.ts` & `App.tsx`**: Tách `ArenaSceneBuilder`, `CombatSkillExecutor`, `VfxPoolManager` khỏi `GameEngine.ts` (~24.8k dòng) để tối ưu code-splitting và thời gian parse JS trên CPU yếu. | Giảm >35% kích thước tệp lõi, 0 regression | 4–5 ngày |
-| **P2-4** | **Hẹn Giờ Sự Kiện LiveOps & Checksum Save Export**: Thêm `scheduledStartMs`/`scheduledEndMs` cho sự kiện tự động và mã kiểm tra toàn vẹn gói Export Save. | Tự động hóa bật/tắt sự kiện cuối tuần | 2 ngày |
-| **P2-5** | **Tích Hợp Tài Sản 3D High/Lite Cho Chương 5–8 (Cự Giải → Bọ Cạp)**: Kèm Boss Phase III đầy đủ cho Chương 5–8, tuân thủ tuyệt đối ngân sách E5430 Lite ≤ 2.5 MB/entity. | 100% cặp High/Lite, FPS ổn định ≥ 30 trên E5430 | Theo lịch mỹ thuật |
+| **P2-4b** | **Hẹn Giờ Sự Kiện LiveOps Tự Động**: Thêm `scheduledStartMs`/`scheduledEndMs` vào cấu hình LiveOps kèm cập nhật schema `firestore.rules` và deploy rules đồng bộ. | Tự động hóa bật/tắt sự kiện cuối tuần | 1–2 ngày |
+| **P2-5b** | **Tích Hợp Tài Sản 3D High/Lite Cho Chương 5–8 (Cự Giải → Bọ Cạp)**: Kèm Boss Phase III đầy đủ cho Chương 5–8, tuân thủ tuyệt đối ngân sách E5430 Lite ≤ 2.5 MB/entity. | 100% cặp High/Lite, FPS ổn định ≥ 30 trên E5430 | Theo lịch mỹ thuật |
 
 ---
 
 ### P3 — Hoàn Thiện Dài Hạn, Playtest Người Chơi Thật & Scale Hạ Tầng
 
-| Mã | Hạng mục | Mục tiêu đo lường | Effort dự kiến |
+| Mã | Hạng mục | Mục tiêu đo lường | Trạng thái / Effort |
 |---|---|---|---|
+| **P3-3** | **Hỗ Trợ Tay Cầm Gamepad API & ARIA Live Regions**: Đã xác minh Gamepad API (`GameEngine.ts` + `SettingsModal.tsx`) và triển khai vùng thông báo `aria-live="polite"` (`App.tsx`) cho trình đọc màn hình. | Đạt chuẩn điều khiển đa thiết bị & tiếp cận | **Hoàn thành & Đã xác minh (Đợt 2)** |
 | **P3-1** | **Kiểm Thử Thực Địa Trên Máy Vật Lý Dell Latitude E5430 & Playtest Người Thật**: Đo FPS 1% low, nhiệt độ GPU, RAM trình duyệt trong phiên chơi liên tục 60 phút và thu thập phản hồi FTUE thực tế. | 0 crash / 0 treo máy trong 60 phút chơi liên tục | 3 ngày QA thực địa |
 | **P3-2** | **Tích Hợp Tài Sản 3D Chương 9–12 (Nhân Mã → Song Ngư)**: Hoàn tất trọn bộ 12 Cung Hoàng Đạo 3D chuẩn High/Lite. | Đủ 12 bản đồ & Boss 3D riêng biệt | Theo lịch mỹ thuật |
-| **P3-3** | **Hỗ Trợ Tay Cầm Gamepad API & ARIA Live Regions**: Mở rộng khả năng tiếp cận cho người chơi dùng tay cầm và công cụ đọc màn hình. | Đạt chuẩn điều khiển đa thiết bị | 2–3 ngày |
 | **P3-4** | **Chuyển Rate Limiter & Anomaly Store Sang Redis (Khi Scale Multi-Instance)**: Sẵn sàng mở rộng hàng nghìn CCU đồng thời. | Đồng bộ giới hạn tốc độ xuyên cụm server | 2 ngày |

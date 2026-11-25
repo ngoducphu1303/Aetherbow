@@ -13,13 +13,13 @@ import {
 } from './chapter1RosterAssets';
 import { getChapter2MapHighAssetUrl } from './chapter2Map';
 import { getSolarLeoAssetUrl, resolveSolarLeoHeroAssetId } from './solarLeoAssets';
+import { assertValidGlbAssetOrManifest } from './testGlbManifestHelper';
 
 function verifyRuntimeFile(url: URL, maxBytes: number): void {
-  const file = readFileSync(`public${decodeURIComponent(url.pathname)}`);
-  assert.ok(file.length <= maxBytes, `${url.pathname} exceeds the runtime budget`);
-  assert.equal(file.readUInt32LE(0), 0x46546c67);
-  assert.equal(file.readUInt32LE(4), 2);
-  assert.equal(file.readUInt32LE(8), file.length);
+  assertValidGlbAssetOrManifest(`public${decodeURIComponent(url.pathname)}`, {
+    maxBytes,
+    requireRuntime: true,
+  });
 }
 
 test('every Aries enemy appears in the Chapter 2 campaign and has Lite and High GLBs', () => {

@@ -34,6 +34,7 @@ import {
   createAdaptiveFpsGovernor,
   sampleAdaptiveFpsFrame,
 } from './wave5CombatSystems';
+import { assertValidGlbAssetOrManifest } from './testGlbManifestHelper';
 
 function createMemoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -290,40 +291,42 @@ test('All 4 shared hero Lite GLBs exist, are significantly smaller than full ori
     for (const [fullRel, liteRel] of Object.entries(HERO_LITE_VARIANT_PATHS)) {
       const fullPath = path.join(publicDir, fullRel);
       const litePath = path.join(publicDir, liteRel);
-      assert.ok(fs.existsSync(fullPath), `Missing full hero GLB: ${fullRel}`);
-      assert.ok(fs.existsSync(litePath), `Missing Lite hero GLB: ${liteRel}`);
+      const fullRes = assertValidGlbAssetOrManifest(fullPath);
+      const liteRes = assertValidGlbAssetOrManifest(litePath);
 
-      const fullSize = fs.statSync(fullPath).size;
-      const liteSize = fs.statSync(litePath).size;
+      const fullSize = fullRes.size;
+      const liteSize = liteRes.size;
       assert.ok(
         liteSize < fullSize * 0.75,
         `Lite variant ${liteRel} (${liteSize}B) should be at least 25% smaller than ${fullRel} (${fullSize}B)`
       );
 
-      const fullJson = readGlbJsonChunk(fullPath);
-      const liteJson = readGlbJsonChunk(litePath);
-      assert.ok((liteJson.meshes?.length ?? 0) > 0, `Lite hero ${liteRel} must contain valid meshes`);
-      assert.equal(
-        liteJson.skins?.length ?? 0,
-        fullJson.skins?.length ?? 0,
-        `Lite hero ${liteRel} must preserve full skin/rig structure`
-      );
+      if (fullRes.source === 'disk' && liteRes.source === 'disk') {
+        const fullJson = readGlbJsonChunk(fullPath);
+        const liteJson = readGlbJsonChunk(litePath);
+        assert.ok((liteJson.meshes?.length ?? 0) > 0, `Lite hero ${liteRel} must contain valid meshes`);
+        assert.equal(
+          liteJson.skins?.length ?? 0,
+          fullJson.skins?.length ?? 0,
+          `Lite hero ${liteRel} must preserve full skin/rig structure`
+        );
 
-      // End-to-end Three.js GLTFLoader + MeshoptDecoder parse (catches any bufferView/EXT_meshopt_compression offset corruption!)
-      const rawBuf = fs.readFileSync(litePath);
-      const arrayBuf = rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength);
-      const parsed = await loader.parseAsync(arrayBuf, '');
-      let meshCount = 0;
-      let vertexCount = 0;
-      parsed.scene.traverse((obj) => {
-        if ((obj as THREE.Mesh).isMesh) {
-          meshCount += 1;
-          const pos = (obj as THREE.Mesh).geometry?.getAttribute('position');
-          if (pos) vertexCount += pos.count;
-        }
-      });
-      assert.ok(meshCount > 0, `Parsed Lite hero ${liteRel} must have renderable meshes`);
-      assert.ok(vertexCount > 500, `Parsed Lite hero ${liteRel} must have decoded vertices (got ${vertexCount})`);
+        // End-to-end Three.js GLTFLoader + MeshoptDecoder parse (catches any bufferView/EXT_meshopt_compression offset corruption!)
+        const rawBuf = fs.readFileSync(litePath);
+        const arrayBuf = rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength);
+        const parsed = await loader.parseAsync(arrayBuf, '');
+        let meshCount = 0;
+        let vertexCount = 0;
+        parsed.scene.traverse((obj) => {
+          if ((obj as THREE.Mesh).isMesh) {
+            meshCount += 1;
+            const pos = (obj as THREE.Mesh).geometry?.getAttribute('position');
+            if (pos) vertexCount += pos.count;
+          }
+        });
+        assert.ok(meshCount > 0, `Parsed Lite hero ${liteRel} must have renderable meshes`);
+        assert.ok(vertexCount > 500, `Parsed Lite hero ${liteRel} must have decoded vertices (got ${vertexCount})`);
+      }
     }
   } finally {
     if (prevSelf === undefined) delete g.self;

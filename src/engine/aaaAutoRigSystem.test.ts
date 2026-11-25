@@ -20,6 +20,7 @@ import {
 } from './aaaBoneTrails';
 import { CHAPTER1_BOSS_LITE_PATH_SEGMENTS } from './chapter1Boss';
 import { CHAPTER1_ROSTER_SPECS } from './chapter1RosterAssets';
+import { skipIfGlbOffloadedToCdn } from './testGlbManifestHelper';
 
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 
@@ -96,16 +97,18 @@ function makeBasePoseInput(overrides?: Partial<AutoRigPoseInput>): AutoRigPoseIn
   };
 }
 
-test('All 6 real Chapter 1 Lite GLBs auto-rig into valid 10–14 bone SkinnedMeshes with exact normalized skin weights and grounded calibration', async () => {
-  await withNodeGlbLoader(async (loader) => {
-    // Verify facing calibration values for off-axis raw sculpts
-    assert.equal(AUTO_RIG_CALIBRATION.fire_lion.facingYawOffset, -0.96);
-    assert.equal(AUTO_RIG_CALIBRATION.flame_spirit.facingYawOffset, Math.PI);
-    assert.equal(AUTO_RIG_CALIBRATION.sun_spearman.facingYawOffset, -0.14);
-    assert.equal(AUTO_RIG_CALIBRATION.stone_guardian.facingYawOffset, 0);
-    assert.equal(AUTO_RIG_CALIBRATION.winged_solar_lion.facingYawOffset, 0);
-    assert.equal(AUTO_RIG_CALIBRATION.solar_lion_boss.facingYawOffset, 0);
+test('All 6 real Chapter 1 Lite GLBs auto-rig into valid 10–14 bone SkinnedMeshes with exact normalized skin weights and grounded calibration', async (t) => {
+  // Verify facing calibration values for off-axis raw sculpts (always runs!)
+  assert.equal(AUTO_RIG_CALIBRATION.fire_lion.facingYawOffset, -0.96);
+  assert.equal(AUTO_RIG_CALIBRATION.flame_spirit.facingYawOffset, Math.PI);
+  assert.equal(AUTO_RIG_CALIBRATION.sun_spearman.facingYawOffset, -0.14);
+  assert.equal(AUTO_RIG_CALIBRATION.stone_guardian.facingYawOffset, 0);
+  assert.equal(AUTO_RIG_CALIBRATION.winged_solar_lion.facingYawOffset, 0);
+  assert.equal(AUTO_RIG_CALIBRATION.solar_lion_boss.facingYawOffset, 0);
 
+  if (skipIfGlbOffloadedToCdn(t, ALL_SIX_ARCHETYPES.map(getLiteGlbPath))) return;
+
+  await withNodeGlbLoader(async (loader) => {
     for (const archetype of ALL_SIX_ARCHETYPES) {
       const glbPath = getLiteGlbPath(archetype);
       const buf = fs.readFileSync(glbPath);
@@ -175,7 +178,8 @@ test('All 6 real Chapter 1 Lite GLBs auto-rig into valid 10–14 bone SkinnedMes
   });
 });
 
-test('Skeletal choreography drives distinct real-bone articulation across locomotion, attacks, wings, tails, and stagger for all 6 archetypes', async () => {
+test('Skeletal choreography drives distinct real-bone articulation across locomotion, attacks, wings, tails, and stagger for all 6 archetypes', async (t) => {
+  if (skipIfGlbOffloadedToCdn(t, ALL_SIX_ARCHETYPES.map(getLiteGlbPath))) return;
   await withNodeGlbLoader(async (loader) => {
     const loadInstance = async (archetype: AutoRigArchetype) => {
       const buf = fs.readFileSync(getLiteGlbPath(archetype));

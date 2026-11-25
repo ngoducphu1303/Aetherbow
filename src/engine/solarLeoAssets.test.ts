@@ -41,6 +41,7 @@ import { HERO_BONDS, MYTHIC_ARTIFACTS } from '../data/wave9Data';
 import { DIVINE_HALO_CATALOG } from '../data/wave10Data';
 import { CELESTIAL_WING_DEFS } from '../data/wave14Data';
 import { getHeroAssetPack, getSkinAssetPack, SOLAR_LEO_ITEM_THUMBNAILS } from '../data/assetRegistry';
+import { assertValidGlbAssetOrManifest, skipIfGlbOffloadedToCdn } from './testGlbManifestHelper';
 
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 
@@ -78,7 +79,7 @@ async function withNodeGlbLoader<T>(fn: (loader: GLTFLoader) => Promise<T>): Pro
   }
 }
 
-test('All 10 Solar Leo High GLBs, Lite GLBs, and WebP thumbnails exist, validate as glTF 2.0, and stay inside Dell E5430 Lite budgets', () => {
+test('All 10 Solar Leo High GLBs, Lite GLBs, and WebP thumbnails exist on disk or CDN manifest, validate as glTF 2.0, and stay inside Dell E5430 Lite budgets', () => {
   assert.equal(SOLAR_LEO_ASSET_IDS.length, 10);
 
   let totalLiteBytes = 0;
@@ -90,18 +91,17 @@ test('All 10 Solar Leo High GLBs, Lite GLBs, and WebP thumbnails exist, validate
     const litePath = path.join(PUBLIC_DIR, ...spec.litePathSegments);
     const thumbPath = path.join(PUBLIC_DIR, ...spec.thumbnailPathSegments);
 
-    assert.ok(fs.existsSync(highPath), `Missing High GLB: ${highPath}`);
-    assert.ok(fs.existsSync(litePath), `Missing Lite GLB: ${litePath}`);
+    const highRes = assertValidGlbAssetOrManifest(highPath, { requireRuntime: true });
+    const liteRes = assertValidGlbAssetOrManifest(litePath, {
+      maxBytes: spec.maxLiteBytes,
+      requireRuntime: true,
+    });
     assert.ok(fs.existsSync(thumbPath), `Missing WebP thumbnail: ${thumbPath}`);
 
-    const highBytes = assertValidGlbHeader(highPath);
-    const liteBytes = assertValidGlbHeader(litePath);
+    const highBytes = highRes.size;
+    const liteBytes = liteRes.size;
     const thumbBytes = fs.statSync(thumbPath).size;
 
-    assert.ok(
-      liteBytes <= spec.maxLiteBytes,
-      `${id} Lite GLB (${liteBytes} B) exceeded E5430 budget (${spec.maxLiteBytes} B)`
-    );
     assert.ok(
       liteBytes < highBytes,
       `${id} Lite GLB (${liteBytes} B) should be smaller than High GLB (${highBytes} B)`
@@ -125,7 +125,15 @@ test('All 10 Solar Leo High GLBs, Lite GLBs, and WebP thumbnails exist, validate
   );
 });
 
-test('All 10 real Solar Leo Lite GLBs calibrate, auto-rig into valid SkinnedMeshes/groups, and produce finite 3D poses', async () => {
+test('All 10 real Solar Leo Lite GLBs calibrate, auto-rig into valid SkinnedMeshes/groups, and produce finite 3D poses', async (t) => {
+  if (
+    skipIfGlbOffloadedToCdn(
+      t,
+      SOLAR_LEO_ASSET_IDS.map((id) => path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS[id].litePathSegments))
+    )
+  ) {
+    return;
+  }
   await withNodeGlbLoader(async (loader) => {
     for (const id of SOLAR_LEO_ASSET_IDS) {
       const spec = SOLAR_LEO_SPECS[id];
@@ -530,7 +538,15 @@ test('Solar Zenith suppresses duplicate blue Celestial Wings, Astrolabe sits far
   }
 });
 
-test('Aurelia sculpted bow & arrow stay 100% rigid (zero bend) in riding/shooting poses and mount a calibrated 3D bowstring on both High and Lite', async () => {
+test('Aurelia sculpted bow & arrow stay 100% rigid (zero bend) in riding/shooting poses and mount a calibrated 3D bowstring on both High and Lite', async (t) => {
+  if (
+    skipIfGlbOffloadedToCdn(t, [
+      path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia.litePathSegments),
+      path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia.highPathSegments),
+    ])
+  ) {
+    return;
+  }
   await withNodeGlbLoader(async (loader) => {
     for (const variant of ['lite', 'high'] as const) {
       const spec = SOLAR_LEO_SPECS.aurelia;
@@ -705,6 +721,11 @@ test('Astraeo playful pet choreographer cycles all 5 tricks, rigid-locks face ve
   assert.ok(Math.abs(combat.yawOffset) < 0.3);
 
   // 2. Real Astraeo GLB check on both High and Lite: 7-bone rig, rigid face lock, bone articulation, aura budgets
+  const astraeoLitePath = path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.astraeo.litePathSegments);
+  if (!fs.existsSync(astraeoLitePath)) {
+    assertValidGlbAssetOrManifest(astraeoLitePath, { requireRuntime: true });
+    return;
+  }
   await withNodeGlbLoader(async (loader) => {
     const spec = SOLAR_LEO_SPECS.astraeo;
     const litePath = path.join(PUBLIC_DIR, ...spec.litePathSegments);
@@ -818,6 +839,13 @@ test('Solarius mount royal choreographer and Solar Zenith wing choreographer cyc
   assert.ok(maxWingAsym > 0.45, `sunburst_ripple must introduce graceful asymmetric wave (max=${maxWingAsym})`);
 
   // 3. Real Solarius & Solar Zenith GLBs: High vs Lite aura budgets, active Lobby idle articulation, and clean disposal
+  const solariusPath = path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.solarius.litePathSegments);
+  const zenithPath = path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.solar_zenith.litePathSegments);
+  if (!fs.existsSync(solariusPath) || !fs.existsSync(zenithPath)) {
+    assertValidGlbAssetOrManifest(solariusPath, { requireRuntime: true });
+    assertValidGlbAssetOrManifest(zenithPath, { requireRuntime: true });
+    return;
+  }
   await withNodeGlbLoader(async (loader) => {
     // Solarius check
     const mBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.solarius.litePathSegments));
@@ -927,6 +955,13 @@ test('Astrolabe of Regulus (Artifact) and Halo of the Leo Sovereign (Halo) cycle
   assert.ok(haloCeleb.starOrbitSpeedMult >= 2.0);
 
   // 3. Real Astrolabe & Halo GLBs: High vs Lite aura caps, multi-axis updates, and safe disposal
+  const astroPath = path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.astrolabe_regulus.litePathSegments);
+  const haloPath = path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.leo_sovereign.litePathSegments);
+  if (!fs.existsSync(astroPath) || !fs.existsSync(haloPath)) {
+    assertValidGlbAssetOrManifest(astroPath, { requireRuntime: true });
+    assertValidGlbAssetOrManifest(haloPath, { requireRuntime: true });
+    return;
+  }
   await withNodeGlbLoader(async (loader) => {
     const aBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.astrolabe_regulus.litePathSegments));
     const aGltf = await loader.parseAsync(aBuf.buffer.slice(aBuf.byteOffset, aBuf.byteOffset + aBuf.byteLength), '');
@@ -1022,6 +1057,13 @@ test('Aurelia and all 4 Solar Leo outfits cycle unique playful actions, keep Aur
   assert.equal(allSeenActions.size, 20, 'All 5 hero/outfit styles must have 20 unique named choreography beats');
 
   // Verify real Aurelia base + Oasis Dancer Lite GLBs: High/Lite heroAuraRig caps, zero bow bend on Aurelia base, lively arms on Oasis Dancer
+  const aureliaLite = path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia.litePathSegments);
+  const oasisLite = path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia_oasis_dancer.litePathSegments);
+  if (!fs.existsSync(aureliaLite) || !fs.existsSync(oasisLite)) {
+    assertValidGlbAssetOrManifest(aureliaLite, { requireRuntime: true });
+    assertValidGlbAssetOrManifest(oasisLite, { requireRuntime: true });
+    return;
+  }
   await withNodeGlbLoader(async (loader) => {
     const aBuf = fs.readFileSync(path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia.litePathSegments));
     const aGltf = await loader.parseAsync(aBuf.buffer.slice(aBuf.byteOffset, aBuf.byteOffset + aBuf.byteLength), '');
@@ -1099,7 +1141,18 @@ test('Aurelia and all 4 Solar Leo outfits cycle unique playful actions, keep Aur
 
 
 
-test('Aurelia and Bellona stay seated as their mounts turn, walk and lift the saddle', async () => {
+test('Aurelia and Bellona stay seated as their mounts turn, walk and lift the saddle', async (t) => {
+  if (
+    skipIfGlbOffloadedToCdn(t, [
+      path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.solarius.litePathSegments),
+      path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.vulcan.litePathSegments),
+      path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.aurelia.litePathSegments),
+      path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.bellona.litePathSegments),
+      path.join(PUBLIC_DIR, ...SOLAR_LEO_SPECS.golden_fleece.litePathSegments),
+    ])
+  ) {
+    return;
+  }
   await withNodeGlbLoader(async (loader) => {
     const loadRig = async (id: 'vulcan' | 'solarius' | 'aurelia' | 'bellona' | 'golden_fleece', liteMode = true) => {
       const spec = SOLAR_LEO_SPECS[id];

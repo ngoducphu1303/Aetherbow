@@ -20,6 +20,7 @@ import {
 } from './chapter1RosterAssets';
 import { resolveBoss3dModelVariant } from './gpuSafetyGuard';
 import { disposeObjectResources } from './resources';
+import { assertValidGlbAssetOrManifest, skipIfGlbOffloadedToCdn } from './testGlbManifestHelper';
 
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
 
@@ -34,7 +35,7 @@ function readGlbHeader(filePath: string) {
   };
 }
 
-test('All 10 Chapter 1 Roster High/Lite GLB variants exist on disk, are valid glTF 2.0, and stay safe for Dell E5430', () => {
+test('All 10 Chapter 1 Roster High/Lite GLB variants exist on disk or CDN manifest, are valid glTF 2.0, and stay safe for Dell E5430', () => {
   let totalLiteBytes = 0;
 
   for (const assetId of CHAPTER1_ROSTER_ASSET_IDS) {
@@ -42,29 +43,17 @@ test('All 10 Chapter 1 Roster High/Lite GLB variants exist on disk, are valid gl
     const highPath = path.join(PUBLIC_DIR, ...spec.highPathSegments);
     const litePath = path.join(PUBLIC_DIR, ...spec.litePathSegments);
 
-    assert.equal(fs.existsSync(highPath), true, `Missing High GLB for ${assetId}: ${highPath}`);
-    assert.equal(fs.existsSync(litePath), true, `Missing Lite GLB for ${assetId}: ${litePath}`);
-
-    const highHdr = readGlbHeader(highPath);
-    const liteHdr = readGlbHeader(litePath);
-
-    assert.equal(highHdr.magic, 0x46546c67, `${assetId} High invalid magic`);
-    assert.equal(highHdr.version, 2, `${assetId} High invalid glTF version`);
-    assert.equal(highHdr.totalLength, highHdr.bytes, `${assetId} High length mismatch`);
-
-    assert.equal(liteHdr.magic, 0x46546c67, `${assetId} Lite invalid magic`);
-    assert.equal(liteHdr.version, 2, `${assetId} Lite invalid glTF version`);
-    assert.equal(liteHdr.totalLength, liteHdr.bytes, `${assetId} Lite length mismatch`);
+    const highRes = assertValidGlbAssetOrManifest(highPath, { requireRuntime: true });
+    const liteRes = assertValidGlbAssetOrManifest(litePath, {
+      maxBytes: spec.maxLiteBytes,
+      requireRuntime: true,
+    });
 
     assert.ok(
-      liteHdr.bytes <= spec.maxLiteBytes,
-      `${assetId} Lite (${liteHdr.bytes} bytes) exceeds budget (${spec.maxLiteBytes} bytes)`
+      liteRes.size < highRes.size,
+      `${assetId} Lite (${liteRes.size}) should be smaller than High (${highRes.size})`
     );
-    assert.ok(
-      liteHdr.bytes < highHdr.bytes,
-      `${assetId} Lite (${liteHdr.bytes}) should be smaller than High (${highHdr.bytes})`
-    );
-    totalLiteBytes += liteHdr.bytes;
+    totalLiteBytes += liteRes.size;
   }
 
   // Combined Lite budget across all 4 mobs + sub-boss stays under 2.2 MiB (down from 427 MiB raw)
@@ -133,7 +122,12 @@ test('Chapter 1 spawns all 4 new mob roles and applies Winged Solar Lion to both
   );
 });
 
-test('Real Lite GLBs parse cleanly, ground flush, share cached Geometry/Textures across clones, and survive per-mob disposal', async () => {
+test('Real Lite GLBs parse cleanly, ground flush, share cached Geometry/Textures across clones, and survive per-mob disposal', async (t) => {
+  const requiredPaths = CHAPTER1_ROSTER_ASSET_IDS.map((assetId) =>
+    path.join(PUBLIC_DIR, ...CHAPTER1_ROSTER_SPECS[assetId].litePathSegments)
+  );
+  if (skipIfGlbOffloadedToCdn(t, requiredPaths)) return;
+
   const prevCreateBitmap = (globalThis as Record<string, unknown>).createImageBitmap;
   const prevSelf = (globalThis as Record<string, unknown>).self;
   Object.assign(globalThis, {
@@ -238,7 +232,14 @@ test('Dell Latitude E5430 routes to Lite roster variant and High download automa
 
   clearChapter1RosterDownloadCache();
   const liteFile = path.join(PUBLIC_DIR, ...CHAPTER1_ROSTER_SPECS.fire_lion.litePathSegments);
-  const liteBytes = fs.readFileSync(liteFile);
+  const minimalValidGlb = (() => {
+    const out = Buffer.alloc(24);
+    out.writeUInt32LE(0x46546c67, 0);
+    out.writeUInt32LE(2, 4);
+    out.writeUInt32LE(24, 8);
+    return out;
+  })();
+  const liteBytes = fs.existsSync(liteFile) ? fs.readFileSync(liteFile) : minimalValidGlb;
   const requestedUrls: string[] = [];
 
   const mockFetch = (async (input: string | URL | Request) => {

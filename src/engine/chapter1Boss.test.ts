@@ -26,6 +26,7 @@ import {
   resetGpuCrashSentinel,
   resolveBoss3dModelVariant,
 } from './gpuSafetyGuard';
+import { assertValidGlbAssetOrManifest, skipIfGlbOffloadedToCdn } from './testGlbManifestHelper';
 
 function readGlbJsonAndHeader(absPath: string) {
   assert.ok(fs.existsSync(absPath), `Missing GLB at ${absPath}`);
@@ -70,7 +71,7 @@ function createMemoryStorage(): Storage {
   };
 }
 
-test('High PBR variant and Low-End Lite variant of Sư tử boss mới exist intact on disk (and raw source if retained)', () => {
+test('High PBR variant and Low-End Lite variant of Sư tử boss mới exist intact on disk or CDN manifest (and raw source if retained)', () => {
   const srcPath = path.resolve(process.cwd(), 'public', ...CHAPTER1_BOSS_SOURCE_PATH_SEGMENTS);
   if (fs.existsSync(srcPath)) {
     const src = readGlbJsonAndHeader(srcPath);
@@ -78,21 +79,25 @@ test('High PBR variant and Low-End Lite variant of Sư tử boss mới exist int
   }
 
   const highPath = path.resolve(process.cwd(), 'public', ...CHAPTER1_BOSS_HIGH_PATH_SEGMENTS);
-  const high = readGlbJsonAndHeader(highPath);
-  assert.ok(high.stat.size < 6 * 1024 * 1024, `High Boss GLB must be under 6 MB, got ${high.stat.size}`);
-  const highTris = high.gltf.accessors[high.gltf.meshes[0].primitives[0].indices].count / 3;
-  assert.ok(highTris >= 30_000 && highTris <= 48_000, `Expected High tris ~38k, got ${highTris}`);
-  assert.equal(high.gltf.images.length, 3, 'High Boss GLB must retain all 3 PBR maps');
-  assert.equal(Boolean(high.gltf.extensionsUsed?.includes('KHR_materials_specular')), false);
+  const highRes = assertValidGlbAssetOrManifest(highPath, { maxBytes: 6 * 1024 * 1024, requireRuntime: true });
+  if (highRes.source === 'disk') {
+    const high = readGlbJsonAndHeader(highPath);
+    const highTris = high.gltf.accessors[high.gltf.meshes[0].primitives[0].indices].count / 3;
+    assert.ok(highTris >= 30_000 && highTris <= 48_000, `Expected High tris ~38k, got ${highTris}`);
+    assert.equal(high.gltf.images.length, 3, 'High Boss GLB must retain all 3 PBR maps');
+    assert.equal(Boolean(high.gltf.extensionsUsed?.includes('KHR_materials_specular')), false);
+  }
 
   const litePath = path.resolve(process.cwd(), 'public', ...CHAPTER1_BOSS_LITE_PATH_SEGMENTS);
-  const lite = readGlbJsonAndHeader(litePath);
-  assert.ok(lite.stat.size < 1024 * 1024, `Lite Boss GLB must be under 1 MB for E5430, got ${lite.stat.size}`);
-  const liteTris = lite.gltf.accessors[lite.gltf.meshes[0].primitives[0].indices].count / 3;
-  assert.ok(liteTris >= 8_000 && liteTris <= 16_000, `Expected Lite tris ~12k, got ${liteTris}`);
-  assert.equal(lite.gltf.images.length, 1, 'Lite Boss GLB must embed only 1 BaseColor texture');
-  assert.equal(lite.gltf.images[0].mimeType, 'image/jpeg');
-  assert.equal(Boolean(lite.gltf.extensionsUsed?.includes('KHR_materials_specular')), false);
+  const liteRes = assertValidGlbAssetOrManifest(litePath, { maxBytes: 1024 * 1024, requireRuntime: true });
+  if (liteRes.source === 'disk') {
+    const lite = readGlbJsonAndHeader(litePath);
+    const liteTris = lite.gltf.accessors[lite.gltf.meshes[0].primitives[0].indices].count / 3;
+    assert.ok(liteTris >= 8_000 && liteTris <= 16_000, `Expected Lite tris ~12k, got ${liteTris}`);
+    assert.equal(lite.gltf.images.length, 1, 'Lite Boss GLB must embed only 1 BaseColor texture');
+    assert.equal(lite.gltf.images[0].mimeType, 'image/jpeg');
+    assert.equal(Boolean(lite.gltf.extensionsUsed?.includes('KHR_materials_specular')), false);
+  }
 
   const highUrl = getChapter1BossAssetUrl('high', '/', 'http://127.0.0.1:3000/');
   const liteUrl = getChapter1BossAssetUrl('lite', '/', 'http://127.0.0.1:3000/');
@@ -185,7 +190,10 @@ test('Hardware guard routes Dell Latitude E5430 to Lite Boss GLB, RTX to High PB
   resetGpuCrashSentinel(storage);
 });
 
-test('Real Lite Boss GLB parses, grounds flush at Y=0, scales to target height, and drives finite combat choreography', async () => {
+test('Real Lite Boss GLB parses, grounds flush at Y=0, scales to target height, and drives finite combat choreography', async (t) => {
+  const litePath = path.resolve(process.cwd(), 'public', ...CHAPTER1_BOSS_LITE_PATH_SEGMENTS);
+  if (skipIfGlbOffloadedToCdn(t, [litePath])) return;
+
   const prevCreateBitmap = (globalThis as Record<string, unknown>).createImageBitmap;
   const prevSelf = (globalThis as Record<string, unknown>).self;
   Object.assign(globalThis, {
@@ -194,7 +202,6 @@ test('Real Lite Boss GLB parses, grounds flush at Y=0, scales to target height, 
   });
 
   try {
-    const litePath = path.resolve(process.cwd(), 'public', ...CHAPTER1_BOSS_LITE_PATH_SEGMENTS);
     const bytes = fs.readFileSync(litePath);
     const gltf = await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer, '');
 

@@ -2,6 +2,7 @@ import { normalizePlayableHeroId } from './heroesData';
 import { CHAPTERS } from './chaptersData';
 import { getBossTelemetryKey, migrateSaveData, PUNISH_WINDOW_DAMAGE_BONUS, PUNISH_WINDOW_PHASE3_BONUS } from './earlyProgressionData';
 import { createInitialSaveData } from './gearData';
+import { validateAndSanitizeSaveIntegrity } from './saveIntegrity';
 import { SKILLS_CATALOG, SKILL_SYNERGIES } from './skillsData';
 import {
   BossCodexEntry,
@@ -345,6 +346,14 @@ export function computeTrainingDpsSnapshot(
 // ============================================================================
 
 export const SAVE_CODE_PREFIX = 'ABW5';
+export const SAVE_JSON_ENVELOPE_FORMAT = 'aetherbow_save_v2';
+
+export interface SignedSaveJsonEnvelope {
+  format: typeof SAVE_JSON_ENVELOPE_FORMAT;
+  exportedAt: string;
+  checksum: string;
+  payload: SaveData;
+}
 
 function computeFnv1aHex(input: string): string {
   let hash = 0x811c9dc5;
@@ -380,10 +389,23 @@ function base64ToUtf8(b64: string): string {
 }
 
 export function encodeSaveTransferCode(save: SaveData): string {
-  const json = JSON.stringify(save);
+  const sanitized = validateAndSanitizeSaveIntegrity(save).sanitizedSave;
+  const json = JSON.stringify(sanitized);
   const checksum = computeFnv1aHex(json);
   const b64 = utf8ToBase64(json);
   return `${SAVE_CODE_PREFIX}:${checksum}:${b64}`;
+}
+
+export function encodeSignedSaveJson(save: SaveData, exportedAt = new Date().toISOString()): string {
+  const sanitized = validateAndSanitizeSaveIntegrity(save).sanitizedSave;
+  const canonicalPayload = JSON.stringify(sanitized);
+  const envelope: SignedSaveJsonEnvelope = {
+    format: SAVE_JSON_ENVELOPE_FORMAT,
+    exportedAt,
+    checksum: computeFnv1aHex(canonicalPayload),
+    payload: sanitized,
+  };
+  return JSON.stringify(envelope, null, 2);
 }
 
 export interface DecodeSaveTransferResult {
@@ -391,6 +413,7 @@ export interface DecodeSaveTransferResult {
   error?: string;
   save?: SaveData;
   preview?: SaveTransferPreview;
+  integrityFixedCount?: number;
 }
 
 export function decodeSaveTransferCode(rawInput: string): DecodeSaveTransferResult {
@@ -438,6 +461,31 @@ export function decodeSaveTransferCode(rawInput: string): DecodeSaveTransferResu
     return { ok: false, error: 'Dữ liệu JSON bên trong mã sao lưu bị lỗi cú pháp.' };
   }
 
+  // Verify signed JSON envelope (aetherbow_save_v2) if present
+  if (
+    rawObj &&
+    typeof rawObj === 'object' &&
+    !Array.isArray(rawObj) &&
+    (rawObj as Partial<SignedSaveJsonEnvelope>).format === SAVE_JSON_ENVELOPE_FORMAT
+  ) {
+    const env = rawObj as Partial<SignedSaveJsonEnvelope>;
+    if (typeof env.checksum !== 'string' || !env.payload || typeof env.payload !== 'object') {
+      return {
+        ok: false,
+        error: 'Tệp JSON sao lưu v2 thiếu checksum hoặc dữ liệu payload hợp lệ.',
+      };
+    }
+    const actualJsonChecksum = computeFnv1aHex(JSON.stringify(env.payload));
+    if (actualJsonChecksum !== env.checksum.toLowerCase()) {
+      return {
+        ok: false,
+        error: 'Mã kiểm tra toàn vẹn tệp JSON-V2 không khớp — tệp đã bị chỉnh sửa hoặc hỏng.',
+      };
+    }
+    rawObj = env.payload;
+    versionLabel = 'JSON-V2';
+  }
+
   if (
     !rawObj ||
     typeof rawObj !== 'object' ||
@@ -455,18 +503,22 @@ export function decodeSaveTransferCode(rawInput: string): DecodeSaveTransferResu
     ...createInitialSaveData(),
     ...(rawObj as Partial<SaveData>),
   };
-  const migrated = migrateSaveData(mergedRaw);
+  const preIntegrity = validateAndSanitizeSaveIntegrity(mergedRaw);
+  const migrated = migrateSaveData(preIntegrity.sanitizedSave);
+  const postIntegrity = validateAndSanitizeSaveIntegrity(migrated);
+  const totalFixed = preIntegrity.issuesFixed.length + postIntegrity.issuesFixed.length;
   return {
     ok: true,
-    save: migrated,
+    save: postIntegrity.sanitizedSave,
+    integrityFixedCount: totalFixed,
     preview: {
       version: versionLabel,
-      highestChapterCleared: migrated.highestChapterCleared,
-      selectedHeroId: migrated.selectedHeroId,
-      gold: migrated.gold,
-      gems: migrated.gems,
-      gearCount: migrated.inventory.length,
-      bestTowerFloor: migrated.bestTowerFloor ?? 0,
+      highestChapterCleared: postIntegrity.sanitizedSave.highestChapterCleared,
+      selectedHeroId: postIntegrity.sanitizedSave.selectedHeroId,
+      gold: postIntegrity.sanitizedSave.gold,
+      gems: postIntegrity.sanitizedSave.gems,
+      gearCount: postIntegrity.sanitizedSave.inventory.length,
+      bestTowerFloor: postIntegrity.sanitizedSave.bestTowerFloor ?? 0,
     },
   };
 }

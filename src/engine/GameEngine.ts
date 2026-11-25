@@ -31,6 +31,16 @@ import {
   resolveEnemyTacticalArchetype,
 } from './tacticalCombatChoreography';
 import {
+  classifySquadRole,
+  computeSquadWaitingFlankImpulse,
+  createEnemySquadDirectorState,
+  EnemySquadDirectorState,
+  pruneSquadAttackTokens,
+  releaseSquadAttackToken,
+  requestSquadAttackToken,
+  resolveCrowdAttackTokenBudget,
+} from './enemySquadDirector';
+import {
   ArenaMechanismInstance,
   ARENA_MECHANISM_SPECS,
   resolveMechanismRenderBudget,
@@ -1723,6 +1733,8 @@ export class GameEngine {
   private aiRivalActiveProjSpeed = 16;
   private aiRivalActiveDmgMult = 1.0;
   private aiRivalNextCooldown = 0.85;
+  private enemySquadDirectorState: EnemySquadDirectorState = createEnemySquadDirectorState();
+  private readonly aliveEnemyIdScratch = new Set<number>();
   private isBloodMoonMode = false;
   private bloodMoonTimeLeft = BLOOD_MOON_DURATION_SEC;
   private bloodMoonWave = 0;
@@ -16492,6 +16504,20 @@ export class GameEngine {
 
   private updateEnemies(dt: number): void {
     const enemySnapshot = [...this.enemies];
+    this.aliveEnemyIdScratch.clear();
+    let hasActiveBossInRoom = false;
+    for (let sIdx = 0; sIdx < enemySnapshot.length; sIdx++) {
+      const se = enemySnapshot[sIdx];
+      if (!se || se.dead) continue;
+      this.aliveEnemyIdScratch.add(se.id);
+      if (se.isBoss && !se.isTrainingDummy) hasActiveBossInRoom = true;
+    }
+    pruneSquadAttackTokens(this.enemySquadDirectorState, this.aliveEnemyIdScratch, this.elapsed);
+    const squadTokenBudget = resolveCrowdAttackTokenBudget({
+      chapterId: this.currentChapter.id,
+      isLiteMode: this.lowEndGpu,
+      hasActiveBoss: hasActiveBossInRoom,
+    });
     for (let i = enemySnapshot.length - 1; i >= 0; i--) {
       const e = enemySnapshot[i];
       if (!e || e.dead) continue;
@@ -16747,6 +16773,9 @@ export class GameEngine {
 
       // Wave 12 + Wave 5: Boss Break-Shield Stun freezes movement & attacks with dramatic staggered kneel posture
       if (e.stunTimer && e.stunTimer > 0) {
+        if (!e.isBoss && !e.isArenaRival) {
+          releaseSquadAttackToken(this.enemySquadDirectorState, e.id);
+        }
         e.stunTimer = Math.max(0, e.stunTimer - dt);
         e.vx = 0;
         e.vz = 0;
@@ -17378,6 +17407,9 @@ export class GameEngine {
           } else {
             this.executeEnemyAttack(e, isEnraged);
             e.telegraphType = 'none';
+            if (!e.isArenaRival) {
+              releaseSquadAttackToken(this.enemySquadDirectorState, e.id);
+            }
             // Deliberate punish recovery windows per archetype; Arena AI Rival uses lethal adaptive cadence
             if (e.isArenaRival) {
               e.attackTimer = this.aiRivalNextCooldown;
@@ -17450,16 +17482,39 @@ export class GameEngine {
             e.chargerCooldown = 3.8;
           }
         } else if (e.tacticalRole === 'charger' && (e.chargerCooldown ?? 99) <= 0 && distToHero < 8.5) {
-          e.telegraphType = 'lunge';
-          e.telegraphDuration = 0.52;
-          e.telegraphTimer = 0.52;
-          e.aimX = dirX;
-          e.aimZ = dirZ;
-          e.slamX = e.x + dirX * 3.6;
-          e.slamZ = e.z + dirZ * 3.6;
-          e.slamRadius = 1.45;
-          e.vx *= 0.25;
-          e.vz *= 0.25;
+          const chargerToken = requestSquadAttackToken(
+            this.enemySquadDirectorState,
+            { enemyId: e.id, kind: e.kind, distToPlayer: distToHero, isElite: e.isElite },
+            squadTokenBudget,
+            this.elapsed,
+            1.4
+          );
+          if (chargerToken.granted) {
+            e.telegraphType = 'lunge';
+            e.telegraphDuration = 0.52;
+            e.telegraphTimer = 0.52;
+            e.aimX = dirX;
+            e.aimZ = dirZ;
+            e.slamX = e.x + dirX * 3.6;
+            e.slamZ = e.z + dirZ * 3.6;
+            e.slamRadius = 1.45;
+            e.vx *= 0.25;
+            e.vz *= 0.25;
+          } else {
+            e.chargerCooldown = chargerToken.retryDelaySec;
+            e.mobFlankSign = chargerToken.flankSignSuggestion;
+            const orbit = computeSquadWaitingFlankImpulse({
+              enemyX: e.x,
+              enemyZ: e.z,
+              playerX: mobTargetX,
+              playerZ: mobTargetZ,
+              role: classifySquadRole(e.kind),
+              flankSign: e.mobFlankSign,
+              baseSpeed: e.speed,
+            });
+            e.vx = orbit.vx * slowMult;
+            e.vz = orbit.vz * slowMult;
+          }
         } else if (isAaaRegularMob) {
           // AAA Hades-style Regular Mob Steering: flanking arcs, squad separation, obstacle avoidance & inertia
           const steer = computeAaaMobSteering({
@@ -17526,6 +17581,28 @@ export class GameEngine {
               : distToHero < 13.8;
 
           if (e.attackTimer <= 0 && inSkillRange) {
+            const tokenDecision = requestSquadAttackToken(
+              this.enemySquadDirectorState,
+              { enemyId: e.id, kind: e.kind, distToPlayer: distToHero, isElite: e.isElite },
+              squadTokenBudget,
+              this.elapsed,
+              1.65
+            );
+            if (!tokenDecision.granted) {
+              e.attackTimer = tokenDecision.retryDelaySec;
+              e.mobFlankSign = tokenDecision.flankSignSuggestion;
+              const waitOrbit = computeSquadWaitingFlankImpulse({
+                enemyX: e.x,
+                enemyZ: e.z,
+                playerX: mobTargetX,
+                playerZ: mobTargetZ,
+                role: classifySquadRole(e.kind),
+                flankSign: e.mobFlankSign,
+                baseSpeed: e.speed,
+              });
+              e.vx = (e.vx * 0.45 + waitOrbit.vx * 0.55) * slowMult;
+              e.vz = (e.vz * 0.45 + waitOrbit.vz * 0.55) * slowMult;
+            } else {
             let activeMortars = 0;
             for (let mIdx = 0; mIdx < this.bossMultiSlamPool.length; mIdx++) {
               if (this.bossMultiSlamPool[mIdx].active) activeMortars += 1;
@@ -17594,6 +17671,7 @@ export class GameEngine {
               e.slamRadius = plan.telegraphRadius;
             } else {
               e.telegraphType = 'shot';
+            }
             }
           }
         } else if (e.isArenaRival) {
@@ -21234,6 +21312,7 @@ export class GameEngine {
         maxCombo: this.maxRunCombo,
       });
       this.markedEnemyIds.delete(e.id);
+      releaseSquadAttackToken(this.enemySquadDirectorState, e.id);
       const killPan = computeSpatialPan(e.x, ARENA_HALF_W);
       soundEngine.playEnemyDefeated(e.isBoss || e.isElite, killPan);
 
