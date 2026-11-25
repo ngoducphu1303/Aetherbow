@@ -25,6 +25,7 @@ import {
   stepMobPhysicalDash,
 } from './aaaEnemyCombatEngine';
 import {
+  canBossEnterPhaseThree,
   clampKnockbackInsideArena,
   computeSquadCoordinationVector,
   evaluateCastInterrupt,
@@ -41,6 +42,7 @@ import {
 } from './projectilePhysicsSystem';
 import {
   countActivePooled,
+  LootOrbVisualCache,
   stepArmorShardPool,
   stepDashScorchPool,
   stepGroundMistSeeds,
@@ -72,6 +74,9 @@ import {
 import {
   applyAttackReleaseRecoil,
   applyDirectionalHitRecoil,
+  applyDodgeBank,
+  applySkillCastPulse,
+  applySpawnSettle,
   CombatKinematicPose,
   CombatKinematicTransformDelta,
   createCombatKinematicPose,
@@ -1567,6 +1572,7 @@ export class GameEngine {
   private readonly enemySpatialGrid = new SpatialHashGrid<SquadNeighborSample>(4.0);
   private readonly projectileEnemyGrid = new SpatialHashGrid<EnemyEntity>(3.0);
   private readonly vfxBudgetCache = new VfxFrameBudgetCache();
+  private readonly lootOrbVisualCache = new LootOrbVisualCache();
   private vfxFrameCounter = 0;
   private readonly enemySnapshotScratch: EnemyEntity[] = [];
   private readonly projectileQueryScratch: EnemyEntity[] = [];
@@ -8457,6 +8463,7 @@ export class GameEngine {
     this.setProcAspdBonus = 0;
     this.setProcMoveBonus = 0;
     this.heroKinematicPose = createCombatKinematicPose();
+    applySpawnSettle(this.heroKinematicPose, this.reducedMotionEnabled);
     this.autoPilotUsedInRun =
       this.autoPilotEnabled &&
       !(this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode);
@@ -9146,7 +9153,7 @@ export class GameEngine {
     this.trapTriggerToastTimer = 0;
     this.windBeaconSpeedTimer = 0;
 
-    this.lootOrbs.forEach((o) => this.releaseObject(o.mesh));
+    this.lootOrbs.forEach((o) => this.entitiesGroup.remove(o.mesh));
     this.lootOrbs = [];
 
     this.coopAllies?.forEach((a) => {
@@ -11561,6 +11568,7 @@ export class GameEngine {
     this.hero.root.position.set(this.px, 0, this.pz);
     this.heroShadow.position.set(this.px, 0.02, this.pz);
     this.heroSquashY = 1.24;
+    applySkillCastPulse(this.heroKinematicPose, 1.15, this.reducedMotionEnabled);
 
     const strikeX = this.px + aimX * 1.45;
     const strikeZ = this.pz + aimZ * 1.45;
@@ -11846,6 +11854,7 @@ export class GameEngine {
       soundEngine.playHeroActiveSkill(this.baseStats.heroId);
     }
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
+    applySkillCastPulse(this.heroKinematicPose, 1.0, this.reducedMotionEnabled);
     this.spawnShockwave(this.px, this.pz, skillDef.accentHex, Math.min(5.2, skillDef.radius), 0.34);
     this.spawnParticles(this.px, 1.0, this.pz, skillDef.accentHex, 18);
     this.emitFloatingNumber(
@@ -14607,6 +14616,7 @@ export class GameEngine {
       const dashAccentHex = this.weaponAccentHex;
       soundEngine.playDash();
       this.heroSquashY = 1.18;
+      applyDodgeBank(this.heroKinematicPose, 1.0, this.reducedMotionEnabled);
       this.cameraFovOffset = Math.max(this.cameraFovOffset, 3.2);
       this.spawnShockwave(this.px, this.pz, dashAccentHex, 1.65, 0.22);
       this.spawnParticles(this.px, 0.7, this.pz, dashAccentHex, 12);
@@ -14821,6 +14831,7 @@ export class GameEngine {
       dt,
       {
         isVictory: this.phase === GamePhase.VICTORY,
+        isDead: this.hp <= 0 || this.phase === GamePhase.GAME_OVER,
         reducedMotion: this.reducedMotionEnabled,
       },
       this.heroKinematicDelta
@@ -20952,18 +20963,22 @@ export class GameEngine {
       }
       this.spawnBattleScar(e.x, e.z, 1.38);
       this.spawnParticles(e.x, 1.2, e.z, 0xf43f5e, 34);
-      this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', 'PHA II · CHUYỂN CẢNH!', true);
+      const phase2Plan = getChapterBossPhasePlan(this.currentChapter.id, 0.5);
+      this.emitFloatingNumber(e.x, 2.4, e.z, 0, true, false, 'fire', phase2Plan.phaseTitle, true);
       this.triggerBossWarning(
         e.bossTitle || this.currentChapter.bossName,
-        'PHA II CUỒNG NỘ · CỬA SỔ PHẢN CÔNG 2.5S!'
+        `${phase2Plan.phaseTitle} · ${phase2Plan.counterplayHint}`
       );
       this.spawnBossPhase2Totems(e);
     }
 
-    // Phase 4: Boss Phase III Transition (<= 30% HP) for Ch.10–12 final bosses & Tower Floor 20+
-    const canEnterPhaseThree =
-      (!this.isTowerMode && this.currentChapter.id >= 10) ||
-      (this.isTowerMode && this.towerFloor >= 20);
+    // Wave 6: Boss Phase III Transition (<= 30% HP) for Ch.1–4 & Ch.10–12 final Zodiac Bosses and Tower Floor 20+
+    const canEnterPhaseThree = canBossEnterPhaseThree(
+      this.currentChapter.id,
+      this.isTowerMode,
+      this.towerFloor,
+      e.kind === EnemyKind.ZODIAC_BOSS
+    );
     if (
       e.isBoss &&
       e.phaseTransitioned &&
@@ -21016,10 +21031,11 @@ export class GameEngine {
       }
       this.spawnBattleScar(e.x, e.z, 1.55);
       this.spawnParticles(e.x, 1.35, e.z, 0xfbbf24, 42);
-      this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHA III · TỐI THƯỢNG!', true);
+      const phase3Plan = getChapterBossPhasePlan(this.currentChapter.id, 0.2);
+      this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', phase3Plan.phaseTitle, true);
       this.triggerBossWarning(
         e.bossTitle || this.currentChapter.bossName,
-        'PHA III TỐI THƯỢNG · CỬA SỔ PHẢN CÔNG 2.5S!'
+        `${phase3Plan.phaseTitle} · ${phase3Plan.counterplayHint}`
       );
     }
 
@@ -22649,23 +22665,7 @@ export class GameEngine {
     kind: LootOrb['kind'],
     value: number
   ): void {
-    const color =
-      kind === 'xp'
-        ? 0x38bdf8
-        : kind === 'gold'
-        ? 0xfbbf24
-        : kind === 'gem'
-        ? 0xc084fc
-        : 0x34d399;
-    const mesh = new THREE.Mesh(
-      new THREE.OctahedronGeometry(kind === 'gem' ? 0.26 : 0.2, 0),
-      new THREE.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 1.4,
-        roughness: 0.2,
-      })
-    );
+    const mesh = this.lootOrbVisualCache.createMesh(kind);
     mesh.position.set(x, 0.45, z);
     this.entitiesGroup.add(mesh);
 
@@ -22710,7 +22710,7 @@ export class GameEngine {
       o.mesh.rotation.y += dt * 3.5;
 
       if (d < 0.72) {
-        this.releaseObject(o.mesh);
+        this.entitiesGroup.remove(o.mesh);
         this.lootOrbs.splice(i, 1);
 
         if (o.kind === 'gold') {
@@ -24876,7 +24876,10 @@ export class GameEngine {
       this.releaseObject(this.solarLeoPetRig.group);
       this.solarLeoPetRig = undefined;
     }
+    this.lootOrbs.forEach((o) => this.entitiesGroup.remove(o.mesh));
+    this.lootOrbs = [];
     this.releaseObject(this.scene);
+    this.lootOrbVisualCache.dispose();
     disposeChapter1RosterTemplateCache();
     disposeSolarLeoTemplateCache();
     this.disposePostProcessing();

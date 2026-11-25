@@ -1,11 +1,16 @@
 # IMPLEMENTATION CHANGELOG — NHẬT KÝ CẢI TIẾN & NGHIỆM THU (PHASE 4 & 6)
 
 - **Ngày nghiệm thu**: 2026-11-24
-- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `88.06 / 100`** (`+9.07` điểm trọng số trên 30 tiêu chí qua Đợt 1–5; 3 nhóm đạt **`90.0–92.0 / 100`**).
+- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `88.85 / 100`** (`+9.86` điểm trọng số trên 30 tiêu chí qua Đợt 1–6; 3 nhóm đạt **`90.0–92.0 / 100`**).
 
 ---
 
 ## 1. Danh Mục Thay Đổi Mã Nguồn Thực Tế (Trước → Sau)
+
+### 00. Đợt 6 — Máy Trạng Thái 12 Hoạt Ảnh, Sửa Lỗi Boss Pha III Ch.1–4, 12 Cảnh Báo Khắc Chế & `LootOrbVisualCache` Zero-GPU-Churn
+- **`src/engine/combatAnimationKinematics.ts` & `src/engine/GameEngine.ts`**: Triển khai máy trạng thái đầy đủ **12 trạng thái `CombatAnimState`** (`idle | walk | run | attack | skill_cast | hit_reaction | dodge | stun | knockback | death | spawn | victory`) kèm `resolveCombatAnimState` (phân giải ưu tiên & crossfade `0.06–0.22s`), bổ sung và nối **`applyDodgeBank`**, **`applySkillCastPulse`**, **`applySpawnSettle`**, cùng pha gục ngã `isDead` (Zero-GC, tôn trọng `reducedMotion`).
+- **`src/engine/tacticalCombatChoreography.ts` & `src/engine/GameEngine.ts`**: Khắc phục lỗi gameplay thực tế tại `GameEngine.ts:20965` khiến Boss Hoàng Đạo Chương 1–4 không vào Pha III ở `<= 30% HP` thông qua `canBossEnterPhaseThree(chapterId, isTowerMode, towerFloor, isFinalZodiacBoss)`, đồng thời nối trọn bộ **12 chữ ký chuyển pha & gợi ý khắc chế Hoàng Đạo (`ZODIAC_BOSS_PHASE_SIGNATURES`)** vào văn bản nổi & biểu ngữ Boss thực chiến.
+- **`src/engine/vfxPoolManager.ts`, `src/engine/GameEngine.ts` & `src/engine/wave6AnimationAndBoss.test.ts`**: Triển khai **`LootOrbVisualCache`** dùng chung 2 `OctahedronGeometry` và 4 `MeshStandardMaterial` cho toàn bộ vật phẩm rơi (`xp`/`gold`/`gem`/`heal`), gỡ bỏ hoàn toàn cấp phát GPU mỗi lần rơi đồ và bảo vệ vòng đời giải phóng duy nhất tại `GameEngine.dispose()`.
 
 ### 0. Đợt 5 — SFX Không Gian 3D, Biên Niên Sử 12 Chương, Xoay Vòng Địa Hình & VFX Pool Manager Zero-GC (`P2-3b`)
 - **`src/audio/sfxPriorityMixer.ts`, `src/audio/soundEngine.ts`, `src/audio/sfxSpatialAndTimbre.test.ts`**: Triển khai `computeSpatialDistanceGain` + cắt âm ngoài tầm (`out_of_range`, `maxRadius = 26u`), danh mục `'attack_dodged'` + `playAttackDodged`, **4 âm sắc vũ khí riêng biệt cho 4 tướng Hoàng Đạo** (`aurelia`, `bellona`, `sylvia`, `celeste`), và tiếng dội khiên kim loại cho `CHẮN KHIÊN!` / `VỎ GIÁP!`.
@@ -40,7 +45,7 @@
 - [x] Đo hiệu năng thực tế trước & sau cho vòng va chạm đạn Zero-GC (**8.09×** nhanh hơn, **18,000** mảng rác/giây bị triệt tiêu, 100% trùng khớp va chạm).
 - [x] Tất cả 12 chương có 12 chủ đề nhạc Hoàng Đạo riêng biệt và 4 cơ quan sàn đấu tương tác.
 - [x] Hẹn giờ sự kiện LiveOps tự động (`P2-4b`) hoạt động đồng bộ từ UI Admin đến `firestore.rules` (đã deploy live, 0 lỗi ESLint).
-- [x] Toàn bộ kho mã nguồn đạt **`441 bài kiểm thử | 440 PASS | 0 FAIL | 1 skip`**.
+- [x] Toàn bộ kho mã nguồn đạt **`446 bài kiểm thử | 445 PASS | 0 FAIL | 1 skip`**.
 - [x] TypeScript `tsc --noEmit` (`lint_applet`) và Vite production build (`compile_applet`) đều sạch 0 lỗi.
-- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Sổ Tay Boss (Biên Niên Sử 12 Chương) → Chọn Thẻ Kỹ Năng → Chiến Đấu 3D trực tiếp với **0 Console Errors / 0 Warnings**.
+- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Chiến Đấu 3D Chương 1 (Lướt `Space`, Phá Giáp `F`, Kỹ Năng `E`, hạ quái & nhặt vật phẩm qua `LootOrbVisualCache`) với **0 Console Errors / 0 Warnings**.
 - [x] Hoàn tất & đồng bộ thực tế 10/10 báo cáo kiểm toán & thiết kế tại thư mục gốc kho mã nguồn.

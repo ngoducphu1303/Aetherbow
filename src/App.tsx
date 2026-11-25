@@ -11893,7 +11893,11 @@ export default function App() {
       )}
 
       {phase === GamePhase.PLAYING && (hud.activeSetProcBanner || hud.activeArenaMechanismLabel) && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center gap-1 text-center">
+        <div
+          className={`fixed left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center gap-1 text-center transition-[top] duration-150 ${
+            hud.bossName ? 'top-36' : hud.activeTargetName ? 'top-28' : 'top-16'
+          }`}
+        >
           {hud.activeSetProcBanner && (
             <div className="px-3 py-1 rounded-lg border border-amber-400/50 bg-[#0b1120]/90 text-amber-200 text-xs font-semibold tracking-wide">
               {hud.activeSetProcBanner}

@@ -366,3 +366,62 @@ export function stepGroundMistSeeds(
     else if (s.z < -arenaHalfD) s.z = arenaHalfD;
   }
 }
+
+export type LootOrbVisualKind = 'xp' | 'gold' | 'gem' | 'heal';
+
+/**
+ * Shared Geometry & Material Registry for 3D Loot Orbs (Zero per-drop GPU buffer/shader churn).
+ * Eliminates `new THREE.OctahedronGeometry` + `new THREE.MeshStandardMaterial` allocation on every
+ * enemy kill, preventing GC spikes and shader recompiles on Intel HD 4000 / Dell E5430.
+ */
+export class LootOrbVisualCache {
+  private standardGeo: THREE.OctahedronGeometry | null = null;
+  private gemGeo: THREE.OctahedronGeometry | null = null;
+  private readonly materials = new Map<LootOrbVisualKind, THREE.MeshStandardMaterial>();
+
+  private getGeometry(kind: LootOrbVisualKind): THREE.OctahedronGeometry {
+    if (kind === 'gem') {
+      if (!this.gemGeo) this.gemGeo = new THREE.OctahedronGeometry(0.26, 0);
+      return this.gemGeo;
+    }
+    if (!this.standardGeo) this.standardGeo = new THREE.OctahedronGeometry(0.2, 0);
+    return this.standardGeo;
+  }
+
+  private getMaterial(kind: LootOrbVisualKind): THREE.MeshStandardMaterial {
+    let mat = this.materials.get(kind);
+    if (!mat) {
+      const color =
+        kind === 'xp'
+          ? 0x38bdf8
+          : kind === 'gold'
+          ? 0xfbbf24
+          : kind === 'gem'
+          ? 0xc084fc
+          : 0x34d399;
+      mat = new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 1.4,
+        roughness: 0.2,
+      });
+      this.materials.set(kind, mat);
+    }
+    return mat;
+  }
+
+  public createMesh(kind: LootOrbVisualKind): THREE.Mesh {
+    return new THREE.Mesh(this.getGeometry(kind), this.getMaterial(kind));
+  }
+
+  public dispose(): void {
+    this.standardGeo?.dispose();
+    this.standardGeo = null;
+    this.gemGeo?.dispose();
+    this.gemGeo = null;
+    for (const mat of this.materials.values()) {
+      mat.dispose();
+    }
+    this.materials.clear();
+  }
+}

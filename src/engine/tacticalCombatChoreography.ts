@@ -63,6 +63,159 @@ export interface ChapterBossPhasePlan {
   punishWindowDurationSec: number;
   aggressionMult: number;
   label: string;
+  phaseTitle: string;
+  counterplayHint: string;
+  supportsPhaseThree: boolean;
+}
+
+export interface ZodiacBossPhaseSignature {
+  chapterId: number;
+  phase2Title: string;
+  phase3Title: string;
+  phase2Counterplay: string;
+  phase3Counterplay: string;
+  cadenceBias: number;
+  punishBonusBias: number;
+  punishWindowBiasSec: number;
+}
+
+export const ZODIAC_BOSS_PHASE_SIGNATURES: Record<number, ZodiacBossPhaseSignature> = {
+  1: {
+    chapterId: 1,
+    phase2Title: 'PHA II · NHẬT THỰC CUỒNG NỘ',
+    phase3Title: 'PHA III · THÁI DƯƠNG HỦY DIỆT',
+    phase2Counterplay: 'KÍCH HOẠT TRỤ NHẬT LUÂN & CẮT CHIÊU (E/Q) KHI BOSS TỤ KHÍ!',
+    phase3Counterplay: 'NÉ VÒNG LỬA TOÀN SÂN & DỒN PHẢN ĐÒN TRONG CỬA SỔ 2.5S!',
+    cadenceBias: 0,
+    punishBonusBias: 0.02,
+    punishWindowBiasSec: 0.1,
+  },
+  2: {
+    chapterId: 2,
+    phase2Title: 'PHA II · HỎA DIỆM XUNG KÍCH',
+    phase3Title: 'PHA III · HỎA KHÚC CHIẾN TRỐNG',
+    phase2Counterplay: 'LƯỚT VUÔNG GÓC 90° KHI HỎA DƯƠNG LAO HÚC ĐỂ PHẢN ĐÒN!',
+    phase3Counterplay: 'NGẮT ĐỊA CHẤN NÓNG CHẢY BẰNG KỸ NĂNG (E/Q) NGAY KHI VÒNG VÀNG HIỆN!',
+    cadenceBias: -0.02,
+    punishBonusBias: 0.03,
+    punishWindowBiasSec: 0,
+  },
+  3: {
+    chapterId: 3,
+    phase2Title: 'PHA II · ĐỊA CHẤN NGỌC LỤC BẢO',
+    phase3Title: 'PHA III · CỰ THẦN BẤT HOẠI',
+    phase2Counterplay: 'DÙNG PHÁ GIÁP (F) XUYÊN VỎ NGỌC & NÉ ĐỢT SÓNG CHẤN ĐỘNG!',
+    phase3Counterplay: 'PHÁ TRỤ TINH THỂ ĐỂ HỒI HP & TRỪNG PHẠT SAU CÚ GIẬM ĐẤT!',
+    cadenceBias: 0.02,
+    punishBonusBias: 0.01,
+    punishWindowBiasSec: 0.2,
+  },
+  4: {
+    chapterId: 4,
+    phase2Title: 'PHA II · SONG ẢNH THẦN QUANG',
+    phase3Title: 'PHA III · THIÊN KÍNH PHÂN THÂN',
+    phase2Counterplay: 'GIỮ CỰ LY TRUNG BÌNH ĐỌC KHE HỞ SONG ĐẠN & DỌN PHÂN THÂN!',
+    phase3Counterplay: 'CẮT NGANG TIA ĐỐI XỨNG BẰNG PHẢN ĐÒN HOẶC KỸ NĂNG (E/Q)!',
+    cadenceBias: -0.02,
+    punishBonusBias: 0.04,
+    punishWindowBiasSec: 0,
+  },
+  5: {
+    chapterId: 5,
+    phase2Title: 'PHA II · NGUYỆT TRIỀU SAN HÔ',
+    phase3Title: 'PHA III · ĐẠI TRIỀU BÁN NGUYỆT',
+    phase2Counterplay: 'CHỜ BOSS THU VỎ GIÁP SAN HÔ RỒI DỒN SÁT THƯƠNG PHẢN CÔNG!',
+    phase3Counterplay: 'LƯỚT XUYÊN KHE SÓNG TRIỀU & PHÁ GIÁP (F) KHI VỎ NỨT!',
+    cadenceBias: 0.02,
+    punishBonusBias: 0.01,
+    punishWindowBiasSec: 0.2,
+  },
+  6: {
+    chapterId: 6,
+    phase2Title: 'PHA II · VŨ ĐIỆU THÁNH KIẾM',
+    phase3Title: 'PHA III · THANH TẨY TINH TÚ',
+    phase2Counterplay: 'XOAY VÒNG LÁCH KHỎI ĐƯỜNG KIẾM HÌNH HỌC & PHẢN ĐÒN!',
+    phase3Counterplay: 'NGẮT NĂNG LƯỢNG THÁNH HOA TRƯỚC KHI NỞ RỘ TOÀN SÀN!',
+    cadenceBias: -0.01,
+    punishBonusBias: 0.03,
+    punishWindowBiasSec: 0.05,
+  },
+  7: {
+    chapterId: 7,
+    phase2Title: 'PHA II · CÁN CÂN THẨM PHÁN',
+    phase3Title: 'PHA III · PHÁN QUYẾT ÁNH SÁNG',
+    phase2Counterplay: 'ĐỨNG VÀO NỬA SÀN AN TOÀN KHI ĐƯỜNG CHIA ĐÔI KHÓA MỤC TIÊU!',
+    phase3Counterplay: 'TẬN DỤNG CỬA SỔ CÂN BẰNG 2.5S ĐỂ PHÁ GIÁP LIÊN HOÀN!',
+    cadenceBias: 0,
+    punishBonusBias: 0.02,
+    punishWindowBiasSec: 0.1,
+  },
+  8: {
+    chapterId: 8,
+    phase2Title: 'PHA II · ĐỘC ẢNH ÁM SÁT',
+    phase3Title: 'PHA III · VỰC SÂU HỔ CÁP',
+    phase2Counterplay: 'GIỮ LƯỚT (SPACE) ĐỂ NÉ CÚ DỊCH CHUYỂN CHÍ MẠNG TỪ PHÍA SAU!',
+    phase3Counterplay: 'TRÁNH VŨNG ĐỘC TRUNG TÂM & PHẢN ĐÒN NGAY KHI BOSS HIỆN HÌNH!',
+    cadenceBias: -0.03,
+    punishBonusBias: 0.04,
+    punishWindowBiasSec: -0.05,
+  },
+  9: {
+    chapterId: 9,
+    phase2Title: 'PHA II · MƯA TIỄN TINH HÀ',
+    phase3Title: 'PHA III · THẦN CUNG XUYÊN PHÁ',
+    phase2Counterplay: 'ÁP SÁT THEO GÓC CHÉO ĐỂ CẮT TẦM BẮN TỈA CỦA NHÂN MÃ!',
+    phase3Counterplay: 'NGẮT MŨI TÊN TỤ LỰC BẰNG (E/Q) ĐỂ GÂY CHOÁNG 2.2S!',
+    cadenceBias: -0.02,
+    punishBonusBias: 0.03,
+    punishWindowBiasSec: 0.05,
+  },
+  10: {
+    chapterId: 10,
+    phase2Title: 'PHA II · BĂNG SƠN ÁP ĐẢO',
+    phase3Title: 'PHA III · SƠN THẦN TẬN DIỆT',
+    phase2Counterplay: 'PHÁ TRỤ BĂNG PHÒNG THỦ & DỒN PHẢN ỨNG TAN CHẢY!',
+    phase3Counterplay: 'DÙNG PHÁ GIÁP (F) & TUYỆT KỸ (Q) NGẮT BÃO TUYẾT TOÀN SÀN!',
+    cadenceBias: 0.01,
+    punishBonusBias: 0.03,
+    punishWindowBiasSec: 0.15,
+  },
+  11: {
+    chapterId: 11,
+    phase2Title: 'PHA II · LỐC XOÁY BẢO BÌNH',
+    phase3Title: 'PHA III · BÃO TỐ TINH VÂN',
+    phase2Counterplay: 'KÍCH HOẠT LĂNG KÍNH TINH GIỚI ĐỂ TĂNG TỐC BẮN & HỒI LƯỚT!',
+    phase3Counterplay: 'GIỮ NHỊP DI CHUYỂN VÒNG NGOÀI & CẮT CHIÊU KHI TÂM BÃO MỞ!',
+    cadenceBias: -0.02,
+    punishBonusBias: 0.04,
+    punishWindowBiasSec: 0.05,
+  },
+  12: {
+    chapterId: 12,
+    phase2Title: 'PHA II · MỘNG CẢNH SONG NGƯ',
+    phase3Title: 'PHA III · VÒNG XOÁY TINH HẢI',
+    phase2Counterplay: 'ĐỌC VÒNG ĐẠN XOẮN KÉP & TẬP TRUNG PHÁ CỘT CỘNG HƯỞNG!',
+    phase3Counterplay: 'PHẢN ĐÒN TỐI THƯỢNG TRONG CỬA SỔ 2.5S ĐỂ KẾT LIỄU TINH GIỚI!',
+    cadenceBias: -0.02,
+    punishBonusBias: 0.05,
+    punishWindowBiasSec: 0.15,
+  },
+};
+
+export function canBossEnterPhaseThree(
+  chapterId: number,
+  isTowerMode: boolean,
+  towerFloor: number,
+  isFinalZodiacBoss = true
+): boolean {
+  if (isTowerMode) {
+    return towerFloor >= 20;
+  }
+  if (!isFinalZodiacBoss) {
+    return false;
+  }
+  const ch = Math.max(1, Math.min(12, Math.floor(chapterId || 1)));
+  return ch <= 4 || ch >= 10;
 }
 
 export function resolveEnemyTacticalArchetype(kind: string): EnemyTacticalArchetype {
@@ -366,13 +519,39 @@ export function getChapterBossPhasePlan(chapterId: number, hpRatio: number): Cha
   const clampedHp = Math.max(0, Math.min(1, hpRatio));
   const phase: 1 | 2 | 3 = clampedHp <= 0.3 ? 3 : clampedHp <= 0.65 ? 2 : 1;
   const chapterScale = Math.min(0.12, (clampedChapter - 1) * 0.01);
+  const sig = ZODIAC_BOSS_PHASE_SIGNATURES[clampedChapter] ?? ZODIAC_BOSS_PHASE_SIGNATURES[1];
+  const supportsPhaseThree = clampedChapter <= 4 || clampedChapter >= 10;
+
+  const baseCadence = phase === 3 ? 0.78 : phase === 2 ? 0.88 : 1.0;
+  const telegraphCadenceMult = Number(
+    Math.max(0.7, Math.min(1.05, baseCadence + (phase > 1 ? sig.cadenceBias : 0))).toFixed(3)
+  );
+  const punishDamageBonus = Number(
+    ((phase === 3 ? 0.3 : phase === 2 ? 0.23 : 0.18) + chapterScale * 0.5 + (phase > 1 ? sig.punishBonusBias : 0)).toFixed(3)
+  );
+  const punishWindowDurationSec = Number(
+    Math.max(1.8, (phase === 3 ? 2.4 : phase === 2 ? 2.15 : 2.0) + (phase > 1 ? sig.punishWindowBiasSec : 0)).toFixed(2)
+  );
+
+  const phaseTitle =
+    phase === 3
+      ? sig.phase3Title
+      : phase === 2
+      ? sig.phase2Title
+      : 'PHA I · KHAI CHIẾN';
+  const counterplayHint =
+    phase === 3
+      ? sig.phase3Counterplay
+      : phase === 2
+      ? sig.phase2Counterplay
+      : 'QUAN SÁT VÒNG TELEGRAPH & TẬN DỤNG CƠ QUAN SÀN ĐẤU!';
 
   return {
     chapterId: clampedChapter,
     phase,
-    telegraphCadenceMult: phase === 3 ? 0.78 : phase === 2 ? 0.88 : 1.0,
-    punishDamageBonus: (phase === 3 ? 0.3 : phase === 2 ? 0.23 : 0.18) + chapterScale * 0.5,
-    punishWindowDurationSec: phase === 3 ? 2.4 : phase === 2 ? 2.15 : 2.0,
+    telegraphCadenceMult,
+    punishDamageBonus,
+    punishWindowDurationSec,
     aggressionMult: phase === 3 ? 1.24 : phase === 2 ? 1.12 : 1.0,
     label:
       phase === 3
@@ -380,5 +559,8 @@ export function getChapterBossPhasePlan(chapterId: number, hpRatio: number): Cha
         : phase === 2
         ? 'Giai Đoạn II · Cuồng Nộ'
         : 'Giai Đoạn I · Khai Chiến',
+    phaseTitle,
+    counterplayHint,
+    supportsPhaseThree,
   };
 }

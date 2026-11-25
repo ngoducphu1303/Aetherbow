@@ -19,17 +19,17 @@
 
 | Nhóm tiêu chí | Tiêu chí thành phần | Trọng số | TB Trước (/100) | TB Sau (/100) | Đóng góp Trước | Đóng góp Sau | Thay đổi |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 89.00 | 15.80 | 17.80 | **+2.00** |
+| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 89.67 | 15.80 | 17.93 | **+2.13** |
 | **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 87.50 | 16.25 | 17.50 | **+1.25** |
-| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 87.25 | 11.81 | 13.09 | **+1.28** |
-| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 86.33 | 8.07 | 8.63 | **+0.56** |
-| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 90.00 | 7.40 | 9.00 | **+1.60** |
+| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 89.25 | 11.81 | 13.39 | **+1.58** |
+| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 89.00 | 8.07 | 8.90 | **+0.83** |
+| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 90.50 | 7.40 | 9.05 | **+1.65** |
 | **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 86.33 | 4.03 | 4.32 | **+0.29** |
-| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 87.00 | 3.93 | 4.35 | **+0.42** |
+| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 87.67 | 3.93 | 4.38 | **+0.45** |
 | **Replayability & Retention** | 25, 26 | 5% | 79.00 | 85.50 | 3.95 | 4.28 | **+0.33** |
 | **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 90.00 | 4.02 | 4.50 | **+0.48** |
 | **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.00 | 3.73 | 4.60 | **+0.87** |
-| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **88.06 / 100** | **+9.07** |
+| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **88.85 / 100** | **+9.86** |
 
 ---
 
@@ -85,15 +85,15 @@
 
 ### 05. Animation — Hệ thống hoạt ảnh
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: `heroKinematicMotion.ts`, hệ thống GLB `AnimationMixer` cho Tướng/Quái/Boss Chương 1–4, chuyển pha Idle/Run/Attack/Cast/Death.
-3. **Vấn đề tồn tại**: Chương 5–12 vẫn dùng bộ xương/biến thể tái sử dụng; bộ test GLB trực tiếp trên đĩa báo `ENOENT` vì nhị phân nằm trên CDN B2.
-4. **Nguyên nhân gốc rễ**: Chưa sản xuất đủ bộ rig GLB riêng cho Ch.5–12; bộ test engine đọc thẳng `public/assets`.
-5. **Giải pháp đề xuất**: Duy trì kinematic blending mượt và xác minh toàn vẹn manifest; lên kế hoạch P2-2 tách test CDN/local và P2-5/P3-2 mở rộng rig Ch.5–12.
-6. **File hoặc module liên quan**: `src/engine/heroKinematicMotion.ts`, `src/engine/GameEngine.ts`, `scripts/glb-manifest.json`.
-7. **Mức độ ưu tiên**: P2
-8. **Rủi ro khi thay đổi**: Thay đổi blending trực tiếp mà không có đủ clip gốc dễ gây T-pose.
-9. **Tiêu chí nghiệm thu**: `heroKinematicMotion.test.ts` pass 100%, không lỗi giật/cắt animation trên Ch.1–4.
-10. **Điểm sau khi triển khai và kiểm thử**: `82 / 100`
+2. **Bằng chứng đánh giá**: `combatAnimationKinematics.ts` (máy trạng thái 12 trạng thái chuẩn Tiêu chí 05 + blending động học Zero-GC), `heroKinematicMotion.ts`, hệ thống GLB `AnimationMixer` cho Tướng/Quái/Boss Chương 1–4.
+3. **Vấn đề tồn tại**: Trước Đợt 6, lớp kinematic mới hỗ trợ giật bắn/choáng/chiến thắng mà thiếu đủ 12 trạng thái chuẩn (`dodge`, `skill_cast`, `spawn`, `death`, `knockback`, `walk`/`run`) và chuyển pha ưu tiên rõ ràng; Ch.5–12 vẫn chờ rig GLB độc bản ở P2-5b/P3-2.
+4. **Nguyên nhân gốc rễ**: Chưa có hàm phân giải ưu tiên 12 trạng thái thống nhất (`resolveCombatAnimState`) và các xung động học riêng cho Lướt, tung Kỹ năng, Xuất trận, và Gục ngã.
+5. **Giải pháp đề xuất**: Triển khai đầy đủ máy trạng thái **12 trạng thái `CombatAnimState`** (`idle | walk | run | attack | skill_cast | hit_reaction | dodge | stun | knockback | death | spawn | victory`) kèm thời gian crossfade (`0.06–0.22s`) và nối **`applyDodgeBank`**, **`applySkillCastPulse`**, **`applySpawnSettle`**, và pha gục ngã `isDead` trực tiếp vào `GameEngine.ts` (tôn trọng `reducedMotion`, Zero-GC).
+6. **File hoặc module liên quan**: `src/engine/combatAnimationKinematics.ts`, `src/engine/wave6AnimationAndBoss.test.ts`, `src/engine/GameEngine.ts`, `scripts/glb-manifest.json`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 6; rig Ch.5–12 ở P2-5b/P3-2)
+8. **Rủi ro khi thay đổi**: Cần bảo toàn tương thích ngược với cấu trúc `CombatKinematicPose` cũ và không gây sai lệch khi nhân vật đang cưỡi Rồng (`onDragon`).
+9. **Tiêu chí nghiệm thu**: `wave6AnimationAndBoss.test.ts` xác minh đủ 12/12 trạng thái và thứ tự ưu tiên, kiểm chứng Lướt/Kỹ năng E/Phá Giáp F trực tiếp trên Chromium 0 lỗi.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 06. VFX — Hiệu ứng hình ảnh
 1. **Điểm hiện tại (Trước)**: `76 / 100`
@@ -181,15 +181,15 @@
 
 ### 13. Boss Design — Thiết kế boss
 1. **Điểm hiện tại (Trước)**: `84 / 100`
-2. **Bằng chứng đánh giá**: Boss Chương 1–4 có 3 giai đoạn (Phase I/II/III), vùng telegraph rõ ràng, cửa sổ phản công, Boss Codex ghi nhận đủ cơ chế (`earlyProgression.test.ts`).
-3. **Vấn đề tồn tại**: Bộ test hợp đồng Boss Codex cũ chưa đồng bộ đầy đủ Phase III của Chương 3–4; Boss Ch.5–12 chưa có mô hình 3D độc bản.
-4. **Nguyên nhân gốc rễ**: Nội dung Ch.3–4 cập nhật nhanh hơn bộ test kiểm định.
-5. **Giải pháp đề xuất**: Đồng bộ 100% contract test cho Boss Phase III Ch.1–4; lên kế hoạch mô hình độc bản Ch.5–12 ở P2-5/P3-2.
-6. **File hoặc module liên quan**: `src/data/earlyProgression.test.ts`, `src/data/chaptersData.ts`, `tests/boss-patterns.test.mjs`.
-7. **Mức độ ưu tiên**: P1
-8. **Rủi ro khi thay đổi**: Tăng quá mạnh sát thương Phase III có thể làm gãy trải nghiệm F2P ở 75–89% LC.
-9. **Tiêu chí nghiệm thu**: 100% contract Boss Phase III & `boss-patterns.test.mjs` pass.
-10. **Điểm sau khi triển khai và kiểm thử**: `86 / 100`
+2. **Bằng chứng đánh giá**: Boss Chương 1–4 & Chương 10–12 có đầy đủ 3 giai đoạn (Phase I/II/III), vùng telegraph rõ ràng, cửa sổ phản công 2.5s, 12 bộ danh hiệu & mẹo khắc chế Hoàng Đạo độc bản (`ZODIAC_BOSS_PHASE_SIGNATURES`), Boss Codex đồng bộ 100%.
+3. **Vấn đề tồn tại**: Phát hiện **lỗi gameplay thực tế tại `GameEngine.ts:20965`** khóa cứng điều kiện Pha III vào `chapter.id >= 10`, khiến Boss Hoàng Đạo Chương 1–4 không bao giờ vào Pha III ở `<= 30% HP` dù Boss Codex đã thiết kế đủ 3 pha; các thông báo chuyển pha vẫn dùng chữ chung chung.
+4. **Nguyên nhân gốc rễ**: Điều kiện `canEnterPhaseThree` trong `GameEngine.ts` chưa được cập nhật sau khi mở rộng cơ chế 3 pha cho Chương 1–4 và chưa đọc chữ ký từng cung Hoàng Đạo.
+5. **Giải pháp đề xuất**: Triển khai **`canBossEnterPhaseThree`** (kích hoạt Pha III cho Boss cuối Ch.1–4 & Ch.10–12 + Tháp Tầng ≥ 20, khóa an toàn với sub-boss) và **`ZODIAC_BOSS_PHASE_SIGNATURES`** (12 danh hiệu Pha II/III + 12 gợi ý khắc chế trực quan riêng cho Ch.1–12), nối thẳng vào `GameEngine.ts` trong Đợt 6; mô hình 3D Ch.5–12 tiếp tục theo lịch P2-5b/P3-2.
+6. **File hoặc module liên quan**: `src/engine/tacticalCombatChoreography.ts`, `src/engine/wave6AnimationAndBoss.test.ts`, `src/engine/GameEngine.ts`, `src/data/earlyProgression.test.ts`, `tests/boss-patterns.test.mjs`.
+7. **Mức độ ưu tiên**: P0 / P1 (Đã khắc phục triệt để trong Đợt 6)
+8. **Rủi ro khi thay đổi**: Phải khóa chặt `e.kind === EnemyKind.ZODIAC_BOSS` để sub-boss giữa chương không vô tình kích hoạt Pha III làm lệch độ khó.
+9. **Tiêu chí nghiệm thu**: `wave6AnimationAndBoss.test.ts` xác minh đủ 12 danh hiệu Pha II/III độc nhất & điều kiện `canBossEnterPhaseThree` chuẩn cho Ch.1–12 & Tháp; `boss-patterns.test.mjs` pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 14. Level Design — Thiết kế màn chơi
 1. **Điểm hiện tại (Trước)**: `80 / 100`
@@ -241,27 +241,27 @@
 
 ### 18. Loot System — Hệ thống vật phẩm
 1. **Điểm hiện tại (Trước)**: `83 / 100`
-2. **Bằng chứng đánh giá**: 5 bậc phẩm chất, 5 Bộ Trang Bị (Set Bonus), Pity chống xui, phân giải đồ thừa ra Mảnh Rèn mục tiêu (`salvageExcessGearToForgeShards`), chuyển cấp cường hóa miễn phí 100%.
-3. **Vấn đề tồn tại**: Cần kiểm chứng liên tục đồ rơi trong 100h không tràn kho đồ rác và không xuất hiện đồ Sử Thi/Thần Thoại sớm ở 5m–15m.
-4. **Nguyên nhân gốc rễ**: Nhiều hệ thống thưởng (Thư, Rương, Sự kiện) dễ vô tình mở khóa vượt trần nếu không đi qua `rollProgressionGatedGear`.
-5. **Giải pháp đề xuất**: Kiểm chứng luồng rơi đồ xuyên suốt 8 mốc `5m → 100h` qua `economyTelemetry.test.ts` (5m–15m giữ chặt `Thường`, 30m–10h `Sử Thi`, 30h–100h `Thần Thoại`).
-6. **File hoặc module liên quan**: `src/data/gearData.ts`, `src/data/earlyProgressionData.ts`, `src/data/economyTelemetry.ts`.
-7. **Mức độ ưu tiên**: P1
-8. **Rủi ro khi thay đổi**: Sửa sai tỷ lệ phân giải sẽ ảnh hưởng tốc độ rèn đồ S-Tier của người chơi F2P.
-9. **Tiêu chí nghiệm thu**: `earlyProgression.test.ts`, `fairProgression30Day.test.ts`, và `economyTelemetry.test.ts` pass 100%.
-10. **Điểm sau khi triển khai và kiểm thử**: `86 / 100`
+2. **Bằng chứng đánh giá**: 5 bậc phẩm chất, 5 Bộ Trang Bị (Set Bonus), Pity chống xui, phân giải đồ thừa ra Mảnh Rèn mục tiêu (`salvageExcessGearToForgeShards`), chuyển cấp cường hóa miễn phí 100%, và bộ nhớ đệm dùng chung **`LootOrbVisualCache`** cho mọi quả cầu vật phẩm rơi trong đấu trường 3D.
+3. **Vấn đề tồn tại**: Trước Đợt 6, mỗi quả cầu Vàng/XP/Kim Cương/Hồi máu rơi ra khi hạ quái tạo mới 1 `OctahedronGeometry` và 1 `MeshStandardMaterial` rồi hủy khi nhặt, dễ gây khựng nhẹ khi nổ rương/hạ Boss nhiều loot trên GPU yếu.
+4. **Nguyên nhân gốc rễ**: `spawnLootOrb` cấp phát tài nguyên hình học & vật liệu trực tiếp theo từng lần rơi thay vì dùng chung theo chủng loại.
+5. **Giải pháp đề xuất**: Triển khai **`LootOrbVisualCache`** trong `src/engine/vfxPoolManager.ts` (dùng chung đúng 2 geometry và 4 material cho toàn bộ vòng đời đấu trường, chỉ `dispose()` một lần khi đóng engine) kết hợp kiểm chứng rơi đồ xuyên suốt 8 mốc `5m → 100h` qua `economyTelemetry.test.ts`.
+6. **File hoặc module liên quan**: `src/engine/vfxPoolManager.ts`, `src/engine/GameEngine.ts`, `src/engine/wave6AnimationAndBoss.test.ts`, `src/data/gearData.ts`, `src/data/economyTelemetry.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 6)
+8. **Rủi ro khi thay đổi**: Tuyệt đối không gọi `releaseObject(o.mesh)` khi nhặt từng quả cầu để tránh hủy tài nguyên chia sẻ — chỉ gỡ khỏi `entitiesGroup` và giải phóng duy nhất trong `dispose()`.
+9. **Tiêu chí nghiệm thu**: `wave6AnimationAndBoss.test.ts` chứng minh 100 lần rơi đồ chỉ dùng đúng 2 geometry & 4 material; `earlyProgression.test.ts`, `fairProgression30Day.test.ts`, `economyTelemetry.test.ts` pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
 
 ### 19. Difficulty Scaling — Tăng tiến độ khó
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: 12 chương tăng từ `1,350 LC → 285,000 LC`, `computePowerPressure` điều tiết sát thương/xuyên giáp, Nightmare Ascension I–V & 5 biến dị phòng.
-3. **Vấn đề tồn tại**: Trước đây chưa có bảng số liệu định lượng `Mob TTK`, `Boss TTK`, `Player TTD` cho từng mốc chơi.
-4. **Nguyên nhân gốc rễ**: Thiếu công cụ đo TTK/TTD tự động ghép nối trực tiếp từ `computePlayerStats` và `CHAPTERS`.
-5. **Giải pháp đề xuất**: Bổ sung `estimateCombatTimings` trong `economyTelemetry.ts` và báo cáo định lượng đầy đủ tại `GAME_BALANCE_REPORT.md` (5m: Mob TTK 4.78s, Boss TTK 73.4s, TTD 7.3s → 15m: 1.35s / 20.8s / 22.0s).
-6. **File hoặc module liên quan**: `src/data/economyTelemetry.ts`, `src/data/fairProgression30Day.ts`, `GAME_BALANCE_REPORT.md`.
-7. **Mức độ ưu tiên**: P1
+2. **Bằng chứng đánh giá**: 12 chương tăng từ `1,350 LC → 285,000 LC`, `computePowerPressure` điều tiết sát thương/xuyên giáp, Nightmare Ascension I–V & 5 biến dị phòng, nhịp chuyển Pha II/III chuẩn xác cho Boss Hoàng Đạo Ch.1–4, Ch.10–12 & Tháp F20+.
+3. **Vấn đề tồn tại**: Trước Đợt 6, Boss cuối Chương 1–4 bị khóa không thể vào Pha III làm đường cong độ khó cao trào của 4 chương mở đầu bị hụt nhịp so với thiết kế; chưa có bảng TTK/TTD đầy đủ.
+4. **Nguyên nhân gốc rễ**: Ngưỡng `chapter.id >= 10` trong `GameEngine.ts` chặn mất cao trào Pha III ở Ch.1–4 và thiếu công cụ đo TTK/TTD tự động.
+5. **Giải pháp đề xuất**: Bổ sung `estimateCombatTimings` trong `economyTelemetry.ts` (`GAME_BALANCE_REPORT.md`) và sửa đường cong cao trào Pha III thực tế bằng `canBossEnterPhaseThree` + hiệu chỉnh `cadenceBias` / `punishBonusBias` riêng cho từng cung Hoàng Đạo trong Đợt 6.
+6. **File hoặc module liên quan**: `src/engine/tacticalCombatChoreography.ts`, `src/engine/GameEngine.ts`, `src/data/economyTelemetry.ts`, `src/data/fairProgression30Day.ts`, `GAME_BALANCE_REPORT.md`.
+7. **Mức độ ưu tiên**: P1 (Đã hoàn thành Đợt 6)
 8. **Rủi ro khi thay đổi**: Công thức mô phỏng TTK chỉ phản ánh lý thuyết DPS — vẫn cần xác nhận cảm nhận né đòn từ playtest người thật (P3-1).
-9. **Tiêu chí nghiệm thu**: Xuất bảng TTK/TTD chính xác cho cả 8 mốc với đơn vị giây và chú thích rõ giới hạn mô phỏng.
-10. **Điểm sau khi triển khai và kiểm thử**: `86 / 100`
+9. **Tiêu chí nghiệm thu**: Bảng TTK/TTD chính xác cho cả 8 mốc, Boss Ch.1–4 & Ch.10–12 kích hoạt đủ Pha II/III kèm cửa sổ phản công 2.5s.
+10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
 
 ### 20. UI/UX — Giao diện và trải nghiệm người dùng
 1. **Điểm hiện tại (Trước)**: `80 / 100`
@@ -277,27 +277,27 @@
 
 ### 21. Game Feel — Cảm giác chơi
 1. **Điểm hiện tại (Trước)**: `82 / 100`
-2. **Bằng chứng đánh giá**: `combatFeelDirector.ts` (Hitstop, Camera Shake trauma, recoil, kill burst), phản hồi âm thanh/hình ảnh đồng bộ trên đòn chí mạng và nâng cấp.
-3. **Vấn đề tồn tại**: Người chơi nhạy cảm với ánh sáng chớp chưa có tùy chọn riêng để giảm độ lóe màn hình mà vẫn giữ nguyên cảm giác chuyển động.
-4. **Nguyên nhân gốc rễ**: Trước đây giảm chớp sáng bị gộp chung với `reducedMotion`.
-5. **Giải pháp đề xuất**: Tách riêng `reduceScreenFlash` (`flashScale = 0.25`) và bổ sung phản hồi trực quan cho khiên `jade_bastion` + nâng bậc Tinh Tuý Hoàng Đạo.
-6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/GameEngine.ts`, `src/components/SettingsModal.tsx`.
-7. **Mức độ ưu tiên**: P1
-8. **Rủi ro khi thay đổi**: Giảm quá tay `flashScale` về 0 sẽ làm mất dấu hiệu phản hồi trúng đòn — giữ ở mức `0.25x` êm dịu nhưng vẫn rõ.
-9. **Tiêu chí nghiệm thu**: Unit test xác minh `flashScale = 0.25` khi bật Anti-Flash và `1.0` ở mặc định.
-10. **Điểm sau khi triển khai và kiểm thử**: `86 / 100`
+2. **Bằng chứng đánh giá**: `combatFeel.ts` (Hitstop, Camera Shake trauma, recoil, kill burst), `combatAnimationKinematics.ts` (nghiêng thân khi Lướt, nhún nâng người khi tung Kỹ năng E / Phá Giáp F, đáp đất khi vào trận, gục ngã mượt khi hết HP), tách riêng `reduceScreenFlash` (`flashScale = 0.25`).
+3. **Vấn đề tồn tại**: Trước Đợt 6, người chơi chưa có độ nghiêng thân rõ rệt khi Lướt (`Space`) hay xung nâng người khi tung Kỹ năng chủ động (`E`) / Phá Giáp Trảm (`F`), và công tắc giảm chớp sáng từng gộp với `reducedMotion`.
+4. **Nguyên nhân gốc rễ**: Chưa tách `reduceScreenFlash` và chưa nối xung động học thân trên cho các thao tác cốt lõi (Dash, Active Skill, Heavy Break, Spawn, Death).
+5. **Giải pháp đề xuất**: Tách riêng `reduceScreenFlash` (`flashScale = 0.25`), bổ sung phản hồi trực quan cho `jade_bastion` + Tinh Tuý Hoàng Đạo, và nối trực tiếp `applyDodgeBank`, `applySkillCastPulse`, `applySpawnSettle` + pha `isDead` vào `GameEngine.ts` trong Đợt 6.
+6. **File hoặc module liên quan**: `src/engine/combatAnimationKinematics.ts`, `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/GameEngine.ts`, `src/components/SettingsModal.tsx`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 6)
+8. **Rủi ro khi thay đổi**: Phải giảm biên độ còn `0.25×` khi người chơi bật `reducedMotion` để không gây chóng mặt.
+9. **Tiêu chí nghiệm thu**: Unit test xác minh `flashScale = 0.25`, `applyDodgeBank`/`applySkillCastPulse`/`applySpawnSettle` và giảm biên độ `reducedMotion` pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
 
 ### 22. Performance — Hiệu năng
 1. **Điểm hiện tại (Trước)**: `76 / 100`
-2. **Bằng chứng đánh giá**: Auto-detect Intel HD 4000 (`aaaVisualPipeline.ts`), GPU Thermal Watchdog Stage 0→4 (`gpuThermalWatchdog.ts`), 0-PointLight Shader Policy, Zero-GC `SpatialHashGrid`, `projectilePhysicsSystem.ts`, và **`VfxFrameBudgetCache`** (`vfxPoolManager.ts`).
-3. **Vấn đề tồn tại**: Trước cải tiến, `GameEngine.ts` giữ 3 `THREE.PointLight` trong Lite Mode, cấp phát `18,000` mảng rác/giây ở vòng đạn, và quét lại `arrowPool.reduce(...)` trên từng lần gọi `spawnParticles`/`spawnShockwave`.
-4. **Nguyên nhân gốc rễ**: Chưa tháo `PointLight` khỏi `THREE.Scene`, dùng `[...this.enemies]` trong vòng đạn và chưa cache ngân sách VFX theo từng khung hình.
-5. **Giải pháp đề xuất**: Triển khai `syncPointLightPolicy()` về **0 PointLights**, Watchdog Stage 2 floor cho E5430 + Stage 4 Emergency Lite (`dprCap: 0.7`), broadphase Zero-GC nhanh hơn **8.09×** (`742.76ms → 91.85ms`), và **`VfxFrameBudgetCache`** cache ngân sách VFX mỗi khung hình kết hợp sửa lỗi trôi sương mù cạnh `-Z` (`stepGroundMistSeeds`).
+2. **Bằng chứng đánh giá**: Auto-detect Intel HD 4000 (`aaaVisualPipeline.ts`), GPU Thermal Watchdog Stage 0→4 (`gpuThermalWatchdog.ts`), 0-PointLight Shader Policy, Zero-GC `SpatialHashGrid`, `projectilePhysicsSystem.ts`, **`VfxFrameBudgetCache`**, và **`LootOrbVisualCache`** (`vfxPoolManager.ts`).
+3. **Vấn đề tồn tại**: Trước cải tiến, `GameEngine.ts` giữ 3 `THREE.PointLight` trong Lite Mode, cấp phát `18,000` mảng rác/giây ở vòng đạn, quét `arrowPool.reduce(...)` trên từng lần gọi VFX, và tạo mới `OctahedronGeometry` + `MeshStandardMaterial` trên mỗi quả cầu loot rơi.
+4. **Nguyên nhân gốc rễ**: Chưa tháo `PointLight` khỏi `THREE.Scene`, dùng `[...this.enemies]` trong vòng đạn, chưa cache ngân sách VFX theo khung hình, và chưa chia sẻ tài nguyên GPU cho vật phẩm rơi.
+5. **Giải pháp đề xuất**: Triển khai `syncPointLightPolicy()` về **0 PointLights**, Watchdog Stage 2 floor cho E5430 + Stage 4 Emergency Lite (`dprCap: 0.7`), broadphase Zero-GC nhanh hơn **8.09×** (`742.76ms → 91.85ms`), **`VfxFrameBudgetCache`**, và **`LootOrbVisualCache`** (triệt tiêu 100% cấp phát geometry/material GPU mỗi lần rơi loot trong Đợt 6).
 6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/gpuThermalWatchdog.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/vfxPoolManager.ts`, `tools/benchmark-spatial-physics.ts`, `PERFORMANCE_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 1–5)
-8. **Rủi ro khi thay đổi**: Phải tăng `vfxFrameCounter` đúng một lần ở đầu `update(frameDt)` để cache luôn làm mới mỗi khung hình.
-9. **Tiêu chí nghiệm thu**: 0 PointLights ở E5430/Lite/Watchdog ≥ 2, benchmark CPU giảm **87.6%** (`8.09×`) & triệt tiêu **180,000** mảng rác, `vfxPoolManager.test.ts` pass 4/4; đo nhiệt vật lý Dell E5430 60 phút ghi nhận ở P3-1.
-10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 1–6)
+8. **Rủi ro khi thay đổi**: Phải đảm bảo vòng dọn màn chơi và nhặt loot không gọi `releaseObject` lên tài nguyên chia sẻ của `LootOrbVisualCache`.
+9. **Tiêu chí nghiệm thu**: 0 PointLights ở E5430/Lite/Watchdog ≥ 2, benchmark CPU giảm **87.6%** (`8.09×`) & triệt tiêu **180,000** mảng rác, 100 quả cầu loot chỉ dùng 2 geometry + 4 material; đo nhiệt vật lý Dell E5430 60 phút ghi nhận ở P3-1.
+10. **Điểm sau khi triển khai và kiểm thử**: `93 / 100`
 
 ### 23. Code Architecture — Kiến trúc mã nguồn
 1. **Điểm hiện tại (Trước)**: `72 / 100`
@@ -378,9 +378,9 @@
 4. **Nguyên nhân gốc rễ**: Cập nhật tính năng nhanh chưa đồng bộ toàn bộ regression gate.
 5. **Giải pháp đề xuất**: Khắc phục 100% lỗi gốc, bổ sung test cho `SpatialHashGrid`, `projectilePhysicsSystem`, `zodiacMusicDirector`, `liveOpsConfig` (P2-4b), `EnemySquadDirector`, `serverSecurity`, `saveIntegrity` và kiểm chứng trực tiếp giao tranh 3D trên trình duyệt thật.
 6. **File hoặc module liên quan**: `tests/*.test.mjs`, `src/**/*.test.ts`, `tools/benchmark-spatial-physics.ts`, `tools/simulate-playtime-milestones.ts`, `QA_TEST_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–5)
+7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–6)
 8. **Rủi ro khi thay đổi**: Mọi cải tiến mới bắt buộc chạy lại full suite và trình duyệt sống để chống regression.
-9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`441 bài kiểm thử | 440 PASS | 0 FAIL | 1 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console.
+9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`446 bài kiểm thử | 445 PASS | 0 FAIL | 1 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console.
 10. **Điểm sau khi triển khai và kiểm thử**: `94 / 100`
 
 ### 30. Live Operations — Vận hành và mở rộng

@@ -1,6 +1,6 @@
 # GAME DEVELOPMENT ROADMAP — LỘ TRÌNH PHÁT TRIỂN P0 → P3 (PHASE 3)
 
-Tài liệu tổng hợp lộ trình kỹ thuật và nội dung cho **Aetherbow: Hoàng Đạo Trỗi Dậy**, phản ánh trung thực trạng thái sau **Đợt 1 (P0–P1), Đợt 2 (P2), Đợt 3 (Wave 3 Overhaul), Đợt 4 (Zero-GC Projectile Broadphase & P2-3a) và Đợt 5 (Spatial SFX, 12-Chapter World Lore & Zero-GC VFX Pool Manager P2-3b)**.
+Tài liệu tổng hợp lộ trình kỹ thuật và nội dung cho **Aetherbow: Hoàng Đạo Trỗi Dậy**, phản ánh trung thực trạng thái sau **Đợt 1 (P0–P1), Đợt 2 (P2), Đợt 3 (Wave 3 Overhaul), Đợt 4 (Zero-GC Projectile Broadphase & P2-3a), Đợt 5 (Spatial SFX, 12-Chapter World Lore & Zero-GC VFX Pool Manager P2-3b) và Đợt 6 (12-State Combat Animation Machine, Ch.1–4 Zodiac Boss Phase III Fix & Shared LootOrbVisualCache P2-3c)**.
 
 ---
 
@@ -60,6 +60,7 @@ Tài liệu tổng hợp lộ trình kỹ thuật và nội dung cho **Aetherbow
 | **P2-4b** | **Hẹn Giờ Sự Kiện LiveOps Tự Động (`scheduledStartMs`/`scheduledEndMs`) & Presets**: Tự động kích hoạt trong khung giờ, hoàn nguyên 1.0× ngoài khung giờ, cập nhật & deploy `firestore.rules` + UI chọn lịch trên `AssetAdminLiveOpsTab.tsx`. | `liveops-config.test.mjs` pass 100% + rules deployed | **Hoàn thành & Đã deploy (Đợt 3)** |
 | **P2-5a** | **AI Đám Đông Theo Token (`EnemySquadDirector`) & 12 Chủ Đề Nhạc Hoàng Đạo Độc Bản (`zodiacMusicDirector.ts`)**: Điều phối 2–5 token tấn công (`≤ 3` ở Lite), 12 giai điệu/âm giai/tempo chiến đấu & Boss riêng cho Ch.1–12. | `enemy-squad-director.test.mjs` & `zodiac-music-director.test.mjs` pass 100% | **Hoàn thành & Đã test (Đợt 2–3)** |
 | **P2-3b** | **Trích Xuất `VfxPoolManager` Zero-GC, Cache Ngân Sách VFX Theo Frame, SFX Không Gian 3D & Biên Niên Sử 12 Chương**: Tách 8 vòng cập nhật VFX pool + `VfxFrameBudgetCache` khỏi `GameEngine.ts`, sửa lỗi wrap sương mù `-Z`, bổ sung SFX khoảng cách 3D / 4 âm sắc tướng / tiếng dội khiên và Biên Niên Sử 12 Chương trong Boss Codex. | `vfxPoolManager.test.ts` (4/4), `sfxSpatialAndTimbre.test.ts` (4/4), `zodiacWorldLore.test.ts` (2/2) pass 100% | **Hoàn thành & Đã test (Đợt 5)** |
+| **P2-3c** | **Máy Trạng Thái 12 Hoạt Ảnh, Sửa Lỗi Boss Pha III Chương 1–4 & `LootOrbVisualCache` Zero-GPU-Churn**: Bổ sung `resolveCombatAnimState` (12 trạng thái chuẩn) + xung động học Lướt/Kỹ năng/Xuất trận/Gục ngã, sửa điều kiện Pha III Ch.1–4 + 12 cảnh báo khắc chế Boss Hoàng Đạo, và chia sẻ 2 geometry + 4 material cho toàn bộ vật phẩm rơi 3D. | `wave6AnimationAndBoss.test.ts` (5/5) pass 100%, 446 bài test 0 fail | **Hoàn thành & Đã test (Đợt 6)** |
 | **P2-5b** | **Tài Sản 3D High/Lite Độc Bản Cho Chương 5–8 (Cự Giải → Bọ Cạp)**: Kèm Boss Phase III, tuân thủ ngân sách E5430 Lite `≤ 2.5 MB/entity`. | 100% cặp High/Lite Ch.5–8 | Theo lịch mỹ thuật 3D |
 
 ---
