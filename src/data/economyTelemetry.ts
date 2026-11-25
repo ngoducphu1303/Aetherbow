@@ -23,7 +23,15 @@ import {
   getTowerRecommendedPower,
   type PowerPressureTier,
 } from './fairProgression30Day';
-import { getTalentLevel, getTalentUpgradeCost, TALENTS } from './talentsData';
+import {
+  getParagonInfusionCost,
+  getParagonInfusionLevel,
+  getTalentLevel,
+  getTalentUpgradeCost,
+  isParagonInfusionUnlocked,
+  PARAGON_INFUSION_MAX_LEVEL,
+  TALENTS,
+} from './talentsData';
 import { grantChapter2Collection } from './chapter2Collection';
 import { grantChapter3Collection } from './chapter3Collection';
 import { grantChapter4Collection } from './chapter4Collection';
@@ -82,6 +90,7 @@ export interface PlaytimeMilestoneSnapshot {
   highestRarityLabel: string;
   avgGearLevel: number;
   totalTalentLevels: number;
+  paragonInfusionLevel: number;
   estMobTtkSec: number;
   estBossTtkSec: number;
   estPlayerTtdSec: number;
@@ -605,6 +614,20 @@ export function simulatePlaytimeMilestones(seed = 20260410): PlaytimeEconomyRepo
           };
         }
       }
+
+      // Endgame Gold Sink: Tinh Tuý Hoàng Đạo (Astral Paragon Infusion) once 160/160 Talents or Ch.12 cleared
+      if (isParagonInfusionUnlocked(save.talents, save.highestChapterCleared)) {
+        for (let pStep = 0; pStep < 12; pStep++) {
+          const curParagon = getParagonInfusionLevel(save.paragonInfusionLevel);
+          if (curParagon >= PARAGON_INFUSION_MAX_LEVEL) break;
+          const pCost = getParagonInfusionCost(curParagon);
+          if (!spendGold(pCost)) break;
+          save = {
+            ...save,
+            paragonInfusionLevel: curParagon + 1,
+          };
+        }
+      }
     };
 
     const runSessionChunk = (chunkMinutes: number) => {
@@ -772,6 +795,7 @@ export function simulatePlaytimeMilestones(seed = 20260410): PlaytimeEconomyRepo
         highestRarityLabel: RARITY_META[highestRarity].label,
         avgGearLevel: Math.round(sumLv / ALL_GEAR_SLOTS.length),
         totalTalentLevels,
+        paragonInfusionLevel: getParagonInfusionLevel(save.paragonInfusionLevel),
         estMobTtkSec: timing.estMobTtkSec,
         estBossTtkSec: timing.estBossTtkSec,
         estPlayerTtdSec: timing.estPlayerTtdSec,

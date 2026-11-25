@@ -17,18 +17,18 @@
 
 ---
 
-## 2. Bảng Mô Phỏng 8 Mốc Thời Lượng (`5m → 100h`, Seed `20260410`)
+## 2. Bảng Mô Phỏng 8 Mốc Thời Lượng (`5m → 100h`, Seed `20260410` — Sau Triển Khai P1-5)
 
-| Mốc | Pha Trải Nghiệm | Chương Đã Vượt | Tháp Vô Tận | Lực Chiến (LC) | LC Khuyến Nghị | Tỷ Lệ LC | Phẩm Cao Nhất | Vàng Thu Tích Lũy | Vàng Chi Tích Lũy | Tỷ Lệ Tiêu Vàng (Sink %) | Mob TTK | Boss TTK | Player TTD |
-|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|
-| **5m** | FTUE / Mở đầu Ch.1 | 0/12 | F0 | 798 | 1,350 | 59% | Thường | 243 | 162 | 66.7% | 4.78s | 73.4s | 7.3s |
-| **15m** | Early Game · Ch.1 | 0/12 | F0 | 1,038 | 1,350 | 77% | Thường | 1,153 | 1,085 | 94.1% | 1.35s | 20.8s | 22.0s |
-| **30m** | Early Game · Boss Ch.1 | 1/12 | F0 | 3,177 | 4,500 | 71% | Sử Thi | 2,857 | 2,846 | 99.6% | 1.31s | 17.3s | 23.1s |
-| **1h** | Early-Mid · Ch.1–2 | 1/12 | F1 | 3,534 | 4,500 | 79% | Sử Thi | 5,996 | 5,929 | 98.9% | 0.95s | 12.5s | 36.9s |
-| **3h** | Mid Game · Ch.2–4 | 2/12 | F3 | 6,059 | 10,000 | 61% | Sử Thi | 22,831 | 22,787 | 99.8% | 2.59s | 34.0s | 20.4s |
-| **10h** | Mid-Late · Ch.5–7 | 3/12 | F10 | 18,490 | 20,000 | 92% | Sử Thi | 113,308 | 112,068 | 98.9% | 0.65s | 8.5s | 180.0s* |
-| **30h** | Late Game · Ch.8–11 | 12/12 | F51 | 327,760 | 285,000 | 115% | Thần Thoại | 1,885,670 | 1,876,867 | 99.5% | 0.25s | 1.6s | 180.0s* |
-| **100h** | Endgame · Ch.12 & Tháp | 12/12 | F60 | 1,169,050 | 285,000 | 410% | Thần Thoại | 13,406,690 | 7,167,335 | **53.5% ⚠️** | 0.20s | 1.0s | 180.0s* |
+| Mốc | Pha Trải Nghiệm | Chương Đã Vượt | Tháp Vô Tận | Lực Chiến (LC) | LC Khuyến Nghị | Tỷ Lệ LC | Phẩm Cao Nhất | Tinh Tuý (Paragon) | Vàng Thu Tích Lũy | Vàng Chi Tích Lũy | Tỷ Lệ Tiêu Vàng (Sink %) | Mob TTK | Boss TTK | Player TTD |
+|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| **5m** | FTUE / Mở đầu Ch.1 | 0/12 | F0 | 798 | 1,350 | 59% | Thường | 0 | 243 | 162 | 66.7% | 4.78s | 73.4s | 7.3s |
+| **15m** | Early Game · Ch.1 | 0/12 | F0 | 1,038 | 1,350 | 77% | Thường | 0 | 1,153 | 1,085 | 94.1% | 1.35s | 20.8s | 22.0s |
+| **30m** | Early Game · Boss Ch.1 | 1/12 | F0 | 3,177 | 4,500 | 71% | Sử Thi | 0 | 2,857 | 2,846 | 99.6% | 1.31s | 17.3s | 23.1s |
+| **1h** | Early-Mid · Ch.1–2 | 1/12 | F1 | 3,534 | 4,500 | 79% | Sử Thi | 0 | 5,996 | 5,929 | 98.9% | 0.95s | 12.5s | 36.9s |
+| **3h** | Mid Game · Ch.2–4 | 2/12 | F3 | 6,059 | 10,000 | 61% | Sử Thi | 0 | 22,831 | 22,787 | 99.8% | 2.59s | 34.0s | 20.4s |
+| **10h** | Mid-Late · Ch.5–7 | 3/12 | F10 | 18,490 | 20,000 | 92% | Sử Thi | 0 | 113,308 | 112,068 | 98.9% | 0.65s | 8.5s | 180.0s* |
+| **30h** | Late Game · Ch.8–11 | 12/12 | F54 | 364,078 | 285,000 | 128% | Thần Thoại | 0 | 1,911,488 | 1,902,943 | 99.6% | 0.23s | 1.3s | 180.0s* |
+| **100h** | Endgame · Ch.12 & Tháp | 12/12 | F60 | 1,332,804 | 285,000 | 468% | Thần Thoại | **44 / 500** | 13,424,993 | 13,402,778 | **99.8% (0 cảnh báo)** | 0.20s | 1.0s | 180.0s* |
 
 *\*Lưu ý: `Player TTD` được kẹp trần hiển thị ở `180.0s` đối với Chương Chiến Dịch chuẩn khi người chơi đã vượt mạnh LC khuyến nghị; thử thách sống còn thực sự ở mốc 30h–100h chuyển sang **Nightmare Ascension Tier I–V** và **Tháp Vô Tận tầng F50–F100+**.*
 
@@ -40,13 +40,13 @@
 - **5m → 15m**: Người chơi mới bước vào Ch.1 với `59% → 77%` LC, `Mob TTK` giảm mượt từ `4.78s → 1.35s`, `Boss TTK` từ `73.4s → 20.8s`, `Player TTD` tăng từ `7.3s → 22.0s`. Áp chế LC (`computePowerPressure`) giữ cho người chơi không thể "đứng yên bắn chết Boss" nhưng vẫn có thể thắng bằng kỹ năng né đòn ở dải `75%–89% LC`.
 - **30m → 3h**: Chuyển tiếp từ Ch.1 → Ch.2 → Ch.3 có sự căng thẳng vừa phải (tỷ lệ LC dao động `61%–79%`), `Gold Sink Ratio` đạt `98.9%–99.8%`, nghĩa là **mỗi đồng Vàng kiếm được đều chuyển hóa ngay thành cảm giác mạnh lên rõ rệt**.
 
-### 3.2. Cảnh Báo Kinh Tế Đã Phát Hiện Ở Mốc `100h` (Cần Ưu Tiên P1-5)
-- Bộ mô phỏng tự động giương cờ cảnh báo:
-  `[100h] Gold sink ratio 53.5% (<60%) — dư Vàng ở Endgame.`
-- **Nguyên nhân thực tế**: Sau mốc ~45h–60h, toàn bộ 8 Thiên Phú (`TALENTS`) chạm trần tổng **Lv.160**, 6 món Trang bị Thần Thoại chạm trần **Lv.80**, và các công trình Wave 12–14 chạm cấp tối đa. Trong khi đó nguồn thu Vàng từ càn quét, Tháp và thưởng ngày vẫn tiếp tục đổ vào, tạo ra **~6,239,355 Vàng tồn kho** ở mốc 100h.
-- **Giải pháp đề xuất (P1-5)**:
-  1. **Tinh Tuý Hoàng Đạo Vô Hạn (Paragon Gold Sink)** mở khóa sau khi tổng Talent = 160: tiêu Vàng tăng theo hàm bậc 1.6 để cộng chỉ số siêu nhỏ (+0.2% ATK/HP mỗi bậc, không phá cân bằng PvP nhờ chuẩn hóa Equalized Rift).
-  2. **Tẩy Luyện Dòng Phụ Trang Bị Bằng Vàng** cho đồ Thần Thoại Lv.80 để tối ưu hóa build Crit/Boss/Sustain ở Nightmare Tier V.
+### 3.2. Xử Lý Dứt Điểm Lạm Phát Vàng Endgame Ở Mốc `100h` (P1-5 ĐÃ TRIỂN KHAI & NGHIỆM THU)
+- **Trước cải tiến**: Bộ mô phỏng phát hiện cảnh báo `[100h] Gold sink ratio 53.5% (<60%) — dư Vàng ở Endgame` (tồn kho ~6,239,355 Vàng sau khi 8 Thiên Phú chạm 160/160 và trang bị Thần Thoại chạm Lv.80).
+- **Giải pháp đã triển khai trực tiếp vào mã nguồn**:
+  - Bổ sung hệ thống **Tinh Tuý Hoàng Đạo (Astral Paragon Infusion — 500 bậc)** trong `src/data/talentsData.ts`, `src/data/gearData.ts`, `src/data/saveIntegrity.ts`, `src/App.tsx` và `src/components/TalentsModal.tsx`.
+  - **Điều kiện mở khóa nghiêm ngặt**: Chỉ mở khi đạt `160/160 Thiên Phú` hoặc vượt `Chương 12` → **0% ảnh hưởng đến Early/Mid Game (Ch.1–11)**.
+  - **Công thức tiêu Vàng & phần thưởng có kiểm soát**: `18,000 + lv × 3,200 + lv^1.58 × 380` Vàng/bậc, cộng `+0.4% ATK`, `+0.4% Max HP`, `+0.2% Sát Thương Boss` (trần `+40%`).
+- **Kết quả xác minh sau triển khai**: Ở mốc `100h`, người chơi đạt **Paragon Bậc 44/500**, tiêu thụ **`13,402,778 / 13,424,993 Vàng`**, đưa `Gold Sink Ratio` từ **`53.5%` → `99.8%`** và hạ cảnh báo kinh tế về **`0`**.
 
 ---
 

@@ -38,15 +38,15 @@ Tài liệu này tổng hợp lộ trình kỹ thuật và nội dung cho **Aeth
 
 ---
 
-### P1 — Cân Bằng Kinh Tế, Giám Sát An Ninh & Tiếp Cận (ĐÃ HOÀN THÀNH LÕI + 1 HẠNG MỤC SPRINT KẾ)
+### P1 — Cân Bằng Kinh Tế, Giám Sát An Ninh & Tiếp Cận (ĐÃ HOÀN THÀNH 5/5)
 
 | Mã | Hạng mục | Tệp liên quan | Trạng thái |
 |---|---|---|---|
 | **P1-1** | **Mô Phỏng Kinh Tế 8 Mốc Thời Lượng (`5m → 100h`) & TTK/TTD**: Đo đạc thực tế trên toán học thật của game, tự động phát hiện cảnh báo dư Vàng Endgame. | `src/data/economyTelemetry.ts`, `tools/simulate-playtime-milestones.ts` | **Hoàn thành & Đã test** |
 | **P1-2** | **Giám Sát Bất Thường & An Ninh Máy Chủ**: Ring buffer 200 sự kiện (`rate_limit`, `ws_clamped`, `auth_invalid`, `admin_denied`), API Admin-only `GET /api/admin/security-anomalies`, và bảng hiển thị đọc-duy-nhất trên Admin LiveOps Tab. | `src/server/serverSecurity.ts`, `server.ts`, `AssetAdminLiveOpsTab.tsx` | **Hoàn thành & Đã test** |
-| **P1-3** | **Gia Cố Save Integrity**: Chuyển fallback sang `aurelia`, kẹp trần `level (1..120)`, `awakening (0..10)`, `heroStars (0..10)`, `pity`, `starDust/scrolls/spiritCores`, và khử trùng lặp thư. | `src/data/saveIntegrity.ts`, `saveIntegrity.test.ts` | **Hoàn thành & Đã test** |
+| **P1-3** | **Gia Cố Save Integrity**: Chuyển fallback sang `aurelia`, kẹp trần `level (1..120)`, `awakening (0..10)`, `heroStars (0..10)`, `pity`, `paragonInfusionLevel (0..500)`, `starDust/spiritCores`, và khử trùng lặp thư. | `src/data/saveIntegrity.ts`, `saveIntegrity.test.ts` | **Hoàn thành & Đã test** |
 | **P1-4** | **Công Tắc Anti-Flash Độc Lập (`reduceScreenFlash`) & Zero-Pill UI**: Thêm nút Giảm Chớp Sáng giảm 75% xung lóe sáng độc lập với Giảm Chuyển Động; gỡ chấm `animate-pulse` cuối cùng trong `AuctionHouseModal.tsx`. | `game.ts`, `liveOpsData.ts`, `SettingsModal.tsx`, `AuctionHouseModal.tsx` | **Hoàn thành & Đã test** |
-| **P1-5** | **Endgame Gold Sink (60h–100h+) — "Tinh Tuý Vô Hạn & Tẩy Luyện Dòng Phụ Bằng Vàng"**: Giải quyết lượng tồn kho Vàng ~6.24M (`Sink Ratio 53.5%`) sau khi max Talent 160 và Mythic Lv.80. | `talentsData.ts`, `gearData.ts`, `economyTelemetry.ts` | **Kế hoạch Sprint kế (2 ngày)** |
+| **P1-5** | **Endgame Gold Sink (60h–100h+) — "Tinh Tuý Hoàng Đạo (Astral Paragon Infusion 500 bậc)"**: Hấp thụ triệt để tồn kho Vàng sau 160/160 Thiên Phú / Ch.12, đưa `100h Gold Sink Ratio` từ `53.5%` lên **`99.8%`** (0 cảnh báo) với 0% ảnh hưởng Ch.1–11. | `talentsData.ts`, `gearData.ts`, `TalentsModal.tsx`, `App.tsx`, `economyTelemetry.ts` | **Hoàn thành & Đã test** |
 
 ---
 

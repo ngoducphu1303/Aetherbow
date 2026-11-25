@@ -23,7 +23,7 @@ import {
 } from './liveOpsData';
 import { getTodayKey } from './questsData';
 import { RUNES_CATALOG } from './runesData';
-import { computeTalentBonuses } from './talentsData';
+import { computeParagonInfusionBonuses, computeTalentBonuses } from './talentsData';
 import {
   AURA_MAP,
   MAX_DAILY_RIFT_RUNS,
@@ -1082,9 +1082,10 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const guildTech = computeGuildTechBonuses(save.guild);
   const constellation = computeConstellationBonuses(save.constellations);
   const tal = computeTalentBonuses(save.talents);
+  const paragon = computeParagonInfusionBonuses(save.paragonInfusionLevel);
   const codexSummary = computeCodexSummary(save);
   critDamage += gearSets.critDamage;
-  bossDamageBonus += gearSets.bossDamageBonus + heroMastery.bossDamageBonus;
+  bossDamageBonus += gearSets.bossDamageBonus + heroMastery.bossDamageBonus + paragon.bossDmgBonus;
   attack = Math.round(
     (attack + tal.atk + constellation.atkFlat) *
       (1 +
@@ -1105,7 +1106,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
         soulRingBonuses.atkPct +
         celWingStats.atkPct +
         zodiacRelicBonuses.atkPct +
-        guildSanctuaryBonuses.atkPct)
+        guildSanctuaryBonuses.atkPct +
+        paragon.atkPct)
   );
   maxHp = Math.round(
     (maxHp + tal.hp + constellation.hpFlat) *
@@ -1124,7 +1126,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
         soulRingBonuses.hpPct +
         celWingStats.hpPct +
         zodiacRelicBonuses.hpPct +
-        guildSanctuaryBonuses.hpPct)
+        guildSanctuaryBonuses.hpPct +
+        paragon.hpPct)
   );
   critChance = Math.min(
     0.94,
@@ -1192,7 +1195,8 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       (equippedCelestialWingId ? celestialWingStar * 130 : 0) +
       zodiacRelicBonuses.totalStars * 75 +
       guildSanctuaryBonuses.totalLevel * 36 +
-      (save.unlockedRoyal3DTitles?.length ?? 0) * 55
+      (save.unlockedRoyal3DTitles?.length ?? 0) * 55 +
+      paragon.cpBonus
   );
 
   return {
@@ -1245,6 +1249,7 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     activeBondCount: bondBonuses.activeCount,
     equippedHaloId,
     haloLevel,
+    paragonInfusionLevel: paragon.level,
   };
 }
 

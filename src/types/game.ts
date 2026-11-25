@@ -367,6 +367,7 @@ export interface ComputedPlayerStats {
   activeGearSets?: ActiveGearSetBonus[];
   heroMasteryLevel?: number;
   heroMasteryBonusLabel?: string;
+  paragonInfusionLevel?: number;
 }
 
 export type SkillRarity = 'common' | 'rare' | 'epic' | 'legend';
@@ -1391,6 +1392,7 @@ export interface SaveData {
   checkIn?: CheckInProgress;
   dailyQuests?: DailyQuestProgress;
   talents?: Partial<Record<TalentId, number>>;
+  paragonInfusionLevel?: number;
   bestTowerFloor?: number;
   bestBossRushRound?: number;
   battlePass?: BattlePassProgress;

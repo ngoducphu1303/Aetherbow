@@ -131,3 +131,45 @@ export function computeTalentBonuses(
     goldGainMult: 1 + fortune * 0.08,
   };
 }
+
+export const PARAGON_INFUSION_MAX_LEVEL = 500;
+export const PARAGON_INFUSION_TALENT_THRESHOLD = 160;
+export const PARAGON_INFUSION_CHAPTER_THRESHOLD = 12;
+
+export function getParagonInfusionLevel(rawLevel: number | undefined): number {
+  if (typeof rawLevel !== 'number' || !Number.isFinite(rawLevel)) return 0;
+  return Math.max(0, Math.min(PARAGON_INFUSION_MAX_LEVEL, Math.floor(rawLevel)));
+}
+
+export function isParagonInfusionUnlocked(
+  talents: Partial<Record<TalentId, number>> | undefined,
+  highestChapterCleared: number
+): boolean {
+  return (
+    getTotalTalentLevels(talents) >= PARAGON_INFUSION_TALENT_THRESHOLD ||
+    highestChapterCleared >= PARAGON_INFUSION_CHAPTER_THRESHOLD
+  );
+}
+
+export function getParagonInfusionCost(currentLevel: number): number {
+  const lv = Math.max(0, Math.min(PARAGON_INFUSION_MAX_LEVEL - 1, Math.floor(currentLevel)));
+  return Math.round(18_000 + lv * 3_200 + Math.pow(lv, 1.58) * 380);
+}
+
+export function computeParagonInfusionBonuses(rawLevel: number | undefined): {
+  level: number;
+  atkPct: number;
+  hpPct: number;
+  bossDmgBonus: number;
+  cpBonus: number;
+} {
+  const level = getParagonInfusionLevel(rawLevel);
+  return {
+    level,
+    atkPct: level * 0.004,
+    hpPct: level * 0.004,
+    bossDmgBonus: Math.min(0.4, level * 0.002),
+    cpBonus: level * 95,
+  };
+}
+

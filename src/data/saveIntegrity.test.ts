@@ -19,6 +19,7 @@ test('SaveIntegrity: clamps tampered currency, gear level/awakening, heroStars, 
     gems: 999_999_999,
     highestChapterCleared: 99,
     starDust: -20,
+    paragonInfusionLevel: 9999,
     unlockedHeroes: [],
     heroStars: { aurelia: 99, bellona: -3 },
     pity: { ...(base.pity ?? {}), mythicPulls: -10, sTierPulls: 9999 },
@@ -36,6 +37,7 @@ test('SaveIntegrity: clamps tampered currency, gear level/awakening, heroStars, 
   assert.equal(report.sanitizedSave.gems, 99_999_999);
   assert.equal(report.sanitizedSave.highestChapterCleared, 12);
   assert.equal(report.sanitizedSave.starDust, 0);
+  assert.equal(report.sanitizedSave.paragonInfusionLevel, 500);
   assert.deepEqual(report.sanitizedSave.unlockedHeroes, ['aurelia']);
   assert.equal(report.sanitizedSave.selectedHeroId, 'aurelia');
   assert.equal(report.sanitizedSave.heroStars.aurelia, 10);

@@ -17,14 +17,14 @@ if (asJson) {
   );
   console.log('');
   console.log(
-    '| Mốc | Pha | Ch.Clear | Tháp | Power (LC) | Rec (LC) | Tỷ lệ | Rarity Cao Nhất | Gold Thu | Gold Chi | Sink % | Mob TTK | Boss TTK | Player TTD |'
+    '| Mốc | Pha | Ch.Clear | Tháp | Power (LC) | Rec (LC) | Tỷ lệ | Rarity | Paragon | Gold Thu | Gold Chi | Sink % | Mob TTK | Boss TTK | Player TTD |'
   );
   console.log(
-    '|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|'
+    '|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|'
   );
   for (const m of report.milestones) {
     console.log(
-      `| ${m.milestoneId} | ${m.phaseLabel} | ${m.highestChapterCleared}/12 | F${m.bestTowerFloor} | ${m.playerPower.toLocaleString('en-US')} | ${m.recommendedPower.toLocaleString('en-US')} | ${(m.powerRatio * 100).toFixed(0)}% | ${m.highestRarityLabel} | ${m.goldEarnedCumulative.toLocaleString('en-US')} | ${m.goldSpentCumulative.toLocaleString('en-US')} | ${m.goldSinkRatioPct}% | ${m.estMobTtkSec}s | ${m.estBossTtkSec}s | ${m.estPlayerTtdSec}s |`
+      `| ${m.milestoneId} | ${m.phaseLabel} | ${m.highestChapterCleared}/12 | F${m.bestTowerFloor} | ${m.playerPower.toLocaleString('en-US')} | ${m.recommendedPower.toLocaleString('en-US')} | ${(m.powerRatio * 100).toFixed(0)}% | ${m.highestRarityLabel} | ${m.paragonInfusionLevel} | ${m.goldEarnedCumulative.toLocaleString('en-US')} | ${m.goldSpentCumulative.toLocaleString('en-US')} | ${m.goldSinkRatioPct}% | ${m.estMobTtkSec}s | ${m.estBossTtkSec}s | ${m.estPlayerTtdSec}s |`
     );
   }
   if (report.warnings.length > 0) {

@@ -283,9 +283,13 @@ import {
 import { RUNES_CATALOG, craftSelectedRuneFromShards, rollRuneChestBatch } from './data/runesData';
 import { rollSkillChoices } from './data/skillsData';
 import {
+  PARAGON_INFUSION_MAX_LEVEL,
   TALENT_MAP,
+  getParagonInfusionCost,
+  getParagonInfusionLevel,
   getTalentLevel,
   getTalentUpgradeCost,
+  isParagonInfusionUnlocked,
 } from './data/talentsData';
 import {
   AURA_MAP,
@@ -8419,6 +8423,24 @@ export default function App() {
     });
   }, []);
 
+  const handleUpgradeParagonInfusion = useCallback(() => {
+    setSave((prev) => {
+      if (!isParagonInfusionUnlocked(prev.talents, prev.highestChapterCleared)) return prev;
+      const curLevel = getParagonInfusionLevel(prev.paragonInfusionLevel);
+      if (curLevel >= PARAGON_INFUSION_MAX_LEVEL) return prev;
+      const cost = getParagonInfusionCost(curLevel);
+      if (prev.gold < cost) return prev;
+      soundEngine.playLevelUp();
+      const dq = normalizeDailyQuests(prev.dailyQuests);
+      return {
+        ...prev,
+        gold: prev.gold - cost,
+        paragonInfusionLevel: curLevel + 1,
+        dailyQuests: { ...dq, upgrades: dq.upgrades + 1 },
+      };
+    });
+  }, []);
+
   // Wave 3 Handlers: Pets, Skins, Auras, VIP & Relic Forge
   const handleUnlockPet = useCallback((petId: PetId, currency: 'gold' | 'gems') => {
     const def = PET_MAP[petId];
@@ -12265,6 +12287,7 @@ export default function App() {
           save={save}
           stats={playerStats}
           onUpgradeTalent={handleUpgradeTalent}
+          onUpgradeParagonInfusion={handleUpgradeParagonInfusion}
           onClose={() => setTalentsModalOpen(false)}
         />
       )}

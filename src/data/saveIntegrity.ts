@@ -41,7 +41,11 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
   const bag = next as unknown as Record<string, unknown>;
   const fixInt = (key: keyof SaveData, min: number, max: number, fallback = 0) => {
     const val = bag[key as string];
-    if (val === undefined && fallback === 0 && (key === 'starDust' || key === 'spiritCores')) {
+    if (
+      val === undefined &&
+      fallback === 0 &&
+      (key === 'starDust' || key === 'spiritCores' || key === 'paragonInfusionLevel')
+    ) {
       return;
     }
     const clean = clampFiniteInt(val, min, max, fallback);
@@ -57,6 +61,7 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
   fixInt('bestTowerFloor', 0, 10000, 0);
   fixInt('starDust', 0, 99_999_999, 0);
   fixInt('spiritCores', 0, 99_999_999, 0);
+  fixInt('paragonInfusionLevel', 0, 500, 0);
 
   if (!Array.isArray(next.inventory)) {
     next.inventory = [];

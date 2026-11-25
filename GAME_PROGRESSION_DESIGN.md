@@ -33,4 +33,4 @@ Tài liệu mô tả kiến trúc tiến trình hoàn chỉnh từ phút thứ 1
 
 - **Lộ Trình 30 Ngày Công Bằng (`FAIR_30DAY_MILESTONES`)**: 4 tuần / 8 mốc thưởng rõ ràng dẫn dắt người chơi F2P từ Ch.1 lên Ch.12 và Tháp F45+.
 - **Nightmare Ascension I–V & 5 Biến Dị Phòng (`NIGHTMARE_MUTATORS`)**: Tăng độ sâu chiến thuật khi người chơi đã vượt qua chỉ số Chiến Dịch cơ bản.
-- **Đề Xuất Mở Rộng Sprint Kế (P1-5)**: Bổ sung **Tinh Tuý Hoàng Đạo Vô Hạn** (tiêu Vàng sau khi Talent đạt tổng Lv.160) và **Tẩy Luyện Dòng Phụ Bằng Vàng** để hấp thụ lượng Vàng dư ở mốc 60h–100h+ đã được chỉ ra trong `GAME_BALANCE_REPORT.md`.
+- **Tinh Tuý Hoàng Đạo (Astral Paragon Infusion — Đã triển khai)**: Mở khóa tự động khi tổng cấp Thiên Phú đạt `160/160` hoặc vượt Chương 12 (tối đa 500 bậc, tích hợp trong `TalentsModal.tsx`, `talentsData.ts`, `gearData.ts` và kẹp trần `0..500` trong `saveIntegrity.ts`), hấp thụ toàn bộ lượng Vàng dư ở giai đoạn 60h–100h+ (`Gold Sink Ratio 99.8%`, 0 cảnh báo lạm phát).

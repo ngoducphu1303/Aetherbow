@@ -4,6 +4,11 @@ import {
   PLAYTIME_MILESTONES,
   simulatePlaytimeMilestones,
 } from './economyTelemetry';
+import { computePlayerStats, createInitialSaveData } from './gearData';
+import {
+  getParagonInfusionCost,
+  isParagonInfusionUnlocked,
+} from './talentsData';
 import { Rarity } from '../types/game';
 
 test('EconomyTelemetry: simulates all 8 required playtime milestones deterministically', () => {
@@ -19,7 +24,7 @@ test('EconomyTelemetry: simulates all 8 required playtime milestones determinist
   assert.equal(runA.simulationKind, 'deterministic_seeded_model');
 });
 
-test('EconomyTelemetry: preserves fresh Ch.1 anti-power-creep and monotonic progression without negative currencies', () => {
+test('EconomyTelemetry: preserves fresh Ch.1 anti-power-creep, Paragon endgame Gold sink, and zero inflation warnings', () => {
   const report = simulatePlaytimeMilestones(20260410);
   assert.ok(report.freshBaselinePower >= 600 && report.freshBaselinePower <= 900);
 
@@ -27,12 +32,13 @@ test('EconomyTelemetry: preserves fresh Ch.1 anti-power-creep and monotonic prog
   const m15 = report.milestones[1];
   const m100h = report.milestones[report.milestones.length - 1];
 
-  // Early game anti-power-creep: 5m player should not jump to Epic/Legendary/Mythic
+  // Early game anti-power-creep: 5m player should not jump to Epic/Legendary/Mythic or unlock Paragon
   assert.ok(
     m5.highestRarity === Rarity.COMMON || m5.highestRarity === Rarity.RARE,
     `5m rarity ${m5.highestRarity} must stay Common/Rare`
   );
   assert.ok(m5.playerPower < 1600, `5m power ${m5.playerPower} should remain below Ch.1 inflated bounds`);
+  assert.equal(m5.paragonInfusionLevel, 0, 'Paragon must remain locked in early game');
   assert.ok(m15.playerPower >= m5.playerPower, '15m power must not regress vs 5m');
 
   let prevGoldEarned = 0;
@@ -50,7 +56,26 @@ test('EconomyTelemetry: preserves fresh Ch.1 anti-power-creep and monotonic prog
     prevChapter = m.highestChapterCleared;
   }
 
-  // Endgame reachability within 100h
+  // Endgame reachability & healthy Gold sink within 100h
   assert.ok(m100h.highestChapterCleared >= 8, `100h simulation should reach late chapters, got ${m100h.highestChapterCleared}`);
   assert.ok(m100h.bestTowerFloor >= 20, `100h simulation should climb tower >= F20, got F${m100h.bestTowerFloor}`);
+  assert.ok(m100h.paragonInfusionLevel > 0, '100h endgame player must actively invest surplus Gold into Paragon Infusion');
+  assert.ok(m100h.goldSinkRatioPct >= 75, `100h Gold sink ratio should be >= 75%, got ${m100h.goldSinkRatioPct}%`);
+  assert.equal(report.warnings.length, 0, `Expected 0 economy warnings, got: ${report.warnings.join('; ')}`);
 });
+
+test('Paragon Infusion: enforces unlock gating, monotonic Gold cost, and bounded stat gains', () => {
+  const fresh = createInitialSaveData();
+  assert.equal(isParagonInfusionUnlocked(fresh.talents, fresh.highestChapterCleared), false);
+  assert.equal(isParagonInfusionUnlocked(fresh.talents, 12), true);
+  assert.ok(getParagonInfusionCost(10) > getParagonInfusionCost(0));
+
+  const baseStats = computePlayerStats(fresh);
+  const boostedStats = computePlayerStats({ ...fresh, paragonInfusionLevel: 25 });
+  assert.equal(boostedStats.paragonInfusionLevel, 25);
+  assert.ok(boostedStats.attack > baseStats.attack);
+  assert.ok(boostedStats.maxHp > baseStats.maxHp);
+  assert.ok(boostedStats.bossDamageBonus > baseStats.bossDamageBonus);
+  assert.ok(boostedStats.powerRating > baseStats.powerRating);
+});
+
