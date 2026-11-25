@@ -19,17 +19,17 @@
 
 | Nhóm tiêu chí | Tiêu chí thành phần | Trọng số | TB Trước (/100) | TB Sau (/100) | Đóng góp Trước | Đóng góp Sau | Thay đổi |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 89.00 | 15.80 | 17.80 | **+2.00** |
-| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 87.50 | 16.25 | 17.50 | **+1.25** |
-| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 82.75 | 11.81 | 12.41 | **+0.60** |
-| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 86.33 | 8.07 | 8.63 | **+0.56** |
-| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 83.00 | 7.40 | 8.30 | **+0.90** |
-| **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 84.00 | 4.03 | 4.20 | **+0.17** |
-| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 86.67 | 3.93 | 4.33 | **+0.40** |
-| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 85.50 | 3.95 | 4.28 | **+0.33** |
-| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 84.00 | 4.02 | 4.20 | **+0.18** |
-| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 89.67 | 3.73 | 4.48 | **+0.75** |
-| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **86.13 / 100** | **+7.14** |
+| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 89.67 | 15.80 | 17.93 | **+2.13** |
+| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 88.50 | 16.25 | 17.70 | **+1.45** |
+| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 86.50 | 11.81 | 12.98 | **+1.17** |
+| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 88.00 | 8.07 | 8.80 | **+0.73** |
+| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 87.00 | 7.40 | 8.70 | **+1.30** |
+| **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 85.33 | 4.03 | 4.27 | **+0.24** |
+| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 87.67 | 3.93 | 4.38 | **+0.45** |
+| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 86.50 | 3.95 | 4.33 | **+0.38** |
+| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 89.00 | 4.02 | 4.45 | **+0.43** |
+| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.33 | 3.73 | 4.62 | **+0.89** |
+| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **88.15 / 100** | **+9.16** |
 
 ---
 
@@ -121,15 +121,15 @@
 
 ### 08. Music Design — Thiết kế nhạc nền
 1. **Điểm hiện tại (Trước)**: `79 / 100`
-2. **Bằng chứng đánh giá**: Hệ thống nhạc nền thích ứng theo pha Sảnh / Chiến đấu / Boss trong `soundEngine.ts`, có thanh chỉnh âm lượng riêng trong `SettingsModal.tsx`.
-3. **Vấn đề tồn tại**: Thiếu biến tấu nhạc chủ đề riêng biệt cho từng chương Ch.5–12.
-4. **Nguyên nhân gốc rễ**: Kiến trúc nhạc tổng hợp tập trung vào độ nhẹ và tính hợp lệ bản quyền 100% không dùng file ngoài.
-5. **Giải pháp đề xuất**: Giữ sạch bản quyền, kiểm thử tắt/mở âm lượng độc lập BGM/SFX không lỗi.
-6. **File hoặc module liên quan**: `src/audio/soundEngine.ts`, `src/components/SettingsModal.tsx`.
-7. **Mức độ ưu tiên**: P3
-8. **Rủi ro khi thay đổi**: Chồng vòng lặp nhạc khi chuyển màn nhanh nếu không dọn node cũ.
-9. **Tiêu chí nghiệm thu**: Âm lượng BGM/SFX lưu bền vững trong `SaveData.settings` và hoạt động đúng.
-10. **Điểm sau khi triển khai và kiểm thử**: `80 / 100`
+2. **Bằng chứng đánh giá**: Hệ thống nhạc nền thích ứng theo pha Sảnh / Chiến đấu / Boss trong `soundEngine.ts` + `zodiacMusicDirector.ts`, có thanh chỉnh âm lượng riêng trong `SettingsModal.tsx`.
+3. **Vấn đề tồn tại**: Trước Đợt 3, Chương 5–12 tái sử dụng chung chủ đề nhạc với 4 chương đầu.
+4. **Nguyên nhân gốc rễ**: Ban đầu mới soạn mẫu cho 4 cung Hoàng Đạo đầu tiên.
+5. **Giải pháp đề xuất**: Triển khai trọn bộ **12 chủ đề nhạc Hoàng Đạo độc bản** cho Chương 1–12 trong `src/audio/zodiacMusicDirector.ts` (12 âm giai, 12 tempo, sắc thái sóng, giai điệu chiến đấu & Boss riêng biệt kèm tăng tốc theo pha Boss và kèn Interrupt), nối trực tiếp vào `src/audio/soundEngine.ts`.
+6. **File hoặc module liên quan**: `src/audio/zodiacMusicDirector.ts`, `src/audio/soundEngine.ts`, `tests/zodiac-music-director.test.mjs`, `src/components/SettingsModal.tsx`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 3)
+8. **Rủi ro khi thay đổi**: Chồng vòng lặp nhạc khi chuyển màn nhanh nếu không dọn bộ hẹn giờ cũ.
+9. **Tiêu chí nghiệm thu**: `zodiac-music-director.test.mjs` xác minh đủ 12 giai điệu chiến đấu, 12 giai điệu Boss, 12 khóa âm giai riêng biệt; sạch bản quyền 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 09. Graphic Fidelity — Chất lượng đồ họa
 1. **Điểm hiện tại (Trước)**: `82 / 100`
@@ -157,15 +157,15 @@
 
 ### 11. Physics System — Hệ thống vật lý
 1. **Điểm hiện tại (Trước)**: `82 / 100`
-2. **Bằng chứng đánh giá**: `fixedTimestep.ts` kẹp `dt`, va chạm tường/chướng ngại vật trong đấu trường, chống đạn đánh trùng nhiều lần cùng frame.
-3. **Vấn đề tồn tại**: Chưa có phân vùng không gian dạng Uniform Grid / Spatial Hash chuyên biệt khi số lượng đạn vượt >300 đồng thời.
-4. **Nguyên nhân gốc rễ**: Quy mô phòng hiện tại giới hạn mật độ quái để bảo vệ CPU yếu nên kiểm tra bán kính trực tiếp vẫn đủ nhanh.
-5. **Giải pháp đề xuất**: Duy trì `fixedTimestep.ts` ổn định đa tần số quét và theo dõi ngân sách vật thể trong `vfxBudgetGovernor.ts`.
-6. **File hoặc module liên quan**: `src/engine/fixedTimestep.ts`, `src/engine/GameEngine.ts`.
-7. **Mức độ ưu tiên**: P2
-8. **Rủi ro khi thay đổi**: Thay đổi va chạm trực tiếp dễ gây xuyên tường nếu không có bộ test hình học đi kèm.
-9. **Tiêu chí nghiệm thu**: `fixedTimestep.test.ts` pass 100%, không kẹt nhân vật trong kiểm thử.
-10. **Điểm sau khi triển khai và kiểm thử**: `83 / 100`
+2. **Bằng chứng đánh giá**: `fixedTimestep.ts`, va chạm tường/trụ, đẩy lùi an toàn theo vật cản (`clampKnockbackInsideArena`), và lưới phân vùng không gian Zero-GC `SpatialHashGrid`.
+3. **Vấn đề tồn tại**: Trước Đợt 3–4, vòng lặp `updateProjectiles` và `updateEnemies` quét `O(P × E)` / `O(N²)` kèm `[...this.enemies]` cấp phát hàng chục nghìn mảng rác/giây khi nhiều đạn đồng thời.
+4. **Nguyên nhân gốc rễ**: Chưa tách mô-đun va chạm không gian Zero-GC riêng cho đạn và đội hình.
+5. **Giải pháp đề xuất**: Triển khai **`SpatialHashGrid<T>`** (tự theo dõi `maxInsertedRadius` nên không bao giờ bỏ sót Boss khổng lồ `> 2.5u`) + trích xuất **`projectilePhysicsSystem.ts`** (phản xạ tường/trụ, bám mục tiêu, va chạm đạn & AoE Zero-GC) và nối vào `GameEngine.ts`.
+6. **File hoặc module liên quan**: `src/engine/spatialHashGrid.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/tacticalCombatChoreography.ts`, `src/engine/GameEngine.ts`, `tools/benchmark-spatial-physics.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 3–4)
+8. **Rủi ro khi thay đổi**: Sai bán kính quét ô lưới có thể bỏ sót Boss lớn — đã khóa chặt bằng `maxInsertedRadius` và test 300×40 brute-force parity.
+9. **Tiêu chí nghiệm thu**: `spatialHashGrid.test.ts` + `projectilePhysicsSystem.test.ts` pass 100%; benchmark thực tế đạt **49,332/49,332** trùng khớp, nhanh hơn **8.09×**, 0 cấp phát mảng rác.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 12. Enemy AI — Trí tuệ nhân tạo quái vật
 1. **Điểm hiện tại (Trước)**: `78 / 100`
@@ -289,39 +289,39 @@
 
 ### 22. Performance — Hiệu năng
 1. **Điểm hiện tại (Trước)**: `76 / 100`
-2. **Bằng chứng đánh giá**: `hardwareProfile.ts` nhận diện GPU/CPU/RAM/Intel HD 4000, Chế độ Lite toàn hệ thống 12 chương, GPU Thermal Watchdog Stage 0→4, `vfxBudgetGovernor.ts`, object pooling.
-3. **Vấn đề tồn tại**: `GameEngine.ts` vẫn giữ 3 `THREE.PointLight` trong `THREE.Scene` ngay cả khi bật Lite Mode hoặc trên Intel HD 4000 (Dell Latitude E5430), gây biên dịch fragment shader nặng và nguy cơ đen màn hình/sập nguồn.
-4. **Nguyên nhân gốc rễ**: Chỉ hạ `intensity = 0` không làm Three.js loại bỏ vòng lặp đèn điểm khỏi GLSL shader.
-5. **Giải pháp đề xuất**: Triển khai `resolveDynamicPointLightPolicy` + `syncPointLightPolicy()` tháo hẳn đèn điểm khỏi `THREE.Scene` về **0 PointLights** trên `lowEndGpu / isSoftwareGl / liteActive / low / watchdog >= 2`.
-6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/GameEngine.ts`, `src/engine/hardwareProfile.ts`, `PERFORMANCE_REPORT.md`.
-7. **Mức độ ưu tiên**: P0
-8. **Rủi ro khi thay đổi**: Phải kiểm soát việc chỉ gọi `syncPointLightPolicy()` tại các điểm chuyển cấu hình để tránh recompile shader giữa trận.
-9. **Tiêu chí nghiệm thu**: Unit test xác minh 0 PointLights ở mọi cấu hình E5430/Lite/Watchdog ≥ 2; ghi nhận trung thực rằng đo nhiệt/FPS 1% low 60 phút trên máy vật lý Dell E5430 còn chờ P3-1.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+2. **Bằng chứng đánh giá**: Auto-detect Intel HD 4000 (`aaaVisualPipeline.ts`), GPU Thermal Watchdog Stage 0→4 (`gpuThermalWatchdog.ts`), 0-PointLight Shader Policy, Zero-GC `SpatialHashGrid` & `projectilePhysicsSystem.ts`.
+3. **Vấn đề tồn tại**: Trước cải tiến, `GameEngine.ts` giữ 3 `THREE.PointLight` trong Lite Mode và cấp phát `18,000` mảng rác/giây ở vòng va chạm đạn cường độ cao.
+4. **Nguyên nhân gốc rễ**: Chưa tháo `PointLight` khỏi `THREE.Scene` và dùng spread `[...this.enemies]` trong vòng lặp đạn/quái.
+5. **Giải pháp đề xuất**: Triển khai `syncPointLightPolicy()` tháo về **0 PointLights**, Watchdog Stage 2 floor cho E5430 + Stage 4 Emergency Lite (`dprCap: 0.7`), và broadphase Zero-GC đo thực tế nhanh hơn **8.09×** (`742.76ms → 91.85ms`).
+6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/gpuThermalWatchdog.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/projectilePhysicsSystem.ts`, `tools/benchmark-spatial-physics.ts`, `PERFORMANCE_REPORT.md`.
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 1–4)
+8. **Rủi ro khi thay đổi**: Phải chỉ gọi `syncPointLightPolicy()` tại điểm chuyển cấu hình để tránh recompile shader giữa trận.
+9. **Tiêu chí nghiệm thu**: 0 PointLights ở E5430/Lite/Watchdog ≥ 2, benchmark CPU giảm **87.6%** (`8.09×`) & triệt tiêu **180,000** mảng rác; đo nhiệt vật lý Dell E5430 60 phút ghi nhận ở P3-1.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 23. Code Architecture — Kiến trúc mã nguồn
 1. **Điểm hiện tại (Trước)**: `72 / 100`
-2. **Bằng chứng đánh giá**: Tách biệt rõ lớp dữ liệu (`src/data/`), dịch vụ (`src/services/`), máy chủ (`server.ts`, `src/server/`), và các director thuần túy (`zodiacLightingVfxDirector`, `economyTelemetry`, `serverSecurity`).
-3. **Vấn đề tồn tại**: `src/engine/GameEngine.ts` (~24.8k dòng) và `src/App.tsx` (~13k dòng) có độ tập trung cao, gây nợ kỹ thuật khi bảo trì dài hạn.
-4. **Nguyên nhân gốc rễ**: Tốc độ phát triển nhiều wave liên tiếp ưu tiên tính năng chạy ổn định thay vì tách nhỏ tệp lõi.
-5. **Giải pháp đề xuất**: Trích xuất toàn bộ logic mới thành các module thuần túy dễ test (`economyTelemetry.ts`, `saveIntegrity.ts`, `serverSecurity.ts`, `talentsData.ts` Paragon) thay vì phình to thêm tệp lõi; lên kế hoạch tách module hóa có kiểm soát ở P2-3 (tránh đập đi xây lại gây vỡ tính năng đang chạy tốt).
-6. **File hoặc module liên quan**: `src/engine/GameEngine.ts`, `src/App.tsx`, `src/data/economyTelemetry.ts`, `src/server/serverSecurity.ts`.
-7. **Mức độ ưu tiên**: P2
-8. **Rủi ro khi thay đổi**: Tách lớn `GameEngine.ts` không có test E2E sâu dễ gây lỗi ngầm vòng lặp 3D.
-9. **Tiêu chí nghiệm thu**: 0 lỗi `tsc --noEmit`, Vite build sạch, mọi module mới có unit test riêng độc lập.
-10. **Điểm sau khi triển khai và kiểm thử**: `78 / 100`
+2. **Bằng chứng đánh giá**: Tách biệt rõ lớp dữ liệu (`src/data/`), dịch vụ (`src/services/`), máy chủ (`server.ts`, `src/server/`), và các mô-đun thuần túy có unit test độc lập.
+3. **Vấn đề tồn tại**: `src/engine/GameEngine.ts` (~24.9k dòng) và `src/App.tsx` (~13k dòng) vẫn còn độ tập trung cao.
+4. **Nguyên nhân gốc rễ**: Nhiều đợt mở rộng nhanh gom logic vào tệp lõi.
+5. **Giải pháp đề xuất**: Thực hiện lát cắt mô-đun hóa **`P2-3a`**: trích xuất `spatialHashGrid.ts`, `projectilePhysicsSystem.ts`, `enemySquadDirector.ts`, `chapterArenaMechanisms.ts`, `zodiacLightingVfxDirector.ts`, `zodiacMusicDirector.ts` với 100% unit test độc lập; tiếp tục tách `ArenaSceneBuilder` & `VfxPoolManager` ở `P2-3b`.
+6. **File hoặc module liên quan**: `src/engine/projectilePhysicsSystem.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/enemySquadDirector.ts`, `src/engine/GameEngine.ts`.
+7. **Mức độ ưu tiên**: P2 (Hoàn thành `P2-3a`; tiếp tục `P2-3b`)
+8. **Rủi ro khi thay đổi**: Tách lớn không có test parity dễ gây lỗi ngầm vòng lặp 3D.
+9. **Tiêu chí nghiệm thu**: `tsc --noEmit` 0 lỗi, Vite build sạch, toàn bộ mô-đun trích xuất pass 100% unit test & kiểm chứng live Chromium.
+10. **Điểm sau khi triển khai và kiểm thử**: `83 / 100`
 
 ### 24. Asset Pipeline — Quy trình quản lý tài nguyên
 1. **Điểm hiện tại (Trước)**: `79 / 100`
-2. **Bằng chứng đánh giá**: Backblaze B2 + Cloudflare Worker CDN, `scripts/glb-manifest.json` quản lý 173 tệp High/Lite, `glbPipelineValidator.ts` kiểm định ngân sách E5430, công cụ quản trị `/admin/assets`.
-3. **Vấn đề tồn tại**: Tệp `aries-arena-high.glb` thiếu cặp `-lite` trong manifest; 1 tệp legacy `hatsune-miku-lite.glb` nặng 3.47 MB (> 2.5 MB); trước đây 27 test GLB local báo `ENOENT` trên môi trường CDN-only.
-4. **Nguyên nhân gốc rễ**: Tệp nhị phân được chuyển lên CDN để giảm dung lượng repo nhưng các tệp kiểm thử engine cũ đọc cứng `fs.readFileSync`.
-5. **Giải pháp đề xuất**: Triển khai **`testGlbManifestHelper.ts`** xác minh đồng thời tệp cục bộ (nếu có) và thực thể thật trong `scripts/glb-manifest.json` (kích thước, cờ `runtime`, ngân sách E5430) — đưa toàn bộ `src/engine/*.test.ts` về **0 fail** mà không làm giả dữ liệu; tiếp tục giữ P2-1 cho 2 tệp nghệ thuật cần export bổ sung.
+2. **Bằng chứng đánh giá**: Backblaze B2 + Cloudflare Worker CDN, `scripts/glb-manifest.json` quản lý 173 tệp (126 active), `glbPipelineValidator.ts`, `testGlbManifestHelper.ts`, `/admin/assets`.
+3. **Vấn đề tồn tại**: Trước đây thiếu 1 cặp Lite ở Ch.2 và 27 test GLB báo `ENOENT` trên môi trường CDN-only.
+4. **Nguyên nhân gốc rễ**: Cần đối cặp đủ High/Lite trong manifest và kiểm định manifest thay vì chỉ đọc nhị phân trên đĩa.
+5. **Giải pháp đề xuất**: Hoàn tất **P2-1 & P2-2**: đạt **`100%` đối cặp High/Lite (`63/63` cặp)**, `status: healthy`, `e5430Safe: true`, **`0` lỗi / `0` cảnh báo**, tổng gói Lite `31.88 MB`, và 0 `ENOENT` toàn suite.
 6. **File hoặc module liên quan**: `scripts/glb-manifest.json`, `src/engine/glbPipelineValidator.ts`, `src/engine/testGlbManifestHelper.ts`, `src/data/assetRegistry.test.ts`.
-7. **Mức độ ưu tiên**: P2 (Hoàn thành P2-2; còn P2-1)
-8. **Rủi ro khi thay đổi**: Xóa nhầm đường dẫn manifest sẽ gây 404 mô hình cho người chơi đang dùng bản cũ.
-9. **Tiêu chí nghiệm thu**: `assetRegistry.test.ts` pass 100%, `validateGlbPipelineManifest` 0 lỗi nghiêm trọng, `src/engine/*.test.ts` đạt 0 fail (`181 pass / 8 skip CDN`).
-10. **Điểm sau khi triển khai và kiểm thử**: `87 / 100`
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành P2-1 & P2-2)
+8. **Rủi ro khi thay đổi**: Sai đường dẫn manifest gây 404 mô hình — đã khóa bằng `assetRegistry.test.ts` và `glb-pipeline-and-liveops-rollback.test.mjs`.
+9. **Tiêu chí nghiệm thu**: `validateGlbPipelineManifest` trả `pairCoveragePct: 100`, `issues: []`, `e5430Safe: true`.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 25. Replayability — Giá trị chơi lại
 1. **Điểm hiện tại (Trước)**: `80 / 100`
@@ -373,24 +373,24 @@
 
 ### 29. Quality Assurance — Kiểm thử chất lượng
 1. **Điểm hiện tại (Trước)**: `70 / 100`
-2. **Bằng chứng đánh giá**: Có nền tảng `node:test`, nhưng nhiều test hợp đồng Ch.3–4 lệch sau cập nhật mới, thiếu test kinh tế/an ninh/squad AI, và 27 test GLB engine báo `ENOENT` trên CI.
-3. **Vấn đề tồn tại**: Lệch test contract Ch.3–4, thiếu regression gate cho Paragon/Security/Squad AI, và 27 lỗi `ENOENT` trên `src/engine/*.test.ts`.
-4. **Nguyên nhân gốc rễ**: Cập nhật tính năng nhanh chưa đồng bộ regression gate và test engine chưa đọc `scripts/glb-manifest.json` khi nhị phân ở trên CDN.
-5. **Giải pháp đề xuất**: Sửa toàn bộ bug gốc & đồng bộ spec Ch.3–4, bổ sung `economyTelemetry.test.ts`, `saveIntegrity.test.ts`, `serverSecurity.test.ts`, `enemySquadDirector.test.ts`, áp dụng `testGlbManifestHelper.ts` cho 12 tệp test engine, và chạy kiểm chứng trình duyệt sống (`playwright-cli`).
-6. **File hoặc module liên quan**: `tests/*.test.mjs`, `src/data/*.test.ts`, `src/server/serverSecurity.test.ts`, `src/engine/*.test.ts`, `QA_TEST_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành)
-8. **Rủi ro khi thay đổi**: Tuyệt đối không xóa assert hay làm giả file nhị phân để lấy pass ảo — chỉ đánh dấu `t.skip` minh bạch cho 8 bài parse binary thuần túy khi không kéo binary về đĩa.
-9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`393 bài kiểm thử | 385 PASS | 0 FAIL | 8 skip CDN minh bạch`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console.
-10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
+2. **Bằng chứng đánh giá**: Toàn bộ bộ kiểm thử `node:test` (`src/**/*.test.ts` + `tests/*.test.mjs`), benchmark hiệu năng `tools/benchmark-spatial-physics.ts`, mô phỏng 8 mốc `tools/simulate-playtime-milestones.ts`, kiểm định `firestore.rules` và kiểm chứng trình duyệt sống Chromium (`playwright-cli`).
+3. **Vấn đề tồn tại**: Trước đây có lỗi lệch contract Ch.3–4, thiếu regression gate cho Paragon/Security/Spatial Physics/LiveOps Schedule, và lỗi `ENOENT` CDN.
+4. **Nguyên nhân gốc rễ**: Cập nhật tính năng nhanh chưa đồng bộ toàn bộ regression gate.
+5. **Giải pháp đề xuất**: Khắc phục 100% lỗi gốc, bổ sung test cho `SpatialHashGrid`, `projectilePhysicsSystem`, `zodiacMusicDirector`, `liveOpsConfig` (P2-4b), `EnemySquadDirector`, `serverSecurity`, `saveIntegrity` và kiểm chứng trực tiếp giao tranh 3D trên trình duyệt thật.
+6. **File hoặc module liên quan**: `tests/*.test.mjs`, `src/**/*.test.ts`, `tools/benchmark-spatial-physics.ts`, `tools/simulate-playtime-milestones.ts`, `QA_TEST_REPORT.md`.
+7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–4)
+8. **Rủi ro khi thay đổi**: Mọi cải tiến mới bắt buộc chạy lại full suite và trình duyệt sống để chống regression.
+9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`431 bài kiểm thử | 430 PASS | 0 FAIL | 1 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console.
+10. **Điểm sau khi triển khai và kiểm thử**: `94 / 100`
 
 ### 30. Live Operations — Vận hành và mở rộng
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: Bảng quản trị `/admin/assets`, `AssetAdminLiveOpsTab.tsx`, cấu hình động `liveOpsData.ts`, di cư save tương thích ngược `PROGRESSION_SCHEMA_VERSION`.
-3. **Vấn đề tồn tại**: Quản trị viên chưa quan sát được trực tiếp các sự kiện an ninh bất thường từ bảng LiveOps; chưa có hẹn giờ bật/tắt sự kiện tự động theo lịch (P2-4).
-4. **Nguyên nhân gốc rễ**: Chưa có API telemetry an ninh nối sang giao diện Admin.
-5. **Giải pháp đề xuất**: Tích hợp thẻ đọc-duy-nhất **Giám Sát Bất Thường & An Ninh Máy Chủ** vào `AssetAdminLiveOpsTab.tsx` kết nối trực tiếp `GET /api/admin/security-anomalies`; ghi nhận lịch sự kiện tự động vào P2-4.
-6. **File hoặc module liên quan**: `src/components/AssetAdminLiveOpsTab.tsx`, `server.ts`, `src/data/liveOpsData.ts`.
-7. **Mức độ ưu tiên**: P1 / P2
-8. **Rủi ro khi thay đổi**: Endpoint admin bắt buộc phải yêu cầu Bearer Token hợp lệ của tài khoản Admin, không được mở công khai.
-9. **Tiêu chí nghiệm thu**: Endpoint trả 401/403 nếu không phải Admin, hiển thị bảng dữ liệu thật với `tabular-nums`, tương thích ngược 100% save cũ.
-10. **Điểm sau khi triển khai và kiểm thử**: `86 / 100`
+2. **Bằng chứng đánh giá**: Bảng quản trị `/admin/assets`, `AssetAdminLiveOpsTab.tsx`, `src/data/liveOpsConfig.ts`, `liveOpsConfigService.ts`, `firestore.rules` (đã deploy live).
+3. **Vấn đề tồn tại**: Trước Đợt 3, chưa có hẹn giờ bật/tắt sự kiện tự động theo khung giờ (P2-4b) và chưa có Preset sự kiện nhanh.
+4. **Nguyên nhân gốc rễ**: Schema LiveOps & Firestore rules trước đây chưa có trường thời gian `scheduledStartMs`/`scheduledEndMs`.
+5. **Giải pháp đề xuất**: Triển khai trọn bộ **P2-4b**: `scheduledStartMs`/`scheduledEndMs` + `resolveEffectiveLiveOpsConfig` (tự bật trong khung giờ, hoàn nguyên `1.0×` ngoài khung giờ), bộ `LIVEOPS_PRESETS`, JSON rollback parser, chọn lịch `datetime-local` trên `AssetAdminLiveOpsTab.tsx`, bảng **Giám Sát An Ninh**, và cập nhật + deploy `firestore.rules`.
+6. **File hoặc module liên quan**: `src/data/liveOpsConfig.ts`, `src/services/liveOpsConfigService.ts`, `src/components/AssetAdminLiveOpsTab.tsx`, `firebase-blueprint.json`, `firestore.rules`, `tests/liveops-config.test.mjs`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành P2-4b)
+8. **Rủi ro khi thay đổi**: Quy tắc Firestore phải kiểm tra chặt `scheduledEndMs == 0 || scheduledEndMs >= scheduledStartMs` và chỉ cho Admin xác thực ghi.
+9. **Tiêu chí nghiệm thu**: `liveops-config.test.mjs` pass 100%, `npx eslint firestore.rules` = 0 lỗi, rules deployed live, tương thích ngược 100% save & config cũ.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`

@@ -34,6 +34,12 @@ import {
 } from './tacticalCombatChoreography';
 import { SpatialHashGrid } from './spatialHashGrid';
 import {
+  queryAoeEnemiesInGrid,
+  queryProjectileEnemyHits,
+  resolveProjectileArenaBoundaryAndObstacles,
+  stepProjectileHomingVelocity,
+} from './projectilePhysicsSystem';
+import {
   classifySquadRole,
   computeSquadWaitingFlankImpulse,
   createEnemySquadDirectorState,
@@ -1547,8 +1553,14 @@ export class GameEngine {
     rotZ: 0,
     scaleY: 1,
   };
-  // Wave 3 AAAA Overhaul: Zero-GC Spatial Hash Grid & reusable scratch buffers for squad steering & knockback safety
+  // Wave 3 & 4 AAAA Overhaul: Zero-GC Spatial Hash Grids & reusable scratch buffers for squad steering, projectiles, AoE & knockback safety
   private readonly enemySpatialGrid = new SpatialHashGrid<SquadNeighborSample>(4.0);
+  private readonly projectileEnemyGrid = new SpatialHashGrid<EnemyEntity>(3.0);
+  private readonly enemySnapshotScratch: EnemyEntity[] = [];
+  private readonly projectileQueryScratch: EnemyEntity[] = [];
+  private readonly projectileHitScratch: EnemyEntity[] = [];
+  private readonly aoeQueryScratch: EnemyEntity[] = [];
+  private readonly aoeTargetScratch: EnemyEntity[] = [];
   private readonly squadNeighborPool: SquadNeighborSample[] = [];
   private readonly squadNeighborQueryScratch: SquadNeighborSample[] = [];
   private readonly intactObstacleScratch: Array<{ x: number; z: number; radius: number }> = [];
@@ -15780,7 +15792,18 @@ export class GameEngine {
       zone.tickTimer -= dt;
       if (zone.tickTimer <= 0) {
         zone.tickTimer = 0.45;
-        for (const e of [...this.enemies]) {
+        this.syncProjectileEnemyGrid();
+        const zoneTargets = queryAoeEnemiesInGrid(
+          this.projectileEnemyGrid,
+          zone.x,
+          zone.z,
+          zone.radius,
+          true,
+          this.aoeQueryScratch,
+          this.aoeTargetScratch
+        );
+        for (let ztIdx = 0; ztIdx < zoneTargets.length; ztIdx++) {
+          const e = zoneTargets[ztIdx];
           if (!e || e.dead || e.spawnTimer > 0) continue;
           const dist = Math.hypot(e.x - zone.x, e.z - zone.z);
           const res = evaluateElementalZoneEffect(zone.kind, zone.baseAtk, dist, zone.radius + e.radius * 0.5);
@@ -15821,6 +15844,9 @@ export class GameEngine {
       (hasSolarOrbit ? 1.25 : 1.0) *
       evoOrbs.orbitDamageMult;
 
+    if (!this.isBossEntranceLocked()) {
+      this.syncProjectileEnemyGrid();
+    }
     for (let i = 0; i < count; i++) {
       const a = baseAngle + (i * Math.PI * 2) / count;
       const bx = this.px + Math.cos(a) * orbitR;
@@ -15830,7 +15856,17 @@ export class GameEngine {
       mesh.rotation.y += dt * 9;
 
       if (this.isBossEntranceLocked()) continue;
-      for (const e of [...this.enemies]) {
+      const orbTargets = queryAoeEnemiesInGrid(
+        this.projectileEnemyGrid,
+        bx,
+        bz,
+        0.5,
+        true,
+        this.aoeQueryScratch,
+        this.aoeTargetScratch
+      );
+      for (let oi = 0; oi < orbTargets.length; oi++) {
+        const e = orbTargets[oi];
         if (!e || e.dead || e.spawnTimer > 0 || e.hitFlashTimer > 0) continue;
         if (Math.hypot(e.x - bx, e.z - bz) < e.radius + 0.5) {
           const isCrit = sawRune && Math.random() < this.baseStats.critChance;
@@ -16511,7 +16547,11 @@ export class GameEngine {
   }
 
   private updateEnemies(dt: number): void {
-    const enemySnapshot = [...this.enemies];
+    const enemySnapshot = this.enemySnapshotScratch;
+    enemySnapshot.length = 0;
+    for (let ei = 0; ei < this.enemies.length; ei++) {
+      enemySnapshot.push(this.enemies[ei]);
+    }
     this.aliveEnemyIdScratch.clear();
     this.enemySpatialGrid.clear();
     let hasActiveBossInRoom = false;
@@ -19916,7 +19956,21 @@ export class GameEngine {
     }
   }
 
+  private syncProjectileEnemyGrid(): void {
+    this.projectileEnemyGrid.clear();
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e || e.dead || e.spawnTimer > 0) continue;
+      this.projectileEnemyGrid.insert(e);
+    }
+  }
+
   private updateProjectiles(dt: number): void {
+    this.syncProjectileEnemyGrid();
+    const activeSynergies = evaluateActiveSynergies(this.activeSkills);
+    const hasFrostShatterSynergy = activeSynergies.includes('frost_shatter');
+    const hasPiercingVolleySynergy = activeSynergies.includes('piercing_volley');
+
     for (const p of this.arrowPool) {
       if (!p.active) continue;
       p.life -= dt;
@@ -19930,19 +19984,7 @@ export class GameEngine {
       if (p.homing) {
         const target = this.findNearestEnemy(p.x, p.z, p.hitEnemyIds, 9.5);
         if (target && target.spawnTimer <= 0) {
-          const speed = Math.hypot(p.vx, p.vz);
-          const dx = target.x - p.x;
-          const dz = target.z - p.z;
-          const d = Math.hypot(dx, dz);
-          if (d > 0.1) {
-            const desiredVx = (dx / d) * speed;
-            const desiredVz = (dz / d) * speed;
-            const turn = Math.min(1, dt * 8.5);
-            p.vx += (desiredVx - p.vx) * turn;
-            p.vz += (desiredVz - p.vz) * turn;
-            const newSpd = Math.hypot(p.vx, p.vz);
-            p.vx = (p.vx / newSpd) * speed;
-            p.vz = (p.vz / newSpd) * speed;
+          if (stepProjectileHomingVelocity(p, target.x, target.z, dt, 8.5)) {
             p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
           }
         }
@@ -19955,62 +19997,20 @@ export class GameEngine {
         p.compassGroup.rotation.y += dt * 16;
       }
 
-      let bounced = false;
-      if (Math.abs(p.x) >= ARENA_HALF_W) {
-        if (p.wallBounceLeft > 0) {
-          p.wallBounceLeft--;
-          p.vx = -p.vx;
-          p.x = THREE.MathUtils.clamp(p.x, -ARENA_HALF_W + 0.1, ARENA_HALF_W - 0.1);
-          bounced = true;
-        } else {
-          this.spawnParticles(p.x, p.y, p.z, 0x94a3b8, 4);
-          p.active = false;
-          p.mesh.visible = false;
-          continue;
-        }
+      const boundaryOutcome = resolveProjectileArenaBoundaryAndObstacles(
+        p,
+        ARENA_HALF_W,
+        ARENA_HALF_D,
+        this.obstacles
+      );
+      if (boundaryOutcome === 'expired') {
+        this.spawnParticles(p.x, p.y, p.z, 0x94a3b8, 4);
+        p.active = false;
+        p.mesh.visible = false;
+        continue;
       }
-      if (Math.abs(p.z) >= ARENA_HALF_D) {
-        if (p.wallBounceLeft > 0) {
-          p.wallBounceLeft--;
-          p.vz = -p.vz;
-          p.z = THREE.MathUtils.clamp(p.z, -ARENA_HALF_D + 0.1, ARENA_HALF_D - 0.1);
-          bounced = true;
-        } else {
-          this.spawnParticles(p.x, p.y, p.z, 0x94a3b8, 4);
-          p.active = false;
-          p.mesh.visible = false;
-          continue;
-        }
-      }
-
-      let hitPillar = false;
-      for (const obs of this.obstacles) {
-        if (obs.intact === false) continue;
-        const dx = p.x - obs.x;
-        const dz = p.z - obs.z;
-        const d = Math.hypot(dx, dz);
-        if (d < obs.radius + p.radius) {
-          if (p.wallBounceLeft > 0) {
-            p.wallBounceLeft--;
-            const nx = dx / Math.max(0.01, d);
-            const nz = dz / Math.max(0.01, d);
-            const dot = p.vx * nx + p.vz * nz;
-            p.vx -= 2 * dot * nx;
-            p.vz -= 2 * dot * nz;
-            p.x = obs.x + nx * (obs.radius + p.radius + 0.05);
-            p.z = obs.z + nz * (obs.radius + p.radius + 0.05);
-            bounced = true;
-          } else {
-            this.spawnParticles(p.x, p.y, p.z, 0x94a3b8, 4);
-            p.active = false;
-            p.mesh.visible = false;
-            hitPillar = true;
-          }
-          break;
-        }
-      }
-      if (hitPillar) continue;
-      if (bounced) {
+      if (boundaryOutcome === 'bounced') {
+        p.mesh.position.set(p.x, p.y, p.z);
         p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
       }
 
@@ -20087,34 +20087,42 @@ export class GameEngine {
               hitRes.blastDamage
             );
             this.elementalResonance = resAdv.nextState;
-            for (const en of [...this.enemies]) {
+            const hazardTargets = queryAoeEnemiesInGrid(
+              this.projectileEnemyGrid,
+              hz.spec.x,
+              hz.spec.z,
+              hitRes.blastRadius,
+              true,
+              this.aoeQueryScratch,
+              this.aoeTargetScratch
+            );
+            for (let hi = 0; hi < hazardTargets.length; hi++) {
+              const en = hazardTargets[hi];
               if (!en || en.dead || en.spawnTimer > 0) continue;
-              if (Math.hypot(en.x - hz.spec.x, en.z - hz.spec.z) <= hitRes.blastRadius + en.radius) {
-                if (hitRes.stunSec > 0 && !en.isBoss) {
-                  en.stunTimer = Math.max(en.stunTimer ?? 0, hitRes.stunSec);
-                }
-                if (en.isBoss && en.maxBreakShield && en.breakShield && en.breakShield > 0) {
-                  const brk = Math.round(en.maxBreakShield * hitRes.breakShieldRatio);
-                  en.breakShield = Math.max(0, en.breakShield - brk);
-                  if (this.bossStaggerOwnerId === en.id && this.bossStaggerState) {
-                    this.bossStaggerState.current = Math.min(
-                      this.bossStaggerState.max,
-                      this.bossStaggerState.current + brk
-                    );
-                  }
-                }
-                this.damageEnemy(
-                  en,
-                  hitRes.blastDamage,
-                  true,
-                  hitRes.element === 'fire',
-                  hitRes.element === 'ice',
-                  hitRes.element === 'storm',
-                  false,
-                  hz.spec.label,
-                  'elemental'
-                );
+              if (hitRes.stunSec > 0 && !en.isBoss) {
+                en.stunTimer = Math.max(en.stunTimer ?? 0, hitRes.stunSec);
               }
+              if (en.isBoss && en.maxBreakShield && en.breakShield && en.breakShield > 0) {
+                const brk = Math.round(en.maxBreakShield * hitRes.breakShieldRatio);
+                en.breakShield = Math.max(0, en.breakShield - brk);
+                if (this.bossStaggerOwnerId === en.id && this.bossStaggerState) {
+                  this.bossStaggerState.current = Math.min(
+                    this.bossStaggerState.max,
+                    this.bossStaggerState.current + brk
+                  );
+                }
+              }
+              this.damageEnemy(
+                en,
+                hitRes.blastDamage,
+                true,
+                hitRes.element === 'fire',
+                hitRes.element === 'ice',
+                hitRes.element === 'storm',
+                false,
+                hz.spec.label,
+                'elemental'
+              );
             }
           } else {
             this.spawnParticles(hz.spec.x, 0.95, hz.spec.z, hz.spec.accentHex, 6);
@@ -20138,138 +20146,152 @@ export class GameEngine {
         }
       }
 
-      for (const e of [...this.enemies]) {
+      const hitCandidates = queryProjectileEnemyHits(
+        this.projectileEnemyGrid,
+        p.x,
+        p.z,
+        p.radius,
+        p.hitEnemyIds,
+        this.projectileQueryScratch,
+        this.projectileHitScratch
+      );
+      for (let hIdx = 0; hIdx < hitCandidates.length; hIdx++) {
+        const e = hitCandidates[hIdx];
         if (!e || e.dead || e.spawnTimer > 0 || p.hitEnemyIds.has(e.id)) continue;
-        if (Math.hypot(p.x - e.x, p.z - e.z) < e.radius + p.radius) {
-          p.hitEnemyIds.add(e.id);
+        p.hitEnemyIds.add(e.id);
 
-          const critStacks = this.activeSkills.crit_mastery ?? 0;
-          let critChance = Math.min(
-            0.95,
-            this.baseStats.critChance +
-              critStacks * 0.12 +
-              (this.alexOverdriveTimer > 0 ? 0.25 : 0) +
-              this.weaponOverdriveBuffs.critChanceBonus +
-              (this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.critBonus : 0)
-          );
-          if (this.hasRune('rune_flame') && (e.burnTimer > 0 || e.poisonDps > 0)) {
-            critChance = Math.min(0.95, critChance + 0.1);
+        const critStacks = this.activeSkills.crit_mastery ?? 0;
+        let critChance = Math.min(
+          0.95,
+          this.baseStats.critChance +
+            critStacks * 0.12 +
+            (this.alexOverdriveTimer > 0 ? 0.25 : 0) +
+            this.weaponOverdriveBuffs.critChanceBonus +
+            (this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.critBonus : 0)
+        );
+        if (this.hasRune('rune_flame') && (e.burnTimer > 0 || e.poisonDps > 0)) {
+          critChance = Math.min(0.95, critChance + 0.1);
+        }
+
+        let isCrit = p.isCounterShot ? true : Math.random() < critChance;
+        if (this.hasCadencePassive && this.alexGuaranteedCrit) {
+          isCrit = true;
+          this.alexGuaranteedCrit = false;
+        }
+        if (isCrit && this.hasCadencePassive) {
+          this.alexAspdBuffTimer = 5.0;
+        }
+
+        let critMult = this.baseStats.critDamage + critStacks * 0.35;
+        if (e.chillTimer > 0 && hasFrostShatterSynergy) {
+          critMult += 0.25;
+        }
+        const dmg = p.damage * (isCrit ? critMult : 1);
+
+        if (
+          p.isOvercharge &&
+          e.isBoss &&
+          e.maxBreakShield &&
+          e.breakShield &&
+          e.breakShield > 0
+        ) {
+          e.breakShield = Math.max(0, e.breakShield - e.maxBreakShield * 0.18);
+        }
+
+        this.damageEnemy(
+          e,
+          dmg,
+          isCrit,
+          p.blaze,
+          p.frost,
+          p.storm,
+          p.poison,
+          p.isCounterShot
+            ? 'PHẢN TIỄN!'
+            : p.isOvercharge
+            ? 'TỤ LỰC!'
+            : p.isComboFinisher
+            ? 'LIÊN HOÀN 4!'
+            : undefined,
+          p.source ?? (p.isSword ? 'elemental' : 'basic'),
+          p.coopAllyIndex,
+          {
+            attackerX: p.x - p.vx * 0.05,
+            attackerZ: p.z - p.vz * 0.05,
+            bypassShield: Boolean(
+              p.isComboFinisher || p.isCounterShot || p.isOvercharge || p.pierceLeft > 0
+            ),
           }
+        );
 
-          let isCrit = p.isCounterShot ? true : Math.random() < critChance;
-          if (this.hasCadencePassive && this.alexGuaranteedCrit) {
-            isCrit = true;
-            this.alexGuaranteedCrit = false;
-          }
-          if (isCrit && this.hasCadencePassive) {
-            this.alexAspdBuffTimer = 5.0;
-          }
+        // AAA Wave 7: Lodge pooled arrow visibly into Boss / Elite / large enemy armor
+        if (!p.isSword && (e.isBoss || e.isElite || e.radius >= 0.72) && e.hp > 0) {
+          this.spawnStuckArrow(e, Math.atan2(p.vx, p.vz));
+        }
 
-          let critMult = this.baseStats.critDamage + critStacks * 0.35;
-          const activeSynergies = evaluateActiveSynergies(this.activeSkills);
-          if (e.chillTimer > 0 && activeSynergies.includes('frost_shatter')) {
-            critMult += 0.25;
-          }
-          const dmg = p.damage * (isCrit ? critMult : 1);
+        if (isCrit && this.elementalZoneSpawnCd <= 0 && (p.blaze || p.frost)) {
+          this.elementalZoneSpawnCd = 1.65;
+          this.spawnElementalZone(e.x, e.z, p.blaze ? 'ember' : 'frost', 2.05);
+        }
 
-          if (
-            p.isOvercharge &&
-            e.isBoss &&
-            e.maxBreakShield &&
-            e.breakShield &&
-            e.breakShield > 0
-          ) {
-            e.breakShield = Math.max(0, e.breakShield - e.maxBreakShield * 0.18);
-          }
-
-          const hpBeforeHit = e.hp;
-          this.damageEnemy(
-            e,
-            dmg,
-            isCrit,
-            p.blaze,
-            p.frost,
-            p.storm,
-            p.poison,
-            p.isCounterShot
-              ? 'PHẢN TIỄN!'
-              : p.isOvercharge
-              ? 'TỤ LỰC!'
-              : p.isComboFinisher
-              ? 'LIÊN HOÀN 4!'
-              : undefined,
-            p.source ?? (p.isSword ? 'elemental' : 'basic'),
-            p.coopAllyIndex,
-            {
-              attackerX: p.x - p.vx * 0.05,
-              attackerZ: p.z - p.vz * 0.05,
-              bypassShield: Boolean(
-                p.isComboFinisher || p.isCounterShot || p.isOvercharge || p.pierceLeft > 0
-              ),
-            }
-          );
-
-          // AAA Wave 7: Lodge pooled arrow visibly into Boss / Elite / large enemy armor
-          if (!p.isSword && (e.isBoss || e.isElite || e.radius >= 0.72) && e.hp > 0) {
-            this.spawnStuckArrow(e, Math.atan2(p.vx, p.vz));
-          }
-
-          if (isCrit && this.elementalZoneSpawnCd <= 0 && (p.blaze || p.frost)) {
-            this.elementalZoneSpawnCd = 1.65;
-            this.spawnElementalZone(e.x, e.z, p.blaze ? 'ember' : 'frost', 2.05);
-          }
-
-          // Hero on-hit passives
-          if (!p.isSword) {
-            if (this.baseStats.heroId === 'artemis') {
-              this.markedEnemyIds.add(e.id);
-            } else if (this.baseStats.heroId === 'aurelia') {
-              this.aureliaSolarShotCount++;
-              if (this.aureliaSolarShotCount >= 3) {
-                this.aureliaSolarShotCount = 0;
-                const coronaDmg = this.baseStats.attack * this.getCurrentAtkMultiplier() * 1.45;
-                this.shield = Math.min(this.maxHp * 0.35, this.shield + this.maxHp * 0.04);
-                this.spawnShockwave(e.x, e.z, 0xf59e0b, 2.8, 0.34);
-                this.spawnParticles(e.x, 0.9, e.z, 0xfef08a, 10);
-                for (const other of [...this.enemies]) {
-                  if (!other || other.dead || other.spawnTimer > 0) continue;
-                  if (Math.hypot(other.x - e.x, other.z - e.z) <= 2.8) {
-                    this.damageEnemy(other, coronaDmg, true, false, false, false, false, 'ẤN QUANG!', 'elemental');
-                  }
-                }
+        // Hero on-hit passives
+        if (!p.isSword) {
+          if (this.baseStats.heroId === 'artemis') {
+            this.markedEnemyIds.add(e.id);
+          } else if (this.baseStats.heroId === 'aurelia') {
+            this.aureliaSolarShotCount++;
+            if (this.aureliaSolarShotCount >= 3) {
+              this.aureliaSolarShotCount = 0;
+              const coronaDmg = this.baseStats.attack * this.getCurrentAtkMultiplier() * 1.45;
+              this.shield = Math.min(this.maxHp * 0.35, this.shield + this.maxHp * 0.04);
+              this.spawnShockwave(e.x, e.z, 0xf59e0b, 2.8, 0.34);
+              this.spawnParticles(e.x, 0.9, e.z, 0xfef08a, 10);
+              const coronaTargets = queryAoeEnemiesInGrid(
+                this.projectileEnemyGrid,
+                e.x,
+                e.z,
+                2.8,
+                false,
+                this.aoeQueryScratch,
+                this.aoeTargetScratch
+              );
+              for (let ci = 0; ci < coronaTargets.length; ci++) {
+                const other = coronaTargets[ci];
+                if (!other || other.dead || other.spawnTimer > 0) continue;
+                this.damageEnemy(other, coronaDmg, true, false, false, false, false, 'ẤN QUANG!', 'elemental');
               }
             }
-            if (
-              (this.activeSkills.meteor_shower ?? 0) > 0 &&
-              Math.random() < 0.16 * (this.activeSkills.meteor_shower ?? 0)
-            ) {
-              this.spawnMeteor(e.x, e.z, false);
-            }
           }
-
-          if (p.ricochetLeft > 0) {
-            const nextTarget = this.findNearestEnemy(e.x, e.z, p.hitEnemyIds, 8.5);
-            if (nextTarget) {
-              p.ricochetLeft--;
-              const speed = Math.hypot(p.vx, p.vz);
-              const rx = nextTarget.x - p.x;
-              const rz = nextTarget.z - p.z;
-              const rd = Math.hypot(rx, rz);
-              p.vx = (rx / rd) * speed;
-              p.vz = (rz / rd) * speed;
-              p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
-              break;
-            }
+          if (
+            (this.activeSkills.meteor_shower ?? 0) > 0 &&
+            Math.random() < 0.16 * (this.activeSkills.meteor_shower ?? 0)
+          ) {
+            this.spawnMeteor(e.x, e.z, false);
           }
+        }
 
-          if (p.pierceLeft > 0) {
-            p.pierceLeft--;
-            p.damage *= activeSynergies.includes('piercing_volley') ? 1.0 : 0.85;
-          } else {
-            p.active = false;
-            p.mesh.visible = false;
+        if (p.ricochetLeft > 0) {
+          const nextTarget = this.findNearestEnemy(e.x, e.z, p.hitEnemyIds, 8.5);
+          if (nextTarget) {
+            p.ricochetLeft--;
+            const speed = Math.hypot(p.vx, p.vz);
+            const rx = nextTarget.x - p.x;
+            const rz = nextTarget.z - p.z;
+            const rd = Math.hypot(rx, rz);
+            p.vx = (rx / rd) * speed;
+            p.vz = (rz / rd) * speed;
+            p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
             break;
           }
+        }
+
+        if (p.pierceLeft > 0) {
+          p.pierceLeft--;
+          p.damage *= hasPiercingVolleySynergy ? 1.0 : 0.85;
+        } else {
+          p.active = false;
+          p.mesh.visible = false;
+          break;
         }
       }
     }

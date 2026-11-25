@@ -17,6 +17,7 @@ export class SpatialHashGrid<T extends SpatialEntity2D> {
   private readonly invCellSize: number;
   private readonly buckets = new Map<number, T[]>();
   private readonly activeKeys: number[] = [];
+  private maxInsertedRadius = 0;
 
   constructor(cellSize = 4.0) {
     const safeCell = Number.isFinite(cellSize) && cellSize >= 0.5 ? cellSize : 4.0;
@@ -34,6 +35,7 @@ export class SpatialHashGrid<T extends SpatialEntity2D> {
       if (bucket) bucket.length = 0;
     }
     this.activeKeys.length = 0;
+    this.maxInsertedRadius = 0;
   }
 
   public insert(item: T): void {
@@ -49,6 +51,9 @@ export class SpatialHashGrid<T extends SpatialEntity2D> {
       this.activeKeys.push(key);
     }
     bucket.push(item);
+    if (item.radius > this.maxInsertedRadius) {
+      this.maxInsertedRadius = item.radius;
+    }
   }
 
   /**
@@ -65,8 +70,9 @@ export class SpatialHashGrid<T extends SpatialEntity2D> {
   ): T[] {
     out.length = 0;
     const safeR = Math.max(0, radius);
-    // Add 1.5u padding for neighbor entity radius so boundary overlaps are never missed
-    const searchSpan = safeR + 1.5;
+    // Pad by the actual max entity radius currently in the grid so giant Bosses (>1.5u) are never missed
+    // while small-mob waves keep cell bounds maximally tight.
+    const searchSpan = safeR + this.maxInsertedRadius;
     const minCx = Math.floor((x - searchSpan) * this.invCellSize);
     const maxCx = Math.floor((x + searchSpan) * this.invCellSize);
     const minCz = Math.floor((z - searchSpan) * this.invCellSize);
