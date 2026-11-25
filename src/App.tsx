@@ -11943,6 +11943,7 @@ export default function App() {
           level={hud.level}
           skillChoices={draftChoices}
           evolutionOffer={draftModalMode === 'skill' ? draftEvolutionOffer : null}
+          activeEvolutions={hud.activeEvolutions}
           currentStacks={draftStacks}
           rerollUsed={rerollUsed}
           encounterOffer={encounterOffer}

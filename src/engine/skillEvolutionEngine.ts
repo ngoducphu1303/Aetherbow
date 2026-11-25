@@ -264,6 +264,88 @@ export function getEligibleEvolutionOffers(
   return offers;
 }
 
+export interface SkillEvolutionPreview {
+  status: 'triggers_now' | 'one_away' | 'already_evolved';
+  baseSkillId: SkillId;
+  baseSkillName: string;
+  branchBossName: string;
+  branchAoeName: string;
+  evolvedName?: string;
+}
+
+/**
+ * Evaluates whether drafting `skillId` will immediately trigger a branching Boss/AoE
+ * Skill Evolution fork or start progress (1/2) toward one.
+ */
+export function getSkillEvolutionPreview(
+  skillId: SkillId,
+  currentStacks: Partial<Record<SkillId, number>> & Record<string, number | undefined>,
+  activeEvolutions: Set<SkillEvolutionId> | readonly SkillEvolutionId[] = []
+): SkillEvolutionPreview | null {
+  let matchedBase: SkillId | null = null;
+  if (SKILL_EVOLUTION_BASE_LINES.includes(skillId)) {
+    matchedBase = skillId;
+  } else {
+    for (const base of SKILL_EVOLUTION_BASE_LINES) {
+      const supers = SUPER_COUNTERPARTS[base] ?? [];
+      if (supers.includes(skillId)) {
+        matchedBase = base;
+        break;
+      }
+    }
+  }
+  if (!matchedBase) return null;
+
+  const branches = SKILL_EVOLUTION_LIST.filter((e) => e.baseSkillId === matchedBase);
+  const branchBoss = branches.find((b) => b.branch === 'boss');
+  const branchAoe = branches.find((b) => b.branch === 'aoe');
+  if (!branchBoss || !branchAoe) return null;
+
+  const activeSet = toEvolutionSet(activeEvolutions);
+  const baseSkillName = BASE_SKILL_NAMES[matchedBase] ?? matchedBase;
+
+  if (activeSet.has(branchBoss.id) || activeSet.has(branchAoe.id)) {
+    const evolved = activeSet.has(branchBoss.id) ? branchBoss : branchAoe;
+    return {
+      status: 'already_evolved',
+      baseSkillId: matchedBase,
+      baseSkillName,
+      branchBossName: branchBoss.name,
+      branchAoeName: branchAoe.name,
+      evolvedName: evolved.name,
+    };
+  }
+
+  const nextStacks: Record<string, number | undefined> = {
+    ...currentStacks,
+    [skillId]: (currentStacks[skillId] ?? 0) + 1,
+  };
+  const wasReady = isCoreSkillReadyForEvolution(matchedBase, currentStacks);
+  const willBeReady = isCoreSkillReadyForEvolution(matchedBase, nextStacks);
+
+  if (!wasReady && willBeReady) {
+    return {
+      status: 'triggers_now',
+      baseSkillId: matchedBase,
+      baseSkillName,
+      branchBossName: branchBoss.name,
+      branchAoeName: branchAoe.name,
+    };
+  }
+
+  if (skillId === matchedBase && (currentStacks[matchedBase] ?? 0) === 0) {
+    return {
+      status: 'one_away',
+      baseSkillId: matchedBase,
+      baseSkillName,
+      branchBossName: branchBoss.name,
+      branchAoeName: branchAoe.name,
+    };
+  }
+
+  return null;
+}
+
 export function resolveEvolutionCombatModifiers(
   activeEvolutions: Set<SkillEvolutionId> | readonly SkillEvolutionId[]
 ): EvolutionCombatModifiers {

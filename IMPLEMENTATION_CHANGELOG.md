@@ -1,11 +1,16 @@
 # IMPLEMENTATION CHANGELOG — NHẬT KÝ CẢI TIẾN & NGHIỆM THU (PHASE 4 & 6)
 
-- **Ngày nghiệm thu**: 2026-11-24
-- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `90.06 / 100`** (`+11.07` điểm trọng số trên 30 tiêu chí qua Đợt 1–7; chính thức đạt dải mục tiêu **`90–95 / 100`** của Master Prompt với 7/10 nhóm đạt **`≥ 90.00 / 100`**).
+- **Ngày nghiệm thu**: 2026-11-25
+- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `90.73 / 100`** (`+11.74` điểm trọng số trên 30 tiêu chí qua Đợt 1–8; đạt vững trong dải mục tiêu **`90–95 / 100`** của Master Prompt với **9/10 nhóm đạt `≥ 90.00 / 100`**).
 
 ---
 
 ## 1. Danh Mục Thay Đổi Mã Nguồn Thực Tế (Trước → Sau)
+
+### 0000. Đợt 8 — AI Quái 7 Trạng Thái + Phối Hợp Đội Hình Tiên Phong, Điều Hướng SpatialHashGrid Zero-GC, Dự Báo Tiến Hóa Thẻ Tarot & So Sánh Trang Bị Toàn Diện
+- **`src/engine/aaaEnemyCombatEngine.ts` & `src/engine/GameEngine.ts`**: Triển khai máy trạng thái **7 pha `EnemyAiTacticalState`** (`patrol | chase | flank | attack | retreat | dodge | recovery`), cơ chế xạ thủ/pháp sư tự rút lui núp sau đồng đội Tiên Phong (`vanguard`) khi bị áp sát hoặc `< 35% HP`, nhịp hồi phục mở cửa sổ phản công `resolveMobRecoveryDuration(kind, chapterId)` giảm dần theo độ khó Chương 1 → 12, và chuyển 100% truy vấn lân cận của `computeAaaMobSteering` sang `enemySpatialGrid.queryRadius` + `intactObstacleScratch` Zero-GC.
+- **`src/engine/skillEvolutionEngine.ts`, `src/components/SkillDraftModal.tsx`, `src/App.tsx`**: Bổ sung hàm thuần `getSkillEvolutionPreview` dự báo ngay trên thẻ Tarot khi lá bài khởi đầu (`0→1/2`) hoặc kích hoạt lập tức (`1→2/2`) Ngã Rẽ Tiến Hóa Boss vs AoE kèm tên 2 nhánh tiến hóa và thanh Tiến Hóa đang bật ở đầu bảng chọn kỹ năng.
+- **`src/data/gearData.ts`, `src/components/LobbyPanels.tsx`, `src/engine/wave8TacticalAndProgression.test.ts`**: Triển khai `computeGearComparison` tính toán chính xác chênh lệch chỉ số thực (`ΔLC`, `ΔATK`, `ΔHP`, `ΔCrit`, `ΔTốc bắn`, `ΔGiáp` gồm dòng phụ & ngọc khảm), nhãn khuyến nghị `Nên Đổi / Yếu Hơn`, và cảnh báo trực tiếp `+Kích hoạt / -Mất Bộ Trang Bị (2/3 món)` khi thay trang bị (`wave8TacticalAndProgression.test.ts`: 4/4 pass).
 
 ### 000. Đợt 7 — Kiến Trúc Thánh Điện 3D Ch.5–12 (`P2-3d`), `GroundTelegraphVisualPool` Zero-GPU-Churn, Đệm Đầu Vào 5 Hành Động, Tùy Biến Đầy Đủ 8 Phím & Hiển Thị Trọn Bộ Sưu Tập Ch.1–4
 - **`src/engine/zodiacRealmArchitecture.ts` & `src/engine/GameEngine.ts`** (`P2-3d`): Xây dựng 8 cụm kiến trúc Thánh Điện Hoàng Đạo 3D thủ tục độc bản cho Chương 5–12 (`Cổng Thủy Triều Cự Giải`, `Đồng Hồ Tinh Tú Xử Nữ`, `Cân Vàng Công Lý Thiên Bình`, `Tháp Hắc Diện Thiên Yết`, `Cung Tinh Cầu Nhân Mã`, `Bia Đỉnh Đá Ma Kết`, `Bình Tinh Thủy Bảo Bình`, `Song Nguyệt Thủy Triều Song Ngư`; mỗi chương `≥ 18` khối hợp thành với vật liệu PBR dùng chung, đĩa bóng tiếp đất, đặt ngoài vùng di chuyển, giảm phân đoạn hình học ở Lite, **0 PointLights**, và vòng cập nhật Zero-GC `stepZodiacRealmLandmarks` giảm còn `0.25×` khi bật `reducedMotion`).
@@ -51,7 +56,7 @@
 - [x] Đo hiệu năng thực tế trước & sau cho vòng va chạm đạn Zero-GC (**8.09×** nhanh hơn, **18,000** mảng rác/giây bị triệt tiêu, 100% trùng khớp va chạm).
 - [x] Tất cả 12 chương có 12 chủ đề nhạc Hoàng Đạo riêng biệt, 4 cơ quan sàn đấu tương tác, 12 bảng màu ánh sáng 60-30-10 và kiến trúc Thánh Điện 3D độc bản cho cả Chương 5–12 (**0 PointLights**).
 - [x] Hẹn giờ sự kiện LiveOps tự động (`P2-4b`) hoạt động đồng bộ từ UI Admin đến `firestore.rules` (đã deploy live, 0 lỗi ESLint).
-- [x] Toàn bộ kho mã nguồn đạt **`454 bài kiểm thử | 446 PASS | 0 FAIL | 8 skip`**.
+- [x] Toàn bộ kho mã nguồn đạt **`458 bài kiểm thử | 450 PASS | 0 FAIL | 8 skip`**.
 - [x] TypeScript `tsc --noEmit` (`lint_applet`) và Vite production build (`compile_applet`) đều sạch 0 lỗi.
-- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Cài Đặt 8 Phím Tùy Biến (`r7-settings-keybinds.png`) → Chiến Đấu 3D Chương 1 (`r7-combat-live.png`: `WASD`, Lướt `Space`, Kỹ Năng `E`, Phá Giáp `F`, nhãn `<kbd>` động, `backdropBlurCount: 0`, `a11yLivePresent: true`) với **0 Console Errors / 0 Warnings**.
+- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Kho Trang Bị (`r8b-equipment.png`) → Cài Đặt 8 Phím (`r7-settings-keybinds.png`) → Thẻ Tarot Tiến Hóa (`r8b-skill-draft.png`) → Chiến Đấu 3D Chương 1 với AI 7 pha & SpatialHashGrid (`r8b-combat-ai.png`: `backdropBlurCount: 0`, `a11yLivePresent: true`) với **0 Console Errors / 0 Warnings**.
 - [x] Hoàn tất & đồng bộ thực tế 10/10 báo cáo kiểm toán & thiết kế tại thư mục gốc kho mã nguồn.

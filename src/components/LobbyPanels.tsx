@@ -65,6 +65,7 @@ import {
   GEAR_TEMPLATES,
   RARITY_META,
   RARITY_ORDER,
+  computeGearComparison,
   evaluateEquippedGearSets,
   findBestUpgradeTransferSource,
   getGearPowerScore,
@@ -813,23 +814,108 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
 
                         {!isEquipped && equippedItem && (() => {
                           const eqTpl = GEAR_TEMPLATES[equippedItem.templateId];
-                          const lcDiff = itemScore - eqScore;
+                          const cmp = computeGearComparison(
+                            selectedItem,
+                            equippedItem,
+                            save,
+                            socketPool
+                          );
+                          const lcDiff = cmp.powerDelta;
+                          const statChips: Array<{ label: string; positive: boolean }> = [];
+                          if (cmp.statDeltas.atk !== 0) {
+                            statChips.push({
+                              label: `${cmp.statDeltas.atk > 0 ? '+' : ''}${cmp.statDeltas.atk} ATK`,
+                              positive: cmp.statDeltas.atk > 0,
+                            });
+                          }
+                          if (cmp.statDeltas.hp !== 0) {
+                            statChips.push({
+                              label: `${cmp.statDeltas.hp > 0 ? '+' : ''}${cmp.statDeltas.hp} HP`,
+                              positive: cmp.statDeltas.hp > 0,
+                            });
+                          }
+                          if (Math.abs(cmp.statDeltas.critChance) >= 0.005) {
+                            const pct = Math.round(cmp.statDeltas.critChance * 100);
+                            if (pct !== 0) {
+                              statChips.push({
+                                label: `${pct > 0 ? '+' : ''}${pct}% Crit`,
+                                positive: pct > 0,
+                              });
+                            }
+                          }
+                          if (Math.abs(cmp.statDeltas.attackSpeed) >= 0.005) {
+                            const pct = Math.round(cmp.statDeltas.attackSpeed * 100);
+                            if (pct !== 0) {
+                              statChips.push({
+                                label: `${pct > 0 ? '+' : ''}${pct}% Tốc bắn`,
+                                positive: pct > 0,
+                              });
+                            }
+                          }
+                          if (Math.abs(cmp.statDeltas.damageReduction) >= 0.005) {
+                            const pct = Math.round(cmp.statDeltas.damageReduction * 100);
+                            if (pct !== 0) {
+                              statChips.push({
+                                label: `${pct > 0 ? '+' : ''}${pct}% Giáp`,
+                                positive: pct > 0,
+                              });
+                            }
+                          }
                           return (
-                            <div className="bg-[#060916]/95 border border-amber-400/25 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px] font-mono-nums">
-                              <span className="text-slate-300 truncate">
-                                So với đang mặc ({eqTpl?.name ?? equippedItem.templateId} · {eqScore} LC):
-                              </span>
-                              <span
-                                className={`font-black shrink-0 ${
-                                  lcDiff > 0
-                                    ? 'text-emerald-300'
-                                    : lcDiff < 0
-                                    ? 'text-rose-400'
-                                    : 'text-slate-400'
-                                }`}
-                              >
-                                {lcDiff > 0 ? `▲ +${lcDiff} LC` : lcDiff < 0 ? `▼ ${lcDiff} LC` : '= 0 LC'}
-                              </span>
+                            <div className="bg-[#060916]/95 border border-amber-400/25 rounded-xl px-2.5 py-2 space-y-1 text-[10px] font-mono-nums">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-slate-300 truncate">
+                                  So với đang mặc ({eqTpl?.name ?? equippedItem.templateId} · {eqScore} LC):
+                                </span>
+                                <span
+                                  className={`font-black shrink-0 ${
+                                    lcDiff > 0
+                                      ? 'text-emerald-300'
+                                      : lcDiff < 0
+                                      ? 'text-rose-400'
+                                      : 'text-slate-400'
+                                  }`}
+                                >
+                                  {lcDiff > 0 ? `▲ +${lcDiff} LC` : lcDiff < 0 ? `▼ ${lcDiff} LC` : '= 0 LC'}
+                                  {cmp.recommendation === 'upgrade'
+                                    ? ' · Nên Đổi'
+                                    : cmp.recommendation === 'downgrade'
+                                    ? ' · Yếu Hơn'
+                                    : ''}
+                                </span>
+                              </div>
+                              {statChips.length > 0 && (
+                                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 pt-0.5 border-t border-slate-800/80">
+                                  {statChips.map((chip) => (
+                                    <span
+                                      key={chip.label}
+                                      className={`font-bold ${
+                                        chip.positive ? 'text-emerald-300' : 'text-rose-400'
+                                      }`}
+                                    >
+                                      {chip.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {cmp.setChanges.length > 0 && (
+                                <div className="space-y-0.5 pt-0.5 border-t border-slate-800/80">
+                                  {cmp.setChanges.map((sc) => (
+                                    <div
+                                      key={`${sc.setId}:${sc.piecesRequired}:${sc.direction}`}
+                                      className={`font-sans font-bold leading-snug ${
+                                        sc.direction === 'gained'
+                                          ? 'text-emerald-300'
+                                          : 'text-rose-300'
+                                      }`}
+                                    >
+                                      {sc.direction === 'gained'
+                                        ? `+ Kích hoạt ${sc.displayName} (${sc.piecesRequired} món): ${sc.summary}`
+                                        : `- Mất ${sc.displayName} (${sc.piecesRequired} món): ${sc.summary}`}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })()}

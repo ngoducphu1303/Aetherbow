@@ -802,6 +802,158 @@ export function getGearPowerScore(
   );
 }
 
+export interface GearComparisonSetChange {
+  setId: GearSetId;
+  displayName: string;
+  piecesRequired: number;
+  summary: string;
+  direction: 'gained' | 'lost';
+}
+
+export interface GearComparisonResult {
+  powerDelta: number;
+  candidateScore: number;
+  equippedScore: number;
+  statDeltas: {
+    atk: number;
+    hp: number;
+    critChance: number;
+    attackSpeed: number;
+    moveSpeed: number;
+    damageReduction: number;
+  };
+  setChanges: GearComparisonSetChange[];
+  recommendation: 'upgrade' | 'sidegrade' | 'downgrade';
+}
+
+function getGearTotalCombatContribution(
+  item: GearInstance,
+  socketPool?: SocketGemInstance[]
+) {
+  const base = getGearStats(item);
+  let atk = base.atk;
+  let hp = base.hp;
+  let critChance = base.critChance;
+  let attackSpeed = base.attackSpeed;
+  let moveSpeed = base.moveSpeed;
+  let damageReduction = base.damageReduction;
+
+  for (const sub of getEffectiveSubstats(item)) {
+    if (sub.kind === 'crit_pct') critChance += sub.value;
+    else if (sub.kind === 'aspd_pct') attackSpeed += sub.value;
+    else if (sub.kind === 'move_pct') moveSpeed += sub.value;
+    else if (sub.kind === 'dr_pct') damageReduction += sub.value;
+  }
+
+  if (item.socketedGems && item.socketedGems.length > 0 && socketPool && socketPool.length > 0) {
+    for (const gUid of item.socketedGems) {
+      const g = socketPool.find((x) => x.uid === gUid);
+      if (!g) continue;
+      const b = getSocketGemBonuses(g);
+      atk += b.atk;
+      hp += b.hp;
+      critChance += b.critChance;
+      attackSpeed += b.attackSpeed;
+      damageReduction += b.damageReduction;
+    }
+  }
+
+  return { atk, hp, critChance, attackSpeed, moveSpeed, damageReduction };
+}
+
+/**
+ * Computes exact stat-by-stat deltas (base + substats + socketed gems) and
+ * 2-piece / 3-piece Gear Set Bonus transitions when swapping a candidate gear piece.
+ */
+export function computeGearComparison(
+  candidate: GearInstance,
+  equipped: GearInstance | undefined,
+  save: Pick<SaveData, 'equipped' | 'inventory'>,
+  socketPool?: SocketGemInstance[]
+): GearComparisonResult {
+  const candidateScore = getGearPowerScore(candidate, socketPool);
+  const equippedScore = equipped ? getGearPowerScore(equipped, socketPool) : 0;
+  const powerDelta = candidateScore - equippedScore;
+
+  const cStats = getGearTotalCombatContribution(candidate, socketPool);
+  const eStats = equipped
+    ? getGearTotalCombatContribution(equipped, socketPool)
+    : { atk: 0, hp: 0, critChance: 0, attackSpeed: 0, moveSpeed: 0, damageReduction: 0 };
+
+  const statDeltas = {
+    atk: Math.round(cStats.atk - eStats.atk),
+    hp: Math.round(cStats.hp - eStats.hp),
+    critChance: Number((cStats.critChance - eStats.critChance).toFixed(4)),
+    attackSpeed: Number((cStats.attackSpeed - eStats.attackSpeed).toFixed(4)),
+    moveSpeed: Number((cStats.moveSpeed - eStats.moveSpeed).toFixed(4)),
+    damageReduction: Number((cStats.damageReduction - eStats.damageReduction).toFixed(4)),
+  };
+
+  const setChanges: GearComparisonSetChange[] = [];
+  const tpl = GEAR_TEMPLATES[candidate.templateId];
+  if (tpl) {
+    const beforeSets = evaluateEquippedGearSets(save);
+    const hasCandidateInInv = save.inventory.some((g) => g.uid === candidate.uid);
+    const afterSave = {
+      equipped: { ...save.equipped, [tpl.slot]: candidate.uid },
+      inventory: hasCandidateInInv ? save.inventory : [...save.inventory, candidate],
+    };
+    const afterSets = evaluateEquippedGearSets(afterSave);
+
+    const tierKey = (setId: GearSetId, pieces: number) => `${setId}:${pieces}`;
+    const beforeTierMap = new Map<string, GearComparisonSetChange>();
+    for (const s of beforeSets.sets) {
+      for (const t of s.unlockedTiers) {
+        beforeTierMap.set(tierKey(s.setId, t.piecesRequired), {
+          setId: s.setId,
+          displayName: s.displayName,
+          piecesRequired: t.piecesRequired,
+          summary: t.label,
+          direction: 'lost',
+        });
+      }
+    }
+
+    const afterKeys = new Set<string>();
+    for (const s of afterSets.sets) {
+      for (const t of s.unlockedTiers) {
+        const key = tierKey(s.setId, t.piecesRequired);
+        afterKeys.add(key);
+        if (!beforeTierMap.has(key)) {
+          setChanges.push({
+            setId: s.setId,
+            displayName: s.displayName,
+            piecesRequired: t.piecesRequired,
+            summary: t.label,
+            direction: 'gained',
+          });
+        }
+      }
+    }
+
+    for (const [key, lostEntry] of beforeTierMap.entries()) {
+      if (!afterKeys.has(key)) {
+        setChanges.push(lostEntry);
+      }
+    }
+  }
+
+  const gainedTiers = setChanges.filter((c) => c.direction === 'gained').length;
+  const lostTiers = setChanges.filter((c) => c.direction === 'lost').length;
+  const effectiveDiff = powerDelta + (gainedTiers - lostTiers) * 90;
+  const recommendation: 'upgrade' | 'sidegrade' | 'downgrade' =
+    effectiveDiff >= 15 ? 'upgrade' : effectiveDiff <= -15 ? 'downgrade' : 'sidegrade';
+
+  return {
+    powerDelta,
+    candidateScore,
+    equippedScore,
+    statDeltas,
+    setChanges,
+    recommendation,
+  };
+}
+
 export function computePlayerStats(save: SaveData): ComputedPlayerStats {
   const hero = HERO_MAP[save.selectedHeroId] ?? HERO_MAP.aurelia;
   const heroStar = save.heroStars[hero.id] ?? 0;

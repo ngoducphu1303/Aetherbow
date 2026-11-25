@@ -12,6 +12,7 @@ import { disposeObjectResources } from './resources';
 import {
   AaaMobKind,
   AaaMobSkillId,
+  EnemyAiTacticalState,
   computeAaaMobSteering,
   computeDirectionalHitImpulse,
   computeHadesTelegraphCue,
@@ -21,6 +22,7 @@ import {
   getAaaMobVfxBudget,
   planAaaMobSkill,
   resolveChapterMobSkillTheme,
+  resolveMobRecoveryDuration,
   stepDirectionalRecoil,
   stepMobPhysicalDash,
 } from './aaaEnemyCombatEngine';
@@ -839,6 +841,8 @@ interface EnemyEntity {
   mobSideHopDirZ?: number;
   mobBurstTimer?: number;
   mobNextCooldown?: number;
+  mobRecoveryTimer?: number;
+  aiTacticalState?: EnemyAiTacticalState;
   hitRecoilX?: number;
   hitRecoilZ?: number;
   bankRoll?: number;
@@ -17069,6 +17073,9 @@ export class GameEngine {
       if (e.mobSideHopTimer && e.mobSideHopTimer > 0) {
         e.mobSideHopTimer = Math.max(0, e.mobSideHopTimer - dt);
       }
+      if (e.mobRecoveryTimer && e.mobRecoveryTimer > 0) {
+        e.mobRecoveryTimer = Math.max(0, e.mobRecoveryTimer - dt);
+      }
       if (e.mobBurstTimer && e.mobBurstTimer > 0) {
         e.mobBurstTimer = Math.max(0, e.mobBurstTimer - dt);
       }
@@ -17467,7 +17474,13 @@ export class GameEngine {
           e.x += e.vx * dt;
           e.z += e.vz * dt;
         } else if (isAaaRegularMob && e.tacticalRole !== 'charger') {
-          // Regular mobs also retain fluid telegraph mobility (never freeze statically)
+          // Regular mobs retain fluid telegraph mobility using Zero-GC spatial neighbor queries
+          const localTeleNeighbors = this.enemySpatialGrid.queryRadius(
+            e.x,
+            e.z,
+            Math.max(e.radius * 3.2 + 2.4, 9.2),
+            this.squadNeighborQueryScratch
+          );
           const teleSteer = computeAaaMobSteering({
             kind: e.kind as AaaMobKind,
             selfId: e.id,
@@ -17490,13 +17503,17 @@ export class GameEngine {
             dt,
             currentBankRoll: e.bankRoll ?? 0,
             currentBankPitch: e.bankPitch ?? 0,
-            neighbors: enemySnapshot,
-            obstacles: this.obstacles,
+            hpRatio: e.hp / Math.max(1, e.maxHp),
+            recoveryTimer: e.mobRecoveryTimer ?? 0,
+            hasAttackToken: this.enemySquadDirectorState.activeTokens.has(e.id),
+            neighbors: localTeleNeighbors,
+            obstacles: this.intactObstacleScratch,
           });
           e.vx = teleSteer.vx * slowMult;
           e.vz = teleSteer.vz * slowMult;
           e.bankRoll = teleSteer.bankRoll;
           e.bankPitch = teleSteer.bankPitch;
+          e.aiTacticalState = teleSteer.aiState;
           e.x += e.vx * dt;
           e.z += e.vz * dt;
           if (
@@ -17649,7 +17666,13 @@ export class GameEngine {
             e.vz = orbit.vz * slowMult;
           }
         } else if (isAaaRegularMob) {
-          // AAA Hades-style Regular Mob Steering: flanking arcs, squad separation, obstacle avoidance & inertia
+          // AAA Hades-style Regular Mob Steering: Zero-GC SpatialHashGrid neighbors, 7-state AI & vanguard screening
+          const localMobNeighbors = this.enemySpatialGrid.queryRadius(
+            e.x,
+            e.z,
+            Math.max(e.radius * 3.2 + 2.4, 9.2),
+            this.squadNeighborQueryScratch
+          );
           const steer = computeAaaMobSteering({
             kind: e.kind as AaaMobKind,
             selfId: e.id,
@@ -17672,13 +17695,17 @@ export class GameEngine {
             dt,
             currentBankRoll: e.bankRoll ?? 0,
             currentBankPitch: e.bankPitch ?? 0,
-            neighbors: enemySnapshot,
-            obstacles: this.obstacles,
+            hpRatio: e.hp / Math.max(1, e.maxHp),
+            recoveryTimer: e.mobRecoveryTimer ?? 0,
+            hasAttackToken: this.enemySquadDirectorState.activeTokens.has(e.id),
+            neighbors: localMobNeighbors,
+            obstacles: this.intactObstacleScratch,
           });
           e.vx = steer.vx * slowMult;
           e.vz = steer.vz * slowMult;
           e.bankRoll = steer.bankRoll;
           e.bankPitch = steer.bankPitch;
+          e.aiTacticalState = steer.aiState;
 
           // Subtle footstep / cornering skid dust puffs scaled cleanly for Lite vs High GPU
           const spdNow = Math.hypot(e.vx, e.vz);
@@ -19455,6 +19482,10 @@ export class GameEngine {
     if (!e.isBoss && !e.isArenaRival && e.tacticalRole !== 'charger' && e.mobActiveSkill) {
       const skill = e.mobActiveSkill;
       e.mobActiveSkill = '';
+      e.mobRecoveryTimer = resolveMobRecoveryDuration(
+        e.kind as AaaMobKind,
+        this.currentChapter.id
+      );
       const baseYaw = Math.atan2(e.aimX, e.aimZ);
       const vfxBudget = getAaaMobVfxBudget(this.lowEndGpu);
       const sideSign = e.mobFlankSign ?? 1;

@@ -23,7 +23,11 @@ import {
 import { computeSkillSynergyProgress } from '../engine/aaaWave3Director';
 import { explainAiSkillChoice } from '../engine/aaaFivePillarsDirector';
 import { selectBestSkillChoice } from '../engine/aiCombatBrain';
-import { selectAiEvolutionBranch } from '../engine/skillEvolutionEngine';
+import {
+  SKILL_EVOLUTION_MAP,
+  getSkillEvolutionPreview,
+  selectAiEvolutionBranch,
+} from '../engine/skillEvolutionEngine';
 import {
   AiAutoPilotTactic,
   EncounterOffer,
@@ -41,6 +45,7 @@ interface SkillDraftModalProps {
   level: number;
   skillChoices: SkillDefinition[];
   evolutionOffer?: SkillEvolutionOffer | null;
+  activeEvolutions?: SkillEvolutionId[];
   currentStacks: Partial<Record<SkillId, number>>;
   rerollUsed: boolean;
   encounterOffer: EncounterOffer | null;
@@ -169,6 +174,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   level,
   skillChoices,
   evolutionOffer = null,
+  activeEvolutions = [],
   currentStacks,
   rerollUsed,
   encounterOffer,
@@ -384,14 +390,28 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
               : 'Quay vòng định mệnh để nhận phần thưởng hậu hĩnh.'}
           </p>
           <div className="cel-divider-gold max-w-xs mx-auto mt-3" />
-          {isSkillMode && activeSynergyIds.length > 0 && (
-            <div className="mt-2.5 text-[11px] font-bold text-amber-200">
-              Cộng Hưởng đang bật:{' '}
-              <span className="text-emerald-300">
-                {activeSynergyIds
-                  .map((id) => SKILL_SYNERGY_MAP[id]?.name ?? id)
-                  .join(' · ')}
-              </span>
+          {isSkillMode && (activeSynergyIds.length > 0 || activeEvolutions.length > 0) && (
+            <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-amber-200">
+              {activeSynergyIds.length > 0 && (
+                <span>
+                  Cộng Hưởng đang bật:{' '}
+                  <span className="text-emerald-300">
+                    {activeSynergyIds
+                      .map((id) => SKILL_SYNERGY_MAP[id]?.name ?? id)
+                      .join(' · ')}
+                  </span>
+                </span>
+              )}
+              {activeEvolutions.length > 0 && (
+                <span>
+                  Tiến Hóa ({activeEvolutions.length}):{' '}
+                  <span className="text-sky-300">
+                    {activeEvolutions
+                      .map((id) => SKILL_EVOLUTION_MAP[id]?.name ?? id)
+                      .join(' · ')}
+                  </span>
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -467,8 +487,16 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                   currentStacks,
                   SKILL_SYNERGIES
                 );
+                const evoPreview = getSkillEvolutionPreview(
+                  skill.id,
+                  currentStacks,
+                  activeEvolutions
+                );
                 const isHighlightEvolution = Boolean(
-                  completingSynergy || synergyPreview?.willActivateNow || comboTag?.isEvolution
+                  completingSynergy ||
+                    synergyPreview?.willActivateNow ||
+                    comboTag?.isEvolution ||
+                    evoPreview?.status === 'triggers_now'
                 );
                 const cardTilt = tiltCard && tiltCard.id === skill.id ? tiltCard : null;
                 return (
@@ -656,6 +684,32 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                           {comboTag.label}
                         </div>
                       ) : null}
+
+                      {evoPreview && evoPreview.status !== 'already_evolved' && (
+                        <div
+                          className={`mt-2 pt-2 w-full border-t text-left ${
+                            evoPreview.status === 'triggers_now'
+                              ? 'border-amber-300/75 text-amber-200'
+                              : 'border-sky-400/35 text-sky-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider">
+                            <span className="truncate">
+                              {evoPreview.status === 'triggers_now'
+                                ? `Mở Ngã Rẽ Tiến Hóa · ${evoPreview.baseSkillName}`
+                                : `Nhánh Tiến Hóa · ${evoPreview.baseSkillName}`}
+                            </span>
+                            <span className="font-mono-nums shrink-0">
+                              {evoPreview.status === 'triggers_now' ? '1→2/2' : '0→1/2'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-200/90 mt-0.5 leading-snug">
+                            Boss: <span className="text-amber-300 font-bold">{evoPreview.branchBossName}</span>
+                            {' · '}
+                            AoE: <span className="text-cyan-300 font-bold">{evoPreview.branchAoeName}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Card Footer */}

@@ -79,6 +79,15 @@ export function dampShortestYaw(
   return normalizeAngle(currentYaw + delta * alpha);
 }
 
+export type EnemyAiTacticalState =
+  | 'patrol'
+  | 'chase'
+  | 'flank'
+  | 'attack'
+  | 'retreat'
+  | 'dodge'
+  | 'recovery';
+
 export interface AaaSpatialBody {
   readonly x: number;
   readonly z: number;
@@ -87,6 +96,7 @@ export interface AaaSpatialBody {
   readonly dead?: boolean;
   readonly intact?: boolean;
   readonly id?: number;
+  readonly archetype?: 'vanguard' | 'flanker' | 'ranged' | 'caster';
 }
 
 export interface AaaMobSteeringInput {
@@ -111,6 +121,9 @@ export interface AaaMobSteeringInput {
   readonly dt: number;
   readonly currentBankRoll: number;
   readonly currentBankPitch: number;
+  readonly hpRatio?: number;
+  readonly recoveryTimer?: number;
+  readonly hasAttackToken?: boolean;
   readonly neighbors?: ReadonlyArray<AaaSpatialBody>;
   readonly obstacles?: ReadonlyArray<AaaSpatialBody>;
 }
@@ -126,6 +139,7 @@ export interface AaaMobSteeringResult {
   bankRoll: number;
   bankPitch: number;
   isSkidding: boolean;
+  aiState?: EnemyAiTacticalState;
 }
 
 const _steeringOut: AaaMobSteeringResult = {
@@ -139,7 +153,30 @@ const _steeringOut: AaaMobSteeringResult = {
   bankRoll: 0,
   bankPitch: 0,
   isSkidding: false,
+  aiState: 'chase',
 };
+
+/**
+ * Deterministic post-attack recovery window so skilled players have a readable
+ * punish opening after dodging a mob attack (gentler in early chapters, brisker in Ch.8-12).
+ */
+export function resolveMobRecoveryDuration(kind: AaaMobKind, chapterId: number): number {
+  const ch = clamp(Math.floor(chapterId || 1), 1, 12);
+  const chScale = 1 - (ch - 1) * 0.024;
+  const base =
+    kind === 'GOLEM'
+      ? 0.56
+      : kind === 'IMP_ARCHER'
+      ? 0.44
+      : kind === 'WISP'
+      ? 0.42
+      : kind === 'DRAGON_WHELP'
+      ? 0.46
+      : kind === 'SHADOW_STALKER'
+      ? 0.36
+      : 0.40;
+  return Number(clamp(base * chScale, 0.24, 0.6).toFixed(2));
+}
 
 function getTelegraphMobilityScale(kind: AaaMobKind, activeSkill?: AaaMobSkillId | ''): number {
   if (activeSkill === 'juggernaut_advance_slam') return 0.52;
@@ -189,6 +226,11 @@ export function computeAaaMobSteering(
   let goalX = 0;
   let goalZ = 0;
   let speedScale = 1.0;
+  let aiState: EnemyAiTacticalState = dist > 15.5 ? 'patrol' : 'chase';
+  const isRangedOrCaster =
+    input.kind === 'IMP_ARCHER' || input.kind === 'WISP' || input.kind === 'DRAGON_WHELP';
+  const lowHpRetreat =
+    isRangedOrCaster && input.hpRatio !== undefined && input.hpRatio > 0 && input.hpRatio < 0.35;
 
   switch (input.kind) {
     case 'SKIRMISHER': {
@@ -198,6 +240,7 @@ export function computeAaaMobSteering(
       goalX = toPlayerX * radialWeight + tanX * flankWeight;
       goalZ = toPlayerZ * radialWeight + tanZ * flankWeight;
       speedScale = dist > 6.5 ? 1.12 : 1.0;
+      if (dist <= 5.5) aiState = 'flank';
       break;
     }
     case 'SHADOW_STALKER': {
@@ -208,6 +251,7 @@ export function computeAaaMobSteering(
       goalX = toPlayerX * radialWeight + tanX * flankWeight;
       goalZ = toPlayerZ * radialWeight + tanZ * flankWeight;
       speedScale = 1.08;
+      if (dist <= 6.0) aiState = 'flank';
       break;
     }
     case 'GOLEM': {
@@ -220,11 +264,12 @@ export function computeAaaMobSteering(
       break;
     }
     case 'IMP_ARCHER': {
-      // Tactical skirmish mage: backpedals if crowded, orbits fluidly at 7-12m
-      if (dist < 6.4) {
+      // Tactical skirmish mage: retreats if crowded or low HP, orbits fluidly at 7-12m
+      if (dist < 6.4 || (lowHpRetreat && dist < 10.5)) {
         goalX = -toPlayerX * 0.86 + tanX * 0.54;
         goalZ = -toPlayerZ * 0.86 + tanZ * 0.54;
-        speedScale = 1.04;
+        speedScale = lowHpRetreat ? 1.12 : 1.04;
+        aiState = 'retreat';
       } else if (dist > 12.2) {
         goalX = toPlayerX * 0.9 + tanX * 0.36;
         goalZ = toPlayerZ * 0.9 + tanZ * 0.36;
@@ -234,15 +279,17 @@ export function computeAaaMobSteering(
         goalX = tanX * 0.92 + toPlayerX * microInOut;
         goalZ = tanZ * 0.92 + toPlayerZ * microInOut;
         speedScale = 0.88;
+        aiState = 'flank';
       }
       break;
     }
     case 'DRAGON_WHELP': {
       // Spear lancer / mid-range duelist: orbits at 5.5-9.5m looking for clear thrust lanes
-      if (dist < 4.8) {
+      if (dist < 4.8 || (lowHpRetreat && dist < 8.5)) {
         goalX = -toPlayerX * 0.72 + tanX * 0.7;
         goalZ = -toPlayerZ * 0.72 + tanZ * 0.7;
-        speedScale = 1.02;
+        speedScale = lowHpRetreat ? 1.1 : 1.02;
+        aiState = 'retreat';
       } else if (dist > 9.8) {
         goalX = toPlayerX * 0.92 + tanX * 0.34;
         goalZ = toPlayerZ * 0.92 + tanZ * 0.34;
@@ -251,16 +298,18 @@ export function computeAaaMobSteering(
         goalX = tanX * 0.88 + toPlayerX * 0.22;
         goalZ = tanZ * 0.88 + toPlayerZ * 0.22;
         speedScale = 0.94;
+        aiState = 'flank';
       }
       break;
     }
     case 'WISP': {
       // Floating arcane orbiter: smooth figure-eight sway at 6.5-11m
       const sway = Math.cos(input.elapsedTime * 2.4 + (input.selfId ?? 0) * 0.9) * 0.32;
-      if (dist < 5.6) {
+      if (dist < 5.6 || (lowHpRetreat && dist < 9.5)) {
         goalX = -toPlayerX * 0.8 + tanX * 0.65;
         goalZ = -toPlayerZ * 0.8 + tanZ * 0.65;
-        speedScale = 1.05;
+        speedScale = lowHpRetreat ? 1.12 : 1.05;
+        aiState = 'retreat';
       } else if (dist > 11.4) {
         goalX = toPlayerX * 0.88 + tanX * 0.45;
         goalZ = toPlayerZ * 0.88 + tanZ * 0.45;
@@ -269,13 +318,58 @@ export function computeAaaMobSteering(
         goalX = tanX * 0.95 + toPlayerX * sway;
         goalZ = tanZ * 0.95 + toPlayerZ * sway;
         speedScale = 0.92;
+        aiState = 'flank';
       }
       break;
     }
   }
 
+  // Squad Role Coordination: retreating ranged/casters screen behind nearby melee Vanguard allies
+  if (aiState === 'retreat' && isRangedOrCaster && input.neighbors && input.neighbors.length > 0) {
+    let bestVanguardX = 0;
+    let bestVanguardZ = 0;
+    let bestScore = Infinity;
+    for (let i = 0; i < input.neighbors.length; i++) {
+      const ally = input.neighbors[i];
+      if (ally.alive === false || ally.dead === true) continue;
+      if (input.selfId !== undefined && ally.id === input.selfId) continue;
+      if (ally.archetype !== 'vanguard') continue;
+      const adx = ally.x - input.x;
+      const adz = ally.z - input.z;
+      const aDist = Math.hypot(adx, adz);
+      if (aDist < 0.5 || aDist > 9.0) continue;
+      // Prefer a vanguard that stands closer to the player so we tuck behind them
+      const allyToPlayer = Math.hypot(input.playerX - ally.x, input.playerZ - ally.z);
+      if (allyToPlayer < dist + 1.5 && aDist < bestScore) {
+        bestScore = aDist;
+        // Target point 2.4u behind the vanguard relative to the player
+        const vdx = ally.x - input.playerX;
+        const vdz = ally.z - input.playerZ;
+        const vLen = Math.hypot(vdx, vdz) || 1;
+        bestVanguardX = ally.x + (vdx / vLen) * 2.4;
+        bestVanguardZ = ally.z + (vdz / vLen) * 2.4;
+      }
+    }
+    if (bestScore < Infinity) {
+      const sx = bestVanguardX - input.x;
+      const sz = bestVanguardZ - input.z;
+      const sLen = Math.hypot(sx, sz) || 1;
+      goalX = goalX * 0.55 + (sx / sLen) * 0.65;
+      goalZ = goalZ * 0.55 + (sz / sLen) * 0.65;
+    }
+  }
+
+  // When waiting for an attack token from EnemySquadDirector, widen flanking arc cleanly
+  if (!input.isTelegraphing && input.hasAttackToken === false && aiState === 'chase' && dist < 9.5) {
+    aiState = 'flank';
+    goalX = goalX * 0.45 + tanX * 0.85;
+    goalZ = goalZ * 0.45 + tanZ * 0.85;
+    speedScale *= 0.86;
+  }
+
   // Telegraph mobility retention: keep gliding smoothly into flanking / pressure angles
   if (input.isTelegraphing) {
+    aiState = 'attack';
     const mobScale = getTelegraphMobilityScale(input.kind, input.activeSkill);
     speedScale *= mobScale;
     if (input.activeSkill === 'flank_crescent_swipe' || input.activeSkill === 'sweeping_lance_fan') {
@@ -285,6 +379,10 @@ export function computeAaaMobSteering(
       goalX = toPlayerX * 0.95 + tanX * 0.2;
       goalZ = toPlayerZ * 0.95 + tanZ * 0.2;
     }
+  } else if ((input.recoveryTimer ?? 0) > 0 && input.sideHopTimer <= 0) {
+    // Post-attack readable recovery opening so skilled players can punish
+    aiState = 'recovery';
+    speedScale *= 0.42;
   }
 
   // Soft squad separation (zero allocation loop)
@@ -351,8 +449,9 @@ export function computeAaaMobSteering(
   let targetVx = combX * input.baseSpeed * speedScale;
   let targetVz = combZ * input.baseSpeed * speedScale;
 
-  // Post-cast Hades-style lateral hop impulse
+  // Post-cast Hades-style lateral hop / dodge impulse
   if (input.sideHopTimer > 0) {
+    if (!input.isTelegraphing) aiState = 'dodge';
     const hopBoost = input.baseSpeed * 1.55 * clamp(input.sideHopTimer / 0.22, 0.25, 1.0);
     targetVx = input.sideHopDirX * hopBoost + targetVx * 0.25;
     targetVz = input.sideHopDirZ * hopBoost + targetVz * 0.25;
@@ -415,6 +514,7 @@ export function computeAaaMobSteering(
   out.bankRoll = bankRoll;
   out.bankPitch = bankPitch;
   out.isSkidding = isSkidding;
+  out.aiState = aiState;
   return out;
 }
 

@@ -19,17 +19,17 @@
 
 | Nhóm tiêu chí | Tiêu chí thành phần | Trọng số | TB Trước (/100) | TB Sau (/100) | Đóng góp Trước | Đóng góp Sau | Thay đổi |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 90.00 | 15.80 | 18.00 | **+2.20** |
-| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 89.25 | 16.25 | 17.85 | **+1.60** |
+| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 91.00 | 15.80 | 18.20 | **+2.40** |
+| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 90.25 | 16.25 | 18.05 | **+1.80** |
 | **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 90.00 | 11.81 | 13.50 | **+1.69** |
-| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 89.00 | 8.07 | 8.90 | **+0.83** |
+| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 91.00 | 8.07 | 9.10 | **+1.03** |
 | **Performance & Architecture** | 22, 23 | 10% | 74.00 | 92.50 | 7.40 | 9.25 | **+1.85** |
 | **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 90.33 | 4.03 | 4.52 | **+0.49** |
-| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 91.33 | 3.93 | 4.57 | **+0.64** |
-| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 86.50 | 3.95 | 4.33 | **+0.38** |
+| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 91.67 | 3.93 | 4.58 | **+0.65** |
+| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 87.50 | 3.95 | 4.38 | **+0.43** |
 | **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 90.67 | 4.02 | 4.53 | **+0.51** |
 | **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.33 | 3.73 | 4.62 | **+0.89** |
-| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **90.06 / 100** | **+11.07** |
+| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **90.73 / 100** | **+11.74** |
 
 ---
 
@@ -40,24 +40,24 @@
 2. **Bằng chứng đánh giá**: 4 tướng Hoàng Đạo (`heroesData.ts`), 12 chương chiến dịch (`chaptersData.ts`), hệ thống Roguelike skill draft (`skillsData.ts`), Tháp Vô Tận, Nightmare Ascension I–V (`phase5Data.ts`).
 3. **Vấn đề tồn tại**: Tướng Sylvia dùng trùng hiệu ứng kỹ năng chủ động với Aurelia; thiếu mục tiêu tiêu Vàng rõ ràng ở giai đoạn sau 60h.
 4. **Nguyên nhân gốc rễ**: Nội dung Ch.3–4 được mở rộng nhanh nhưng nhánh hiệu ứng riêng của Sylvia và sink Endgame chưa tách biệt hoàn toàn.
-5. **Giải pháp đề xuất**: Triển khai kỹ năng độc nhất `'jade_bastion'` cho Sylvia và hệ thống **Tinh Tuý Hoàng Đạo** (`paragonInfusionLevel`) sau khi chạm trần 160/160 Thiên Phú hoặc Chương 12.
-6. **File hoặc module liên quan**: `src/data/phase5Data.ts`, `src/data/talentsData.ts`, `src/engine/GameEngine.ts`, `src/components/TalentsModal.tsx`.
-7. **Mức độ ưu tiên**: P1
+5. **Giải pháp đề xuất**: Triển khai kỹ năng độc nhất `'jade_bastion'` cho Sylvia, hệ thống **Tinh Tuý Hoàng Đạo** (`paragonInfusionLevel`), và trong Đợt 8 hiển thị trực diện lộ trình Ngã Rẽ Tiến Hóa (Boss vs AoE) ngay trên thẻ Tarot chọn kỹ năng (`getSkillEvolutionPreview`) giúp quyết định build trong trận có chiều sâu chiến thuật rõ rệt.
+6. **File hoặc module liên quan**: `src/data/phase5Data.ts`, `src/data/talentsData.ts`, `src/engine/skillEvolutionEngine.ts`, `src/components/SkillDraftModal.tsx`, `src/engine/GameEngine.ts`, `src/components/TalentsModal.tsx`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 8)
 8. **Rủi ro khi thay đổi**: Có thể lệch biên cân bằng DPS ±12% giữa các tướng hoặc ảnh hưởng sớm đầu game nếu mở khóa sai điều kiện.
-9. **Tiêu chí nghiệm thu**: 4 tướng có 4 `effectKind` khác nhau, `earlyProgression.test.ts` pass ±12% DPS, Paragon khóa hoàn toàn trước Ch.12 / 160 Thiên Phú.
-10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
+9. **Tiêu chí nghiệm thu**: 4 tướng có 4 `effectKind` khác nhau, `earlyProgression.test.ts` pass ±12% DPS, Paragon khóa hoàn toàn trước Ch.12 / 160 Thiên Phú, `wave8TacticalAndProgression.test.ts` & Chromium xác minh rõ thẻ tiến hóa.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 02. Core Gameplay Loop — Vòng lặp gameplay
 1. **Điểm hiện tại (Trước)**: `82 / 100`
-2. **Bằng chứng đánh giá**: Vòng lặp Chiến đấu → Nhặt đồ/Vàng → Nâng Trang bị/Thiên Phú/Cổ Ngữ → Vượt Boss Chương → Mở khóa Ch.2–12 & Tháp Vô Tận.
-3. **Vấn đề tồn tại**: Sau mốc ~45h–60h khi 8 Thiên Phú chạm 160/160 và đồ Thần Thoại đạt Lv.80, vòng lặp tiêu Vàng bị đứt gãy (tồn kho >6.24M Vàng).
-4. **Nguyên nhân gốc rễ**: Toàn bộ Gold sink hiện hữu đều có trần cứng ở Mid-Late Game.
-5. **Giải pháp đề xuất**: Tích hợp vòng lặp Endgame **Tinh Tuý Hoàng Đạo (500 bậc)** ngay trong `TalentsModal.tsx` và nối thẳng vào `computePlayerStats` + nhiệm vụ ngày.
-6. **File hoặc module liên quan**: `src/data/talentsData.ts`, `src/data/gearData.ts`, `src/components/TalentsModal.tsx`, `src/App.tsx`, `src/data/economyTelemetry.ts`.
-7. **Mức độ ưu tiên**: P1
+2. **Bằng chứng đánh giá**: Vòng lặp Chiến đấu → Nhặt đồ/Vàng → So sánh chỉ số & Bộ Trang Bị → Nâng Trang bị/Thiên Phú/Cổ Ngữ → Vượt Boss Chương → Mở khóa Ch.2–12 & Tháp Vô Tận.
+3. **Vấn đề tồn tại**: Sau mốc ~45h–60h khi 8 Thiên Phú chạm 160/160 và đồ Thần Thoại đạt Lv.80, vòng lặp tiêu Vàng từng bị đứt gãy; ở màn so sánh đồ mới nhặt, người chơi chưa thấy rõ biến động chỉ số thành phần và kích hoạt/mất hiệu ứng Bộ Trang Bị.
+4. **Nguyên nhân gốc rễ**: Toàn bộ Gold sink trước đây có trần cứng và khung so sánh đồ mới chỉ hiện chênh lệch LC tổng.
+5. **Giải pháp đề xuất**: Tích hợp vòng lặp Endgame **Tinh Tuý Hoàng Đạo (500 bậc)** vào `TalentsModal.tsx` + `computePlayerStats`, đồng thời bổ sung so sánh chỉ số chi tiết & cảnh báo Bộ 2/3 món (`computeGearComparison`) trong `LobbyPanels.tsx` ở Đợt 8.
+6. **File hoặc module liên quan**: `src/data/talentsData.ts`, `src/data/gearData.ts`, `src/components/LobbyPanels.tsx`, `src/components/TalentsModal.tsx`, `src/App.tsx`, `src/data/economyTelemetry.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 8)
 8. **Rủi ro khi thay đổi**: Rủi ro tạo lạm phát chỉ số Endgame nếu thưởng mỗi bậc quá lớn.
-9. **Tiêu chí nghiệm thu**: Mô phỏng 100h tiêu thụ `>= 75%` tổng Vàng tích lũy (thực tế đạt `99.8%`), không ảnh hưởng Ch.1–11.
-10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
+9. **Tiêu chí nghiệm thu**: Mô phỏng 100h tiêu thụ `>= 75%` tổng Vàng tích lũy (thực tế đạt `99.8%`), không ảnh hưởng Ch.1–11, luồng nhặt & so sánh trang bị minh bạch 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 03. Combat System — Hệ thống chiến đấu
 1. **Điểm hiện tại (Trước)**: `83 / 100`
@@ -76,12 +76,12 @@
 2. **Bằng chứng đánh giá**: 40+ kỹ năng roguelike trong trận (`skillsData.ts`), kỹ năng tiến hóa & cộng hưởng, kỹ năng chủ động 4 tướng độc nhất (`phase5Data.ts`), Phá Giáp Trảm & Thức Tỉnh Vũ Khí hỗ trợ đệm phím + gán phím tự do.
 3. **Vấn đề tồn tại**: Sylvia (`Kim Ngưu`) từng dùng trùng `effectKind: 'ember_nova'` với Aurelia; Phá Giáp Trảm (`F`) & Thức Tỉnh Vũ Khí (`X`) trước Đợt 7 chưa hỗ trợ đệm phím và tùy biến phím tắt.
 4. **Nguyên nhân gốc rễ**: Chưa có nhánh enum `'jade_bastion'` và hai kỹ năng chiến thuật chưa nối vào `CombatKeybinds` & `CombatInputBuffer`.
-5. **Giải pháp đề xuất**: Thêm `'jade_bastion'` cho Sylvia, đồng thời nối đầy đủ `heavyBreak` & `overdrive` vào hệ thống đệm phím `140ms`, 8 phím tắt tùy biến và nhãn phím sống trên `GameHUD.tsx`.
-6. **File hoặc module liên quan**: `src/types/game.ts`, `src/data/phase5Data.ts`, `src/engine/aaaWave6Director.ts`, `src/engine/GameEngine.ts`, `src/components/GameHUD.tsx`.
-7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 7)
-8. **Rủi ro khi thay đổi**: Cần bảo đảm tương thích ngược 100% save cũ chỉ có 6 phím tắt.
-9. **Tiêu chí nghiệm thu**: 4 tướng dùng 4 `effectKind` riêng biệt, 8/8 phím tắt tùy biến & đệm phím hoạt động sạch, `tsc --noEmit` 0 lỗi.
-10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
+5. **Giải pháp đề xuất**: Thêm `'jade_bastion'` cho Sylvia, nối đầy đủ `heavyBreak` & `overdrive` vào hệ thống đệm phím `140ms` và 8 phím tắt tùy biến, và trong Đợt 8 triển khai **`getSkillEvolutionPreview`** (`skillEvolutionEngine.ts`) hiển thị trực tiếp tiến độ `0→1/2` / `1→2/2` cùng hai nhánh Tiến Hóa Boss & AoE ngay trên thẻ Tarot (`SkillDraftModal.tsx`) kèm danh sách Tiến Hóa đang kích hoạt.
+6. **File hoặc module liên quan**: `src/engine/skillEvolutionEngine.ts`, `src/components/SkillDraftModal.tsx`, `src/App.tsx`, `src/types/game.ts`, `src/data/phase5Data.ts`, `src/engine/aaaWave6Director.ts`, `src/components/GameHUD.tsx`.
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 8)
+8. **Rủi ro khi thay đổi**: Cần bảo đảm tương thích ngược 100% save cũ chỉ có 6 phím tắt và không hiển thị lại nhắc nhở cho nhánh đã tiến hóa.
+9. **Tiêu chí nghiệm thu**: 4 tướng dùng 4 `effectKind` riêng biệt, 8/8 phím tắt & đệm phím hoạt động sạch, 6/6 nhánh Tiến Hóa hiện dự báo rõ trên thẻ Tarot (`r8b-skill-draft.png`) và `wave8TacticalAndProgression.test.ts` pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 05. Animation — Hệ thống hoạt ảnh
 1. **Điểm hiện tại (Trước)**: `80 / 100`
@@ -169,15 +169,15 @@
 
 ### 12. Enemy AI — Trí tuệ nhân tạo quái vật
 1. **Điểm hiện tại (Trước)**: `78 / 100`
-2. **Bằng chứng đánh giá**: Phân loại hành vi quái cận chiến, xạ thủ tầm xa, lao thẳng có cảnh báo, nổ vùng, tách chồng lấn cơ bản trong `GameEngine.ts`.
-3. **Vấn đề tồn tại**: Trước đây toàn bộ quái thường có thể tung đòn đồng thời khi hết cooldown (gây chồng chéo/dogpile không công bằng), chưa có bể token điều phối tấn công theo vai trò.
-4. **Nguyên nhân gốc rễ**: AI vận hành độc lập theo từng thực thể chưa có bộ điều phối đám đông chung.
-5. **Giải pháp đề xuất**: Triển khai **`EnemySquadDirector`** (`src/engine/enemySquadDirector.ts`, zero-GC scratch Set, 0 tải GPU thêm): giới hạn `2–5` token tấn công đồng thời (khóa `≤ 3` ở Chế độ Lite E5430 và giảm `-1` khi có Boss), cân bằng vai trò tầm xa/cận chiến, tự xoay vòng công bằng và cho quái chờ token di chuyển vòng sườn / giữ cự ly (`computeSquadWaitingFlankImpulse`).
-6. **File hoặc module liên quan**: `src/engine/enemySquadDirector.ts`, `src/engine/enemySquadDirector.test.ts`, `src/engine/GameEngine.ts`, `tests/boss-patterns.test.mjs`.
-7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 2)
-8. **Rủi ro khi thay đổi**: Cần bảo đảm giải phóng token ngay khi quái bị choáng, kết thúc đòn hoặc bị hạ gục để không nghẽn bể token.
-9. **Tiêu chí nghiệm thu**: `enemySquadDirector.test.ts` (4/4) và `boss-patterns.test.mjs` pass 100%, không gây ảnh hưởng Boss/Rival AI và 0 lỗi runtime trong trận 3D.
-10. **Điểm sau khi triển khai và kiểm thử**: `87 / 100`
+2. **Bằng chứng đánh giá**: `EnemySquadDirector` (`2–5` token tấn công, `≤ 3` ở Lite), `aaaEnemyCombatEngine.ts` (máy trạng thái **7 trạng thái `EnemyAiTacticalState`**: `patrol | chase | flank | attack | retreat | dodge | recovery`, phối hợp xạ thủ/pháp sư rút lui núp sau đồng đội Tiên Phong `vanguard`, cửa sổ hồi chiêu mở cho người chơi phản công `resolveMobRecoveryDuration`), và truy vấn lân cận `SpatialHashGrid` Zero-GC trong `GameEngine.ts`.
+3. **Vấn đề tồn tại**: Trước Đợt 8, `computeAaaMobSteering` vẫn duyệt toàn bộ `enemySnapshot` O(N²) + `this.obstacles` chưa lọc vật cản nguyên vẹn, chưa có máy trạng thái chiến thuật 7 pha tường minh (`patrol`/`retreat`/`recovery` khi thấp máu hoặc sau đòn đánh) và chưa có phối hợp xạ thủ rút lui sau đồng đội Tiên Phong (`vanguard`).
+4. **Nguyên nhân gốc rễ**: Hai điểm gọi điều hướng quái trong `GameEngine.ts` chưa tận dụng `enemySpatialGrid.queryRadius` + `intactObstacleScratch`, và `aaaEnemyCombatEngine.ts` thiếu lớp phối hợp vai trò & nhịp `recovery`.
+5. **Giải pháp đề xuất**: Triển khai `EnemySquadDirector` (Đợt 2) và nâng cấp Đợt 8 trên **`src/engine/aaaEnemyCombatEngine.ts`** + **`src/engine/GameEngine.ts`**: máy trạng thái **7 pha** (`patrol`, `chase`, `flank`, `attack`, `retreat`, `dodge`, `recovery`), xạ thủ/pháp sư rút lui núp sau đồng đội `vanguard` khi bị áp sát hoặc `< 35% HP`, nhịp hồi phục `resolveMobRecoveryDuration` sau mỗi kỹ năng quái, và chuyển 100% truy vấn lân cận sang `enemySpatialGrid` + `intactObstacleScratch` Zero-GC.
+6. **File hoặc module liên quan**: `src/engine/aaaEnemyCombatEngine.ts`, `src/engine/enemySquadDirector.ts`, `src/engine/GameEngine.ts`, `src/engine/wave8TacticalAndProgression.test.ts`, `src/engine/aaaEnemyCombatEngine.test.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 2 & Đợt 8)
+8. **Rủi ro khi thay đổi**: Phải bảo đảm giữ nguyên hành vi mượt của toàn bộ 10 bài test AI cũ và giải phóng token tấn công ngay khi quái choáng/hạ gục.
+9. **Tiêu chí nghiệm thu**: `wave8TacticalAndProgression.test.ts` (W8-1a/W8-1b), `aaaEnemyCombatEngine.test.ts` (10/10), `enemySquadDirector.test.ts` (4/4) pass 100% và chạy mượt trên live Chromium (`r8b-combat-ai.png`).
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 13. Boss Design — Thiết kế boss
 1. **Điểm hiện tại (Trước)**: `84 / 100`
@@ -241,39 +241,39 @@
 
 ### 18. Loot System — Hệ thống vật phẩm
 1. **Điểm hiện tại (Trước)**: `83 / 100`
-2. **Bằng chứng đánh giá**: 5 bậc phẩm chất, 5 Bộ Trang Bị (Set Bonus), Pity chống xui, phân giải đồ thừa ra Mảnh Rèn mục tiêu (`salvageExcessGearToForgeShards`), chuyển cấp cường hóa miễn phí 100%, và bộ nhớ đệm dùng chung **`LootOrbVisualCache`** cho mọi quả cầu vật phẩm rơi trong đấu trường 3D.
-3. **Vấn đề tồn tại**: Trước Đợt 6, mỗi quả cầu Vàng/XP/Kim Cương/Hồi máu rơi ra khi hạ quái tạo mới 1 `OctahedronGeometry` và 1 `MeshStandardMaterial` rồi hủy khi nhặt, dễ gây khựng nhẹ khi nổ rương/hạ Boss nhiều loot trên GPU yếu.
-4. **Nguyên nhân gốc rễ**: `spawnLootOrb` cấp phát tài nguyên hình học & vật liệu trực tiếp theo từng lần rơi thay vì dùng chung theo chủng loại.
-5. **Giải pháp đề xuất**: Triển khai **`LootOrbVisualCache`** trong `src/engine/vfxPoolManager.ts` (dùng chung đúng 2 geometry và 4 material cho toàn bộ vòng đời đấu trường, chỉ `dispose()` một lần khi đóng engine) kết hợp kiểm chứng rơi đồ xuyên suốt 8 mốc `5m → 100h` qua `economyTelemetry.test.ts`.
-6. **File hoặc module liên quan**: `src/engine/vfxPoolManager.ts`, `src/engine/GameEngine.ts`, `src/engine/wave6AnimationAndBoss.test.ts`, `src/data/gearData.ts`, `src/data/economyTelemetry.ts`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 6)
-8. **Rủi ro khi thay đổi**: Tuyệt đối không gọi `releaseObject(o.mesh)` khi nhặt từng quả cầu để tránh hủy tài nguyên chia sẻ — chỉ gỡ khỏi `entitiesGroup` và giải phóng duy nhất trong `dispose()`.
-9. **Tiêu chí nghiệm thu**: `wave6AnimationAndBoss.test.ts` chứng minh 100 lần rơi đồ chỉ dùng đúng 2 geometry & 4 material; `earlyProgression.test.ts`, `fairProgression30Day.test.ts`, `economyTelemetry.test.ts` pass 100%.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+2. **Bằng chứng đánh giá**: 5 bậc phẩm chất, 5 Bộ Trang Bị (Set Bonus 2/3 món), Pity chống xui, phân giải đồ thừa ra Mảnh Rèn mục tiêu (`salvageExcessGearToForgeShards`), chuyển cấp cường hóa miễn phí 100%, `LootOrbVisualCache` Zero-GPU-Churn, và bộ so sánh chi tiết từng chỉ số + chuyển đổi Bộ Trang Bị (`computeGearComparison` trong Đợt 8).
+3. **Vấn đề tồn tại**: Trước Đợt 8, khi chọn món trang bị mới trong Kho Đồ, giao diện chỉ báo chênh lệch LC tổng (`▲ +LC`), chưa hiển thị chênh lệch từng chỉ số thực (`ATK/HP/Crit/Tốc bắn/Giáp` bao gồm dòng phụ & ngọc khảm) cũng như cảnh báo **+Kích hoạt / -Mất hiệu ứng Bộ Trang Bị**.
+4. **Nguyên nhân gốc rễ**: `LobbyPanels.tsx` chưa có hàm so sánh đầy đủ giữa món đang mặc và món dự kiến thay kèm mô phỏng `evaluateEquippedGearSets` trước/sau.
+5. **Giải pháp đề xuất**: Triển khai **`LootOrbVisualCache`** (Đợt 6) và **`computeGearComparison`** (`src/data/gearData.ts` + `src/components/LobbyPanels.tsx` Đợt 8) tính chính xác `ΔLC`, `ΔATK/ΔHP/ΔCrit/ΔTốc bắn/ΔGiáp`, đề xuất `Nên Đổi / Yếu Hơn`, và mọi chuyển đổi kích hoạt/mất mốc 2/3 món Bộ Trang Bị.
+6. **File hoặc module liên quan**: `src/data/gearData.ts`, `src/components/LobbyPanels.tsx`, `src/engine/vfxPoolManager.ts`, `src/engine/wave8TacticalAndProgression.test.ts`, `src/data/economyTelemetry.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 6 & Đợt 8)
+8. **Rủi ro khi thay đổi**: Phải tính đủ dòng phụ (`crit_pct`/`aspd_pct`/`move_pct`/`dr_pct`) + ngọc khảm và không làm thay đổi trạng thái lưu thật khi chỉ xem so sánh.
+9. **Tiêu chí nghiệm thu**: `wave8TacticalAndProgression.test.ts` (W8-3) xác minh tăng/mất Bộ 2 món Echo Set & chênh lệch chỉ số chuẩn; `wave6AnimationAndBoss.test.ts` & `economyTelemetry.test.ts` pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 19. Difficulty Scaling — Tăng tiến độ khó
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: 12 chương tăng từ `1,350 LC → 285,000 LC`, `computePowerPressure` điều tiết sát thương/xuyên giáp, Nightmare Ascension I–V & 5 biến dị phòng, nhịp chuyển Pha II/III chuẩn xác cho Boss Hoàng Đạo Ch.1–4, Ch.10–12 & Tháp F20+.
-3. **Vấn đề tồn tại**: Trước Đợt 6, Boss cuối Chương 1–4 bị khóa không thể vào Pha III làm đường cong độ khó cao trào của 4 chương mở đầu bị hụt nhịp so với thiết kế; chưa có bảng TTK/TTD đầy đủ.
-4. **Nguyên nhân gốc rễ**: Ngưỡng `chapter.id >= 10` trong `GameEngine.ts` chặn mất cao trào Pha III ở Ch.1–4 và thiếu công cụ đo TTK/TTD tự động.
-5. **Giải pháp đề xuất**: Bổ sung `estimateCombatTimings` trong `economyTelemetry.ts` (`GAME_BALANCE_REPORT.md`) và sửa đường cong cao trào Pha III thực tế bằng `canBossEnterPhaseThree` + hiệu chỉnh `cadenceBias` / `punishBonusBias` riêng cho từng cung Hoàng Đạo trong Đợt 6.
-6. **File hoặc module liên quan**: `src/engine/tacticalCombatChoreography.ts`, `src/engine/GameEngine.ts`, `src/data/economyTelemetry.ts`, `src/data/fairProgression30Day.ts`, `GAME_BALANCE_REPORT.md`.
-7. **Mức độ ưu tiên**: P1 (Đã hoàn thành Đợt 6)
+2. **Bằng chứng đánh giá**: 12 chương tăng từ `1,350 LC → 285,000 LC`, `computePowerPressure`, Nightmare Ascension I–V & 5 biến dị phòng, nhịp chuyển Pha II/III chuẩn xác cho Boss Hoàng Đạo Ch.1–4, Ch.10–12 & Tháp F20+, và nhịp hồi phục chiến thuật quái thường `resolveMobRecoveryDuration` giảm dần từ Chương 1 (dễ đọc, rộng cửa sổ phản công) đến Chương 12 (gắt hơn bằng nhịp AI thay vì chỉ tăng HP).
+3. **Vấn đề tồn tại**: Trước Đợt 6–8, Boss cuối Ch.1–4 bị khóa Pha III và quái thường chưa có đường cong nhịp hồi phục hậu tấn công (`recovery`) điều chỉnh theo chương.
+4. **Nguyên nhân gốc rễ**: Điều kiện `chapter.id >= 10` trước đây chặn Pha III ở Ch.1–4 và AI quái thường thiếu cửa sổ `recovery` theo độ khó chương.
+5. **Giải pháp đề xuất**: Bổ sung `estimateCombatTimings`, mở chuẩn Pha III bằng `canBossEnterPhaseThree` (Đợt 6), và nối `resolveMobRecoveryDuration(kind, chapterId)` + phối hợp rút lui núp sau `vanguard` (Đợt 8) để độ khó tăng bằng chiều sâu chiến thuật AI.
+6. **File hoặc module liên quan**: `src/engine/aaaEnemyCombatEngine.ts`, `src/engine/tacticalCombatChoreography.ts`, `src/engine/GameEngine.ts`, `src/data/economyTelemetry.ts`, `GAME_BALANCE_REPORT.md`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 6 & Đợt 8)
 8. **Rủi ro khi thay đổi**: Công thức mô phỏng TTK chỉ phản ánh lý thuyết DPS — vẫn cần xác nhận cảm nhận né đòn từ playtest người thật (P3-1).
-9. **Tiêu chí nghiệm thu**: Bảng TTK/TTD chính xác cho cả 8 mốc, Boss Ch.1–4 & Ch.10–12 kích hoạt đủ Pha II/III kèm cửa sổ phản công 2.5s.
-10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
+9. **Tiêu chí nghiệm thu**: Bảng TTK/TTD chính xác cho cả 8 mốc, Boss Ch.1–4 & Ch.10–12 kích hoạt đủ Pha II/III, `resolveMobRecoveryDuration` giảm đơn điệu Ch.1 → Ch.12 (`wave8TacticalAndProgression.test.ts` pass).
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 20. UI/UX — Giao diện và trải nghiệm người dùng
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: Giao diện Celestial Gold thống nhất, Zero-Pill, 0 `backdrop-blur` đè WebGL, 0 chấm `animate-pulse`, HUD tách khỏi vòng 60Hz, hiển thị đầy đủ 100% danh mục Tinh Linh / Cánh / Thú Cưỡi / Thánh Khí / Hào Quang / Trang Phục Ch.1–4 kèm `Xem 3D` trực tiếp ở Sảnh, và đồng bộ sống 8 phím tắt tùy biến trên `GameHUD.tsx` & `SettingsModal.tsx`.
-3. **Vấn đề tồn tại**: Trước Đợt 7, nhãn phím `F` (Phá Giáp) và `X` (Thức Tỉnh Vũ Khí) trên `GameHUD.tsx` vẫn gắn cứng và 5 danh mục sưu tầm từng ẩn vật phẩm Ch.2–4 chưa mở khóa.
-4. **Nguyên nhân gốc rễ**: `GameHUD.tsx` chưa đọc nhãn phím động cho `heavyBreak`/`overdrive` và `LobbyPanels.tsx` từng lọc bỏ vật phẩm chương sau.
-5. **Giải pháp đề xuất**: Triển khai hiển thị đầy đủ toàn bộ danh mục + xem thử 3D thống nhất (`LobbyPanels.tsx`, `WardrobeModal.tsx`, `TitleScreen.tsx`, `App.tsx`) và đồng bộ nhãn phím động `heavyBreakKeyLabel`/`overdriveKeyLabel` trên `GameHUD.tsx` (kiểm chứng trực tiếp bằng Chromium `r6-*.png`, `r7-settings-keybinds.png`, `r7-combat-live.png`).
-6. **File hoặc module liên quan**: `src/components/LobbyPanels.tsx`, `src/components/WardrobeModal.tsx`, `src/components/TitleScreen.tsx`, `src/components/GameHUD.tsx`, `src/components/SettingsModal.tsx`, `src/components/TalentsModal.tsx`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7)
-8. **Rủi ro khi thay đổi**: Phải giữ rõ nút `Xem 3D` tách biệt hoàn toàn với trạng thái trang bị thật và không gây tràn bố cục.
-9. **Tiêu chí nghiệm thu**: Headless Chromium (`1440×900`) xác minh 0 lỗi console, 0 `backdrop-blur`, đầy đủ 8 phím tắt trên Cài Đặt & HUD, 5 danh mục sưu tầm xem thử 3D mượt mà.
-10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
+2. **Bằng chứng đánh giá**: Giao diện Celestial Gold thống nhất, Zero-Pill, 0 `backdrop-blur` đè WebGL, 0 chấm `animate-pulse`, HUD tách khỏi vòng 60Hz, hiển thị đầy đủ 100% danh mục sưu tầm Ch.1–4 kèm `Xem 3D`, đồng bộ sống 8 phím tắt tùy biến trên `GameHUD.tsx`, và trong Đợt 8 bổ sung so sánh chỉ số chi tiết + Bộ Trang Bị trên `LobbyPanels.tsx` cùng dự báo Ngã Rẽ Tiến Hóa trực tiếp trên thẻ Tarot `SkillDraftModal.tsx`.
+3. **Vấn đề tồn tại**: Trước Đợt 7–8, nhãn phím `F`/`X` trên HUD gắn cứng, khung so sánh đồ mới chỉ hiện chênh lệch LC tổng và thẻ chọn kỹ năng chưa báo rõ nhánh Tiến Hóa sắp mở.
+4. **Nguyên nhân gốc rễ**: Thiếu hàm tính chênh lệch trang bị chi tiết (`computeGearComparison`) và hàm dự báo tiến hóa trên thẻ chọn kỹ năng (`getSkillEvolutionPreview`).
+5. **Giải pháp đề xuất**: Hoàn thiện trọn bộ UX chiến đấu & kho đồ trong Đợt 7–8 (`GameHUD.tsx`, `LobbyPanels.tsx`, `SkillDraftModal.tsx`, `WardrobeModal.tsx`, `SettingsModal.tsx`), kiểm chứng sống bằng Chromium (`r7-*.png`, `r8b-equipment.png`, `r8b-skill-draft.png`, `r8b-combat-ai.png`).
+6. **File hoặc module liên quan**: `src/components/LobbyPanels.tsx`, `src/components/SkillDraftModal.tsx`, `src/components/WardrobeModal.tsx`, `src/components/GameHUD.tsx`, `src/components/SettingsModal.tsx`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7 & Đợt 8)
+8. **Rủi ro khi thay đổi**: Phải giữ thẻ Tarot và ngăn Kho Đồ gọn gàng, không tràn chiều dọc ở độ phân giải `1440×900` và di động.
+9. **Tiêu chí nghiệm thu**: Headless Chromium (`1440×900`) xác minh 0 lỗi console, 0 `backdrop-blur`, 8 phím tắt trên HUD/Settings, so sánh trang bị và dự báo Tiến Hóa hiển thị sắc nét.
+10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
 
 ### 21. Game Feel — Cảm giác chơi
 1. **Điểm hiện tại (Trước)**: `82 / 100`
@@ -325,15 +325,15 @@
 
 ### 25. Replayability — Giá trị chơi lại
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: 4 tướng Hoàng Đạo với lối chơi khác nhau, 40+ kỹ năng roguelike trong trận, 5 Bộ Trang Bị, Tháp Vô Tận, Nightmare Ascension I–V + 5 Mutators, Đấu Trường Cân Bằng.
-3. **Vấn đề tồn tại**: Tướng Sylvia thiếu kỹ năng đặc trưng; người chơi Endgame sau 60h thiếu động lực tiếp tục tích lũy Vàng từ các chế độ lặp lại.
-4. **Nguyên nhân gốc rễ**: Trùng hiệu ứng kỹ năng chủ động và trần Thiên Phú cố định ở 160.
-5. **Giải pháp đề xuất**: Bổ sung `'jade_bastion'` tạo lối build chống chịu/làm chậm cho Sylvia và mở **Tinh Tuý Hoàng Đạo 500 bậc** tạo mục tiêu dài hạn sau 100h+.
-6. **File hoặc module liên quan**: `src/data/phase5Data.ts`, `src/data/talentsData.ts`, `src/engine/GameEngine.ts`.
-7. **Mức độ ưu tiên**: P1
+2. **Bằng chứng đánh giá**: 4 tướng Hoàng Đạo với lối chơi khác nhau, 40+ kỹ năng roguelike + 12 nhánh Tiến Hóa Boss/AoE hiển thị dự báo rõ trên thẻ Tarot (`SkillDraftModal.tsx`), 5 Bộ Trang Bị có so sánh kích hoạt bộ trực quan, Tháp Vô Tận, Nightmare Ascension I–V + 5 Mutators, Đấu Trường Cân Bằng.
+3. **Vấn đề tồn tại**: Trước đây tướng Sylvia thiếu kỹ năng đặc trưng, người chơi Endgame thiếu động lực tiêu Vàng sau 60h, và người chơi khó chủ động săn đủ 12 nhánh Tiến Hóa kỹ năng khi chọn thẻ.
+4. **Nguyên nhân gốc rễ**: Trùng hiệu ứng kỹ năng chủ động, trần Thiên Phú cố định và thiếu dự báo nhánh Tiến Hóa trên thẻ chọn kỹ năng.
+5. **Giải pháp đề xuất**: Bổ sung `'jade_bastion'`, mở **Tinh Tuý Hoàng Đạo 500 bậc**, và trong Đợt 8 gắn **`getSkillEvolutionPreview`** trực tiếp lên thẻ chọn kỹ năng + hiển thị danh sách Tiến Hóa đang bật giúp mỗi lượt chơi hình thành nhiều lối build (Boss vs AoE) rõ rệt hơn.
+6. **File hoặc module liên quan**: `src/engine/skillEvolutionEngine.ts`, `src/components/SkillDraftModal.tsx`, `src/data/phase5Data.ts`, `src/data/talentsData.ts`, `src/engine/GameEngine.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 8)
 8. **Rủi ro khi thay đổi**: Cần cân bằng sát thương Boss của Paragon (+0.2%/bậc, trần +40%) để không biến Nightmare Tier V thành quá dễ.
-9. **Tiêu chí nghiệm thu**: Kiểm chứng bằng unit test và mô phỏng 100h đạt Paragon Bậc 44/500 mà không phá vỡ trần chỉ số.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+9. **Tiêu chí nghiệm thu**: Kiểm chứng bằng unit test (`wave8TacticalAndProgression.test.ts`, `economyTelemetry.test.ts`) và live Chromium (`r8b-skill-draft.png`).
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 26. Player Retention — Khả năng giữ chân người chơi
 1. **Điểm hiện tại (Trước)**: `78 / 100`
@@ -376,11 +376,11 @@
 2. **Bằng chứng đánh giá**: Toàn bộ bộ kiểm thử `node:test` (`src/**/*.test.ts` + `tests/*.test.mjs`), benchmark hiệu năng `tools/benchmark-spatial-physics.ts`, mô phỏng 8 mốc `tools/simulate-playtime-milestones.ts`, kiểm định `firestore.rules` và kiểm chứng trình duyệt sống Chromium (`playwright-cli`).
 3. **Vấn đề tồn tại**: Trước đây có lỗi lệch contract Ch.3–4, thiếu regression gate cho Paragon/Security/Spatial Physics/LiveOps Schedule/Ch.5–12 Landmarks/GroundTelegraphPool, và lỗi `ENOENT` CDN.
 4. **Nguyên nhân gốc rễ**: Cập nhật tính năng nhanh chưa đồng bộ toàn bộ regression gate.
-5. **Giải pháp đề xuất**: Khắc phục 100% lỗi gốc, bổ sung test cho `zodiacRealmArchitecture`, `GroundTelegraphVisualPool`, `chapterAssetVisibility`, `SpatialHashGrid`, `projectilePhysicsSystem`, `zodiacMusicDirector`, `liveOpsConfig` (P2-4b), `EnemySquadDirector`, `serverSecurity`, `saveIntegrity` và kiểm chứng trực tiếp giao tranh 3D & 8 phím tắt trên trình duyệt thật.
+5. **Giải pháp đề xuất**: Khắc phục 100% lỗi gốc, bổ sung test cho `wave8TacticalAndProgression`, `zodiacRealmArchitecture`, `GroundTelegraphVisualPool`, `chapterAssetVisibility`, `SpatialHashGrid`, `projectilePhysicsSystem`, `zodiacMusicDirector`, `liveOpsConfig` (P2-4b), `EnemySquadDirector`, `serverSecurity`, `saveIntegrity` và kiểm chứng trực tiếp Kho Đồ, Thẻ Tarot Tiến Hóa, Cài Đặt 8 Phím & giao tranh 3D trên trình duyệt thật.
 6. **File hoặc module liên quan**: `tests/*.test.mjs`, `src/**/*.test.ts`, `tools/benchmark-spatial-physics.ts`, `tools/simulate-playtime-milestones.ts`, `QA_TEST_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–7)
+7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–8)
 8. **Rủi ro khi thay đổi**: Mọi cải tiến mới bắt buộc chạy lại full suite và trình duyệt sống để chống regression.
-9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`454 bài kiểm thử | 446 PASS | 0 FAIL | 8 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console / 0 cảnh báo.
+9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`458 bài kiểm thử | 450 PASS | 0 FAIL | 8 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console / 0 cảnh báo.
 10. **Điểm sau khi triển khai và kiểm thử**: `95 / 100`
 
 ### 30. Live Operations — Vận hành và mở rộng
