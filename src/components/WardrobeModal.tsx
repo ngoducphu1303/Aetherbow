@@ -1,11 +1,10 @@
-import { canClaimChapter2Asset } from '../data/chapter2Collection';
-import { canClaimChapter3Asset } from '../data/chapter3Collection';
-import { canClaimChapter4Asset } from '../data/chapter4Collection';
+import { getChapterAssetLockState, sortCollectionByChapterOrder } from '../data/chapterAssetVisibility';
 import React, { useState } from 'react';
 import {
   Camera,
   Check,
   Eye,
+  Lock,
   RotateCcw,
   RotateCw,
   Shield,
@@ -214,10 +213,14 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
 
         <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pr-1">
           {tab === 'halos' &&
-            DIVINE_HALO_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((h) => {
+            sortCollectionByChapterOrder(DIVINE_HALO_CATALOG).map((h) => {
               const owned = unlockedHalos.has(h.id);
               const equipped = save.equippedHaloId === h.id;
               const isPreviewing = activeHaloPreview === h.id;
+              const { isChapterLocked, shortLockLabel, requiredChapter } = getChapterAssetLockState(
+                h.id,
+                save.highestChapterCleared
+              );
               const hasCrystals = (save.divineCrystals ?? 0) >= h.unlockDivineCrystals;
               const hasGems = save.gems >= h.unlockGems;
               const canUnlock = hasCrystals || hasGems;
@@ -236,15 +239,18 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         <ResilientAssetImg
                           src={SOLAR_LEO_ITEM_THUMBNAILS[h.id]}
                           alt={h.name}
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full object-cover ${!owned ? 'opacity-75 grayscale-[25%]' : ''}`}
                           fallback={<Sparkles className="w-4 h-4 text-amber-300 m-auto" />}
                         />
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                        <span className="text-amber-300">{h.badge}</span>
-                        {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
+                        <span className="text-amber-300 truncate">
+                          {h.badge}
+                          {!owned && shortLockLabel ? ` · ${shortLockLabel}` : ''}
+                        </span>
+                        {equipped && <span className="text-emerald-300 shrink-0">ĐANG ĐEO</span>}
                       </div>
                       <div className="text-xs font-black text-white">{h.name}</div>
                       <div className="text-[10px] text-slate-300 mt-1">
@@ -270,6 +276,15 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         }`}
                       >
                         {equipped ? 'Tháo' : 'Trang Bị'}
+                      </button>
+                    ) : isChapterLocked ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900/90 border border-amber-400/25 text-[10px] font-black text-amber-200/80 flex items-center justify-center gap-1 whitespace-nowrap cursor-not-allowed"
+                      >
+                        <Lock className="w-3 h-3 shrink-0" />
+                        <span>Vượt Ch.{requiredChapter}</span>
                       </button>
                     ) : (
                       <button
@@ -330,10 +345,14 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                 </div>
               </div>
 
-              {ZODIAC_MOUNTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((m) => {
+              {sortCollectionByChapterOrder(ZODIAC_MOUNTS).map((m) => {
                 const owned = unlockedMounts.has(m.id);
                 const equipped = equippedMountId === m.id;
                 const isPreviewing = activeMountPreview === m.id && activeSteedPreview === null;
+                const { isChapterLocked, shortLockLabel, requiredChapter } = getChapterAssetLockState(
+                  m.id,
+                  save.highestChapterCleared
+                );
                 const hasShards = (save.mountShards ?? 0) >= m.unlockShards;
                 const hasGems = save.gems >= m.unlockGems;
                 const canUnlock = hasShards || hasGems;
@@ -352,15 +371,18 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                           <ResilientAssetImg
                             src={SOLAR_LEO_ITEM_THUMBNAILS[m.id]}
                             alt={m.name}
-                            className="w-full h-full object-cover"
+                            className={`w-full h-full object-cover ${!owned ? 'opacity-75 grayscale-[25%]' : ''}`}
                             fallback={<Sparkles className="w-4 h-4 text-amber-300 m-auto" />}
                           />
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                          <span className="text-amber-300">{m.badge}</span>
-                          {equipped && <span className="text-emerald-300">ĐANG CƯỠI</span>}
+                          <span className="text-amber-300 truncate">
+                            {m.badge}
+                            {!owned && shortLockLabel ? ` · ${shortLockLabel}` : ''}
+                          </span>
+                          {equipped && <span className="text-emerald-300 shrink-0">ĐANG CƯỠI</span>}
                         </div>
                         <div className="text-xs font-black text-white">{m.name}</div>
                         <div className="text-[10px] text-slate-300 mt-1">
@@ -391,6 +413,15 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                           }`}
                         >
                           {equipped ? 'Tháo' : 'Trang Bị'}
+                        </button>
+                      ) : isChapterLocked ? (
+                        <button
+                          type="button"
+                          disabled
+                          className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900/90 border border-amber-400/25 text-[10px] font-black text-amber-200/80 flex items-center justify-center gap-1 whitespace-nowrap cursor-not-allowed"
+                        >
+                          <Lock className="w-3 h-3 shrink-0" />
+                          <span>Vượt Ch.{requiredChapter}</span>
                         </button>
                       ) : (
                         <button
@@ -478,10 +509,14 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
           )}
 
           {tab === 'wings' &&
-            ZODIAC_WINGS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((w) => {
+            sortCollectionByChapterOrder(ZODIAC_WINGS).map((w) => {
               const owned = unlockedWings.has(w.id);
               const equipped = save.equippedWingId === w.id;
               const isPreviewing = activeWingPreview === w.id;
+              const { isChapterLocked, shortLockLabel, requiredChapter } = getChapterAssetLockState(
+                w.id,
+                save.highestChapterCleared
+              );
               const hasFeathers = (save.wingFeathers ?? 0) >= w.unlockFeathers;
               const hasGems = save.gems >= w.unlockGems;
               const canUnlock = hasFeathers || hasGems;
@@ -500,15 +535,18 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         <ResilientAssetImg
                           src={SOLAR_LEO_ITEM_THUMBNAILS[w.id]}
                           alt={w.name}
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full object-cover ${!owned ? 'opacity-75 grayscale-[25%]' : ''}`}
                           fallback={<Sparkles className="w-4 h-4 text-amber-300 m-auto" />}
                         />
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-1">
-                        <span className="text-sky-300">{w.badge}</span>
-                        {equipped && <span className="text-emerald-300">ĐANG ĐEO</span>}
+                        <span className="text-sky-300 truncate">
+                          {w.badge}
+                          {!owned && shortLockLabel ? ` · ${shortLockLabel}` : ''}
+                        </span>
+                        {equipped && <span className="text-emerald-300 shrink-0">ĐANG ĐEO</span>}
                       </div>
                       <div className="text-xs font-black text-white">{w.name}</div>
                       <div className="text-[10px] text-slate-300 mt-1">
@@ -534,6 +572,15 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         }`}
                       >
                         {equipped ? 'Tháo' : 'Trang Bị'}
+                      </button>
+                    ) : isChapterLocked ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900/90 border border-amber-400/25 text-[10px] font-black text-amber-200/80 flex items-center justify-center gap-1 whitespace-nowrap cursor-not-allowed"
+                      >
+                        <Lock className="w-3 h-3 shrink-0" />
+                        <span>Vượt Ch.{requiredChapter}</span>
                       </button>
                     ) : (
                       <button
@@ -614,10 +661,14 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
           })()}
 
           {tab === 'skins' &&
-            HERO_SKINS.filter((sk) => (!sk.heroId || sk.heroId === save.selectedHeroId) && canClaimChapter2Asset(sk.id, save.highestChapterCleared) && canClaimChapter3Asset(sk.id, save.highestChapterCleared) && canClaimChapter4Asset(sk.id, save.highestChapterCleared)).map((sk) => {
+            sortCollectionByChapterOrder(HERO_SKINS.filter((sk) => !sk.heroId || sk.heroId === save.selectedHeroId)).map((sk) => {
               const owned = unlockedSkins.has(sk.id);
               const equipped = equippedSkin === sk.id;
               const isPreviewing = activeSkinPreview === sk.id;
+              const { isChapterLocked, shortLockLabel, requiredChapter } = getChapterAssetLockState(
+                sk.id,
+                save.highestChapterCleared
+              );
               const canUnlock = save.gems >= sk.unlockGems && save.gold >= sk.unlockGold;
               const assetPack = getSkinAssetPack(sk.id, save.selectedHeroId);
               return (
@@ -634,14 +685,17 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                       <ResilientAssetImg
                         src={assetPack.icon}
                         alt={sk.name}
-                        className="w-full h-full object-cover object-top"
+                        className={`w-full h-full object-cover object-top ${!owned ? 'opacity-75 grayscale-[25%]' : ''}`}
                         fallback={<Sparkles className="w-4 h-4 text-purple-300 m-auto" />}
                       />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1 text-[10px] font-black mb-0.5">
-                        <span className="text-purple-300">{sk.badge}</span>
-                        {equipped && <span className="text-emerald-300">ĐANG MẶC</span>}
+                        <span className="text-purple-300 truncate">
+                          {sk.badge}
+                          {!owned && shortLockLabel ? ` · ${shortLockLabel}` : ''}
+                        </span>
+                        {equipped && <span className="text-emerald-300 shrink-0">ĐANG MẶC</span>}
                       </div>
                       <div className="text-xs font-black text-white truncate">{sk.name}</div>
                       <div className="text-[10px] text-slate-300 mt-0.5 font-mono-nums">
@@ -673,6 +727,15 @@ export const WardrobeModal: React.FC<WardrobeModalProps> = ({
                         ) : (
                           'Trang Bị'
                         )}
+                      </button>
+                    ) : isChapterLocked ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900/90 border border-amber-400/25 text-[10px] font-black text-amber-200/80 flex items-center justify-center gap-1 whitespace-nowrap cursor-not-allowed"
+                      >
+                        <Lock className="w-3 h-3 shrink-0" />
+                        <span>Vượt Ch.{requiredChapter}</span>
                       </button>
                     ) : (
                       <button

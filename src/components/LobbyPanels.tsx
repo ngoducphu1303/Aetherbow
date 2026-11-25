@@ -1,8 +1,6 @@
 import { CHAPTER_EQUIPMENT_SETS, getChapterEquipmentStatus } from '../data/chapterEquipmentSets';
 import { CHAPTERS } from '../data/chaptersData';
-import { canClaimChapter2Asset } from '../data/chapter2Collection';
-import { canClaimChapter3Asset } from '../data/chapter3Collection';
-import { canClaimChapter4Asset } from '../data/chapter4Collection';
+import { getChapterAssetLockState, sortCollectionByChapterOrder } from '../data/chapterAssetVisibility';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpCircle,
@@ -224,6 +222,7 @@ import {
   RuneId,
   RuneInstance,
   SaveData,
+  WardrobePreviewOverrides,
   WeaponAuraId,
   WingId,
 } from '../types/game';
@@ -1176,6 +1175,8 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
 interface HeroesPanelProps {
   save: SaveData;
   previewHeroId: HeroId;
+  lobbyPreview?: WardrobePreviewOverrides;
+  onChangeLobbyPreview?: (next: WardrobePreviewOverrides) => void;
   initialSubTab?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos';
   onPreviewHero: (heroId: HeroId) => void;
   onSelectHero: (heroId: HeroId) => void;
@@ -1218,6 +1219,8 @@ interface HeroesPanelProps {
 export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   save,
   previewHeroId,
+  lobbyPreview = {},
+  onChangeLobbyPreview,
   initialSubTab = 'roster',
   onPreviewHero,
   onSelectHero,
@@ -1675,6 +1678,28 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 </div>
               )}
 
+              {onChangeLobbyPreview &&
+                (lobbyPreview.petId !== undefined ||
+                  lobbyPreview.skinId !== undefined ||
+                  lobbyPreview.wingId !== undefined ||
+                  lobbyPreview.mountId !== undefined ||
+                  lobbyPreview.astralSteedId !== undefined ||
+                  lobbyPreview.weaponAuraId !== undefined ||
+                  lobbyPreview.artifactId !== undefined ||
+                  lobbyPreview.haloId !== undefined) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playUiClick(0.95);
+                      onChangeLobbyPreview({});
+                    }}
+                    className="px-2 py-1 rounded-lg bg-sky-500/15 border border-sky-400/45 hover:border-sky-300 text-[11px] font-black flex items-center gap-1 text-sky-200 whitespace-nowrap cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3 shrink-0" />
+                    <span>Hoàn Tác 3D</span>
+                  </button>
+                )}
+
               {onOpenWardrobe && (
                 <button
                   type="button"
@@ -1880,11 +1905,16 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {PETS_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((pet) => {
+                {sortCollectionByChapterOrder(PETS_CATALOG).map((pet) => {
                   const inst = ownedPets.find((p) => p.petId === pet.id);
                   const lv = inst?.level ?? 1;
                   const isEquipped = save.equippedPetId === pet.id;
                   const isEvolved = (save.evolvedPets ?? []).includes(pet.id);
+                  const isPreviewing = lobbyPreview.petId === pet.id;
+                  const { isChapterLocked, lockLabel, shortLockLabel } = getChapterAssetLockState(
+                    pet.id,
+                    save.highestChapterCleared
+                  );
                   const baseStats = getPetStats(pet.id, lv);
                   const evoMult = getEvolvedPetMultiplier(isEvolved);
                   const pStats = {
@@ -1910,7 +1940,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     <div
                       key={pet.id}
                       className={`rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${
-                        isEquipped || isEvolved ? 'cel-panel-ornate' : 'cel-panel'
+                        isPreviewing
+                          ? 'cel-panel-ornate ring-1 ring-sky-400/70'
+                          : isEquipped || isEvolved
+                            ? 'cel-panel-ornate'
+                            : 'cel-panel'
                       }`}
                     >
                       <div>
@@ -1928,7 +1962,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 <ResilientAssetImg
                                   src={SOLAR_LEO_ITEM_THUMBNAILS[pet.id]}
                                   alt={displayName}
-                                  className="w-full h-full object-cover"
+                                  className={`w-full h-full object-cover ${!inst ? 'opacity-75 grayscale-[25%]' : ''}`}
                                   fallback={
                                     isEvolved ? (
                                       <Crown className="w-5 h-5 text-slate-950" />
@@ -1947,13 +1981,20 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                               <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black text-amber-300 uppercase">
                                 <span>{pet.rarity}</span>
                                 <span aria-hidden="true" className="text-slate-600">·</span>
-                                <span className="text-emerald-300">
-                                  {inst ? `Cấp ${lv}` : 'Chưa Triệu Hồi'}
+                                <span className={inst ? 'text-emerald-300' : isChapterLocked ? 'text-amber-200' : 'text-slate-400'}>
+                                  {inst ? `Cấp ${lv}` : shortLockLabel ?? 'Chưa Triệu Hồi'}
                                 </span>
+                                {isPreviewing && (
+                                  <>
+                                    <span aria-hidden="true" className="text-slate-600">·</span>
+                                    <span className="text-sky-300">Đang Xem 3D</span>
+                                  </>
+                                )}
                                 {isEvolved && (
-                                  <span className="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-amber-200 text-[9px]">
-                                    THẦN SỦNG 3D
-                                  </span>
+                                  <>
+                                    <span aria-hidden="true" className="text-slate-600">·</span>
+                                    <span className="text-amber-200">THẦN SỦNG 3D</span>
+                                  </>
                                 )}
                               </div>
                               <h5 className="font-display text-sm font-black text-white truncate">
@@ -1963,7 +2004,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                           </div>
 
                           {isEquipped && (
-                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/60 text-[10px] font-black text-emerald-300 shrink-0">
+                            <span className="text-[10px] font-black text-emerald-300 shrink-0 uppercase">
                               Đang Theo
                             </span>
                           )}
@@ -2013,6 +2054,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-400/15">
+                        {onChangeLobbyPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick(1.06);
+                              onChangeLobbyPreview({
+                                ...lobbyPreview,
+                                petId: isPreviewing ? undefined : pet.id,
+                              });
+                            }}
+                            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                              isPreviewing
+                                ? 'bg-sky-500/25 border border-sky-300 text-sky-200'
+                                : 'a2-slate-btn text-sky-200'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isPreviewing ? 'Đang Xem' : 'Xem 3D'}</span>
+                          </button>
+                        )}
                         {inst ? (
                           <>
                             <button
@@ -2042,6 +2103,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                               </span>
                             </button>
                           </>
+                        ) : isChapterLocked ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 border border-amber-400/25 text-xs font-black text-amber-200/80 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-not-allowed"
+                          >
+                            <Lock className="w-3.5 h-3.5 shrink-0" />
+                            <span>{lockLabel}</span>
+                          </button>
                         ) : (
                           <>
                             {pet.unlockGold > 0 && (
@@ -2158,9 +2228,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </div>
                     );
                   })()}
-                  {HERO_SKINS.filter((skin) => (!skin.heroId || skin.heroId === hero.id) && canClaimChapter2Asset(skin.id, save.highestChapterCleared) && canClaimChapter3Asset(skin.id, save.highestChapterCleared) && canClaimChapter4Asset(skin.id, save.highestChapterCleared)).map((skin) => {
+                  {sortCollectionByChapterOrder(HERO_SKINS.filter((skin) => !skin.heroId || skin.heroId === hero.id)).map((skin) => {
                     const isOwned = unlockedSkins.includes(skin.id);
                     const isEquipped = activeSkinId === skin.id;
+                    const isPreviewing = lobbyPreview.skinId === skin.id;
+                    const { isChapterLocked, lockLabel, shortLockLabel } = getChapterAssetLockState(
+                      skin.id,
+                      save.highestChapterCleared
+                    );
                     const cHex = skin.cloakHex
                       ? `#${skin.cloakHex.toString(16).padStart(6, '0')}`
                       : `#${hero.cloakHex.toString(16).padStart(6, '0')}`;
@@ -2174,7 +2249,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       <div
                         key={skin.id}
                         className={`rounded-2xl p-3.5 flex flex-col justify-between gap-3 ${
-                          isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                          isPreviewing
+                            ? 'cel-panel-ornate ring-1 ring-sky-400/70'
+                            : isEquipped
+                              ? 'cel-panel-ornate'
+                              : 'cel-panel'
                         }`}
                       >
                         <div className="flex items-start gap-3">
@@ -2182,16 +2261,18 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                             <ResilientAssetImg
                               src={assetPack.portrait}
                               alt={skin.name}
-                              className="w-full h-full object-cover object-top"
+                              className={`w-full h-full object-cover object-top ${!isOwned ? 'opacity-75 grayscale-[25%]' : ''}`}
                               fallback={<Sparkles className="w-5 h-5 text-amber-300 m-auto" />}
                             />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[10px] font-black text-purple-300 tracking-wider">
+                              <span className="text-[10px] font-black text-purple-300 tracking-wider truncate">
                                 {skin.badge}
+                                {!isOwned && shortLockLabel ? ` · ${shortLockLabel}` : ''}
+                                {isPreviewing ? ' · Đang Xem 3D' : ''}
                               </span>
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1 shrink-0">
                                 <span
                                   className="w-3.5 h-3.5 rounded-full border border-white/60"
                                   style={{ backgroundColor: cHex }}
@@ -2217,56 +2298,88 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                           </div>
                         </div>
 
-                        {isOwned ? (
-                          <button
-                            type="button"
-                            onClick={() => onEquipSkin(hero.id, isEquipped ? 'default' : skin.id)}
-                            className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                              isEquipped
-                                ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/60'
-                                : 'a2-emerald-btn'
-                            }`}
-                          >
-                            {isEquipped && <Check className="w-3.5 h-3.5" />}
-                            <span>{isEquipped ? 'Đang Mặc · Về Mặc Định' : `Mặc Cho ${hero.name}`}</span>
-                          </button>
-                        ) : skin.unlockGold === 0 && skin.unlockGems === 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => onUnlockSkin(skin.id, 'gold', hero.id)}
-                            className="a2-emerald-btn w-full py-2 rounded-xl text-xs font-black cursor-pointer"
-                          >
-                            Nhận Miễn Phí
-                          </button>
-                        ) : skin.unlockGold > 0 ? (
-                          <button
-                            type="button"
-                            disabled={save.gold < skin.unlockGold}
-                            onClick={() => onUnlockSkin(skin.id, 'gold', hero.id)}
-                            className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
-                              save.gold >= skin.unlockGold
-                                ? 'a2-yellow-btn'
-                                : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                            }`}
-                          >
-                            <GoldCoinIcon className="w-3.5 h-3.5" />
-                            <span>Mở Khóa · {skin.unlockGold}</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={save.gems < skin.unlockGems}
-                            onClick={() => onUnlockSkin(skin.id, 'gems', hero.id)}
-                            className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
-                              save.gems >= skin.unlockGems
-                                ? 'a2-purple-btn'
-                                : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
-                            }`}
-                          >
-                            <SoulGemIcon className="w-3.5 h-3.5" />
-                            <span>Mở Khóa · {skin.unlockGems}</span>
-                          </button>
-                        )}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {onChangeLobbyPreview && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.06);
+                                onChangeLobbyPreview({
+                                  ...lobbyPreview,
+                                  skinId: isPreviewing ? undefined : skin.id,
+                                });
+                              }}
+                              className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                                isPreviewing
+                                  ? 'bg-sky-500/25 border border-sky-300 text-sky-200'
+                                  : 'a2-slate-btn text-sky-200'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5 shrink-0" />
+                              <span>{isPreviewing ? 'Đang Xem' : 'Xem 3D'}</span>
+                            </button>
+                          )}
+
+                          {isOwned ? (
+                            <button
+                              type="button"
+                              onClick={() => onEquipSkin(hero.id, isEquipped ? 'default' : skin.id)}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                                isEquipped
+                                  ? 'bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/60'
+                                  : 'a2-emerald-btn'
+                              }`}
+                            >
+                              {isEquipped && <Check className="w-3.5 h-3.5" />}
+                              <span>{isEquipped ? 'Đang Mặc · Về Mặc Định' : `Mặc Cho ${hero.name}`}</span>
+                            </button>
+                          ) : isChapterLocked ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 border border-amber-400/25 text-xs font-black text-amber-200/80 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-not-allowed"
+                            >
+                              <Lock className="w-3.5 h-3.5 shrink-0" />
+                              <span>{lockLabel}</span>
+                            </button>
+                          ) : skin.unlockGold === 0 && skin.unlockGems === 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => onUnlockSkin(skin.id, 'gold', hero.id)}
+                              className="a2-emerald-btn flex-1 py-2 px-3 rounded-xl text-xs font-black cursor-pointer"
+                            >
+                              Nhận Miễn Phí
+                            </button>
+                          ) : skin.unlockGold > 0 ? (
+                            <button
+                              type="button"
+                              disabled={save.gold < skin.unlockGold}
+                              onClick={() => onUnlockSkin(skin.id, 'gold', hero.id)}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
+                                save.gold >= skin.unlockGold
+                                  ? 'a2-yellow-btn'
+                                  : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                              }`}
+                            >
+                              <GoldCoinIcon className="w-3.5 h-3.5" />
+                              <span>Mở Khóa · {skin.unlockGold}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={save.gems < skin.unlockGems}
+                              onClick={() => onUnlockSkin(skin.id, 'gems', hero.id)}
+                              className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-mono-nums ${
+                                save.gems >= skin.unlockGems
+                                  ? 'a2-purple-btn'
+                                  : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                              }`}
+                            >
+                              <SoulGemIcon className="w-3.5 h-3.5" />
+                              <span>Mở Khóa · {skin.unlockGems}</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -2311,9 +2424,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {ZODIAC_WINGS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((w) => {
+                {sortCollectionByChapterOrder(ZODIAC_WINGS).map((w) => {
                   const isOwned = unlockedWings.includes(w.id);
                   const isEquipped = equippedWingId === w.id;
+                  const isPreviewing = lobbyPreview.wingId === w.id;
+                  const { isChapterLocked, lockLabel, shortLockLabel } = getChapterAssetLockState(
+                    w.id,
+                    save.highestChapterCleared
+                  );
                   const lv = wingLevels[w.id] ?? 1;
                   const stats = getWingStats(w.id, lv);
                   const upCost = getWingUpgradeCost(lv);
@@ -2325,7 +2443,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     <div
                       key={w.id}
                       className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
-                        isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                        isPreviewing
+                          ? 'cel-panel-ornate ring-1 ring-sky-400/70'
+                          : isEquipped
+                            ? 'cel-panel-ornate'
+                            : 'cel-panel'
                       }`}
                     >
                       <div>
@@ -2341,7 +2463,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 <ResilientAssetImg
                                   src={SOLAR_LEO_ITEM_THUMBNAILS[w.id]}
                                   alt={w.name}
-                                  className="w-full h-full object-cover"
+                                  className={`w-full h-full object-cover ${!isOwned ? 'opacity-75 grayscale-[25%]' : ''}`}
                                   fallback={<WingFeatherIcon className="w-5 h-5" />}
                                 />
                               ) : (
@@ -2349,14 +2471,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                               )}
                             </span>
                             <div>
-                              <span className="text-[10px] font-black uppercase text-amber-300">
-                                {w.badge} {isOwned ? `· Cấp ${lv}/${MAX_WING_LEVEL}` : ''}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1 text-[10px] font-black uppercase text-amber-300">
+                                <span>{w.badge}</span>
+                                {isOwned && <span>· Cấp {lv}/{MAX_WING_LEVEL}</span>}
+                                {!isOwned && shortLockLabel && (
+                                  <span className="text-amber-200">· {shortLockLabel}</span>
+                                )}
+                                {isPreviewing && (
+                                  <span className="text-sky-300">· Đang Xem 3D</span>
+                                )}
+                              </div>
                               <h5 className="font-display text-sm sm:text-base font-black text-white">
                                 {w.name}
                               </h5>
                             </div>
                           </div>
+                          {isEquipped && (
+                            <span className="text-[10px] font-black uppercase text-emerald-300 shrink-0">
+                              Đang Đeo
+                            </span>
+                          )}
                         </div>
 
                         <p className="text-xs text-slate-300 leading-relaxed">{w.desc}</p>
@@ -2403,6 +2537,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-1">
+                        {onChangeLobbyPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick(1.06);
+                              onChangeLobbyPreview({
+                                ...lobbyPreview,
+                                wingId: isPreviewing ? undefined : w.id,
+                              });
+                            }}
+                            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                              isPreviewing
+                                ? 'bg-sky-500/25 border border-sky-300 text-sky-200'
+                                : 'a2-slate-btn text-sky-200'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isPreviewing ? 'Đang Xem' : 'Xem 3D'}</span>
+                          </button>
+                        )}
                         {isOwned ? (
                           <>
                             <button
@@ -2431,6 +2585,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 : `Cường Hóa (${upCost.feathers} Lông + ${upCost.gold} Vàng)`}
                             </button>
                           </>
+                        ) : isChapterLocked ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 border border-amber-400/25 text-xs font-black text-amber-200/80 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-not-allowed"
+                          >
+                            <Lock className="w-3.5 h-3.5 shrink-0" />
+                            <span>{lockLabel}</span>
+                          </button>
                         ) : (
                           <>
                             <button
@@ -2528,9 +2691,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ZODIAC_MOUNTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((m) => {
+                {sortCollectionByChapterOrder(ZODIAC_MOUNTS).map((m) => {
                   const isOwned = unlockedMounts.includes(m.id);
                   const isEquipped = equippedMountId === m.id;
+                  const isPreviewing =
+                    lobbyPreview.mountId === m.id && lobbyPreview.astralSteedId === undefined;
+                  const { isChapterLocked, lockLabel, shortLockLabel } = getChapterAssetLockState(
+                    m.id,
+                    save.highestChapterCleared
+                  );
                   const lv = Math.max(1, mountLevels[m.id] ?? 1);
                   const maxLv = lv >= MAX_MOUNT_LEVEL;
                   const statsM = getMountStats(m.id, lv);
@@ -2542,7 +2711,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     <div
                       key={m.id}
                       className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
-                        isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                        isPreviewing
+                          ? 'cel-panel-ornate ring-1 ring-sky-400/70'
+                          : isEquipped
+                            ? 'cel-panel-ornate'
+                            : 'cel-panel'
                       }`}
                     >
                       <div>
@@ -2558,7 +2731,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 <ResilientAssetImg
                                   src={SOLAR_LEO_ITEM_THUMBNAILS[m.id]}
                                   alt={m.name}
-                                  className="w-full h-full object-cover"
+                                  className={`w-full h-full object-cover ${!isOwned ? 'opacity-75 grayscale-[25%]' : ''}`}
                                   fallback={<MountShardIcon className="w-5 h-5" />}
                                 />
                               ) : (
@@ -2566,14 +2739,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                               )}
                             </span>
                             <div>
-                              <span className="text-[10px] font-black uppercase text-amber-300">
-                                {m.badge} {isOwned ? `· Cấp ${lv}/${MAX_MOUNT_LEVEL}` : ''}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1 text-[10px] font-black uppercase text-amber-300">
+                                <span>{m.badge}</span>
+                                {isOwned && <span>· Cấp {lv}/{MAX_MOUNT_LEVEL}</span>}
+                                {!isOwned && shortLockLabel && (
+                                  <span className="text-amber-200">· {shortLockLabel}</span>
+                                )}
+                                {isPreviewing && (
+                                  <span className="text-sky-300">· Đang Xem 3D</span>
+                                )}
+                              </div>
                               <h5 className="font-display text-sm sm:text-base font-black text-white">
                                 {m.name}
                               </h5>
                             </div>
                           </div>
+                          {isEquipped && (
+                            <span className="text-[10px] font-black uppercase text-emerald-300 shrink-0">
+                              Đang Cưỡi
+                            </span>
+                          )}
                         </div>
 
                         <p className="text-xs text-slate-300 leading-relaxed">{m.desc}</p>
@@ -2620,6 +2805,27 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-1">
+                        {onChangeLobbyPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick(1.06);
+                              onChangeLobbyPreview({
+                                ...lobbyPreview,
+                                mountId: isPreviewing ? undefined : m.id,
+                                astralSteedId: undefined,
+                              });
+                            }}
+                            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                              isPreviewing
+                                ? 'bg-sky-500/25 border border-sky-300 text-sky-200'
+                                : 'a2-slate-btn text-sky-200'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isPreviewing ? 'Đang Xem' : 'Xem 3D'}</span>
+                          </button>
+                        )}
                         {isOwned ? (
                           <>
                             <button
@@ -2648,6 +2854,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 : `Nâng Cấp (${upCost.shards} Mảnh + ${upCost.gold} Vàng)`}
                             </button>
                           </>
+                        ) : isChapterLocked ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 border border-amber-400/25 text-xs font-black text-amber-200/80 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-not-allowed"
+                          >
+                            <Lock className="w-3.5 h-3.5 shrink-0" />
+                            <span>{lockLabel}</span>
+                          </button>
                         ) : (
                           m.unlockShards === 0 && m.unlockGems === 0 ? (
                             <button
@@ -2707,6 +2922,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                   {ASTRAL_STEED_DEFS.map((st) => {
                     const isOwned = unlockedAstralSteeds.includes(st.id);
                     const isEquipped = equippedAstralSteedId === st.id;
+                    const isPreviewing = lobbyPreview.astralSteedId === st.id;
                     const starLv = Math.max(1, astralSteedStars[st.id] ?? 1);
                     const statsSt = getAstralSteedStats(st.id, starLv);
                     const bColor = `#${st.bodyHex.toString(16).padStart(6, '0')}`;
@@ -2716,7 +2932,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       <div
                         key={st.id}
                         className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
-                          isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                          isPreviewing
+                            ? 'cel-panel-ornate ring-1 ring-sky-400/70'
+                            : isEquipped
+                              ? 'cel-panel-ornate'
+                              : 'cel-panel'
                         }`}
                       >
                         <div>
@@ -2731,9 +2951,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 <Sparkles className="w-5 h-5 text-sky-200" />
                               </span>
                               <div>
-                                <span className="text-[10px] font-black uppercase text-sky-300">
-                                  {st.badge} {isOwned ? `· ${starLv}/${ASTRAL_STEED_MAX_STAR}★` : ''}
-                                </span>
+                                <div className="flex flex-wrap items-center gap-1 text-[10px] font-black uppercase text-sky-300">
+                                  <span>{st.badge}</span>
+                                  {isOwned && <span>· {starLv}/{ASTRAL_STEED_MAX_STAR}★</span>}
+                                  {isPreviewing && <span>· Đang Xem 3D</span>}
+                                </div>
                                 <h5 className="font-display text-sm sm:text-base font-black text-white">
                                   {st.name}
                                 </h5>
@@ -2767,6 +2989,27 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         </div>
 
                         <div className="flex flex-wrap gap-2 pt-1">
+                          {onChangeLobbyPreview && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.06);
+                                onChangeLobbyPreview({
+                                  ...lobbyPreview,
+                                  astralSteedId: isPreviewing ? undefined : st.id,
+                                  mountId: undefined,
+                                });
+                              }}
+                              className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                                isPreviewing
+                                  ? 'bg-sky-500/25 border border-sky-300 text-sky-200'
+                                  : 'a2-slate-btn text-sky-200'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5 shrink-0" />
+                              <span>{isPreviewing ? 'Đang Xem' : 'Xem 3D'}</span>
+                            </button>
+                          )}
                           {isOwned ? (
                             <button
                               type="button"
@@ -2840,9 +3083,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
 
               {/* 4 Mythic Artifacts */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {MYTHIC_ARTIFACTS.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((art) => {
+                {sortCollectionByChapterOrder(MYTHIC_ARTIFACTS).map((art) => {
                   const isOwned = unlockedArtifacts.includes(art.id);
                   const isEquipped = equippedArtifactId === art.id;
+                  const isPreviewing = lobbyPreview.artifactId === art.id;
+                  const { isChapterLocked, lockLabel, shortLockLabel } = getChapterAssetLockState(
+                    art.id,
+                    save.highestChapterCleared
+                  );
                   const lv = Math.max(1, artifactLevels[art.id] ?? 1);
                   const maxLv = lv >= MAX_ARTIFACT_LEVEL;
                   const aStats = getArtifactStats(art.id, lv);
@@ -2854,7 +3102,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     <div
                       key={art.id}
                       className={`rounded-2xl p-4 flex flex-col justify-between gap-3 ${
-                        isEquipped ? 'cel-panel-ornate' : 'cel-panel'
+                        isPreviewing
+                          ? 'cel-panel-ornate ring-1 ring-sky-400/70'
+                          : isEquipped
+                            ? 'cel-panel-ornate'
+                            : 'cel-panel'
                       }`}
                     >
                       <div>
@@ -2870,7 +3122,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 <ResilientAssetImg
                                   src={SOLAR_LEO_ITEM_THUMBNAILS[art.id]}
                                   alt={art.name}
-                                  className="w-full h-full object-cover"
+                                  className={`w-full h-full object-cover ${!isOwned ? 'opacity-75 grayscale-[25%]' : ''}`}
                                   fallback={<ArtifactRelicIcon className="w-5 h-5" />}
                                 />
                               ) : (
@@ -2878,14 +3130,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                               )}
                             </span>
                             <div>
-                              <span className="text-[10px] font-black uppercase text-amber-300">
-                                {art.badge} {isOwned ? `· Lv.${lv}/${MAX_ARTIFACT_LEVEL}` : ''}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1 text-[10px] font-black uppercase text-amber-300">
+                                <span>{art.badge}</span>
+                                {isOwned && <span>· Lv.{lv}/{MAX_ARTIFACT_LEVEL}</span>}
+                                {!isOwned && shortLockLabel && (
+                                  <span className="text-amber-200">· {shortLockLabel}</span>
+                                )}
+                                {isPreviewing && (
+                                  <span className="text-sky-300">· Đang Xem 3D</span>
+                                )}
+                              </div>
                               <h5 className="font-display text-sm sm:text-base font-black text-white">
                                 {art.name}
                               </h5>
                             </div>
                           </div>
+                          {isEquipped && (
+                            <span className="text-[10px] font-black uppercase text-emerald-300 shrink-0">
+                              Đang Hộ Vệ
+                            </span>
+                          )}
                         </div>
 
                         <p className="text-xs text-slate-300 leading-relaxed">{art.desc}</p>
@@ -2932,6 +3196,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-1">
+                        {onChangeLobbyPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick(1.06);
+                              onChangeLobbyPreview({
+                                ...lobbyPreview,
+                                artifactId: isPreviewing ? undefined : art.id,
+                              });
+                            }}
+                            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                              isPreviewing
+                                ? 'bg-sky-500/25 border border-sky-300 text-sky-200'
+                                : 'a2-slate-btn text-sky-200'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isPreviewing ? 'Đang Xem' : 'Xem 3D'}</span>
+                          </button>
+                        )}
                         {isOwned ? (
                           <>
                             <button
@@ -2960,6 +3244,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 : `Nâng (${upCost.shards} Mảnh + ${upCost.gold}V)`}
                             </button>
                           </>
+                        ) : isChapterLocked ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 border border-amber-400/25 text-xs font-black text-amber-200/80 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-not-allowed"
+                          >
+                            <Lock className="w-3.5 h-3.5 shrink-0" />
+                            <span>{lockLabel}</span>
+                          </button>
                         ) : (
                           <>
                             <button
@@ -3040,9 +3333,14 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {DIVINE_HALO_CATALOG.filter((item) => canClaimChapter2Asset(item.id, save.highestChapterCleared) && canClaimChapter3Asset(item.id, save.highestChapterCleared) && canClaimChapter4Asset(item.id, save.highestChapterCleared)).map((halo) => {
+                {sortCollectionByChapterOrder(DIVINE_HALO_CATALOG).map((halo) => {
                   const isOwned = unlockedHalos.includes(halo.id);
                   const isEquipped = equippedHaloId === halo.id;
+                  const isPreviewing = lobbyPreview.haloId === halo.id;
+                  const { isChapterLocked, lockLabel, shortLockLabel } = getChapterAssetLockState(
+                    halo.id,
+                    save.highestChapterCleared
+                  );
                   const lv = Math.max(1, haloLevels[halo.id] ?? 1);
                   const maxLv = lv >= DIVINE_HALO_MAX_LEVEL;
                   const hStats = getDivineHaloStats(halo.id, lv);
@@ -3052,7 +3350,11 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                     <div
                       key={halo.id}
                       className={`rounded-2xl p-4 border flex flex-col justify-between gap-3 ${
-                        isEquipped ? 'cel-panel-ornate ring-2 ring-amber-300/70' : 'cel-panel'
+                        isPreviewing
+                          ? 'cel-panel-ornate ring-1 ring-sky-400/70'
+                          : isEquipped
+                            ? 'cel-panel-ornate ring-2 ring-amber-300/70'
+                            : 'cel-panel'
                       }`}
                     >
                       <div>
@@ -3070,7 +3372,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 <ResilientAssetImg
                                   src={SOLAR_LEO_ITEM_THUMBNAILS[halo.id]}
                                   alt={halo.name}
-                                  className="w-full h-full object-cover"
+                                  className={`w-full h-full object-cover ${!isOwned ? 'opacity-75 grayscale-[25%]' : ''}`}
                                   fallback={<Crown className="w-5 h-5" />}
                                 />
                               ) : (
@@ -3078,17 +3380,24 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                               )}
                             </span>
                             <div>
-                              <span className="text-[10px] font-black uppercase text-amber-300">
-                                {halo.badge} {isOwned ? `· Lv.${lv}/${DIVINE_HALO_MAX_LEVEL}` : ''}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1 text-[10px] font-black uppercase text-amber-300">
+                                <span>{halo.badge}</span>
+                                {isOwned && <span>· Lv.{lv}/{DIVINE_HALO_MAX_LEVEL}</span>}
+                                {!isOwned && shortLockLabel && (
+                                  <span className="text-amber-200">· {shortLockLabel}</span>
+                                )}
+                                {isPreviewing && (
+                                  <span className="text-sky-300">· Đang Xem 3D</span>
+                                )}
+                              </div>
                               <h5 className="font-display text-sm sm:text-base font-black text-white">
                                 {halo.name}
                               </h5>
                             </div>
                           </div>
                           {isEquipped && (
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[10px] font-black text-emerald-300">
-                              ĐANG TỎA SÁNG
+                            <span className="text-[10px] font-black uppercase text-emerald-300 shrink-0">
+                              Đang Tỏa Sáng
                             </span>
                           )}
                         </div>
@@ -3116,6 +3425,26 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-1">
+                        {onChangeLobbyPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick(1.06);
+                              onChangeLobbyPreview({
+                                ...lobbyPreview,
+                                haloId: isPreviewing ? undefined : halo.id,
+                              });
+                            }}
+                            className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
+                              isPreviewing
+                                ? 'bg-sky-500/25 border border-sky-300 text-sky-200'
+                                : 'a2-slate-btn text-sky-200'
+                            }`}
+                          >
+                            <Eye className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isPreviewing ? 'Đang Xem' : 'Xem 3D'}</span>
+                          </button>
+                        )}
                         {isOwned ? (
                           <>
                             <button
@@ -3148,6 +3477,15 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                                 : `Nâng (${upCost.divineCrystals} TT + ${upCost.gold}V)`}
                             </button>
                           </>
+                        ) : isChapterLocked ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex-1 py-2 px-3 rounded-xl bg-slate-900/90 border border-amber-400/25 text-xs font-black text-amber-200/80 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-not-allowed"
+                          >
+                            <Lock className="w-3.5 h-3.5 shrink-0" />
+                            <span>{lockLabel}</span>
+                          </button>
                         ) : (
                           <>
                             <button

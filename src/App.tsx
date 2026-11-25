@@ -1242,9 +1242,10 @@ export default function App() {
     const aItem = save.inventory.find((g) => g.uid === aUid);
     const wTpl = wItem ? GEAR_TEMPLATES[wItem.templateId] : undefined;
     const aTpl = aItem ? GEAR_TEMPLATES[aItem.templateId] : undefined;
-    const isWardrobePreviewActive = phase === GamePhase.TITLE && wardrobeOpen;
+    const isLobbyPreviewActive =
+      phase === GamePhase.TITLE && (wardrobeOpen || activeLobbyTab === 'heroes');
     const requestedSkinId =
-      (isWardrobePreviewActive ? wardrobePreview.skinId : undefined) ??
+      (isLobbyPreviewActive ? wardrobePreview.skinId : undefined) ??
       save.equippedSkinByHero?.[hero.id] ??
       'default';
     const requestedSkin = SKIN_MAP[requestedSkinId];
@@ -1258,15 +1259,15 @@ export default function App() {
         ? save.equippedWingId
         : null;
     const effectiveWingId =
-      isWardrobePreviewActive && wardrobePreview.wingId !== undefined
+      isLobbyPreviewActive && wardrobePreview.wingId !== undefined
         ? wardrobePreview.wingId
         : equippedWingId;
     const wingLevel = effectiveWingId ? Math.max(1, save.wingLevels?.[effectiveWingId] ?? 1) : 1;
 
     const { mountId: effectiveMountId, astralSteedId: effectiveAstralSteedId } = getMountAppearance(
       save,
-      isWardrobePreviewActive ? wardrobePreview.mountId : undefined,
-      isWardrobePreviewActive ? wardrobePreview.astralSteedId : undefined
+      isLobbyPreviewActive ? wardrobePreview.mountId : undefined,
+      isLobbyPreviewActive ? wardrobePreview.astralSteedId : undefined
     );
     const mountLevel = effectiveMountId
       ? Math.max(1, save.mountLevels?.[effectiveMountId] ?? 1)
@@ -1278,17 +1279,21 @@ export default function App() {
         ? save.equippedWeaponAuraId
         : 'none';
     const effectiveWeaponAuraId: WeaponAuraId =
-      isWardrobePreviewActive && wardrobePreview.weaponAuraId !== undefined
+      isLobbyPreviewActive && wardrobePreview.weaponAuraId !== undefined
         ? wardrobePreview.weaponAuraId
         : equippedWeaponAuraId;
     const weaponAuraLevel =
       effectiveWeaponAuraId !== 'none'
         ? Math.max(1, save.weaponAuraLevels?.[effectiveWeaponAuraId] ?? 1)
         : 1;
-    const effectiveArtifactId: ArtifactId | null =
+    const equippedArtifactId: ArtifactId | null =
       save.equippedArtifactId && (save.unlockedArtifacts ?? []).includes(save.equippedArtifactId)
         ? save.equippedArtifactId
         : null;
+    const effectiveArtifactId: ArtifactId | null =
+      isLobbyPreviewActive && wardrobePreview.artifactId !== undefined
+        ? wardrobePreview.artifactId
+        : equippedArtifactId;
     const artifactLevel = effectiveArtifactId
       ? Math.max(1, save.artifactLevels?.[effectiveArtifactId] ?? 1)
       : 1;
@@ -1298,7 +1303,7 @@ export default function App() {
         ? save.equippedHaloId
         : null;
     const effectiveHaloId: HaloId | null =
-      isWardrobePreviewActive && wardrobePreview.haloId !== undefined
+      isLobbyPreviewActive && wardrobePreview.haloId !== undefined
         ? wardrobePreview.haloId
         : equippedHaloId;
     const haloLevel = effectiveHaloId
@@ -1366,6 +1371,7 @@ export default function App() {
     playerStats.constellationLevels,
     phase,
     wardrobeOpen,
+    activeLobbyTab,
     wardrobePreview,
   ]);
 
@@ -3528,13 +3534,30 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync hero visual loadout when hero/gear/runes change
+  // Derived stats used ONLY for Lobby 3D Pet preview (never mutates real combat/CP stats)
+  const lobbyDisplayStats = useMemo(() => {
+    const isLobbyPreviewActive =
+      phase === GamePhase.TITLE && (wardrobeOpen || activeLobbyTab === 'heroes');
+    if (!isLobbyPreviewActive || wardrobePreview.petId === undefined) {
+      return playerStats;
+    }
+    const previewPetId = wardrobePreview.petId;
+    return {
+      ...playerStats,
+      equippedPetId: previewPetId,
+      equippedPetEvolved: previewPetId
+        ? (save.evolvedPets ?? []).includes(previewPetId)
+        : false,
+    };
+  }, [playerStats, phase, wardrobeOpen, activeLobbyTab, wardrobePreview.petId, save.evolvedPets]);
+
+  // Sync hero visual loadout when hero/gear/runes/preview change
   useEffect(() => {
-    engineRef.current?.updateLoadoutAppearance(playerStats, heroVisualCfg);
+    engineRef.current?.updateLoadoutAppearance(lobbyDisplayStats, heroVisualCfg);
     if (isTrainingModeRef.current) {
       engineRef.current?.refreshTrainingStats(playerStats, heroVisualCfg);
     }
-  }, [playerStats, heroVisualCfg]);
+  }, [lobbyDisplayStats, playerStats, heroVisualCfg]);
 
   // Sync dynamic 3D Lobby Sky & Royal Celestial Pedestal theme
   useEffect(() => {
@@ -11633,6 +11656,8 @@ export default function App() {
           heroSubTabInitial={heroSubTabInitial}
           shopSection={shopSection}
           previewHeroId={previewHeroId ?? save.selectedHeroId}
+          lobbyPreview={wardrobePreview}
+          onChangeLobbyPreview={setWardrobePreview}
           cameraPreset={cameraPreset}
           wishLastOutcomes={wishLastOutcomes}
           selectedCoopDifficulty={selectedCoopDifficulty}
@@ -11648,6 +11673,7 @@ export default function App() {
             setActiveLobbyTab(tab);
             if (tab !== 'heroes') {
               setPreviewHeroId(null);
+              setWardrobePreview({});
             }
           }}
           onOpenHeroSubTab={(sub) => {

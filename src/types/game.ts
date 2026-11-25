@@ -1876,10 +1876,12 @@ export type LobbyCameraPreset = 'overview' | 'closeup' | 'wardrobe';
 
 export interface WardrobePreviewOverrides {
   skinId?: HeroSkinId;
+  petId?: PetId | null;
   wingId?: WingId | null;
   mountId?: MountId | null;
   astralSteedId?: AstralSteedId | null;
   weaponAuraId?: WeaponAuraId;
+  artifactId?: ArtifactId | null;
   haloId?: HaloId | null;
 }
 

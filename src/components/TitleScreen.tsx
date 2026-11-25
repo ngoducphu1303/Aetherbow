@@ -173,6 +173,7 @@ import {
   RuneId,
   SanctuaryFloorId,
   SaveData,
+  WardrobePreviewOverrides,
   WeaponAuraId,
   WingId,
 } from '../types/game';
@@ -238,6 +239,8 @@ interface TitleScreenProps {
   heroSubTabInitial?: 'roster' | 'pets' | 'cosmetics' | 'wings' | 'mounts' | 'artifacts' | 'halos';
   shopSection?: ShopSectionTab;
   previewHeroId: HeroId;
+  lobbyPreview?: WardrobePreviewOverrides;
+  onChangeLobbyPreview?: (next: WardrobePreviewOverrides) => void;
   cameraPreset?: LobbyCameraPreset;
   wishLastOutcomes?: Array<{ label: string; rarity: 'R' | 'SR' | 'SSR'; isTargetHit: boolean }>;
   selectedCoopDifficulty: CoopRaidDifficulty;
@@ -470,6 +473,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   heroSubTabInitial = 'roster',
   shopSection = 'gacha',
   previewHeroId,
+  lobbyPreview,
+  onChangeLobbyPreview,
   cameraPreset = 'overview',
   wishLastOutcomes = [],
   selectedCoopDifficulty,
@@ -2145,6 +2150,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               key={heroSubTabInitial}
               save={save}
               previewHeroId={previewHeroId}
+              lobbyPreview={lobbyPreview}
+              onChangeLobbyPreview={onChangeLobbyPreview}
               initialSubTab={heroSubTabInitial}
               onPreviewHero={onPreviewHero}
               onSelectHero={onSelectHero}
