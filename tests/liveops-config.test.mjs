@@ -8,6 +8,7 @@ import {
   LIVEOPS_BOUNDS,
   LIVEOPS_PRESETS,
   parseLiveOpsConfigJson,
+  resolveEffectiveLiveOpsConfig,
   sanitizeLiveOpsConfig,
 } from '../src/data/liveOpsConfig.ts';
 
@@ -93,4 +94,42 @@ test('LiveOps: pity threshold computation, presets, JSON rollback parser, and ve
     isVerifiedAdminIdentity({ email: 'player@gmail.com', emailVerified: true }),
     false
   );
+});
+
+test('LiveOps P2-4b: automated event scheduling activates inside window and safely reverts to 1.0x outside window', () => {
+  const startMs = Date.UTC(2026, 10, 28, 0, 0, 0);
+  const endMs = Date.UTC(2026, 10, 30, 23, 59, 59);
+  const scheduled = sanitizeLiveOpsConfig({
+    version: 7,
+    goldRewardMult: 1.8,
+    forgeShardMult: 1.5,
+    doubleDropEventActive: true,
+    scheduledStartMs: startMs,
+    scheduledEndMs: endMs,
+    announcementBanner: 'Sự Kiện Cuối Tuần',
+    maintenanceNotice: 'Bảo trì dự kiến 03:00',
+  });
+
+  // Before start -> upcoming, gameplay multipliers stay 1.0x while maintenanceNotice preserved
+  const before = resolveEffectiveLiveOpsConfig(scheduled, startMs - 60_000);
+  assert.equal(before.scheduleStatus, 'upcoming');
+  assert.equal(before.config.goldRewardMult, 1.0);
+  assert.equal(before.config.doubleDropEventActive, false);
+  assert.equal(before.config.maintenanceNotice, 'Bảo trì dự kiến 03:00');
+  assert.equal(before.config.version, 7);
+
+  // Inside active window -> full event multipliers active
+  const during = resolveEffectiveLiveOpsConfig(scheduled, startMs + 3_600_000);
+  assert.equal(during.scheduleStatus, 'active');
+  assert.equal(during.config.goldRewardMult, 1.8);
+  assert.equal(during.config.doubleDropEventActive, true);
+  assert.ok((during.remainingMs ?? 0) > 0);
+
+  // After end -> expired, reverts automatically to safe 1.0x defaults
+  const after = resolveEffectiveLiveOpsConfig(scheduled, endMs + 1000);
+  assert.equal(after.scheduleStatus, 'expired');
+  assert.equal(after.config.goldRewardMult, 1.0);
+  assert.equal(after.config.doubleDropEventActive, false);
+  const rewardAfter = applyLiveOpsRewardMultipliers({ gold: 1000, gems: 100 }, scheduled, endMs + 1000);
+  assert.equal(rewardAfter.gold, 1000);
 });

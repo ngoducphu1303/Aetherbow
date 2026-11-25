@@ -6,9 +6,15 @@ export const WS_SECURITY_LIMITS = {
   maxPayloadBytes: 32 * 1024,
   generalMaxMsgsPer10s: 45,
   actionBurstMaxPer10s: 12,
+  duelMinDurationSec: 1,
+  duelMaxDurationSec: 3600,
   maxDuelDurationSec: 3600,
+  guildBossMaxDamagePerHit: 25_000_000,
   maxGuildBossDamage: 25_000_000,
+  bountyMaxPointsPerContribution: 5_000,
   maxBountyPoints: 5_000,
+  guildWarMaxQuickScore: 800,
+  guildWarMaxAssaultScore: 2_500,
   maxGuildWarScorePerAction: 2_500,
 } as const;
 
@@ -238,18 +244,34 @@ function clampFinite(value: unknown, min: number, max: number, fallback = min): 
 }
 
 export function clampWsDuelDurationSec(raw: unknown): number {
-  return Math.round(clampFinite(raw, 1, WS_SECURITY_LIMITS.maxDuelDurationSec, 30));
+  return Math.round(
+    clampFinite(
+      raw,
+      WS_SECURITY_LIMITS.duelMinDurationSec,
+      WS_SECURITY_LIMITS.duelMaxDurationSec,
+      30
+    )
+  );
 }
 
-export function clampWsGuildBossDamage(raw: unknown): number {
-  return Math.round(clampFinite(raw, 0, WS_SECURITY_LIMITS.maxGuildBossDamage, 0));
+export function clampWsGuildBossDamage(raw: unknown): number | null {
+  const num = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return Math.round(Math.min(WS_SECURITY_LIMITS.guildBossMaxDamagePerHit, num));
 }
 
-export function clampWsBountyPoints(raw: unknown): number {
-  return Math.round(clampFinite(raw, 0, WS_SECURITY_LIMITS.maxBountyPoints, 0));
+export function clampWsBountyPoints(raw: unknown): number | null {
+  const num = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return Math.round(Math.min(WS_SECURITY_LIMITS.bountyMaxPointsPerContribution, num));
 }
 
 export function clampWsGuildWarScore(raw: unknown, mode?: string): number {
-  const cap = mode === 'boss_rush' ? 3500 : WS_SECURITY_LIMITS.maxGuildWarScorePerAction;
+  const cap =
+    mode === 'quick_strike'
+      ? WS_SECURITY_LIMITS.guildWarMaxQuickScore
+      : mode === 'boss_rush'
+      ? 3500
+      : WS_SECURITY_LIMITS.guildWarMaxAssaultScore;
   return Math.round(clampFinite(raw, 0, cap, 0));
 }

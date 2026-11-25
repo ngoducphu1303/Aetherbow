@@ -532,6 +532,7 @@ import {
 import {
   applyLiveOpsRewardMultipliers,
   DEFAULT_LIVEOPS_CONFIG,
+  resolveEffectiveLiveOpsConfig,
   type LiveOpsConfig,
 } from './data/liveOpsConfig';
 import { isVerifiedAdminUser, subscribeLiveOpsConfig } from './services/liveOpsConfigService';
@@ -2335,7 +2336,8 @@ export default function App() {
               : bonusGems);
           const scaledRunRewards = applyLiveOpsRewardMultipliers(
             { gold: preLiveOpsGold, gems: preLiveOpsGems },
-            liveOpsConfigRef.current
+            liveOpsConfigRef.current,
+            Date.now()
           );
           const totalGold = scaledRunRewards.gold;
           const totalGems = scaledRunRewards.gems;
@@ -3506,10 +3508,11 @@ export default function App() {
     );
 
     engineRef.current = engine;
+    const effectiveBootLiveOps = resolveEffectiveLiveOpsConfig(liveOpsConfigRef.current).config;
     engine.applyRuntimeSettings({
       ...normalizeSettings(save.settings),
-      liveOpsEnemyHpMult: liveOpsConfigRef.current.enemyHpMult,
-      liveOpsEnemyDmgMult: liveOpsConfigRef.current.enemyDmgMult,
+      liveOpsEnemyHpMult: effectiveBootLiveOps.enemyHpMult,
+      liveOpsEnemyDmgMult: effectiveBootLiveOps.enemyDmgMult,
     });
     return () => {
       if (transitionTimerRef.current) {
@@ -3578,12 +3581,21 @@ export default function App() {
       lowEndMode
     );
     setChapter1MapPreloadVariant(targetVariant);
+    const effectiveLiveOps = resolveEffectiveLiveOpsConfig(liveOpsConfig).config;
     engineRef.current?.applyRuntimeSettings({
       ...currentSettings,
-      liveOpsEnemyHpMult: liveOpsConfig.enemyHpMult,
-      liveOpsEnemyDmgMult: liveOpsConfig.enemyDmgMult,
+      liveOpsEnemyHpMult: effectiveLiveOps.enemyHpMult,
+      liveOpsEnemyDmgMult: effectiveLiveOps.enemyDmgMult,
     });
-  }, [currentSettings, gpuProfile, save.selectedHeroId, liveOpsConfig.enemyHpMult, liveOpsConfig.enemyDmgMult]);
+  }, [
+    currentSettings,
+    gpuProfile,
+    save.selectedHeroId,
+    liveOpsConfig.enemyHpMult,
+    liveOpsConfig.enemyDmgMult,
+    liveOpsConfig.scheduledStartMs,
+    liveOpsConfig.scheduledEndMs,
+  ]);
 
   // Subscribe to global LiveOps balance/event configuration (Firestore -> Express -> Local fallback)
   useEffect(() => {

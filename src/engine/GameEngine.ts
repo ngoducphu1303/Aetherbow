@@ -25,11 +25,14 @@ import {
   stepMobPhysicalDash,
 } from './aaaEnemyCombatEngine';
 import {
+  clampKnockbackInsideArena,
   computeSquadCoordinationVector,
   evaluateCastInterrupt,
   getChapterBossPhasePlan,
   resolveEnemyTacticalArchetype,
+  type SquadNeighborSample,
 } from './tacticalCombatChoreography';
+import { SpatialHashGrid } from './spatialHashGrid';
 import {
   classifySquadRole,
   computeSquadWaitingFlankImpulse,
@@ -1544,6 +1547,11 @@ export class GameEngine {
     rotZ: 0,
     scaleY: 1,
   };
+  // Wave 3 AAAA Overhaul: Zero-GC Spatial Hash Grid & reusable scratch buffers for squad steering & knockback safety
+  private readonly enemySpatialGrid = new SpatialHashGrid<SquadNeighborSample>(4.0);
+  private readonly squadNeighborPool: SquadNeighborSample[] = [];
+  private readonly squadNeighborQueryScratch: SquadNeighborSample[] = [];
+  private readonly intactObstacleScratch: Array<{ x: number; z: number; radius: number }> = [];
   private bossPhaseCounterTimer = 0;
   private bossPhaseCounterLevel: 2 | 3 | null = null;
   private executionFinisherTimer = 0;
@@ -16505,12 +16513,40 @@ export class GameEngine {
   private updateEnemies(dt: number): void {
     const enemySnapshot = [...this.enemies];
     this.aliveEnemyIdScratch.clear();
+    this.enemySpatialGrid.clear();
     let hasActiveBossInRoom = false;
+    let poolIdx = 0;
     for (let sIdx = 0; sIdx < enemySnapshot.length; sIdx++) {
       const se = enemySnapshot[sIdx];
       if (!se || se.dead) continue;
       this.aliveEnemyIdScratch.add(se.id);
       if (se.isBoss && !se.isTrainingDummy) hasActiveBossInRoom = true;
+      let sample = this.squadNeighborPool[poolIdx];
+      if (!sample) {
+        sample = {
+          id: se.id,
+          x: se.x,
+          z: se.z,
+          radius: se.radius,
+          archetype: resolveEnemyTacticalArchetype(se.kind),
+        };
+        this.squadNeighborPool.push(sample);
+      } else {
+        sample.id = se.id;
+        sample.x = se.x;
+        sample.z = se.z;
+        sample.radius = se.radius;
+        sample.archetype = resolveEnemyTacticalArchetype(se.kind);
+      }
+      this.enemySpatialGrid.insert(sample);
+      poolIdx += 1;
+    }
+    this.intactObstacleScratch.length = 0;
+    for (let oIdx = 0; oIdx < this.obstacles.length; oIdx++) {
+      const ob = this.obstacles[oIdx];
+      if (ob.intact !== false) {
+        this.intactObstacleScratch.push(ob);
+      }
     }
     pruneSquadAttackTokens(this.enemySquadDirectorState, this.aliveEnemyIdScratch, this.elapsed);
     const squadTokenBudget = resolveCrowdAttackTokenBudget({
@@ -17920,6 +17956,13 @@ export class GameEngine {
             }
           }
         } else if (!e.isBoss && !e.isArenaRival && !e.isVaultPillar && !e.isTrainingDummy) {
+          this.enemySpatialGrid.queryRadius(
+            e.x,
+            e.z,
+            7.0,
+            this.squadNeighborQueryScratch,
+            e.id
+          );
           const squadVec = computeSquadCoordinationVector({
             selfId: e.id,
             kind: e.kind,
@@ -17930,16 +17973,8 @@ export class GameEngine {
             playerX: mobTargetX,
             playerZ: mobTargetZ,
             flankSign: e.mobFlankSign ?? (e.id % 2 === 0 ? 1 : -1),
-            neighbors: enemySnapshot.map((nb) => ({
-              id: nb.id,
-              x: nb.x,
-              z: nb.z,
-              radius: nb.radius,
-              archetype: resolveEnemyTacticalArchetype(nb.kind),
-            })),
-            obstacles: this.obstacles
-              .filter((ob) => ob.intact !== false)
-              .map((ob) => ({ x: ob.x, z: ob.z, radius: ob.radius })),
+            neighbors: this.squadNeighborQueryScratch,
+            obstacles: this.intactObstacleScratch,
           });
           e.vx = THREE.MathUtils.lerp(e.vx, squadVec.vx * slowMult, Math.min(1, dt * 6));
           e.vz = THREE.MathUtils.lerp(e.vz, squadVec.vz * slowMult, Math.min(1, dt * 6));
@@ -23369,16 +23404,18 @@ export class GameEngine {
         }
         if (cfg.knockbackForce > 0 && !en.isBoss && dist > 0.05) {
           const push = cfg.knockbackForce * 0.42;
-          en.x = THREE.MathUtils.clamp(
-            en.x + ((en.x - trap.x) / dist) * push,
-            -ARENA_HALF_W + en.radius,
-            ARENA_HALF_W - en.radius
+          const clampedKb = clampKnockbackInsideArena(
+            en.x,
+            en.z,
+            ((en.x - trap.x) / dist) * push,
+            ((en.z - trap.z) / dist) * push,
+            en.radius,
+            ARENA_HALF_W,
+            ARENA_HALF_D,
+            this.intactObstacleScratch
           );
-          en.z = THREE.MathUtils.clamp(
-            en.z + ((en.z - trap.z) / dist) * push,
-            -ARENA_HALF_D + en.radius,
-            ARENA_HALF_D - en.radius
-          );
+          en.x = clampedKb.x;
+          en.z = clampedKb.z;
         }
         this.damageEnemy(
           en,

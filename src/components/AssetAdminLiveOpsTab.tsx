@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { User } from 'firebase/auth';
 import {
   AlertTriangle,
+  Calendar,
   CheckCircle2,
   Database,
   History,
@@ -17,7 +18,9 @@ import {
   computeLiveOpsConfigDiff,
   DEFAULT_LIVEOPS_CONFIG,
   LIVEOPS_BOUNDS,
+  LIVEOPS_PRESETS,
   MAX_LIVEOPS_SNAPSHOTS,
+  resolveEffectiveLiveOpsConfig,
   type LiveOpsConfig,
   type LiveOpsSnapshotEntry,
 } from '../data/liveOpsConfig';
@@ -58,6 +61,19 @@ function formatTimeLabel(ts: number): string {
   } catch {
     return 'Vừa xong';
   }
+}
+
+function toDateTimeLocalValue(ms: number): string {
+  if (!ms || ms <= 0) return '';
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDateTimeLocalValue(val: string): number {
+  if (!val || !val.trim()) return 0;
+  const parsed = Date.parse(val);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 }
 
 export default function AssetAdminLiveOpsTab({
@@ -339,7 +355,7 @@ export default function AssetAdminLiveOpsTab({
           <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 p-3 cursor-pointer">
             <div>
               <div className="text-xs font-semibold text-slate-200">Sự Kiện Nhân Đôi Rơi Đồ</div>
-              <div className="text-[11px] text-slate-400">+25% Mảnh Rèn sau mỗi trận</div>
+              <div className="text-[11px] text-slate-400">×1.5 Mảnh Rèn (tối đa ×3.0)</div>
             </div>
             <input
               type="checkbox"
@@ -349,6 +365,118 @@ export default function AssetAdminLiveOpsTab({
               className="h-4 w-4 accent-emerald-400"
             />
           </label>
+        </div>
+
+        {/* Preset Quick-Apply & Automated Event Scheduling Window (P2-4b) */}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-slate-200">Mẫu Sự Kiện Nhanh (Presets)</span>
+              <span className="text-[11px] text-slate-500">Nạp nhanh vào bản nháp</span>
+            </div>
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              {LIVEOPS_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      ...preset.patch,
+                    }))
+                  }
+                  className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-2 text-left hover:border-amber-400/50 hover:bg-slate-800/80 disabled:opacity-50"
+                >
+                  <div className="text-xs font-semibold text-slate-100">{preset.name}</div>
+                  <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-400">
+                    {preset.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3.5">
+            {(() => {
+              const eff = resolveEffectiveLiveOpsConfig(draft);
+              const statusText =
+                eff.scheduleStatus === 'always_on'
+                  ? 'Luôn bật (không hẹn giờ)'
+                  : eff.scheduleStatus === 'upcoming'
+                  ? 'Sắp diễn ra · Hệ số chờ về ×1.0'
+                  : eff.scheduleStatus === 'active'
+                  ? 'Đang trong khung giờ sự kiện'
+                  : 'Đã hết hạn · Tự động trả về ×1.0';
+              const statusCls =
+                eff.scheduleStatus === 'active'
+                  ? 'text-emerald-300'
+                  : eff.scheduleStatus === 'upcoming'
+                  ? 'text-sky-300'
+                  : eff.scheduleStatus === 'expired'
+                  ? 'text-rose-300'
+                  : 'text-slate-400';
+              return (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-slate-200">
+                      <Calendar size={14} className="text-amber-300" />
+                      Lịch Tự Động Kích Hoạt Sự Kiện
+                    </span>
+                    <span className={`text-[11px] font-semibold ${statusCls}`}>{statusText}</span>
+                  </div>
+                  <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="text-[11px] text-slate-400">Bắt đầu (để trống = chạy ngay)</span>
+                      <input
+                        type="datetime-local"
+                        disabled={busy}
+                        value={toDateTimeLocalValue(draft.scheduledStartMs)}
+                        onChange={(e) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            scheduledStartMs: fromDateTimeLocalValue(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100 tabular-nums outline-none focus:border-amber-400"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[11px] text-slate-400">Kết thúc (tự về ×1.0 khi hết)</span>
+                      <input
+                        type="datetime-local"
+                        disabled={busy}
+                        value={toDateTimeLocalValue(draft.scheduledEndMs)}
+                        onChange={(e) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            scheduledEndMs: fromDateTimeLocalValue(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100 tabular-nums outline-none focus:border-amber-400"
+                      />
+                    </label>
+                  </div>
+                  {(draft.scheduledStartMs > 0 || draft.scheduledEndMs > 0) && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          scheduledStartMs: 0,
+                          scheduledEndMs: 0,
+                        }))
+                      }
+                      className="mt-2 text-[11px] font-semibold text-slate-400 underline hover:text-slate-200"
+                    >
+                      Xóa lịch hẹn giờ (chuyển về Luôn bật)
+                    </button>
+                  )}
+                </>
+              );
+            })()}
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">

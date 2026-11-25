@@ -339,6 +339,8 @@ service cloud.firestore {
         'pitySoftCapOffset',
         'weekendBlitzEnabled',
         'doubleDropEventActive',
+        'scheduledStartMs',
+        'scheduledEndMs',
         'announcementBanner',
         'maintenanceNotice',
         'balanceNote',
@@ -376,6 +378,9 @@ service cloud.firestore {
       && data.pitySoftCapOffset <= 5
       && data.weekendBlitzEnabled is bool
       && data.doubleDropEventActive is bool
+      && (!('scheduledStartMs' in data) || (data.scheduledStartMs is int && data.scheduledStartMs >= 0 && data.scheduledStartMs <= 7258118400000))
+      && (!('scheduledEndMs' in data) || (data.scheduledEndMs is int && data.scheduledEndMs >= 0 && data.scheduledEndMs <= 7258118400000))
+      && (!('scheduledStartMs' in data) || !('scheduledEndMs' in data) || data.scheduledEndMs == 0 || data.scheduledEndMs >= data.scheduledStartMs)
       && data.announcementBanner is string
       && data.announcementBanner.size() <= 180
       && data.maintenanceNotice is string

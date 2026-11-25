@@ -17,6 +17,24 @@ const BASE_SKILL_NAMES: Partial<Record<SkillId, string>> = {
   flying_swords: 'Phi Kiếm',
 };
 
+const SUPER_COUNTERPARTS: Partial<Record<SkillId, readonly string[]>> = {
+  fire_arrow: ['super_blaze', 'super_inferno'],
+  ice_arrow: ['super_frost', 'super_glacier', 'super_freeze'],
+  lightning_arrow: ['super_bolt', 'super_storm'],
+  multishot: ['super_multishot', 'front_arrow'],
+  orbit_orbs: ['super_orbs', 'blaze_orb', 'frost_orb'],
+  flying_swords: ['super_swords', 'blaze_sword', 'frost_sword'],
+};
+
+export const SKILL_EVOLUTION_BASE_LINES: readonly SkillId[] = [
+  'fire_arrow',
+  'ice_arrow',
+  'lightning_arrow',
+  'multishot',
+  'orbit_orbs',
+  'flying_swords',
+] as const;
+
 export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
   {
     id: 'evo_fire_solar_lance',
@@ -25,7 +43,7 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     name: 'Thương Nhật Luân',
     tagline: 'Xuyên giáp đơn mục tiêu & thiêu đốt Boss',
     description: 'Ngọn lửa cô đặc thành thương mặt trời, tăng mạnh sát thương lên Boss và sát thương thiêu đốt.',
-    effectSummary: '+22% DMG Boss · +40% Thiêu Đốt',
+    effectSummary: '+24% DMG Boss · +45% Thiêu Đốt',
     accentColor: '#fb923c',
     accentHex: 0xfb923c,
   },
@@ -47,7 +65,7 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     name: 'Băng Giá Phá Giáp',
     tagline: 'Đột phá mục tiêu đang bị làm chậm',
     description: 'Mục tiêu dính hàn băng chịu thêm sát thương chí mạng và vỡ thanh choáng Boss nhanh hơn.',
-    effectSummary: '+24% DMG mục tiêu Băng · +25% Phá Choáng',
+    effectSummary: '+28% DMG mục tiêu Băng · +25% Phá Choáng',
     accentColor: '#38bdf8',
     accentHex: 0x38bdf8,
   },
@@ -57,8 +75,8 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     branch: 'aoe',
     name: 'Hàn Băng Tân Tinh',
     tagline: 'Tỏa sóng băng làm chậm đàn quái',
-    description: 'Đòn băng kích hoạt vòng băng giá 3.4m khống chế đám đông và bảo vệ vị trí bắn.',
-    effectSummary: 'Sóng Băng 3.4m · -10% Sát Thương Nhận',
+    description: 'Đòn băng kích hoạt vòng băng giá 3.6m khống chế đám đông và bảo vệ vị trí bắn.',
+    effectSummary: 'Sóng Băng 3.6m · -10% Sát Thương Nhận',
     accentColor: '#67e8f9',
     accentHex: 0x67e8f9,
   },
@@ -69,7 +87,7 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     name: 'Lôi Đình Quá Tải',
     tagline: 'Sốc điện tập trung & nạp Nộ nhanh',
     description: 'Tia sét tập trung dồn sát thương Lôi lên Boss và gia tăng tốc độ hồi chiêu Tuyệt Kỹ.',
-    effectSummary: '+28% DMG Lôi · +25% Hồi Nộ Khi Đánh Boss',
+    effectSummary: '+35% DMG Lôi · +25% Hồi Nộ Khi Đánh Boss',
     accentColor: '#a855f7',
     accentHex: 0xa855f7,
   },
@@ -79,8 +97,8 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     branch: 'aoe',
     name: 'Mạng Lưới Bão Tố',
     tagline: 'Tăng tầm nhảy & số mục tiêu lan sét',
-    description: 'Mở rộng phạm vi liên kết sấm sét, nhảy thêm 2 mục tiêu để dọn phòng cực nhanh.',
-    effectSummary: '+2 Lần Nhảy Sét · +30% Tầm Lan',
+    description: 'Mở rộng phạm vi liên kết sấm sét, nhảy thêm 3 mục tiêu để dọn phòng cực nhanh.',
+    effectSummary: '+3 Lần Nhảy Sét · +30% Tầm Lan',
     accentColor: '#c084fc',
     accentHex: 0xc084fc,
   },
@@ -91,7 +109,7 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     name: 'Ưng Nhãn Xuyên Phá',
     tagline: 'Tập trung tốc bắn và bạo kích Boss',
     description: 'Tăng tốc độ bắn cơ bản và sát thương chí mạng khi duy trì chuỗi bắn vào Boss.',
-    effectSummary: '+18% Tốc Đánh · +25% Sát Thương Chí Mạng',
+    effectSummary: '+18% Tốc Đánh · +32% Sát Thương Chí Mạng',
     accentColor: '#facc15',
     accentHex: 0xfacc15,
   },
@@ -124,7 +142,7 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     name: 'Lốc Xoáy Luân Đao',
     tagline: 'Quay siêu tốc & nghiền nát quái cận chiến',
     description: 'Tăng mạnh tốc độ xoay và sát thương của hệ thống Cầu Xoay quanh nhân vật.',
-    effectSummary: '+35% Tốc Xoay · +35% DMG Cầu Xoay',
+    effectSummary: '+55% Tốc Xoay · +40% DMG Cầu Xoay',
     accentColor: '#2dd4bf',
     accentHex: 0x2dd4bf,
   },
@@ -135,7 +153,7 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     name: 'Trảm Vương Kiếm Ý',
     tagline: 'Ưu tiên khóa mục tiêu Boss & kết liễu <35% HP',
     description: 'Phi kiếm ưu tiên dồn vào Boss hoặc Tinh Anh với sát thương và tần suất vượt trội.',
-    effectSummary: '+30% DMG Kiếm Boss · +25% Kết Liễu · -18% Hồi Chiêu',
+    effectSummary: '+45% DMG Kiếm Boss · +25% Kết Liễu · -18% Hồi Chiêu',
     accentColor: '#f43f5e',
     accentHex: 0xf43f5e,
   },
@@ -146,15 +164,19 @@ export const SKILL_EVOLUTION_LIST: SkillEvolutionDef[] = [
     name: 'Vạn Kiếm Quy Tông',
     tagline: 'Triệu hồi thêm 2 thanh phi kiếm liên hoàn',
     description: 'Gia tăng số lượng phi kiếm phóng ra mỗi nhịp để quét sạch toàn sân.',
-    effectSummary: '+2 Phi Kiếm Mỗi Nhịp · -12% Hồi Chiêu',
+    effectSummary: '+2 Phi Kiếm Mỗi Nhịp · -28% Hồi Chiêu',
     accentColor: '#fbbf24',
     accentHex: 0xfbbf24,
   },
 ];
 
+export const SKILL_EVOLUTIONS: SkillEvolutionDef[] = SKILL_EVOLUTION_LIST;
+
 export const SKILL_EVOLUTION_MAP: Record<SkillEvolutionId, SkillEvolutionDef> = Object.fromEntries(
   SKILL_EVOLUTION_LIST.map((e) => [e.id, e])
 ) as Record<SkillEvolutionId, SkillEvolutionDef>;
+
+const VALID_EVOLUTION_IDS = new Set<string>(SKILL_EVOLUTION_LIST.map((e) => e.id));
 
 export interface EvolutionCombatModifiers {
   roomStartShieldRatio: number;
@@ -181,27 +203,57 @@ export interface EvolutionCombatModifiers {
   damageTakenMult: number;
 }
 
+export function isCoreSkillReadyForEvolution(
+  baseSkillId: SkillId,
+  activeSkills: Partial<Record<SkillId, number>> & Record<string, number | undefined>
+): boolean {
+  const baseStacks = Math.max(0, Math.floor(activeSkills[baseSkillId] ?? 0));
+  if (baseStacks >= 2) return true;
+  if (baseStacks >= 1) {
+    const supers = SUPER_COUNTERPARTS[baseSkillId] ?? [];
+    for (const sup of supers) {
+      if ((activeSkills[sup] ?? 0) >= 1) return true;
+    }
+  }
+  return false;
+}
+
+export function sanitizeDiscoveredEvolutions(raw: unknown): SkillEvolutionId[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<SkillEvolutionId>();
+  const out: SkillEvolutionId[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string' && VALID_EVOLUTION_IDS.has(item)) {
+      const id = item as SkillEvolutionId;
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+  }
+  return out;
+}
+
+function toEvolutionSet(
+  activeEvolutions: Set<SkillEvolutionId> | readonly SkillEvolutionId[]
+): Set<SkillEvolutionId> {
+  return activeEvolutions instanceof Set ? activeEvolutions : new Set(activeEvolutions);
+}
+
 export function getEligibleEvolutionOffers(
-  activeSkills: Partial<Record<SkillId, number>>,
-  activeEvolutions: Set<SkillEvolutionId>
+  activeSkills: Partial<Record<SkillId, number>> & Record<string, number | undefined>,
+  activeEvolutions: Set<SkillEvolutionId> | readonly SkillEvolutionId[]
 ): SkillEvolutionOffer[] {
-  const baseIds: SkillId[] = [
-    'fire_arrow',
-    'ice_arrow',
-    'lightning_arrow',
-    'multishot',
-    'orbit_orbs',
-    'flying_swords',
-  ];
+  const activeSet = toEvolutionSet(activeEvolutions);
   const offers: SkillEvolutionOffer[] = [];
 
-  for (const baseSkillId of baseIds) {
-    if ((activeSkills[baseSkillId] ?? 0) < 2) continue;
+  for (const baseSkillId of SKILL_EVOLUTION_BASE_LINES) {
+    if (!isCoreSkillReadyForEvolution(baseSkillId, activeSkills)) continue;
     const branches = SKILL_EVOLUTION_LIST.filter((e) => e.baseSkillId === baseSkillId);
     const branchBoss = branches.find((b) => b.branch === 'boss');
     const branchAoe = branches.find((b) => b.branch === 'aoe');
     if (!branchBoss || !branchAoe) continue;
-    if (activeEvolutions.has(branchBoss.id) || activeEvolutions.has(branchAoe.id)) continue;
+    if (activeSet.has(branchBoss.id) || activeSet.has(branchAoe.id)) continue;
     offers.push({
       baseSkillId,
       baseSkillName: BASE_SKILL_NAMES[baseSkillId] ?? baseSkillId,
@@ -213,8 +265,9 @@ export function getEligibleEvolutionOffers(
 }
 
 export function resolveEvolutionCombatModifiers(
-  activeEvolutions: Set<SkillEvolutionId>
+  activeEvolutions: Set<SkillEvolutionId> | readonly SkillEvolutionId[]
 ): EvolutionCombatModifiers {
+  const activeSet = toEvolutionSet(activeEvolutions);
   const mods: EvolutionCombatModifiers = {
     roomStartShieldRatio: 0,
     attackSpeedMult: 1,
@@ -240,54 +293,54 @@ export function resolveEvolutionCombatModifiers(
     damageTakenMult: 1,
   };
 
-  if (activeEvolutions.has('evo_fire_solar_lance')) {
-    mods.bossDamageMult *= 1.22;
-    mods.burnDamageMult *= 1.4;
+  if (activeSet.has('evo_fire_solar_lance')) {
+    mods.bossDamageMult *= 1.24;
+    mods.burnDamageMult *= 1.45;
   }
-  if (activeEvolutions.has('evo_fire_inferno_ring')) {
+  if (activeSet.has('evo_fire_inferno_ring')) {
     mods.fireAoeRadius = Math.max(mods.fireAoeRadius, 3.2);
     mods.burnDamageMult *= 1.2;
   }
-  if (activeEvolutions.has('evo_ice_brittle_shatter')) {
-    mods.chilledTargetDamageMult *= 1.24;
+  if (activeSet.has('evo_ice_brittle_shatter')) {
+    mods.chilledTargetDamageMult *= 1.28;
     mods.bossShieldBreakMult *= 1.25;
   }
-  if (activeEvolutions.has('evo_ice_glacier_nova')) {
-    mods.iceNovaRadius = Math.max(mods.iceNovaRadius, 3.4);
+  if (activeSet.has('evo_ice_glacier_nova')) {
+    mods.iceNovaRadius = Math.max(mods.iceNovaRadius, 3.6);
     mods.damageTakenMult *= 0.9;
   }
-  if (activeEvolutions.has('evo_bolt_overload_arc')) {
-    mods.lightningDamageMult *= 1.28;
+  if (activeSet.has('evo_bolt_overload_arc')) {
+    mods.lightningDamageMult *= 1.35;
     mods.ultChargeOnBossHitMult *= 1.25;
   }
-  if (activeEvolutions.has('evo_bolt_storm_web')) {
-    mods.lightningExtraJumps += 2;
+  if (activeSet.has('evo_bolt_storm_web')) {
+    mods.lightningExtraJumps += 3;
     mods.lightningRangeMult *= 1.3;
   }
-  if (activeEvolutions.has('evo_multi_deadeye_rail')) {
+  if (activeSet.has('evo_multi_deadeye_rail')) {
     mods.attackSpeedMult *= 1.18;
-    mods.critDamageBonus += 0.25;
+    mods.critDamageBonus += 0.32;
   }
-  if (activeEvolutions.has('evo_multi_tempest_fan')) {
+  if (activeSet.has('evo_multi_tempest_fan')) {
     mods.extraDiagonalArrows += 2;
     mods.extraRicochet += 1;
   }
-  if (activeEvolutions.has('evo_orbs_sentinel_bastion')) {
+  if (activeSet.has('evo_orbs_sentinel_bastion')) {
     mods.roomStartShieldRatio += 0.18;
     mods.damageTakenMult *= 0.88;
   }
-  if (activeEvolutions.has('evo_orbs_sawblade_vortex')) {
-    mods.orbitSpeedMult *= 1.35;
-    mods.orbitDamageMult *= 1.35;
+  if (activeSet.has('evo_orbs_sawblade_vortex')) {
+    mods.orbitSpeedMult *= 1.55;
+    mods.orbitDamageMult *= 1.4;
   }
-  if (activeEvolutions.has('evo_sword_boss_executioner')) {
-    mods.swordBossDamageMult *= 1.3;
+  if (activeSet.has('evo_sword_boss_executioner')) {
+    mods.swordBossDamageMult *= 1.45;
     mods.swordExecuteBonus += 0.25;
     mods.swordCooldownMult *= 0.82;
   }
-  if (activeEvolutions.has('evo_sword_blade_storm')) {
+  if (activeSet.has('evo_sword_blade_storm')) {
     mods.extraFlyingSwords += 2;
-    mods.swordCooldownMult *= 0.88;
+    mods.swordCooldownMult *= 0.72;
   }
 
   return mods;
@@ -298,6 +351,9 @@ export function selectAiEvolutionBranch(
   tactic: AiAutoPilotTactic,
   isBossStage: boolean
 ): SkillEvolutionDef {
+  if (tactic === 'evasive' && offer.baseSkillId === 'orbit_orbs') {
+    return offer.branchBoss;
+  }
   if (isBossStage || tactic === 'aggressive') {
     return offer.branchBoss;
   }
@@ -305,7 +361,7 @@ export function selectAiEvolutionBranch(
 }
 
 export function buildEvolutionCodexEntries(save: SaveData): SkillEvolutionCodexEntry[] {
-  const discovered = new Set(save.discoveredEvolutions ?? []);
+  const discovered = new Set(sanitizeDiscoveredEvolutions(save.discoveredEvolutions));
   return SKILL_EVOLUTION_LIST.map((evo) => ({
     ...evo,
     baseSkillName: BASE_SKILL_NAMES[evo.baseSkillId] ?? evo.baseSkillId,

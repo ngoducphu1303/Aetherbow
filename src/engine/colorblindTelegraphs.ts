@@ -7,6 +7,10 @@ export interface GeometricTelegraphSpec {
   accentHex: number;
   useDoubleRing: boolean;
   polygonSides: number;
+  chevronCount: number;
+  crosshairArms: boolean;
+  octagonSegments: number;
+  labelBadge: string;
 }
 
 export function resolveGeometricTelegraphSpec(
@@ -23,6 +27,10 @@ export function resolveGeometricTelegraphSpec(
           accentHex: 0xffffff,
           useDoubleRing: false,
           polygonSides: 6,
+          chevronCount: 0,
+          crosshairArms: true,
+          octagonSegments: 0,
+          labelBadge: 'TIA NĂNG LƯỢNG',
         };
       case 'charge_lane':
         return {
@@ -32,6 +40,10 @@ export function resolveGeometricTelegraphSpec(
           accentHex: 0xfef08a,
           useDoubleRing: true,
           polygonSides: 4,
+          chevronCount: 4,
+          crosshairArms: false,
+          octagonSegments: 0,
+          labelBadge: 'LAO TỚI',
         };
       case 'interrupt_halo':
         return {
@@ -41,6 +53,10 @@ export function resolveGeometricTelegraphSpec(
           accentHex: 0xffffff,
           useDoubleRing: true,
           polygonSides: 8,
+          chevronCount: 0,
+          crosshairArms: false,
+          octagonSegments: 8,
+          labelBadge: 'NGẮT CHIÊU',
         };
       default:
         return {
@@ -50,6 +66,10 @@ export function resolveGeometricTelegraphSpec(
           accentHex: 0xffffff,
           useDoubleRing: true,
           polygonSides: 8,
+          chevronCount: 0,
+          crosshairArms: false,
+          octagonSegments: 0,
+          labelBadge: 'VÙNG NGUY HIỂM',
         };
     }
   }
@@ -63,6 +83,10 @@ export function resolveGeometricTelegraphSpec(
         accentHex: 0xfef08a,
         useDoubleRing: false,
         polygonSides: 6,
+        chevronCount: 0,
+        crosshairArms: true,
+        octagonSegments: 0,
+        labelBadge: 'TIA NĂNG LƯỢNG',
       };
     case 'charge_lane':
       return {
@@ -72,6 +96,10 @@ export function resolveGeometricTelegraphSpec(
         accentHex: 0xfef08a,
         useDoubleRing: false,
         polygonSides: 4,
+        chevronCount: 3,
+        crosshairArms: false,
+        octagonSegments: 0,
+        labelBadge: 'LAO TỚI',
       };
     case 'interrupt_halo':
       return {
@@ -81,6 +109,10 @@ export function resolveGeometricTelegraphSpec(
         accentHex: 0x38bdf8,
         useDoubleRing: true,
         polygonSides: 8,
+        chevronCount: 0,
+        crosshairArms: false,
+        octagonSegments: 8,
+        labelBadge: 'NGẮT CHIÊU',
       };
     default:
       return {
@@ -90,6 +122,10 @@ export function resolveGeometricTelegraphSpec(
         accentHex: 0xfef08a,
         useDoubleRing: false,
         polygonSides: 16,
+        chevronCount: 0,
+        crosshairArms: false,
+        octagonSegments: 0,
+        labelBadge: 'VÙNG NGUY HIỂM',
       };
   }
 }

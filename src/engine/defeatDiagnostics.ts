@@ -65,7 +65,10 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
 
   const stage = Math.max(1, Math.floor(input.stageReached || 1));
   const totalStages = Math.max(1, Math.floor(input.totalStages || 12));
-  const isBossOrLateStage = stage >= Math.max(4, totalStages - 1) || Boolean(input.defeatCause?.isBoss);
+  const isBossOrLateStage =
+    stage >= Math.max(4, totalStages - 1) ||
+    Boolean(input.defeatCause?.code?.startsWith('boss_')) ||
+    Boolean((input.defeatCause as { isBoss?: boolean } | undefined)?.isBoss);
 
   const perfectDodges = Math.max(0, Math.floor(input.perfectDodges || 0));
   const damageTaken = Math.max(0, Math.floor(input.damageTakenCount || 0));

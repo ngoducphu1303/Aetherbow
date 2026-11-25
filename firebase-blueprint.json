@@ -385,6 +385,14 @@
           "type": "boolean",
           "description": "Whether Double Drop bonus event is active."
         },
+        "scheduledStartMs": {
+          "type": "integer",
+          "description": "Optional UTC epoch milliseconds when timed LiveOps event modifiers activate (0 = always on)."
+        },
+        "scheduledEndMs": {
+          "type": "integer",
+          "description": "Optional UTC epoch milliseconds when timed LiveOps event modifiers expire (0 = no auto-expiry)."
+        },
         "announcementBanner": {
           "type": "string",
           "minLength": 0,

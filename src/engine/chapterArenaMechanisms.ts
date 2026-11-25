@@ -1,8 +1,6 @@
-import type { GpuWatchdogStage } from '../types/game';
-
 export type ArenaMechanismKind =
   | 'solar_obelisk'
-  | 'volcanic_forge'
+  | 'magma_vent'
   | 'emerald_crystal'
   | 'astral_prism';
 
@@ -15,6 +13,11 @@ export interface ArenaMechanismSpec {
   triggerRadius: number;
   effectRadius: number;
   cooldownSec: number;
+  damageAtkMult: number;
+  stunSec: number;
+  bossStaggerRatio: number;
+  armorSunderSec: number;
+  burnDurationSec: number;
   healPct: number;
   shieldPct: number;
   ultChargeBonus: number;
@@ -24,11 +27,7 @@ export interface ArenaMechanismSpec {
   atkSpeedBonusPct: number;
   moveSpeedBonusPct: number;
   drBonusPct: number;
-  damageAtkMult: number;
-  stunSec: number;
-  bossStaggerRatio: number;
-  armorSunderSec: number;
-  burnDurationSec: number;
+  bannerText: string;
 }
 
 export interface ArenaMechanismInstance {
@@ -36,137 +35,161 @@ export interface ArenaMechanismInstance {
   kind: ArenaMechanismKind;
   x: number;
   z: number;
-  cooldownLeft: number;
-  maxCooldown: number;
-  ready: boolean;
   state: 'ready' | 'cooldown';
+  cooldownLeft: number;
+  cooldownRemaining: number;
+  triggerCount: number;
   pulsePhase: number;
+}
+
+export interface ArenaMechanismTriggerOutcome {
+  triggered: true;
+  id: string;
+  kind: ArenaMechanismKind;
+  x: number;
+  z: number;
+  spec: ArenaMechanismSpec;
+  bannerText: string;
+}
+
+export interface MechanismRenderBudget {
+  cylinderSegments: number;
+  ringSegments: number;
+  orbiterCount: number;
+  allowPointLight: false;
+  allowAmbientOrbiters: boolean;
 }
 
 export const ARENA_MECHANISM_SPECS: Record<ArenaMechanismKind, ArenaMechanismSpec> = {
   solar_obelisk: {
     kind: 'solar_obelisk',
     name: 'Trụ Nhật Luân',
-    shortLabel: 'NHẬT LUÂN BÙNG NỔ',
+    shortLabel: 'NHẬT LUÂN!',
     accentHex: 0xf59e0b,
     secondaryHex: 0xfef08a,
-    triggerRadius: 2.0,
-    effectRadius: 6.2,
-    cooldownSec: 16,
-    healPct: 0.08,
-    shieldPct: 0.1,
-    ultChargeBonus: 0.18,
-    resetDash: true,
-    buffDurationSec: 5.5,
-    atkBonusPct: 0.18,
-    atkSpeedBonusPct: 0.12,
-    moveSpeedBonusPct: 0.1,
-    drBonusPct: 0.08,
-    damageAtkMult: 2.1,
+    triggerRadius: 2.1,
+    effectRadius: 5.5,
+    cooldownSec: 12,
+    damageAtkMult: 1.8,
     stunSec: 1.2,
     bossStaggerRatio: 0.16,
     armorSunderSec: 4.0,
     burnDurationSec: 3.5,
-  },
-  volcanic_forge: {
-    kind: 'volcanic_forge',
-    name: 'Lò Rèn Hỏa Sơn',
-    shortLabel: 'HỎA LÒ QUÁ TẢI',
-    accentHex: 0xf97316,
-    secondaryHex: 0xfdba74,
-    triggerRadius: 2.0,
-    effectRadius: 6.6,
-    cooldownSec: 15,
     healPct: 0,
-    shieldPct: 0.12,
-    ultChargeBonus: 0.16,
+    shieldPct: 0.1,
+    ultChargeBonus: 0.18,
     resetDash: false,
-    buffDurationSec: 6.0,
-    atkBonusPct: 0.24,
-    atkSpeedBonusPct: 0.16,
-    moveSpeedBonusPct: 0.08,
+    buffDurationSec: 5.0,
+    atkBonusPct: 0.16,
+    atkSpeedBonusPct: 0.1,
+    moveSpeedBonusPct: 0,
     drBonusPct: 0,
-    damageAtkMult: 2.45,
-    stunSec: 1.0,
-    bossStaggerRatio: 0.18,
+    bannerText: 'TRỤ NHẬT LUÂN BÙNG NỔ · +16% ATK & NẠP NỘ!',
+  },
+  magma_vent: {
+    kind: 'magma_vent',
+    name: 'Lò Dung Nham',
+    shortLabel: 'DUNG NHAM!',
+    accentHex: 0xf97316,
+    secondaryHex: 0xfb923c,
+    triggerRadius: 2.1,
+    effectRadius: 5.8,
+    cooldownSec: 14,
+    damageAtkMult: 2.2,
+    stunSec: 1.4,
+    bossStaggerRatio: 0.2,
     armorSunderSec: 4.5,
     burnDurationSec: 4.0,
+    healPct: 0,
+    shieldPct: 0,
+    ultChargeBonus: 0.12,
+    resetDash: true,
+    buffDurationSec: 5.0,
+    atkBonusPct: 0.2,
+    atkSpeedBonusPct: 0.08,
+    moveSpeedBonusPct: 0.08,
+    drBonusPct: 0,
+    bannerText: 'LÒ DUNG NHAM PHUN TRÀO · SÁT THƯƠNG DIỆN RỘNG & HỒI LƯỚT!',
   },
   emerald_crystal: {
     kind: 'emerald_crystal',
     name: 'Tinh Thể Lục Bảo',
-    shortLabel: 'LỤC BẢO HỘ THÂN',
+    shortLabel: 'LỤC BẢO!',
     accentHex: 0x10b981,
     secondaryHex: 0x6ee7b7,
     triggerRadius: 2.1,
-    effectRadius: 5.8,
-    cooldownSec: 15,
+    effectRadius: 5.2,
+    cooldownSec: 13,
+    damageAtkMult: 1.1,
+    stunSec: 0.9,
+    bossStaggerRatio: 0.12,
+    armorSunderSec: 3.0,
+    burnDurationSec: 0,
     healPct: 0.14,
     shieldPct: 0.16,
-    ultChargeBonus: 0.14,
-    resetDash: true,
-    buffDurationSec: 6.5,
-    atkBonusPct: 0.12,
-    atkSpeedBonusPct: 0.14,
-    moveSpeedBonusPct: 0.16,
-    drBonusPct: 0.16,
-    damageAtkMult: 1.75,
-    stunSec: 1.4,
-    bossStaggerRatio: 0.15,
-    armorSunderSec: 3.5,
-    burnDurationSec: 0,
+    ultChargeBonus: 0.1,
+    resetDash: false,
+    buffDurationSec: 6.0,
+    atkBonusPct: 0.08,
+    atkSpeedBonusPct: 0.06,
+    moveSpeedBonusPct: 0.1,
+    drBonusPct: 0.18,
+    bannerText: 'TINH THỂ LỤC BẢO · HỒI PHỤC HP & KHIÊN HỘ MỆNH!',
   },
   astral_prism: {
     kind: 'astral_prism',
-    name: 'Lăng Kính Song Tử',
-    shortLabel: 'LĂNG KÍNH CỘNG HƯỞNG',
+    name: 'Lăng Kính Tinh Giới',
+    shortLabel: 'TINH GIỚI!',
     accentHex: 0x38bdf8,
-    secondaryHex: 0xc084fc,
+    secondaryHex: 0x818cf8,
     triggerRadius: 2.1,
-    effectRadius: 6.8,
-    cooldownSec: 14,
+    effectRadius: 6.0,
+    cooldownSec: 12,
+    damageAtkMult: 1.6,
+    stunSec: 1.5,
+    bossStaggerRatio: 0.18,
+    armorSunderSec: 4.0,
+    burnDurationSec: 0,
     healPct: 0.06,
     shieldPct: 0.12,
     ultChargeBonus: 0.24,
     resetDash: true,
     buffDurationSec: 5.5,
-    atkBonusPct: 0.16,
-    atkSpeedBonusPct: 0.22,
-    moveSpeedBonusPct: 0.18,
-    drBonusPct: 0.1,
-    damageAtkMult: 2.25,
-    stunSec: 1.3,
-    bossStaggerRatio: 0.2,
-    armorSunderSec: 4.2,
-    burnDurationSec: 0,
+    atkBonusPct: 0.12,
+    atkSpeedBonusPct: 0.18,
+    moveSpeedBonusPct: 0.14,
+    drBonusPct: 0.08,
+    bannerText: 'LĂNG KÍNH TINH GIỚI · TĂNG TỐC BẮN & HỒI CHIÊU TỨC THÌ!',
   },
 };
 
-export function resolveMechanismRenderBudget(options: {
-  isLiteMode: boolean;
-  watchdogStage: GpuWatchdogStage;
-  reducedMotion: boolean;
-}): { cylinderSegments: number; ringSegments: number; pulseEnabled: boolean } {
-  if (options.isLiteMode || options.watchdogStage >= 2) {
-    return {
-      cylinderSegments: 8,
-      ringSegments: 16,
-      pulseEnabled: !options.reducedMotion && options.watchdogStage < 3,
-    };
-  }
-  return {
-    cylinderSegments: 14,
-    ringSegments: 24,
-    pulseEnabled: !options.reducedMotion,
-  };
-}
-
-function resolveKindForChapter(chapterId: number): ArenaMechanismKind {
-  const mod = ((Math.max(1, Math.floor(chapterId)) - 1) % 4) + 1;
+export function resolveChapterArenaMechanismKind(chapterId: number): ArenaMechanismKind {
+  const normalized = Math.max(1, Math.floor(chapterId || 1));
+  const mod = ((normalized - 1) % 4) + 1;
   if (mod === 1) return 'solar_obelisk';
-  if (mod === 2) return 'volcanic_forge';
+  if (mod === 2) return 'magma_vent';
   if (mod === 3) return 'emerald_crystal';
   return 'astral_prism';
+}
+
+export function getChapterArenaMechanismSpec(chapterId: number): ArenaMechanismSpec {
+  return ARENA_MECHANISM_SPECS[resolveChapterArenaMechanismKind(chapterId)];
+}
+
+export function resolveMechanismRenderBudget(options: {
+  isLiteMode: boolean;
+  watchdogStage: number;
+  reducedMotion?: boolean;
+}): MechanismRenderBudget {
+  const lite = options.isLiteMode || options.watchdogStage >= 2;
+  const allowAmbientOrbiters = !lite && !options.reducedMotion;
+  return {
+    cylinderSegments: lite ? 6 : 12,
+    ringSegments: lite ? 14 : 24,
+    orbiterCount: allowAmbientOrbiters ? 3 : 0,
+    allowPointLight: false,
+    allowAmbientOrbiters,
+  };
 }
 
 export function spawnChapterArenaMechanisms(input: {
@@ -175,92 +198,137 @@ export function spawnChapterArenaMechanisms(input: {
   arenaHalfW: number;
   arenaHalfD: number;
   obstacles: Array<{ x: number; z: number; radius: number }>;
-  isBossStage: boolean;
+  isBossStage?: boolean;
+  count?: number;
 }): ArenaMechanismInstance[] {
-  const kind = resolveKindForChapter(input.chapterId);
-  const spec = ARENA_MECHANISM_SPECS[kind];
-  const count = input.isBossStage ? 2 : 1;
-  const maxX = Math.max(3.2, input.arenaHalfW - 3.2);
-  const maxZ = Math.max(3.2, input.arenaHalfD - 3.8);
+  const kind = resolveChapterArenaMechanismKind(input.chapterId);
+  const desiredCount =
+    typeof input.count === 'number' && Number.isFinite(input.count)
+      ? Math.max(0, Math.min(4, Math.floor(input.count)))
+      : input.isBossStage
+      ? 2
+      : 1;
 
-  const candidates: Array<[number, number]> = input.isBossStage
-    ? [
-        [-maxX * 0.62, 0.8],
-        [maxX * 0.62, 0.8],
-        [0, -maxZ * 0.35],
-      ]
-    : [
-        [input.stageIndex % 2 === 0 ? -maxX * 0.45 : maxX * 0.45, 0.5],
-        [0, 1.2],
-      ];
+  const limitX = Math.max(3.5, input.arenaHalfW - 2.0);
+  const limitZ = Math.max(3.5, input.arenaHalfD - 2.0);
+  const offsetX = Math.min(limitX, Math.max(3.8, input.arenaHalfW * 0.56));
+  const offsetZ = Math.min(limitZ, Math.max(3.4, input.arenaHalfD * 0.42));
 
-  const placed: ArenaMechanismInstance[] = [];
-  for (let i = 0; i < candidates.length && placed.length < count; i++) {
-    let [x, z] = candidates[i];
-    for (const ob of input.obstacles) {
-      const d = Math.hypot(x - ob.x, z - ob.z);
-      if (d < ob.radius + 1.8) {
-        x = Math.max(-maxX, Math.min(maxX, x + (x >= 0 ? -2.2 : 2.2)));
-        z = Math.max(-maxZ, Math.min(maxZ, z + 1.4));
+  const candidates: Array<{ x: number; z: number }> = [
+    { x: -offsetX, z: -offsetZ },
+    { x: offsetX, z: offsetZ },
+    { x: offsetX, z: -offsetZ },
+    { x: -offsetX, z: offsetZ },
+    { x: 0, z: -Math.min(limitZ, 5.2) },
+    { x: 0, z: Math.min(limitZ, 5.2) },
+    { x: -Math.min(limitX, 6.2), z: 0 },
+    { x: Math.min(limitX, 6.2), z: 0 },
+    { x: -Math.min(limitX, 5.5), z: -Math.min(limitZ, 6.5) },
+    { x: Math.min(limitX, 5.5), z: Math.min(limitZ, 6.5) },
+    { x: Math.min(limitX, 6.5), z: -Math.min(limitZ, 5.5) },
+    { x: -Math.min(limitX, 6.5), z: Math.min(limitZ, 5.5) },
+  ];
+
+  const isPositionSafe = (
+    x: number,
+    z: number,
+    placed: ArenaMechanismInstance[]
+  ): boolean => {
+    if (Math.abs(x) > limitX || Math.abs(z) > limitZ) return false;
+    if (Math.hypot(x, z) < 3.05) return false;
+    for (const obs of input.obstacles) {
+      if (Math.hypot(x - obs.x, z - obs.z) < obs.radius + 1.55) {
+        return false;
       }
     }
-    placed.push({
-      id: `mech_${input.chapterId}_${input.stageIndex}_${placed.length}`,
+    for (const existing of placed) {
+      if (Math.hypot(x - existing.x, z - existing.z) < 4.0) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const spawned: ArenaMechanismInstance[] = [];
+  const startIdx = Math.abs(input.stageIndex) % candidates.length;
+
+  for (let pass = 0; pass < candidates.length && spawned.length < desiredCount; pass++) {
+    const raw = candidates[(startIdx + pass) % candidates.length];
+    let x = Math.max(-limitX, Math.min(limitX, raw.x));
+    let z = Math.max(-limitZ, Math.min(limitZ, raw.z));
+    if (!isPositionSafe(x, z, spawned)) {
+      // Spiral nudge around candidate to find guaranteed safe spot
+      let found = false;
+      for (let angleIdx = 0; angleIdx < 12 && !found; angleIdx++) {
+        const ang = (angleIdx / 12) * Math.PI * 2;
+        for (const stepDist of [1.8, 3.0, 4.2]) {
+          const tx = Math.max(-limitX, Math.min(limitX, x + Math.cos(ang) * stepDist));
+          const tz = Math.max(-limitZ, Math.min(limitZ, z + Math.sin(ang) * stepDist));
+          if (isPositionSafe(tx, tz, spawned)) {
+            x = tx;
+            z = tz;
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) continue;
+    }
+
+    spawned.push({
+      id: `mech_${input.chapterId}_${input.stageIndex}_${spawned.length}`,
       kind,
       x,
       z,
-      cooldownLeft: 0,
-      maxCooldown: spec.cooldownSec,
-      ready: true,
       state: 'ready',
-      pulsePhase: placed.length * 1.4,
+      cooldownLeft: 0,
+      cooldownRemaining: 0,
+      triggerCount: 0,
+      pulsePhase: spawned.length * 1.4,
     });
   }
-  return placed;
+
+  return spawned;
 }
 
-export function stepArenaMechanisms(list: ArenaMechanismInstance[], dt: number): void {
-  const safeDt = Math.max(0, dt);
-  for (const m of list) {
-    m.pulsePhase += safeDt * 2.8;
-    if (m.cooldownLeft > 0) {
-      m.cooldownLeft = Math.max(0, m.cooldownLeft - safeDt);
-      m.ready = m.cooldownLeft <= 0;
-      m.state = m.ready ? 'ready' : 'cooldown';
-    } else {
-      m.ready = true;
-      m.state = 'ready';
+export function stepArenaMechanisms(mechanisms: ArenaMechanismInstance[], dt: number): void {
+  const safeDt = Math.max(0, Math.min(30, dt));
+  for (const m of mechanisms) {
+    m.pulsePhase += safeDt * 2.4;
+    if (m.state === 'cooldown') {
+      const nextCd = Math.max(0, m.cooldownLeft - safeDt);
+      m.cooldownLeft = nextCd;
+      m.cooldownRemaining = nextCd;
+      if (nextCd <= 0) {
+        m.state = 'ready';
+      }
     }
   }
 }
 
 export function tryTriggerArenaMechanism(
-  list: ArenaMechanismInstance[],
+  mechanisms: ArenaMechanismInstance[],
   probeX: number,
   probeZ: number,
   extraRadius = 0
-): {
-  id: string;
-  kind: ArenaMechanismKind;
-  x: number;
-  z: number;
-  spec: ArenaMechanismSpec;
-  bannerText: string;
-} | null {
-  for (const m of list) {
-    if (!m.ready || m.cooldownLeft > 0) continue;
+): ArenaMechanismTriggerOutcome | null {
+  for (const m of mechanisms) {
+    if (m.state !== 'ready') continue;
     const spec = ARENA_MECHANISM_SPECS[m.kind];
-    if (Math.hypot(m.x - probeX, m.z - probeZ) <= spec.triggerRadius + Math.max(0, extraRadius)) {
-      m.ready = false;
+    const dist = Math.hypot(probeX - m.x, probeZ - m.z);
+    if (dist <= spec.triggerRadius + Math.max(0, extraRadius)) {
       m.state = 'cooldown';
       m.cooldownLeft = spec.cooldownSec;
+      m.cooldownRemaining = spec.cooldownSec;
+      m.triggerCount += 1;
       return {
+        triggered: true,
         id: m.id,
         kind: m.kind,
         x: m.x,
         z: m.z,
         spec,
-        bannerText: `${spec.name.toUpperCase()} · ${spec.shortLabel}!`,
+        bannerText: spec.bannerText,
       };
     }
   }

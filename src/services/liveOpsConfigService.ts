@@ -187,6 +187,8 @@ export async function publishLiveOpsConfig(
       pitySoftCapOffset: sanitized.pitySoftCapOffset,
       weekendBlitzEnabled: sanitized.weekendBlitzEnabled,
       doubleDropEventActive: sanitized.doubleDropEventActive,
+      scheduledStartMs: sanitized.scheduledStartMs,
+      scheduledEndMs: sanitized.scheduledEndMs,
       announcementBanner: sanitized.announcementBanner,
       maintenanceNotice: sanitized.maintenanceNotice,
       balanceNote: sanitized.balanceNote,

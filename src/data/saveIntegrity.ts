@@ -1,15 +1,26 @@
-import type { HeroId, SaveData } from '../types/game';
+import { Rarity, type ChapterMilestoneProgress, type HeroId, type SaveData } from '../types/game';
+import { sanitizeDiscoveredEvolutions } from '../engine/skillEvolutionEngine';
 
 export interface SaveIntegrityReport {
+  ok: boolean;
   sanitizedSave: SaveData;
   issuesFixed: string[];
+  repairs: string[];
   hadAnomalies: boolean;
 }
+
+const VALID_RARITIES = new Set<string>(Object.values(Rarity));
 
 function clampFiniteInt(raw: unknown, min: number, max: number, fallback: number): number {
   const n = typeof raw === 'number' ? raw : Number(raw);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function clampFiniteFloat(raw: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
 }
 
 function dedupeStringArray(raw: unknown): { list: string[]; changed: boolean } {
@@ -59,10 +70,11 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
   fixInt('gems', 0, 99_999_999, 0);
   fixInt('highestChapterCleared', 0, 12, 0);
   fixInt('bestTowerFloor', 0, 10000, 0);
-  fixInt('starDust', 0, 99_999_999, 0);
-  fixInt('spiritCores', 0, 99_999_999, 0);
+  fixInt('starDust', 0, 50_000_000, 0);
+  fixInt('spiritCores', 0, 50_000_000, 0);
   fixInt('paragonInfusionLevel', 0, 500, 0);
 
+  const validInventoryUids = new Set<string>();
   if (!Array.isArray(next.inventory)) {
     next.inventory = [];
     issuesFixed.push('inventory');
@@ -78,15 +90,22 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
       })
       .map((item) => {
         const cleanLevel = clampFiniteInt(item.level, 1, 120, 1);
+        const cleanRarity = VALID_RARITIES.has(String(item.rarity)) ? item.rarity : Rarity.COMMON;
         const cleanAwakening =
           item.awakeningLevel !== undefined
             ? clampFiniteInt(item.awakeningLevel, 0, 10, 0)
             : undefined;
-        if (item.level !== cleanLevel || item.awakeningLevel !== cleanAwakening) {
+        validInventoryUids.add(item.uid);
+        if (
+          item.level !== cleanLevel ||
+          item.rarity !== cleanRarity ||
+          item.awakeningLevel !== cleanAwakening
+        ) {
           gearStatFixed = true;
           return {
             ...item,
             level: cleanLevel,
+            rarity: cleanRarity,
             ...(cleanAwakening !== undefined ? { awakeningLevel: cleanAwakening } : {}),
           };
         }
@@ -104,6 +123,20 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
   if (!next.equipped || typeof next.equipped !== 'object') {
     next.equipped = {};
     issuesFixed.push('equipped');
+  } else {
+    const cleanEquipped: SaveData['equipped'] = { ...next.equipped };
+    let danglingFixed = false;
+    for (const [slot, uid] of Object.entries(cleanEquipped)) {
+      if (uid === undefined) continue;
+      if (typeof uid !== 'string' || !validInventoryUids.has(uid)) {
+        delete (cleanEquipped as Record<string, unknown>)[slot];
+        danglingFixed = true;
+      }
+    }
+    if (danglingFixed) {
+      next.equipped = cleanEquipped;
+      issuesFixed.push('equipped_dangling');
+    }
   }
 
   if (!Array.isArray(next.unlockedHeroes) || next.unlockedHeroes.length === 0) {
@@ -150,6 +183,94 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
     }
   }
 
+  if (next.discoveredEvolutions !== undefined) {
+    const cleanEvos = sanitizeDiscoveredEvolutions(next.discoveredEvolutions);
+    const rawArr = Array.isArray(next.discoveredEvolutions) ? next.discoveredEvolutions : [];
+    if (
+      !Array.isArray(next.discoveredEvolutions) ||
+      cleanEvos.length !== rawArr.length ||
+      cleanEvos.some((id, idx) => rawArr[idx] !== id)
+    ) {
+      next.discoveredEvolutions = cleanEvos;
+      issuesFixed.push('discoveredEvolutions');
+    }
+  }
+
+  if (next.chapterMilestones && typeof next.chapterMilestones === 'object') {
+    const cleanMap: Partial<Record<number, ChapterMilestoneProgress>> = {};
+    for (const [rawKey, entry] of Object.entries(next.chapterMilestones)) {
+      const chId = Number(rawKey);
+      if (!Number.isInteger(chId) || chId < 1 || chId > 12 || !entry || typeof entry !== 'object') {
+        issuesFixed.push(`chapterMilestones_invalid_${rawKey}`);
+        continue;
+      }
+      const cleanClears = clampFiniteInt(entry.clears, 0, 100_000, 0);
+      if (cleanClears !== entry.clears) {
+        issuesFixed.push(`chapterMilestones_${chId}_clears`);
+      }
+      const rawStars = Array.isArray(entry.starsEarned) ? entry.starsEarned : [];
+      const starSet = new Set<number>();
+      for (const s of rawStars) {
+        if (s === 1 || s === 2 || s === 3 || s === 4) {
+          starSet.add(s);
+        }
+      }
+      const cleanStars = [...starSet].sort((a, b) => a - b);
+      if (
+        !Array.isArray(entry.starsEarned) ||
+        cleanStars.length !== rawStars.length ||
+        cleanStars.some((s, idx) => rawStars[idx] !== s)
+      ) {
+        issuesFixed.push(`chapterMilestones_${chId}_stars`);
+      }
+      const cleanHp =
+        entry.bestEndHpRatio !== undefined
+          ? clampFiniteFloat(entry.bestEndHpRatio, 0, 1, 0)
+          : undefined;
+      if (entry.bestEndHpRatio !== undefined && cleanHp !== entry.bestEndHpRatio) {
+        issuesFixed.push(`chapterMilestones_${chId}_hp`);
+      }
+      cleanMap[chId] = {
+        ...entry,
+        chapterId: chId,
+        clears: cleanClears,
+        starsEarned: cleanStars,
+        ...(cleanHp !== undefined ? { bestEndHpRatio: cleanHp } : {}),
+        ...(entry.bestPerfectDodges !== undefined
+          ? { bestPerfectDodges: clampFiniteInt(entry.bestPerfectDodges, 0, 10_000, 0) }
+          : {}),
+        ...(entry.bestBossGuardBreaks !== undefined
+          ? { bestBossGuardBreaks: clampFiniteInt(entry.bestBossGuardBreaks, 0, 10_000, 0) }
+          : {}),
+      };
+    }
+    next.chapterMilestones = cleanMap;
+  }
+
+  if (next.career && typeof next.career === 'object') {
+    const careerCopy = { ...(next.career as unknown as Record<string, unknown>) };
+    const boundedCareerFields: Array<{ key: string; max: number }> = [
+      { key: 'totalKills', max: 100_000_000 },
+      { key: 'totalBossKills', max: 10_000_000 },
+      { key: 'arenaMechanismsTriggered', max: 1_000_000 },
+      { key: 'bossInterruptsTotal', max: 1_000_000 },
+      { key: 'setProcsTriggered', max: 1_000_000 },
+    ];
+    let careerFixed = false;
+    for (const { key, max } of boundedCareerFields) {
+      if (careerCopy[key] === undefined) continue;
+      const cleanVal = clampFiniteInt(careerCopy[key], 0, max, 0);
+      if (careerCopy[key] !== cleanVal) {
+        careerCopy[key] = cleanVal;
+        careerFixed = true;
+        issuesFixed.push(`career_${key}`);
+      }
+    }
+    if (careerFixed) {
+      next.career = careerCopy as unknown as SaveData['career'];
+    }
+  }
+
   if (next.claimedMailIds !== undefined) {
     const res = dedupeStringArray(next.claimedMailIds);
     if (res.changed) {
@@ -166,8 +287,10 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
   }
 
   return {
+    ok: issuesFixed.length === 0,
     sanitizedSave: next,
     issuesFixed,
+    repairs: issuesFixed,
     hadAnomalies: issuesFixed.length > 0,
   };
 }
