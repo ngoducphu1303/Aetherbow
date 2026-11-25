@@ -42,6 +42,7 @@ import {
 } from './projectilePhysicsSystem';
 import {
   countActivePooled,
+  GroundTelegraphVisualPool,
   LootOrbVisualCache,
   stepArmorShardPool,
   stepDashScorchPool,
@@ -53,6 +54,11 @@ import {
   stepWindRingPool,
   VfxFrameBudgetCache,
 } from './vfxPoolManager';
+import {
+  buildZodiacRealmLandmarks,
+  stepZodiacRealmLandmarks,
+  type ZodiacLandmarkAnimNode,
+} from './zodiacRealmArchitecture';
 import {
   classifySquadRole,
   computeSquadWaitingFlankImpulse,
@@ -1150,6 +1156,7 @@ export class GameEngine {
     mat: THREE.MeshBasicMaterial;
   }> = [];
   private arenaLightShafts: THREE.Mesh[] = [];
+  private zodiacLandmarkAnimNodes: ZodiacLandmarkAnimNode[] = [];
 
   private arenaGroup = new THREE.Group();
   private proceduralArenaShell: THREE.Group | null = null;
@@ -1573,6 +1580,7 @@ export class GameEngine {
   private readonly projectileEnemyGrid = new SpatialHashGrid<EnemyEntity>(3.0);
   private readonly vfxBudgetCache = new VfxFrameBudgetCache();
   private readonly lootOrbVisualCache = new LootOrbVisualCache();
+  private readonly groundTelegraphPool = new GroundTelegraphVisualPool(16);
   private vfxFrameCounter = 0;
   private readonly enemySnapshotScratch: EnemyEntity[] = [];
   private readonly projectileQueryScratch: EnemyEntity[] = [];
@@ -5227,6 +5235,7 @@ export class GameEngine {
     this.arenaBrazierGems = [];
     this.arenaBrazierFlames = [];
     this.arenaLightShafts = [];
+    this.zodiacLandmarkAnimNodes = [];
     this.constellationGroup = null;
     this.chapterWeatherPoints = null;
     this.chapterWeatherProfile = null;
@@ -5738,6 +5747,20 @@ export class GameEngine {
     this.portal = createPortalModel(chapter.trimHex);
     this.portal.group.position.set(0, 0, -ARENA_HALF_D - 0.65);
     this.arenaGroup.add(this.portal.group);
+
+    // 7b. Wave 7: Bespoke Procedural 3D Zodiac Sanctuary Architecture for Chapters 5-12 (0 PointLights)
+    const realmLandmarks = buildZodiacRealmLandmarks({
+      chapterId: chapter.id,
+      trimHex: chapter.trimHex,
+      stoneHex: chapter.stoneHex,
+      arenaHalfW: ARENA_HALF_W,
+      arenaHalfD: ARENA_HALF_D,
+      liteActive: arenaBudget.liteActive,
+    });
+    if (realmLandmarks) {
+      proceduralShell.add(realmLandmarks.group);
+      this.zodiacLandmarkAnimNodes = realmLandmarks.animNodes;
+    }
 
     // 8. Volumetric-Feel Zodiac Sanctuary Light Shafts (skipped on Lite/Software GPUs)
     if (!this.isSoftwareGl && !arenaBudget.liteActive) {
@@ -6618,7 +6641,12 @@ export class GameEngine {
         ? 'claw'
         : 'bow';
     const res = activateWeaponOverdrive(this.weaponOverdrive, arch);
-    if (!res.activated) return false;
+    if (!res.activated) {
+      if (!this.weaponOverdrive.active) {
+        queueBufferedAction(this.combatInputBuffer, 'overdrive', performance.now());
+      }
+      return false;
+    }
     this.weaponOverdrive = res.nextState;
     this.weaponOverdriveBuffs = {
       atkMult: 1.28,
@@ -9013,15 +9041,25 @@ export class GameEngine {
     this.dyingCorpses = [];
 
     this.volatileBlasts?.forEach((vb) => {
-      this.releaseObject(vb.ring);
-      this.releaseObject(vb.fill);
+      if (this.groundTelegraphPool) {
+        this.groundTelegraphPool.release(vb.ring, vb.fill);
+      } else {
+        this.releaseObject(vb.ring);
+        this.releaseObject(vb.fill);
+      }
     });
     this.volatileBlasts = [];
     this.arenaHazards?.forEach((hz) => {
-      this.releaseObject(hz.ring);
-      this.releaseObject(hz.fill);
+      if (this.groundTelegraphPool) {
+        this.groundTelegraphPool.release(hz.ring, hz.fill);
+      } else {
+        this.releaseObject(hz.ring);
+        this.releaseObject(hz.fill);
+      }
     });
     this.arenaHazards = [];
+    clearCombatInputBuffer(this.combatInputBuffer);
+    this.dashBufferTimer = 0;
     this.arenaHazardSpawnTimer = 5.4;
     this.bossIntroTimer = 0;
     this.bossEntranceTimer = 0;
@@ -11340,9 +11378,11 @@ export class GameEngine {
     const isDashKey =
       code === kb.dash ||
       (kb.dash === 'Space' && (code === 'ShiftLeft' || code === 'ShiftRight'));
+    const isHeavyBreakKey =
+      code === kb.heavyBreak || (kb.heavyBreak === 'KeyF' && code === 'KeyJ');
     if (isDashKey && !this.keys[code]) {
       this.dashBufferTimer = 0.14;
-    } else if ((code === 'KeyF' || code === 'KeyJ') && !this.keys[code]) {
+    } else if (isHeavyBreakKey && !this.keys[code]) {
       this.triggerHeavyBreakStrike();
     } else if (code === kb.ultimate && !this.keys[code]) {
       this.triggerHeroUltimate();
@@ -11352,7 +11392,7 @@ export class GameEngine {
       this.quickCycleCombatCamera();
     } else if (code === kb.toggleAutoPilot && !this.keys[code]) {
       this.callbacks.onToggleAutoPilotKey?.();
-    } else if (code === 'KeyX' && !this.keys[code]) {
+    } else if (code === kb.overdrive && !this.keys[code]) {
       this.triggerWeaponOverdrive();
     } else if ((this.isCoopRaidMode || this.coopAllies.length > 0) && !this.keys[code]) {
       if (code === 'Digit1') {
@@ -11423,6 +11463,8 @@ export class GameEngine {
 
   private onWindowBlur = () => {
     this.keys = {};
+    clearCombatInputBuffer(this.combatInputBuffer);
+    this.dashBufferTimer = 0;
     this.pointerDown = false;
     this.pointerId = null;
     this.joyVecX = 0;
@@ -11540,9 +11582,13 @@ export class GameEngine {
   }
 
   public triggerHeavyBreakStrike(): void {
-    if (this.phase !== GamePhase.PLAYING || this.heavyBreakCooldown > 0) return;
+    if (this.phase !== GamePhase.PLAYING) return;
     if (this.isBossEntranceLocked()) {
       this.notifyBossEntranceLockedHint();
+      return;
+    }
+    if (this.heavyBreakCooldown > 0) {
+      queueBufferedAction(this.combatInputBuffer, 'heavyBreak', performance.now());
       return;
     }
     const nearest = this.findNearestEnemy(this.px, this.pz);
@@ -13481,8 +13527,7 @@ export class GameEngine {
             vb.z
           );
         }
-        this.releaseObject(vb.ring);
-        this.releaseObject(vb.fill);
+        this.groundTelegraphPool.release(vb.ring, vb.fill);
         this.volatileBlasts.splice(vi, 1);
       }
     }
@@ -14039,42 +14084,19 @@ export class GameEngine {
           ? Math.round(28 * getEndlessTowerScaling(this.towerFloor, this.towerHighestCleared).enemyDmgScale)
           : Math.round(26 * this.currentChapter.dmgScale);
 
-        const ring = new THREE.Mesh(
-          new THREE.RingGeometry(radius - 0.16, radius, 28),
-          new THREE.MeshBasicMaterial({
-            color: meta.colorHex,
-            transparent: true,
-            opacity: 0.78,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: -2,
-            polygonOffsetUnits: -2,
-          })
-        );
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.set(hx, 0.055, hz);
-        ring.renderOrder = 7;
-
-        const fill = new THREE.Mesh(
-          new THREE.CircleGeometry(1, 24),
-          new THREE.MeshBasicMaterial({
-            color: meta.colorHex,
-            transparent: true,
-            opacity: 0.24,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1,
-          })
-        );
-        fill.rotation.x = -Math.PI / 2;
-        fill.position.set(hx, 0.05, hz);
-        fill.scale.setScalar(0.12);
-        fill.renderOrder = 6;
-
-        this.entitiesGroup.add(ring, fill);
+        const pooled = this.groundTelegraphPool.acquire({
+          colorHex: meta.colorHex,
+          x: hx,
+          z: hz,
+          radius,
+          ringY: 0.055,
+          fillY: 0.05,
+          ringOpacity: 0.78,
+          fillOpacity: 0.24,
+          initialFillScale: 0.12,
+          parent: this.entitiesGroup,
+        });
+        const { ring, fill } = pooled;
         soundEngine.playArenaHazardWarn();
         this.arenaHazards.push({
           kind,
@@ -14168,8 +14190,7 @@ export class GameEngine {
             );
           }
         }
-        this.releaseObject(hz.ring);
-        this.releaseObject(hz.fill);
+        this.groundTelegraphPool.release(hz.ring, hz.fill);
         this.arenaHazards.splice(i, 1);
       }
     }
@@ -14254,6 +14275,7 @@ export class GameEngine {
         mistMat.color.lerp(_keyCol, alpha);
       }
     }
+    stepZodiacRealmLandmarks(this.zodiacLandmarkAnimNodes, this.elapsed, this.reducedMotionEnabled);
   }
 
   private updateStarfallWeather(dt: number): void {
@@ -14541,14 +14563,24 @@ export class GameEngine {
       this.autoPilotManualOverride = false;
     }
 
-    // Pillar 2: Drain 120ms buffered combat inputs for frame-perfect responsiveness
+    // Pillar 2 / Wave 7: Drain 140ms buffered combat inputs across all 5 core combat actions
     const bufferNowMs = performance.now();
     if (!this.isBossEntranceLocked()) {
       if (this.activeSkillCooldown <= 0 && consumeBufferedAction(this.combatInputBuffer, 'activeSkill', bufferNowMs)) {
         this.triggerHeroActiveSkill();
       }
+      if (this.heavyBreakCooldown <= 0 && consumeBufferedAction(this.combatInputBuffer, 'heavyBreak', bufferNowMs)) {
+        this.triggerHeavyBreakStrike();
+      }
       if (this.ultCharge >= 100 && consumeBufferedAction(this.combatInputBuffer, 'ultimate', bufferNowMs)) {
         this.triggerHeroUltimate();
+      }
+      if (
+        !this.weaponOverdrive.active &&
+        this.weaponOverdrive.charge >= 100 &&
+        consumeBufferedAction(this.combatInputBuffer, 'overdrive', bufferNowMs)
+      ) {
+        this.triggerWeaponOverdrive();
       }
     }
     if (this.dashCooldown <= 0 && this.dashTimer <= 0 && consumeBufferedAction(this.combatInputBuffer, 'dash', bufferNowMs)) {
@@ -21493,42 +21525,19 @@ export class GameEngine {
       if (e.eliteAffix === 'volatile' || e.eliteAffixes?.includes('volatile') || isDetonatorRole) {
         const blastRadius = isDetonatorRole ? 3.1 : 2.85;
         const blastDelay = isDetonatorRole ? 0.5 : 0.85;
-        const ring = new THREE.Mesh(
-          new THREE.RingGeometry(blastRadius - 0.16, blastRadius, 28),
-          new THREE.MeshBasicMaterial({
-            color: 0xf97316,
-            transparent: true,
-            opacity: 0.8,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: -2,
-            polygonOffsetUnits: -2,
-          })
-        );
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.set(e.x, 0.06, e.z);
-        ring.renderOrder = 7;
-
-        const fill = new THREE.Mesh(
-          new THREE.CircleGeometry(1, 24),
-          new THREE.MeshBasicMaterial({
-            color: 0xf97316,
-            transparent: true,
-            opacity: 0.28,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1,
-          })
-        );
-        fill.rotation.x = -Math.PI / 2;
-        fill.position.set(e.x, 0.055, e.z);
-        fill.scale.setScalar(0.1);
-        fill.renderOrder = 6;
-
-        this.entitiesGroup.add(ring, fill);
+        const pooledBlast = this.groundTelegraphPool.acquire({
+          colorHex: 0xf97316,
+          x: e.x,
+          z: e.z,
+          radius: blastRadius,
+          ringY: 0.06,
+          fillY: 0.055,
+          ringOpacity: 0.8,
+          fillOpacity: 0.28,
+          initialFillScale: 0.1,
+          parent: this.entitiesGroup,
+        });
+        const { ring, fill } = pooledBlast;
         soundEngine.playEliteAffixTrigger('volatile');
         this.volatileBlasts.push({
           x: e.x,
@@ -24878,8 +24887,10 @@ export class GameEngine {
     }
     this.lootOrbs.forEach((o) => this.entitiesGroup.remove(o.mesh));
     this.lootOrbs = [];
+    this.groundTelegraphPool.releaseAll();
     this.releaseObject(this.scene);
     this.lootOrbVisualCache.dispose();
+    this.groundTelegraphPool.dispose();
     disposeChapter1RosterTemplateCache();
     disposeSolarLeoTemplateCache();
     this.disposePostProcessing();

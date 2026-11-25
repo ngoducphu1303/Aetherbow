@@ -39,9 +39,26 @@ Mỗi chương áp dụng phối màu **60% nền đấu trường/sương mù t
 
 ---
 
+## 2b. Kiến Trúc Đền Thờ 3D Độc Bản Chương 5–12 (`src/engine/zodiacRealmArchitecture.ts` — Đợt 7)
+
+Bên cạnh 4 đấu trường GLB độc bản của Chương 1–4, toàn bộ 8 Chương 5–12 sở hữu cụm kiến trúc Hoàng Đạo thủ tục đa tầng (`18–30+` mesh/chương, đặt an toàn ngoài vùng di chuyển chiến đấu hai bên sườn + Cổng Bắc, dùng chung vật liệu PBR, đĩa bóng tiếp xúc đáy, giảm phân đoạn tự động ở Lite Mode và **`0 PointLight` mới**):
+
+| Chương | Cung | Biểu Tượng Kiến Trúc 3D (`archetype`) | Chuyển Động Zero-GC (`reducedMotion` = 0.25×) |
+|---:|---|---|---|
+| 5 | **Cự Giải** | *Thủy Triều Nguyệt Tháp* (`cancer_tidal_arch`) | Ngọc thủy triều bồng bềnh + vòng quỹ đạo nghiêng |
+| 6 | **Xử Nữ** | *Nhật Khuê Thánh Điện* (`virgo_astral_sundial`) | Tinh bàn đồng hồ mặt trời xoay trục Y |
+| 7 | **Thiên Bình** | *Cán Cân Công Lý Hoàng Kim* (`libra_golden_scales`) | Đòn cân vàng & hai đĩa pha lê đung đưa nhịp nhàng |
+| 8 | **Hổ Cáp** | *Tháp Độc Thạch Hắc Diện* (`scorpio_obsidian_spire`) | Đốt tháp uốn cong hắc diện + mũi kim pha lê nhịp xung |
+| 9 | **Nhân Mã** | *Khải Hoàn Cung Tinh Đạo* (`sagittarius_celestial_bow`) | Vòm cung khải hoàn + mũi tên sao vàng lơ lửng hướng thiên |
+| 10 | **Ma Kết** | *Cự Thạch Sơn Đỉnh Cổ Đại* (`capricorn_summit_monolith`) | Đỉnh núi bậc thang + cặp sừng vàng + lõi cổ ngữ xoay |
+| 11 | **Bảo Bình** | *Thiên Bình Tinh Lưu Khí* (`aquarius_starlight_amphora`) | Bình tinh không nghiêng rót dòng sao sáng vào đài |
+| 12 | **Song Ngư** | *Song Ngư Mộng Cảnh Đài* (`pisces_twin_crescents`) | Hai vành trăng khuyết san hô/ngọc trai xoay quanh lăng kính |
+
+---
+
 ## 3. Quy Chuẩn Tài Sản 3D High / Lite (Chuẩn Dell Latitude E5430)
 
-- Mọi nhân vật, quái, Boss và bản đồ mới (Ch.5–12) bắt buộc xuất **đủ 2 biến thể** trong `Runtime/`:
+- Mọi nhân vật, quái, Boss và bản đồ mới (Ch.5–12) khi bổ sung tài sản GLB bắt buộc xuất **đủ 2 biến thể** trong `Runtime/`:
   - `*-high.glb`: PBR đầy đủ cho GPU rời / máy tầm trung-cao.
   - `*-lite.glb`: Nén mesh + giảm texture ≤ 512–1024px, **mục tiêu ≤ 2.5 MB / thực thể**, không phụ thuộc shader ánh sáng điểm phức tạp.
 - Mọi thay đổi kho GLB phải vượt qua `validateGlbPipelineManifest` với `e5430Safe === true`.

@@ -1,6 +1,6 @@
 # GAME DEVELOPMENT ROADMAP — LỘ TRÌNH PHÁT TRIỂN P0 → P3 (PHASE 3)
 
-Tài liệu tổng hợp lộ trình kỹ thuật và nội dung cho **Aetherbow: Hoàng Đạo Trỗi Dậy**, phản ánh trung thực trạng thái sau **Đợt 1 (P0–P1), Đợt 2 (P2), Đợt 3 (Wave 3 Overhaul), Đợt 4 (Zero-GC Projectile Broadphase & P2-3a), Đợt 5 (Spatial SFX, 12-Chapter World Lore & Zero-GC VFX Pool Manager P2-3b) và Đợt 6 (12-State Combat Animation Machine, Ch.1–4 Zodiac Boss Phase III Fix & Shared LootOrbVisualCache P2-3c)**.
+Tài liệu tổng hợp lộ trình kỹ thuật và nội dung cho **Aetherbow: Hoàng Đạo Trỗi Dậy**, phản ánh trung thực trạng thái sau **Đợt 1 (P0–P1), Đợt 2 (P2), Đợt 3 (Wave 3 Overhaul), Đợt 4 (Zero-GC Projectile Broadphase & P2-3a), Đợt 5 (Spatial SFX, 12-Chapter World Lore & Zero-GC VFX Pool Manager P2-3b), Đợt 6 (12-State Combat Animation Machine, Ch.1–4 Zodiac Boss Phase III Fix & Shared LootOrbVisualCache P2-3c), và Đợt 7 (Kiến Trúc Đền Thờ 3D Độc Bản Ch.5–12, `GroundTelegraphVisualPool` Zero-GPU-Churn, Đệm Phím 5 Hành Động, 8 Phím Tắt Tùy Biến & Hiển Thị Đầy Đủ Bộ Sưu Tập Xem Thử 3D Trực Tiếp `P2-3d`)**.
 
 ---
 
@@ -14,11 +14,11 @@ Tài liệu tổng hợp lộ trình kỹ thuật và nội dung cho **Aetherbow
 [P1: 8-Milestone Economy & Paragon Sink]     [P1/P2: Security Monitor & JSON-V2]           [P2-1: 100% GLB High/Lite]
        │                                               │                                              │
        ▼                                               ▼                                              ▼
-[Wave 3: 12 Bespoke Zodiac Music Themes]     [P2-4b: LiveOps Scheduled Events + Rules]     [Wave 3/4: Zero-GC SpatialHashGrid & P2-3 Projectile Physics]
+[Wave 3-6: 12 Music, Lore, 12-State Anim]    [P2-4b: LiveOps Scheduled Events + Rules]     [Wave 3-7: Zero-GC SpatialGrid, VFX/Telegraph Pools & Ch.5-12 3D Landmarks]
        └───────────────────────────────────────────────┴──────────────────────────────────────────────┘
                                                        │
                                                        ▼
-                        [P2-5b / P3-1 / P3-2: Ch.5-12 3D Assets, Physical E5430 Field QA & Redis Scale]
+                        [P2-5b / P3-1 / P3-2: Ch.5-12 GLB Art Expansion, Physical E5430 Field QA & Redis Scale]
 ```
 
 ---
@@ -55,13 +55,14 @@ Tài liệu tổng hợp lộ trình kỹ thuật và nội dung cho **Aetherbow
 |---|---|---|---|
 | **P2-1** | **Đạt 100% Cặp High/Lite Trong `glb-manifest.json`**: `63/63` cặp đầy đủ (`100%`), `0` lỗi / `0` cảnh báo, `status: healthy`, `e5430Safe: true`. | `pairCoveragePct === 100%`, `issues.length === 0` | **Hoàn thành & Đã xác minh** |
 | **P2-2** | **Tách Bộ Test GLB Local vs CDN Manifest (`testGlbManifestHelper.ts`)**: Xác minh thực thể thật trong `scripts/glb-manifest.json`, 0 `ENOENT`. | 0 `ENOENT` / 0 fail trên toàn bộ bộ test engine | **Hoàn thành & Đã test** |
-| **P2-3a** | **Zero-GC Spatial Hash Grid & Trích Xuất Mô-đun `projectilePhysicsSystem.ts`**: Tách vật lý đạn, nảy tường/trụ, bám mục tiêu và va chạm `SpatialHashGrid` (cả đội hình lẫn đạn/AoE) khỏi `GameEngine.ts`, đo benchmark thực tế nhanh hơn **8.09×** và triệt tiêu **18,000 cấp phát mảng/giây**. | Benchmark 300×40×600 pass 100% parity, nhanh hơn ≥ 5× | **Hoàn thành & Đã đo (Đợt 3–4)** |
+| **P2-3a** | **Zero-GC Spatial Hash Grid & Trích Xuất Mô-đun `projectilePhysicsSystem.ts`**: Tách vật lý đạn, nảy tường/trụ, bám mục tiêu và va chạm `SpatialHashGrid` (cả đội hình lẫn đạn/AoE) khỏi `GameEngine.ts`, đo benchmark thực tế nhanh hơn **7.05×–8.09×** và triệt tiêu **18,000 cấp phát mảng/giây**. | Benchmark 300×40×600 pass 100% parity, nhanh hơn ≥ 5× | **Hoàn thành & Đã đo (Đợt 3–4)** |
 | **P2-4a** | **Chuẩn Lưu JSON-V2 (`aetherbow_save_v2`) có FNV-1a Checksum**: Chống sửa tay tệp xuất `.JSON`, tương thích ngược 100% JSON cũ. | Chặn tệp sửa đổi live + unit test 100% | **Hoàn thành & Đã test** |
 | **P2-4b** | **Hẹn Giờ Sự Kiện LiveOps Tự Động (`scheduledStartMs`/`scheduledEndMs`) & Presets**: Tự động kích hoạt trong khung giờ, hoàn nguyên 1.0× ngoài khung giờ, cập nhật & deploy `firestore.rules` + UI chọn lịch trên `AssetAdminLiveOpsTab.tsx`. | `liveops-config.test.mjs` pass 100% + rules deployed | **Hoàn thành & Đã deploy (Đợt 3)** |
 | **P2-5a** | **AI Đám Đông Theo Token (`EnemySquadDirector`) & 12 Chủ Đề Nhạc Hoàng Đạo Độc Bản (`zodiacMusicDirector.ts`)**: Điều phối 2–5 token tấn công (`≤ 3` ở Lite), 12 giai điệu/âm giai/tempo chiến đấu & Boss riêng cho Ch.1–12. | `enemy-squad-director.test.mjs` & `zodiac-music-director.test.mjs` pass 100% | **Hoàn thành & Đã test (Đợt 2–3)** |
 | **P2-3b** | **Trích Xuất `VfxPoolManager` Zero-GC, Cache Ngân Sách VFX Theo Frame, SFX Không Gian 3D & Biên Niên Sử 12 Chương**: Tách 8 vòng cập nhật VFX pool + `VfxFrameBudgetCache` khỏi `GameEngine.ts`, sửa lỗi wrap sương mù `-Z`, bổ sung SFX khoảng cách 3D / 4 âm sắc tướng / tiếng dội khiên và Biên Niên Sử 12 Chương trong Boss Codex. | `vfxPoolManager.test.ts` (4/4), `sfxSpatialAndTimbre.test.ts` (4/4), `zodiacWorldLore.test.ts` (2/2) pass 100% | **Hoàn thành & Đã test (Đợt 5)** |
-| **P2-3c** | **Máy Trạng Thái 12 Hoạt Ảnh, Sửa Lỗi Boss Pha III Chương 1–4 & `LootOrbVisualCache` Zero-GPU-Churn**: Bổ sung `resolveCombatAnimState` (12 trạng thái chuẩn) + xung động học Lướt/Kỹ năng/Xuất trận/Gục ngã, sửa điều kiện Pha III Ch.1–4 + 12 cảnh báo khắc chế Boss Hoàng Đạo, và chia sẻ 2 geometry + 4 material cho toàn bộ vật phẩm rơi 3D. | `wave6AnimationAndBoss.test.ts` (5/5) pass 100%, 446 bài test 0 fail | **Hoàn thành & Đã test (Đợt 6)** |
-| **P2-5b** | **Tài Sản 3D High/Lite Độc Bản Cho Chương 5–8 (Cự Giải → Bọ Cạp)**: Kèm Boss Phase III, tuân thủ ngân sách E5430 Lite `≤ 2.5 MB/entity`. | 100% cặp High/Lite Ch.5–8 | Theo lịch mỹ thuật 3D |
+| **P2-3c** | **Máy Trạng Thái 12 Hoạt Ảnh, Sửa Lỗi Boss Pha III Chương 1–4 & `LootOrbVisualCache` Zero-GPU-Churn**: Bổ sung `resolveCombatAnimState` (12 trạng thái chuẩn) + xung động học Lướt/Kỹ năng/Xuất trận/Gục ngã, sửa điều kiện Pha III Ch.1–4 + 12 cảnh báo khắc chế Boss Hoàng Đạo, và chia sẻ 2 geometry + 4 material cho toàn bộ vật phẩm rơi 3D. | `wave6AnimationAndBoss.test.ts` (5/5) pass 100% | **Hoàn thành & Đã test (Đợt 6)** |
+| **P2-3d** | **Kiến Trúc Đền Thờ 3D Độc Bản Ch.5–12 (`zodiacRealmArchitecture.ts`), `GroundTelegraphVisualPool` Zero-GPU-Churn, Đệm Phím 5 Hành Động (`140ms`), 8 Phím Tắt PC Tùy Biến & Hiển Thị Đầy Đủ Bộ Sưu Tập Xem Thử 3D Trực Tiếp**: Xây dựng 8 cụm biểu tượng Hoàng Đạo 3D đa tầng ngoài vùng chiến đấu (`0 PointLights`, tự giảm đỉnh ở Lite), thay thế toàn bộ cấp phát GPU cho `arenaHazards` & `volatileBlasts` bằng pool dùng chung 2 hình học chuẩn, mở rộng đệm phím + tùy biến phím cho `Phá Giáp Trảm (F)` & `Thức Tỉnh Vũ Khí (X)` hiển thị trực tiếp trên HUD/Cài Đặt, và hiển thị đầy đủ 100% danh mục Tinh Linh/Cánh/Thú Cưỡi/Thánh Khí/Hào Quang Ch.1–4 kèm `Xem 3D`. | `zodiacRealmArchitecture.test.ts` (5/5), `chapterAssetVisibility.test.ts` (3/3), full suite 0 fail, live Chromium 0 lỗi | **Hoàn thành & Đã test (Đợt 7)** |
+| **P2-5b** | **Tài Sản GLB High/Lite Độc Bản Cho Chương 5–8 (Cự Giải → Bọ Cạp)**: Mở rộng thêm mô hình quái/Boss GLB riêng bên cạnh kiến trúc đền thờ 3D Ch.5–12 đã có, tuân thủ ngân sách E5430 Lite `≤ 2.5 MB/entity`. | 100% cặp High/Lite Ch.5–8 | Theo lịch mỹ thuật 3D |
 
 ---
 

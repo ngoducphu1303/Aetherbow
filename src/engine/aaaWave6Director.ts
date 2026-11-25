@@ -9,7 +9,9 @@ import {
 export const DEFAULT_COMBAT_KEYBINDS: CombatKeybinds = {
   dash: 'Space',
   activeSkill: 'KeyE',
+  heavyBreak: 'KeyF',
   ultimate: 'KeyQ',
+  overdrive: 'KeyX',
   pause: 'Escape',
   cycleCamera: 'KeyC',
   toggleAutoPilot: 'KeyV',
@@ -18,7 +20,9 @@ export const DEFAULT_COMBAT_KEYBINDS: CombatKeybinds = {
 const COMBAT_KEYBIND_ACTIONS: CombatKeybindAction[] = [
   'dash',
   'activeSkill',
+  'heavyBreak',
   'ultimate',
+  'overdrive',
   'pause',
   'cycleCamera',
   'toggleAutoPilot',
@@ -31,7 +35,9 @@ export const COMBAT_KEYBIND_META: Array<{
 }> = [
   { action: 'dash', label: 'Lướt Né (Dash)', hint: 'Miễn thương & Né Hoàn Hảo' },
   { action: 'activeSkill', label: 'Kỹ Năng Chủ Động', hint: 'Chiêu đặc trưng của Anh Hùng' },
+  { action: 'heavyBreak', label: 'Phá Giáp Trảm / Kết Liễu', hint: 'Lao chém phá khiên & kết liễu Boss/Tinh Anh' },
   { action: 'ultimate', label: 'Tuyệt Kỹ (Chiêu Cuối)', hint: 'Kích hoạt khi đầy 100% nộ' },
+  { action: 'overdrive', label: 'Thức Tỉnh Vũ Khí', hint: 'Kích hoạt Overdrive khi đầy 100% thanh vũ khí' },
   { action: 'cycleCamera', label: 'Đổi Góc Camera Nhanh', hint: 'Chiến Thuật · Cận Cảnh · Toàn Cảnh' },
   { action: 'toggleAutoPilot', label: 'Bật/Tắt Tự Động Chiến Đấu', hint: 'Chuyển nhanh tay chơi và AI hỗ trợ' },
   { action: 'pause', label: 'Tạm Dừng Trận', hint: 'Mở bảng tạm dừng & cài đặt' },

@@ -91,13 +91,13 @@ export function evaluateAdaptiveResolutionScale(
 // PILLAR 2: WORLD-CLASS GAME FEEL — 120ms INPUT BUFFER, WEAPON SIGNATURES & COMBO LIFT
 // ============================================================================
 
-export type BufferedCombatAction = 'dash' | 'activeSkill' | 'ultimate';
+export type BufferedCombatAction = 'dash' | 'activeSkill' | 'ultimate' | 'heavyBreak' | 'overdrive';
 
 export interface CombatInputBufferState {
   queuedAtMs: Record<BufferedCombatAction, number>;
 }
 
-export const COMBAT_INPUT_BUFFER_WINDOW_MS = 120;
+export const COMBAT_INPUT_BUFFER_WINDOW_MS = 140;
 
 export function createCombatInputBuffer(): CombatInputBufferState {
   return {
@@ -105,6 +105,8 @@ export function createCombatInputBuffer(): CombatInputBufferState {
       dash: -1,
       activeSkill: -1,
       ultimate: -1,
+      heavyBreak: -1,
+      overdrive: -1,
     },
   };
 }
@@ -138,10 +140,13 @@ export function consumeBufferedAction(
   return true;
 }
 
-export function clearCombatInputBuffer(buffer: CombatInputBufferState): void {
+export function clearCombatInputBuffer(buffer: CombatInputBufferState | null | undefined): void {
+  if (!buffer?.queuedAtMs) return;
   buffer.queuedAtMs.dash = -1;
   buffer.queuedAtMs.activeSkill = -1;
   buffer.queuedAtMs.ultimate = -1;
+  buffer.queuedAtMs.heavyBreak = -1;
+  buffer.queuedAtMs.overdrive = -1;
 }
 
 export interface WeaponKineticSignature {

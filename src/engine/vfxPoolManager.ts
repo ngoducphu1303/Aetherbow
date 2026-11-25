@@ -425,3 +425,170 @@ export class LootOrbVisualCache {
     this.materials.clear();
   }
 }
+
+export interface PooledGroundTelegraph {
+  inUse: boolean;
+  ring: THREE.Mesh;
+  fill: THREE.Mesh;
+}
+
+/**
+ * Shared-Geometry Pooled Ground Telegraph Manager for Arena Hazards & Volatile Enemy Blasts.
+ * Eliminates per-spawn `new THREE.RingGeometry` + `new THREE.CircleGeometry` + `new THREE.MeshBasicMaterial`
+ * GPU buffer churn during combat on Intel HD 4000 / Dell Latitude E5430.
+ */
+export class GroundTelegraphVisualPool {
+  private unitRingGeo: THREE.RingGeometry | null = null;
+  private unitFillGeo: THREE.CircleGeometry | null = null;
+  private readonly slots: PooledGroundTelegraph[] = [];
+  private readonly maxCapacity: number;
+
+  constructor(maxCapacity = 16) {
+    this.maxCapacity = Math.max(4, maxCapacity);
+  }
+
+  private ensureGeometries(): { ringGeo: THREE.RingGeometry; fillGeo: THREE.CircleGeometry } {
+    if (!this.unitRingGeo) {
+      this.unitRingGeo = new THREE.RingGeometry(0.935, 1.0, 28);
+    }
+    if (!this.unitFillGeo) {
+      this.unitFillGeo = new THREE.CircleGeometry(1, 24);
+    }
+    return { ringGeo: this.unitRingGeo, fillGeo: this.unitFillGeo };
+  }
+
+  public acquire(params: {
+    colorHex: number;
+    x: number;
+    z: number;
+    radius: number;
+    ringY?: number;
+    fillY?: number;
+    ringOpacity?: number;
+    fillOpacity?: number;
+    initialFillScale?: number;
+    parent?: THREE.Object3D;
+  }): PooledGroundTelegraph {
+    let slot = this.slots.find((s) => !s.inUse);
+    if (!slot) {
+      if (this.slots.length < this.maxCapacity) {
+        const { ringGeo, fillGeo } = this.ensureGeometries();
+        const ring = new THREE.Mesh(
+          ringGeo,
+          new THREE.MeshBasicMaterial({
+            color: params.colorHex,
+            transparent: true,
+            opacity: params.ringOpacity ?? 0.78,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2,
+          })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.renderOrder = 7;
+
+        const fill = new THREE.Mesh(
+          fillGeo,
+          new THREE.MeshBasicMaterial({
+            color: params.colorHex,
+            transparent: true,
+            opacity: params.fillOpacity ?? 0.26,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          })
+        );
+        fill.rotation.x = -Math.PI / 2;
+        fill.renderOrder = 6;
+
+        slot = { inUse: false, ring, fill };
+        this.slots.push(slot);
+      } else {
+        // Recycle oldest slot gracefully under extreme load without allocating new GPU buffers
+        slot = this.slots[0];
+      }
+    }
+
+    slot.inUse = true;
+    const ringMat = slot.ring.material as THREE.MeshBasicMaterial;
+    const fillMat = slot.fill.material as THREE.MeshBasicMaterial;
+    ringMat.color.setHex(params.colorHex);
+    ringMat.opacity = params.ringOpacity ?? 0.78;
+    fillMat.color.setHex(params.colorHex);
+    fillMat.opacity = params.fillOpacity ?? 0.26;
+
+    const safeRadius = Math.max(0.2, params.radius);
+    slot.ring.position.set(params.x, params.ringY ?? 0.055, params.z);
+    slot.ring.scale.setScalar(safeRadius);
+    slot.ring.visible = true;
+
+    slot.fill.position.set(params.x, params.fillY ?? 0.05, params.z);
+    slot.fill.scale.setScalar(params.initialFillScale ?? 0.12);
+    slot.fill.visible = true;
+
+    if (params.parent) {
+      if (slot.ring.parent !== params.parent) params.parent.add(slot.ring);
+      if (slot.fill.parent !== params.parent) params.parent.add(slot.fill);
+    }
+    return slot;
+  }
+
+  public release(ring: THREE.Mesh, fill: THREE.Mesh): void {
+    for (let i = 0; i < this.slots.length; i++) {
+      const s = this.slots[i];
+      if (s.ring === ring || s.fill === fill) {
+        s.inUse = false;
+        s.ring.visible = false;
+        s.fill.visible = false;
+        s.ring.parent?.remove(s.ring);
+        s.fill.parent?.remove(s.fill);
+        return;
+      }
+    }
+    ring.visible = false;
+    fill.visible = false;
+    ring.parent?.remove(ring);
+    fill.parent?.remove(fill);
+  }
+
+  public releaseAll(): void {
+    for (let i = 0; i < this.slots.length; i++) {
+      const s = this.slots[i];
+      s.inUse = false;
+      s.ring.visible = false;
+      s.fill.visible = false;
+      s.ring.parent?.remove(s.ring);
+      s.fill.parent?.remove(s.fill);
+    }
+  }
+
+  public getStats(): { allocatedSlots: number; activeSlots: number; sharedGeometries: number } {
+    let activeSlots = 0;
+    for (let i = 0; i < this.slots.length; i++) {
+      if (this.slots[i].inUse) activeSlots += 1;
+    }
+    return {
+      allocatedSlots: this.slots.length,
+      activeSlots,
+      sharedGeometries: (this.unitRingGeo ? 1 : 0) + (this.unitFillGeo ? 1 : 0),
+    };
+  }
+
+  public dispose(): void {
+    this.releaseAll();
+    for (let i = 0; i < this.slots.length; i++) {
+      (this.slots[i].ring.material as THREE.Material).dispose();
+      (this.slots[i].fill.material as THREE.Material).dispose();
+    }
+    this.slots.length = 0;
+    this.unitRingGeo?.dispose();
+    this.unitRingGeo = null;
+    this.unitFillGeo?.dispose();
+    this.unitFillGeo = null;
+  }
+}
+

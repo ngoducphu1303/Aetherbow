@@ -568,7 +568,9 @@ export type PhotoLightingPreset = 'golden_hall' | 'moonlit' | 'inferno';
 export type CombatKeybindAction =
   | 'dash'
   | 'activeSkill'
+  | 'heavyBreak'
   | 'ultimate'
+  | 'overdrive'
   | 'pause'
   | 'cycleCamera'
   | 'toggleAutoPilot';

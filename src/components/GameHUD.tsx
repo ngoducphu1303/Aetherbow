@@ -146,7 +146,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const activeKeybinds = normalizeCombatKeybinds(keybinds);
   const dashKeyLabel = formatKeybindShortLabel(activeKeybinds.dash);
   const activeSkillKeyLabel = formatKeybindShortLabel(activeKeybinds.activeSkill);
+  const heavyBreakKeyLabel = formatKeybindShortLabel(activeKeybinds.heavyBreak);
   const ultKeyLabel = formatKeybindShortLabel(activeKeybinds.ultimate);
+  const overdriveKeyLabel = formatKeybindShortLabel(activeKeybinds.overdrive);
   const pauseKeyLabel = formatKeybindShortLabel(activeKeybinds.pause);
   const activeHeroId = hud.heroId ?? 'aurelia';
   const heroDef = HERO_MAP[activeHeroId] ?? HERO_MAP.aurelia;
@@ -2461,7 +2463,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   e.currentTarget.blur();
                   onTriggerWeaponOverdrive?.();
                 }}
-                title={`${od.stanceLabel} — Phím X khi đầy 100%`}
+                title={`${od.stanceLabel} — Phím ${overdriveKeyLabel} khi đầy 100%`}
                 className={`pointer-events-auto flex items-center gap-2 px-2.5 py-1 rounded-lg border text-[10px] font-black transition-colors ${
                   od.active
                     ? 'bg-[#2a1704]/95 border-amber-300 text-amber-200 shadow-[0_0_16px_rgba(251,191,36,0.45)]'
@@ -2479,7 +2481,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   {od.active
                     ? `${od.stanceLabel} · ${od.remainingSec.toFixed(1)}s`
                     : odReady
-                    ? `[X] THỨC TỈNH VŨ KHÍ!`
+                    ? `[${overdriveKeyLabel}] THỨC TỈNH VŨ KHÍ!`
                     : `Thức Tỉnh ${Math.round(od.charge)}%`}
                 </span>
                 <span className="w-12 h-1.5 rounded-full bg-slate-950 border border-slate-700 overflow-hidden shrink-0">
@@ -2686,7 +2688,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           e.currentTarget.blur();
                           onHeavyBreakClick();
                         }}
-                        title="Phá Giáp Trảm / Kết Liễu (F / Chuột Phải): Lao chém phá khiên hoặc kết liễu Boss/Tinh Anh dưới 18% HP"
+                        title={`Phá Giáp Trảm / Kết Liễu (${heavyBreakKeyLabel} / Chuột Phải): Lao chém phá khiên hoặc kết liễu Boss/Tinh Anh dưới 18% HP`}
                         className={`pointer-events-auto relative overflow-hidden w-[56px] h-[56px] sm:w-[62px] sm:h-[62px] rounded-full flex flex-col items-center justify-center font-black shrink-0 transition-transform ${
                           breakReady && !bossEntranceLocked
                             ? hud.finisherReadyTargetName
@@ -2729,7 +2731,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                         </span>
                       </button>
                       <kbd className="-mt-2.5 relative z-[3] px-1.5 py-0.5 rounded-md bg-[#050814]/95 border border-amber-300/60 shadow-md text-[9px] font-mono-nums font-black leading-none tracking-wider text-amber-200">
-                        F
+                        {heavyBreakKeyLabel}
                       </kbd>
                     </div>
                   )}

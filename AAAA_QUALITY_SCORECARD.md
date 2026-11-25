@@ -19,17 +19,17 @@
 
 | Nhóm tiêu chí | Tiêu chí thành phần | Trọng số | TB Trước (/100) | TB Sau (/100) | Đóng góp Trước | Đóng góp Sau | Thay đổi |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 89.67 | 15.80 | 17.93 | **+2.13** |
-| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 87.50 | 16.25 | 17.50 | **+1.25** |
-| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 89.25 | 11.81 | 13.39 | **+1.58** |
+| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 90.00 | 15.80 | 18.00 | **+2.20** |
+| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 89.25 | 16.25 | 17.85 | **+1.60** |
+| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 90.00 | 11.81 | 13.50 | **+1.69** |
 | **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 89.00 | 8.07 | 8.90 | **+0.83** |
-| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 90.50 | 7.40 | 9.05 | **+1.65** |
-| **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 86.33 | 4.03 | 4.32 | **+0.29** |
-| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 87.67 | 3.93 | 4.38 | **+0.45** |
-| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 85.50 | 3.95 | 4.28 | **+0.33** |
-| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 90.00 | 4.02 | 4.50 | **+0.48** |
-| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.00 | 3.73 | 4.60 | **+0.87** |
-| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **88.85 / 100** | **+9.86** |
+| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 92.50 | 7.40 | 9.25 | **+1.85** |
+| **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 90.33 | 4.03 | 4.52 | **+0.49** |
+| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 91.33 | 3.93 | 4.57 | **+0.64** |
+| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 86.50 | 3.95 | 4.33 | **+0.38** |
+| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 90.67 | 4.02 | 4.53 | **+0.51** |
+| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.33 | 3.73 | 4.62 | **+0.89** |
+| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **90.06 / 100** | **+11.07** |
 
 ---
 
@@ -45,7 +45,7 @@
 7. **Mức độ ưu tiên**: P1
 8. **Rủi ro khi thay đổi**: Có thể lệch biên cân bằng DPS ±12% giữa các tướng hoặc ảnh hưởng sớm đầu game nếu mở khóa sai điều kiện.
 9. **Tiêu chí nghiệm thu**: 4 tướng có 4 `effectKind` khác nhau, `earlyProgression.test.ts` pass ±12% DPS, Paragon khóa hoàn toàn trước Ch.12 / 160 Thiên Phú.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
 
 ### 02. Core Gameplay Loop — Vòng lặp gameplay
 1. **Điểm hiện tại (Trước)**: `82 / 100`
@@ -62,26 +62,26 @@
 ### 03. Combat System — Hệ thống chiến đấu
 1. **Điểm hiện tại (Trước)**: `83 / 100`
 2. **Bằng chứng đánh giá**: Auto-aim bắn khi đứng yên, né đòn cơ động, Crit/Knockback/Chill/Shield, `combatFeelDirector.ts`, `computePowerPressure` chống vượt cấp phi lý.
-3. **Vấn đề tồn tại**: Chưa có đòn chủ động mang bản sắc phòng thủ/chống chịu cho lối chơi Kim Ngưu; một số xung lóe sáng khi đánh chí mạng gây mỏi mắt.
-4. **Nguyên nhân gốc rễ**: Chưa có nhánh tạo khiên chủ động riêng trong `GameEngine.ts` và chưa tách hệ số `flashScale`.
-5. **Giải pháp đề xuất**: Hiện thực hóa `'jade_bastion'` (Khiên 12% HP + sóng ngọc làm chậm) và đồng bộ `flashScale` trong `zodiacLightingVfxDirector.ts`.
-6. **File hoặc module liên quan**: `src/engine/GameEngine.ts`, `src/engine/combatFeelDirector.ts`, `src/engine/zodiacLightingVfxDirector.ts`.
-7. **Mức độ ưu tiên**: P1
-8. **Rủi ro khi thay đổi**: Sai công thức tính khiên có thể khiến Sylvia bất tử trong phòng Boss.
-9. **Tiêu chí nghiệm thu**: Khiên giới hạn rõ 12% Max HP theo cooldown chuẩn, unit test pass 100%, không lỗi runtime.
-10. **Điểm sau khi triển khai và kiểm thử**: `86 / 100`
+3. **Vấn đề tồn tại**: Trước Đợt 7, bộ đệm phím (`CombatInputBuffer`) mới chỉ hỗ trợ 3 thao tác (`dash`/`activeSkill`/`ultimate`), bỏ sót `Phá Giáp Trảm (F)` & `Thức Tỉnh Vũ Khí (X)` và chưa tự xả sạch khi mất tiêu điểm/đổi phòng; Sylvia từng thiếu kỹ năng phòng thủ riêng.
+4. **Nguyên nhân gốc rễ**: `aaaFivePillarsDirector.ts` chưa mở rộng `BufferedCombatAction` cho đủ 5 thao tác cốt lõi và `GameEngine.ts` chưa dọn đệm phím ở `onWindowBlur`/`clearCombatEntities`.
+5. **Giải pháp đề xuất**: Hiện thực hóa `'jade_bastion'` (Khiên 12% HP + sóng ngọc làm chậm), đồng bộ `flashScale`, và mở rộng **Đệm Phím 5 Hành Động (`140ms`)** cho `dash`, `activeSkill`, `heavyBreak`, `ultimate`, `overdrive` kèm tự xả sạch khi đổi phòng/blur trong Đợt 7.
+6. **File hoặc module liên quan**: `src/engine/GameEngine.ts`, `src/engine/aaaFivePillarsDirector.ts`, `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/zodiacRealmArchitecture.test.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7)
+8. **Rủi ro khi thay đổi**: Cần bảo đảm null-safety cho `clearCombatInputBuffer` và tránh kích hoạt nhầm thao tác cũ khi qua phòng mới.
+9. **Tiêu chí nghiệm thu**: 5/5 hành động chiến đấu đều đệm mượt trong `140ms`, xả sạch khi blur/đổi phòng, unit test & live Chromium pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 04. Skill System — Hệ thống kỹ năng
 1. **Điểm hiện tại (Trước)**: `76 / 100`
-2. **Bằng chứng đánh giá**: 40+ kỹ năng roguelike trong trận (`skillsData.ts`), kỹ năng tiến hóa & cộng hưởng, kỹ năng chủ động tướng trong `phase5Data.ts`.
-3. **Vấn đề tồn tại**: Sylvia (`Kim Ngưu`) đang gán `effectKind: 'ember_nova'` giống hệt Aurelia (`Sư Tử`), đánh mất bản sắc 4 tướng.
-4. **Nguyên nhân gốc rễ**: Khi bổ sung Ch.3 chưa thêm nhánh enum `'jade_bastion'` vào `HeroActiveSkillEffectKind`.
-5. **Giải pháp đề xuất**: Thêm `'jade_bastion'` vào `src/types/game.ts`, gán cho Sylvia trong `src/data/phase5Data.ts`, và viết thực thi đầy đủ trong `GameEngine.ts`.
-6. **File hoặc module liên quan**: `src/types/game.ts`, `src/data/phase5Data.ts`, `src/engine/GameEngine.ts`.
-7. **Mức độ ưu tiên**: P0
-8. **Rủi ro khi thay đổi**: Cần bảo đảm type Exhaustive check của TypeScript không bị sót nhánh.
-9. **Tiêu chí nghiệm thu**: 4 tướng dùng 4 `effectKind` riêng biệt (`ember_nova`, `thunder_arc`, `jade_bastion`, `moon_fan_mark`), `tsc --noEmit` 0 lỗi.
-10. **Điểm sau khi triển khai và kiểm thử**: `87 / 100`
+2. **Bằng chứng đánh giá**: 40+ kỹ năng roguelike trong trận (`skillsData.ts`), kỹ năng tiến hóa & cộng hưởng, kỹ năng chủ động 4 tướng độc nhất (`phase5Data.ts`), Phá Giáp Trảm & Thức Tỉnh Vũ Khí hỗ trợ đệm phím + gán phím tự do.
+3. **Vấn đề tồn tại**: Sylvia (`Kim Ngưu`) từng dùng trùng `effectKind: 'ember_nova'` với Aurelia; Phá Giáp Trảm (`F`) & Thức Tỉnh Vũ Khí (`X`) trước Đợt 7 chưa hỗ trợ đệm phím và tùy biến phím tắt.
+4. **Nguyên nhân gốc rễ**: Chưa có nhánh enum `'jade_bastion'` và hai kỹ năng chiến thuật chưa nối vào `CombatKeybinds` & `CombatInputBuffer`.
+5. **Giải pháp đề xuất**: Thêm `'jade_bastion'` cho Sylvia, đồng thời nối đầy đủ `heavyBreak` & `overdrive` vào hệ thống đệm phím `140ms`, 8 phím tắt tùy biến và nhãn phím sống trên `GameHUD.tsx`.
+6. **File hoặc module liên quan**: `src/types/game.ts`, `src/data/phase5Data.ts`, `src/engine/aaaWave6Director.ts`, `src/engine/GameEngine.ts`, `src/components/GameHUD.tsx`.
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 7)
+8. **Rủi ro khi thay đổi**: Cần bảo đảm tương thích ngược 100% save cũ chỉ có 6 phím tắt.
+9. **Tiêu chí nghiệm thu**: 4 tướng dùng 4 `effectKind` riêng biệt, 8/8 phím tắt tùy biến & đệm phím hoạt động sạch, `tsc --noEmit` 0 lỗi.
+10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
 
 ### 05. Animation — Hệ thống hoạt ảnh
 1. **Điểm hiện tại (Trước)**: `80 / 100`
@@ -100,12 +100,12 @@
 2. **Bằng chứng đánh giá**: `zodiacLightingVfxDirector.ts`, `vfxBudgetGovernor.ts`, vòng telegraph mù màu (`colorblindTelegraphs.ts`), pool hạt và sóng xung kích.
 3. **Vấn đề tồn tại**: 3 `THREE.PointLight` vẫn gắn trong `THREE.Scene` ở chế độ Lite khiến GPU yếu (Intel HD 4000) biên dịch shader nặng; thiếu công tắc giảm chớp sáng độc lập.
 4. **Nguyên nhân gốc rễ**: `heroLight` và `impactLightPool` chỉ đặt `intensity = 0` thay vì gỡ khỏi scene graph; thiếu `reduceScreenFlash`.
-5. **Giải pháp đề xuất**: Triển khai `resolveDynamicPointLightPolicy` + `syncPointLightPolicy()` tháo hẳn đèn về **0 PointLights** trong Lite/Watchdog ≥ 2 và giảm 75% xung sáng khi bật Anti-Flash.
-6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/GameEngine.ts`, `src/engine/zodiacLightingVfxDirector.test.ts`.
-7. **Mức độ ưu tiên**: P0
-8. **Rủi ro khi thay đổi**: Nếu gắn/gỡ đèn liên tục từng frame sẽ gây shader recompile giật khung hình — phải chỉ gọi khi đổi cấu hình/Watchdog.
-9. **Tiêu chí nghiệm thu**: Unit test xác minh `totalScenePointLights === 0` ở Lite/E5430 và `flashScale === 0.25` khi bật Anti-Flash.
-10. **Điểm sau khi triển khai và kiểm thử**: `87 / 100`
+5. **Giải pháp đề xuất**: Triển khai `resolveDynamicPointLightPolicy` + `syncPointLightPolicy()` tháo hẳn đèn về **0 PointLights** trong Lite/Watchdog ≥ 2, giảm 75% xung sáng khi bật Anti-Flash, và bổ sung **`GroundTelegraphVisualPool`** (Đợt 7) tái sử dụng đúng 2 hình học chuẩn cho toàn bộ bẫy sàn đấu (`arenaHazards`) & vụ nổ tinh anh (`volatileBlasts`) để loại bỏ 100% cấp phát/hủy `RingGeometry`/`CircleGeometry` giữa giao tranh.
+6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/vfxPoolManager.ts`, `src/engine/GameEngine.ts`, `src/engine/zodiacRealmArchitecture.test.ts`.
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 7)
+8. **Rủi ro khi thay đổi**: Phải hoàn trả đúng slot về pool khi kết thúc hiệu ứng hoặc đổi phòng và chỉ `dispose()` một lần khi đóng engine.
+9. **Tiêu chí nghiệm thu**: Unit test xác minh `totalScenePointLights === 0` ở Lite/E5430, `flashScale === 0.25`, và 40 lần tạo telegraph chỉ dùng đúng 2 shared geometry.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 07. SFX — Hiệu ứng âm thanh
 1. **Điểm hiện tại (Trước)**: `80 / 100`
@@ -133,27 +133,27 @@
 
 ### 09. Graphic Fidelity — Chất lượng đồ họa
 1. **Điểm hiện tại (Trước)**: `82 / 100`
-2. **Bằng chứng đánh giá**: Three.js PBR + ACES Filmic tone mapping, bộ mô hình 3D High/Lite cho Chương 1–4 (`glb-manifest.json`, 173 tệp), hệ thống cánh/thú cưỡi/hào quang 3D.
-3. **Vấn đề tồn tại**: Chương 5–12 chưa có bộ đấu trường GLB riêng; 1 tệp legacy `hatsune-miku-lite.glb` nặng `3.47 MB` vượt ngưỡng Lite `2.5 MB`.
-4. **Nguyên nhân gốc rễ**: Quy trình nén tự động chưa chạy lại trên tệp legacy cũ và Ch.5–12 đang trong lộ trình sản xuất mỹ thuật.
-5. **Giải pháp đề xuất**: Giữ chuẩn High/Lite tự động hạ cấp theo phần cứng; ghi nhận rõ P2-1 nén tệp legacy và P2-5/P3-2 mở rộng Ch.5–12.
-6. **File hoặc module liên quan**: `src/engine/GameEngine.ts`, `src/engine/glbPipelineValidator.ts`, `scripts/glb-manifest.json`.
-7. **Mức độ ưu tiên**: P2
-8. **Rủi ro khi thay đổi**: Nâng độ phân giải bóng/vật liệu trên GPU yếu sẽ gây crash WebGL Context Lost trên Dell E5430.
-9. **Tiêu chí nghiệm thu**: `validateGlbPipelineManifest` đạt `e5430Safe = true` với 0 lỗi nghiêm trọng.
-10. **Điểm sau khi triển khai và kiểm thử**: `85 / 100`
+2. **Bằng chứng đánh giá**: Three.js PBR + ACES Filmic tone mapping, bộ mô hình 3D High/Lite 100% đối cặp (`63/63` cặp, 0 cảnh báo) cho Ch.1–4, hệ thống cánh/thú cưỡi/hào quang 3D, và 8 cụm kiến trúc đền thờ 3D đa tầng Ch.5–12 (`zodiacRealmArchitecture.ts`).
+3. **Vấn đề tồn tại**: Trước Đợt 7, đấu trường Ch.5–12 chỉ dùng chung 4 kiểu lư hương góc đơn giản; bộ mô hình GLB quái/Boss Ch.5–12 tiếp tục theo lộ trình P2-5b/P3-2.
+4. **Nguyên nhân gốc rễ**: Chưa có lớp kiến trúc thủ tục đa tầng riêng cho từng cung Hoàng Đạo Ch.5–12 bên ngoài vùng giao tranh.
+5. **Giải pháp đề xuất**: Triển khai **`src/engine/zodiacRealmArchitecture.ts`** tạo 8 cụm đền thờ 3D độc bản (Cự Giải → Song Ngư) với vật liệu PBR dùng chung, đĩa bóng tiếp xúc đáy, chuyển động Zero-GC, tự giảm đỉnh hình học ở Lite Mode và **0 PointLights mới**; giữ chuẩn High/Lite `e5430Safe: true`.
+6. **File hoặc module liên quan**: `src/engine/zodiacRealmArchitecture.ts`, `src/engine/zodiacRealmArchitecture.test.ts`, `src/engine/GameEngine.ts`, `src/engine/glbPipelineValidator.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 7; mở rộng GLB Ch.5–12 ở P2-5b/P3-2)
+8. **Rủi ro khi thay đổi**: Không được thêm bất kỳ `PointLight` nào hoặc đặt công trình lấn vào vùng di chuyển của người chơi.
+9. **Tiêu chí nghiệm thu**: `zodiacRealmArchitecture.test.ts` chứng minh 8/8 chương Ch.5–12 có kiến trúc độc bản (`>= 18` mesh, `0` PointLights, Lite giảm số đỉnh) và `validateGlbPipelineManifest` đạt `e5430Safe = true`, 0 issues.
+10. **Điểm sau khi triển khai và kiểm thử**: `89 / 100`
 
 ### 10. Art Direction — Định hướng nghệ thuật
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: Bảng màu Hoàng Đạo nhất quán (Vàng Kim Sư Tử, Đỏ Bạch Dương, Ngọc Lục Bảo Kim Ngưu, Lam Ánh Trăng Song Tử) và UI Celestial Tapestry thống nhất.
-3. **Vấn đề tồn tại**: Thiếu tài liệu chuẩn hóa Art Style Guide chính thức; còn chấm `animate-pulse` trang trí dư thừa trong `AuctionHouseModal.tsx`.
-4. **Nguyên nhân gốc rễ**: Quy chuẩn UI Zero-Pill và bảng màu 12 cung chưa được văn bản hóa thành chuẩn duy nhất.
-5. **Giải pháp đề xuất**: Ban hành `ART_STYLE_GUIDE.md` làm chuẩn toàn dự án và loại bỏ hoàn toàn chấm `animate-pulse` cuối cùng trong `AuctionHouseModal.tsx`.
-6. **File hoặc module liên quan**: `ART_STYLE_GUIDE.md`, `src/components/AuctionHouseModal.tsx`, `src/engine/chapterSceneDirector.ts`.
-7. **Mức độ ưu tiên**: P2
-8. **Rủi ro khi thay đổi**: Rủi ro thấp; cần kiểm tra trực quan bằng trình duyệt thật.
-9. **Tiêu chí nghiệm thu**: 0 `animate-pulse` trang trí trong UI, `ART_STYLE_GUIDE.md` đầy đủ quy chuẩn màu/ánh sáng/ngân sách E5430.
-10. **Điểm sau khi triển khai và kiểm thử**: `84 / 100`
+2. **Bằng chứng đánh giá**: Bảng màu Hoàng Đạo 12 chương nhất quán 60-30-10 (`ART_STYLE_GUIDE.md`), 4 đấu trường GLB Ch.1–4, 8 cụm biểu tượng kiến trúc 3D độc bản Ch.5–12 (`Thủy Triều Nguyệt Tháp`, `Nhật Khuê Thánh Điện`, `Cán Cân Công Lý Hoàng Kim`, `Tháp Độc Thạch Hắc Diện`, `Khải Hoàn Cung Tinh Đạo`, `Cự Thạch Sơn Đỉnh Cổ Đại`, `Thiên Bình Tinh Lưu Khí`, `Song Ngư Mộng Cảnh Đài`), và UI Celestial Tapestry Zero-Pill.
+3. **Vấn đề tồn tại**: Trước Đợt 7, 8 cung Ch.5–12 chưa có biểu tượng kiến trúc nhận diện thị giác riêng trong khung cảnh 3D.
+4. **Nguyên nhân gốc rễ**: `buildArena` trước đây chỉ gom 12 cung vào 4 khuôn lư hương nguyên tố chung.
+5. **Giải pháp đề xuất**: Ban hành & đồng bộ `ART_STYLE_GUIDE.md`, loại sạch 100% chấm `animate-pulse` trang trí, và dựng đủ **8 biểu tượng kiến trúc 3D Hoàng Đạo độc bản** cho Ch.5–12 (hoàn thiện nhận diện thị giác trọn bộ 12/12 cung Hoàng Đạo).
+6. **File hoặc module liên quan**: `ART_STYLE_GUIDE.md`, `src/engine/zodiacRealmArchitecture.ts`, `src/engine/GameEngine.ts`, `src/components/AuctionHouseModal.tsx`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 7)
+8. **Rủi ro khi thay đổi**: Cần bảo toàn đường nhìn camera rõ nét và màu sắc tương phản tốt với vòng telegraph chiến đấu.
+9. **Tiêu chí nghiệm thu**: Đủ 12/12 cung có bản sắc không gian riêng (4 GLB + 8 kiến trúc đa tầng), 0 `animate-pulse` trang trí, 0 `backdrop-blur` đè WebGL.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 11. Physics System — Hệ thống vật lý
 1. **Điểm hiện tại (Trước)**: `82 / 100`
@@ -201,31 +201,31 @@
 7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 5; Ch.5–12 3D ở P2-5b/P3-2)
 8. **Rủi ro khi thay đổi**: Phải bảo toàn tuyệt đối thứ tự phòng Chương 1 để không phá vỡ FTUE và bộ kiểm định Ch.1.
 9. **Tiêu chí nghiệm thu**: `zodiacWorldLore.test.ts` và `chapterSceneDirector.test.ts` pass 100%, 4 chương đầu khởi đầu bằng 4 bố cục vật cản riêng biệt.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 15. World Building — Xây dựng thế giới
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: Vũ trụ 12 Cung Hoàng Đạo gắn kết trực tiếp với 4 Tướng, Bộ Sưu Tập Ch.2–4, Boss Codex, Chòm Sao, Thánh Tích và Biên Niên Sử 12 Chương (`zodiacWorldLore.ts`).
-3. **Vấn đề tồn tại**: Trước Đợt 5, một số fallback di cư cũ còn sót tên tiền nhiệm và phần Boss Codex mới có đoạn trích ngắn thay vì biên niên sử thế giới, phe phái thủ hộ, kỷ nguyên và mẹo địa hình đầy đủ cho cả 12 chương.
-4. **Nguyên nhân gốc rễ**: Chưa có kho dữ liệu biên niên sử 12 chương chuẩn hóa gắn trực tiếp vào giao diện Sổ Tay.
-5. **Giải pháp đề xuất**: Xây dựng **`src/data/zodiacWorldLore.ts`** gồm 12 vùng đất Hoàng Đạo, 12 phe thủ hộ, 12 kỷ nguyên, biên niên sử, tiểu sử Boss và mẹo địa hình chiến thuật độc nhất, hiển thị trực tiếp trong tab Boss của `src/components/CodexGuideModal.tsx` (phong cách Zero-Pill sạch sẽ) và chuẩn hóa hoàn toàn fallback di cư sang `'aurelia'` / `'solarius'`.
-6. **File hoặc module liên quan**: `src/data/zodiacWorldLore.ts`, `src/data/zodiacWorldLore.test.ts`, `src/components/CodexGuideModal.tsx`, `src/data/earlyProgressionData.ts`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 5)
-8. **Rủi ro khi thay đổi**: Phải đảm bảo thẻ Boss Codex cuộn gọn đẹp trên cả màn hình nhỏ mà không bị rối chữ hay vỡ bố cục.
-9. **Tiêu chí nghiệm thu**: `zodiacWorldLore.test.ts` xác minh đủ 12/12 vùng đất & 12/12 phe thủ hộ độc nhất; xác minh hiển thị trực tiếp trên Chromium (`r3-codex-lore.png`).
-10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
+2. **Bằng chứng đánh giá**: Vũ trụ 12 Cung Hoàng Đạo gắn kết trực tiếp giữa 4 Tướng, Bộ Sưu Tập Ch.1–4, Boss Codex, Chòm Sao, Thánh Tích, Biên Niên Sử 12 Chương (`zodiacWorldLore.ts`) và 8 cụm kiến trúc đền thờ 3D độc bản Ch.5–12 (`zodiacRealmArchitecture.ts`).
+3. **Vấn đề tồn tại**: Trước Đợt 5–7, Boss Codex thiếu biên niên sử đầy đủ và khung cảnh 3D Ch.5–12 chưa phản ánh trực tiếp kiến trúc biểu tượng của từng cung.
+4. **Nguyên nhân gốc rễ**: Chưa gắn biên niên sử 12 chương vào Sổ Tay và chưa có bộ công trình kể chuyện môi trường Ch.5–12.
+5. **Giải pháp đề xuất**: Xây dựng `src/data/zodiacWorldLore.ts` hiển thị trong `CodexGuideModal.tsx`, chuẩn hóa di cư sang `'aurelia'`/`'solarius'`, và bổ sung 8 cụm biểu tượng kiến trúc 3D kể chuyện môi trường cho Ch.5–12 trong Đợt 7.
+6. **File hoặc module liên quan**: `src/data/zodiacWorldLore.ts`, `src/engine/zodiacRealmArchitecture.ts`, `src/components/CodexGuideModal.tsx`, `src/data/earlyProgressionData.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 5–7)
+8. **Rủi ro khi thay đổi**: Bảo đảm kiến trúc môi trường không chắn tầm nhìn và thẻ Codex cuộn gọn trên mọi độ phân giải.
+9. **Tiêu chí nghiệm thu**: `zodiacWorldLore.test.ts` & `zodiacRealmArchitecture.test.ts` pass 100% cho cả 12/12 cung Hoàng Đạo.
+10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
 
 ### 16. Progression System — Hệ thống tăng tiến
 1. **Điểm hiện tại (Trước)**: `82 / 100`
-2. **Bằng chứng đánh giá**: `getEarlyProgressionPolicy`, tài khoản mới bắt đầu ở `702 LC` (dưới Ch.1 `1,350 LC`), trần phẩm chất khóa theo chương, lộ trình 30 ngày F2P (`fairProgression30Day.ts`).
-3. **Vấn đề tồn tại**: `migrateSaveData` làm rớt `selectedHeroId` đối với tướng mở theo chương (Ch.2–4); mô phỏng 30 ngày chưa phản ánh đủ Wave 12–14; thiếu lớp tăng tiến sau khi max 160 Thiên Phú.
-4. **Nguyên nhân gốc rễ**: Logic di cư chưa cộng tướng theo `highestChapterCleared` và hệ Thiên Phú chạm trần cứng Lv.20 × 8.
-5. **Giải pháp đề xuất**: Sửa triệt để `migrateSaveData`, đồng bộ Wave 12–14 vào mô phỏng 30 ngày, và bổ sung **Tinh Tuý Hoàng Đạo (500 bậc)** mở sau 160 Thiên Phú / Ch.12.
-6. **File hoặc module liên quan**: `src/data/earlyProgressionData.ts`, `src/data/fairProgression30Day.ts`, `src/data/talentsData.ts`, `src/data/gearData.ts`.
-7. **Mức độ ưu tiên**: P0 / P1
-8. **Rủi ro khi thay đổi**: Phải bảo đảm tuyệt đối không tạo Power Creep ở Ch.1–Ch.11.
-9. **Tiêu chí nghiệm thu**: Tài khoản mới giữ nguyên `702 LC`, 5m ở Common `798 LC`, Paragon = 0 cho tới khi chạm Endgame, `fairProgression30Day.test.ts` pass cả hồ sơ `average` và `unlucky`.
-10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
+2. **Bằng chứng đánh giá**: `getEarlyProgressionPolicy`, tài khoản mới bắt đầu ở `702 LC` (dưới Ch.1 `1,350 LC`), trần phẩm chất khóa theo chương, lộ trình 30 ngày F2P (`fairProgression30Day.ts`), Tinh Tuý Hoàng Đạo 500 bậc, và hiển thị minh bạch 100% danh mục tiến trình mở khóa Tinh Linh / Cánh / Thú Cưỡi / Thánh Khí / Hào Quang Ch.1–4 (`chapterAssetVisibility.ts`).
+3. **Vấn đề tồn tại**: `migrateSaveData` từng làm rớt `selectedHeroId` tướng Ch.2–4; trước đây các vật phẩm bộ sưu tập Ch.2–4 bị ẩn khỏi giao diện khiến người chơi không thấy rõ mục tiêu mở khóa theo chương.
+4. **Nguyên nhân gốc rễ**: Thiếu hàm chuẩn hóa hiển thị và khóa theo chương thống nhất cho 5 danh mục sưu tầm và Phòng Thử Đồ.
+5. **Giải pháp đề xuất**: Sửa triệt để `migrateSaveData`, bổ sung **Tinh Tuý Hoàng Đạo (500 bậc)**, và triển khai **`src/data/chapterAssetVisibility.ts`** hiển thị trọn bộ danh mục Ch.1–4 theo thứ tự tự nhiên kèm nhãn khóa rõ ràng (`Vượt Chương 2/3/4 để mở`) & nút `Xem 3D` không làm thay đổi chỉ số thật.
+6. **File hoặc module liên quan**: `src/data/chapterAssetVisibility.ts`, `src/data/earlyProgressionData.ts`, `src/data/fairProgression30Day.ts`, `src/data/talentsData.ts`, `src/components/LobbyPanels.tsx`, `src/components/WardrobeModal.tsx`.
+7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành)
+8. **Rủi ro khi thay đổi**: Tuyệt đối không để `Xem 3D` ghi đè dữ liệu lưu hay cộng sớm chỉ số chiến đấu của vật phẩm chưa sở hữu.
+9. **Tiêu chí nghiệm thu**: Tài khoản mới giữ nguyên `702 LC`, `chapterAssetVisibility.test.ts` (3/3) & `fairProgression30Day.test.ts` pass 100%, xác minh trực tiếp trên Chromium.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 17. Economy System — Hệ thống kinh tế
 1. **Điểm hiện tại (Trước)**: `72 / 100`
@@ -265,51 +265,51 @@
 
 ### 20. UI/UX — Giao diện và trải nghiệm người dùng
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: Giao diện Celestial Gold thống nhất, HUD tách khỏi vòng lặp 60Hz, không có nút giả, hỗ trợ đa kích thước màn hình.
-3. **Vấn đề tồn tại**: `AuctionHouseModal.tsx` còn 2 chấm `animate-pulse` trang trí; `TalentsModal.tsx` chưa hiển thị tiến độ mở khóa Endgame và chưa định dạng số `tabular-nums` có phân tách hàng nghìn cho số lớn.
-4. **Nguyên nhân gốc rễ**: Thiếu rà soát cuối cùng sau các đợt bổ sung tính năng Wave 10–14.
-5. **Giải pháp đề xuất**: Gỡ chấm `animate-pulse`, bổ sung thẻ **Tinh Tuý Hoàng Đạo** + định dạng số rõ ràng trong `TalentsModal.tsx`, thêm bảng **Giám Sát An Ninh** sạch Zero-Pill trong `AssetAdminLiveOpsTab.tsx`, và kiểm tra trực tiếp trên trình duyệt thật.
-6. **File hoặc module liên quan**: `src/components/AuctionHouseModal.tsx`, `src/components/TalentsModal.tsx`, `src/components/CodexGuideModal.tsx`, `src/components/SettingsModal.tsx`, `src/components/AssetAdminLiveOpsTab.tsx`.
-7. **Mức độ ưu tiên**: P1 / P2
-8. **Rủi ro khi thay đổi**: Chèn thêm thẻ vào modal có thể gây tràn chiều cao trên màn hình nhỏ nếu không bọc `overflow-y-auto`.
-9. **Tiêu chí nghiệm thu**: Kiểm tra bằng headless Chromium (`playwright-cli`) ở desktop 1440×900: 0 lỗi console, không cắt chữ/chồng lấn nút, tab Boss Codex hiển thị rõ biên niên sử 12 chương.
-10. **Điểm sau khi triển khai và kiểm thử**: `87 / 100`
+2. **Bằng chứng đánh giá**: Giao diện Celestial Gold thống nhất, Zero-Pill, 0 `backdrop-blur` đè WebGL, 0 chấm `animate-pulse`, HUD tách khỏi vòng 60Hz, hiển thị đầy đủ 100% danh mục Tinh Linh / Cánh / Thú Cưỡi / Thánh Khí / Hào Quang / Trang Phục Ch.1–4 kèm `Xem 3D` trực tiếp ở Sảnh, và đồng bộ sống 8 phím tắt tùy biến trên `GameHUD.tsx` & `SettingsModal.tsx`.
+3. **Vấn đề tồn tại**: Trước Đợt 7, nhãn phím `F` (Phá Giáp) và `X` (Thức Tỉnh Vũ Khí) trên `GameHUD.tsx` vẫn gắn cứng và 5 danh mục sưu tầm từng ẩn vật phẩm Ch.2–4 chưa mở khóa.
+4. **Nguyên nhân gốc rễ**: `GameHUD.tsx` chưa đọc nhãn phím động cho `heavyBreak`/`overdrive` và `LobbyPanels.tsx` từng lọc bỏ vật phẩm chương sau.
+5. **Giải pháp đề xuất**: Triển khai hiển thị đầy đủ toàn bộ danh mục + xem thử 3D thống nhất (`LobbyPanels.tsx`, `WardrobeModal.tsx`, `TitleScreen.tsx`, `App.tsx`) và đồng bộ nhãn phím động `heavyBreakKeyLabel`/`overdriveKeyLabel` trên `GameHUD.tsx` (kiểm chứng trực tiếp bằng Chromium `r6-*.png`, `r7-settings-keybinds.png`, `r7-combat-live.png`).
+6. **File hoặc module liên quan**: `src/components/LobbyPanels.tsx`, `src/components/WardrobeModal.tsx`, `src/components/TitleScreen.tsx`, `src/components/GameHUD.tsx`, `src/components/SettingsModal.tsx`, `src/components/TalentsModal.tsx`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7)
+8. **Rủi ro khi thay đổi**: Phải giữ rõ nút `Xem 3D` tách biệt hoàn toàn với trạng thái trang bị thật và không gây tràn bố cục.
+9. **Tiêu chí nghiệm thu**: Headless Chromium (`1440×900`) xác minh 0 lỗi console, 0 `backdrop-blur`, đầy đủ 8 phím tắt trên Cài Đặt & HUD, 5 danh mục sưu tầm xem thử 3D mượt mà.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 21. Game Feel — Cảm giác chơi
 1. **Điểm hiện tại (Trước)**: `82 / 100`
-2. **Bằng chứng đánh giá**: `combatFeel.ts` (Hitstop, Camera Shake trauma, recoil, kill burst), `combatAnimationKinematics.ts` (nghiêng thân khi Lướt, nhún nâng người khi tung Kỹ năng E / Phá Giáp F, đáp đất khi vào trận, gục ngã mượt khi hết HP), tách riêng `reduceScreenFlash` (`flashScale = 0.25`).
-3. **Vấn đề tồn tại**: Trước Đợt 6, người chơi chưa có độ nghiêng thân rõ rệt khi Lướt (`Space`) hay xung nâng người khi tung Kỹ năng chủ động (`E`) / Phá Giáp Trảm (`F`), và công tắc giảm chớp sáng từng gộp với `reducedMotion`.
-4. **Nguyên nhân gốc rễ**: Chưa tách `reduceScreenFlash` và chưa nối xung động học thân trên cho các thao tác cốt lõi (Dash, Active Skill, Heavy Break, Spawn, Death).
-5. **Giải pháp đề xuất**: Tách riêng `reduceScreenFlash` (`flashScale = 0.25`), bổ sung phản hồi trực quan cho `jade_bastion` + Tinh Tuý Hoàng Đạo, và nối trực tiếp `applyDodgeBank`, `applySkillCastPulse`, `applySpawnSettle` + pha `isDead` vào `GameEngine.ts` trong Đợt 6.
-6. **File hoặc module liên quan**: `src/engine/combatAnimationKinematics.ts`, `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/GameEngine.ts`, `src/components/SettingsModal.tsx`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 6)
-8. **Rủi ro khi thay đổi**: Phải giảm biên độ còn `0.25×` khi người chơi bật `reducedMotion` để không gây chóng mặt.
-9. **Tiêu chí nghiệm thu**: Unit test xác minh `flashScale = 0.25`, `applyDodgeBank`/`applySkillCastPulse`/`applySpawnSettle` và giảm biên độ `reducedMotion` pass 100%.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+2. **Bằng chứng đánh giá**: `combatFeel.ts` (Hitstop, Camera Shake trauma, recoil, kill burst), `combatAnimationKinematics.ts` (nghiêng thân khi Lướt, nhún nâng người khi tung Kỹ năng `E` / Phá Giáp `F`, đáp đất khi vào trận, gục ngã mượt), tách riêng `reduceScreenFlash` (`flashScale = 0.25`), và **Đệm Phím 5 Hành Động (`140ms`)** phủ trọn Lướt / Kỹ Năng / Phá Giáp / Tuyệt Kỹ / Thức Tỉnh Vũ Khí.
+3. **Vấn đề tồn tại**: Trước Đợt 7, bấm sớm `Phá Giáp Trảm (F)` hoặc `Thức Tỉnh Vũ Khí (X)` sát mép hồi chiêu bị rớt thao tác.
+4. **Nguyên nhân gốc rễ**: `CombatInputBuffer` mới chỉ phủ 3 hành động và chưa xả đệm khi mất tiêu điểm / chuyển phòng.
+5. **Giải pháp đề xuất**: Mở rộng `CombatInputBuffer` trong `aaaFivePillarsDirector.ts` lên đầy đủ 5 hành động chiến đấu (`140ms`), nối vào `GameEngine.ts` cùng xả sạch đệm khi `onWindowBlur`/`clearCombatEntities`.
+6. **File hoặc module liên quan**: `src/engine/aaaFivePillarsDirector.ts`, `src/engine/combatAnimationKinematics.ts`, `src/engine/GameEngine.ts`, `src/engine/zodiacRealmArchitecture.test.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7)
+8. **Rủi ro khi thay đổi**: Phải đảm bảo mỗi thao tác đệm chỉ tiêu thụ đúng 1 lần và không bị trôi sang phòng tiếp theo.
+9. **Tiêu chí nghiệm thu**: Unit test xác minh đầy đủ đệm phím 5 hành động + giảm biên độ `reducedMotion` pass 100%, kiểm chứng thao tác trực tiếp trên Chromium.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 22. Performance — Hiệu năng
 1. **Điểm hiện tại (Trước)**: `76 / 100`
-2. **Bằng chứng đánh giá**: Auto-detect Intel HD 4000 (`aaaVisualPipeline.ts`), GPU Thermal Watchdog Stage 0→4 (`gpuThermalWatchdog.ts`), 0-PointLight Shader Policy, Zero-GC `SpatialHashGrid`, `projectilePhysicsSystem.ts`, **`VfxFrameBudgetCache`**, và **`LootOrbVisualCache`** (`vfxPoolManager.ts`).
-3. **Vấn đề tồn tại**: Trước cải tiến, `GameEngine.ts` giữ 3 `THREE.PointLight` trong Lite Mode, cấp phát `18,000` mảng rác/giây ở vòng đạn, quét `arrowPool.reduce(...)` trên từng lần gọi VFX, và tạo mới `OctahedronGeometry` + `MeshStandardMaterial` trên mỗi quả cầu loot rơi.
-4. **Nguyên nhân gốc rễ**: Chưa tháo `PointLight` khỏi `THREE.Scene`, dùng `[...this.enemies]` trong vòng đạn, chưa cache ngân sách VFX theo khung hình, và chưa chia sẻ tài nguyên GPU cho vật phẩm rơi.
-5. **Giải pháp đề xuất**: Triển khai `syncPointLightPolicy()` về **0 PointLights**, Watchdog Stage 2 floor cho E5430 + Stage 4 Emergency Lite (`dprCap: 0.7`), broadphase Zero-GC nhanh hơn **8.09×** (`742.76ms → 91.85ms`), **`VfxFrameBudgetCache`**, và **`LootOrbVisualCache`** (triệt tiêu 100% cấp phát geometry/material GPU mỗi lần rơi loot trong Đợt 6).
-6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/gpuThermalWatchdog.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/vfxPoolManager.ts`, `tools/benchmark-spatial-physics.ts`, `PERFORMANCE_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 1–6)
-8. **Rủi ro khi thay đổi**: Phải đảm bảo vòng dọn màn chơi và nhặt loot không gọi `releaseObject` lên tài nguyên chia sẻ của `LootOrbVisualCache`.
-9. **Tiêu chí nghiệm thu**: 0 PointLights ở E5430/Lite/Watchdog ≥ 2, benchmark CPU giảm **87.6%** (`8.09×`) & triệt tiêu **180,000** mảng rác, 100 quả cầu loot chỉ dùng 2 geometry + 4 material; đo nhiệt vật lý Dell E5430 60 phút ghi nhận ở P3-1.
-10. **Điểm sau khi triển khai và kiểm thử**: `93 / 100`
+2. **Bằng chứng đánh giá**: Auto-detect Intel HD 4000 (`aaaVisualPipeline.ts`), GPU Thermal Watchdog Stage 0→4 (`gpuThermalWatchdog.ts`), 0-PointLight Shader Policy, Zero-GC `SpatialHashGrid`, `projectilePhysicsSystem.ts`, `VfxFrameBudgetCache`, `LootOrbVisualCache`, và **`GroundTelegraphVisualPool`** (Đợt 7) cùng kiến trúc Ch.5–12 Lite giảm đỉnh (`0 PointLights`).
+3. **Vấn đề tồn tại**: Trước Đợt 7, mỗi lần bẫy sàn đấu (`arenaHazards`) hoặc vụ nổ tinh anh (`volatileBlasts`) xuất hiện giữa giao tranh đều tạo mới `RingGeometry` + `CircleGeometry` + 2× `MeshBasicMaterial` rồi hủy GPU buffer ngay sau 0.5–1.25s.
+4. **Nguyên nhân gốc rễ**: Hai vòng hiệu ứng cảnh báo sàn đấu chưa được nối qua bể hình học dùng chung.
+5. **Giải pháp đề xuất**: Triển khai **`GroundTelegraphVisualPool`** trong `src/engine/vfxPoolManager.ts` (dùng chung đúng 2 hình học chuẩn tái sử dụng tối đa 16 slot, 0 cấp phát GPU giữa trận, chỉ `dispose()` một lần khi đóng engine) bên cạnh 0-PointLights, SpatialHashGrid nhanh hơn **7.05×–8.09×**, `VfxFrameBudgetCache`, và `LootOrbVisualCache`.
+6. **File hoặc module liên quan**: `src/engine/vfxPoolManager.ts`, `src/engine/zodiacRealmArchitecture.ts`, `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/projectilePhysicsSystem.ts`, `PERFORMANCE_REPORT.md`.
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 1–7)
+8. **Rủi ro khi thay đổi**: Cần bảo đảm hoàn trả slot an toàn cả khi hiệu ứng hết giờ, khi đổi phòng và khi đóng engine.
+9. **Tiêu chí nghiệm thu**: 0 PointLights ở E5430/Lite/Watchdog ≥ 2, `GroundTelegraphVisualPool` pass 100% (40 lần tạo chỉ dùng đúng 2 shared geometry), benchmark CPU triệt tiêu 180,000 mảng rác; đo nhiệt vật lý Dell E5430 60 phút ghi nhận ở P3-1.
+10. **Điểm sau khi triển khai và kiểm thử**: `94 / 100`
 
 ### 23. Code Architecture — Kiến trúc mã nguồn
 1. **Điểm hiện tại (Trước)**: `72 / 100`
 2. **Bằng chứng đánh giá**: Tách biệt rõ lớp dữ liệu (`src/data/`), âm thanh (`src/audio/`), dịch vụ (`src/services/`), máy chủ (`server.ts`, `src/server/`), và các mô-đun engine thuần túy có unit test độc lập.
 3. **Vấn đề tồn tại**: `src/engine/GameEngine.ts` và `src/App.tsx` có độ tập trung cao từ nhiều đợt mở rộng nhanh.
-4. **Nguyên nhân gốc rễ**: Nhiều vòng lặp VFX, vật lý đạn, đội hình và biên niên sử trước đây viết trực tiếp trong tệp lõi.
-5. **Giải pháp đề xuất**: Hoàn tất cả **`P2-3a` và `P2-3b`**: trích xuất **`spatialHashGrid.ts`**, **`projectilePhysicsSystem.ts`**, **`vfxPoolManager.ts`** (8 bộ cập nhật VFX pool Zero-GC + `VfxFrameBudgetCache`), **`enemySquadDirector.ts`**, **`chapterArenaMechanisms.ts`**, **`zodiacLightingVfxDirector.ts`**, **`zodiacMusicDirector.ts`**, và **`zodiacWorldLore.ts`** với 100% unit test độc lập; bước tiếp theo tách thêm `ArenaSceneBuilder` nếu mở rộng Ch.5–12 3D.
-6. **File hoặc module liên quan**: `src/engine/vfxPoolManager.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/enemySquadDirector.ts`, `src/data/zodiacWorldLore.ts`, `src/engine/GameEngine.ts`.
-7. **Mức độ ưu tiên**: P2 (Đã hoàn thành `P2-3a` & `P2-3b`)
-8. **Rủi ro khi thay đổi**: Tách mô-đun engine cần giữ đúng cấu trúc tham chiếu Three.js để không phát sinh lỗi runtime hay cấp phát GC.
+4. **Nguyên nhân gốc rễ**: Nhiều vòng lặp VFX, vật lý đạn, đội hình, kiến trúc đấu trường và logic hiển thị trước đây nằm chung trong tệp lõi.
+5. **Giải pháp đề xuất**: Hoàn tất trọn bộ **`P2-3a`, `P2-3b`, `P2-3c` & `P2-3d`**: trích xuất **`spatialHashGrid.ts`**, **`projectilePhysicsSystem.ts`**, **`vfxPoolManager.ts`** (8 pool Zero-GC + `VfxFrameBudgetCache` + `LootOrbVisualCache` + `GroundTelegraphVisualPool`), **`zodiacRealmArchitecture.ts`** (kiến trúc 3D Ch.5–12), **`chapterAssetVisibility.ts`**, **`enemySquadDirector.ts`**, **`chapterArenaMechanisms.ts`**, **`zodiacLightingVfxDirector.ts`**, **`zodiacMusicDirector.ts`**, và **`zodiacWorldLore.ts`** với 100% unit test độc lập.
+6. **File hoặc module liên quan**: `src/engine/zodiacRealmArchitecture.ts`, `src/engine/vfxPoolManager.ts`, `src/data/chapterAssetVisibility.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/GameEngine.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành `P2-3a` → `P2-3d`)
+8. **Rủi ro khi thay đổi**: Tách mô-đun engine cần giữ đúng vòng đời giải phóng GPU và tương thích các bộ test giả lập.
 9. **Tiêu chí nghiệm thu**: `tsc --noEmit` 0 lỗi, Vite build sạch, toàn bộ mô-đun trích xuất pass 100% unit test & kiểm chứng live Chromium.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 24. Asset Pipeline — Quy trình quản lý tài nguyên
 1. **Điểm hiện tại (Trước)**: `79 / 100`
@@ -333,31 +333,31 @@
 7. **Mức độ ưu tiên**: P1
 8. **Rủi ro khi thay đổi**: Cần cân bằng sát thương Boss của Paragon (+0.2%/bậc, trần +40%) để không biến Nightmare Tier V thành quá dễ.
 9. **Tiêu chí nghiệm thu**: Kiểm chứng bằng unit test và mô phỏng 100h đạt Paragon Bậc 44/500 mà không phá vỡ trần chỉ số.
-10. **Điểm sau khi triển khai và kiểm thử**: `87 / 100`
+10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
 
 ### 26. Player Retention — Khả năng giữ chân người chơi
 1. **Điểm hiện tại (Trước)**: `78 / 100`
-2. **Bằng chứng đánh giá**: FTUE Ch.1 chặt chẽ (`5m → 30m`), lộ trình công bằng 30 ngày (`FAIR_30DAY_MILESTONES`), nhiệm vụ ngày, chuyển cấp miễn phí giảm ma sát tâm lý, không dùng dark pattern.
+2. **Bằng chứng đánh giá**: FTUE Ch.1 chặt chẽ (`5m → 30m`), lộ trình công bằng 30 ngày (`FAIR_30DAY_MILESTONES`), nhiệm vụ ngày, chuyển cấp miễn phí giảm ma sát tâm lý, hiển thị đầy đủ 100% mục tiêu sưu tầm Tinh Linh / Cánh / Thú Cưỡi / Thánh Khí / Hào Quang Ch.1–4 kèm `Xem 3D` ngay từ ngày đầu, không dùng dark pattern.
 3. **Vấn đề tồn tại**: **Chưa có dữ liệu giữ chân thực tế D1 / D7 / D30 từ người chơi thật** (chưa xác minh live).
 4. **Nguyên nhân gốc rễ**: Dự án đang ở giai đoạn hoàn thiện kỹ thuật trước khi mở Beta thu thập hành vi người dùng.
-5. **Giải pháp đề xuất**: Khóa chặt trải nghiệm 5m / 15m / 30m / 1h / 3h / 10h / 30h / 100h bằng mô phỏng có seed + bổ sung mục tiêu Endgame rõ ràng; ghi rõ chỉ số D1/D7/D30 thực tế chờ đo ở P3-1.
-6. **File hoặc module liên quan**: `src/data/economyTelemetry.ts`, `src/data/fairProgression30Day.ts`, `GAME_PROGRESSION_DESIGN.md`.
+5. **Giải pháp đề xuất**: Khóa chặt trải nghiệm 5m → 100h bằng mô phỏng có seed, minh bạch mục tiêu sưu tầm Ch.1–4 bằng xem thử 3D trực tiếp, và bổ sung mục tiêu Endgame rõ ràng; ghi rõ chỉ số D1/D7/D30 thực tế chờ đo ở P3-1.
+6. **File hoặc module liên quan**: `src/data/chapterAssetVisibility.ts`, `src/data/economyTelemetry.ts`, `src/data/fairProgression30Day.ts`, `GAME_PROGRESSION_DESIGN.md`.
 7. **Mức độ ưu tiên**: P1 / P3
 8. **Rủi ro khi thay đổi**: Nhầm lẫn giữa kết quả mô phỏng toán học với tỷ lệ giữ chân thực tế — phải luôn tách bạch trong báo cáo.
 9. **Tiêu chí nghiệm thu**: Tất cả 8 mốc chơi đều có mục tiêu kế tiếp rõ ràng, 0 cảnh báo lạm phát, phân định minh bạch mô phỏng vs live.
-10. **Điểm sau khi triển khai và kiểm thử**: `84 / 100` *(D1/D7/D30 live: chưa xác minh thực địa)*
+10. **Điểm sau khi triển khai và kiểm thử**: `85 / 100` *(D1/D7/D30 live: chưa xác minh thực địa)*
 
 ### 27. Accessibility — Khả năng tiếp cận
 1. **Điểm hiện tại (Trước)**: `74 / 100`
-2. **Bằng chứng đánh giá**: Tùy chỉnh cỡ chữ UI (`small / normal / large`), bảng màu mù màu (`colorblindTelegraphs.ts`), giảm rung, giảm chuyển động, hỗ trợ Gamepad API (`GameEngine.ts` + `SettingsModal.tsx`), chỉnh âm lượng riêng.
-3. **Vấn đề tồn tại**: Thiếu công tắc **Giảm Chớp Sáng (Anti-Flash)** độc lập và thiếu vùng thông báo **`aria-live="polite"`** cho trình đọc màn hình khi khôi phục dữ liệu hoặc nâng bậc Tinh Tuý Hoàng Đạo.
-4. **Nguyên nhân gốc rễ**: Hiệu ứng lóe sáng từng gắn cứng vào `reducedMotion`, và các thông báo trạng thái chính chưa có `role="status"` ARIA live.
-5. **Giải pháp đề xuất**: Tách riêng `reduceScreenFlash` (`flashScale = 0.25`) và bổ sung vùng `<div role="status" aria-live="polite" aria-atomic="true" className="sr-only">` (`data-testid="a11y-live-announcer"`) trong `App.tsx`.
-6. **File hoặc module liên quan**: `src/types/game.ts`, `src/data/liveOpsData.ts`, `src/components/SettingsModal.tsx`, `src/engine/zodiacLightingVfxDirector.ts`, `src/App.tsx`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành)
-8. **Rủi ro khi thay đổi**: Bảo đảm save cũ không có khóa `reduceScreenFlash` mặc định an toàn về `false` và vùng `sr-only` không ảnh hưởng bố cục thị giác.
-9. **Tiêu chí nghiệm thu**: Nút Anti-Flash lưu bền vững, `aria-live="polite"` xác minh tồn tại trực tiếp trên DOM trình duyệt thật.
-10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
+2. **Bằng chứng đánh giá**: Tùy chỉnh cỡ chữ UI (`100% / 115% / 130%`), bảng màu mù màu (`colorblindTelegraphs.ts`), giảm rung, giảm chuyển động (kể cả giảm 75% biên độ kiến trúc Ch.5–12), Anti-Flash độc lập (`reduceScreenFlash`), hỗ trợ Gamepad API, vùng `aria-live="polite"`, và **trọn bộ 8 phím tắt chiến đấu PC tùy biến** (tự hoán đổi chống trùng phím & khóa bảo vệ cụm di chuyển WASD/Mũi tên).
+3. **Vấn đề tồn tại**: Trước Đợt 7, `Phá Giáp Trảm (F)` và `Thức Tỉnh Vũ Khí (X)` còn gắn cứng không thể đổi phím trong `SettingsModal.tsx`.
+4. **Nguyên nhân gốc rễ**: `CombatKeybindAction` trước đây mới khai báo 6/8 thao tác chiến đấu.
+5. **Giải pháp đề xuất**: Mở rộng `CombatKeybindAction` & `COMBAT_KEYBIND_META` lên đủ **8/8 thao tác chiến đấu PC**, bảo toàn tương thích ngược save cũ, và cập nhật động nhãn phím trên `GameHUD.tsx`.
+6. **File hoặc module liên quan**: `src/types/game.ts`, `src/engine/aaaWave6Director.ts`, `src/components/SettingsModal.tsx`, `src/components/GameHUD.tsx`, `src/engine/GameEngine.ts`, `src/App.tsx`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7)
+8. **Rủi ro khi thay đổi**: Bảo đảm save cũ không có khóa `heavyBreak`/`overdrive` tự động điền mặc định `KeyF`/`KeyX` không xung đột.
+9. **Tiêu chí nghiệm thu**: Đủ 8 phím tắt hiển thị và gán lại trực tiếp trong `SettingsModal.tsx` (kiểm chứng live Chromium `r7-settings-keybinds.png`), `aria-live="polite"` hiện diện trên DOM thật.
+10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
 
 ### 28. Security & Anti-Cheat — Bảo mật và chống gian lận
 1. **Điểm hiện tại (Trước)**: `74 / 100`
@@ -374,14 +374,14 @@
 ### 29. Quality Assurance — Kiểm thử chất lượng
 1. **Điểm hiện tại (Trước)**: `70 / 100`
 2. **Bằng chứng đánh giá**: Toàn bộ bộ kiểm thử `node:test` (`src/**/*.test.ts` + `tests/*.test.mjs`), benchmark hiệu năng `tools/benchmark-spatial-physics.ts`, mô phỏng 8 mốc `tools/simulate-playtime-milestones.ts`, kiểm định `firestore.rules` và kiểm chứng trình duyệt sống Chromium (`playwright-cli`).
-3. **Vấn đề tồn tại**: Trước đây có lỗi lệch contract Ch.3–4, thiếu regression gate cho Paragon/Security/Spatial Physics/LiveOps Schedule, và lỗi `ENOENT` CDN.
+3. **Vấn đề tồn tại**: Trước đây có lỗi lệch contract Ch.3–4, thiếu regression gate cho Paragon/Security/Spatial Physics/LiveOps Schedule/Ch.5–12 Landmarks/GroundTelegraphPool, và lỗi `ENOENT` CDN.
 4. **Nguyên nhân gốc rễ**: Cập nhật tính năng nhanh chưa đồng bộ toàn bộ regression gate.
-5. **Giải pháp đề xuất**: Khắc phục 100% lỗi gốc, bổ sung test cho `SpatialHashGrid`, `projectilePhysicsSystem`, `zodiacMusicDirector`, `liveOpsConfig` (P2-4b), `EnemySquadDirector`, `serverSecurity`, `saveIntegrity` và kiểm chứng trực tiếp giao tranh 3D trên trình duyệt thật.
+5. **Giải pháp đề xuất**: Khắc phục 100% lỗi gốc, bổ sung test cho `zodiacRealmArchitecture`, `GroundTelegraphVisualPool`, `chapterAssetVisibility`, `SpatialHashGrid`, `projectilePhysicsSystem`, `zodiacMusicDirector`, `liveOpsConfig` (P2-4b), `EnemySquadDirector`, `serverSecurity`, `saveIntegrity` và kiểm chứng trực tiếp giao tranh 3D & 8 phím tắt trên trình duyệt thật.
 6. **File hoặc module liên quan**: `tests/*.test.mjs`, `src/**/*.test.ts`, `tools/benchmark-spatial-physics.ts`, `tools/simulate-playtime-milestones.ts`, `QA_TEST_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–6)
+7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–7)
 8. **Rủi ro khi thay đổi**: Mọi cải tiến mới bắt buộc chạy lại full suite và trình duyệt sống để chống regression.
-9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`446 bài kiểm thử | 445 PASS | 0 FAIL | 1 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console.
-10. **Điểm sau khi triển khai và kiểm thử**: `94 / 100`
+9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`454 bài kiểm thử | 446 PASS | 0 FAIL | 8 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console / 0 cảnh báo.
+10. **Điểm sau khi triển khai và kiểm thử**: `95 / 100`
 
 ### 30. Live Operations — Vận hành và mở rộng
 1. **Điểm hiện tại (Trước)**: `80 / 100`
