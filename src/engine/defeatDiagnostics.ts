@@ -1,28 +1,30 @@
 import type { DefeatCauseInfo } from '../types/game';
 
-export type TacticalFailureCauseCode =
+/**
+ * Post-Defeat Tactical Diagnostics Engine.
+ * Evaluates real match telemetry (power gap, dodge ratio, Boss interrupts,
+ * arena mechanism usage, and lethal hit metadata) to pinpoint the primary
+ * failure cause and generate 2 concrete actionable recommendations.
+ */
+
+export type TacticalRecommendationTarget = 'retry' | 'gear' | 'talents' | 'codex';
+
+export type DefeatCauseCategory =
   | 'power_gap'
-  | 'missed_boss_interrupt'
-  | 'telegraph_dodge_deficit'
-  | 'unused_arena_mechanism'
-  | 'swarm_positioning';
+  | 'missed_interrupts'
+  | 'dodge_timing'
+  | 'unused_mechanisms'
+  | 'sustained_attrition';
 
-export type TacticalRecommendationTarget =
-  | 'gear'
-  | 'talents'
-  | 'retry'
-  | 'training'
-  | 'codex';
-
-export interface TacticalDiagnosticMetric {
+export interface DefeatDiagnosticMetric {
   id: string;
   label: string;
   value: string;
   target: string;
-  status: 'ok' | 'warn' | 'critical';
+  status: 'good' | 'warn' | 'critical';
 }
 
-export interface TacticalRecommendation {
+export interface DefeatTacticalRecommendation {
   id: string;
   title: string;
   detail: string;
@@ -41,237 +43,191 @@ export interface DefeatDiagnosticInput {
   damageTakenCount: number;
   castInterrupts: number;
   bossGuardBreaks: number;
-  bossInterruptOpportunities?: number;
   arenaMechanismsTriggered: number;
   defeatCause?: DefeatCauseInfo;
 }
 
 export interface DefeatDiagnosticReport {
-  primaryCauseCode: TacticalFailureCauseCode;
+  primaryCauseId: DefeatCauseCategory;
   primaryCauseTitle: string;
   primaryCauseSummary: string;
   severityLabel: string;
-  metrics: TacticalDiagnosticMetric[];
-  recommendations: [TacticalRecommendation, TacticalRecommendation];
+  powerRatioPct: number;
+  metrics: DefeatDiagnosticMetric[];
+  recommendations: [DefeatTacticalRecommendation, DefeatTacticalRecommendation];
 }
 
-function formatNumber(n: number): string {
-  return Math.max(0, Math.round(n)).toLocaleString('vi-VN');
-}
-
-/**
- * Pure Tactical Failure-Cause Diagnostics analyzer (Phase 4 Pillar 3).
- * Inspects real match telemetry (CP gap, dodge efficiency, Boss interrupt windows,
- * arena mechanism usage, and defeatCause) to identify the primary failure cause
- * and generate 2 concrete actionable recommendations.
- */
 export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDiagnosticReport {
-  const playerCp = Math.max(0, Math.round(input.playerPowerRating || 0));
-  const recCp = Math.max(100, Math.round(input.recommendedChapterPower || 400));
-  const cpRatio = playerCp / recCp;
+  const safePlayerCp = Math.max(1, Math.round(input.playerPowerRating || 0));
+  const safeRecCp = Math.max(1, Math.round(input.recommendedChapterPower || 1));
+  const powerRatio = safePlayerCp / safeRecCp;
+  const powerRatioPct = Math.round(powerRatio * 100);
+
+  const stage = Math.max(1, Math.floor(input.stageReached || 1));
+  const totalStages = Math.max(1, Math.floor(input.totalStages || 12));
+  const isBossOrLateStage = stage >= Math.max(4, totalStages - 1) || Boolean(input.defeatCause?.isBoss);
+
   const perfectDodges = Math.max(0, Math.floor(input.perfectDodges || 0));
-  const damageTakenCount = Math.max(0, Math.floor(input.damageTakenCount || 0));
+  const damageTaken = Math.max(0, Math.floor(input.damageTakenCount || 0));
   const castInterrupts = Math.max(0, Math.floor(input.castInterrupts || 0));
-  const bossGuardBreaks = Math.max(0, Math.floor(input.bossGuardBreaks || 0));
-  const mechanismsUsed = Math.max(0, Math.floor(input.arenaMechanismsTriggered || 0));
-  const elapsedSec = Math.max(1, Math.round(input.elapsedSeconds || 1));
+  const bossBreaks = Math.max(0, Math.floor(input.bossGuardBreaks || 0));
+  const mechanisms = Math.max(0, Math.floor(input.arenaMechanismsTriggered || 0));
+  const elapsedSec = Math.max(1, Math.round(input.elapsedSeconds || 0));
 
-  const causeCode = input.defeatCause?.code ?? 'unknown';
-  const isBossCause =
-    causeCode === 'boss_slam' ||
-    causeCode === 'boss_lane' ||
-    causeCode === 'boss_projectile' ||
-    causeCode === 'boss_contact' ||
-    input.stageReached >= input.totalStages;
+  // Score each potential failure cause from real run telemetry
+  let primaryCauseId: DefeatCauseCategory = 'sustained_attrition';
+  let primaryCauseTitle = 'Áp lực giao tranh kéo dài';
+  let primaryCauseSummary = `Bạn đã trụ được ${elapsedSec}s tới Phòng ${stage}/${totalStages}, nhưng lượng sát thương cộng dồn cuối trận vượt quá hồi phục.`;
+  let severityLabel = 'Cần tối ưu nhịp đánh';
 
-  const bossInterruptOpps = Math.max(
-    isBossCause ? 1 : 0,
-    Math.floor(input.bossInterruptOpportunities ?? (isBossCause ? Math.max(1, Math.floor(elapsedSec / 22)) : 0))
-  );
-
-  const dodgeSuccessRate =
-    perfectDodges + damageTakenCount > 0
-      ? perfectDodges / (perfectDodges + damageTakenCount)
-      : 0;
-  const dodgeRatePct = Math.round(dodgeSuccessRate * 100);
-
-  let primaryCauseCode: TacticalFailureCauseCode;
-  let primaryCauseTitle: string;
-  let primaryCauseSummary: string;
-  let severityLabel: string;
-
-  if (cpRatio < 0.82) {
-    primaryCauseCode = 'power_gap';
-    primaryCauseTitle = 'Chênh lệch lực chiến đáng kể';
-    primaryCauseSummary = `Lực chiến hiện tại (${formatNumber(playerCp)}) thấp hơn ${Math.round(
-      (1 - cpRatio) * 100
-    )}% so với ngưỡng đề xuất Chương ${input.chapterId} (${formatNumber(recCp)}), khiến thời gian hạ mục tiêu kéo dài và dễ hụt máu.`;
-    severityLabel = 'Ưu tiên nâng chỉ số';
-  } else if (isBossCause && castInterrupts === 0 && bossGuardBreaks === 0 && bossInterruptOpps >= 1) {
-    primaryCauseCode = 'missed_boss_interrupt';
-    primaryCauseTitle = 'Bỏ lỡ cửa sổ Ngắt Chiêu Boss';
-    primaryCauseSummary = `Trận đấu ghi nhận ${castInterrupts} lần Ngắt Chiêu và ${bossGuardBreaks} lần Phá Giáp Boss. Giữ Tuyệt Kỹ hoặc Đòn Phản Kích để ngắt vòng tụ chiêu đỏ/tím sẽ khóa Boss và cộng +28% sát thương.`;
-    severityLabel = 'Chìa khóa hạ Boss';
-  } else if (
-    (causeCode === 'boss_slam' || causeCode === 'boss_lane' || causeCode === 'ranged_barrage') ||
-    (damageTakenCount >= 4 && dodgeSuccessRate < 0.25)
-  ) {
-    primaryCauseCode = 'telegraph_dodge_deficit';
-    primaryCauseTitle = 'Chưa né kịp đòn cảnh báo trên sàn';
-    primaryCauseSummary = `Bạn trúng ${damageTakenCount} đòn trong khi chỉ kích hoạt ${perfectDodges} lần Né Hoàn Hảo (${dodgeRatePct}%). Lướt ngang khỏi vòng tròn/đường chiếu ở 20% giây cuối sẽ mở cửa sổ Phản Kích ×2.`;
-    severityLabel = 'Cần tối ưu di chuyển';
-  } else if (mechanismsUsed === 0 && elapsedSec >= 25) {
-    primaryCauseCode = 'unused_arena_mechanism';
-    primaryCauseTitle = 'Chưa kích hoạt Cơ Quan Đấu Trường';
-    primaryCauseSummary = `Chưa có Cơ Quan Đấu Trường nào được kích hoạt trong ${elapsedSec} giây chiến đấu. Chạm hoặc bắn kích hoạt trụ cơ quan giúp hồi máu/khiên, làm choáng quái và tăng tốc đánh tức thì.`;
-    severityLabel = 'Tận dụng địa hình';
-  } else {
-    primaryCauseCode = 'swarm_positioning';
-    primaryCauseTitle = 'Bị áp sát bởi đàn quái & hỏa lực chéo';
-    primaryCauseSummary = `Mất nhịp giữ khoảng cách ở Ải ${input.stageReached}/${Math.max(
-      1,
-      input.totalStages
-    )}. Ưu tiên di chuyển vòng cung quanh rìa sân và chọn nhánh Tiến Hóa AoE để dọn quái tầm xa trước.`;
-    severityLabel = 'Điều chỉnh vị trí';
+  if (powerRatio < 0.78) {
+    primaryCauseId = 'power_gap';
+    primaryCauseTitle = 'Chênh lệch Lực Chiến đáng kể';
+    primaryCauseSummary = `Lực chiến hiện tại (${safePlayerCp.toLocaleString('vi-VN')} CP) mới đạt ${powerRatioPct}% mức khuyến nghị Chương ${input.chapterId} (${safeRecCp.toLocaleString('vi-VN')} CP), khiến thời gian hạ quái kéo dài.`;
+    severityLabel = `Thiếu ${Math.max(1, 100 - powerRatioPct)}% CP khuyến nghị`;
+  } else if (isBossOrLateStage && castInterrupts === 0 && bossBreaks === 0) {
+    primaryCauseId = 'missed_interrupts';
+    primaryCauseTitle = 'Bỏ lỡ cửa sổ Ngắt Chiêu & Phá Giáp Boss';
+    primaryCauseSummary =
+      'Boss tung trọn chuỗi kỹ năng diện rộng vì chưa bị Ngắt Chiêu khi gồng hoặc Phá Giáp ở mốc 65% / 30% HP.';
+    severityLabel = 'Ưu tiên Ngắt Chiêu Boss';
+  } else if (damageTaken >= 5 && perfectDodges <= 1) {
+    primaryCauseId = 'dodge_timing';
+    primaryCauseTitle = 'Trúng nhiều đòn cảnh báo cần Lướt Né';
+    primaryCauseSummary = `Nhận ${damageTaken} đòn đánh nhưng chỉ có ${perfectDodges} lần Né Hoàn Hảo. Căn thời điểm Lướt Né ngay khi vòng cảnh báo đầy sẽ miễn thương và kích hoạt Phản Đòn.`;
+    severityLabel = 'Cải thiện nhịp Lướt Né';
+  } else if (mechanisms === 0 && stage >= 2) {
+    primaryCauseId = 'unused_mechanisms';
+    primaryCauseTitle = 'Chưa tận dụng Cơ Quan Đấu Trường';
+    primaryCauseSummary = `Chưa kích hoạt Cơ Quan Hoàng Đạo nào trong suốt ${stage} phòng. Bắn hoặc áp sát trụ cơ quan giúp gây choáng diện rộng, hồi phục và tăng tốc bắn miễn phí.`;
+    severityLabel = 'Kích hoạt Cơ Quan';
   }
 
-  const metrics: TacticalDiagnosticMetric[] = [
+  const metrics: DefeatDiagnosticMetric[] = [
     {
-      id: 'cp_gap',
-      label: 'Lực chiến / Đề xuất',
-      value: `${formatNumber(playerCp)} / ${formatNumber(recCp)}`,
-      target: cpRatio >= 1 ? 'Đạt chuẩn' : `Thiếu ${formatNumber(recCp - playerCp)}`,
-      status: cpRatio >= 0.95 ? 'ok' : cpRatio >= 0.82 ? 'warn' : 'critical',
+      id: 'power_ratio',
+      label: 'Tỷ lệ Lực Chiến',
+      value: `${powerRatioPct}% (${safePlayerCp.toLocaleString('vi-VN')})`,
+      target: `Khuyến nghị: ${safeRecCp.toLocaleString('vi-VN')} CP`,
+      status: powerRatio >= 0.92 ? 'good' : powerRatio >= 0.78 ? 'warn' : 'critical',
     },
     {
-      id: 'dodge_rate',
+      id: 'dodge_ratio',
       label: 'Né Hoàn Hảo / Trúng đòn',
-      value: `${perfectDodges} / ${damageTakenCount} (${dodgeRatePct}%)`,
-      target: 'Mục tiêu ≥ 25%',
-      status: dodgeSuccessRate >= 0.28 || damageTakenCount <= 2 ? 'ok' : dodgeSuccessRate >= 0.15 ? 'warn' : 'critical',
+      value: `${perfectDodges} né · ${damageTaken} trúng`,
+      target: 'Mục tiêu: ≥ 2 Né Hoàn Hảo',
+      status: perfectDodges >= 2 ? 'good' : damageTaken >= 5 ? 'critical' : 'warn',
     },
     {
       id: 'interrupts',
-      label: 'Ngắt Chiêu / Phá Giáp Boss',
-      value: `${castInterrupts} / ${bossGuardBreaks}`,
-      target: isBossCause ? 'Tối thiểu 1 lần' : 'Khuyến nghị 1+',
-      status: castInterrupts + bossGuardBreaks >= 1 ? 'ok' : isBossCause ? 'critical' : 'warn',
+      label: 'Ngắt Chiêu / Phá Giáp',
+      value: `${castInterrupts} ngắt · ${bossBreaks} phá giáp`,
+      target: isBossOrLateStage ? 'Boss: ≥ 1 Ngắt Chiêu' : 'Mục tiêu: Ngắt quái gồng',
+      status:
+        castInterrupts + bossBreaks >= 1 ? 'good' : isBossOrLateStage ? 'critical' : 'warn',
     },
     {
       id: 'mechanisms',
       label: 'Cơ Quan Đấu Trường',
-      value: `${mechanismsUsed} lần`,
-      target: 'Kích hoạt khi hồi',
-      status: mechanismsUsed >= 1 ? 'ok' : elapsedSec >= 25 ? 'warn' : 'ok',
+      value: `${mechanisms} lần kích hoạt`,
+      target: 'Mục tiêu: ≥ 1 mỗi trận',
+      status: mechanisms >= 1 ? 'good' : 'warn',
     },
   ];
 
-  const recommendations = buildRecommendationsForCause(primaryCauseCode, input.chapterId, cpRatio);
+  const recommendationsByCause: Record<
+    DefeatCauseCategory,
+    [DefeatTacticalRecommendation, DefeatTacticalRecommendation]
+  > = {
+    power_gap: [
+      {
+        id: 'rec_upgrade_gear',
+        title: 'Cường hóa Vũ khí & Giáp chính',
+        detail: 'Tập trung dồn Vàng vào Vũ khí và Áo giáp để tăng ngay lực sát thương lẫn sinh lực nền.',
+        actionLabel: 'Mở Trang Bị',
+        actionTarget: 'gear',
+      },
+      {
+        id: 'rec_upgrade_talents',
+        title: 'Nâng Thiên Phú sinh tồn & công kích',
+        detail: 'Kích hoạt thêm điểm Thiên Phú giúp rút ngắn chênh lệch chỉ số trước khi tái đấu.',
+        actionLabel: 'Mở Thiên Phú',
+        actionTarget: 'talents',
+      },
+    ],
+    missed_interrupts: [
+      {
+        id: 'rec_codex_boss',
+        title: 'Xem mẫu đòn 3 Pha & mẹo Ngắt Chiêu',
+        detail: 'Giữ Kỹ năng Chủ động hoặc đòn Phản Đòn để bắn vào vòng gồng vàng của Boss, thưởng +22% Phá Giáp.',
+        actionLabel: 'Mở Sổ Tay Boss',
+        actionTarget: 'codex',
+      },
+      {
+        id: 'rec_retry_interrupt',
+        title: 'Tái đấu & canh nhịp Pha 65% / 30%',
+        detail: 'Lùi khỏi tầm xoáy khi Boss đổi pha rồi dồn sát thương trong cửa sổ Suy Yếu +20%.',
+        actionLabel: 'Thử Lại Ngay',
+        actionTarget: 'retry',
+      },
+    ],
+    dodge_timing: [
+      {
+        id: 'rec_retry_dodge',
+        title: 'Giữ Lướt Né cho vòng cảnh báo đỏ',
+        detail: 'Ưu tiên di chuyển vòng cung quanh cột đá và bấm Lướt Né sát thời điểm đòn nổ để kích hoạt Phản Đòn.',
+        actionLabel: 'Luyện Lại Ngay',
+        actionTarget: 'retry',
+      },
+      {
+        id: 'rec_gear_defense',
+        title: 'Gia cố Sinh Lực & Bộ Trang Bị',
+        detail: 'Nâng cấp Giáp/Nhẫn hoặc kích hoạt bộ Long Kỵ để có thêm lớp khiên bảo vệ khi máu thấp.',
+        actionLabel: 'Xem Trang Bị',
+        actionTarget: 'gear',
+      },
+    ],
+    unused_mechanisms: [
+      {
+        id: 'rec_retry_mech',
+        title: 'Bắn mở Cơ Quan Đấu Trường sớm',
+        detail: 'Dụ nhóm quái lại gần trụ Hoàng Đạo rồi bắn kích nổ để tạo choáng diện rộng và lấy bùa tốc bắn.',
+        actionLabel: 'Vào Trận Lại',
+        actionTarget: 'retry',
+      },
+      {
+        id: 'rec_codex_mech',
+        title: 'Tra cứu Cơ Quan & Tiến Hóa Kỹ Năng',
+        detail: 'Chọn nhánh Tiến Hóa Diện Rộng hoặc Đánh Boss phù hợp với kiểu phòng hiện tại.',
+        actionLabel: 'Mở Sổ Tay',
+        actionTarget: 'codex',
+      },
+    ],
+    sustained_attrition: [
+      {
+        id: 'rec_gear_dps',
+        title: 'Tối ưu Vũ khí & Hiệu Ứng Bộ',
+        detail: 'Trang bị đủ 2–3 món cùng Bộ (Hủy Diệt, Vọng Âm, Oracle) để mở khóa hiệu ứng kích nổ trong giao tranh.',
+        actionLabel: 'Mở Trang Bị',
+        actionTarget: 'gear',
+      },
+      {
+        id: 'rec_retry_tactical',
+        title: 'Tái đấu với nhánh Tiến Hóa khắc chế',
+        detail: 'Dọn nhóm Pháp sư/Xạ thủ tuyến sau trước khi dồn sát thương vào Tiên phong và Thủ lĩnh.',
+        actionLabel: 'Thử Lại Ngay',
+        actionTarget: 'retry',
+      },
+    ],
+  };
 
   return {
-    primaryCauseCode,
+    primaryCauseId,
     primaryCauseTitle,
     primaryCauseSummary,
     severityLabel,
+    powerRatioPct,
     metrics,
-    recommendations,
+    recommendations: recommendationsByCause[primaryCauseId],
   };
-}
-
-function buildRecommendationsForCause(
-  cause: TacticalFailureCauseCode,
-  chapterId: number,
-  cpRatio: number
-): [TacticalRecommendation, TacticalRecommendation] {
-  switch (cause) {
-    case 'power_gap':
-      return [
-        {
-          id: 'rec_upgrade_gear',
-          title: 'Cường hóa Vũ Khí & Áo Giáp bậc cao nhất',
-          detail: 'Dùng Vàng và Mảnh Rèn vừa nhận để nâng ô Vũ Khí/Giáp và kích hoạt tối thiểu mốc 2 món Bộ Trang Bị.',
-          actionLabel: 'Mở Trang Bị',
-          actionTarget: 'gear',
-        },
-        {
-          id: 'rec_upgrade_talents',
-          title: 'Nâng 2–3 tầng Thiên Phú Sinh Lực & Công Kích',
-          detail: `Bổ sung chỉ số nền vĩnh viễn trước khi quay lại Chương ${chapterId} để rút ngắn thời gian hạ Boss.`,
-          actionLabel: 'Mở Thiên Phú',
-          actionTarget: 'talents',
-        },
-      ];
-    case 'missed_boss_interrupt':
-      return [
-        {
-          id: 'rec_save_ult_interrupt',
-          title: 'Giữ Tuyệt Kỹ để cắt vòng tụ chiêu Boss',
-          detail: 'Khi Boss hiện vòng đỏ/tím (Ngắt Chiêu), tung Tuyệt Kỹ hoặc Đòn Phản Kích để hủy chiêu và mở cửa sổ +28% sát thương.',
-          actionLabel: 'Thử lại ngay',
-          actionTarget: 'retry',
-        },
-        {
-          id: 'rec_check_boss_codex',
-          title: 'Xem quy luật chiêu Boss & Nhánh Tiến Hóa Boss',
-          detail: 'Ưu tiên nâng nhánh Tiến Hóa Đánh Boss (Thương Nhật Luân, Băng Giá Phá Giáp, Trảm Vương Kiếm Ý) khi lên tầng 2+.',
-          actionLabel: 'Sổ Tay Chiến Thuật',
-          actionTarget: 'codex',
-        },
-      ];
-    case 'telegraph_dodge_deficit':
-      return [
-        {
-          id: 'rec_practice_dodge',
-          title: 'Lướt vuông góc khỏi đường chiếu ở nhịp cuối',
-          detail: 'Nhấn Né ngay khi vòng cảnh báo chuyển sáng trắng-vàng để kích hoạt Làm Chậm Thời Gian và phát bắn Phản Kích ×2.',
-          actionLabel: 'Thử lại ngay',
-          actionTarget: 'retry',
-        },
-        {
-          id: 'rec_defensive_prep',
-          title: cpRatio < 1 ? 'Gia cố Giáp & Khiên đầu màn' : 'Tập nhịp Né tại Phòng Tập',
-          detail:
-            cpRatio < 1
-              ? 'Nâng thêm Sinh Lực/Giảm Sát Thương từ Trang Bị hoặc chọn Tiến Hóa Pháo Đài Vệ Tinh để tạo khiên 18% HP.'
-              : 'Luyện căn nhịp Né Hoàn Hảo 30 giây trong Phòng Tập hoặc bật Cảnh Báo Tương Phản Cao trong Cài Đặt.',
-          actionLabel: cpRatio < 1 ? 'Mở Trang Bị' : 'Mở Thiên Phú',
-          actionTarget: cpRatio < 1 ? 'gear' : 'talents',
-        },
-      ];
-    case 'unused_arena_mechanism':
-      return [
-        {
-          id: 'rec_trigger_mechanism',
-          title: 'Chủ động kích hoạt Trụ Cơ Quan mỗi 15 giây',
-          detail: 'Di chuyển qua vòng sáng Cơ Quan Đấu Trường để nhận hồi máu/khiên, làm choáng quái và tăng tốc bắn.',
-          actionLabel: 'Thử lại ngay',
-          actionTarget: 'retry',
-        },
-        {
-          id: 'rec_boost_tempo',
-          title: 'Nâng Thiên Phú Tốc Chạy & Tốc Đánh',
-          detail: 'Tốc độ di chuyển cao giúp bạn xoay vòng kích hoạt cơ quan an toàn mà không bị quái chặn đường.',
-          actionLabel: 'Mở Thiên Phú',
-          actionTarget: 'talents',
-        },
-      ];
-    case 'swarm_positioning':
-    default:
-      return [
-        {
-          id: 'rec_kite_perimeter',
-          title: 'Di chuyển vòng cung theo rìa đấu trường',
-          detail: 'Tránh bị dồn vào góc tường; ưu tiên hạ quái bắn xa và chọn nhánh Tiến Hóa AoE (Cuồng Phong Loạn Tiễn / Mạng Lưới Bão Tố).',
-          actionLabel: 'Thử lại ngay',
-          actionTarget: 'retry',
-        },
-        {
-          id: 'rec_gear_upgrade',
-          title: 'Kiểm tra Bộ Trang Bị & Cường Hóa nhanh',
-          detail: 'Kích hoạt nội tại bộ 2–3 món (như Hủy Diệt hoặc Vọng Âm) để tăng tốc độ dọn đàn quái rõ rệt.',
-          actionLabel: 'Mở Trang Bị',
-          actionTarget: 'gear',
-        },
-      ];
-  }
 }

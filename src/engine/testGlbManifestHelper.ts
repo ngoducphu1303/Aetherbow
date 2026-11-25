@@ -3,142 +3,154 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { TestContext } from 'node:test';
 
-export interface GlbManifestEntry {
+interface ManifestFileRecord {
   path: string;
   size: number;
   runtime?: boolean;
 }
 
-interface GlbManifestFile {
+interface ManifestJson {
   cdnBaseUrl?: string;
-  files: GlbManifestEntry[];
+  files?: ManifestFileRecord[];
 }
 
-export interface ResolvedTestGlb {
+export interface AssertGlbAssetOptions {
+  maxBytes?: number;
+  minBytes?: number;
+  requireRuntime?: boolean;
+}
+
+export interface ValidatedGlbAssetResult {
   source: 'disk' | 'manifest';
   absPath: string;
   manifestPath: string;
   size: number;
   runtime: boolean;
-  cdnUrl?: string;
 }
 
-let cachedManifestIndex: { cdnBaseUrl: string; byPath: Map<string, GlbManifestEntry> } | null = null;
+let cachedManifestMap: Map<string, ManifestFileRecord> | null = null;
 
-function normalizeManifestKey(rawPath: string): string {
-  const cwd = process.cwd().replace(/\\/g, '/');
-  let cleaned = rawPath.replace(/\\/g, '/');
-  if (cleaned.startsWith(`${cwd}/`)) {
-    cleaned = cleaned.slice(cwd.length + 1);
+function loadManifestMap(): Map<string, ManifestFileRecord> {
+  if (cachedManifestMap) return cachedManifestMap;
+  const map = new Map<string, ManifestFileRecord>();
+  const manifestPath = path.resolve(process.cwd(), 'scripts', 'glb-manifest.json');
+  if (fs.existsSync(manifestPath)) {
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as ManifestJson;
+    for (const entry of parsed.files ?? []) {
+      const normalized = String(entry.path || '').replace(/\\/g, '/').replace(/^\/+/, '');
+      if (normalized) {
+        map.set(normalized, {
+          path: normalized,
+          size: Number(entry.size || 0),
+          runtime: Boolean(entry.runtime),
+        });
+      }
+    }
   }
-  cleaned = cleaned.replace(/^\/+/, '');
-  if (!cleaned.startsWith('public/')) {
-    cleaned = `public/${cleaned}`;
-  }
-  return cleaned.normalize('NFC');
+  cachedManifestMap = map;
+  return map;
 }
 
-function getManifestIndex(): { cdnBaseUrl: string; byPath: Map<string, GlbManifestEntry> } {
-  if (cachedManifestIndex) return cachedManifestIndex;
-  const manifestAbs = path.resolve(process.cwd(), 'scripts/glb-manifest.json');
-  const raw = JSON.parse(fs.readFileSync(manifestAbs, 'utf8')) as GlbManifestFile;
-  const byPath = new Map<string, GlbManifestEntry>();
-  for (const entry of raw.files) {
-    byPath.set(entry.path.replace(/\\/g, '/').normalize('NFC'), entry);
-  }
-  cachedManifestIndex = {
-    cdnBaseUrl: raw.cdnBaseUrl ?? '',
-    byPath,
-  };
-  return cachedManifestIndex;
+function toManifestKey(inputPath: string): { absPath: string; manifestPath: string } {
+  const cwd = process.cwd();
+  const absPath = path.isAbsolute(inputPath) ? inputPath : path.resolve(cwd, inputPath);
+  const rel = path.relative(cwd, absPath).replace(/\\/g, '/').replace(/^\/+/, '');
+  return { absPath, manifestPath: rel };
 }
 
-export function resolveGlbForTest(absOrPublicPath: string): ResolvedTestGlb {
-  const manifestPath = normalizeManifestKey(absOrPublicPath);
-  const absPath = path.resolve(process.cwd(), manifestPath);
+export function assertValidGlbAssetOrManifest(
+  inputPath: string,
+  options?: AssertGlbAssetOptions
+): ValidatedGlbAssetResult {
+  const { absPath, manifestPath } = toManifestKey(inputPath);
+  const minBytes = options?.minBytes ?? 20;
 
   if (fs.existsSync(absPath)) {
     const stat = fs.statSync(absPath);
+    assert.ok(stat.size >= minBytes, `GLB too small (${stat.size} bytes): ${manifestPath}`);
+    if (options?.maxBytes !== undefined) {
+      assert.ok(
+        stat.size <= options.maxBytes,
+        `GLB exceeds maxBytes (${stat.size} > ${options.maxBytes}): ${manifestPath}`
+      );
+    }
+
+    // Validate binary glTF v2 header
+    const fd = fs.openSync(absPath, 'r');
+    try {
+      const hdr = Buffer.alloc(12);
+      fs.readSync(fd, hdr, 0, 12, 0);
+      assert.equal(hdr.toString('ascii', 0, 4), 'glTF', `Invalid GLB magic header: ${manifestPath}`);
+      assert.equal(hdr.readUInt32LE(4), 2, `Unsupported GLB version: ${manifestPath}`);
+      assert.equal(hdr.readUInt32LE(8), stat.size, `Truncated GLB length: ${manifestPath}`);
+    } finally {
+      fs.closeSync(fd);
+    }
+
+    const manifestEntry = loadManifestMap().get(manifestPath);
+    if (options?.requireRuntime && manifestEntry) {
+      assert.equal(
+        manifestEntry.runtime,
+        true,
+        `Expected manifest entry to be marked runtime=true: ${manifestPath}`
+      );
+    }
+
     return {
       source: 'disk',
       absPath,
       manifestPath,
       size: stat.size,
-      runtime: true,
+      runtime: manifestEntry ? Boolean(manifestEntry.runtime) : true,
     };
   }
 
-  const index = getManifestIndex();
-  const entry = index.byPath.get(manifestPath);
+  const manifestEntry = loadManifestMap().get(manifestPath);
   assert.ok(
-    entry,
-    `GLB asset missing on local disk (${absPath}) AND missing from scripts/glb-manifest.json (${manifestPath})`
+    manifestEntry,
+    `GLB missing on disk and not registered in scripts/glb-manifest.json: ${manifestPath}`
   );
+  assert.ok(
+    manifestEntry.size >= minBytes,
+    `Manifest GLB size too small (${manifestEntry.size}): ${manifestPath}`
+  );
+  if (options?.maxBytes !== undefined) {
+    assert.ok(
+      manifestEntry.size <= options.maxBytes,
+      `Manifest GLB exceeds maxBytes (${manifestEntry.size} > ${options.maxBytes}): ${manifestPath}`
+    );
+  }
+  if (options?.requireRuntime) {
+    assert.equal(
+      manifestEntry.runtime,
+      true,
+      `Manifest GLB must be marked runtime=true: ${manifestPath}`
+    );
+  }
 
   return {
     source: 'manifest',
     absPath,
     manifestPath,
-    size: entry.size,
-    runtime: Boolean(entry.runtime),
-    cdnUrl: index.cdnBaseUrl
-      ? `${index.cdnBaseUrl.replace(/\/+$/, '')}/${manifestPath.replace(/^public\//, '')}`
-      : undefined,
+    size: manifestEntry.size,
+    runtime: Boolean(manifestEntry.runtime),
   };
 }
 
-export function assertValidGlbAssetOrManifest(
-  absOrPublicPath: string,
-  opts?: { maxBytes?: number; requireRuntime?: boolean }
-): ResolvedTestGlb {
-  const resolved = resolveGlbForTest(absOrPublicPath);
-
-  if (resolved.source === 'disk') {
-    const fd = fs.openSync(resolved.absPath, 'r');
-    const hdr = Buffer.alloc(12);
-    try {
-      fs.readSync(fd, hdr, 0, 12, 0);
-    } finally {
-      fs.closeSync(fd);
-    }
-    assert.equal(hdr.toString('ascii', 0, 4), 'glTF', `${resolved.manifestPath} invalid glTF magic`);
-    assert.equal(hdr.readUInt32LE(4), 2, `${resolved.manifestPath} must be glTF v2`);
-    assert.equal(hdr.readUInt32LE(8), resolved.size, `${resolved.manifestPath} length header mismatch`);
-  } else {
-    assert.ok(resolved.size >= 20, `${resolved.manifestPath} manifest size must be >= 20 B`);
-    if (opts?.requireRuntime) {
-      assert.equal(
-        resolved.runtime,
-        true,
-        `${resolved.manifestPath} must be marked runtime: true in scripts/glb-manifest.json`
-      );
+export function skipIfGlbOffloadedToCdn(t: TestContext, paths: ReadonlyArray<string>): boolean {
+  const manifestMap = loadManifestMap();
+  const missingOnDisk: string[] = [];
+  for (const p of paths) {
+    const { absPath, manifestPath } = toManifestKey(p);
+    if (!fs.existsSync(absPath)) {
+      if (!manifestMap.has(manifestPath)) {
+        return false;
+      }
+      missingOnDisk.push(manifestPath);
     }
   }
-
-  if (opts?.maxBytes !== undefined) {
-    assert.ok(
-      resolved.size <= opts.maxBytes,
-      `${resolved.manifestPath} (${resolved.size} B) exceeds budget (${opts.maxBytes} B)`
-    );
-  }
-
-  return resolved;
-}
-
-/**
- * Verifies every required GLB exists in scripts/glb-manifest.json (or disk).
- * If any binary is offloaded to CDN and not mirrored locally, skips the binary-parse test honestly.
- */
-export function skipIfGlbOffloadedToCdn(t: TestContext, requiredPaths: readonly string[]): boolean {
-  let anyOffloaded = false;
-  for (const p of requiredPaths) {
-    const resolved = resolveGlbForTest(p);
-    if (resolved.source === 'manifest') {
-      anyOffloaded = true;
-    }
-  }
-  if (anyOffloaded) {
-    t.skip('Local GLB binary offloaded to CDN (manifest presence & byte size verified via scripts/glb-manifest.json)');
+  if (missingOnDisk.length > 0) {
+    t.skip(`Offloaded ${missingOnDisk.length} GLB(s) to CDN manifest (${missingOnDisk[0]})`);
     return true;
   }
   return false;

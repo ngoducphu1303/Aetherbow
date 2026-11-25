@@ -1,421 +1,331 @@
-import type { GpuWatchdogStage } from '../types/game';
+import type { GraphicsQuality } from '../types/game';
 
-export interface ZodiacChapterLightingPalette {
+/**
+ * 12-Chapter Zodiac Lighting & Dynamic VFX Budget Director.
+ * Keeps strictly 0 dynamic PointLights on Dell Latitude E5430 (Intel HD 4000),
+ * Software WebGL, Lite Mode, or GPU Watchdog Stage >= 2 while giving every
+ * chapter a distinct warm/cool directional + hemisphere + fog identity and
+ * readable faction VFX separation (Player vs Enemy vs Boss).
+ */
+
+export interface ZodiacChapterLightingProfile {
   chapterId: number;
-  zodiacName: string;
+  zodiacLabel: string;
+  backdropHex: number;
+  fogHex: number;
   keyLightHex: number;
   keyIntensity: number;
   hemiSkyHex: number;
   hemiGroundHex: number;
   hemiIntensity: number;
-  fogHex: number;
-  fogNear: number;
-  fogFar: number;
-  backdropHex: number;
-  architectureAccentHex: number;
-  /** Hard Dell Latitude E5430 / Intel HD 4000 guarantee: strictly 0 new PointLights */
-  newPointLightsAdded: 0;
+  playerVfxHex: number;
+  enemyVfxHex: number;
+  bossVfxHex: number;
 }
 
-export type CombatVfxFaction = 'player' | 'enemy' | 'boss';
-
-export interface FactionVfxPalette {
-  faction: CombatVfxFaction;
-  primaryHex: number;
-  secondaryHex: number;
-  accentHex: number;
-  trailHex: number;
-  shapeToken: 'crisp_diamond' | 'crimson_ring' | 'imperial_octagon';
-}
-
-export interface DynamicVfxBudget {
-  watchdogStage: GpuWatchdogStage;
-  maxParticlesPerBurst: number;
-  maxActiveShockwaves: number;
-  particleDensityScale: number;
-  allowSecondaryTrails: boolean;
-  allowScreenFlash: boolean;
-  newPointLightsAdded: 0;
-}
-
-/**
- * 12-Chapter Zodiac Lighting & Fog Director (Phase 4 Pillar 2).
- * Follows 60-30-10 warm/cool contrast and strictly adds 0 dynamic PointLights.
- */
-export const ZODIAC_CHAPTER_LIGHTING_PALETTES: readonly ZodiacChapterLightingPalette[] = [
-  {
-    chapterId: 1,
-    zodiacName: 'Sư Tử Nhật Luân',
-    keyLightHex: 0xffdf9e,
-    keyIntensity: 1.48,
-    hemiSkyHex: 0xffe4b5,
-    hemiGroundHex: 0x261d14,
-    hemiIntensity: 0.9,
-    fogHex: 0x16121f,
-    fogNear: 26,
-    fogFar: 68,
-    backdropHex: 0x120f1a,
-    architectureAccentHex: 0xf59e0b,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 2,
-    zodiacName: 'Hỏa Sơn Bạch Dương',
-    keyLightHex: 0xffb07c,
-    keyIntensity: 1.52,
-    hemiSkyHex: 0xf97316,
-    hemiGroundHex: 0x241210,
-    hemiIntensity: 0.86,
-    fogHex: 0x1f0f10,
-    fogNear: 24,
-    fogFar: 64,
-    backdropHex: 0x190b0c,
-    architectureAccentHex: 0xf97316,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 3,
-    zodiacName: 'Thánh Địa Kim Ngưu',
-    keyLightHex: 0xd9f99d,
-    keyIntensity: 1.4,
-    hemiSkyHex: 0x86efac,
-    hemiGroundHex: 0x0d261b,
-    hemiIntensity: 0.9,
-    fogHex: 0x0c1b18,
-    fogNear: 25,
-    fogFar: 66,
-    backdropHex: 0x091614,
-    architectureAccentHex: 0x10b981,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 4,
-    zodiacName: 'Đấu Trường Song Tử',
-    keyLightHex: 0xbce6ff,
-    keyIntensity: 1.46,
-    hemiSkyHex: 0x7dd3fc,
-    hemiGroundHex: 0x1e1b4b,
-    hemiIntensity: 0.92,
-    fogHex: 0x10172b,
-    fogNear: 26,
-    fogFar: 70,
-    backdropHex: 0x0b1020,
-    architectureAccentHex: 0x38bdf8,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 5,
-    zodiacName: 'Nguyệt Triều Cự Giải',
-    keyLightHex: 0xc7d2fe,
-    keyIntensity: 1.38,
-    hemiSkyHex: 0x93c5fd,
-    hemiGroundHex: 0x0f1d33,
-    hemiIntensity: 0.88,
-    fogHex: 0x0c1629,
-    fogNear: 24,
-    fogFar: 65,
-    backdropHex: 0x081020,
-    architectureAccentHex: 0x60a5fa,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 6,
-    zodiacName: 'Thánh Điện Xử Nữ',
-    keyLightHex: 0xfef3c7,
-    keyIntensity: 1.44,
-    hemiSkyHex: 0xa7f3d0,
-    hemiGroundHex: 0x1c2520,
-    hemiIntensity: 0.9,
-    fogHex: 0x131d1d,
-    fogNear: 26,
-    fogFar: 68,
-    backdropHex: 0x0e1617,
-    architectureAccentHex: 0x34d399,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 7,
-    zodiacName: 'Phán Quyết Thiên Bình',
-    keyLightHex: 0xfde68a,
-    keyIntensity: 1.46,
-    hemiSkyHex: 0xe0e7ff,
-    hemiGroundHex: 0x221c33,
-    hemiIntensity: 0.9,
-    fogHex: 0x151428,
-    fogNear: 26,
-    fogFar: 68,
-    backdropHex: 0x100f20,
-    architectureAccentHex: 0xfbbf24,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 8,
-    zodiacName: 'Vực Sâu Bọ Cạp',
-    keyLightHex: 0xf5d0fe,
-    keyIntensity: 1.38,
-    hemiSkyHex: 0xc084fc,
-    hemiGroundHex: 0x210d24,
-    hemiIntensity: 0.84,
-    fogHex: 0x1a0c21,
-    fogNear: 22,
-    fogFar: 60,
-    backdropHex: 0x13081a,
-    architectureAccentHex: 0xc026d3,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 9,
-    zodiacName: 'Tinh Nguyên Nhân Mã',
-    keyLightHex: 0xfed7aa,
-    keyIntensity: 1.5,
-    hemiSkyHex: 0xfbbf24,
-    hemiGroundHex: 0x261a14,
-    hemiIntensity: 0.88,
-    fogHex: 0x1b1318,
-    fogNear: 26,
-    fogFar: 68,
-    backdropHex: 0x140e12,
-    architectureAccentHex: 0xfb923c,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 10,
-    zodiacName: 'Hàn Đỉnh Ma Kết',
-    keyLightHex: 0xe0f2fe,
-    keyIntensity: 1.42,
-    hemiSkyHex: 0xbae6fd,
-    hemiGroundHex: 0x172030,
-    hemiIntensity: 0.9,
-    fogHex: 0x101826,
-    fogNear: 25,
-    fogFar: 66,
-    backdropHex: 0x0b121e,
-    architectureAccentHex: 0x7dd3fc,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 11,
-    zodiacName: 'Lôi Vực Bảo Bình',
-    keyLightHex: 0xa5f3fc,
-    keyIntensity: 1.46,
-    hemiSkyHex: 0x38bdf8,
-    hemiGroundHex: 0x121d36,
-    hemiIntensity: 0.9,
-    fogHex: 0x0d172c,
-    fogNear: 25,
-    fogFar: 67,
-    backdropHex: 0x091122,
-    architectureAccentHex: 0x22d3ee,
-    newPointLightsAdded: 0,
-  },
-  {
-    chapterId: 12,
-    zodiacName: 'Thiên Hải Song Ngư',
-    keyLightHex: 0xe9d5ff,
-    keyIntensity: 1.48,
-    hemiSkyHex: 0x818cf8,
-    hemiGroundHex: 0x161436,
-    hemiIntensity: 0.92,
-    fogHex: 0x11122e,
-    fogNear: 26,
-    fogFar: 70,
-    backdropHex: 0x0b0c22,
-    architectureAccentHex: 0xa855f7,
-    newPointLightsAdded: 0,
-  },
-] as const;
-
-export function resolveZodiacChapterLighting(chapterId: number): ZodiacChapterLightingPalette {
-  const clamped = Math.max(1, Math.min(12, Math.floor(chapterId || 1)));
-  return ZODIAC_CHAPTER_LIGHTING_PALETTES[clamped - 1];
-}
-
-/**
- * Enforces colorblind-safe faction VFX separation:
- * - Player: radiant gold / ice cyan / crisp jade
- * - Enemy: crimson / vermilion (shifts to warm amber-orange in colorblind mode)
- * - Boss: dark violet / crimson imperial (paired with octagonal telegraph geometry)
- */
-export function resolveFactionVfxPalette(
-  faction: CombatVfxFaction,
-  colorblindSafe = false
-): FactionVfxPalette {
-  if (faction === 'player') {
-    return colorblindSafe
-      ? {
-          faction: 'player',
-          primaryHex: 0x38bdf8,
-          secondaryHex: 0xfef08a,
-          accentHex: 0xffffff,
-          trailHex: 0x7dd3fc,
-          shapeToken: 'crisp_diamond',
-        }
-      : {
-          faction: 'player',
-          primaryHex: 0xfacc15,
-          secondaryHex: 0x38bdf8,
-          accentHex: 0x34d399,
-          trailHex: 0xfde68a,
-          shapeToken: 'crisp_diamond',
-        };
-  }
-
-  if (faction === 'boss') {
-    return colorblindSafe
-      ? {
-          faction: 'boss',
-          primaryHex: 0xe879f9,
-          secondaryHex: 0xf97316,
-          accentHex: 0xfef08a,
-          trailHex: 0xc026d3,
-          shapeToken: 'imperial_octagon',
-        }
-      : {
-          faction: 'boss',
-          primaryHex: 0xa855f7,
-          secondaryHex: 0xe11d48,
-          accentHex: 0xf43f5e,
-          trailHex: 0x7e22ce,
-          shapeToken: 'imperial_octagon',
-        };
-  }
-
-  return colorblindSafe
-    ? {
-        faction: 'enemy',
-        primaryHex: 0xf97316,
-        secondaryHex: 0xfb923c,
-        accentHex: 0xfef08a,
-        trailHex: 0xea580c,
-        shapeToken: 'crimson_ring',
-      }
-    : {
-        faction: 'enemy',
-        primaryHex: 0xef4444,
-        secondaryHex: 0xf43f5e,
-        accentHex: 0xfb7185,
-        trailHex: 0xb91c1c,
-        shapeToken: 'crimson_ring',
-      };
-}
-
-/**
- * Computes live particle & shockwave budgets from GPU Watchdog tier (0..4),
- * low-end Lite status, and active combat density so low-end laptops (Dell E5430)
- * never suffer WebGL stalls during dense AoE/Boss bursts.
- */
-export function resolveDynamicVfxBudget(input: {
-  watchdogStage: GpuWatchdogStage;
-  isLowEndGpu: boolean;
+export interface DynamicPointLightPolicyInput {
+  lowEndGpu: boolean;
+  isSoftwareGl: boolean;
+  liteActive: boolean;
+  graphicsQuality: GraphicsQuality;
+  watchdogStage: number;
   reducedMotion: boolean;
-  activeEnemies: number;
-  activeProjectiles: number;
-}): DynamicVfxBudget {
-  const stage: GpuWatchdogStage = input.isLowEndGpu
-    ? (Math.max(2, input.watchdogStage) as GpuWatchdogStage)
-    : input.watchdogStage;
-
-  const baseMaxParticles: Record<GpuWatchdogStage, number> = {
-    0: 22,
-    1: 16,
-    2: 11,
-    3: 7,
-    4: 4,
-  };
-  const baseMaxShockwaves: Record<GpuWatchdogStage, number> = {
-    0: 10,
-    1: 8,
-    2: 5,
-    3: 3,
-    4: 2,
-  };
-  const baseDensityScale: Record<GpuWatchdogStage, number> = {
-    0: 1.0,
-    1: 0.78,
-    2: 0.56,
-    3: 0.36,
-    4: 0.22,
-  };
-
-  const entityLoad = Math.max(0, input.activeEnemies) + Math.max(0, input.activeProjectiles) * 0.35;
-  const crowdThrottle =
-    entityLoad >= 28 ? 0.52 : entityLoad >= 18 ? 0.72 : entityLoad >= 12 ? 0.86 : 1.0;
-  const motionFactor = input.reducedMotion ? 0.45 : 1.0;
-
-  const maxParticlesPerBurst = Math.max(
-    2,
-    Math.round(baseMaxParticles[stage] * crowdThrottle * motionFactor)
-  );
-  const maxActiveShockwaves = Math.max(
-    1,
-    Math.round(baseMaxShockwaves[stage] * (crowdThrottle < 0.75 ? 0.75 : 1) * (input.reducedMotion ? 0.6 : 1))
-  );
-  const particleDensityScale =
-    Math.round(Math.max(0.16, baseDensityScale[stage] * crowdThrottle * motionFactor) * 100) / 100;
-
-  return {
-    watchdogStage: stage,
-    maxParticlesPerBurst,
-    maxActiveShockwaves,
-    particleDensityScale,
-    allowSecondaryTrails: stage <= 1 && !input.reducedMotion && crowdThrottle >= 0.75,
-    allowScreenFlash: stage <= 2 && !input.reducedMotion,
-    newPointLightsAdded: 0,
-  };
-}
-
-export function clampParticleBurstCount(requestedCount: number, budget: DynamicVfxBudget): number {
-  if (requestedCount <= 0) return 0;
-  const scaled = Math.round(requestedCount * budget.particleDensityScale);
-  return Math.max(1, Math.min(budget.maxParticlesPerBurst, scaled));
+  reduceScreenFlash: boolean;
 }
 
 export interface DynamicPointLightPolicy {
   enableHeroLight: boolean;
   maxImpactPointLights: number;
   flashScale: number;
-  totalScenePointLights: number;
+  zeroPointLightEnforced: boolean;
 }
 
-/**
- * Resolves exact Three.js PointLight attachment policy so low-end / Intel HD 4000
- * devices (Dell Latitude E5430), Lite Mode, SoftwareGL, or throttled Watchdog >= 2
- * detach all PointLights from the scene (compiling fragment shaders with NUM_POINT_LIGHTS=0).
- * Also applies independent Anti-Flash (reduceScreenFlash) damping on high-end devices.
- */
-export function resolveDynamicPointLightPolicy(input: {
-  lowEndGpu: boolean;
-  isSoftwareGl: boolean;
-  liteActive: boolean;
-  graphicsQuality?: 'low' | 'medium' | 'high';
-  watchdogStage: GpuWatchdogStage;
-  reducedMotion?: boolean;
-  reduceScreenFlash?: boolean;
-}): DynamicPointLightPolicy {
-  const zeroPointLightMode =
+export interface DynamicVfxBudgetInput {
+  watchdogStage: number;
+  isLowEndGpu: boolean;
+  reducedMotion: boolean;
+  activeEnemies: number;
+  activeProjectiles: number;
+}
+
+export interface DynamicVfxBudget {
+  maxParticlesPerBurst: number;
+  particleCountScale: number;
+  maxActiveShockwaves: number;
+  crowdThrottleActive: boolean;
+}
+
+export const ZODIAC_CHAPTER_LIGHTING: ReadonlyArray<ZodiacChapterLightingProfile> = [
+  {
+    chapterId: 1,
+    zodiacLabel: 'Sư Tử Nhật Luân',
+    backdropHex: 0x0e1326,
+    fogHex: 0x171d36,
+    keyLightHex: 0xfff0cc,
+    keyIntensity: 1.72,
+    hemiSkyHex: 0x9ec5fe,
+    hemiGroundHex: 0x3b2c1d,
+    hemiIntensity: 0.78,
+    playerVfxHex: 0xfbbf24,
+    enemyVfxHex: 0xf43f5e,
+    bossVfxHex: 0xd946ef,
+  },
+  {
+    chapterId: 2,
+    zodiacLabel: 'Hỏa Sơn Bạch Dương',
+    backdropHex: 0x1a0d12,
+    fogHex: 0x261217,
+    keyLightHex: 0xffc699,
+    keyIntensity: 1.68,
+    hemiSkyHex: 0xffa07a,
+    hemiGroundHex: 0x2d140f,
+    hemiIntensity: 0.72,
+    playerVfxHex: 0x38bdf8,
+    enemyVfxHex: 0xf97316,
+    bossVfxHex: 0xef4444,
+  },
+  {
+    chapterId: 3,
+    zodiacLabel: 'Thánh Địa Kim Ngưu',
+    backdropHex: 0x0b1817,
+    fogHex: 0x112421,
+    keyLightHex: 0xecfccb,
+    keyIntensity: 1.64,
+    hemiSkyHex: 0x6ee7b7,
+    hemiGroundHex: 0x29251b,
+    hemiIntensity: 0.8,
+    playerVfxHex: 0x34d399,
+    enemyVfxHex: 0xf59e0b,
+    bossVfxHex: 0xe11d48,
+  },
+  {
+    chapterId: 4,
+    zodiacLabel: 'Đấu Trường Song Tử',
+    backdropHex: 0x0b1526,
+    fogHex: 0x12223b,
+    keyLightHex: 0xe0f2fe,
+    keyIntensity: 1.7,
+    hemiSkyHex: 0x7dd3fc,
+    hemiGroundHex: 0x271d3d,
+    hemiIntensity: 0.82,
+    playerVfxHex: 0x22d3ee,
+    enemyVfxHex: 0xfb7185,
+    bossVfxHex: 0xc084fc,
+  },
+  {
+    chapterId: 5,
+    zodiacLabel: 'Hải Vực Cự Giải',
+    backdropHex: 0x081624,
+    fogHex: 0x0d2236,
+    keyLightHex: 0xcffafe,
+    keyIntensity: 1.62,
+    hemiSkyHex: 0x67e8f9,
+    hemiGroundHex: 0x172554,
+    hemiIntensity: 0.8,
+    playerVfxHex: 0x38bdf8,
+    enemyVfxHex: 0xf43f5e,
+    bossVfxHex: 0xa855f7,
+  },
+  {
+    chapterId: 6,
+    zodiacLabel: 'Vườn Thánh Xử Nữ',
+    backdropHex: 0x121914,
+    fogHex: 0x1b261e,
+    keyLightHex: 0xfef3c7,
+    keyIntensity: 1.66,
+    hemiSkyHex: 0xbef264,
+    hemiGroundHex: 0x2e2618,
+    hemiIntensity: 0.78,
+    playerVfxHex: 0xfacc15,
+    enemyVfxHex: 0xfb7185,
+    bossVfxHex: 0xc026d3,
+  },
+  {
+    chapterId: 7,
+    zodiacLabel: 'Thánh Điện Thiên Bình',
+    backdropHex: 0x131326,
+    fogHex: 0x1d1d38,
+    keyLightHex: 0xfff7ed,
+    keyIntensity: 1.7,
+    hemiSkyHex: 0xc4b5fd,
+    hemiGroundHex: 0x3b2c1a,
+    hemiIntensity: 0.78,
+    playerVfxHex: 0xfde047,
+    enemyVfxHex: 0xf43f5e,
+    bossVfxHex: 0xec4899,
+  },
+  {
+    chapterId: 8,
+    zodiacLabel: 'Vực Sâu Bọ Cạp',
+    backdropHex: 0x160a1c,
+    fogHex: 0x220f2b,
+    keyLightHex: 0xf5d0fe,
+    keyIntensity: 1.58,
+    hemiSkyHex: 0xe879f9,
+    hemiGroundHex: 0x240b18,
+    hemiIntensity: 0.72,
+    playerVfxHex: 0x38bdf8,
+    enemyVfxHex: 0xfb7185,
+    bossVfxHex: 0xf43f5e,
+  },
+  {
+    chapterId: 9,
+    zodiacLabel: 'Thảo Nguyên Nhân Mã',
+    backdropHex: 0x17121e,
+    fogHex: 0x241c2e,
+    keyLightHex: 0xfde68a,
+    keyIntensity: 1.7,
+    hemiSkyHex: 0xfdba74,
+    hemiGroundHex: 0x2d1f16,
+    hemiIntensity: 0.76,
+    playerVfxHex: 0xfbbf24,
+    enemyVfxHex: 0xf97316,
+    bossVfxHex: 0xe11d48,
+  },
+  {
+    chapterId: 10,
+    zodiacLabel: 'Đỉnh Đá Ma Kết',
+    backdropHex: 0x0f141b,
+    fogHex: 0x19202b,
+    keyLightHex: 0xe2e8f0,
+    keyIntensity: 1.62,
+    hemiSkyHex: 0x94a3b8,
+    hemiGroundHex: 0x292524,
+    hemiIntensity: 0.74,
+    playerVfxHex: 0x38bdf8,
+    enemyVfxHex: 0xf59e0b,
+    bossVfxHex: 0xef4444,
+  },
+  {
+    chapterId: 11,
+    zodiacLabel: 'Tinh Đảo Bảo Bình',
+    backdropHex: 0x091626,
+    fogHex: 0x10253d,
+    keyLightHex: 0xbae6fd,
+    keyIntensity: 1.68,
+    hemiSkyHex: 0x38bdf8,
+    hemiGroundHex: 0x1e1b4b,
+    hemiIntensity: 0.82,
+    playerVfxHex: 0x22d3ee,
+    enemyVfxHex: 0xf43f5e,
+    bossVfxHex: 0xa855f7,
+  },
+  {
+    chapterId: 12,
+    zodiacLabel: 'Biển Sao Song Ngư',
+    backdropHex: 0x0c0e24,
+    fogHex: 0x16183b,
+    keyLightHex: 0xede9fe,
+    keyIntensity: 1.66,
+    hemiSkyHex: 0xa78bfa,
+    hemiGroundHex: 0x16213e,
+    hemiIntensity: 0.8,
+    playerVfxHex: 0x34d399,
+    enemyVfxHex: 0xf43f5e,
+    bossVfxHex: 0xd946ef,
+  },
+];
+
+export function resolveZodiacChapterLighting(chapterId: number): ZodiacChapterLightingProfile {
+  const safeId = Math.max(1, Math.min(12, Math.floor(Number.isFinite(chapterId) ? chapterId : 1)));
+  return ZODIAC_CHAPTER_LIGHTING[safeId - 1];
+}
+
+export function resolveDynamicPointLightPolicy(
+  input: DynamicPointLightPolicyInput
+): DynamicPointLightPolicy {
+  const forceZero =
     input.lowEndGpu ||
     input.isSoftwareGl ||
     input.liteActive ||
     input.graphicsQuality === 'low' ||
     input.watchdogStage >= 2;
 
-  if (zeroPointLightMode) {
+  if (forceZero) {
     return {
       enableHeroLight: false,
       maxImpactPointLights: 0,
       flashScale: 0,
-      totalScenePointLights: 0,
+      zeroPointLightEnforced: true,
     };
   }
 
-  const antiFlash = Boolean(input.reduceScreenFlash || input.reducedMotion);
-  const maxImpactPointLights = antiFlash ? 1 : input.watchdogStage >= 1 ? 1 : 2;
-  const flashScale = antiFlash ? 0.25 : input.watchdogStage >= 1 ? 0.65 : 1.0;
+  const baseFlash = input.reduceScreenFlash ? 0.35 : input.reducedMotion ? 0.55 : 1.0;
+
+  if (input.watchdogStage >= 1 || input.graphicsQuality === 'medium') {
+    return {
+      enableHeroLight: true,
+      maxImpactPointLights: 1,
+      flashScale: Number((baseFlash * 0.72).toFixed(2)),
+      zeroPointLightEnforced: false,
+    };
+  }
 
   return {
     enableHeroLight: true,
-    maxImpactPointLights,
-    flashScale,
-    totalScenePointLights: 1 + maxImpactPointLights,
+    maxImpactPointLights: 2,
+    flashScale: Number(baseFlash.toFixed(2)),
+    zeroPointLightEnforced: false,
   };
+}
+
+export function resolveDynamicVfxBudget(input: DynamicVfxBudgetInput): DynamicVfxBudget {
+  const enemies = Math.max(0, Math.floor(input.activeEnemies || 0));
+  const projectiles = Math.max(0, Math.floor(input.activeProjectiles || 0));
+  const crowdLoad = enemies + projectiles * 0.45;
+  const crowdThrottleActive = crowdLoad >= 16;
+
+  let maxParticlesPerBurst = 16;
+  let particleCountScale = 1.0;
+  let maxActiveShockwaves = 6;
+
+  if (input.isLowEndGpu) {
+    maxParticlesPerBurst = 6;
+    particleCountScale = 0.55;
+    maxActiveShockwaves = 3;
+  }
+
+  if (input.watchdogStage >= 4) {
+    maxParticlesPerBurst = Math.min(maxParticlesPerBurst, 3);
+    particleCountScale = Math.min(particleCountScale, 0.3);
+    maxActiveShockwaves = Math.min(maxActiveShockwaves, 2);
+  } else if (input.watchdogStage >= 3) {
+    maxParticlesPerBurst = Math.min(maxParticlesPerBurst, 4);
+    particleCountScale = Math.min(particleCountScale, 0.4);
+    maxActiveShockwaves = Math.min(maxActiveShockwaves, 2);
+  } else if (input.watchdogStage >= 2) {
+    maxParticlesPerBurst = Math.min(maxParticlesPerBurst, 6);
+    particleCountScale = Math.min(particleCountScale, 0.52);
+    maxActiveShockwaves = Math.min(maxActiveShockwaves, 3);
+  } else if (input.watchdogStage >= 1) {
+    maxParticlesPerBurst = Math.min(maxParticlesPerBurst, 10);
+    particleCountScale = Math.min(particleCountScale, 0.75);
+    maxActiveShockwaves = Math.min(maxActiveShockwaves, 4);
+  }
+
+  if (crowdThrottleActive) {
+    const crowdMult = crowdLoad >= 28 ? 0.55 : 0.72;
+    particleCountScale = Number((particleCountScale * crowdMult).toFixed(2));
+    maxParticlesPerBurst = Math.max(2, Math.floor(maxParticlesPerBurst * crowdMult));
+    maxActiveShockwaves = Math.max(2, maxActiveShockwaves - 1);
+  }
+
+  if (input.reducedMotion) {
+    particleCountScale = Number((particleCountScale * 0.45).toFixed(2));
+    maxParticlesPerBurst = Math.max(2, Math.floor(maxParticlesPerBurst * 0.5));
+    maxActiveShockwaves = Math.min(maxActiveShockwaves, 2);
+  }
+
+  return {
+    maxParticlesPerBurst,
+    particleCountScale: Math.max(0.15, particleCountScale),
+    maxActiveShockwaves,
+    crowdThrottleActive,
+  };
+}
+
+export function clampParticleBurstCount(requestedCount: number, budget: DynamicVfxBudget): number {
+  if (!Number.isFinite(requestedCount) || requestedCount <= 0) return 0;
+  const scaled = Math.round(requestedCount * budget.particleCountScale);
+  return Math.max(1, Math.min(budget.maxParticlesPerBurst, scaled));
 }

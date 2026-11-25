@@ -1,4 +1,10 @@
-export interface GlbManifestEntry {
+/**
+ * GLB Asset Pipeline Health & Dell Latitude E5430 Lite Budget Validator.
+ * Audits scripts/glb-manifest.json deterministically for High/Lite pairing,
+ * per-chapter memory budgets, duplicate entries, and legacy junk paths.
+ */
+
+export interface GlbManifestFileEntry {
   path: string;
   size: number;
   runtime?: boolean;
@@ -6,23 +12,24 @@ export interface GlbManifestEntry {
 
 export interface GlbManifestDocument {
   cdnBaseUrl?: string;
-  files: GlbManifestEntry[];
+  files: GlbManifestFileEntry[];
 }
 
-export interface GlbPipelineIssue {
-  severity: 'warning' | 'critical';
+export interface GlbValidationIssue {
+  severity: 'critical' | 'warning';
   code:
-    | 'oversized_lite_entity'
-    | 'oversized_lite_map'
+    | 'empty_manifest'
+    | 'duplicate_path'
+    | 'invalid_size'
+    | 'forbidden_legacy_asset'
+    | 'lite_over_e5430_budget'
     | 'missing_lite_pair'
-    | 'missing_high_pair'
-    | 'malformed_path'
-    | 'zero_byte_file';
+    | 'total_lite_over_budget';
   path: string;
   message: string;
 }
 
-export interface GlbChapterHealthRow {
+export interface GlbChapterSummary {
   chapterLabel: string;
   activeCount: number;
   highCount: number;
@@ -32,12 +39,11 @@ export interface GlbChapterHealthRow {
   totalLiteBytes: number;
 }
 
-export interface GlbPipelineHealthReport {
+export interface GlbPipelineValidationReport {
   status: 'healthy' | 'warning' | 'critical';
   e5430Safe: boolean;
   totalManifestFiles: number;
   activeFilesCount: number;
-  inactiveFilesCount: number;
   highCount: number;
   liteCount: number;
   pairedCount: number;
@@ -45,252 +51,264 @@ export interface GlbPipelineHealthReport {
   maxLiteBytes: number;
   maxLitePath: string | null;
   totalActiveLiteBytes: number;
-  entityLiteCapBytes: number;
-  mapLiteCapBytes: number;
-  chapters: GlbChapterHealthRow[];
-  issues: GlbPipelineIssue[];
+  chapters: GlbChapterSummary[];
+  issues: GlbValidationIssue[];
 }
 
-/** Dell Latitude E5430 (Intel HD 4000 / 4–8GB RAM) Lite GLB size ceilings */
-export const E5430_ENTITY_LITE_WARN_BYTES = 2_621_440; // 2.5 MB
-export const E5430_ENTITY_LITE_CRIT_BYTES = 4_194_304; // 4.0 MB
-export const E5430_MAP_LITE_WARN_BYTES = 6_291_456; // 6.0 MB
-export const E5430_MAP_LITE_CRIT_BYTES = 10_485_760; // 10.0 MB
+export const E5430_LITE_LIMITS = {
+  /** Max allowed size for an individual runtime Lite arena map GLB (2.5 MB). */
+  maxLiteMapBytes: 2_621_440,
+  /** Max allowed size for an individual runtime Lite skeletal hero GLB (4.0 MB). */
+  maxLiteHeroBytes: 4_194_304,
+  /** Max allowed size for an individual runtime Lite actor/boss/prop GLB (2.0 MB). */
+  maxLiteActorBytes: 2_097_152,
+  /** Max allowed aggregate active Lite payload across the entire game (48 MB). */
+  maxTotalActiveLiteBytes: 48 * 1024 * 1024,
+} as const;
 
-function detectChapterLabel(normalizedPath: string): string {
-  const m = normalizedPath.match(/Chương\s+(\d+)/i);
-  if (m) return `Chương ${m[1]}`;
-  return 'Khác';
+const FORBIDDEN_LEGACY_PATTERNS = [/public\/assets\/mounts\/black-dragon\.glb$/i];
+
+function classifyChapterLabel(filePath: string): string {
+  if (/Chương 1\//i.test(filePath)) return 'Chương 1 · Sư Tử';
+  if (/Chương 2\//i.test(filePath)) return 'Chương 2 · Bạch Dương';
+  if (/Chương 3\//i.test(filePath)) return 'Chương 3 · Kim Ngưu';
+  if (/Chương 4\//i.test(filePath)) return 'Chương 4 · Song Tử';
+  if (/public\/assets\/heroes\//i.test(filePath)) return 'Kho Tướng Chung';
+  return 'Tài Nguyên Khác';
 }
 
-function isMapAssetPath(normalizedPath: string): boolean {
-  const lower = normalizedPath.toLowerCase();
-  return (
-    lower.includes('/map/') ||
-    lower.includes('arena') ||
-    lower.includes('sanctum') ||
-    lower.includes('citadel') ||
-    lower.includes('city') ||
-    lower.includes('environment') ||
-    lower.includes('đấu trường')
-  );
+function isMapGlb(filePath: string): boolean {
+  return /(Map mới|arena|Chương \d+(\s+Lite)?\.glb$)/i.test(filePath);
 }
 
-function classifyVariant(normalizedPath: string): {
-  variant: 'high' | 'lite' | 'neutral';
-  pairKey: string | null;
-} {
-  if (/([ _-])high\.glb$/i.test(normalizedPath)) {
-    return {
-      variant: 'high',
-      pairKey: normalizedPath.replace(/([ _-])high\.glb$/i, '').toLowerCase(),
-    };
+function isHeroLibraryGlb(filePath: string): boolean {
+  return /^public\/assets\/heroes\//i.test(filePath);
+}
+
+function classifyVariant(filePath: string): 'lite' | 'high' | 'other' {
+  if (/(?:[\s_-]lite)\.glb$/i.test(filePath)) return 'lite';
+  if (/(?:[\s_-]high)\.glb$/i.test(filePath)) return 'high';
+  return 'other';
+}
+
+function extractPairKey(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  // Canonical Chapter 2 Arena High/Lite pair spans Runtime/ and Map mới/
+  if (
+    /Chương 2\/(?:Map mới\/Aries War-Forge Arena Lite|Runtime\/aries-arena-high)\.glb$/i.test(
+      normalized
+    )
+  ) {
+    return 'public/assets/chương 2/aries-arena';
   }
-  if (/([ _-])lite\.glb$/i.test(normalizedPath)) {
-    return {
-      variant: 'lite',
-      pairKey: normalizedPath.replace(/([ _-])lite\.glb$/i, '').toLowerCase(),
-    };
-  }
-  return { variant: 'neutral', pairKey: null };
+  return normalized
+    .replace(/(?:[\s_-](?:high|lite))\.glb$/i, '')
+    .replace(/\.glb$/i, '')
+    .toLowerCase();
 }
 
-/**
- * Pure GLB High/Lite Pipeline Health Validator (Phase 4 Pillar 4).
- * Audits scripts/glb-manifest.json for High/Lite pairing coverage, Dell Latitude E5430
- * Lite memory caps, path hygiene, and per-chapter breakdown.
- */
 export function validateGlbPipelineManifest(
-  manifest: GlbManifestDocument | null | undefined
-): GlbPipelineHealthReport {
-  const rawFiles = Array.isArray(manifest?.files) ? manifest.files : [];
-  const issues: GlbPipelineIssue[] = [];
+  doc: GlbManifestDocument | null | undefined
+): GlbPipelineValidationReport {
+  const files = Array.isArray(doc?.files) ? doc.files : [];
+  const issues: GlbValidationIssue[] = [];
 
-  const activeEntries: GlbManifestEntry[] = [];
-  let inactiveFilesCount = 0;
-
-  for (const entry of rawFiles) {
-    if (!entry || typeof entry.path !== 'string') continue;
-    const normPath = entry.path.normalize('NFC').replace(/\\/g, '/');
-    const isActive = entry.runtime !== false;
-    if (!isActive) {
-      inactiveFilesCount += 1;
-      continue;
-    }
-    activeEntries.push({ ...entry, path: normPath });
+  if (files.length === 0) {
+    issues.push({
+      severity: 'critical',
+      code: 'empty_manifest',
+      path: 'scripts/glb-manifest.json',
+      message: 'Manifest GLB rỗng — không có tài nguyên 3D nào được khai báo.',
+    });
   }
 
-  const highByKey = new Map<string, GlbManifestEntry>();
-  const liteByKey = new Map<string, GlbManifestEntry>();
+  const seenPaths = new Set<string>();
   const chapterMap = new Map<
     string,
     {
       activeCount: number;
       highCount: number;
       liteCount: number;
-      highKeys: Set<string>;
-      liteKeys: Set<string>;
       maxLiteBytes: number;
       totalLiteBytes: number;
+      pairMap: Map<string, { hasHigh: boolean; hasLite: boolean; highPath?: string }>;
     }
   >();
 
+  let activeFilesCount = 0;
   let highCount = 0;
   let liteCount = 0;
   let maxLiteBytes = 0;
   let maxLitePath: string | null = null;
   let totalActiveLiteBytes = 0;
 
-  for (const entry of activeEntries) {
-    const p = entry.path;
-    const size = typeof entry.size === 'number' && Number.isFinite(entry.size) ? entry.size : 0;
+  for (const entry of files) {
+    const rawPath = String(entry?.path ?? '').trim().replace(/\\/g, '/');
+    const size = Number(entry?.size ?? 0);
 
-    if (p.includes('..') || !p.toLowerCase().endsWith('.glb') || !p.startsWith('public/assets/')) {
+    if (!rawPath || !rawPath.toLowerCase().endsWith('.glb')) {
       issues.push({
         severity: 'critical',
-        code: 'malformed_path',
-        path: p,
-        message: `Đường dẫn GLB không hợp chuẩn: ${p}`,
+        code: 'invalid_size',
+        path: rawPath || '(trống)',
+        message: `Đường dẫn GLB không hợp lệ: "${rawPath}".`,
       });
+      continue;
     }
-    if (size <= 0) {
+
+    if (seenPaths.has(rawPath)) {
       issues.push({
         severity: 'critical',
-        code: 'zero_byte_file',
-        path: p,
-        message: `Tệp GLB rỗng (0 byte): ${p}`,
+        code: 'duplicate_path',
+        path: rawPath,
+        message: `Đường dẫn bị trùng lặp trong manifest: ${rawPath}`,
+      });
+    } else {
+      seenPaths.add(rawPath);
+    }
+
+    if (!Number.isFinite(size) || size <= 0) {
+      issues.push({
+        severity: 'critical',
+        code: 'invalid_size',
+        path: rawPath,
+        message: `Kích thước tệp không hợp lệ (${size} bytes): ${rawPath}`,
       });
     }
 
-    const chLabel = detectChapterLabel(p);
-    let chRow = chapterMap.get(chLabel);
-    if (!chRow) {
-      chRow = {
+    if (!entry.runtime) continue;
+
+    for (const pattern of FORBIDDEN_LEGACY_PATTERNS) {
+      if (pattern.test(rawPath)) {
+        issues.push({
+          severity: 'critical',
+          code: 'forbidden_legacy_asset',
+          path: rawPath,
+          message: `Phát hiện tài nguyên cũ thừa đang được đánh dấu runtime: ${rawPath}`,
+        });
+      }
+    }
+
+    activeFilesCount += 1;
+    const chapterLabel = classifyChapterLabel(rawPath);
+    let bucket = chapterMap.get(chapterLabel);
+    if (!bucket) {
+      bucket = {
         activeCount: 0,
         highCount: 0,
         liteCount: 0,
-        highKeys: new Set<string>(),
-        liteKeys: new Set<string>(),
         maxLiteBytes: 0,
         totalLiteBytes: 0,
+        pairMap: new Map(),
       };
-      chapterMap.set(chLabel, chRow);
+      chapterMap.set(chapterLabel, bucket);
     }
-    chRow.activeCount += 1;
 
-    const { variant, pairKey } = classifyVariant(p);
-    if (variant === 'high' && pairKey) {
-      highCount += 1;
-      chRow.highCount += 1;
-      highByKey.set(pairKey, entry);
-      chRow.highKeys.add(pairKey);
-    } else if (variant === 'lite' && pairKey) {
+    bucket.activeCount += 1;
+    const variant = classifyVariant(rawPath);
+    const pairKey = extractPairKey(rawPath);
+    const pairRec = bucket.pairMap.get(pairKey) ?? { hasHigh: false, hasLite: false };
+
+    if (variant === 'lite') {
       liteCount += 1;
-      chRow.liteCount += 1;
-      liteByKey.set(pairKey, entry);
-      chRow.liteKeys.add(pairKey);
+      bucket.liteCount += 1;
       totalActiveLiteBytes += size;
-      chRow.totalLiteBytes += size;
-      if (size > chRow.maxLiteBytes) chRow.maxLiteBytes = size;
+      bucket.totalLiteBytes += size;
+      if (size > bucket.maxLiteBytes) bucket.maxLiteBytes = size;
       if (size > maxLiteBytes) {
         maxLiteBytes = size;
-        maxLitePath = p;
+        maxLitePath = rawPath;
       }
+      pairRec.hasLite = true;
 
-      const isMap = isMapAssetPath(p);
-      const warnCap = isMap ? E5430_MAP_LITE_WARN_BYTES : E5430_ENTITY_LITE_WARN_BYTES;
-      const critCap = isMap ? E5430_MAP_LITE_CRIT_BYTES : E5430_ENTITY_LITE_CRIT_BYTES;
-      if (size > critCap) {
+      const limit = isHeroLibraryGlb(rawPath)
+        ? E5430_LITE_LIMITS.maxLiteHeroBytes
+        : isMapGlb(rawPath)
+        ? E5430_LITE_LIMITS.maxLiteMapBytes
+        : E5430_LITE_LIMITS.maxLiteActorBytes;
+      if (size > limit) {
         issues.push({
           severity: 'critical',
-          code: isMap ? 'oversized_lite_map' : 'oversized_lite_entity',
-          path: p,
-          message: `Bản Lite vượt trần an toàn E5430 (${(size / 1048576).toFixed(2)} MB > ${(
-            critCap / 1048576
-          ).toFixed(1)} MB).`,
-        });
-      } else if (size > warnCap) {
-        issues.push({
-          severity: 'warning',
-          code: isMap ? 'oversized_lite_map' : 'oversized_lite_entity',
-          path: p,
-          message: `Bản Lite sát ngưỡng E5430 (${(size / 1048576).toFixed(2)} MB > ${(
-            warnCap / 1048576
-          ).toFixed(1)} MB khuyến nghị).`,
+          code: 'lite_over_e5430_budget',
+          path: rawPath,
+          message: `Bản Lite vượt trần Dell E5430 (${(size / 1_048_576).toFixed(2)} MB > ${(limit / 1_048_576).toFixed(2)} MB): ${rawPath}`,
         });
       }
+    } else if (variant === 'high') {
+      highCount += 1;
+      bucket.highCount += 1;
+      pairRec.hasHigh = true;
+      pairRec.highPath = rawPath;
+    } else {
+      // Unlabeled active runtime file (e.g. Chương 1.glb paired with Chương 1 Lite.glb)
+      highCount += 1;
+      bucket.highCount += 1;
+      pairRec.hasHigh = true;
+      pairRec.highPath = rawPath;
     }
+
+    bucket.pairMap.set(pairKey, pairRec);
   }
 
   let pairedCount = 0;
-  for (const [key, highEntry] of highByKey.entries()) {
-    if (liteByKey.has(key)) {
-      pairedCount += 1;
-    } else {
-      issues.push({
-        severity: 'warning',
-        code: 'missing_lite_pair',
-        path: highEntry.path,
-        message: `Thiếu cặp bản Lite cho model High: ${highEntry.path}`,
-      });
-    }
-  }
-  for (const [key, liteEntry] of liteByKey.entries()) {
-    if (!highByKey.has(key)) {
-      issues.push({
-        severity: 'warning',
-        code: 'missing_high_pair',
-        path: liteEntry.path,
-        message: `Bản Lite chưa có cặp High tương ứng: ${liteEntry.path}`,
-      });
-    }
-  }
+  let totalHighGroups = 0;
+  const chapters: GlbChapterSummary[] = [];
 
-  const totalUniquePairSlots = new Set([...highByKey.keys(), ...liteByKey.keys()]).size;
-  const pairCoveragePct =
-    totalUniquePairSlots > 0 ? Math.round((pairedCount / totalUniquePairSlots) * 1000) / 10 : 100;
-
-  const chapters: GlbChapterHealthRow[] = [...chapterMap.entries()]
-    .map(([chapterLabel, row]) => {
-      let chPaired = 0;
-      for (const k of row.highKeys) {
-        if (row.liteKeys.has(k)) chPaired += 1;
+  for (const [chapterLabel, bucket] of chapterMap.entries()) {
+    let chapterPaired = 0;
+    for (const pair of bucket.pairMap.values()) {
+      if (pair.hasHigh && pair.hasLite) {
+        chapterPaired += 1;
+        pairedCount += 1;
+        totalHighGroups += 1;
+      } else if (pair.hasHigh && !pair.hasLite) {
+        totalHighGroups += 1;
+        issues.push({
+          severity: 'warning',
+          code: 'missing_lite_pair',
+          path: pair.highPath ?? chapterLabel,
+          message: `Tệp High hoạt động chưa có đối cặp Lite tương ứng: ${pair.highPath ?? chapterLabel}`,
+        });
       }
-      return {
-        chapterLabel,
-        activeCount: row.activeCount,
-        highCount: row.highCount,
-        liteCount: row.liteCount,
-        pairedCount: chPaired,
-        maxLiteBytes: row.maxLiteBytes,
-        totalLiteBytes: row.totalLiteBytes,
-      };
-    })
-    .sort((a, b) => {
-      if (a.chapterLabel === 'Khác') return 1;
-      if (b.chapterLabel === 'Khác') return -1;
-      return a.chapterLabel.localeCompare(b.chapterLabel, 'vi', { numeric: true });
+    }
+    chapters.push({
+      chapterLabel,
+      activeCount: bucket.activeCount,
+      highCount: bucket.highCount,
+      liteCount: bucket.liteCount,
+      pairedCount: chapterPaired,
+      maxLiteBytes: bucket.maxLiteBytes,
+      totalLiteBytes: bucket.totalLiteBytes,
     });
+  }
+
+  chapters.sort((a, b) => a.chapterLabel.localeCompare(b.chapterLabel, 'vi'));
+
+  if (totalActiveLiteBytes > E5430_LITE_LIMITS.maxTotalActiveLiteBytes) {
+    issues.push({
+      severity: 'critical',
+      code: 'total_lite_over_budget',
+      path: 'scripts/glb-manifest.json',
+      message: `Tổng gói Lite vượt trần ${(E5430_LITE_LIMITS.maxTotalActiveLiteBytes / 1_048_576).toFixed(0)} MB (${(totalActiveLiteBytes / 1_048_576).toFixed(2)} MB).`,
+    });
+  }
+
+  const pairCoveragePct =
+    totalHighGroups > 0 ? Number(((pairedCount / totalHighGroups) * 100).toFixed(1)) : 100;
 
   const hasCritical = issues.some((i) => i.severity === 'critical');
   const hasWarning = issues.some((i) => i.severity === 'warning');
-  const status: 'healthy' | 'warning' | 'critical' = hasCritical
+  const status: GlbPipelineValidationReport['status'] = hasCritical
     ? 'critical'
     : hasWarning
     ? 'warning'
     : 'healthy';
-  const e5430Safe = !issues.some(
-    (i) =>
-      i.severity === 'critical' &&
-      (i.code === 'oversized_lite_entity' || i.code === 'oversized_lite_map')
-  );
 
   return {
     status,
-    e5430Safe,
-    totalManifestFiles: rawFiles.length,
-    activeFilesCount: activeEntries.length,
-    inactiveFilesCount,
+    e5430Safe: !hasCritical,
+    totalManifestFiles: files.length,
+    activeFilesCount,
     highCount,
     liteCount,
     pairedCount,
@@ -298,8 +316,6 @@ export function validateGlbPipelineManifest(
     maxLiteBytes,
     maxLitePath,
     totalActiveLiteBytes,
-    entityLiteCapBytes: E5430_ENTITY_LITE_WARN_BYTES,
-    mapLiteCapBytes: E5430_MAP_LITE_WARN_BYTES,
     chapters,
     issues,
   };
