@@ -109,10 +109,53 @@ async function fetchWithRetry(
   throw lastError instanceof Error ? lastError : new Error('Tải phân đoạn Map Chương 1 thất bại.');
 }
 
+async function readResponseBytesWithProgress(
+  response: Response,
+  onBytesDelta?: (delta: number) => void
+): Promise<Uint8Array<ArrayBuffer>> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const raw = await response.arrayBuffer();
+    const bytes = new Uint8Array(raw);
+    if (bytes.byteLength > 0) {
+      onBytesDelta?.(bytes.byteLength);
+    }
+    return bytes;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.byteLength > 0) {
+        chunks.push(value);
+        total += value.byteLength;
+        onBytesDelta?.(value.byteLength);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const merged = new Uint8Array(new ArrayBuffer(total));
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
+}
+
 async function downloadByteRangesInParallel(
   totalSize: number,
   chunkSize: number,
-  fetchChunk: (start: number, end: number) => Promise<Uint8Array>,
+  fetchChunk: (
+    start: number,
+    end: number,
+    onChunkDelta: (delta: number) => void
+  ) => Promise<Uint8Array>,
   options: {
     concurrency: number;
     signal?: AbortSignal;
@@ -141,15 +184,26 @@ async function downloadByteRangesInParallel(
       }
       const range = ranges[nextIndex++];
       const expectedLength = range.end - range.start + 1;
-      const bytes = await fetchChunk(range.start, range.end);
+      let streamedForRange = 0;
+      const bytes = await fetchChunk(range.start, range.end, (delta) => {
+        streamedForRange += delta;
+        loadedBytes = Math.max(0, Math.min(totalSize, loadedBytes + delta));
+        options.onProgress?.(loadedBytes, totalSize);
+      });
       if (bytes.byteLength !== expectedLength) {
+        loadedBytes = Math.max(0, loadedBytes - streamedForRange);
         throw new Error(
           `Kích thước phân đoạn không khớp (${bytes.byteLength} != ${expectedLength}).`
         );
       }
       combined.set(bytes, range.start);
-      loadedBytes += bytes.byteLength;
-      options.onProgress?.(loadedBytes, totalSize);
+      if (streamedForRange !== bytes.byteLength) {
+        loadedBytes = Math.max(
+          0,
+          Math.min(totalSize, loadedBytes + (bytes.byteLength - streamedForRange))
+        );
+        options.onProgress?.(loadedBytes, totalSize);
+      }
     }
   };
 
@@ -159,15 +213,16 @@ async function downloadByteRangesInParallel(
 
 /**
  * Downloads the uncompressed 90.3 MB Chương 1.glb in <= 6 MiB byte chunks so it
- * never hits Cloud Run's 32 MiB HTTP/1.1 single-response cap. Falls back to HTTP
- * Range requests on the static asset URL when the chunk API is not mounted.
+ * never hits Cloud Run's 32 MiB HTTP/1.1 single-response cap and stays 100% aligned
+ * with the Cloudflare Worker 6 MiB edge cache. Streams every network chunk incrementally
+ * so progress and inactivity timeouts stay responsive on slower connections.
  */
 export async function fetchChapter1MapArrayBuffer(
   options: FetchChapter1MapOptions = {}
 ): Promise<ArrayBuffer> {
   const baseUrl = options.baseUrl ?? '/';
   const baseUri = options.baseUri ?? 'http://localhost:3000/';
-  const concurrency = options.concurrency ?? 4;
+  const concurrency = options.concurrency ?? 2;
   const fetchImpl = options.fetchImpl ?? fetch;
   const signal = options.signal;
 
@@ -191,13 +246,32 @@ export async function fetchChapter1MapArrayBuffer(
           return await downloadByteRangesInParallel(
             meta.size,
             chunkSize,
-            async (start, end) => {
+            async (start, end, onChunkDelta) => {
               const chunkUrl = getChapter1MapChunkUrl(start, end, baseUrl, baseUri, meta.etag);
-              const res = await fetchWithRetry(fetchImpl, chunkUrl, { signal });
-              if (res.headers.get('content-type')?.includes('text/html')) {
-                throw new Error('Phân đoạn Map Chương 1 trả về HTML không hợp lệ.');
+              let lastError: unknown;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                let attemptStreamed = 0;
+                try {
+                  const res = await fetchWithRetry(fetchImpl, chunkUrl, { signal }, 1);
+                  if (res.headers.get('content-type')?.includes('text/html')) {
+                    throw new Error('Phân đoạn Map Chương 1 trả về HTML không hợp lệ.');
+                  }
+                  return await readResponseBytesWithProgress(res, (delta) => {
+                    attemptStreamed += delta;
+                    onChunkDelta(delta);
+                  });
+                } catch (err) {
+                  if (attemptStreamed > 0) onChunkDelta(-attemptStreamed);
+                  if (signal?.aborted) throw err;
+                  lastError = err;
+                  if (attempt + 1 < 3) {
+                    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+                  }
+                }
               }
-              return new Uint8Array(await res.arrayBuffer());
+              throw lastError instanceof Error
+                ? lastError
+                : new Error('Tải phân đoạn Map Chương 1 thất bại.');
             },
             { concurrency, signal, onProgress: options.onProgress }
           );
@@ -230,7 +304,16 @@ export async function fetchChapter1MapArrayBuffer(
     if (liteRes.headers.get('content-type')?.includes('text/html')) {
       throw new Error(`Không tải được Map Chương 1 (HTTP ${probeRes?.status ?? liteRes.status}).`);
     }
-    const liteBuf = await liteRes.arrayBuffer();
+    const liteLength = Number(liteRes.headers.get('content-length')) || 0;
+    let liteLoaded = 0;
+    const liteBytes = await readResponseBytesWithProgress(liteRes, (delta) => {
+      liteLoaded += delta;
+      options.onProgress?.(liteLoaded, liteLength || liteLoaded);
+    });
+    const liteBuf = liteBytes.buffer.slice(
+      liteBytes.byteOffset,
+      liteBytes.byteOffset + liteBytes.byteLength
+    );
     options.onProgress?.(liteBuf.byteLength, liteBuf.byteLength);
     return liteBuf;
   }
@@ -238,10 +321,14 @@ export async function fetchChapter1MapArrayBuffer(
   const contentRange = probeRes.headers.get('content-range');
   const rangeMatch = contentRange?.match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/i);
   if (probeRes.status === 206 && rangeMatch) {
-    const firstBytes = new Uint8Array(await probeRes.arrayBuffer());
     const totalSize = Number(rangeMatch[3]);
+    let loadedBytes = 0;
+    const firstBytes = await readResponseBytesWithProgress(probeRes, (delta) => {
+      loadedBytes = Math.min(totalSize, loadedBytes + delta);
+      options.onProgress?.(loadedBytes, totalSize);
+    });
     if (firstBytes.byteLength >= totalSize) {
-      options.onProgress?.(firstBytes.byteLength, totalSize);
+      options.onProgress?.(totalSize, totalSize);
       return firstBytes.buffer.slice(
         firstBytes.byteOffset,
         firstBytes.byteOffset + totalSize
@@ -249,7 +336,7 @@ export async function fetchChapter1MapArrayBuffer(
     }
     const combined = new Uint8Array(totalSize);
     combined.set(firstBytes, 0);
-    let loadedBytes = firstBytes.byteLength;
+    loadedBytes = firstBytes.byteLength;
     options.onProgress?.(loadedBytes, totalSize);
 
     const remainingRanges: Array<{ start: number; end: number }> = [];
@@ -267,25 +354,60 @@ export async function fetchChapter1MapArrayBuffer(
           throw new DOMException('Aborted', 'AbortError');
         }
         const range = remainingRanges[nextIdx++];
-        const res = await fetchWithRetry(fetchImpl, assetUrl, {
-          signal,
-          headers: { Range: `bytes=${range.start}-${range.end}` },
-        });
+        const expectedLen = range.end - range.start + 1;
         const expectedRange = `bytes ${range.start}-${range.end}/${totalSize}`;
-        if (res.status !== 206 || res.headers.get('content-range') !== expectedRange) {
-          await res.body?.cancel();
-          throw new Error('Phản hồi Range không khớp với phân đoạn Map Chương 1.');
+        let chunkBytes: Uint8Array | null = null;
+        let lastChunkError: unknown;
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          let attemptStreamed = 0;
+          try {
+            const res = await fetchWithRetry(
+              fetchImpl,
+              assetUrl,
+              {
+                signal,
+                headers: { Range: `bytes=${range.start}-${range.end}` },
+              },
+              1
+            );
+            if (res.status !== 206 || res.headers.get('content-range') !== expectedRange) {
+              await res.body?.cancel();
+              throw new Error('Phản hồi Range không khớp với phân đoạn Map Chương 1.');
+            }
+            const streamed = await readResponseBytesWithProgress(res, (delta) => {
+              attemptStreamed += delta;
+              loadedBytes = Math.min(totalSize, loadedBytes + delta);
+              options.onProgress?.(loadedBytes, totalSize);
+            });
+            if (streamed.byteLength !== expectedLen) {
+              throw new Error('Kích thước phân đoạn Map Chương 1 không hợp lệ.');
+            }
+            chunkBytes = streamed;
+            break;
+          } catch (err) {
+            if (attemptStreamed > 0) {
+              loadedBytes = Math.max(0, loadedBytes - attemptStreamed);
+              options.onProgress?.(loadedBytes, totalSize);
+            }
+            if (signal?.aborted) throw err;
+            lastChunkError = err;
+            if (attempt + 1 < 3) {
+              await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+            }
+          }
         }
-        const chunkBytes = new Uint8Array(await res.arrayBuffer());
-        if (chunkBytes.byteLength !== range.end - range.start + 1) {
-          throw new Error('Kích thước phân đoạn Map Chương 1 không hợp lệ.');
+
+        if (!chunkBytes) {
+          throw lastChunkError instanceof Error
+            ? lastChunkError
+            : new Error('Tải phân đoạn Map Chương 1 thất bại.');
         }
         combined.set(chunkBytes, range.start);
-        loadedBytes += chunkBytes.byteLength;
-        options.onProgress?.(loadedBytes, totalSize);
       }
     };
     await Promise.all(Array.from({ length: workerCount }, () => runRangeWorker()));
+    options.onProgress?.(totalSize, totalSize);
     return combined.buffer;
   }
 
@@ -295,7 +417,16 @@ export async function fetchChapter1MapArrayBuffer(
     // object instead of treating the partial response as a complete GLB.
     probeRes = await fetchWithRetry(fetchImpl, assetUrl, { signal });
   }
-  const fullBuffer = await probeRes.arrayBuffer();
+  const fullLength = Number(probeRes.headers.get('content-length')) || 0;
+  let fullLoaded = 0;
+  const fullBytes = await readResponseBytesWithProgress(probeRes, (delta) => {
+    fullLoaded += delta;
+    options.onProgress?.(fullLoaded, fullLength || fullLoaded);
+  });
+  const fullBuffer = fullBytes.buffer.slice(
+    fullBytes.byteOffset,
+    fullBytes.byteOffset + fullBytes.byteLength
+  );
   options.onProgress?.(fullBuffer.byteLength, fullBuffer.byteLength);
   return fullBuffer;
 }

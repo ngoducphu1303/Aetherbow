@@ -95,8 +95,12 @@ export function subscribeLiveOpsConfig(
   const cached = readCachedLiveOpsConfig();
   onUpdate(cached, 'local');
 
-  // 1. Fetch Express server fallback config immediately
-  if (typeof fetch === 'function') {
+  // 1. Fetch Express server fallback config immediately (skip on static SPA hosts where Firestore is authoritative)
+  const isStaticSpaBuild =
+    (import.meta as ImportMeta & { env?: { VITE_STATIC_SPA?: string } }).env?.VITE_STATIC_SPA ===
+      'true' ||
+    (typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname));
+  if (typeof fetch === 'function' && !isStaticSpaBuild) {
     fetch('/api/liveops/config', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {

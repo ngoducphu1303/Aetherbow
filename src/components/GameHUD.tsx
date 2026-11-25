@@ -45,6 +45,7 @@ import {
 } from '../engine/combatFeel';
 import {
   computeTopHudSafeZoneY,
+  resolveHudVisualFeedbackPolicy,
   resolveTopCombatBanner,
   type TopCombatBannerTone,
 } from '../engine/combatHudBanners';
@@ -89,6 +90,9 @@ interface GameHUDProps {
   compactHud?: boolean;
   liveDpsMeter?: boolean;
   showFpsOverlay?: boolean;
+  reduceScreenFlash?: boolean;
+  reducedMotion?: boolean;
+  colorblindTelegraphs?: boolean;
   keybinds?: Partial<CombatKeybinds>;
   onToggleMute: () => void;
   onToggleCompactHud?: () => void;
@@ -120,6 +124,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   compactHud = false,
   liveDpsMeter = false,
   showFpsOverlay = false,
+  reduceScreenFlash = false,
+  reducedMotion = false,
+  colorblindTelegraphs = false,
   keybinds,
   onToggleMute,
   onToggleCompactHud,
@@ -248,7 +255,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const inspectedSkill = inspectedSkillId ? SKILLS_CATALOG[inspectedSkillId] : null;
   const hasTopBossBar = Boolean(hud.bossName && !hud.isArenaMode);
   const topHudSafeY = computeTopHudSafeZoneY(hasTopBossBar, isCompact);
-  const activeTopBanner = resolveTopCombatBanner(hud, bossIntroTitle, isCompact);
+  const feedbackPolicy = resolveHudVisualFeedbackPolicy({
+    hpPct,
+    hp: hud.hp,
+    reduceScreenFlash,
+    reducedMotion,
+    colorblindTelegraphs,
+  });
+  const activeTopBanner = resolveTopCombatBanner(hud, bossIntroTitle, isCompact, {
+    chapterId: hud.chapterId,
+    ultKeyLabel,
+    heavyBreakKeyLabel,
+    colorblindTelegraphs,
+  });
   const presentedDamages = resolveFloatingNumberPresentation(
     damages,
     hud.enemiesRemaining,
@@ -289,13 +308,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </>
       )}
 
-      {/* AAA Wave 3: Boss Phase II / III Atmosphere Shift Flash */}
+      {/* AAA Wave 3/9: Boss Phase II / III Atmosphere Shift Flash (respects Anti-Flash policy) */}
       {(hud.bossPhaseShiftTimer ?? 0) > 0 && hud.bossPhaseShiftLevel && (
         <div
           key={`phase-shift-${hud.bossPhaseShiftLevel}`}
           aria-hidden="true"
-          className="fixed inset-0 z-[17] pointer-events-none aaa-phase-shift-flash"
+          className={`fixed inset-0 z-[17] pointer-events-none ${
+            feedbackPolicy.suppressFullscreenFlash ? 'transition-opacity duration-200' : 'aaa-phase-shift-flash'
+          }`}
           style={{
+            opacity: feedbackPolicy.flashOpacityScale,
             boxShadow:
               hud.bossPhaseShiftLevel === 3
                 ? 'inset 0 0 110px 28px rgba(244, 63, 94, 0.72)'
@@ -340,13 +362,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       )}
 
-      {/* Persistent Low-HP Pulsing Crimson Vignette (<=30% HP) */}
-      {hpPct <= 30 && hud.hp > 0 && (
+      {/* Wave 9 Unified Single-Pass Low-HP Vignette (<=30% HP; zero duplicate overdraw, respects Anti-Flash/Reduced Motion/Colorblind) */}
+      {feedbackPolicy.showLowHpVignette && (
         <div
           aria-hidden="true"
-          className="fixed inset-0 pointer-events-none a2-lowhp-vignette"
+          data-lowhp-vignette="true"
+          className={`fixed inset-0 pointer-events-none transition-opacity duration-200 ${
+            feedbackPolicy.animateLowHpVignette ? 'a2-lowhp-vignette' : ''
+          }`}
           style={{
-            boxShadow: 'inset 0 0 84px 20px rgba(225, 29, 72, 0.58)',
+            boxShadow: feedbackPolicy.lowHpBoxShadow,
           }}
         />
       )}
@@ -357,45 +382,53 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           aria-hidden="true"
           className="fixed inset-0 pointer-events-none transition-opacity duration-200"
           style={{
+            opacity: feedbackPolicy.flashOpacityScale,
             boxShadow: 'inset 0 0 68px 14px rgba(16, 185, 129, 0.34)',
           }}
         />
       )}
 
-      {/* Subtle Crimson Edge Vignette + Diegetic Directional Hit Arc on Player Hit */}
+      {/* Subtle Crimson Edge Vignette + Diegetic Directional Hit Arc on Player Hit (Anti-Flash suppresses flash while keeping directional arc) */}
       {damageFlashKey > 0 && (
         <>
-          <div
-            key={damageFlashKey}
-            aria-hidden="true"
-            className="fixed inset-0 pointer-events-none a2-damage-flash"
-            style={{
-              boxShadow: 'inset 0 0 72px 18px rgba(244, 63, 94, 0.7)',
-            }}
-          />
-          {hud.lastHitAngleDeg !== undefined && hud.lastHitAngleDeg !== null && (
+          {!feedbackPolicy.suppressFullscreenFlash && (
             <div
-              key={`arc-${damageFlashKey}`}
+              key={damageFlashKey}
               aria-hidden="true"
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 sm:w-64 sm:h-64 pointer-events-none a2-damage-flash"
-            >
-              <svg
-                viewBox="0 0 200 200"
-                className="w-full h-full"
-                style={{ transform: `rotate(${hud.lastHitAngleDeg}deg)` }}
-              >
-                <path
-                  d="M 64 24 A 84 84 0 0 1 136 24"
-                  fill="none"
-                  stroke="#fb7185"
-                  strokeWidth="7"
-                  strokeLinecap="round"
-                  opacity="0.92"
-                />
-                <polygon points="100,10 92,22 108,22" fill="#fda4af" />
-              </svg>
-            </div>
+              className="fixed inset-0 pointer-events-none a2-damage-flash"
+              style={{
+                boxShadow: 'inset 0 0 72px 18px rgba(244, 63, 94, 0.7)',
+              }}
+            />
           )}
+          {feedbackPolicy.showDirectionalHitArc &&
+            hud.lastHitAngleDeg !== undefined &&
+            hud.lastHitAngleDeg !== null && (
+              <div
+                key={`arc-${damageFlashKey}`}
+                aria-hidden="true"
+                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 sm:w-64 sm:h-64 pointer-events-none a2-damage-flash"
+              >
+                <svg
+                  viewBox="0 0 200 200"
+                  className="w-full h-full"
+                  style={{ transform: `rotate(${hud.lastHitAngleDeg}deg)` }}
+                >
+                  <path
+                    d="M 64 24 A 84 84 0 0 1 136 24"
+                    fill="none"
+                    stroke={colorblindTelegraphs ? '#fbbf24' : '#fb7185'}
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                    opacity="0.92"
+                  />
+                  <polygon
+                    points="100,10 92,22 108,22"
+                    fill={colorblindTelegraphs ? '#fef08a' : '#fda4af'}
+                  />
+                </svg>
+              </div>
+            )}
         </>
       )}
 
@@ -467,20 +500,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         );
       })}
-
-      {/* Wave 8 Pillar 1 & 2: Low-HP Critical Danger Peripheral Vignette (zero backdrop-filter) */}
-      {hpPct <= 30 && hud.hp > 0 && (
-        <div
-          aria-hidden="true"
-          className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-200"
-          style={{
-            boxShadow:
-              hpPct <= 15
-                ? 'inset 0 0 110px 26px rgba(225, 29, 72, 0.56)'
-                : 'inset 0 0 84px 16px rgba(225, 29, 72, 0.34)',
-          }}
-        />
-      )}
 
       {/* Virtual Joystick Ring */}
       {joystick.active && (
@@ -1509,6 +1528,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               >
                 <div className="flex items-center gap-1.5 min-w-0 truncate">
                   <span className={`font-display font-black shrink-0 ${theme.kicker}`}>
+                    {activeTopBanner.colorblindSymbol ? `${activeTopBanner.colorblindSymbol} ` : ''}
                     {activeTopBanner.kicker}
                   </span>
                   <span aria-hidden="true" className="opacity-50 shrink-0">·</span>

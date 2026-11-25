@@ -1,4 +1,5 @@
 import type { HudSnapshot } from '../types/game';
+import { ZODIAC_BOSS_PHASE_SIGNATURES } from './tacticalCombatChoreography';
 
 export type TopCombatBannerTone = 'cyan' | 'amber' | 'rose' | 'gold' | 'emerald' | 'crimson';
 
@@ -27,6 +28,42 @@ export interface TopCombatBanner {
   readonly timerText?: string;
   readonly progressRatio?: number;
   readonly priority: number;
+  /** Geometric non-color cue populated when colorblindTelegraphs is enabled. */
+  readonly colorblindSymbol?: string;
+}
+
+export interface ResolveTopCombatBannerOptions {
+  chapterId?: number;
+  ultKeyLabel?: string;
+  heavyBreakKeyLabel?: string;
+  colorblindTelegraphs?: boolean;
+}
+
+export interface HudVisualFeedbackInput {
+  hpPct: number;
+  hp: number;
+  reduceScreenFlash?: boolean;
+  reducedMotion?: boolean;
+  colorblindTelegraphs?: boolean;
+}
+
+export interface HudVisualFeedbackPolicy {
+  /** Whether the single unified low-HP perimeter danger vignette should render. */
+  readonly showLowHpVignette: boolean;
+  /** True only when <=15% HP for intensified critical border framing. */
+  readonly isCriticalLowHp: boolean;
+  /** False when reduceScreenFlash or reducedMotion is active (prevents photosensitive pulsing). */
+  readonly animateLowHpVignette: boolean;
+  /** Box-shadow CSS string for the unified single-pass low-HP vignette. */
+  readonly lowHpBoxShadow: string;
+  /** Suppresses full-screen flashing animations (Boss Phase shift / Player Hit flash). */
+  readonly suppressFullscreenFlash: boolean;
+  /** Opacity multiplier (0.24 under Anti-Flash, 1.0 normally) for edge tint feedback. */
+  readonly flashOpacityScale: number;
+  /** Directional hit arc remains visible even under Anti-Flash for fair tactical readability. */
+  readonly showDirectionalHitArc: boolean;
+  /** Enables geometric symbol prefixes on status banners so color is never the sole channel. */
+  readonly useColorblindSymbols: boolean;
 }
 
 function clamp01(value: number): number {
@@ -40,6 +77,69 @@ function shortenBannerText(text: string | null | undefined, maxLen: number): str
   if (!trimmed) return undefined;
   if (trimmed.length <= maxLen) return trimmed;
   return `${trimmed.slice(0, Math.max(1, maxLen - 1)).trimEnd()}…`;
+}
+
+function resolveColorblindSymbol(kind: TopCombatBannerKind): string {
+  switch (kind) {
+    case 'phase_counter':
+      return '◈';
+    case 'finisher_ready':
+    case 'boss_finisher':
+      return '✦';
+    case 'boss_telegraph':
+    case 'boss_warning':
+    case 'boss_entrance':
+      return '▲';
+    case 'boss_broken':
+    case 'boss_part_broken':
+      return '◆';
+    case 'boss_phase_2':
+    case 'boss_phase_3':
+      return '⚡';
+    case 'boss_punish':
+      return '◎';
+    default:
+      return '★';
+  }
+}
+
+/**
+ * Resolves unified HUD edge/flash/vignette accessibility policy so `reduceScreenFlash`,
+ * `reducedMotion`, and `colorblindTelegraphs` apply consistently across React HUD overlays
+ * AND eliminates duplicate full-screen low-HP vignette overdraw on low-end GPUs.
+ */
+export function resolveHudVisualFeedbackPolicy(
+  input: HudVisualFeedbackInput
+): HudVisualFeedbackPolicy {
+  const antiFlash = Boolean(input.reduceScreenFlash);
+  const reducedMotion = Boolean(input.reducedMotion);
+  const colorblind = Boolean(input.colorblindTelegraphs);
+  const showLowHpVignette = input.hp > 0 && input.hpPct <= 30;
+  const isCriticalLowHp = input.hp > 0 && input.hpPct <= 15;
+  const animateLowHpVignette = showLowHpVignette && !antiFlash && !reducedMotion;
+
+  const lowHpAlpha = antiFlash
+    ? isCriticalLowHp
+      ? 0.24
+      : 0.16
+    : isCriticalLowHp
+    ? 0.56
+    : 0.38;
+  const lowHpSpread = isCriticalLowHp ? '96px 22px' : '78px 16px';
+  const lowHpColor = colorblind
+    ? `rgba(245, 158, 11, ${lowHpAlpha})` // High-contrast amber-gold edge for deuteranopia/protanopia safety
+    : `rgba(225, 29, 72, ${lowHpAlpha})`;
+
+  return {
+    showLowHpVignette,
+    isCriticalLowHp,
+    animateLowHpVignette,
+    lowHpBoxShadow: `inset 0 0 ${lowHpSpread} ${lowHpColor}`,
+    suppressFullscreenFlash: antiFlash,
+    flashOpacityScale: antiFlash ? 0.24 : 1.0,
+    showDirectionalHitArc: true,
+    useColorblindSymbols: colorblind,
+  };
 }
 
 /**
@@ -62,6 +162,7 @@ export function computeTopHudSafeZoneY(hasBossBar: boolean, isCompact: boolean):
 export function resolveTopCombatBanner(
   hud: Pick<
     HudSnapshot,
+    | 'chapterId'
     | 'phaseCounterReady'
     | 'phaseCounterWindowSec'
     | 'phaseCounterWindowTotalSec'
@@ -91,8 +192,21 @@ export function resolveTopCombatBanner(
     | 'heroName'
   >,
   bossIntroTitle: string | null,
-  isCompact: boolean
+  isCompact: boolean,
+  options?: ResolveTopCombatBannerOptions
 ): TopCombatBanner | null {
+  const ultKey = (options?.ultKeyLabel || 'Q').trim();
+  const heavyKey = (options?.heavyBreakKeyLabel || 'F').trim();
+  const useCbSymbol = Boolean(options?.colorblindTelegraphs);
+  const rawCh = options?.chapterId ?? hud.chapterId;
+  const zodiacSig =
+    typeof rawCh === 'number' && Number.isFinite(rawCh)
+      ? ZODIAC_BOSS_PHASE_SIGNATURES[Math.max(1, Math.min(12, Math.floor(rawCh)))]
+      : undefined;
+
+  const finalize = (banner: TopCombatBanner): TopCombatBanner =>
+    useCbSymbol ? { ...banner, colorblindSymbol: resolveColorblindSymbol(banner.kind) } : banner;
+
   // 0. Boss Entrance sequence (5-10s arrival — player attacks are locked until Boss finishes appearing)
   if (hud.bossEntranceActive && (hud.bossEntranceRemainingSec ?? 0) > 0) {
     const rem = Math.max(0, hud.bossEntranceRemainingSec ?? 0);
@@ -102,7 +216,7 @@ export function resolveTopCombatBanner(
         hud.bossEntranceStageLabel || 'Boss đang giáng lâm · Khóa tấn công',
         isCompact ? 28 : 42
       ) ?? 'Boss đang giáng lâm · Khóa tấn công';
-    return {
+    return finalize({
       id: 'boss_entrance_active',
       kind: 'boss_entrance',
       tone: 'crimson',
@@ -111,37 +225,37 @@ export function resolveTopCombatBanner(
       timerText: `${rem.toFixed(1)}s`,
       progressRatio: clamp01(1 - rem / total),
       priority: 105,
-    };
+    });
   }
 
   // 1. Urgent interactive window: Phase transition counter-attack
   if (hud.phaseCounterReady && (hud.phaseCounterWindowSec ?? 0) > 0) {
     const rem = Math.max(0, hud.phaseCounterWindowSec ?? 0);
     const total = Math.max(0.5, hud.phaseCounterWindowTotalSec ?? 2.5);
-    return {
+    return finalize({
       id: 'phase_counter',
       kind: 'phase_counter',
       tone: 'cyan',
       kicker: 'PHẢN CÔNG PHA',
-      title: isCompact ? 'Bắn Chí Mạng / Q' : 'Bắn Chí Mạng hoặc bấm Q ngay',
+      title: isCompact ? `Bắn Chí Mạng / ${ultKey}` : `Bắn Chí Mạng hoặc bấm ${ultKey} ngay`,
       timerText: `${rem.toFixed(1)}s`,
       progressRatio: clamp01(rem / total),
       priority: 100,
-    };
+    });
   }
 
   // 2. Urgent interactive window: Execution finisher ready
   if (hud.finisherReadyTargetName) {
     const hpPct = hud.finisherTargetHpPct ?? 18;
-    return {
+    return finalize({
       id: `finisher_ready_${hud.finisherReadyTargetName}`,
       kind: 'finisher_ready',
       tone: 'amber',
       kicker: 'KẾT LIỄU',
       title: shortenBannerText(hud.finisherReadyTargetName, isCompact ? 20 : 28) ?? 'Mục Tiêu',
-      detail: `${hpPct}% · Bấm F / Q`,
+      detail: `${hpPct}% · Bấm ${heavyKey} / ${ultKey}`,
       priority: 95,
-    };
+    });
   }
 
   // 3. Active boss attack telegraph (critical dodge cue)
@@ -149,7 +263,7 @@ export function resolveTopCombatBanner(
     const tg = hud.activeBossTelegraph;
     const isCritical = tg.dangerLevel === 'critical';
     const ratio = clamp01(tg.remainingSec / Math.max(0.25, tg.durationSec));
-    return {
+    return finalize({
       id: `telegraph_${tg.label}`,
       kind: 'boss_telegraph',
       tone: isCritical ? 'rose' : 'amber',
@@ -158,60 +272,64 @@ export function resolveTopCombatBanner(
       timerText: `${Math.max(0, tg.remainingSec).toFixed(1)}s`,
       progressRatio: ratio,
       priority: 90,
-    };
+    });
   }
 
   // 4. Boss execution slow-mo callout (compact top edge, never over Boss HP bar)
   if ((hud.bossFinisherTimer ?? 0) > 0 && hud.bossFinisherName) {
-    return {
+    return finalize({
       id: `boss_finisher_${hud.bossFinisherName}`,
       kind: 'boss_finisher',
       tone: 'amber',
       kicker: 'KẾT LIỄU HOÀNG ĐẠO',
       title: shortenBannerText(hud.bossFinisherName, isCompact ? 22 : 32) ?? hud.bossFinisherName,
       priority: 85,
-    };
+    });
   }
 
   // 5. Boss guard-break burst
   if ((hud.bossBrokenBannerTimer ?? 0) > 0) {
-    return {
+    return finalize({
       id: 'boss_broken',
       kind: 'boss_broken',
       tone: 'gold',
       kicker: 'PHÁ GIÁP',
       title: '+45% Sát Thương',
       priority: 80,
-    };
+    });
   }
 
-  // 6. Boss Phase III shift
+  // 6. Boss Phase III shift (chapter-bespoke Zodiac signature + counterplay hint)
   if ((hud.bossPhaseThreeBannerTimer ?? 0) > 0) {
-    return {
+    return finalize({
       id: 'boss_phase_3',
       kind: 'boss_phase_3',
       tone: 'rose',
-      kicker: 'PHA III TỐI THƯỢNG',
-      title: '+24% Sát Thương Phản Đòn',
+      kicker: shortenBannerText(zodiacSig?.phase3Title, isCompact ? 22 : 32) ?? 'PHA III TỐI THƯỢNG',
+      title: zodiacSig
+        ? shortenBannerText(zodiacSig.phase3Counterplay, isCompact ? 24 : 44) ?? '+24% Sát Thương Phản Đòn'
+        : '+24% Sát Thương Phản Đòn',
       priority: 75,
-    };
+    });
   }
 
-  // 7. Boss Phase II shift
+  // 7. Boss Phase II shift (chapter-bespoke Zodiac signature + counterplay hint)
   if ((hud.bossPhaseTwoBannerTimer ?? 0) > 0) {
-    return {
+    return finalize({
       id: 'boss_phase_2',
       kind: 'boss_phase_2',
       tone: 'rose',
-      kicker: 'PHA II CUỒNG NỘ',
-      title: 'Boss Tăng Tốc',
+      kicker: shortenBannerText(zodiacSig?.phase2Title, isCompact ? 22 : 32) ?? 'PHA II CUỒNG NỘ',
+      title: zodiacSig
+        ? shortenBannerText(zodiacSig.phase2Counterplay, isCompact ? 24 : 44) ?? 'Boss Tăng Tốc'
+        : 'Boss Tăng Tốc',
       priority: 70,
-    };
+    });
   }
 
   // 8. Boss punish window
   if (hud.bossPunishActive && (hud.bossStunTimer ?? 0) <= 0.05) {
-    return {
+    return finalize({
       id: 'boss_punish',
       kind: 'boss_punish',
       tone: 'emerald',
@@ -219,12 +337,12 @@ export function resolveTopCombatBanner(
       title: `+${hud.bossPunishBonusPct ?? 18}% Sát Thương`,
       progressRatio: clamp01(hud.bossPunishRatio ?? 0),
       priority: 65,
-    };
+    });
   }
 
   // 9. Boss warning / spawn intro (moved from center arena up to single slim top strip)
   if (hud.bossWarningTitle) {
-    return {
+    return finalize({
       id: `boss_warning_${hud.bossWarningTitle}`,
       kind: 'boss_warning',
       tone: 'crimson',
@@ -232,36 +350,36 @@ export function resolveTopCombatBanner(
       title: shortenBannerText(hud.bossWarningTitle, isCompact ? 22 : 32) ?? hud.bossWarningTitle,
       detail: isCompact ? undefined : shortenBannerText(hud.bossWarningSubtitle, 38),
       priority: 60,
-    };
+    });
   }
 
   if (bossIntroTitle) {
-    return {
+    return finalize({
       id: `boss_intro_${bossIntroTitle}`,
       kind: 'boss_intro',
       tone: 'crimson',
       kicker: 'KHAI CHIẾN',
       title: shortenBannerText(bossIntroTitle, isCompact ? 22 : 32) ?? bossIntroTitle,
       priority: 58,
-    };
+    });
   }
 
   // 10. Breakable Boss part shattered
   if (hud.bossPartBrokenBanner) {
     const cleanText = hud.bossPartBrokenBanner.replace(/^PHÁ VỠ\s+/i, '').trim();
-    return {
+    return finalize({
       id: `boss_part_${cleanText}`,
       kind: 'boss_part_broken',
       tone: 'amber',
       kicker: 'VỠ BỘ PHẬN',
       title: shortenBannerText(cleanText, isCompact ? 24 : 38) ?? cleanText,
       priority: 55,
-    };
+    });
   }
 
   // 11. Hero Ultimate cut-in strip
   if ((hud.ultCutinTimer ?? 0) > 0 && hud.ultCutinTitle) {
-    return {
+    return finalize({
       id: `ult_cutin_${hud.ultCutinTitle}`,
       kind: 'ult_cutin',
       tone: 'amber',
@@ -269,8 +387,9 @@ export function resolveTopCombatBanner(
       title: shortenBannerText(hud.ultCutinTitle, isCompact ? 22 : 30) ?? hud.ultCutinTitle,
       detail: isCompact ? undefined : hud.ultCutinHeroName || hud.heroName,
       priority: 50,
-    };
+    });
   }
 
   return null;
 }
+

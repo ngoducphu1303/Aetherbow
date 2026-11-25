@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "VITE_GLB_CDN_BASE_URL=\"${VITE_GLB_CDN_BASE_URL-https://aetherbow-glb.puugoo002.workers.dev/}\" npm run build",
+  "buildCommand": "VITE_STATIC_SPA=true VITE_GLB_CDN_BASE_URL=\"${VITE_GLB_CDN_BASE_URL-https://aetherbow-glb.puugoo002.workers.dev/}\" npm run build",
   "outputDirectory": "dist",
   "headers": [
     {

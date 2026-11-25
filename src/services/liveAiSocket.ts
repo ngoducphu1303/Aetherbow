@@ -254,6 +254,13 @@ class LiveAiSocketClient {
   }
 
   private async probeLiveBackend(): Promise<boolean> {
+    const isStaticSpaBuild =
+      (import.meta as ImportMeta & { env?: { VITE_STATIC_SPA?: string } }).env?.VITE_STATIC_SPA ===
+        'true' ||
+      (typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname));
+    if (isStaticSpaBuild) {
+      return false;
+    }
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 3500);
     try {

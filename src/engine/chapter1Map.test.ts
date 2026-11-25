@@ -137,3 +137,86 @@ test('fetchChapter1MapArrayBuffer reassembles multi-chunk API payload byte-for-b
   assert.deepEqual(out, payload);
   assert.deepEqual(progressEvents.at(-1), [payload.byteLength, payload.byteLength]);
 });
+
+test('fetchChapter1MapArrayBuffer streams incremental progress mid-chunk and recovers cleanly from transient Range failures', async () => {
+  const totalSize = 7_000_000; // > 6 MiB so it spans 2 HTTP Range requests
+  const payload = new Uint8Array(totalSize);
+  for (let i = 0; i < payload.length; i += 4096) {
+    payload[i] = (i / 4096) & 0xff;
+  }
+
+  let secondRangeAttempts = 0;
+  const makeChunkedStream = (slice: Uint8Array, pieces: number, failHalfway = false) =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        const step = Math.ceil(slice.byteLength / pieces);
+        for (let i = 0; i < pieces; i++) {
+          if (failHalfway && i === Math.floor(pieces / 2)) {
+            controller.error(new Error('Simulated transient TCP reset'));
+            return;
+          }
+          const from = i * step;
+          const to = Math.min(slice.byteLength, from + step);
+          if (from < to) {
+            controller.enqueue(slice.slice(from, to));
+          }
+        }
+        controller.close();
+      },
+    });
+
+  const fakeFetch: typeof fetch = async (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+    if (url.pathname.startsWith('/api/assets/chapter1-map/')) {
+      return new Response('Not Found', { status: 404 });
+    }
+    const rangeHeader =
+      init?.headers && !Array.isArray(init.headers)
+        ? (init.headers as Record<string, string>).Range ||
+          (init.headers as Record<string, string>).range
+        : undefined;
+    const match = rangeHeader?.match(/^bytes=(\d+)-(\d+)$/);
+    assert.ok(match, `Expected Range header, got ${String(rangeHeader)}`);
+    const start = Number(match[1]);
+    const end = Math.min(totalSize - 1, Number(match[2]));
+    const slice = payload.slice(start, end + 1);
+    if (start > 0) {
+      secondRangeAttempts += 1;
+      if (secondRangeAttempts === 1) {
+        return new Response(makeChunkedStream(slice, 4, true), {
+          status: 206,
+          headers: {
+            'content-type': 'model/gltf-binary',
+            'content-range': `bytes ${start}-${end}/${totalSize}`,
+          },
+        });
+      }
+    }
+    return new Response(makeChunkedStream(slice, 4, false), {
+      status: 206,
+      headers: {
+        'content-type': 'model/gltf-binary',
+        'content-range': `bytes ${start}-${end}/${totalSize}`,
+      },
+    });
+  };
+
+  const progressEvents: Array<[number, number]> = [];
+  const buffer = await fetchChapter1MapArrayBuffer({
+    baseUrl: '/',
+    baseUri: 'http://127.0.0.1:3000/',
+    concurrency: 2,
+    fetchImpl: fakeFetch,
+    onProgress: (loaded, total) => progressEvents.push([loaded, total]),
+  });
+
+  assert.equal(secondRangeAttempts, 2, 'Second 6 MiB range should recover on retry');
+  // Streaming must emit multiple intermediate progress updates inside chunks (well above 2 chunk completions)
+  assert.ok(progressEvents.length >= 8, `Expected incremental streamed progress, got ${progressEvents.length} events`);
+  assert.deepEqual(progressEvents.at(-1), [totalSize, totalSize]);
+  const out = new Uint8Array(buffer);
+  assert.equal(out.byteLength, totalSize);
+  for (let i = 0; i < totalSize; i += 4096) {
+    assert.equal(out[i], payload[i], `Byte mismatch at offset ${i}`);
+  }
+});

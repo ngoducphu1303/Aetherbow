@@ -1,11 +1,16 @@
 # IMPLEMENTATION CHANGELOG — NHẬT KÝ CẢI TIẾN & NGHIỆM THU (PHASE 4 & 6)
 
 - **Ngày nghiệm thu**: 2026-11-25
-- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `90.73 / 100`** (`+11.74` điểm trọng số trên 30 tiêu chí qua Đợt 1–8; đạt vững trong dải mục tiêu **`90–95 / 100`** của Master Prompt với **9/10 nhóm đạt `≥ 90.00 / 100`**).
+- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `90.91 / 100`** (`+11.92` điểm trọng số trên 30 tiêu chí qua Đợt 1–9; đạt vững trong dải mục tiêu **`90–95 / 100`** của Master Prompt với **9/10 nhóm đạt `≥ 90.00 / 100`**).
 
 ---
 
 ## 1. Danh Mục Thay Đổi Mã Nguồn Thực Tế (Trước → Sau)
+
+### 00000. Đợt 9 — Bộ Đệm Khung Hình Chiến Đấu Zero-GC (`P2-3f`), Hợp Nhất Tiếp Cận HUD & Khử Overdraw Viền Thấp Máu, Biểu Ngữ 12 Boss Hoàng Đạo + Phím Tùy Biến
+- **`src/engine/combatScratchBuffers.ts` & `src/engine/GameEngine.ts`** (`P2-3f`): Tạo lớp thuần `CombatFrameScratchPool<TEnemy>` tái sử dụng đối tượng & mảng cho toàn bộ vòng chiến đấu 60Hz của AutoPilot (`fillAutoPilotFrameSnapshots`), Đồng Đội Co-op AI (`fillCoopFrameSnapshots`, gồm lọc vật cản 1 lần/khung hình), Đấu Trường 1v1 AI né đạn (`fillActiveArrows`), và 3 cặp bộ đệm AoE độc lập không aliasing (`reaction` / `resonance` / `chain`), loại bỏ triệt để chuỗi `.filter().map()` và `[...this.enemies]` cấp phát rác trên heap trong `GameEngine.ts`.
+- **`src/engine/combatHudBanners.ts`, `src/components/GameHUD.tsx`, `src/App.tsx`**: Gỡ bỏ lớp viền đỏ thấp máu trùng lặp trong `GameHUD.tsx` (cắt giảm 50% fillrate overdraw `box-shadow` toàn màn hình ở HP ≤ 30%), truyền đầy đủ `reduceScreenFlash`, `reducedMotion`, `colorblindTelegraphs` từ `App.tsx` xuống `<GameHUD>` qua `resolveHudVisualFeedbackPolicy` (tắt chớp toàn màn hình gắt khi bật Anti-Flash mà vẫn bảo toàn vòng cung chỉ hướng trúng đòn, tắt nhịp nhấp nháy khi bật Giảm Chuyển Động, chuyển viền/chỉ hướng sang sắc hổ phách tương phản cao + ký hiệu hình học `◈/✦/▲/◆/⚡/◎/★` khi bật Mù Màu), và nối trọn bộ 12 danh hiệu Pha II/III `ZODIAC_BOSS_PHASE_SIGNATURES` + nhãn phím tùy biến thực (`ultKeyLabel` / `heavyBreakKeyLabel`) vào `resolveTopCombatBanner`.
+- **`src/engine/wave9ZeroGcAndHud.test.ts`**: Bổ sung 3 bộ kiểm thử chuyên sâu xác minh Zero-GC 600 khung hình liên tục giữ nguyên 100% tham chiếu đối tượng + 3 bộ đệm AoE độc lập, 4 tổ hợp chính sách tiếp cận HUD, và đầy đủ 12 chữ ký Boss Hoàng Đạo + nhãn phím tùy biến trên biểu ngữ HUD (3/3 pass).
 
 ### 0000. Đợt 8 — AI Quái 7 Trạng Thái + Phối Hợp Đội Hình Tiên Phong, Điều Hướng SpatialHashGrid Zero-GC, Dự Báo Tiến Hóa Thẻ Tarot & So Sánh Trang Bị Toàn Diện
 - **`src/engine/aaaEnemyCombatEngine.ts` & `src/engine/GameEngine.ts`**: Triển khai máy trạng thái **7 pha `EnemyAiTacticalState`** (`patrol | chase | flank | attack | retreat | dodge | recovery`), cơ chế xạ thủ/pháp sư tự rút lui núp sau đồng đội Tiên Phong (`vanguard`) khi bị áp sát hoặc `< 35% HP`, nhịp hồi phục mở cửa sổ phản công `resolveMobRecoveryDuration(kind, chapterId)` giảm dần theo độ khó Chương 1 → 12, và chuyển 100% truy vấn lân cận của `computeAaaMobSteering` sang `enemySpatialGrid.queryRadius` + `intactObstacleScratch` Zero-GC.
@@ -56,7 +61,7 @@
 - [x] Đo hiệu năng thực tế trước & sau cho vòng va chạm đạn Zero-GC (**8.09×** nhanh hơn, **18,000** mảng rác/giây bị triệt tiêu, 100% trùng khớp va chạm).
 - [x] Tất cả 12 chương có 12 chủ đề nhạc Hoàng Đạo riêng biệt, 4 cơ quan sàn đấu tương tác, 12 bảng màu ánh sáng 60-30-10 và kiến trúc Thánh Điện 3D độc bản cho cả Chương 5–12 (**0 PointLights**).
 - [x] Hẹn giờ sự kiện LiveOps tự động (`P2-4b`) hoạt động đồng bộ từ UI Admin đến `firestore.rules` (đã deploy live, 0 lỗi ESLint).
-- [x] Toàn bộ kho mã nguồn đạt **`458 bài kiểm thử | 450 PASS | 0 FAIL | 8 skip`**.
+- [x] Toàn bộ kho mã nguồn đạt **`461 bài kiểm thử | 453 PASS | 0 FAIL | 8 skip`**.
 - [x] TypeScript `tsc --noEmit` (`lint_applet`) và Vite production build (`compile_applet`) đều sạch 0 lỗi.
-- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Kho Trang Bị (`r8b-equipment.png`) → Cài Đặt 8 Phím (`r7-settings-keybinds.png`) → Thẻ Tarot Tiến Hóa (`r8b-skill-draft.png`) → Chiến Đấu 3D Chương 1 với AI 7 pha & SpatialHashGrid (`r8b-combat-ai.png`: `backdropBlurCount: 0`, `a11yLivePresent: true`) với **0 Console Errors / 0 Warnings**.
+- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Cài Đặt bật sống Mù Màu + Anti-Flash & 8 phím (`r9-settings-a11y.png`) → Chiến Đấu 3D Chương 1 với HUD thống nhất & Thẻ Tarot Tiến Hóa (`r9-combat-hud.png`) cùng các màn Kho Trang Bị & AI (`r8b-*.png`, `r7-*.png`: `backdropBlurCount: 0`, `a11yLivePresent: true`) với **0 Console Errors / 0 Warnings**.
 - [x] Hoàn tất & đồng bộ thực tế 10/10 báo cáo kiểm toán & thiết kế tại thư mục gốc kho mã nguồn.

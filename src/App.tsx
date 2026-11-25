@@ -11578,6 +11578,26 @@ export default function App() {
           onSignOut={handleLogout}
           onRetryModels={retryStartupModels}
           onRetryModelFile={() => engineRef.current?.retryAppearance()}
+          onContinueWithLightMap={() => {
+            setChapter1MapPreloadVariant('none');
+            setChapter1MapStatus('ready');
+            setSave((prev) => ({
+              ...prev,
+              settings: {
+                ...normalizeSettings(prev.settings),
+                chapter1MapMode: 'light',
+              },
+            }));
+            engineRef.current?.applyRuntimeSettings({
+              ...currentSettings,
+              chapter1MapMode: 'light',
+            });
+            if (currentUser || guestModeSelected) {
+              soundEngine.unlock();
+              soundEngine.playVictory();
+              setEnteredGame(true);
+            }
+          }}
           onEnterGame={() => {
             if (!canEnterGame) return;
             soundEngine.unlock();
@@ -11887,6 +11907,9 @@ export default function App() {
           compactHud={Boolean(currentSettings.compactHud)}
           liveDpsMeter={Boolean(currentSettings.liveDpsMeter)}
           showFpsOverlay={Boolean(currentSettings.showFpsOverlay)}
+          reduceScreenFlash={Boolean(currentSettings.reduceScreenFlash)}
+          reducedMotion={Boolean(currentSettings.reducedMotion)}
+          colorblindTelegraphs={Boolean(currentSettings.colorblindTelegraphs)}
           keybinds={currentSettings.keybinds}
           onToggleMute={handleToggleMute}
           onToggleCompactHud={() =>

@@ -36,6 +36,7 @@ import {
   type SquadNeighborSample,
 } from './tacticalCombatChoreography';
 import { SpatialHashGrid } from './spatialHashGrid';
+import { CombatFrameScratchPool } from './combatScratchBuffers';
 import {
   queryAoeEnemiesInGrid,
   queryProjectileEnemyHits,
@@ -1594,6 +1595,7 @@ export class GameEngine {
   private readonly squadNeighborPool: SquadNeighborSample[] = [];
   private readonly squadNeighborQueryScratch: SquadNeighborSample[] = [];
   private readonly intactObstacleScratch: Array<{ x: number; z: number; radius: number }> = [];
+  private readonly combatScratchPool = new CombatFrameScratchPool<EnemyEntity>();
   private bossPhaseCounterTimer = 0;
   private bossPhaseCounterLevel: 2 | 3 | null = null;
   private executionFinisherTimer = 0;
@@ -5084,11 +5086,14 @@ export class GameEngine {
       try {
         let assetUrl: URL;
         if (targetChapterId === 1) {
+          data = await downloadChapter1Map(targetVariant);
+          if (targetVariant === 'full' && data.byteLength < 10 * 1024 * 1024) {
+            resolvedVariant = 'lite';
+          }
           assetUrl =
-            targetVariant === 'lite'
+            resolvedVariant === 'lite'
               ? getChapter1MapLiteAssetUrl(baseUrl, baseUri)
               : getChapter1MapAssetUrl(baseUrl, baseUri);
-          data = await downloadChapter1Map(targetVariant);
         } else if (targetChapterId === 2) {
           const ch2Result = await downloadChapter2Map(targetVariant);
           data = ch2Result.buffer;
@@ -14429,71 +14434,14 @@ export class GameEngine {
         this.autoPilotStatusText = 'Ưu tiên điều khiển tay';
       } else {
         this.autoPilotManualOverride = false;
-        const telegraphs: Array<{
-          kind: 'slam' | 'lunge' | 'lane' | 'spiral' | 'shot';
-          x: number;
-          z: number;
-          radius: number;
-          timeRemainingSec: number;
-          endX?: number;
-          endZ?: number;
-        }> = [];
-        for (const en of this.enemies) {
-          if (en.spawnTimer > 0 || en.telegraphType === 'none') continue;
-          if (en.telegraphType === 'slam') {
-            telegraphs.push({
-              kind: 'slam',
-              x: en.slamX,
-              z: en.slamZ,
-              radius: Math.max(2.2, en.slamRadius),
-              timeRemainingSec: Math.max(0, en.telegraphTimer),
-            });
-          } else if (en.telegraphType === 'lane' && en.laneAngles && en.laneAngles.length > 0) {
-            for (const ang of en.laneAngles) {
-              telegraphs.push({
-                kind: 'lane',
-                x: en.x,
-                z: en.z,
-                endX: en.x + Math.sin(ang) * 18,
-                endZ: en.z + Math.cos(ang) * 18,
-                radius: 1.55,
-                timeRemainingSec: Math.max(0, en.telegraphTimer),
-              });
-            }
-          } else if (en.telegraphType === 'lunge') {
-            telegraphs.push({
-              kind: 'lunge',
-              x: en.x,
-              z: en.z,
-              endX: en.x + en.aimX * 10,
-              endZ: en.z + en.aimZ * 10,
-              radius: 1.65,
-              timeRemainingSec: Math.max(0, en.telegraphTimer),
-            });
-          } else if (en.telegraphType === 'spiral') {
-            telegraphs.push({
-              kind: 'spiral',
-              x: en.x,
-              z: en.z,
-              radius: 3.6,
-              timeRemainingSec: Math.max(0, en.telegraphTimer),
-            });
-          }
-        }
-
-        const incomingBullets = this.enemyOrbPool
-          .filter((orb) => orb.active)
-          .map((orb) => ({
-            x: orb.x,
-            z: orb.z,
-            vx: orb.vx,
-            vz: orb.vz,
-            radius: 0.42,
-          }));
-
-        const healOrbs = this.lootOrbs
-          .filter((orb) => orb.active && orb.kind === 'heal')
-          .map((orb) => ({ x: orb.x, z: orb.z }));
+        this.combatScratchPool.fillAutoPilotFrameSnapshots(
+          this.enemies,
+          this.enemyOrbPool,
+          this.lootOrbs,
+          this.obstacles,
+          this.resonanceTraps,
+          (kind) => RESONANCE_TRAP_CONFIGS[kind as keyof typeof RESONANCE_TRAP_CONFIGS]
+        );
 
         const activeBossWp = this.bossWeakPointState?.active && this.bossWeakPointEnemyId !== null
           ? (() => {
@@ -14520,32 +14468,13 @@ export class GameEngine {
           portalZ: -ARENA_HALF_D + 1.4,
           arenaHalfW: ARENA_HALF_W,
           arenaHalfD: ARENA_HALF_D,
-          enemies: this.enemies
-            .filter((en) => en.spawnTimer <= 0 && !en.isTrainingDummy)
-            .map((en) => ({
-              id: en.id,
-              x: en.x,
-              z: en.z,
-              hp: en.hp,
-              maxHp: en.maxHp,
-              isBoss: en.isBoss,
-              radius: en.radius,
-              staggerBroken: Boolean(en.stunTimer && en.stunTimer > 0),
-            })),
-          telegraphs,
-          incomingBullets,
-          healOrbs,
-          obstacles: this.obstacles
-            .filter((o) => o.intact !== false)
-            .map((o) => ({ x: o.x, z: o.z, radius: o.radius })),
+          enemies: this.combatScratchPool.autoEnemies,
+          telegraphs: this.combatScratchPool.autoTelegraphs,
+          incomingBullets: this.combatScratchPool.incomingBullets,
+          healOrbs: this.combatScratchPool.autoHealOrbs,
+          obstacles: this.combatScratchPool.intactObstacles,
           bossWeakPoint: activeBossWp,
-          resonanceTraps: this.resonanceTraps.map((t) => ({
-            x: t.x,
-            z: t.z,
-            ready: t.cooldown <= 0,
-            aoeRadius: RESONANCE_TRAP_CONFIGS[t.kind].aoeRadius,
-            label: RESONANCE_TRAP_CONFIGS[t.kind].label,
-          })),
+          resonanceTraps: this.combatScratchPool.autoTraps,
         });
 
         moveX = decision.moveX;
@@ -16253,30 +16182,14 @@ export class GameEngine {
       );
     }
 
-    const activeTelegraphs = this.enemies
-      .filter((e) => e.spawnTimer <= 0 && (e.telegraphType === 'slam' || e.telegraphType === 'lunge' || e.telegraphType === 'spiral'))
-      .map((e) => ({
-        kind: e.telegraphType as 'slam' | 'lunge' | 'spiral',
-        x: e.telegraphType === 'slam' ? e.slamX : e.x,
-        z: e.telegraphType === 'slam' ? e.slamZ : e.z,
-        radius: Math.max(2.2, e.slamRadius || 3.0),
-        timeRemainingSec: Math.max(0, e.telegraphTimer),
-      }));
-
-    const incomingBullets = this.enemyOrbPool
-      .filter((o) => o.active)
-      .map((o) => ({ x: o.x, z: o.z, vx: o.vx, vz: o.vz, radius: 0.35 }));
-
-    const coopCandidates = this.enemies.map((e) => ({
-      id: e.id,
-      x: e.x,
-      z: e.z,
-      isBoss: e.isBoss,
-      isElite: e.isElite,
-      hp: e.hp,
-      alive: e.hp > 0 && e.spawnTimer <= 0,
-      ref: e,
-    }));
+    this.combatScratchPool.fillCoopFrameSnapshots(
+      this.enemies,
+      this.enemyOrbPool,
+      this.obstacles
+    );
+    const activeTelegraphs = this.combatScratchPool.coopTelegraphs;
+    const incomingBullets = this.combatScratchPool.incomingBullets;
+    const coopCandidates = this.combatScratchPool.coopCandidates;
 
     for (let idx = 0; idx < this.coopAllies.length; idx++) {
       const ally = this.coopAllies[idx];
@@ -16353,9 +16266,7 @@ export class GameEngine {
             : null,
         telegraphs: activeTelegraphs,
         incomingBullets,
-        obstacles: this.obstacles
-          .filter((o) => o.intact !== false)
-          .map((o) => ({ x: o.x, z: o.z, radius: o.radius })),
+        obstacles: this.combatScratchPool.intactObstacles,
         bossWeakPoint: allyBossWp,
         bossEnraged: Boolean(target?.isBoss && (target.bossPhase ?? 1) >= 2),
         tacticalOrder: this.coopTacticalOrder,
@@ -16616,12 +16527,14 @@ export class GameEngine {
     this.aliveEnemyIdScratch.clear();
     this.enemySpatialGrid.clear();
     let hasActiveBossInRoom = false;
+    let hasArenaRivalInRoom = false;
     let poolIdx = 0;
     for (let sIdx = 0; sIdx < enemySnapshot.length; sIdx++) {
       const se = enemySnapshot[sIdx];
       if (!se || se.dead) continue;
       this.aliveEnemyIdScratch.add(se.id);
       if (se.isBoss && !se.isTrainingDummy) hasActiveBossInRoom = true;
+      if (se.isArenaRival) hasArenaRivalInRoom = true;
       let sample = this.squadNeighborPool[poolIdx];
       if (!sample) {
         sample = {
@@ -16641,6 +16554,9 @@ export class GameEngine {
       }
       this.enemySpatialGrid.insert(sample);
       poolIdx += 1;
+    }
+    if (hasArenaRivalInRoom) {
+      this.combatScratchPool.fillActiveArrows(this.arrowPool, 0.42);
     }
     this.intactObstacleScratch.length = 0;
     for (let oIdx = 0; oIdx < this.obstacles.length; oIdx++) {
@@ -17574,11 +17490,8 @@ export class GameEngine {
             }
           }
         }
-        // Wave 8: Lethal AI Rival stays mobile & agile even while telegraphing!
+        // Wave 8/9: Lethal AI Rival stays mobile & agile even while telegraphing (Zero-GC arrow scratch)
         if (e.isArenaRival && this.aiRivalBrainState) {
-          const playerArrows = this.arrowPool
-            .filter((a) => a.active)
-            .map((a) => ({ x: a.x, z: a.z, vx: a.vx, vz: a.vz, radius: 0.42 }));
           const step = stepAiRivalCombatBrain(this.aiRivalBrainState, {
             dt,
             simTimeSec: this.simClock.totalSimTime,
@@ -17591,7 +17504,7 @@ export class GameEngine {
             playerVz: this.pvz,
             arenaHalfW: ARENA_HALF_W,
             arenaHalfD: ARENA_HALF_D,
-            incomingArrows: playerArrows,
+            incomingArrows: this.combatScratchPool.activeArrows,
             attackReady: false,
             isTelegraphing: true,
             escalation: this.aiRivalMatchConfig?.escalation,
@@ -17843,9 +17756,6 @@ export class GameEngine {
               0
             );
           }
-          const playerArrows = this.arrowPool
-            .filter((a) => a.active)
-            .map((a) => ({ x: a.x, z: a.z, vx: a.vx, vz: a.vz, radius: 0.42 }));
           const brainStep = stepAiRivalCombatBrain(this.aiRivalBrainState, {
             dt,
             simTimeSec: this.simClock.totalSimTime,
@@ -17858,7 +17768,7 @@ export class GameEngine {
             playerVz: this.pvz,
             arenaHalfW: ARENA_HALF_W,
             arenaHalfD: ARENA_HALF_D,
-            incomingArrows: playerArrows,
+            incomingArrows: this.combatScratchPool.activeArrows,
             attackReady: e.attackTimer <= 0,
             isTelegraphing: false,
             escalation: this.aiRivalMatchConfig?.escalation,
@@ -21205,8 +21115,14 @@ export class GameEngine {
         );
       }
       if (reaction.aoeRadius > 0) {
-        const reactionKillTargets: EnemyEntity[] = [];
-        for (const other of [...this.enemies]) {
+        const reactionScan = this.combatScratchPool.copyEnemiesInto(
+          this.enemies,
+          this.combatScratchPool.reactionScanScratch
+        );
+        const reactionKillTargets = this.combatScratchPool.reactionKillScratch;
+        reactionKillTargets.length = 0;
+        for (let oi = 0; oi < reactionScan.length; oi++) {
+          const other = reactionScan[oi];
           if (!other || other.dead || other.id === e.id || other.spawnTimer > 0) continue;
           const rdx = other.x - e.x;
           const rdz = other.z - e.z;
@@ -21233,7 +21149,8 @@ export class GameEngine {
             }
           }
         }
-        for (const victim of reactionKillTargets) {
+        for (let vi = 0; vi < reactionKillTargets.length; vi++) {
+          const victim = reactionKillTargets[vi];
           const rIdx = this.enemies.indexOf(victim);
           if (rIdx !== -1 && !victim.dead) {
             this.killEnemy(rIdx, true);
@@ -21289,8 +21206,14 @@ export class GameEngine {
       );
       this.elementalResonance = resAdvance.nextState;
       if (resAdvance.burstTriggered && !e.isTrainingDummy) {
-        const resKillTargets: EnemyEntity[] = [];
-        for (const other of [...this.enemies]) {
+        const resScan = this.combatScratchPool.copyEnemiesInto(
+          this.enemies,
+          this.combatScratchPool.resonanceScanScratch
+        );
+        const resKillTargets = this.combatScratchPool.resonanceKillScratch;
+        resKillTargets.length = 0;
+        for (let oi = 0; oi < resScan.length; oi++) {
+          const other = resScan[oi];
           if (!other || other.dead || other.spawnTimer > 0) continue;
           const rdist = Math.hypot(other.x - e.x, other.z - e.z);
           if (rdist <= resAdvance.aoeRadius) {
@@ -21315,7 +21238,8 @@ export class GameEngine {
             }
           }
         }
-        for (const victim of resKillTargets) {
+        for (let vi = 0; vi < resKillTargets.length; vi++) {
+          const victim = resKillTargets[vi];
           const rIdx = this.enemies.indexOf(victim);
           if (rIdx !== -1 && !victim.dead) {
             this.killEnemy(rIdx, true);
@@ -21608,8 +21532,14 @@ export class GameEngine {
           soundEngine.playChainExplosion(killPan);
           this.spawnShockwave(e.x, e.z, 0x38bdf8, chain.radius, 0.28);
           this.spawnParticles(e.x, 0.9, e.z, 0xfbbf24, 10);
-          const chainVictims: EnemyEntity[] = [];
-          for (const other of [...this.enemies]) {
+          const chainScan = this.combatScratchPool.copyEnemiesInto(
+            this.enemies,
+            this.combatScratchPool.chainScanScratch
+          );
+          const chainVictims = this.combatScratchPool.chainKillScratch;
+          chainVictims.length = 0;
+          for (let oi = 0; oi < chainScan.length; oi++) {
+            const other = chainScan[oi];
             if (!other || other.dead || other.id === e.id || other.spawnTimer > 0 || other.isTrainingDummy) continue;
             const cdx = other.x - e.x;
             const cdz = other.z - e.z;
@@ -21631,7 +21561,8 @@ export class GameEngine {
               }
             }
           }
-          for (const victim of chainVictims) {
+          for (let vi = 0; vi < chainVictims.length; vi++) {
+            const victim = chainVictims[vi];
             const vIdx = this.enemies.indexOf(victim);
             if (vIdx !== -1 && !victim.dead) {
               this.killEnemy(vIdx, true);

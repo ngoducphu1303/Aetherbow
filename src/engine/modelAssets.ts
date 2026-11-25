@@ -294,8 +294,8 @@ async function readStreamUrl(url: URL, download: Download): Promise<ArrayBuffer>
 async function readChapter1Map(variant: 'lite' | 'full', download: Download): Promise<ArrayBuffer> {
   const baseUrl =
     (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+  const liteUrl = getChapter1MapLiteAssetUrl(baseUrl, document.baseURI);
   if (variant === 'lite') {
-    const liteUrl = getChapter1MapLiteAssetUrl(baseUrl, document.baseURI);
     return readStreamUrl(liteUrl, download);
   }
 
@@ -303,7 +303,8 @@ async function readChapter1Map(variant: 'lite' | 'full', download: Download): Pr
   let timeout: ReturnType<typeof setTimeout> | undefined;
   function resetTimeout() {
     clearTimeout(timeout);
-    timeout = setTimeout(() => controller.abort(), 45_000);
+    // Reset on every streamed network packet (~16-64 KB); 35s with zero bytes indicates a real stall
+    timeout = setTimeout(() => controller.abort(), 35_000);
   }
 
   resetTimeout();
@@ -312,7 +313,7 @@ async function readChapter1Map(variant: 'lite' | 'full', download: Download): Pr
       baseUrl,
       baseUri: document.baseURI,
       signal: controller.signal,
-      concurrency: 4,
+      concurrency: 2,
       onProgress: (loadedBytes, totalBytes) => {
         resetTimeout();
         download.received = loadedBytes;
@@ -322,6 +323,14 @@ async function readChapter1Map(variant: 'lite' | 'full', download: Download): Pr
         publishProgress();
       },
     });
+  } catch {
+    // Full 90.3 MB map failed or stalled on slow network — seamlessly fall back to
+    // the 1.32 MB Chương 1 Lite.glb so players never get stuck at SplashGate.
+    clearTimeout(timeout);
+    download.received = 0;
+    download.length = 0;
+    publishProgress();
+    return readStreamUrl(liteUrl, download);
   } finally {
     clearTimeout(timeout);
   }

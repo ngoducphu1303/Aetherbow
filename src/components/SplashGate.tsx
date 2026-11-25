@@ -50,6 +50,7 @@ interface SplashGateProps {
   onSignOut: () => Promise<void>;
   onRetryModels: () => void;
   onRetryModelFile?: (path: ModelAsset) => void;
+  onContinueWithLightMap?: () => void;
   onEnterGame: () => void;
   onToggleMute: () => void;
 }
@@ -89,6 +90,7 @@ export const SplashGate: React.FC<SplashGateProps> = ({
   onSignOut,
   onRetryModels,
   onRetryModelFile,
+  onContinueWithLightMap,
   onEnterGame,
   onToggleMute,
 }) => {
@@ -353,14 +355,27 @@ export const SplashGate: React.FC<SplashGateProps> = ({
                 </div>
 
                 {failed && (
-                  <button
-                    type="button"
-                    onClick={onRetryModels}
-                    className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Thử lại tất cả tệp lỗi</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onRetryModels}
+                      className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Thử lại tất cả tệp lỗi</span>
+                    </button>
+                    {onContinueWithLightMap && (
+                      <button
+                        type="button"
+                        data-continue-light-map="true"
+                        onClick={onContinueWithLightMap}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap bg-amber-500/20 hover:bg-amber-500/30 border border-amber-300/40 text-amber-100 transition-colors"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Vào ngay (Sân Đấu Nhẹ)</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ) : (
