@@ -40,6 +40,18 @@ import {
   stepProjectileHomingVelocity,
 } from './projectilePhysicsSystem';
 import {
+  countActivePooled,
+  stepArmorShardPool,
+  stepDashScorchPool,
+  stepGroundMistSeeds,
+  stepImpactDecalPool,
+  stepParticlePool,
+  stepShockwavePool,
+  stepSummonPortalPool,
+  stepWindRingPool,
+  VfxFrameBudgetCache,
+} from './vfxPoolManager';
+import {
   classifySquadRole,
   computeSquadWaitingFlankImpulse,
   createEnemySquadDirectorState,
@@ -190,7 +202,6 @@ import { resolveGeometricTelegraphSpec } from './colorblindTelegraphs';
 import {
   clampParticleBurstCount,
   resolveDynamicPointLightPolicy,
-  resolveDynamicVfxBudget,
   resolveZodiacChapterLighting,
 } from './zodiacLightingVfxDirector';
 import type { SkillEvolutionId, SkillEvolutionOffer } from '../types/game';
@@ -657,7 +668,6 @@ import {
   resetRollingDpsTracker,
   resolveCombatCameraConfig,
   resolvePhotoLightingMood,
-  stepArmorShardPhysics,
 } from './aaaWave5Director';
 
 // Pre-allocated math & color helpers for zero GC in tick
@@ -1553,9 +1563,11 @@ export class GameEngine {
     rotZ: 0,
     scaleY: 1,
   };
-  // Wave 3 & 4 AAAA Overhaul: Zero-GC Spatial Hash Grids & reusable scratch buffers for squad steering, projectiles, AoE & knockback safety
+  // Wave 3, 4 & 5 AAAA Overhaul: Zero-GC Spatial Hash Grids, VFX Budget Cache & reusable scratch buffers
   private readonly enemySpatialGrid = new SpatialHashGrid<SquadNeighborSample>(4.0);
   private readonly projectileEnemyGrid = new SpatialHashGrid<EnemyEntity>(3.0);
+  private readonly vfxBudgetCache = new VfxFrameBudgetCache();
+  private vfxFrameCounter = 0;
   private readonly enemySnapshotScratch: EnemyEntity[] = [];
   private readonly projectileQueryScratch: EnemyEntity[] = [];
   private readonly projectileHitScratch: EnemyEntity[] = [];
@@ -12260,6 +12272,7 @@ export class GameEngine {
   }
 
   private update(frameDt: number): void {
+    this.vfxFrameCounter += 1;
     const visualDt = Math.min(Math.max(frameDt, 0.001), 0.05);
     if (this.phase !== GamePhase.PLAYING) {
       this.elapsed += visualDt;
@@ -15470,7 +15483,8 @@ export class GameEngine {
     } else {
       soundEngine.playBowShoot(
         0.95 + Math.random() * 0.12,
-        computeSpatialPan(this.px, ARENA_HALF_W)
+        computeSpatialPan(this.px, ARENA_HALF_W),
+        this.baseStats.heroId
       );
     }
 
@@ -20454,6 +20468,7 @@ export class GameEngine {
       mult *= 1 + comboMeta.dmgBonusPct;
     }
     let resolvedLabel = label;
+    let wasBlockedByArmorOrShield = false;
     if (e.tacticalRole === 'shield_bearer' && !(e.stunTimer && e.stunTimer > 0) && !e.isBoss) {
       const bypass =
         Boolean(options?.bypassShield) ||
@@ -20464,6 +20479,7 @@ export class GameEngine {
       const az = options?.attackerZ ?? this.pz;
       if (isHitBlockedByFrontShield(e.model.root.rotation.y, ax, az, e.x, e.z, bypass)) {
         mult *= 0.25;
+        wasBlockedByArmorOrShield = true;
         if (!resolvedLabel) resolvedLabel = 'CHẮN KHIÊN!';
       }
     }
@@ -20474,6 +20490,7 @@ export class GameEngine {
       }
       if (e.bossAiState && e.bossAiState.guardDamageReduction > 0) {
         mult *= 1 - e.bossAiState.guardDamageReduction;
+        wasBlockedByArmorOrShield = true;
         if (!resolvedLabel) resolvedLabel = 'VỎ GIÁP!';
       }
     }
@@ -21246,7 +21263,12 @@ export class GameEngine {
         recordStyleAction(this.styleMomentum, 'ultimate');
       }
     }
-    soundEngine.playHit(isCrit, this.comboCount, hitPan);
+    const hitDist = Math.hypot(e.x - this.px, e.z - this.pz);
+    if (wasBlockedByArmorOrShield) {
+      soundEngine.playShieldHit(hitPan, hitDist);
+    } else {
+      soundEngine.playHit(isCrit, this.comboCount, hitPan, hitDist);
+    }
     this.spawnParticles(
       e.x,
       1.05,
@@ -22819,12 +22841,12 @@ export class GameEngine {
     colorHex: number,
     count: number
   ): void {
-    const vfxBudget = resolveDynamicVfxBudget({
+    const vfxBudget = this.vfxBudgetCache.getForFrame(this.vfxFrameCounter, {
       watchdogStage: this.gpuWatchdog.stage,
       isLowEndGpu: this.lowEndGpu,
       reducedMotion: this.reducedMotionEnabled,
       activeEnemies: this.enemies.length,
-      activeProjectiles: this.arrowPool.reduce((acc, p) => acc + (p.active ? 1 : 0), 0),
+      arrowPool: this.arrowPool,
     });
     const scaledCount = clampParticleBurstCount(
       Math.max(1, Math.round(count * this.particleDensityScale)),
@@ -22855,21 +22877,7 @@ export class GameEngine {
   }
 
   private updateParticles(dt: number): void {
-    for (const pt of this.particlePool) {
-      if (!pt.active) continue;
-      pt.life -= dt;
-      if (pt.life <= 0) {
-        pt.active = false;
-        pt.mesh.visible = false;
-        continue;
-      }
-      pt.vy -= 14 * dt;
-      pt.x += pt.vx * dt;
-      pt.y = Math.max(0.05, pt.y + pt.vy * dt);
-      pt.z += pt.vz * dt;
-      pt.mesh.position.set(pt.x, pt.y, pt.z);
-      pt.mesh.scale.setScalar(pt.scale * (pt.life / pt.maxLife));
-    }
+    stepParticlePool(this.particlePool, dt);
   }
 
   private spawnShockwave(
@@ -22879,14 +22887,14 @@ export class GameEngine {
     maxRadius: number,
     duration = 0.38
   ): void {
-    const vfxBudget = resolveDynamicVfxBudget({
+    const vfxBudget = this.vfxBudgetCache.getForFrame(this.vfxFrameCounter, {
       watchdogStage: this.gpuWatchdog.stage,
       isLowEndGpu: this.lowEndGpu,
       reducedMotion: this.reducedMotionEnabled,
       activeEnemies: this.enemies.length,
-      activeProjectiles: this.arrowPool.reduce((acc, p) => acc + (p.active ? 1 : 0), 0),
+      arrowPool: this.arrowPool,
     });
-    const activeShockwaves = this.shockwavePool.reduce((acc, r) => acc + (r.active ? 1 : 0), 0);
+    const activeShockwaves = countActivePooled(this.shockwavePool);
     if (activeShockwaves >= vfxBudget.maxActiveShockwaves) return;
     const ring = this.shockwavePool.find((r) => !r.active);
     if (!ring) return;
@@ -22905,19 +22913,7 @@ export class GameEngine {
   }
 
   private updateShockwaves(dt: number): void {
-    for (const ring of this.shockwavePool) {
-      if (!ring.active) continue;
-      ring.life -= dt;
-      if (ring.life <= 0) {
-        ring.active = false;
-        ring.mesh.visible = false;
-        continue;
-      }
-      const p = 1 - ring.life / ring.maxLife;
-      const eased = 1 - Math.pow(1 - p, 2);
-      ring.mesh.scale.setScalar(0.3 + eased * ring.maxRadius);
-      (ring.mesh.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - p);
-    }
+    stepShockwavePool(this.shockwavePool, dt);
   }
 
   private spawnImpactDecal(
@@ -22952,22 +22948,7 @@ export class GameEngine {
   }
 
   private updateImpactDecals(dt: number): void {
-    if (!this.impactDecalPool) return;
-    for (const d of this.impactDecalPool) {
-      if (!d.active) continue;
-      d.life -= dt;
-      if (d.life <= 0) {
-        d.active = false;
-        d.mesh.visible = false;
-        d.ring.visible = false;
-        continue;
-      }
-      const state = computeImpactDecalState(d.life, d.maxLife, d.baseRadius);
-      d.mesh.scale.setScalar(state.scale);
-      d.ring.scale.setScalar(state.scale);
-      (d.mesh.material as THREE.MeshBasicMaterial).opacity = state.opacity * 0.78;
-      (d.ring.material as THREE.MeshBasicMaterial).opacity = state.opacity;
-    }
+    stepImpactDecalPool(this.impactDecalPool, dt);
   }
 
   private applyPhotoStudioLighting(dt: number): void {
@@ -23106,75 +23087,29 @@ export class GameEngine {
   }
 
   private updateWave5Effects(dt: number): void {
-    // 1. Rotating Celestial Summon Portals
-    if (this.summonPortalPool) {
-      for (let i = 0; i < this.summonPortalPool.length; i++) {
-        const sp = this.summonPortalPool[i];
-        if (!sp.active) continue;
-        sp.life -= dt;
-        if (sp.life <= 0) {
-          sp.active = false;
-          sp.group.visible = false;
-          continue;
-        }
-        const p = 1 - sp.life / sp.maxLife;
-        const grow = p < 0.35 ? p / 0.35 : 1 - ((p - 0.35) / 0.65) * 0.25;
-        const fade = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
-        sp.group.scale.setScalar(Math.max(0.08, sp.baseRadius * grow));
-        sp.outerRing.rotation.z += dt * 4.2;
-        sp.innerRing.rotation.z -= dt * 6.5;
-        (sp.outerRing.material as THREE.MeshBasicMaterial).opacity = 0.85 * fade;
-        (sp.innerRing.material as THREE.MeshBasicMaterial).opacity = 0.9 * fade;
-        (sp.coreDisc.material as THREE.MeshBasicMaterial).opacity = 0.34 * fade;
-      }
-    }
+    // 1. Rotating Celestial Summon Portals (Zero-GC modular pool stepper)
+    stepSummonPortalPool(this.summonPortalPool, dt);
 
     // 2. Physical Bouncing Armor & Crystal Shards
-    if (this.armorShardPool) {
-      for (let i = 0; i < this.armorShardPool.length; i++) {
-        const sh = this.armorShardPool[i];
-        if (!sh.active) continue;
-        if (!stepArmorShardPhysics(sh.kin, dt)) {
-          sh.active = false;
-          sh.mesh.visible = false;
-          continue;
-        }
-        sh.mesh.position.set(sh.kin.x, sh.kin.y, sh.kin.z);
-        sh.mesh.rotation.set(sh.kin.rx, sh.kin.ry, sh.kin.rz);
-        const fadeScale = sh.kin.life < 0.25 ? Math.max(0.05, sh.kin.life / 0.25) : 1;
-        sh.mesh.scale.setScalar(fadeScale);
-      }
-    }
+    stepArmorShardPool(this.armorShardPool, dt);
 
     // 3. Fading Glowing Dash Scorch Trails
-    if (this.dashScorchPool) {
-      for (let i = 0; i < this.dashScorchPool.length; i++) {
-        const ds = this.dashScorchPool[i];
-        if (!ds.active) continue;
-        ds.life -= dt;
-        if (ds.life <= 0) {
-          ds.active = false;
-          ds.mesh.visible = false;
-          continue;
-        }
-        const ratio = ds.life / ds.maxLife;
-        (ds.mesh.material as THREE.MeshBasicMaterial).opacity = 0.62 * ratio;
-        ds.mesh.scale.set(0.6 + ratio * 0.4, 1, 1 + (1 - ratio) * 0.3);
-      }
-    }
+    stepDashScorchPool(this.dashScorchPool, dt);
 
-    // 4. Low-Lying Instanced Ground Mist
+    // 4. Low-Lying Instanced Ground Mist (full 4-edge arena wrap including -Z)
     if (this.groundMistMesh) {
       const showMist = this.phase !== GamePhase.TITLE && !this.isSoftwareGl;
       this.groundMistMesh.visible = showMist;
       if (showMist) {
+        stepGroundMistSeeds(
+          this.groundMistSeeds,
+          this.GROUND_MIST_COUNT,
+          dt,
+          ARENA_HALF_W,
+          ARENA_HALF_D
+        );
         for (let i = 0; i < this.GROUND_MIST_COUNT; i++) {
           const s = this.groundMistSeeds[i];
-          s.x += s.vx * dt;
-          s.z += s.vz * dt;
-          if (s.x > ARENA_HALF_W) s.x = -ARENA_HALF_W;
-          if (s.x < -ARENA_HALF_W) s.x = ARENA_HALF_W;
-          if (s.z > ARENA_HALF_D) s.z = -ARENA_HALF_D;
           const pulse = s.scale * (0.92 + Math.sin(this.elapsed * 0.9 + s.phase) * 0.08);
           _dummy.position.set(s.x, 0.08 + (i % 3) * 0.03, s.z);
           _dummy.rotation.set(0, s.phase + this.elapsed * 0.18, 0);
@@ -23187,24 +23122,7 @@ export class GameEngine {
     }
 
     // 5. Van Tich Signature Wind Vortex Rings
-    if (this.windRingPool) {
-      for (let i = 0; i < this.windRingPool.length; i++) {
-        const wr = this.windRingPool[i];
-        if (!wr.active) continue;
-        wr.life -= dt;
-        if (wr.life <= 0) {
-          wr.active = false;
-          wr.group.visible = false;
-          continue;
-        }
-        const t = 1 - wr.life / wr.maxLife;
-        const sc = 0.38 + t * (wr.maxRadius - 0.38);
-        wr.group.scale.setScalar(sc);
-        wr.group.rotation.y += dt * 11.5;
-        wr.ringMat.opacity = 0.85 * (1 - t);
-        wr.wispMat.opacity = 0.72 * (1 - t);
-      }
-    }
+    stepWindRingPool(this.windRingPool, dt);
 
     // 6. Van Tich Signature Storm-Mark Ground Indicators on Marked Enemies
     if (this.stormMarkPool) {

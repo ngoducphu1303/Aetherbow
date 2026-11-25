@@ -20,6 +20,7 @@ export type SfxEventCategory =
   | 'enemy_defeated'
   | 'shield_hit'
   | 'dash'
+  | 'attack_dodged'
   | 'bow_shoot'
   | 'hit'
   | 'pickup'
@@ -36,7 +37,13 @@ export interface SfxCategorySpec {
 
 export interface SfxMixDecision {
   allowed: boolean;
-  reason: 'played' | 'preempted_lower' | 'deduped' | 'category_capped' | 'voice_capped';
+  reason:
+    | 'played'
+    | 'preempted_lower'
+    | 'deduped'
+    | 'category_capped'
+    | 'voice_capped'
+    | 'out_of_range';
   category: SfxEventCategory;
   priority: number;
   variantIndex: number;
@@ -176,6 +183,14 @@ export const SFX_CATEGORY_SPECS: Record<SfxEventCategory, SfxCategorySpec> = {
     pitchSpread: 0.045,
     filterSpread: 0.07,
   },
+  attack_dodged: {
+    priority: 48,
+    dedupeMs: 65,
+    durationMs: 110,
+    maxConcurrent: 2,
+    pitchSpread: 0.055,
+    filterSpread: 0.08,
+  },
   bow_shoot: {
     priority: 46,
     dedupeMs: 46,
@@ -211,6 +226,27 @@ export const SFX_CATEGORY_SPECS: Record<SfxEventCategory, SfxCategorySpec> = {
 };
 
 const VARIATION_CURVE = [-1, 0.35, -0.45, 0.9, 0.1, -0.8, 0.6, -0.2] as const;
+
+/**
+ * Computes spatial distance attenuation gain in world units.
+ * Returns 1 inside `nearRadius`, rolls off smoothly down to 0.22 at `maxRadius`,
+ * and returns 0 past `maxRadius` so far-off combat impacts are culled cleanly.
+ */
+export function computeSpatialDistanceGain(
+  distanceUnits: number,
+  nearRadius = 4,
+  maxRadius = 26
+): number {
+  if (!Number.isFinite(distanceUnits) || distanceUnits <= nearRadius) {
+    return 1;
+  }
+  if (distanceUnits >= maxRadius) {
+    return 0;
+  }
+  const span = Math.max(0.001, maxRadius - nearRadius);
+  const t = (distanceUnits - nearRadius) / span;
+  return Number((1 - t * 0.78).toFixed(3));
+}
 
 export class SfxPriorityMixer {
   private lowEndMode = false;
@@ -254,12 +290,33 @@ export class SfxPriorityMixer {
     }
   }
 
-  public requestPlay(category: SfxEventCategory, nowMs: number): SfxMixDecision {
+  public requestPlay(
+    category: SfxEventCategory,
+    nowMs: number,
+    distanceUnits?: number
+  ): SfxMixDecision {
     const safeNow = Number.isFinite(nowMs) ? nowMs : 0;
     this.pruneExpired(safeNow);
     this.totalRequested += 1;
 
     const spec = SFX_CATEGORY_SPECS[category];
+    const distanceGain =
+      distanceUnits !== undefined ? computeSpatialDistanceGain(distanceUnits) : 1;
+    if (distanceGain <= 0) {
+      this.totalDropped += 1;
+      return {
+        allowed: false,
+        reason: 'out_of_range',
+        category,
+        priority: spec.priority,
+        variantIndex: this.variantCounters.get(category) ?? 0,
+        pitchMult: 1,
+        filterShift: 1,
+        gainScale: 0,
+        activeVoices: this.activeVoices.length,
+      };
+    }
+
     const dedupeMs = this.lowEndMode ? Math.round(spec.dedupeMs * 1.25) : spec.dedupeMs;
     const prevAt = this.lastPlayedAt.get(category);
     if (prevAt !== undefined && safeNow - prevAt < dedupeMs) {
@@ -356,8 +413,12 @@ export class SfxPriorityMixer {
     const loadRatio = Math.max(0, Math.min(1, (this.activeVoices.length - 1) / Math.max(1, maxVoices)));
     const priorityProtection = spec.priority >= 84 ? 0.14 : 0.34;
     const sameCatAttenuation = sameCategoryCount > 0 ? Math.pow(0.86, sameCategoryCount) : 1;
+    const baseGain = Math.max(
+      0.45,
+      Math.min(1, (1 - loadRatio * priorityProtection) * sameCatAttenuation)
+    );
     const gainScale = Number(
-      Math.max(0.45, Math.min(1, (1 - loadRatio * priorityProtection) * sameCatAttenuation)).toFixed(3)
+      Math.max(0.12, Math.min(1, baseGain * distanceGain)).toFixed(3)
     );
 
     return {

@@ -58,9 +58,9 @@ class SoundEngine {
     return this.sfxMixer.getStats(nowMs);
   }
 
-  private gateSfx(category: SfxEventCategory): SfxMixDecision | null {
+  private gateSfx(category: SfxEventCategory, distanceUnits?: number): SfxMixDecision | null {
     const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const verdict = this.sfxMixer.requestPlay(category, nowMs);
+    const verdict = this.sfxMixer.requestPlay(category, nowMs, distanceUnits);
     return verdict.allowed ? verdict : null;
   }
 
@@ -800,7 +800,7 @@ class SoundEngine {
   }
 
   // === COMBAT SFX ===
-  public playBowShoot(pitchShift = 1, pan = 0): void {
+  public playBowShoot(pitchShift = 1, pan = 0, heroId?: string): void {
     const mix = this.gateSfx('bow_shoot');
     if (!mix) return;
     const dest = this.getSfxDest(pan, false);
@@ -813,15 +813,82 @@ class SoundEngine {
     // Taut bowstring release twang + crisp filtered air whoosh
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(360 * pitch, now);
-    osc.frequency.exponentialRampToValueAtTime(132 * pitch, now + 0.08);
-    gain.gain.setValueAtTime(0.1 * gainScale, now);
+    osc.type = heroId === 'bellona' ? 'sawtooth' : 'triangle';
+    const startFreq =
+      heroId === 'bellona'
+        ? 410
+        : heroId === 'sylvia'
+          ? 325
+          : heroId === 'celeste'
+            ? 395
+            : 360;
+    const endFreq = heroId === 'sylvia' ? 148 : 132;
+    osc.frequency.setValueAtTime(startFreq * pitch, now);
+    osc.frequency.exponentialRampToValueAtTime(endFreq * pitch, now + 0.08);
+    gain.gain.setValueAtTime((heroId === 'bellona' ? 0.082 : 0.1) * gainScale, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.088);
     osc.connect(gain);
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.095);
+
+    // Distinct 4-hero Zodiac weapon harmonic signature
+    if (heroId === 'bellona') {
+      // Thunder snap overtone
+      const snap = ctx.createOscillator();
+      const sGain = ctx.createGain();
+      snap.type = 'square';
+      snap.frequency.setValueAtTime(620 * pitch, now);
+      snap.frequency.exponentialRampToValueAtTime(220 * pitch, now + 0.055);
+      sGain.gain.setValueAtTime(0.032 * gainScale, now);
+      sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.062);
+      snap.connect(sGain);
+      sGain.connect(dest);
+      snap.start(now);
+      snap.stop(now + 0.068);
+    } else if (heroId === 'sylvia') {
+      // Jade wind chime overtone
+      const chime = ctx.createOscillator();
+      const cGain = ctx.createGain();
+      chime.type = 'sine';
+      chime.frequency.setValueAtTime(840 * pitch, now);
+      chime.frequency.exponentialRampToValueAtTime(1120 * pitch, now + 0.075);
+      cGain.gain.setValueAtTime(0.03 * gainScale, now);
+      cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
+      chime.connect(cGain);
+      cGain.connect(dest);
+      chime.start(now);
+      chime.stop(now + 0.092);
+    } else if (heroId === 'celeste') {
+      // Twin-mirror lunar shimmer
+      [960, 1440].forEach((freq, idx) => {
+        const mirror = ctx.createOscillator();
+        const mGain = ctx.createGain();
+        const t = now + idx * 0.014;
+        mirror.type = 'sine';
+        mirror.frequency.setValueAtTime(freq * pitch, t);
+        mirror.frequency.exponentialRampToValueAtTime(freq * 0.82 * pitch, t + 0.068);
+        mGain.gain.setValueAtTime(0.024 * gainScale, t);
+        mGain.gain.exponentialRampToValueAtTime(0.001, t + 0.074);
+        mirror.connect(mGain);
+        mGain.connect(dest);
+        mirror.start(t);
+        mirror.stop(t + 0.08);
+      });
+    } else if (heroId === 'aurelia') {
+      // Solar golden harmonic ping
+      const solar = ctx.createOscillator();
+      const solGain = ctx.createGain();
+      solar.type = 'sine';
+      solar.frequency.setValueAtTime(720 * pitch, now);
+      solar.frequency.exponentialRampToValueAtTime(540 * pitch, now + 0.068);
+      solGain.gain.setValueAtTime(0.03 * gainScale, now);
+      solGain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+      solar.connect(solGain);
+      solGain.connect(dest);
+      solar.start(now);
+      solar.stop(now + 0.082);
+    }
 
     this.playNoiseBurst(
       ctx,
@@ -829,15 +896,15 @@ class SoundEngine {
       now,
       0.065,
       'bandpass',
-      2400 * pitch * mix.filterShift,
+      (heroId === 'bellona' ? 2800 : 2400) * pitch * mix.filterShift,
       980 * pitch,
       0.055 * gainScale,
       2.2
     );
   }
 
-  public playHit(isCrit: boolean, comboCount = 0, pan = 0): void {
-    const mix = this.gateSfx(isCrit ? 'crit_hit' : 'hit');
+  public playHit(isCrit: boolean, comboCount = 0, pan = 0, distanceUnits?: number): void {
+    const mix = this.gateSfx(isCrit ? 'crit_hit' : 'hit', distanceUnits);
     if (!mix) return;
     const dest = this.getSfxDest(pan, isCrit);
     const ctx = this.ctx;
@@ -902,8 +969,8 @@ class SoundEngine {
     }
   }
 
-  public playShieldHit(pan = 0): void {
-    const mix = this.gateSfx('shield_hit');
+  public playShieldHit(pan = 0, distanceUnits?: number): void {
+    const mix = this.gateSfx('shield_hit', distanceUnits);
     if (!mix) return;
     const dest = this.getSfxDest(pan, false);
     const ctx = this.ctx;
@@ -920,7 +987,63 @@ class SoundEngine {
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.11);
-    this.playNoiseBurst(ctx, dest, now, 0.045, 'bandpass', 2600 * mix.filterShift, 1300, 0.045 * mix.gainScale, 2.0);
+
+    // Metallic deflection ring so front-shield / Boss-guard blocks read unmistakably
+    const clang = ctx.createOscillator();
+    const clangGain = ctx.createGain();
+    clang.type = 'sine';
+    clang.frequency.setValueAtTime(1280 * mix.pitchMult, now);
+    clang.frequency.exponentialRampToValueAtTime(860 * mix.pitchMult, now + 0.085);
+    clangGain.gain.setValueAtTime(0.055 * mix.gainScale, now);
+    clangGain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+    clang.connect(clangGain);
+    clangGain.connect(dest);
+    clang.start(now);
+    clang.stop(now + 0.105);
+
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.045,
+      'bandpass',
+      2600 * mix.filterShift,
+      1300,
+      0.045 * mix.gainScale,
+      2.0
+    );
+  }
+
+  public playAttackDodged(pan = 0, distanceUnits?: number): void {
+    const mix = this.gateSfx('attack_dodged', distanceUnits);
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(540 * mix.pitchMult, now);
+    osc.frequency.exponentialRampToValueAtTime(310 * mix.pitchMult, now + 0.075);
+    gain.gain.setValueAtTime(0.055 * mix.gainScale, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.082);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.09);
+
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.07,
+      'bandpass',
+      1900 * mix.filterShift,
+      680,
+      0.05 * mix.gainScale,
+      1.8
+    );
   }
 
   public playSetProc(pan = 0): void {

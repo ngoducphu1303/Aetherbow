@@ -19,17 +19,17 @@
 
 | Nhóm tiêu chí | Tiêu chí thành phần | Trọng số | TB Trước (/100) | TB Sau (/100) | Đóng góp Trước | Đóng góp Sau | Thay đổi |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 89.67 | 15.80 | 17.93 | **+2.13** |
-| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 88.50 | 16.25 | 17.70 | **+1.45** |
-| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 86.50 | 11.81 | 12.98 | **+1.17** |
-| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 88.00 | 8.07 | 8.80 | **+0.73** |
-| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 87.00 | 7.40 | 8.70 | **+1.30** |
-| **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 85.33 | 4.03 | 4.27 | **+0.24** |
-| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 87.67 | 3.93 | 4.38 | **+0.45** |
-| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 86.50 | 3.95 | 4.33 | **+0.38** |
-| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 89.00 | 4.02 | 4.45 | **+0.43** |
-| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.33 | 3.73 | 4.62 | **+0.89** |
-| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **88.15 / 100** | **+9.16** |
+| **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 89.00 | 15.80 | 17.80 | **+2.00** |
+| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 87.50 | 16.25 | 17.50 | **+1.25** |
+| **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 87.25 | 11.81 | 13.09 | **+1.28** |
+| **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 86.33 | 8.07 | 8.63 | **+0.56** |
+| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 90.00 | 7.40 | 9.00 | **+1.60** |
+| **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 86.33 | 4.03 | 4.32 | **+0.29** |
+| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 87.00 | 3.93 | 4.35 | **+0.42** |
+| **Replayability & Retention** | 25, 26 | 5% | 79.00 | 85.50 | 3.95 | 4.28 | **+0.33** |
+| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 90.00 | 4.02 | 4.50 | **+0.48** |
+| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.00 | 3.73 | 4.60 | **+0.87** |
+| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **88.06 / 100** | **+9.07** |
 
 ---
 
@@ -109,15 +109,15 @@
 
 ### 07. SFX — Hiệu ứng âm thanh
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: `src/audio/soundEngine.ts` tổng hợp Web Audio thủ tục phân tách âm bắn, chí mạng, nâng cấp, chiến thắng, né đòn, có biến thiên cao độ.
-3. **Vấn đề tồn tại**: Chưa có ngân hàng mẫu SFX ghi âm cao cấp (Foley) cho từng loại vũ khí S-Tier riêng biệt.
-4. **Nguyên nhân gốc rễ**: Dự án ưu tiên dung lượng nhẹ tải nhanh trên web và máy yếu (tránh nạp hàng chục MB audio).
-5. **Giải pháp đề xuất**: Duy trì hệ thống Web Audio không tạo GC rác, gắn âm thanh xác thực vào nút tinh luyện Tinh Tuý Hoàng Đạo và kỹ năng `jade_bastion`.
-6. **File hoặc module liên quan**: `src/audio/soundEngine.ts`, `src/audio/*.test.ts`, `src/App.tsx`.
-7. **Mức độ ưu tiên**: P2
-8. **Rủi ro khi thay đổi**: Autoplay bị chặn trước tương tác đầu tiên của người dùng nếu không resume `AudioContext` đúng cách.
-9. **Tiêu chí nghiệm thu**: Toàn bộ `src/audio/*.test.ts` pass 100%, không lỗi WebAudio trong console trình duyệt.
-10. **Điểm sau khi triển khai và kiểm thử**: `82 / 100`
+2. **Bằng chứng đánh giá**: `src/audio/sfxPriorityMixer.ts` (bộ trộn ưu tiên, giới hạn số voice cho máy yếu, chống clipping, giảm âm theo khoảng cách 3D) và `src/audio/soundEngine.ts` (Web Audio thủ tục không tạo GC rác).
+3. **Vấn đề tồn tại**: Trước Đợt 5, SFX chưa suy giảm theo khoảng cách 3D (`out_of_range` culling), 4 tướng bắn chung 1 âm sắc dây cung, và đòn bị `CHẮN KHIÊN!` / `VỎ GIÁP!` vẫn phát tiếng trúng thịt thường thay vì tiếng dội kim loại.
+4. **Nguyên nhân gốc rễ**: `SfxPriorityMixer.requestPlay` chưa nhận `distanceUnits`, `playBowShoot` chưa nhận `heroId`, và `damageEnemy` chưa tách nhánh `playShieldHit`.
+5. **Giải pháp đề xuất**: Triển khai **`computeSpatialDistanceGain`** + cắt âm ngoài tầm (`out_of_range`, `maxRadius = 26u`) và danh mục `'attack_dodged'` trong `sfxPriorityMixer.ts`; bổ sung **4 âm sắc vũ khí đặc trưng cho 4 tướng Hoàng Đạo** (`aurelia` họa âm ánh dương, `bellona` xung sấm chớp, `sylvia` chuông gió ngọc, `celeste` song âm nguyệt kính), tiếng **dội khiên kim loại** cho `CHẮN KHIÊN!`/`VỎ GIÁP!` và `playAttackDodged` trong `soundEngine.ts` + nối khoảng cách thực `Math.hypot(e.x - this.px, e.z - this.pz)` tại `GameEngine.ts`.
+6. **File hoặc module liên quan**: `src/audio/sfxPriorityMixer.ts`, `src/audio/soundEngine.ts`, `src/audio/sfxSpatialAndTimbre.test.ts`, `src/engine/GameEngine.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 5)
+8. **Rủi ro khi thay đổi**: Phải giữ 100% tương thích ngược khi `distanceUnits` hoặc `heroId` không truyền vào để không vỡ các lời gọi cũ.
+9. **Tiêu chí nghiệm thu**: Toàn bộ `src/audio/*.test.ts` (bao gồm 4/4 bài test mới tại `sfxSpatialAndTimbre.test.ts`) pass 100%, 0 lỗi WebAudio trên trình duyệt thật.
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 08. Music Design — Thiết kế nhạc nền
 1. **Điểm hiện tại (Trước)**: `79 / 100`
@@ -193,27 +193,27 @@
 
 ### 14. Level Design — Thiết kế màn chơi
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: 12 chương chiến dịch × 12 phòng/chương + phòng Thiên Thần/Ác Quỷ + Vòng Quay May Mắn + Tháp Vô Tận + Đấu trường GLB riêng cho Ch.1–4.
-3. **Vấn đề tồn tại**: Ch.5–12 tái sử dụng biến thể đấu trường thủ tục; tệp `aries-arena-high.glb` thiếu bản `-lite` chuyên biệt trong manifest.
-4. **Nguyên nhân gốc rễ**: Quy trình export bản Lite của đấu trường Ch.2 chưa chạy bổ sung.
-5. **Giải pháp đề xuất**: Ghi nhận chính xác cảnh báo `aries-arena-high.glb` vào P2-1; kiểm chứng đường đi và chỉ số mở khóa 12 chương không có màn bất khả thi.
-6. **File hoặc module liên quan**: `src/data/chaptersData.ts`, `src/engine/chapterSceneDirector.ts`, `scripts/glb-manifest.json`.
-7. **Mức độ ưu tiên**: P2
-8. **Rủi ro khi thay đổi**: Thay đổi kích thước đấu trường có thể làm lệch tọa độ spawn tường/chướng ngại vật.
-9. **Tiêu chí nghiệm thu**: `chapterSceneDirector.test.ts` pass 100%, 12/12 chương có đường cong LC thông suốt.
-10. **Điểm sau khi triển khai và kiểm thử**: `82 / 100`
+2. **Bằng chứng đánh giá**: 12 chương chiến dịch × 12 phòng/chương + phòng Thiên Thần/Ác Quỷ + Vòng Quay May Mắn + Tháp Vô Tận + 4 cơ quan sàn đấu tương tác (`chapterArenaMechanisms.ts`) + Đấu trường GLB 100% High/Lite Ch.1–4.
+3. **Vấn đề tồn tại**: Trước Đợt 5, mọi chương Ch.1–12 đều dùng trùng thứ tự bố trí chướng ngại vật (`courtyard → pillars → cross → gauntlet`) và dòng `eventAfter` Phòng 8 dùng `Math.random()` không tất định lúc nạp mô-đun; Ch.5–12 vẫn chờ tài sản 3D riêng ở P2-5b/P3-2.
+4. **Nguyên nhân gốc rễ**: Công thức gán `obstaclePreset` chưa xoay vòng theo `ch.id` và còn nhánh ngẫu nhiên chết tại Phòng 8.
+5. **Giải pháp đề xuất**: Chuẩn hóa tất định Phòng 8 (`eventAfter = 'devil'`) và xoay vòng bố cục đấu trường theo chương `presets[(s - 1 + (ch.id - 1)) % 4]` trong `src/data/chaptersData.ts` (giữ nguyên 100% FTUE Chương 1 trong khi Ch.2–12 mở màn bằng địa hình đa dạng) kết hợp lời khuyên chiến thuật địa hình cho đủ 12 chương.
+6. **File hoặc module liên quan**: `src/data/chaptersData.ts`, `src/data/zodiacWorldLore.ts`, `src/data/zodiacWorldLore.test.ts`, `src/engine/chapterSceneDirector.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành Đợt 5; Ch.5–12 3D ở P2-5b/P3-2)
+8. **Rủi ro khi thay đổi**: Phải bảo toàn tuyệt đối thứ tự phòng Chương 1 để không phá vỡ FTUE và bộ kiểm định Ch.1.
+9. **Tiêu chí nghiệm thu**: `zodiacWorldLore.test.ts` và `chapterSceneDirector.test.ts` pass 100%, 4 chương đầu khởi đầu bằng 4 bố cục vật cản riêng biệt.
+10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
 
 ### 15. World Building — Xây dựng thế giới
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: Vũ trụ 12 Cung Hoàng Đạo gắn kết trực tiếp với Tướng, Bộ Sưu Tập Ch.2–4, Boss Codex, Chòm Sao và Thánh Tích Hoàng Đạo.
-3. **Vấn đề tồn tại**: Một số dữ liệu di cư cũ còn sót tên thú cưỡi/tướng tiền nhiệm không khớp vũ trụ Hoàng Đạo.
-4. **Nguyên nhân gốc rễ**: Quá trình chuyển đổi từ bản mẫu cũ sang 12 Cung Hoàng Đạo để sót nhánh fallback `'artemis'` và mount legacy.
-5. **Giải pháp đề xuất**: Chuẩn hóa toàn bộ fallback sang `'aurelia'` và `'solarius'`, đồng bộ Bộ Sưu Tập Ch.2–4 xuyên suốt dữ liệu và kiểm thử.
-6. **File hoặc module liên quan**: `src/data/earlyProgressionData.ts`, `src/data/saveIntegrity.ts`, `src/data/chapter2Collection.ts`, `src/data/chapter3Collection.ts`, `src/data/chapter4Collection.ts`.
-7. **Mức độ ưu tiên**: P1
-8. **Rủi ro khi thay đổi**: Có thể ảnh hưởng save cũ nếu không giữ ánh xạ di cư an toàn.
-9. **Tiêu chí nghiệm thu**: Save cũ di cư không mất dữ liệu, 0 tên legacy còn rò rỉ trong đường dẫn chính.
-10. **Điểm sau khi triển khai và kiểm thử**: `83 / 100`
+2. **Bằng chứng đánh giá**: Vũ trụ 12 Cung Hoàng Đạo gắn kết trực tiếp với 4 Tướng, Bộ Sưu Tập Ch.2–4, Boss Codex, Chòm Sao, Thánh Tích và Biên Niên Sử 12 Chương (`zodiacWorldLore.ts`).
+3. **Vấn đề tồn tại**: Trước Đợt 5, một số fallback di cư cũ còn sót tên tiền nhiệm và phần Boss Codex mới có đoạn trích ngắn thay vì biên niên sử thế giới, phe phái thủ hộ, kỷ nguyên và mẹo địa hình đầy đủ cho cả 12 chương.
+4. **Nguyên nhân gốc rễ**: Chưa có kho dữ liệu biên niên sử 12 chương chuẩn hóa gắn trực tiếp vào giao diện Sổ Tay.
+5. **Giải pháp đề xuất**: Xây dựng **`src/data/zodiacWorldLore.ts`** gồm 12 vùng đất Hoàng Đạo, 12 phe thủ hộ, 12 kỷ nguyên, biên niên sử, tiểu sử Boss và mẹo địa hình chiến thuật độc nhất, hiển thị trực tiếp trong tab Boss của `src/components/CodexGuideModal.tsx` (phong cách Zero-Pill sạch sẽ) và chuẩn hóa hoàn toàn fallback di cư sang `'aurelia'` / `'solarius'`.
+6. **File hoặc module liên quan**: `src/data/zodiacWorldLore.ts`, `src/data/zodiacWorldLore.test.ts`, `src/components/CodexGuideModal.tsx`, `src/data/earlyProgressionData.ts`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 5)
+8. **Rủi ro khi thay đổi**: Phải đảm bảo thẻ Boss Codex cuộn gọn đẹp trên cả màn hình nhỏ mà không bị rối chữ hay vỡ bố cục.
+9. **Tiêu chí nghiệm thu**: `zodiacWorldLore.test.ts` xác minh đủ 12/12 vùng đất & 12/12 phe thủ hộ độc nhất; xác minh hiển thị trực tiếp trên Chromium (`r3-codex-lore.png`).
+10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
 
 ### 16. Progression System — Hệ thống tăng tiến
 1. **Điểm hiện tại (Trước)**: `82 / 100`
@@ -269,11 +269,11 @@
 3. **Vấn đề tồn tại**: `AuctionHouseModal.tsx` còn 2 chấm `animate-pulse` trang trí; `TalentsModal.tsx` chưa hiển thị tiến độ mở khóa Endgame và chưa định dạng số `tabular-nums` có phân tách hàng nghìn cho số lớn.
 4. **Nguyên nhân gốc rễ**: Thiếu rà soát cuối cùng sau các đợt bổ sung tính năng Wave 10–14.
 5. **Giải pháp đề xuất**: Gỡ chấm `animate-pulse`, bổ sung thẻ **Tinh Tuý Hoàng Đạo** + định dạng số rõ ràng trong `TalentsModal.tsx`, thêm bảng **Giám Sát An Ninh** sạch Zero-Pill trong `AssetAdminLiveOpsTab.tsx`, và kiểm tra trực tiếp trên trình duyệt thật.
-6. **File hoặc module liên quan**: `src/components/AuctionHouseModal.tsx`, `src/components/TalentsModal.tsx`, `src/components/SettingsModal.tsx`, `src/components/AssetAdminLiveOpsTab.tsx`.
+6. **File hoặc module liên quan**: `src/components/AuctionHouseModal.tsx`, `src/components/TalentsModal.tsx`, `src/components/CodexGuideModal.tsx`, `src/components/SettingsModal.tsx`, `src/components/AssetAdminLiveOpsTab.tsx`.
 7. **Mức độ ưu tiên**: P1 / P2
 8. **Rủi ro khi thay đổi**: Chèn thêm thẻ vào modal có thể gây tràn chiều cao trên màn hình nhỏ nếu không bọc `overflow-y-auto`.
-9. **Tiêu chí nghiệm thu**: Kiểm tra bằng headless Chromium (`playwright-cli`) ở desktop 1440×900: 0 lỗi console, không cắt chữ/chồng lấn nút.
-10. **Điểm sau khi triển khai và kiểm thử**: `86 / 100`
+9. **Tiêu chí nghiệm thu**: Kiểm tra bằng headless Chromium (`playwright-cli`) ở desktop 1440×900: 0 lỗi console, không cắt chữ/chồng lấn nút, tab Boss Codex hiển thị rõ biên niên sử 12 chương.
+10. **Điểm sau khi triển khai và kiểm thử**: `87 / 100`
 
 ### 21. Game Feel — Cảm giác chơi
 1. **Điểm hiện tại (Trước)**: `82 / 100`
@@ -289,27 +289,27 @@
 
 ### 22. Performance — Hiệu năng
 1. **Điểm hiện tại (Trước)**: `76 / 100`
-2. **Bằng chứng đánh giá**: Auto-detect Intel HD 4000 (`aaaVisualPipeline.ts`), GPU Thermal Watchdog Stage 0→4 (`gpuThermalWatchdog.ts`), 0-PointLight Shader Policy, Zero-GC `SpatialHashGrid` & `projectilePhysicsSystem.ts`.
-3. **Vấn đề tồn tại**: Trước cải tiến, `GameEngine.ts` giữ 3 `THREE.PointLight` trong Lite Mode và cấp phát `18,000` mảng rác/giây ở vòng va chạm đạn cường độ cao.
-4. **Nguyên nhân gốc rễ**: Chưa tháo `PointLight` khỏi `THREE.Scene` và dùng spread `[...this.enemies]` trong vòng lặp đạn/quái.
-5. **Giải pháp đề xuất**: Triển khai `syncPointLightPolicy()` tháo về **0 PointLights**, Watchdog Stage 2 floor cho E5430 + Stage 4 Emergency Lite (`dprCap: 0.7`), và broadphase Zero-GC đo thực tế nhanh hơn **8.09×** (`742.76ms → 91.85ms`).
-6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/gpuThermalWatchdog.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/projectilePhysicsSystem.ts`, `tools/benchmark-spatial-physics.ts`, `PERFORMANCE_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 1–4)
-8. **Rủi ro khi thay đổi**: Phải chỉ gọi `syncPointLightPolicy()` tại điểm chuyển cấu hình để tránh recompile shader giữa trận.
-9. **Tiêu chí nghiệm thu**: 0 PointLights ở E5430/Lite/Watchdog ≥ 2, benchmark CPU giảm **87.6%** (`8.09×`) & triệt tiêu **180,000** mảng rác; đo nhiệt vật lý Dell E5430 60 phút ghi nhận ở P3-1.
-10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
+2. **Bằng chứng đánh giá**: Auto-detect Intel HD 4000 (`aaaVisualPipeline.ts`), GPU Thermal Watchdog Stage 0→4 (`gpuThermalWatchdog.ts`), 0-PointLight Shader Policy, Zero-GC `SpatialHashGrid`, `projectilePhysicsSystem.ts`, và **`VfxFrameBudgetCache`** (`vfxPoolManager.ts`).
+3. **Vấn đề tồn tại**: Trước cải tiến, `GameEngine.ts` giữ 3 `THREE.PointLight` trong Lite Mode, cấp phát `18,000` mảng rác/giây ở vòng đạn, và quét lại `arrowPool.reduce(...)` trên từng lần gọi `spawnParticles`/`spawnShockwave`.
+4. **Nguyên nhân gốc rễ**: Chưa tháo `PointLight` khỏi `THREE.Scene`, dùng `[...this.enemies]` trong vòng đạn và chưa cache ngân sách VFX theo từng khung hình.
+5. **Giải pháp đề xuất**: Triển khai `syncPointLightPolicy()` về **0 PointLights**, Watchdog Stage 2 floor cho E5430 + Stage 4 Emergency Lite (`dprCap: 0.7`), broadphase Zero-GC nhanh hơn **8.09×** (`742.76ms → 91.85ms`), và **`VfxFrameBudgetCache`** cache ngân sách VFX mỗi khung hình kết hợp sửa lỗi trôi sương mù cạnh `-Z` (`stepGroundMistSeeds`).
+6. **File hoặc module liên quan**: `src/engine/zodiacLightingVfxDirector.ts`, `src/engine/gpuThermalWatchdog.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/vfxPoolManager.ts`, `tools/benchmark-spatial-physics.ts`, `PERFORMANCE_REPORT.md`.
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành Đợt 1–5)
+8. **Rủi ro khi thay đổi**: Phải tăng `vfxFrameCounter` đúng một lần ở đầu `update(frameDt)` để cache luôn làm mới mỗi khung hình.
+9. **Tiêu chí nghiệm thu**: 0 PointLights ở E5430/Lite/Watchdog ≥ 2, benchmark CPU giảm **87.6%** (`8.09×`) & triệt tiêu **180,000** mảng rác, `vfxPoolManager.test.ts` pass 4/4; đo nhiệt vật lý Dell E5430 60 phút ghi nhận ở P3-1.
+10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
 
 ### 23. Code Architecture — Kiến trúc mã nguồn
 1. **Điểm hiện tại (Trước)**: `72 / 100`
-2. **Bằng chứng đánh giá**: Tách biệt rõ lớp dữ liệu (`src/data/`), dịch vụ (`src/services/`), máy chủ (`server.ts`, `src/server/`), và các mô-đun thuần túy có unit test độc lập.
-3. **Vấn đề tồn tại**: `src/engine/GameEngine.ts` (~24.9k dòng) và `src/App.tsx` (~13k dòng) vẫn còn độ tập trung cao.
-4. **Nguyên nhân gốc rễ**: Nhiều đợt mở rộng nhanh gom logic vào tệp lõi.
-5. **Giải pháp đề xuất**: Thực hiện lát cắt mô-đun hóa **`P2-3a`**: trích xuất `spatialHashGrid.ts`, `projectilePhysicsSystem.ts`, `enemySquadDirector.ts`, `chapterArenaMechanisms.ts`, `zodiacLightingVfxDirector.ts`, `zodiacMusicDirector.ts` với 100% unit test độc lập; tiếp tục tách `ArenaSceneBuilder` & `VfxPoolManager` ở `P2-3b`.
-6. **File hoặc module liên quan**: `src/engine/projectilePhysicsSystem.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/enemySquadDirector.ts`, `src/engine/GameEngine.ts`.
-7. **Mức độ ưu tiên**: P2 (Hoàn thành `P2-3a`; tiếp tục `P2-3b`)
-8. **Rủi ro khi thay đổi**: Tách lớn không có test parity dễ gây lỗi ngầm vòng lặp 3D.
+2. **Bằng chứng đánh giá**: Tách biệt rõ lớp dữ liệu (`src/data/`), âm thanh (`src/audio/`), dịch vụ (`src/services/`), máy chủ (`server.ts`, `src/server/`), và các mô-đun engine thuần túy có unit test độc lập.
+3. **Vấn đề tồn tại**: `src/engine/GameEngine.ts` và `src/App.tsx` có độ tập trung cao từ nhiều đợt mở rộng nhanh.
+4. **Nguyên nhân gốc rễ**: Nhiều vòng lặp VFX, vật lý đạn, đội hình và biên niên sử trước đây viết trực tiếp trong tệp lõi.
+5. **Giải pháp đề xuất**: Hoàn tất cả **`P2-3a` và `P2-3b`**: trích xuất **`spatialHashGrid.ts`**, **`projectilePhysicsSystem.ts`**, **`vfxPoolManager.ts`** (8 bộ cập nhật VFX pool Zero-GC + `VfxFrameBudgetCache`), **`enemySquadDirector.ts`**, **`chapterArenaMechanisms.ts`**, **`zodiacLightingVfxDirector.ts`**, **`zodiacMusicDirector.ts`**, và **`zodiacWorldLore.ts`** với 100% unit test độc lập; bước tiếp theo tách thêm `ArenaSceneBuilder` nếu mở rộng Ch.5–12 3D.
+6. **File hoặc module liên quan**: `src/engine/vfxPoolManager.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/enemySquadDirector.ts`, `src/data/zodiacWorldLore.ts`, `src/engine/GameEngine.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành `P2-3a` & `P2-3b`)
+8. **Rủi ro khi thay đổi**: Tách mô-đun engine cần giữ đúng cấu trúc tham chiếu Three.js để không phát sinh lỗi runtime hay cấp phát GC.
 9. **Tiêu chí nghiệm thu**: `tsc --noEmit` 0 lỗi, Vite build sạch, toàn bộ mô-đun trích xuất pass 100% unit test & kiểm chứng live Chromium.
-10. **Điểm sau khi triển khai và kiểm thử**: `83 / 100`
+10. **Điểm sau khi triển khai và kiểm thử**: `88 / 100`
 
 ### 24. Asset Pipeline — Quy trình quản lý tài nguyên
 1. **Điểm hiện tại (Trước)**: `79 / 100`
@@ -378,9 +378,9 @@
 4. **Nguyên nhân gốc rễ**: Cập nhật tính năng nhanh chưa đồng bộ toàn bộ regression gate.
 5. **Giải pháp đề xuất**: Khắc phục 100% lỗi gốc, bổ sung test cho `SpatialHashGrid`, `projectilePhysicsSystem`, `zodiacMusicDirector`, `liveOpsConfig` (P2-4b), `EnemySquadDirector`, `serverSecurity`, `saveIntegrity` và kiểm chứng trực tiếp giao tranh 3D trên trình duyệt thật.
 6. **File hoặc module liên quan**: `tests/*.test.mjs`, `src/**/*.test.ts`, `tools/benchmark-spatial-physics.ts`, `tools/simulate-playtime-milestones.ts`, `QA_TEST_REPORT.md`.
-7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–4)
+7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–5)
 8. **Rủi ro khi thay đổi**: Mọi cải tiến mới bắt buộc chạy lại full suite và trình duyệt sống để chống regression.
-9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`431 bài kiểm thử | 430 PASS | 0 FAIL | 1 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console.
+9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`441 bài kiểm thử | 440 PASS | 0 FAIL | 1 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console.
 10. **Điểm sau khi triển khai và kiểm thử**: `94 / 100`
 
 ### 30. Live Operations — Vận hành và mở rộng

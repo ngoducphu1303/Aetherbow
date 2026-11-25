@@ -1,11 +1,16 @@
 # IMPLEMENTATION CHANGELOG — NHẬT KÝ CẢI TIẾN & NGHIỆM THU (PHASE 4 & 6)
 
 - **Ngày nghiệm thu**: 2026-11-24
-- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII)**: **`78.99 / 100` → `88.15 / 100`** (`+9.16` điểm trọng số trên 30 tiêu chí / 10 nhóm qua Đợt 1 P0–P1, Đợt 2 P2, Đợt 3 Wave 3 Overhaul và Đợt 4 Zero-GC Projectile Broadphase).
+- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `88.06 / 100`** (`+9.07` điểm trọng số trên 30 tiêu chí qua Đợt 1–5; 3 nhóm đạt **`90.0–92.0 / 100`**).
 
 ---
 
 ## 1. Danh Mục Thay Đổi Mã Nguồn Thực Tế (Trước → Sau)
+
+### 0. Đợt 5 — SFX Không Gian 3D, Biên Niên Sử 12 Chương, Xoay Vòng Địa Hình & VFX Pool Manager Zero-GC (`P2-3b`)
+- **`src/audio/sfxPriorityMixer.ts`, `src/audio/soundEngine.ts`, `src/audio/sfxSpatialAndTimbre.test.ts`**: Triển khai `computeSpatialDistanceGain` + cắt âm ngoài tầm (`out_of_range`, `maxRadius = 26u`), danh mục `'attack_dodged'` + `playAttackDodged`, **4 âm sắc vũ khí riêng biệt cho 4 tướng Hoàng Đạo** (`aurelia`, `bellona`, `sylvia`, `celeste`), và tiếng dội khiên kim loại cho `CHẮN KHIÊN!` / `VỎ GIÁP!`.
+- **`src/engine/vfxPoolManager.ts`, `src/engine/vfxPoolManager.test.ts`, `src/engine/GameEngine.ts`** (`P2-3b`): Tách 8 vòng cập nhật VFX pool Zero-GC (`stepParticlePool`, `stepShockwavePool`, `stepImpactDecalPool`, `stepSummonPortalPool`, `stepArmorShardPool`, `stepDashScorchPool`, `stepWindRingPool`, `stepGroundMistSeeds`) + `VfxFrameBudgetCache` (cache ngân sách VFX 1 lần/frame thay vì quét `arrowPool.reduce` trên mỗi đợt bắn/nổ), đồng thời khắc phục lỗi sương mù mặt đất trôi vĩnh viễn qua cạnh `-ARENA_HALF_D`.
+- **`src/data/chaptersData.ts`, `src/data/zodiacWorldLore.ts`, `src/data/zodiacWorldLore.test.ts`, `src/components/CodexGuideModal.tsx`**: Tất định hóa sự kiện Phòng 8 (`devil`), xoay vòng bố cục vật cản mở màn cho Chương 2–12 (bảo toàn 100% FTUE Chương 1), và tích hợp trọn bộ **Biên Niên Sử 12 Chương Hoàng Đạo + Phe Thủ Hộ + Mẹo Địa Hình** trực tiếp vào tab Boss Codex.
 
 ### A. Đợt 4 — Vật Lý Đạn Zero-GC, Tách Mô-đun Kiến Trúc `P2-3a` & Benchmark Đo Thực Tế
 - **`src/engine/spatialHashGrid.ts`**: Nâng cấp theo dõi động `maxInsertedRadius` (reset ở `clear()`, cập nhật ở `insert()`) để phạm vi quét ô lưới luôn chính xác 100% kể cả với Boss Hoàng Đạo khổng lồ (`radius > 2.5u`) mà vẫn giữ tối ưu cho quái thường.
@@ -35,7 +40,7 @@
 - [x] Đo hiệu năng thực tế trước & sau cho vòng va chạm đạn Zero-GC (**8.09×** nhanh hơn, **18,000** mảng rác/giây bị triệt tiêu, 100% trùng khớp va chạm).
 - [x] Tất cả 12 chương có 12 chủ đề nhạc Hoàng Đạo riêng biệt và 4 cơ quan sàn đấu tương tác.
 - [x] Hẹn giờ sự kiện LiveOps tự động (`P2-4b`) hoạt động đồng bộ từ UI Admin đến `firestore.rules` (đã deploy live, 0 lỗi ESLint).
-- [x] Toàn bộ kho mã nguồn đạt **`431 bài kiểm thử | 430 PASS | 0 FAIL | 1 skip`**.
+- [x] Toàn bộ kho mã nguồn đạt **`441 bài kiểm thử | 440 PASS | 0 FAIL | 1 skip`**.
 - [x] TypeScript `tsc --noEmit` (`lint_applet`) và Vite production build (`compile_applet`) đều sạch 0 lỗi.
-- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Chọn Thẻ Kỹ Năng → Chiến Đấu 3D trực tiếp với **0 Console Errors / 0 Warnings**.
+- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Sổ Tay Boss (Biên Niên Sử 12 Chương) → Chọn Thẻ Kỹ Năng → Chiến Đấu 3D trực tiếp với **0 Console Errors / 0 Warnings**.
 - [x] Hoàn tất & đồng bộ thực tế 10/10 báo cáo kiểm toán & thiết kế tại thư mục gốc kho mã nguồn.

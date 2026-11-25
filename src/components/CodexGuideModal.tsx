@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BookOpen, CheckCircle2, Flame, GitBranch, Sparkles, Skull, Star, Trophy, X, Zap } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 import { buildBossCodexEntries, buildSynergyCodexEntries } from '../data/phase5Data';
+import { getZodiacChapterLore } from '../data/zodiacWorldLore';
 import { buildEvolutionCodexEntries } from '../engine/skillEvolutionEngine';
 import {
   ELEMENTAL_REACTION_GUIDE,
@@ -322,21 +323,52 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                       )}
                     </div>
 
-                    <p className="mt-2 text-[11px] text-slate-300/95 italic leading-relaxed">
-                      {boss.loreExcerpt}
-                    </p>
+                    {(() => {
+                      const chapterLore = getZodiacChapterLore(boss.chapterId);
+                      return (
+                        <>
+                          {chapterLore && (
+                            <div className="mt-2 pt-2 border-t border-amber-400/15 space-y-1">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                <span>{chapterLore.realmTitle}</span>
+                                <span className="text-slate-600">·</span>
+                                <span className="text-slate-300">{chapterLore.factionName}</span>
+                                <span className="text-slate-600">·</span>
+                                <span className="text-slate-400">{chapterLore.eraTag}</span>
+                              </div>
+                              <p className="text-[11px] text-slate-300 leading-relaxed">
+                                {chapterLore.chronicle}
+                              </p>
+                            </div>
+                          )}
 
-                    <div className="mt-2 pt-2 border-t border-slate-800/80 space-y-1 text-[11px] text-slate-200 leading-snug">
-                      {boss.phasesSummary.map((pLine, pIdx) => (
-                        <div key={pIdx} className="text-slate-300">
-                          • {pLine}
-                        </div>
-                      ))}
-                    </div>
+                          <p className="mt-1.5 text-[11px] text-slate-300/95 italic leading-relaxed">
+                            {chapterLore?.bossLore ?? boss.loreExcerpt}
+                          </p>
 
-                    <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-sky-200 leading-relaxed">
-                      <strong className="text-sky-300">Khắc chế &amp; Ngắt Chiêu:</strong> {boss.interruptTip}
-                    </div>
+                          <div className="mt-2 pt-2 border-t border-slate-800/80 space-y-1 text-[11px] text-slate-200 leading-snug">
+                            {boss.phasesSummary.map((pLine, pIdx) => (
+                              <div key={pIdx} className="text-slate-300">
+                                • {pLine}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-2 pt-2 border-t border-slate-800/80 space-y-1 text-[11px] leading-relaxed">
+                            <div className="text-sky-200">
+                              <strong className="text-sky-300">Khắc chế &amp; Ngắt Chiêu:</strong>{' '}
+                              {boss.interruptTip}
+                            </div>
+                            {chapterLore && (
+                              <div className="text-emerald-200/95">
+                                <strong className="text-emerald-300">Mẹo Địa Hình:</strong>{' '}
+                                {chapterLore.tacticalTip}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>

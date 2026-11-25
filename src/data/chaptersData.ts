@@ -349,7 +349,7 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
     let eventAfter: StageEventAfter = 'none';
     if (s === 2 || s === 6 || s === 10) eventAfter = 'valkyrie';
     else if (s === 4) eventAfter = 'wheel';
-    else if (s === 8) eventAfter = Math.random() < 0.5 ? 'angel' : 'devil';
+    else if (s === 8) eventAfter = 'devil';
 
     if (isFinalBoss) {
       stages.push({
@@ -454,7 +454,7 @@ function buildZodiacStages(ch: RawZodiacChapter): ChapterStageDef[] {
         name: `${ch.regionName} · Phòng ${s}`,
         isBossStage: false,
         eventAfter,
-        obstaclePreset: presets[(s - 1) % 4],
+        obstaclePreset: presets[(s - 1 + (ch.id - 1)) % 4],
         waves,
       });
     }
