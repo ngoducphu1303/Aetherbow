@@ -1,4 +1,9 @@
 import { getGlbAssetUrl } from './glbAssetUrl';
+import {
+  DEFAULT_GLB_HIGH_IDLE_TIMEOUT_MS,
+  DEFAULT_GLB_LITE_IDLE_TIMEOUT_MS,
+  fetchGlbWithIdleTimeout,
+} from './glbFetchResilience';
 import * as THREE from 'three';
 import { EnemyKind } from '../types/game';
 import {
@@ -95,6 +100,7 @@ export interface DownloadChapter1BossOptions {
   baseUri?: string;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+  idleTimeoutMs?: number;
 }
 
 async function fetchBossVariantBytes(
@@ -105,11 +111,15 @@ async function fetchBossVariantBytes(
   const baseUrl = options.baseUrl ?? '/';
   const baseUri = options.baseUri ?? (typeof document !== 'undefined' ? document.baseURI : 'http://localhost:3000/');
   const url = getChapter1BossAssetUrl(variant, baseUrl, baseUri);
-  const res = await fetchImpl(url, { signal: options.signal });
-  if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
-    throw new Error(`Không tải được mô hình Boss Sư Tử (${variant}, HTTP ${res.status}).`);
-  }
-  const buf = await res.arrayBuffer();
+  const buf = await fetchGlbWithIdleTimeout({
+    url,
+    fetchImpl,
+    signal: options.signal,
+    idleTimeoutMs:
+      options.idleTimeoutMs ??
+      (variant === 'high' ? DEFAULT_GLB_HIGH_IDLE_TIMEOUT_MS : DEFAULT_GLB_LITE_IDLE_TIMEOUT_MS),
+    assetLabel: `Boss Sư Tử (${variant})`,
+  });
   validateGlbBuffer(buf);
   return buf;
 }

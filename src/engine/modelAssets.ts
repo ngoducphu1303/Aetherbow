@@ -533,7 +533,8 @@ export function downloadModel(path: ModelAsset): Promise<ArrayBuffer> {
   if (path === CHAPTER1_MAP_MODEL_ASSET) {
     return downloadChapter1Map(chapter1MapPreloadVariant === 'lite' ? 'lite' : 'full');
   }
-  const useLite = globalLiteHeroAssets && Boolean(HERO_LITE_VARIANT_PATHS[path]);
+  const hasLiteVariant = Boolean(HERO_LITE_VARIANT_PATHS[path]);
+  const useLite = globalLiteHeroAssets && hasLiteVariant;
   const cacheKey = getCacheKeyForActiveModel(path);
   return startCachedDownload(cacheKey, async (download) => {
     if (useLite) {
@@ -545,7 +546,17 @@ export function downloadModel(path: ModelAsset): Promise<ArrayBuffer> {
         return await readStreamUrl(getModelAssetUrl(path, false), download);
       }
     }
-    return readStreamUrl(getModelAssetUrl(path, false), download);
+    try {
+      return await readStreamUrl(getModelAssetUrl(path, false), download);
+    } catch (error) {
+      if (hasLiteVariant) {
+        download.received = 0;
+        download.length = 0;
+        publishProgress();
+        return await readStreamUrl(getModelAssetUrl(path, true), download);
+      }
+      throw error;
+    }
   });
 }
 

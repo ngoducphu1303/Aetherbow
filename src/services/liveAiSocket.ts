@@ -22,6 +22,7 @@ import type {
 } from '../engine/wave10FivePillars';
 import type { WeeklyBossLeaderboardEntry } from '../data/weeklyBossData';
 import { LiveAiLocalFallback, type LiveAiServerEnvelope } from './liveAiLocalFallback';
+import { shouldSkipNodeApiEndpoints } from '../engine/glbFetchResilience';
 
 export type LiveSocketStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
 
@@ -254,11 +255,7 @@ class LiveAiSocketClient {
   }
 
   private async probeLiveBackend(): Promise<boolean> {
-    const isStaticSpaBuild =
-      (import.meta as ImportMeta & { env?: { VITE_STATIC_SPA?: string } }).env?.VITE_STATIC_SPA ===
-        'true' ||
-      (typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname));
-    if (isStaticSpaBuild) {
+    if (shouldSkipNodeApiEndpoints()) {
       return false;
     }
     const controller = new AbortController();

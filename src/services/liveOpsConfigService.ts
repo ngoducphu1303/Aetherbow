@@ -10,6 +10,7 @@ import {
   type LiveOpsConfig,
   type LiveOpsSnapshotEntry,
 } from '../data/liveOpsConfig';
+import { shouldSkipNodeApiEndpoints } from '../engine/glbFetchResilience';
 
 const VERIFIED_ADMIN_EMAIL = 'ngoducphu1303@gmail.com';
 const LIVEOPS_CACHE_KEY = 'aetherbow_liveops_config_v1';
@@ -96,11 +97,7 @@ export function subscribeLiveOpsConfig(
   onUpdate(cached, 'local');
 
   // 1. Fetch Express server fallback config immediately (skip on static SPA hosts where Firestore is authoritative)
-  const isStaticSpaBuild =
-    (import.meta as ImportMeta & { env?: { VITE_STATIC_SPA?: string } }).env?.VITE_STATIC_SPA ===
-      'true' ||
-    (typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname));
-  if (typeof fetch === 'function' && !isStaticSpaBuild) {
+  if (typeof fetch === 'function' && !shouldSkipNodeApiEndpoints()) {
     fetch('/api/liveops/config', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {

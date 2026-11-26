@@ -1,11 +1,17 @@
 # IMPLEMENTATION CHANGELOG — NHẬT KÝ CẢI TIẾN & NGHIỆM THU (PHASE 4 & 6)
 
 - **Ngày nghiệm thu**: 2026-11-25
-- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `90.91 / 100`** (`+11.92` điểm trọng số trên 30 tiêu chí qua Đợt 1–9; đạt vững trong dải mục tiêu **`90–95 / 100`** của Master Prompt với **9/10 nhóm đạt `≥ 90.00 / 100`**).
+- **Tổng điểm AAAA Scorecard (thang 0–100 chuẩn Master Prompt Mục VIII, đối soát toán học tuyệt đối 10/10 nhóm)**: **`78.99 / 100` → `91.11 / 100`** (`+12.12` điểm trọng số trên 30 tiêu chí qua Đợt 1–10; đạt vững trong dải mục tiêu **`90–95 / 100`** của Master Prompt với **9/10 nhóm đạt `≥ 90.00 / 100`**).
 
 ---
 
 ## 1. Danh Mục Thay Đổi Mã Nguồn Thực Tế (Trước → Sau)
+
+### 000000. Đợt 10 — Gia Cố Tải Tài Nguyên GLB Production (`P2-3g`), Không Lỗi 404 Vercel, Triệt Tiêu Cấp Phát 60Hz Còn Lại & Chẩn Đoán Thất Bại 12 Chương Theo Phím Tùy Biến
+- **`src/engine/glbFetchResilience.ts`, `src/engine/chapter1Map.ts`, `src/engine/modelAssets.ts`, `src/engine/chapter1Boss.ts`, `src/engine/chapter1RosterAssets.ts`, `src/engine/solarLeoAssets.ts`, `src/engine/GameEngine.ts`, `src/components/SplashGate.tsx`, `src/App.tsx`** (`P2-3g`): Triển khai đọc luồng từng gói (`readResponseBytesWithProgress`) khớp chuẩn khóa cache 6 MiB Cloudflare Worker kèm hoàn nguyên byte khi thử lại gói lỗi và đồng thời rút `concurrency` mặc định xuống `2`; tự động fallback `Chương 1.glb` (`90.36 MB`) về `Chương 1 Lite.glb` (`1.32 MB`) + nhận diện `resolvedVariant = 'lite'` trong `GameEngine.ts`; bổ sung nút **`Vào ngay (Sân Đấu Nhẹ)`** trên `SplashGate.tsx`; bổ sung High → Lite fallback cho Hero GLB trong `modelAssets.ts`; và nối `fetchGlbWithIdleTimeout` (reset timeout theo gói, chặn phản hồi HTML 404, kiểm tra header GLB v2) vào toàn bộ `chapter1Boss.ts`, `chapter1RosterAssets.ts`, `solarLeoAssets.ts` và nhánh phục hồi `loadAppearanceAsset`.
+- **`vercel.json`, `src/engine/glbFetchResilience.ts`, `src/services/liveAiSocket.ts`, `src/services/liveOpsConfigService.ts`**: Thêm `VITE_STATIC_SPA=true` vào lệnh build Vercel và dùng chung `shouldSkipNodeApiEndpoints()` bỏ qua `/api/live-ai/snapshot` & `/api/liveops/config` trên hạ tầng SPA tĩnh (Vercel/Netlify/Pages), loại sạch 100% lỗi console 404.
+- **`src/engine/combatScratchBuffers.ts` & `src/engine/GameEngine.ts`**: Duy trì mảng `chapterMechanismDataList` cố định (triệt tiêu cấp phát `.map()` ở 60Hz `updateCombat` & `executeArenaMechanismTrigger`, có guard null-safe cho harness `resource-lifecycle.test.mjs`), bổ sung `mechanismScanScratch` thay cho `[...this.enemies]`, và thay chuỗi `.reduce()/.find()/.filter().sort()` trong `spawnBossHazardZone` bằng hàm Zero-GC `selectBossHazardSlot` tôn trọng trần Lite.
+- **`src/engine/defeatDiagnostics.ts`, `src/components/PauseResultModal.tsx`, `src/App.tsx`, `src/engine/wave10ResilienceAndTactics.test.ts`**: Nối trọn bộ 12 chữ ký Boss Hoàng Đạo (`phase2Counterplay` / `phase3Counterplay`), tên & thông số Cơ Quan Đấu Trường của từng chương và phím tắt tùy biến thực tế (`currentSettings.keybinds`) vào màn chẩn đoán hậu thất bại (`wave10ResilienceAndTactics.test.ts`: 5/5 pass, `chapter1Map.test.ts`: 5/5 pass).
 
 ### 00000. Đợt 9 — Bộ Đệm Khung Hình Chiến Đấu Zero-GC (`P2-3f`), Hợp Nhất Tiếp Cận HUD & Khử Overdraw Viền Thấp Máu, Biểu Ngữ 12 Boss Hoàng Đạo + Phím Tùy Biến
 - **`src/engine/combatScratchBuffers.ts` & `src/engine/GameEngine.ts`** (`P2-3f`): Tạo lớp thuần `CombatFrameScratchPool<TEnemy>` tái sử dụng đối tượng & mảng cho toàn bộ vòng chiến đấu 60Hz của AutoPilot (`fillAutoPilotFrameSnapshots`), Đồng Đội Co-op AI (`fillCoopFrameSnapshots`, gồm lọc vật cản 1 lần/khung hình), Đấu Trường 1v1 AI né đạn (`fillActiveArrows`), và 3 cặp bộ đệm AoE độc lập không aliasing (`reaction` / `resonance` / `chain`), loại bỏ triệt để chuỗi `.filter().map()` và `[...this.enemies]` cấp phát rác trên heap trong `GameEngine.ts`.
@@ -61,7 +67,7 @@
 - [x] Đo hiệu năng thực tế trước & sau cho vòng va chạm đạn Zero-GC (**8.09×** nhanh hơn, **18,000** mảng rác/giây bị triệt tiêu, 100% trùng khớp va chạm).
 - [x] Tất cả 12 chương có 12 chủ đề nhạc Hoàng Đạo riêng biệt, 4 cơ quan sàn đấu tương tác, 12 bảng màu ánh sáng 60-30-10 và kiến trúc Thánh Điện 3D độc bản cho cả Chương 5–12 (**0 PointLights**).
 - [x] Hẹn giờ sự kiện LiveOps tự động (`P2-4b`) hoạt động đồng bộ từ UI Admin đến `firestore.rules` (đã deploy live, 0 lỗi ESLint).
-- [x] Toàn bộ kho mã nguồn đạt **`461 bài kiểm thử | 453 PASS | 0 FAIL | 8 skip`**.
-- [x] TypeScript `tsc --noEmit` (`lint_applet`) và Vite production build (`compile_applet`) đều sạch 0 lỗi.
-- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua đầy đủ Cổng Tài Khoản → Sảnh 3D → Cài Đặt bật sống Mù Màu + Anti-Flash & 8 phím (`r9-settings-a11y.png`) → Chiến Đấu 3D Chương 1 với HUD thống nhất & Thẻ Tarot Tiến Hóa (`r9-combat-hud.png`) cùng các màn Kho Trang Bị & AI (`r8b-*.png`, `r7-*.png`: `backdropBlurCount: 0`, `a11yLivePresent: true`) với **0 Console Errors / 0 Warnings**.
+- [x] Toàn bộ kho mã nguồn đạt **`467 bài kiểm thử | 459 PASS | 0 FAIL | 8 skip`**.
+- [x] TypeScript `tsc --noEmit` (`lint_applet`), Vite build (`compile_applet`) và Vercel static build (`VITE_STATIC_SPA=true ... npm run build`) đều sạch 0 lỗi.
+- [x] Kiểm thử trình duyệt sống Headless Chromium (`playwright-cli`, `1440×900`) qua SplashGate (`r10-splash.png`) → Thẻ Tarot Tiến Hóa (`r10-combat.png`) → Chiến Đấu 3D Chương 1 thật (`r10-combat-live.png`: `state=playing`, Lướt/Chiêu/Phá Giáp, `Trụ Nhật Luân`) → Tạm Dừng (`r10-pause-live.png`: `state=paused`, `blurred: 0`, `ariaLive: 1`) với **0 Console Errors / 0 Warnings**.
 - [x] Hoàn tất & đồng bộ thực tế 10/10 báo cáo kiểm toán & thiết kế tại thư mục gốc kho mã nguồn.

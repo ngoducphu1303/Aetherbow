@@ -36,7 +36,8 @@ import {
   type SquadNeighborSample,
 } from './tacticalCombatChoreography';
 import { SpatialHashGrid } from './spatialHashGrid';
-import { CombatFrameScratchPool } from './combatScratchBuffers';
+import { CombatFrameScratchPool, selectBossHazardSlot } from './combatScratchBuffers';
+import { DEFAULT_GLB_HIGH_IDLE_TIMEOUT_MS, fetchGlbWithIdleTimeout } from './glbFetchResilience';
 import {
   queryAoeEnemiesInGrid,
   queryProjectileEnemyHits,
@@ -1560,6 +1561,7 @@ export class GameEngine {
     core: THREE.Mesh;
     ring: THREE.Mesh;
   }> = [];
+  private readonly chapterMechanismDataList: ArenaMechanismInstance[] = [];
   private mechanismBuffTimer = 0;
   private mechanismAtkBonusPct = 0;
   private mechanismAspdBonusPct = 0;
@@ -4195,18 +4197,19 @@ export class GameEngine {
       if (budget.liteActive) {
         // Automatic recovery fallback to full GLB if a Lite asset fails to parse
         const fullUrl = getModelAssetUrl(path, false);
-        const resp = await fetch(fullUrl);
-        if (resp.ok) {
-          const fullBuf = await resp.arrayBuffer();
-          await MeshoptDecoder.ready;
-          const gltf = await new GLTFLoader()
-            .setMeshoptDecoder(MeshoptDecoder)
-            .parseAsync(fullBuf, new URL('.', fullUrl).href);
-          sanitizeLoadedObjectForBudget(gltf.scene, budget, {
-            preserveFaceSharpness: true,
-          });
-          return gltf;
-        }
+        const fullBuf = await fetchGlbWithIdleTimeout({
+          url: fullUrl,
+          idleTimeoutMs: DEFAULT_GLB_HIGH_IDLE_TIMEOUT_MS,
+          assetLabel: `${path} (fallback full)`,
+        });
+        await MeshoptDecoder.ready;
+        const gltf = await new GLTFLoader()
+          .setMeshoptDecoder(MeshoptDecoder)
+          .parseAsync(fullBuf, new URL('.', fullUrl).href);
+        sanitizeLoadedObjectForBudget(gltf.scene, budget, {
+          preserveFaceSharpness: true,
+        });
+        return gltf;
       }
       throw error;
     } finally {
@@ -9170,6 +9173,9 @@ export class GameEngine {
     this.wave9Props = [];
     this.chapterMechanisms?.forEach((m) => this.releaseObject(m.group));
     this.chapterMechanisms = [];
+    if (this.chapterMechanismDataList) {
+      this.chapterMechanismDataList.length = 0;
+    }
     this.mechanismBuffTimer = 0;
     this.mechanismAtkBonusPct = 0;
     this.mechanismAspdBonusPct = 0;
@@ -9987,6 +9993,7 @@ export class GameEngine {
           core: coreMesh,
           ring: ringMesh,
         });
+        this.chapterMechanismDataList.push(inst);
       }
     }
 
@@ -11795,9 +11802,8 @@ export class GameEngine {
     probeZ: number,
     extraRadius = 0
   ): boolean {
-    if (this.chapterMechanisms.length === 0) return false;
-    const rawList = this.chapterMechanisms.map((m) => m.data);
-    const hit = tryTriggerArenaMechanism(rawList, probeX, probeZ, extraRadius);
+    if (this.chapterMechanismDataList.length === 0) return false;
+    const hit = tryTriggerArenaMechanism(this.chapterMechanismDataList, probeX, probeZ, extraRadius);
     if (!hit) return false;
 
     const { spec } = hit;
@@ -11834,7 +11840,12 @@ export class GameEngine {
 
     if (spec.damageAtkMult > 0) {
       const mechDmg = Math.max(12, Math.round(this.baseStats.attack * this.getCurrentAtkMultiplier() * spec.damageAtkMult));
-      for (const en of [...this.enemies]) {
+      const mechTargets = this.combatScratchPool.copyEnemiesInto(
+        this.enemies,
+        this.combatScratchPool.mechanismScanScratch
+      );
+      for (let mIdx = 0; mIdx < mechTargets.length; mIdx++) {
+        const en = mechTargets[mIdx];
         if (!en || en.dead || en.spawnTimer > 0) continue;
         if (Math.hypot(en.x - hit.x, en.z - hit.z) <= spec.effectRadius + en.radius) {
           if (!en.isBoss && spec.stunSec > 0) {
@@ -13870,8 +13881,8 @@ export class GameEngine {
         this.wave9PropBuffLabel = null;
       }
     }
-    if (this.chapterMechanisms.length > 0) {
-      stepArenaMechanisms(this.chapterMechanisms.map((m) => m.data), dt);
+    if (this.chapterMechanismDataList.length > 0) {
+      stepArenaMechanisms(this.chapterMechanismDataList, dt);
     }
     if (this.mechanismBuffTimer > 0) {
       this.mechanismBuffTimer = Math.max(0, this.mechanismBuffTimer - dt);
@@ -19054,14 +19065,7 @@ export class GameEngine {
     ownerName: string;
   }): void {
     const budget = getBossPerformanceBudget(this.lowEndGpu);
-    const activeCount = this.bossHazardPool.reduce((c, h) => c + (h.active ? 1 : 0), 0);
-    let slot = this.bossHazardPool.find((h) => !h.active);
-    if (!slot || activeCount >= budget.maxActiveHazards) {
-      // Recycle oldest active hazard so we strictly obey Lite-mode cap
-      slot = this.bossHazardPool
-        .filter((h) => h.active)
-        .sort((a, b) => a.life - b.life)[0] ?? this.bossHazardPool[0];
-    }
+    const slot = selectBossHazardSlot(this.bossHazardPool, budget.maxActiveHazards);
     if (!slot) return;
 
     const palette: Record<BossHazardKind, { disc: number; ring: number }> = {

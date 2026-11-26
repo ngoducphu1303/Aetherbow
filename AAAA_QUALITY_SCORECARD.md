@@ -20,16 +20,16 @@
 | Nhóm tiêu chí | Tiêu chí thành phần | Trọng số | TB Trước (/100) | TB Sau (/100) | Đóng góp Trước | Đóng góp Sau | Thay đổi |
 |---|---|---:|---:|---:|---:|---:|---:|
 | **Progression, Economy & Loot** | 16, 17, 18 | 20% | 79.00 | 91.00 | 15.80 | 18.20 | **+2.40** |
-| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 90.25 | 16.25 | 18.05 | **+1.80** |
+| **Gameplay, Combat & Skill** | 01, 02, 03, 04 | 20% | 81.25 | 90.50 | 16.25 | 18.10 | **+1.85** |
 | **Animation, VFX, SFX & Music** | 05, 06, 07, 08 | 15% | 78.75 | 90.00 | 11.81 | 13.50 | **+1.69** |
 | **Enemy AI, Boss & Difficulty** | 12, 13, 19 | 10% | 80.67 | 91.33 | 8.07 | 9.13 | **+1.06** |
-| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 93.50 | 7.40 | 9.35 | **+1.95** |
+| **Performance & Architecture** | 22, 23 | 10% | 74.00 | 94.00 | 7.40 | 9.40 | **+2.00** |
 | **Graphics, Art & World Design** | 09, 10, 15 | 5% | 80.67 | 90.33 | 4.03 | 4.52 | **+0.49** |
-| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 92.67 | 3.93 | 4.63 | **+0.70** |
+| **Game Feel, UI/UX & Accessibility** | 20, 21, 27 | 5% | 78.67 | 93.00 | 3.93 | 4.65 | **+0.72** |
 | **Replayability & Retention** | 25, 26 | 5% | 79.00 | 87.50 | 3.95 | 4.38 | **+0.43** |
-| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 90.67 | 4.02 | 4.53 | **+0.51** |
-| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 92.33 | 3.73 | 4.62 | **+0.89** |
-| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **90.91 / 100** | **+11.92** |
+| **Physics, Level & Asset Pipeline** | 11, 14, 24 | 5% | 80.33 | 91.67 | 4.02 | 4.58 | **+0.56** |
+| **Security, QA & Live Operations** | 28, 29, 30 | 5% | 74.67 | 93.00 | 3.73 | 4.65 | **+0.92** |
+| **TỔNG ĐIỂM TRỌNG SỐ** | **30 / 30 tiêu chí** | **100%** | — | — | **78.99 / 100** | **91.11 / 100** | **+12.12** |
 
 ---
 
@@ -52,12 +52,12 @@
 2. **Bằng chứng đánh giá**: Vòng lặp Chiến đấu → Nhặt đồ/Vàng → So sánh chỉ số & Bộ Trang Bị → Nâng Trang bị/Thiên Phú/Cổ Ngữ → Vượt Boss Chương → Mở khóa Ch.2–12 & Tháp Vô Tận.
 3. **Vấn đề tồn tại**: Sau mốc ~45h–60h khi 8 Thiên Phú chạm 160/160 và đồ Thần Thoại đạt Lv.80, vòng lặp tiêu Vàng từng bị đứt gãy; ở màn so sánh đồ mới nhặt, người chơi chưa thấy rõ biến động chỉ số thành phần và kích hoạt/mất hiệu ứng Bộ Trang Bị.
 4. **Nguyên nhân gốc rễ**: Toàn bộ Gold sink trước đây có trần cứng và khung so sánh đồ mới chỉ hiện chênh lệch LC tổng.
-5. **Giải pháp đề xuất**: Tích hợp vòng lặp Endgame **Tinh Tuý Hoàng Đạo (500 bậc)** vào `TalentsModal.tsx` + `computePlayerStats`, đồng thời bổ sung so sánh chỉ số chi tiết & cảnh báo Bộ 2/3 món (`computeGearComparison`) trong `LobbyPanels.tsx` ở Đợt 8.
-6. **File hoặc module liên quan**: `src/data/talentsData.ts`, `src/data/gearData.ts`, `src/components/LobbyPanels.tsx`, `src/components/TalentsModal.tsx`, `src/App.tsx`, `src/data/economyTelemetry.ts`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 8)
-8. **Rủi ro khi thay đổi**: Rủi ro tạo lạm phát chỉ số Endgame nếu thưởng mỗi bậc quá lớn.
-9. **Tiêu chí nghiệm thu**: Mô phỏng 100h tiêu thụ `>= 75%` tổng Vàng tích lũy (thực tế đạt `99.8%`), không ảnh hưởng Ch.1–11, luồng nhặt & so sánh trang bị minh bạch 100%.
-10. **Điểm sau khi triển khai và kiểm thử**: `90 / 100`
+5. **Giải pháp đề xuất**: Tích hợp vòng lặp Endgame **Tinh Tuý Hoàng Đạo (500 bậc)** vào `TalentsModal.tsx` + `computePlayerStats`, bổ sung so sánh chỉ số chi tiết & cảnh báo Bộ 2/3 món (`computeGearComparison`, Đợt 8), và trong Đợt 10 nâng cấp **`analyzeDefeatDiagnostics`** (`defeatDiagnostics.ts` + `PauseResultModal.tsx` + `App.tsx`) phản hồi hậu thất bại theo đúng chữ ký Boss Pha II/III của 12 chương Hoàng Đạo, đúng Cơ Quan Đấu Trường của chương và đúng phím tắt tùy biến thực tế của người chơi để vòng lặp sửa sai → tái đấu liền mạch.
+6. **File hoặc module liên quan**: `src/data/talentsData.ts`, `src/data/gearData.ts`, `src/engine/defeatDiagnostics.ts`, `src/components/PauseResultModal.tsx`, `src/components/LobbyPanels.tsx`, `src/components/TalentsModal.tsx`, `src/App.tsx`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 8 & Đợt 10)
+8. **Rủi ro khi thay đổi**: Rủi ro tạo lạm phát chỉ số Endgame nếu thưởng mỗi bậc quá lớn hoặc gãy tương thích khi không truyền `combatKeybinds`.
+9. **Tiêu chí nghiệm thu**: Mô phỏng 100h tiêu thụ `>= 75%` tổng Vàng tích lũy (thực tế đạt `99.8%`), không ảnh hưởng Ch.1–11, luồng nhặt đồ & chẩn đoán tái đấu 12 chương (`wave10ResilienceAndTactics.test.ts` W10-3) pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
 
 ### 03. Combat System — Hệ thống chiến đấu
 1. **Điểm hiện tại (Trước)**: `83 / 100`
@@ -268,12 +268,12 @@
 2. **Bằng chứng đánh giá**: Giao diện Celestial Gold thống nhất, Zero-Pill, 0 `backdrop-blur` đè WebGL, 0 chấm `animate-pulse`, HUD tách khỏi vòng 60Hz, hiển thị đầy đủ 100% danh mục sưu tầm Ch.1–4 kèm `Xem 3D`, đồng bộ sống 8 phím tắt tùy biến trên `GameHUD.tsx`, và trong Đợt 8 bổ sung so sánh chỉ số chi tiết + Bộ Trang Bị trên `LobbyPanels.tsx` cùng dự báo Ngã Rẽ Tiến Hóa trực tiếp trên thẻ Tarot `SkillDraftModal.tsx`.
 3. **Vấn đề tồn tại**: Trước Đợt 7–8, nhãn phím `F`/`X` trên HUD gắn cứng, khung so sánh đồ mới chỉ hiện chênh lệch LC tổng và thẻ chọn kỹ năng chưa báo rõ nhánh Tiến Hóa sắp mở.
 4. **Nguyên nhân gốc rễ**: Thiếu hàm tính chênh lệch trang bị chi tiết (`computeGearComparison`) và hàm dự báo tiến hóa trên thẻ chọn kỹ năng (`getSkillEvolutionPreview`).
-5. **Giải pháp đề xuất**: Hoàn thiện trọn bộ UX chiến đấu & kho đồ trong Đợt 7–8 (`GameHUD.tsx`, `LobbyPanels.tsx`, `SkillDraftModal.tsx`, `WardrobeModal.tsx`, `SettingsModal.tsx`), kiểm chứng sống bằng Chromium (`r7-*.png`, `r8b-equipment.png`, `r8b-skill-draft.png`, `r8b-combat-ai.png`).
-6. **File hoặc module liên quan**: `src/components/LobbyPanels.tsx`, `src/components/SkillDraftModal.tsx`, `src/components/WardrobeModal.tsx`, `src/components/GameHUD.tsx`, `src/components/SettingsModal.tsx`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7 & Đợt 8)
-8. **Rủi ro khi thay đổi**: Phải giữ thẻ Tarot và ngăn Kho Đồ gọn gàng, không tràn chiều dọc ở độ phân giải `1440×900` và di động.
-9. **Tiêu chí nghiệm thu**: Headless Chromium (`1440×900`) xác minh 0 lỗi console, 0 `backdrop-blur`, 8 phím tắt trên HUD/Settings, so sánh trang bị và dự báo Tiến Hóa hiển thị sắc nét.
-10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
+5. **Giải pháp đề xuất**: Hoàn thiện trọn bộ UX chiến đấu & kho đồ trong Đợt 7–8 (`GameHUD.tsx`, `LobbyPanels.tsx`, `SkillDraftModal.tsx`, `WardrobeModal.tsx`, `SettingsModal.tsx`), và trong Đợt 10 bổ sung nút thoát nghẽn mạng **`Vào ngay (Sân Đấu Nhẹ)`** trên `SplashGate.tsx` (không bao giờ kẹt cửa vào khi CDN chậm) cùng chẩn đoán hậu thất bại theo đúng chương, Cơ Quan Đấu Trường & phím tắt thực trên `PauseResultModal.tsx`, kiểm chứng sống bằng Chromium (`r10-splash.png`, `r10-combat-live.png`, `r10-pause-live.png`).
+6. **File hoặc module liên quan**: `src/components/SplashGate.tsx`, `src/components/PauseResultModal.tsx`, `src/engine/defeatDiagnostics.ts`, `src/components/LobbyPanels.tsx`, `src/components/SkillDraftModal.tsx`, `src/components/GameHUD.tsx`, `src/App.tsx`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành Đợt 7, 8 & 10)
+8. **Rủi ro khi thay đổi**: Phải giữ thẻ Tarot, bảng Tạm Dừng/Thất Bại và ngăn Kho Đồ gọn gàng, không tràn chiều dọc ở `1440×900` và di động.
+9. **Tiêu chí nghiệm thu**: Headless Chromium (`1440×900`) xác minh 0 lỗi console, 0 `backdrop-blur`, 8 phím tắt trên HUD/Settings/Defeat Diagnostics, và luồng vào nhanh Sân Đấu Nhẹ hoạt động sạch.
+10. **Điểm sau khi triển khai và kiểm thử**: `93 / 100`
 
 ### 21. Game Feel — Cảm giác chơi
 1. **Điểm hiện tại (Trước)**: `82 / 100`
@@ -304,24 +304,24 @@
 2. **Bằng chứng đánh giá**: Tách biệt rõ lớp dữ liệu (`src/data/`), âm thanh (`src/audio/`), dịch vụ (`src/services/`), máy chủ (`server.ts`, `src/server/`), và các mô-đun engine thuần túy có unit test độc lập.
 3. **Vấn đề tồn tại**: `src/engine/GameEngine.ts` và `src/App.tsx` có độ tập trung cao từ nhiều đợt mở rộng nhanh.
 4. **Nguyên nhân gốc rễ**: Nhiều vòng lặp VFX, vật lý đạn, đội hình, bộ đệm snapshot khung hình, kiến trúc đấu trường và chính sách phản hồi HUD trước đây nằm rải rác trong tệp lõi.
-5. **Giải pháp đề xuất**: Hoàn tất trọn bộ **`P2-3a` → `P2-3f`**: trích xuất **`spatialHashGrid.ts`**, **`projectilePhysicsSystem.ts`**, **`vfxPoolManager.ts`** (8 pool Zero-GC + `VfxFrameBudgetCache` + `LootOrbVisualCache` + `GroundTelegraphVisualPool`), **`combatScratchBuffers.ts`** (`CombatFrameScratchPool` Zero-GC cho AutoPilot/Co-op/Arena Rival/AoE), **`combatHudBanners.ts`** (`resolveHudVisualFeedbackPolicy` & `resolveTopCombatBanner`), **`zodiacRealmArchitecture.ts`**, **`chapterAssetVisibility.ts`**, **`enemySquadDirector.ts`**, **`chapterArenaMechanisms.ts`**, **`zodiacLightingVfxDirector.ts`**, **`zodiacMusicDirector.ts`**, và **`zodiacWorldLore.ts`** với 100% unit test độc lập.
-6. **File hoặc module liên quan**: `src/engine/combatScratchBuffers.ts`, `src/engine/combatHudBanners.ts`, `src/engine/zodiacRealmArchitecture.ts`, `src/engine/vfxPoolManager.ts`, `src/data/chapterAssetVisibility.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/GameEngine.ts`.
-7. **Mức độ ưu tiên**: P2 (Đã hoàn thành `P2-3a` → `P2-3f`)
-8. **Rủi ro khi thay đổi**: Tách mô-đun engine cần giữ đúng vòng đời giải phóng GPU, cô lập scratch buffer không aliasing và tương thích các bộ test giả lập.
-9. **Tiêu chí nghiệm thu**: `tsc --noEmit` 0 lỗi, Vite build sạch, toàn bộ mô-đun trích xuất pass 100% unit test & kiểm chứng live Chromium.
-10. **Điểm sau khi triển khai và kiểm thử**: `92 / 100`
+5. **Giải pháp đề xuất**: Hoàn tất trọn bộ **`P2-3a` → `P2-3g`**: trích xuất **`glbFetchResilience.ts`** (bộ tải GLB streaming có idle-timeout + xác thực nhị phân + chính sách static SPA dùng chung 5 mô-đun ở Đợt 10), **`combatScratchBuffers.ts`** (`CombatFrameScratchPool` + `mechanismScanScratch` + `selectBossHazardSlot` Zero-GC loại bỏ hoàn toàn `.map()` 60Hz ở cơ quan đấu trường và `.filter().sort()` ở vùng nguy hiểm Boss), **`combatHudBanners.ts`**, **`spatialHashGrid.ts`**, **`projectilePhysicsSystem.ts`**, **`vfxPoolManager.ts`**, **`zodiacRealmArchitecture.ts`**, **`chapterAssetVisibility.ts`**, **`enemySquadDirector.ts`**, **`chapterArenaMechanisms.ts`**, **`zodiacLightingVfxDirector.ts`**, **`zodiacMusicDirector.ts`**, và **`zodiacWorldLore.ts`** với 100% unit test độc lập.
+6. **File hoặc module liên quan**: `src/engine/glbFetchResilience.ts`, `src/engine/combatScratchBuffers.ts`, `src/engine/combatHudBanners.ts`, `src/engine/zodiacRealmArchitecture.ts`, `src/engine/vfxPoolManager.ts`, `src/engine/projectilePhysicsSystem.ts`, `src/engine/spatialHashGrid.ts`, `src/engine/GameEngine.ts`.
+7. **Mức độ ưu tiên**: P2 (Đã hoàn thành `P2-3a` → `P2-3g`)
+8. **Rủi ro khi thay đổi**: Tách mô-đun engine cần giữ đúng vòng đời giải phóng GPU, kiểm tra null-safe trong harness `Object.create(GameEngine.prototype)` (`resource-lifecycle.test.mjs`), và cô lập scratch buffer không aliasing.
+9. **Tiêu chí nghiệm thu**: `tsc --noEmit` 0 lỗi, Vite build sạch, toàn bộ mô-đun trích xuất pass 100% unit test (`467` test / `0` fail) & kiểm chứng live Chromium.
+10. **Điểm sau khi triển khai và kiểm thử**: `93 / 100`
 
 ### 24. Asset Pipeline — Quy trình quản lý tài nguyên
 1. **Điểm hiện tại (Trước)**: `79 / 100`
-2. **Bằng chứng đánh giá**: Backblaze B2 + Cloudflare Worker CDN, `scripts/glb-manifest.json` quản lý 173 tệp (126 active), `glbPipelineValidator.ts`, `testGlbManifestHelper.ts`, `/admin/assets`.
-3. **Vấn đề tồn tại**: Trước đây thiếu 1 cặp Lite ở Ch.2 và 27 test GLB báo `ENOENT` trên môi trường CDN-only.
-4. **Nguyên nhân gốc rễ**: Cần đối cặp đủ High/Lite trong manifest và kiểm định manifest thay vì chỉ đọc nhị phân trên đĩa.
-5. **Giải pháp đề xuất**: Hoàn tất **P2-1 & P2-2**: đạt **`100%` đối cặp High/Lite (`63/63` cặp)**, `status: healthy`, `e5430Safe: true`, **`0` lỗi / `0` cảnh báo**, tổng gói Lite `31.88 MB`, và 0 `ENOENT` toàn suite.
-6. **File hoặc module liên quan**: `scripts/glb-manifest.json`, `src/engine/glbPipelineValidator.ts`, `src/engine/testGlbManifestHelper.ts`, `src/data/assetRegistry.test.ts`.
-7. **Mức độ ưu tiên**: P2 (Đã hoàn thành P2-1 & P2-2)
-8. **Rủi ro khi thay đổi**: Sai đường dẫn manifest gây 404 mô hình — đã khóa bằng `assetRegistry.test.ts` và `glb-pipeline-and-liveops-rollback.test.mjs`.
-9. **Tiêu chí nghiệm thu**: `validateGlbPipelineManifest` trả `pairCoveragePct: 100`, `issues: []`, `e5430Safe: true`.
-10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
+2. **Bằng chứng đánh giá**: Backblaze B2 + Cloudflare Worker CDN, `scripts/glb-manifest.json` quản lý 173 tệp (126 active), `glbPipelineValidator.ts`, `chapter1Map.ts`, `glbFetchResilience.ts`, `modelAssets.ts`, `/admin/assets`.
+3. **Vấn đề tồn tại**: Trước Đợt 10, bản đồ `Chương 1.glb` (`90.36 MB`) tải 4 phân đoạn song song bằng `arrayBuffer()` không phát tiến độ giữa gói nên hay đứt `AbortError` ở `6%` trên mạng thực tế mà không tự lùi về `Chương 1 Lite.glb` (`1.32 MB`); `downloadModel` (Hero High), `chapter1Boss.ts`, `chapter1RosterAssets.ts`, `solarLeoAssets.ts` và nhánh phục hồi `loadAppearanceAsset` thiếu idle-timeout hoặc thiếu fallback High → Lite.
+4. **Nguyên nhân gốc rễ**: Chưa có lớp tải nhị phân streaming reset timeout theo gói dùng chung và chưa nối tự động fallback High → Lite cho cả bản đồ Chương 1 lẫn mô hình Anh hùng/Quái/Boss/Sưu tầm.
+5. **Giải pháp đề xuất**: Hoàn tất **P2-1, P2-2 & Đợt 10**: đạt **`100%` đối cặp High/Lite (`63/63` cặp, `0` lỗi, tổng Lite `31.88 MB`)**, triển khai streaming `readResponseBytesWithProgress` khớp chính xác khóa cache 6 MiB của Cloudflare Worker + tự hoàn nguyên byte khi thử lại gói lỗi (`chapter1Map.ts`), tự động fallback `Chương 1.glb` → `Chương 1 Lite.glb` (`1.32 MB`) kèm nhận diện biến thể Lite trong `GameEngine.ts`, bổ sung High → Lite fallback cho Hero GLB (`modelAssets.ts`), và thống nhất **`fetchGlbWithIdleTimeout`** (`glbFetchResilience.ts`) cho toàn bộ `chapter1Boss.ts`, `chapter1RosterAssets.ts`, `solarLeoAssets.ts` và `GameEngine.ts`.
+6. **File hoặc module liên quan**: `src/engine/glbFetchResilience.ts`, `src/engine/chapter1Map.ts`, `src/engine/modelAssets.ts`, `src/engine/chapter1Boss.ts`, `src/engine/chapter1RosterAssets.ts`, `src/engine/solarLeoAssets.ts`, `src/engine/GameEngine.ts`, `scripts/glb-manifest.json`.
+7. **Mức độ ưu tiên**: P0 / P2 (Đã hoàn thành P2-1, P2-2 & Đợt 10)
+8. **Rủi ro khi thay đổi**: Phải giữ nguyên kích thước phân đoạn `CHAPTER1_MAP_CHUNK_BYTES = 6 MiB` để không phá cache cạnh Cloudflare Worker (`workers/glb-cdn/index.mjs:622`).
+9. **Tiêu chí nghiệm thu**: `validateGlbPipelineManifest` trả `pairCoveragePct: 100`, `issues: []`, `e5430Safe: true`; `chapter1Map.test.ts` (5/5) & `wave10ResilienceAndTactics.test.ts` (W10-1a/1b) xác minh streaming, chống HTML-404, idle-timeout và tự động fallback High → Lite pass 100%.
+10. **Điểm sau khi triển khai và kiểm thử**: `94 / 100`
 
 ### 25. Replayability — Giá trị chơi lại
 1. **Điểm hiện tại (Trước)**: `80 / 100`
@@ -380,17 +380,17 @@
 6. **File hoặc module liên quan**: `tests/*.test.mjs`, `src/**/*.test.ts`, `tools/benchmark-spatial-physics.ts`, `tools/simulate-playtime-milestones.ts`, `QA_TEST_REPORT.md`.
 7. **Mức độ ưu tiên**: P0 / P1 / P2 (Đã hoàn thành Đợt 1–9)
 8. **Rủi ro khi thay đổi**: Mọi cải tiến mới bắt buộc chạy lại full suite và trình duyệt sống để chống regression.
-9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`461 bài kiểm thử | 453 PASS | 0 FAIL | 8 skip`**, `tsc --noEmit` 0 lỗi, Vite build sạch, live Chromium 0 lỗi console / 0 cảnh báo.
+9. **Tiêu chí nghiệm thu**: Toàn bộ kho mã nguồn đạt **`467 bài kiểm thử | 459 PASS | 0 FAIL | 8 skip`**, `tsc --noEmit` 0 lỗi, Vite & Vercel static production build sạch, live Chromium 0 lỗi console / 0 cảnh báo.
 10. **Điểm sau khi triển khai và kiểm thử**: `95 / 100`
 
 ### 30. Live Operations — Vận hành và mở rộng
 1. **Điểm hiện tại (Trước)**: `80 / 100`
-2. **Bằng chứng đánh giá**: Bảng quản trị `/admin/assets`, `AssetAdminLiveOpsTab.tsx`, `src/data/liveOpsConfig.ts`, `liveOpsConfigService.ts`, `firestore.rules` (đã deploy live).
-3. **Vấn đề tồn tại**: Trước Đợt 3, chưa có hẹn giờ bật/tắt sự kiện tự động theo khung giờ (P2-4b) và chưa có Preset sự kiện nhanh.
-4. **Nguyên nhân gốc rễ**: Schema LiveOps & Firestore rules trước đây chưa có trường thời gian `scheduledStartMs`/`scheduledEndMs`.
-5. **Giải pháp đề xuất**: Triển khai trọn bộ **P2-4b**: `scheduledStartMs`/`scheduledEndMs` + `resolveEffectiveLiveOpsConfig` (tự bật trong khung giờ, hoàn nguyên `1.0×` ngoài khung giờ), bộ `LIVEOPS_PRESETS`, JSON rollback parser, chọn lịch `datetime-local` trên `AssetAdminLiveOpsTab.tsx`, bảng **Giám Sát An Ninh**, và cập nhật + deploy `firestore.rules`.
-6. **File hoặc module liên quan**: `src/data/liveOpsConfig.ts`, `src/services/liveOpsConfigService.ts`, `src/components/AssetAdminLiveOpsTab.tsx`, `firebase-blueprint.json`, `firestore.rules`, `tests/liveops-config.test.mjs`.
-7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành P2-4b)
-8. **Rủi ro khi thay đổi**: Quy tắc Firestore phải kiểm tra chặt `scheduledEndMs == 0 || scheduledEndMs >= scheduledStartMs` và chỉ cho Admin xác thực ghi.
-9. **Tiêu chí nghiệm thu**: `liveops-config.test.mjs` pass 100%, `npx eslint firestore.rules` = 0 lỗi, rules deployed live, tương thích ngược 100% save & config cũ.
-10. **Điểm sau khi triển khai và kiểm thử**: `91 / 100`
+2. **Bằng chứng đánh giá**: Bảng quản trị `/admin/assets`, `AssetAdminLiveOpsTab.tsx`, `src/data/liveOpsConfig.ts`, `liveOpsConfigService.ts`, `liveAiSocket.ts`, `glbFetchResilience.ts`, `vercel.json`, `firestore.rules` (đã deploy live).
+3. **Vấn đề tồn tại**: Trước Đợt 3 chưa có hẹn giờ sự kiện tự động; trước Đợt 10 triển khai SPA tĩnh trên Vercel (`aetherbow.vercel.app`) phát sinh 2 lỗi console `404` chắc chắn ở `/api/live-ai/snapshot` và `/api/liveops/config`.
+4. **Nguyên nhân gốc rễ**: Thiếu cấu hình cờ `VITE_STATIC_SPA=true` và bộ nhận diện static host dùng chung giữa `liveAiSocket.ts` và `liveOpsConfigService.ts`.
+5. **Giải pháp đề xuất**: Triển khai trọn bộ **P2-4b** (`scheduledStartMs`/`scheduledEndMs`, `LIVEOPS_PRESETS`, JSON rollback, lịch `datetime-local`, bảng Giám Sát An Ninh, deploy `firestore.rules`) và trong Đợt 10 cấu hình **`VITE_STATIC_SPA=true`** trên `vercel.json` kết hợp hàm dùng chung **`shouldSkipNodeApiEndpoints`** (`glbFetchResilience.ts`) bỏ qua endpoint Node-only trên Vercel/Netlify/Pages để kích hoạt trực tiếp Firestore LiveOps + `LiveAiLocalFallback` với **0 lỗi 404**.
+6. **File hoặc module liên quan**: `vercel.json`, `src/engine/glbFetchResilience.ts`, `src/services/liveAiSocket.ts`, `src/services/liveOpsConfigService.ts`, `src/data/liveOpsConfig.ts`, `src/components/AssetAdminLiveOpsTab.tsx`, `firestore.rules`.
+7. **Mức độ ưu tiên**: P1 / P2 (Đã hoàn thành P2-4b & Đợt 10)
+8. **Rủi ro khi thay đổi**: Không được vô hiệu hóa `/api/*` trên môi trường full-stack Node/Express tự host (`localhost` hoặc máy chủ riêng).
+9. **Tiêu chí nghiệm thu**: `wave10ResilienceAndTactics.test.ts` (W10-1c) & `liveops-config.test.mjs` pass 100%, `VITE_STATIC_SPA=true ... npm run build` thành công sạch, `npx eslint firestore.rules` = 0 lỗi.
+10. **Điểm sau khi triển khai và kiểm thử**: `93 / 100`

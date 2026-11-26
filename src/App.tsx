@@ -12132,6 +12132,7 @@ export default function App() {
           chapterId={runSummary?.chapterId ?? activeChapter.id}
           playerPowerRating={playerStats.powerRating}
           recommendedChapterPower={activeChapter.recommendedPower}
+          combatKeybinds={currentSettings.keybinds}
           onOpenCodex={() => {
             handleReturnTitle();
             setCodexGuideOpen(true);

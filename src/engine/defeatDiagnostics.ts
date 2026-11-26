@@ -1,10 +1,13 @@
-import type { DefeatCauseInfo } from '../types/game';
+import type { CombatKeybinds, DefeatCauseInfo } from '../types/game';
+import { DEFAULT_COMBAT_KEYBINDS, formatKeybindShortLabel } from './aaaWave6Director';
+import { getChapterArenaMechanismSpec } from './chapterArenaMechanisms';
+import { ZODIAC_BOSS_PHASE_SIGNATURES } from './tacticalCombatChoreography';
 
 /**
- * Post-Defeat Tactical Diagnostics Engine.
+ * Post-Defeat Tactical Diagnostics Engine (Enhanced in Wave 10).
  * Evaluates real match telemetry (power gap, dodge ratio, Boss interrupts,
  * arena mechanism usage, and lethal hit metadata) to pinpoint the primary
- * failure cause and generate 2 concrete actionable recommendations.
+ * failure cause and generate 2 chapter-aware, keybind-accurate actionable recommendations.
  */
 
 export type TacticalRecommendationTarget = 'retry' | 'gear' | 'talents' | 'codex';
@@ -45,6 +48,7 @@ export interface DefeatDiagnosticInput {
   bossGuardBreaks: number;
   arenaMechanismsTriggered: number;
   defeatCause?: DefeatCauseInfo;
+  combatKeybinds?: Partial<CombatKeybinds>;
 }
 
 export interface DefeatDiagnosticReport {
@@ -53,11 +57,14 @@ export interface DefeatDiagnosticReport {
   primaryCauseSummary: string;
   severityLabel: string;
   powerRatioPct: number;
+  chapterMechanismName: string;
+  bossSignatureLabel: string;
   metrics: DefeatDiagnosticMetric[];
   recommendations: [DefeatTacticalRecommendation, DefeatTacticalRecommendation];
 }
 
 export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDiagnosticReport {
+  const safeChapterId = Math.max(1, Math.min(12, Math.floor(input.chapterId || 1)));
   const safePlayerCp = Math.max(1, Math.round(input.playerPowerRating || 0));
   const safeRecCp = Math.max(1, Math.round(input.recommendedChapterPower || 1));
   const powerRatio = safePlayerCp / safeRecCp;
@@ -77,33 +84,42 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
   const mechanisms = Math.max(0, Math.floor(input.arenaMechanismsTriggered || 0));
   const elapsedSec = Math.max(1, Math.round(input.elapsedSeconds || 0));
 
+  const keys = input.combatKeybinds;
+  const dashKey = formatKeybindShortLabel(keys?.dash ?? DEFAULT_COMBAT_KEYBINDS.dash);
+  const skillKey = formatKeybindShortLabel(keys?.activeSkill ?? DEFAULT_COMBAT_KEYBINDS.activeSkill);
+  const breakKey = formatKeybindShortLabel(keys?.heavyBreak ?? DEFAULT_COMBAT_KEYBINDS.heavyBreak);
+  const ultKey = formatKeybindShortLabel(keys?.ultimate ?? DEFAULT_COMBAT_KEYBINDS.ultimate);
+
+  const mechSpec = getChapterArenaMechanismSpec(safeChapterId);
+  const bossSig = ZODIAC_BOSS_PHASE_SIGNATURES[safeChapterId] ?? ZODIAC_BOSS_PHASE_SIGNATURES[1];
+  const bossSignatureLabel = `${bossSig.phase2Title} / ${bossSig.phase3Title}`;
+
   // Score each potential failure cause from real run telemetry
   let primaryCauseId: DefeatCauseCategory = 'sustained_attrition';
   let primaryCauseTitle = 'Áp lực giao tranh kéo dài';
-  let primaryCauseSummary = `Bạn đã trụ được ${elapsedSec}s tới Phòng ${stage}/${totalStages}, nhưng lượng sát thương cộng dồn cuối trận vượt quá hồi phục.`;
+  let primaryCauseSummary = `Bạn đã trụ được ${elapsedSec}s tới Phòng ${stage}/${totalStages} (Chương ${safeChapterId}), nhưng lượng sát thương cộng dồn cuối trận vượt quá hồi phục.`;
   let severityLabel = 'Cần tối ưu nhịp đánh';
 
   if (powerRatio < 0.78) {
     primaryCauseId = 'power_gap';
     primaryCauseTitle = 'Chênh lệch Lực Chiến đáng kể';
-    primaryCauseSummary = `Lực chiến hiện tại (${safePlayerCp.toLocaleString('vi-VN')} CP) mới đạt ${powerRatioPct}% mức khuyến nghị Chương ${input.chapterId} (${safeRecCp.toLocaleString('vi-VN')} CP), khiến thời gian hạ quái kéo dài.`;
+    primaryCauseSummary = `Lực chiến hiện tại (${safePlayerCp.toLocaleString('vi-VN')} CP) mới đạt ${powerRatioPct}% mức khuyến nghị Chương ${safeChapterId} (${safeRecCp.toLocaleString('vi-VN')} CP), khiến thời gian hạ quái kéo dài.`;
     severityLabel = `Thiếu ${Math.max(1, 100 - powerRatioPct)}% CP khuyến nghị`;
   } else if (isBossOrLateStage && castInterrupts === 0 && bossBreaks === 0) {
     primaryCauseId = 'missed_interrupts';
     primaryCauseTitle = 'Bỏ lỡ cửa sổ Ngắt Chiêu & Phá Giáp Boss';
-    primaryCauseSummary =
-      'Boss tung trọn chuỗi kỹ năng diện rộng vì chưa bị Ngắt Chiêu khi gồng hoặc Phá Giáp ở mốc 65% / 30% HP.';
+    primaryCauseSummary = `Boss Chương ${safeChapterId} (${bossSig.phase2Title}) tung trọn chuỗi kỹ năng vì chưa bị Ngắt Chiêu hoặc Phá Giáp [${breakKey}] ở mốc 65% / 30% HP. Mẹo khắc chế: ${bossSig.phase2Counterplay}`;
     severityLabel = 'Ưu tiên Ngắt Chiêu Boss';
   } else if (damageTaken >= 5 && perfectDodges <= 1) {
     primaryCauseId = 'dodge_timing';
     primaryCauseTitle = 'Trúng nhiều đòn cảnh báo cần Lướt Né';
-    primaryCauseSummary = `Nhận ${damageTaken} đòn đánh nhưng chỉ có ${perfectDodges} lần Né Hoàn Hảo. Căn thời điểm Lướt Né ngay khi vòng cảnh báo đầy sẽ miễn thương và kích hoạt Phản Đòn.`;
+    primaryCauseSummary = `Nhận ${damageTaken} đòn đánh nhưng chỉ có ${perfectDodges} lần Né Hoàn Hảo. Căn thời điểm bấm [${dashKey}] ngay khi vòng cảnh báo đầy sẽ miễn thương và kích hoạt Phản Đòn.`;
     severityLabel = 'Cải thiện nhịp Lướt Né';
   } else if (mechanisms === 0 && stage >= 2) {
     primaryCauseId = 'unused_mechanisms';
-    primaryCauseTitle = 'Chưa tận dụng Cơ Quan Đấu Trường';
-    primaryCauseSummary = `Chưa kích hoạt Cơ Quan Hoàng Đạo nào trong suốt ${stage} phòng. Bắn hoặc áp sát trụ cơ quan giúp gây choáng diện rộng, hồi phục và tăng tốc bắn miễn phí.`;
-    severityLabel = 'Kích hoạt Cơ Quan';
+    primaryCauseTitle = `Chưa tận dụng ${mechSpec.name}`;
+    primaryCauseSummary = `Chưa kích hoạt ${mechSpec.name} trong suốt ${stage} phòng Chương ${safeChapterId}. Bắn hoặc áp sát ${mechSpec.name} giúp gây choáng diện rộng, bào giáp Boss và nhận bùa chiến đấu miễn phí.`;
+    severityLabel = `Kích hoạt ${mechSpec.name}`;
   }
 
   const metrics: DefeatDiagnosticMetric[] = [
@@ -118,20 +134,20 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
       id: 'dodge_ratio',
       label: 'Né Hoàn Hảo / Trúng đòn',
       value: `${perfectDodges} né · ${damageTaken} trúng`,
-      target: 'Mục tiêu: ≥ 2 Né Hoàn Hảo',
+      target: `Mục tiêu: ≥ 2 Né [${dashKey}]`,
       status: perfectDodges >= 2 ? 'good' : damageTaken >= 5 ? 'critical' : 'warn',
     },
     {
       id: 'interrupts',
       label: 'Ngắt Chiêu / Phá Giáp',
       value: `${castInterrupts} ngắt · ${bossBreaks} phá giáp`,
-      target: isBossOrLateStage ? 'Boss: ≥ 1 Ngắt Chiêu' : 'Mục tiêu: Ngắt quái gồng',
+      target: isBossOrLateStage ? `Boss: ≥ 1 Phá [${breakKey}]` : 'Mục tiêu: Ngắt quái gồng',
       status:
         castInterrupts + bossBreaks >= 1 ? 'good' : isBossOrLateStage ? 'critical' : 'warn',
     },
     {
       id: 'mechanisms',
-      label: 'Cơ Quan Đấu Trường',
+      label: mechSpec.name,
       value: `${mechanisms} lần kích hoạt`,
       target: 'Mục tiêu: ≥ 1 mỗi trận',
       status: mechanisms >= 1 ? 'good' : 'warn',
@@ -161,15 +177,15 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
     missed_interrupts: [
       {
         id: 'rec_codex_boss',
-        title: 'Xem mẫu đòn 3 Pha & mẹo Ngắt Chiêu',
-        detail: 'Giữ Kỹ năng Chủ động hoặc đòn Phản Đòn để bắn vào vòng gồng vàng của Boss, thưởng +22% Phá Giáp.',
+        title: `Khắc chế ${bossSig.phase2Title} & ${bossSig.phase3Title}`,
+        detail: `Giữ Kỹ năng [${skillKey}] hoặc Phá Giáp [${breakKey}] để bắn vào vòng gồng vàng của Boss, rồi dồn Tuyệt Kỹ [${ultKey}] lúc Suy Yếu +20%.`,
         actionLabel: 'Mở Sổ Tay Boss',
         actionTarget: 'codex',
       },
       {
         id: 'rec_retry_interrupt',
-        title: 'Tái đấu & canh nhịp Pha 65% / 30%',
-        detail: 'Lùi khỏi tầm xoáy khi Boss đổi pha rồi dồn sát thương trong cửa sổ Suy Yếu +20%.',
+        title: `Tái đấu & kích hoạt ${mechSpec.name}`,
+        detail: `${bossSig.phase3Counterplay} Kết hợp bắn ${mechSpec.name} để cộng thêm +${Math.round(mechSpec.bossStaggerRatio * 100)}% choáng Boss.`,
         actionLabel: 'Thử Lại Ngay',
         actionTarget: 'retry',
       },
@@ -177,8 +193,8 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
     dodge_timing: [
       {
         id: 'rec_retry_dodge',
-        title: 'Giữ Lướt Né cho vòng cảnh báo đỏ',
-        detail: 'Ưu tiên di chuyển vòng cung quanh cột đá và bấm Lướt Né sát thời điểm đòn nổ để kích hoạt Phản Đòn.',
+        title: `Giữ Lướt Né [${dashKey}] cho vòng cảnh báo đỏ`,
+        detail: `Ưu tiên di chuyển vòng cung quanh cột đá và bấm [${dashKey}] sát thời điểm đòn nổ để kích hoạt Phản Đòn miễn thương.`,
         actionLabel: 'Luyện Lại Ngay',
         actionTarget: 'retry',
       },
@@ -193,8 +209,8 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
     unused_mechanisms: [
       {
         id: 'rec_retry_mech',
-        title: 'Bắn mở Cơ Quan Đấu Trường sớm',
-        detail: 'Dụ nhóm quái lại gần trụ Hoàng Đạo rồi bắn kích nổ để tạo choáng diện rộng và lấy bùa tốc bắn.',
+        title: `Bắn mở ${mechSpec.name} sớm`,
+        detail: `Dụ nhóm quái lại gần ${mechSpec.name} rồi bắn kích nổ (choáng ${mechSpec.stunSec.toFixed(1)}s, +${Math.round(mechSpec.atkBonusPct * 100)}% ATK${mechSpec.healPct > 0 ? `, hồi ${Math.round(mechSpec.healPct * 100)}% HP` : ''}).`,
         actionLabel: 'Vào Trận Lại',
         actionTarget: 'retry',
       },
@@ -216,8 +232,8 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
       },
       {
         id: 'rec_retry_tactical',
-        title: 'Tái đấu với nhánh Tiến Hóa khắc chế',
-        detail: 'Dọn nhóm Pháp sư/Xạ thủ tuyến sau trước khi dồn sát thương vào Tiên phong và Thủ lĩnh.',
+        title: `Tái đấu tận dụng ${mechSpec.name} & [${ultKey}]`,
+        detail: `Dọn nhóm Pháp sư/Xạ thủ tuyến sau trước, kích nổ ${mechSpec.name} để lấy bùa rồi dồn [${ultKey}] vào Thủ lĩnh.`,
         actionLabel: 'Thử Lại Ngay',
         actionTarget: 'retry',
       },
@@ -230,6 +246,8 @@ export function analyzeDefeatDiagnostics(input: DefeatDiagnosticInput): DefeatDi
     primaryCauseSummary,
     severityLabel,
     powerRatioPct,
+    chapterMechanismName: mechSpec.name,
+    bossSignatureLabel,
     metrics,
     recommendations: recommendationsByCause[primaryCauseId],
   };

@@ -175,13 +175,14 @@ export class CombatFrameScratchPool<TEnemy extends EnemySourceLike> {
   private readonly obstaclePoolBacking: ScratchObstacleSnapshot[] = [];
   public readonly intactObstacles: ScratchObstacleSnapshot[] = [];
 
-  // Isolated non-aliasing scratch arrays for nested AoE/Elemental/Chain kills
+  // Isolated non-aliasing scratch arrays for nested AoE/Elemental/Chain/Mechanism kills
   public readonly reactionScanScratch: TEnemy[] = [];
   public readonly reactionKillScratch: TEnemy[] = [];
   public readonly resonanceScanScratch: TEnemy[] = [];
   public readonly resonanceKillScratch: TEnemy[] = [];
   public readonly chainScanScratch: TEnemy[] = [];
   public readonly chainKillScratch: TEnemy[] = [];
+  public readonly mechanismScanScratch: TEnemy[] = [];
 
   public fillActiveArrows(
     arrows: ReadonlyArray<ArrowSourceLike>,
@@ -502,3 +503,42 @@ export class CombatFrameScratchPool<TEnemy extends EnemySourceLike> {
     return target;
   }
 }
+
+export interface HazardPoolSlotLike {
+  active: boolean;
+  life: number;
+}
+
+/**
+ * Zero-GC slot selector for Boss hazard pools.
+ * Respects `maxActiveHazards` (Dell E5430 Lite-mode cap) by recycling the oldest active slot
+ * in a single linear pass with zero temporary arrays or sorts.
+ */
+export function selectBossHazardSlot<T extends HazardPoolSlotLike>(
+  pool: ReadonlyArray<T>,
+  maxActiveHazards: number
+): T | undefined {
+  if (pool.length === 0) return undefined;
+  const cap = Math.max(1, Math.floor(maxActiveHazards));
+  let activeCount = 0;
+  let freeSlot: T | undefined;
+  let oldestActive: T | undefined;
+
+  for (let i = 0; i < pool.length; i++) {
+    const slot = pool[i];
+    if (slot.active) {
+      activeCount += 1;
+      if (!oldestActive || slot.life < oldestActive.life) {
+        oldestActive = slot;
+      }
+    } else if (!freeSlot) {
+      freeSlot = slot;
+    }
+  }
+
+  if (freeSlot && activeCount < cap) {
+    return freeSlot;
+  }
+  return oldestActive ?? freeSlot ?? pool[0];
+}
+

@@ -17,7 +17,7 @@ import {
   analyzeDefeatDiagnostics,
   type TacticalRecommendationTarget,
 } from '../engine/defeatDiagnostics';
-import { CombatCameraPreset, CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, PhotoLightingPreset, RunCombatHighlights, SaveData } from '../types/game';
+import { CombatCameraPreset, CombatKeybinds, CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, PhotoLightingPreset, RunCombatHighlights, SaveData } from '../types/game';
 import {
   ArtifactRelicIcon,
   AwakenCrystalIcon,
@@ -141,6 +141,7 @@ interface PauseResultModalProps {
   onUpgradeGuideAction?: (target: UpgradeActionTarget) => void;
   onExecuteQuickUpgrade?: () => string | null;
   onOpenWeeklyBoss?: () => void;
+  combatKeybinds?: Partial<CombatKeybinds>;
 }
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
@@ -254,6 +255,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   onUpgradeGuideAction,
   onExecuteQuickUpgrade,
   onOpenWeeklyBoss,
+  combatKeybinds,
 }) => {
   const [snapshotSaved, setSnapshotSaved] = useState(false);
   const [medalCardSaved, setMedalCardSaved] = useState(false);
@@ -952,6 +954,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   bossGuardBreaks: runHighlights?.bossBreakCount ?? 0,
                   arenaMechanismsTriggered: runHighlights?.arenaMechanismsTriggered ?? 0,
                   defeatCause,
+                  combatKeybinds,
                 });
 
                 const triggerRecommendation = (target: TacticalRecommendationTarget) => {

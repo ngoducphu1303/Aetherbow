@@ -1,4 +1,9 @@
 import { getGlbAssetUrl } from './glbAssetUrl';
+import {
+  DEFAULT_GLB_HIGH_IDLE_TIMEOUT_MS,
+  DEFAULT_GLB_LITE_IDLE_TIMEOUT_MS,
+  fetchGlbWithIdleTimeout,
+} from './glbFetchResilience';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EnemyKind } from '../types/game';
@@ -473,6 +478,7 @@ export interface DownloadChapter1RosterOptions {
   baseUri?: string;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+  idleTimeoutMs?: number;
 }
 
 const downloadCache = new Map<string, Promise<ArrayBuffer>>();
@@ -495,12 +501,17 @@ async function fetchRosterVariantBytes(
   const baseUri =
     options.baseUri ?? (typeof document !== 'undefined' ? document.baseURI : 'http://localhost:3000/');
   const url = getChapter1RosterAssetUrl(assetId, variant, baseUrl, baseUri);
+  const idleTimeoutMs =
+    options.idleTimeoutMs ??
+    (variant === 'high' ? DEFAULT_GLB_HIGH_IDLE_TIMEOUT_MS : DEFAULT_GLB_LITE_IDLE_TIMEOUT_MS);
   const fetchAndValidate = async (targetUrl: URL): Promise<ArrayBuffer> => {
-    const res = await fetchImpl(targetUrl, { signal: options.signal });
-    if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
-      throw new Error(`Không tải được mô hình ${assetId} (${variant}, HTTP ${res.status}).`);
-    }
-    const buf = await res.arrayBuffer();
+    const buf = await fetchGlbWithIdleTimeout({
+      url: targetUrl,
+      fetchImpl,
+      signal: options.signal,
+      idleTimeoutMs,
+      assetLabel: `${assetId} (${variant})`,
+    });
     validateGlbBuffer(buf, `${assetId}:${variant}`);
     return buf;
   };
