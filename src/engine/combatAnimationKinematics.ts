@@ -237,3 +237,152 @@ export function stepCombatKinematicPose(
   );
   return out;
 }
+
+// ============================================================================
+// WAVE 12: ZERO-GC ENEMY & BOSS CHOREOGRAPHY KINEMATICS
+// (Attack Windup Anticipation, Guard-Break/Stagger Kneel & Tremor, Death Dissolve)
+// ============================================================================
+
+export type EnemyChoreographyPhase = 'idle' | 'windup' | 'stagger_kneel' | 'dissolve';
+
+export interface EnemyChoreographyState {
+  phase: EnemyChoreographyPhase;
+  windupBlend: number;
+  staggerBlend: number;
+  tremorPhase: number;
+}
+
+export interface EnemyChoreographyInput {
+  dt: number;
+  /** Normalized 0..1 telegraph / attack windup progress */
+  telegraphProgress: number;
+  /** True when enemy is stunned or Boss guard-broken */
+  isStaggeredOrBroken: boolean;
+  /** True for Bosses (stronger anticipation lift & deeper kneel) */
+  isBoss: boolean;
+  /** Accessibility reduced motion flag */
+  reducedMotion: boolean;
+}
+
+export interface EnemyChoreographyDelta {
+  offsetY: number;
+  rotX: number;
+  rotZ: number;
+  scaleYMult: number;
+  scaleXZMult: number;
+  emissiveBoost: number;
+  phase: EnemyChoreographyPhase;
+}
+
+export const DYING_CORPSE_CAP_HIGH = 12;
+export const DYING_CORPSE_CAP_LITE = 5;
+
+export function computeDissolveCap(liteActive: boolean): number {
+  return liteActive ? DYING_CORPSE_CAP_LITE : DYING_CORPSE_CAP_HIGH;
+}
+
+export function createEnemyChoreographyState(): EnemyChoreographyState {
+  return {
+    phase: 'idle',
+    windupBlend: 0,
+    staggerBlend: 0,
+    tremorPhase: 0,
+  };
+}
+
+export function createEnemyChoreographyDelta(): EnemyChoreographyDelta {
+  return {
+    offsetY: 0,
+    rotX: 0,
+    rotZ: 0,
+    scaleYMult: 1,
+    scaleXZMult: 1,
+    emissiveBoost: 0,
+    phase: 'idle',
+  };
+}
+
+/**
+ * Pure Zero-GC enemy/boss procedural kinematics step writing directly into `out`.
+ * Syncs telegraph windup anticipation lean/lift and guard-break/stun stagger kneel + tremor.
+ */
+export function stepEnemyChoreography(
+  state: EnemyChoreographyState,
+  input: EnemyChoreographyInput,
+  out: EnemyChoreographyDelta
+): EnemyChoreographyDelta {
+  const safeDt = Math.max(0, Math.min(0.1, input.dt));
+  const motionScale = input.reducedMotion ? 0.25 : 1.0;
+  const clampedTele = Math.max(0, Math.min(1, input.telegraphProgress || 0));
+
+  const targetStagger = input.isStaggeredOrBroken ? 1 : 0;
+  const staggerRate = targetStagger > state.staggerBlend ? 12 : 8;
+  state.staggerBlend += (targetStagger - state.staggerBlend) * (1 - Math.exp(-staggerRate * safeDt));
+  if (state.staggerBlend < 0.001) state.staggerBlend = 0;
+
+  const targetWindup = input.isStaggeredOrBroken ? 0 : clampedTele;
+  const windupRate = targetWindup > state.windupBlend ? 15 : 10;
+  state.windupBlend += (targetWindup - state.windupBlend) * (1 - Math.exp(-windupRate * safeDt));
+  if (state.windupBlend < 0.001) state.windupBlend = 0;
+
+  if (state.staggerBlend > 0.05) {
+    state.tremorPhase += safeDt * (input.isBoss ? 22 : 28);
+  } else {
+    state.tremorPhase = 0;
+  }
+
+  const bossWeight = input.isBoss ? 1.25 : 1.0;
+
+  // Anticipation curve: coil back 0..0.72, snap forward 0.72..1.0
+  let windupPitch = 0;
+  let windupLiftY = 0;
+  let windupScaleY = 0;
+  let windupScaleXZ = 0;
+  if (state.windupBlend > 0.001) {
+    const w = state.windupBlend;
+    if (w < 0.72) {
+      const coil = w / 0.72;
+      windupPitch = -0.22 * coil * bossWeight * motionScale; // rear back
+      windupLiftY = 0.14 * coil * bossWeight * motionScale;
+      windupScaleY = 0.07 * coil * motionScale;
+      windupScaleXZ = -0.04 * coil * motionScale;
+    } else {
+      const strike = (w - 0.72) / 0.28;
+      windupPitch = (-0.22 + strike * 0.44) * bossWeight * motionScale; // lunge forward
+      windupLiftY = (0.14 * (1 - strike)) * bossWeight * motionScale;
+      windupScaleY = (0.07 - strike * 0.12) * motionScale;
+      windupScaleXZ = (-0.04 + strike * 0.09) * motionScale;
+    }
+  }
+
+  // Guard-break / stun kneel + rhythmic tremor
+  const kneelOffsetY = -0.24 * state.staggerBlend * bossWeight * motionScale;
+  const kneelPitch = 0.28 * state.staggerBlend * bossWeight * motionScale;
+  const tremorRoll =
+    state.staggerBlend > 0.05
+      ? Math.sin(state.tremorPhase) * 0.095 * state.staggerBlend * motionScale
+      : 0;
+  const staggerSquashY = -0.11 * state.staggerBlend * motionScale;
+  const staggerStretchXZ = 0.07 * state.staggerBlend * motionScale;
+
+  let phase: EnemyChoreographyPhase = 'idle';
+  if (state.staggerBlend > 0.12) {
+    phase = 'stagger_kneel';
+  } else if (state.windupBlend > 0.08) {
+    phase = 'windup';
+  }
+  state.phase = phase;
+
+  out.phase = phase;
+  out.offsetY = windupLiftY + kneelOffsetY;
+  out.rotX = windupPitch + kneelPitch;
+  out.rotZ = tremorRoll;
+  out.scaleYMult = Math.max(0.74, Math.min(1.18, 1 + windupScaleY + staggerSquashY));
+  out.scaleXZMult = Math.max(0.84, Math.min(1.18, 1 + windupScaleXZ + staggerStretchXZ));
+  out.emissiveBoost =
+    state.windupBlend > 0.15
+      ? state.windupBlend * (input.isBoss ? 0.55 : 0.35)
+      : state.staggerBlend * 0.28;
+  return out;
+}
+

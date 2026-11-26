@@ -1,5 +1,10 @@
 import { Rarity, type ChapterMilestoneProgress, type HeroId, type SaveData } from '../types/game';
 import { sanitizeDiscoveredEvolutions } from '../engine/skillEvolutionEngine';
+import {
+  HERO_MASTERY_MILESTONES,
+  normalizeAutoSalvageFilter,
+  normalizeWeeklyChallenges,
+} from './wave11RetentionSystems';
 
 export interface SaveIntegrityReport {
   ok: boolean;
@@ -283,6 +288,82 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
     if (res.changed) {
       next.deletedMailIds = res.list;
       issuesFixed.push('deletedMailIds');
+    }
+  }
+
+  if (next.autoSalvageFilter !== undefined) {
+    const cleanFilter = normalizeAutoSalvageFilter(next.autoSalvageFilter);
+    const raw = next.autoSalvageFilter as unknown as Record<string, unknown>;
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      raw.maxRarity !== cleanFilter.maxRarity ||
+      raw.protectSTier !== true ||
+      raw.protectSetPieces !== cleanFilter.protectSetPieces ||
+      raw.protectUpgradedOrSocketed !== cleanFilter.protectUpgradedOrSocketed ||
+      raw.autoRunAfterBattle !== cleanFilter.autoRunAfterBattle
+    ) {
+      next.autoSalvageFilter = cleanFilter;
+      issuesFixed.push('autoSalvageFilter');
+    }
+  }
+
+  if (next.weeklyChallenges !== undefined) {
+    const rawWk = next.weeklyChallenges as unknown as Record<string, unknown>;
+    const weekKey =
+      rawWk && typeof rawWk.weekKey === 'string' && /^\d{4}-W\d{2}$/.test(rawWk.weekKey)
+        ? rawWk.weekKey
+        : undefined;
+    const normalizedWk = normalizeWeeklyChallenges(next.weeklyChallenges, weekKey);
+    const cleanWk = {
+      ...normalizedWk,
+      runsCompleted: clampFiniteInt(normalizedWk.runsCompleted, 0, 100_000, 0),
+      bossKills: clampFiniteInt(normalizedWk.bossKills, 0, 100_000, 0),
+      bossInterrupts: clampFiniteInt(normalizedWk.bossInterrupts, 0, 100_000, 0),
+      elementalReactions: clampFiniteInt(normalizedWk.elementalReactions, 0, 1_000_000, 0),
+      heroesUsedToWin: dedupeStringArray(normalizedWk.heroesUsedToWin).list as HeroId[],
+      claimedIds: dedupeStringArray(normalizedWk.claimedIds).list,
+    };
+    if (JSON.stringify(rawWk) !== JSON.stringify(cleanWk)) {
+      next.weeklyChallenges = cleanWk;
+      issuesFixed.push('weeklyChallenges');
+    }
+  }
+
+  if (next.claimedHeroMasteryMilestones !== undefined) {
+    if (
+      !next.claimedHeroMasteryMilestones ||
+      typeof next.claimedHeroMasteryMilestones !== 'object'
+    ) {
+      next.claimedHeroMasteryMilestones = {};
+      issuesFixed.push('claimedHeroMasteryMilestones');
+    } else {
+      const validLevels = new Set<number>(HERO_MASTERY_MILESTONES.map((m) => m.level));
+      const cleanMap: Partial<Record<HeroId, number[]>> = {};
+      let changed = false;
+      for (const [heroKey, rawList] of Object.entries(next.claimedHeroMasteryMilestones)) {
+        if (!Array.isArray(rawList)) {
+          changed = true;
+          continue;
+        }
+        const levelSet = new Set<number>();
+        for (const lv of rawList) {
+          if (typeof lv === 'number' && validLevels.has(lv)) {
+            levelSet.add(lv);
+          } else {
+            changed = true;
+          }
+        }
+        const sorted = [...levelSet].sort((a, b) => a - b);
+        if (sorted.length !== rawList.length || sorted.some((v, idx) => rawList[idx] !== v)) {
+          changed = true;
+        }
+        cleanMap[heroKey as HeroId] = sorted;
+      }
+      if (changed) {
+        next.claimedHeroMasteryMilestones = cleanMap;
+        issuesFixed.push('claimedHeroMasteryMilestones');
+      }
     }
   }
 

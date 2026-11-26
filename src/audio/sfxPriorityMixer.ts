@@ -9,6 +9,11 @@ export type SfxEventCategory =
   | 'boss_interrupt'
   | 'boss_guard_break'
   | 'boss_phase_stinger'
+  | 'boss_telegraph_ping'
+  | 'execution_finisher_drop'
+  | 'loot_rarity_mythic'
+  | 'loot_rarity_legendary'
+  | 'loot_rarity_epic'
   | 'perfect_dodge'
   | 'arena_mechanism'
   | 'set_proc'
@@ -94,6 +99,46 @@ export const SFX_CATEGORY_SPECS: Record<SfxEventCategory, SfxCategorySpec> = {
     maxConcurrent: 1,
     pitchSpread: 0.015,
     filterSpread: 0.03,
+  },
+  execution_finisher_drop: {
+    priority: 96,
+    dedupeMs: 160,
+    durationMs: 440,
+    maxConcurrent: 1,
+    pitchSpread: 0.015,
+    filterSpread: 0.03,
+  },
+  boss_telegraph_ping: {
+    priority: 93,
+    dedupeMs: 140,
+    durationMs: 280,
+    maxConcurrent: 2,
+    pitchSpread: 0.025,
+    filterSpread: 0.04,
+  },
+  loot_rarity_mythic: {
+    priority: 94,
+    dedupeMs: 180,
+    durationMs: 520,
+    maxConcurrent: 1,
+    pitchSpread: 0.01,
+    filterSpread: 0.02,
+  },
+  loot_rarity_legendary: {
+    priority: 89,
+    dedupeMs: 140,
+    durationMs: 420,
+    maxConcurrent: 2,
+    pitchSpread: 0.02,
+    filterSpread: 0.04,
+  },
+  loot_rarity_epic: {
+    priority: 82,
+    dedupeMs: 120,
+    durationMs: 320,
+    maxConcurrent: 2,
+    pitchSpread: 0.03,
+    filterSpread: 0.05,
   },
   perfect_dodge: {
     priority: 92,

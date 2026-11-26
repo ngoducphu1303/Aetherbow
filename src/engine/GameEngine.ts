@@ -64,6 +64,12 @@ import {
   type ZodiacLandmarkAnimNode,
 } from './zodiacRealmArchitecture';
 import {
+  buildZodiacBossRegalia,
+  disposeZodiacBossRegalia,
+  stepZodiacBossRegalia,
+  type BuiltZodiacBossRegalia,
+} from './zodiacBossRegalia';
+import {
   classifySquadRole,
   computeSquadWaitingFlankImpulse,
   createEnemySquadDirectorState,
@@ -89,9 +95,24 @@ import {
   applySpawnSettle,
   CombatKinematicPose,
   CombatKinematicTransformDelta,
+  computeDissolveCap,
   createCombatKinematicPose,
+  createEnemyChoreographyDelta,
+  createEnemyChoreographyState,
+  EnemyChoreographyDelta,
+  EnemyChoreographyState,
   stepCombatKinematicPose,
+  stepEnemyChoreography,
 } from './combatAnimationKinematics';
+import {
+  countScenePointLights,
+  HeroAndBossSignatureVfxPool,
+} from './heroAndBossSignatureVfx';
+import { FrameBenchmarkSampler } from './frameBenchmarkSampler';
+import type {
+  FrameBenchmarkLiveSnapshot,
+  FrameBenchmarkReport,
+} from '../types/game';
 import {
   createGearSetProcRuntime,
   evaluateGearSetProcEvent,
@@ -248,6 +269,7 @@ import {
 import type {
   AiDuelDifficultyTier,
   Chapter1MapMode,
+  CombatDamageSkillKey,
   CombatStyleGrade,
   LowEndSafetyMode,
 } from '../types/game';
@@ -769,6 +791,7 @@ interface EnemyEntity {
   punishWindowMax?: number;
   bossParts?: BossBreakablePart[];
   bossPartMeshes?: Partial<Record<BossPartId, THREE.Mesh[]>>;
+  zodiacBossRegalia?: BuiltZodiacBossRegalia;
   isVaultPillar?: boolean;
   isGoldenPillar?: boolean;
   isTrainingDummy?: boolean;
@@ -824,6 +847,7 @@ interface EnemyEntity {
   autoRig?: AutoRigInstance;
   boneTrails?: BoneTrailController;
   bossAiState?: BossAiRuntimeState;
+  choreography?: EnemyChoreographyState;
   bossStunImmuneTimer?: number;
   mobActiveSkill?: AaaMobSkillId | '';
   mobSkillCycle?: number;
@@ -1351,6 +1375,11 @@ export class GameEngine {
     maxTimer: number;
     baseScale: number;
   }> = [];
+  private signatureVfxPool?: HeroAndBossSignatureVfxPool;
+  private enemyChoreographyDelta: EnemyChoreographyDelta = createEnemyChoreographyDelta();
+  private frameBenchmarkSampler: FrameBenchmarkSampler = new FrameBenchmarkSampler(7200);
+  private lastFrameBenchmarkReport: FrameBenchmarkReport | null = null;
+  private onFrameBenchmarkCompleteCb?: (report: FrameBenchmarkReport) => void;
   private arrowPool: Projectile[] = [];
   private enemyOrbPool: Projectile[] = [];
   private meteorPool: MeteorStrike[] = [];
@@ -1878,6 +1907,20 @@ export class GameEngine {
   private dmgUltimate = 0;
   private dmgPet = 0;
   private dmgElemental = 0;
+  private dmgBySkill: Record<CombatDamageSkillKey, number> = {
+    basic_volley: 0,
+    hero_active: 0,
+    heavy_break: 0,
+    hero_ultimate: 0,
+    weapon_overdrive: 0,
+    orbit_orbs: 0,
+    flying_swords: 0,
+    meteor_shower: 0,
+    elemental_procs: 0,
+    elemental_reaction: 0,
+    pet_companion: 0,
+    arena_mechanism: 0,
+  };
   private peakCritDmg = 0;
   private runElapsedSeconds = 0;
 
@@ -2146,6 +2189,10 @@ export class GameEngine {
     this.contactShadowTex = createContactShadowTexture();
 
     this.initPools();
+    this.signatureVfxPool = new HeroAndBossSignatureVfxPool(
+      this.scene,
+      Boolean(this.lowEndGpu || this.isSoftwareGl || this.lowEndSafetyMode === 'on')
+    );
     this.buildHero();
     this.buildArena(this.currentChapter, false);
     // Preload and parse the full Chapter 1 3D GLB map while on SplashGate so
@@ -6026,6 +6073,7 @@ export class GameEngine {
     if (!this.isTrainingMode) return;
     this.trainingDpsState = createTrainingDpsState();
     this.trainingClockSec = 0;
+    this.resetTrainingSkillTotals();
     this.activeSkillCooldown = 0;
     this.ultCharge = 100;
     this.perfectDodgeCount = 0;
@@ -6049,7 +6097,80 @@ export class GameEngine {
     this.rebuildCompanions();
     this.trainingDpsState = createTrainingDpsState();
     this.trainingClockSec = 0;
+    this.resetTrainingSkillTotals();
     this.syncHudImmediate();
+  }
+
+  private resetTrainingSkillTotals(): void {
+    (Object.keys(this.dmgBySkill) as CombatDamageSkillKey[]).forEach((k) => {
+      this.dmgBySkill[k] = 0;
+    });
+  }
+
+  private getTrainingMvpSkillLabel(): string {
+    const labels: Record<CombatDamageSkillKey, string> = {
+      basic_volley: 'Đòn Cơ Bản',
+      hero_active: 'Chiêu Chủ Động (E)',
+      heavy_break: 'Phá Giáp (F)',
+      hero_ultimate: 'Tuyệt Kỹ (Q)',
+      weapon_overdrive: 'Quá Tải Vũ Khí',
+      orbit_orbs: 'Cầu Quỹ Đạo',
+      flying_swords: 'Phi Kiếm',
+      meteor_shower: 'Mưa Thiên Thạch',
+      elemental_procs: 'Sát Thương Nguyên Tố',
+      elemental_reaction: 'Phản Ứng Nguyên Tố',
+      pet_companion: 'Thú Cưng / Trợ Thủ',
+      arena_mechanism: 'Cơ Chế Đấu Trường',
+    };
+    let bestKey: CombatDamageSkillKey = 'basic_volley';
+    let bestVal = 0;
+    (Object.keys(this.dmgBySkill) as CombatDamageSkillKey[]).forEach((k) => {
+      const val = this.dmgBySkill[k] ?? 0;
+      if (val > bestVal) {
+        bestVal = val;
+        bestKey = k;
+      }
+    });
+    return bestVal > 0 ? (labels[bestKey] ?? 'Đòn Cơ Bản') : 'Chưa có đòn đánh';
+  }
+
+  public startFrameBenchmark(
+    durationSec = 60,
+    onComplete?: (report: FrameBenchmarkReport) => void
+  ): void {
+    this.onFrameBenchmarkCompleteCb = onComplete;
+    this.frameBenchmarkSampler.start(durationSec);
+  }
+
+  public stopFrameBenchmark(): FrameBenchmarkReport {
+    const report = this.finalizeCurrentFrameBenchmark();
+    this.onFrameBenchmarkCompleteCb = undefined;
+    return report;
+  }
+
+  public getFrameBenchmarkLiveState(): FrameBenchmarkLiveSnapshot {
+    return this.frameBenchmarkSampler.getLiveSnapshot(
+      this.scene ? countScenePointLights(this.scene) : 0,
+      Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu),
+      this.gpuWatchdog.stage
+    );
+  }
+
+  public getLastFrameBenchmarkReport(): FrameBenchmarkReport | null {
+    return this.lastFrameBenchmarkReport;
+  }
+
+  private finalizeCurrentFrameBenchmark(): FrameBenchmarkReport {
+    const report = this.frameBenchmarkSampler.finalizeReport({
+      activePointLights: this.scene ? countScenePointLights(this.scene) : 0,
+      liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu),
+      watchdogStage: this.gpuWatchdog.stage,
+      gpuRenderer: this.gpuProfile?.rendererName ?? 'WebGL Renderer',
+      chapterId: this.currentChapter?.id ?? 1,
+      heroId: this.baseStats?.heroId ?? 'aurelia',
+    });
+    this.lastFrameBenchmarkReport = report;
+    return report;
   }
 
   public exitTrainingGrounds(): void {
@@ -8595,6 +8716,18 @@ export class GameEngine {
     this.dmgUltimate = 0;
     this.dmgPet = 0;
     this.dmgElemental = 0;
+    this.dmgBySkill.basic_volley = 0;
+    this.dmgBySkill.hero_active = 0;
+    this.dmgBySkill.heavy_break = 0;
+    this.dmgBySkill.hero_ultimate = 0;
+    this.dmgBySkill.weapon_overdrive = 0;
+    this.dmgBySkill.orbit_orbs = 0;
+    this.dmgBySkill.flying_swords = 0;
+    this.dmgBySkill.meteor_shower = 0;
+    this.dmgBySkill.elemental_procs = 0;
+    this.dmgBySkill.elemental_reaction = 0;
+    this.dmgBySkill.pet_companion = 0;
+    this.dmgBySkill.arena_mechanism = 0;
     resetRollingDpsTracker(this.rollingDps);
     this.footstepStrideAccum = 0;
     this.bowCreakReady = true;
@@ -9046,11 +9179,16 @@ export class GameEngine {
         disposeBoneTrailController(e.boneTrails);
         e.boneTrails = undefined;
       }
+      if (e.zodiacBossRegalia) {
+        disposeZodiacBossRegalia(e.zodiacBossRegalia);
+        e.zodiacBossRegalia = undefined;
+      }
     });
     this.enemies = [];
     this.killResolutionDepth = 0;
     this.dyingCorpses?.forEach((c) => this.releaseObject(c.root));
     this.dyingCorpses = [];
+    this.signatureVfxPool?.releaseAll();
 
     this.volatileBlasts?.forEach((vb) => {
       if (this.groundTelegraphPool) {
@@ -10720,6 +10858,24 @@ export class GameEngine {
       }
     }
 
+    let zodiacBossRegalia: BuiltZodiacBossRegalia | undefined;
+    if (
+      kind === EnemyKind.ZODIAC_BOSS &&
+      !this.isTrainingMode &&
+      this.currentChapter.id >= 5 &&
+      this.currentChapter.id <= 12
+    ) {
+      const builtRegalia = buildZodiacBossRegalia({
+        chapterId: this.currentChapter.id,
+        liteActive: this.lowEndGpu || this.systemBudget.liteActive,
+        trimHexOverride: this.currentChapter.trimHex,
+      });
+      if (builtRegalia) {
+        model.bodyGroup.add(builtRegalia.root);
+        zodiacBossRegalia = builtRegalia;
+      }
+    }
+
     this.enemies.push({
       id: this.nextEntityId++,
       kind,
@@ -10765,6 +10921,7 @@ export class GameEngine {
       phaseThreeTransitioned: false,
       bossParts,
       bossPartMeshes,
+      zodiacBossRegalia,
       burnTimer: 0,
       burnDps: 0,
       poisonDps: 0,
@@ -11676,7 +11833,7 @@ export class GameEngine {
           'PHÁ GIÁP TRẢM!',
           'basic',
           undefined,
-          { attackerX: this.px, attackerZ: this.pz, bypassShield: true }
+          { attackerX: this.px, attackerZ: this.pz, bypassShield: true, skillKey: 'heavy_break' }
         );
       }
     }
@@ -11874,6 +12031,7 @@ export class GameEngine {
             {
               attackerX: hit.x,
               attackerZ: hit.z,
+              skillKey: 'arena_mechanism',
             }
           );
         }
@@ -11923,6 +12081,22 @@ export class GameEngine {
     applySkillCastPulse(this.heroKinematicPose, 1.0, this.reducedMotionEnabled);
     this.spawnShockwave(this.px, this.pz, skillDef.accentHex, Math.min(5.2, skillDef.radius), 0.34);
     this.spawnParticles(this.px, 1.0, this.pz, skillDef.accentHex, 18);
+    this.signatureVfxPool?.spawnHeroSignature({
+      heroId: this.baseStats.heroId,
+      effectKind: skillDef.effectKind,
+      x: this.px,
+      z: this.pz,
+      targetX: nearest ? nearest.x : this.px + Math.sin(this.pFacing) * 3.2,
+      targetZ: nearest ? nearest.z : this.pz + Math.cos(this.pFacing) * 3.2,
+      radius: skillDef.radius,
+      accentHex: skillDef.accentHex,
+      options: {
+        liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+        reducedMotion: this.reducedMotionEnabled,
+        reduceScreenFlash: this.reduceScreenFlashEnabled,
+        colorblindTelegraphs: this.colorblindTelegraphs,
+      },
+    });
     this.emitFloatingNumber(
       this.px,
       2.18,
@@ -12289,6 +12463,19 @@ export class GameEngine {
         // Keep the lobby interactive while models load. Hold combat simulation until the rider is visible.
         if (!this.appearanceBlocked || this.phase === GamePhase.TITLE) this.update(dt);
         this.renderSceneFrame();
+        if (this.frameBenchmarkSampler?.isRunning()) {
+          const done = this.frameBenchmarkSampler.recordFrame(
+            this.lastRawFrameDt * 1000,
+            this.renderer.info?.render?.calls ?? 0,
+            this.renderer.info?.render?.triangles ?? 0
+          );
+          if (done) {
+            const report = this.finalizeCurrentFrameBenchmark();
+            const cb = this.onFrameBenchmarkCompleteCb;
+            this.onFrameBenchmarkCompleteCb = undefined;
+            cb?.(report);
+          }
+        }
         if (this.chapter1MapInFlightMarked && this.chapter1MapModel && !this.contextLost) {
           this.chapter1MapStableFrames += 1;
           if (this.chapter1MapStableFrames >= 2) {
@@ -13949,6 +14136,49 @@ export class GameEngine {
     this.updateEnemies(simDt);
     this.updateBossGroundHazardsAndMultiSlams(simDt);
     this.updateDyingCorpses(simDt);
+    if (this.signatureVfxPool) {
+      let activeBoss: EnemyEntity | null = null;
+      for (let bi = 0; bi < this.enemies.length; bi++) {
+        const cand = this.enemies[bi];
+        if (cand && cand.isBoss && !cand.dead && cand.hp > 0 && cand.spawnTimer <= 0) {
+          activeBoss = cand;
+          break;
+        }
+      }
+      if (activeBoss && (activeBoss.bossPhase ?? 1) >= 2) {
+        const bPhase = (activeBoss.bossPhase === 3 ? 3 : 2) as 2 | 3;
+        this.signatureVfxPool.syncBossPhaseAura({
+          active: true,
+          x: activeBoss.x,
+          z: activeBoss.z,
+          phase: bPhase,
+          baseRadius: Math.max(2.3, activeBoss.radius * 1.65),
+          accentHex: activeBoss.zodiacBossRegalia ? 0xf59e0b : 0xef4444,
+          options: {
+            liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+            reducedMotion: this.reducedMotionEnabled,
+            reduceScreenFlash: this.reduceScreenFlashEnabled,
+            colorblindTelegraphs: this.colorblindTelegraphs,
+          },
+        });
+      } else if (this.signatureVfxPool.isBossAuraActive()) {
+        this.signatureVfxPool.syncBossPhaseAura({
+          active: false,
+          x: 0,
+          z: 0,
+          phase: 1,
+          baseRadius: 2.2,
+          accentHex: 0xf59e0b,
+          options: {
+            liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+            reducedMotion: this.reducedMotionEnabled,
+            reduceScreenFlash: this.reduceScreenFlashEnabled,
+            colorblindTelegraphs: this.colorblindTelegraphs,
+          },
+        });
+      }
+      this.signatureVfxPool.step(simDt, this.elapsed);
+    }
     this.updateProjectiles(simDt);
     this.updateMeteors(simDt);
     this.updateElementalZones(simDt);
@@ -15701,7 +15931,7 @@ export class GameEngine {
         for (const e of [...this.enemies]) {
           if (!e || e.dead || e.spawnTimer > 0) continue;
           if (Math.hypot(e.x - m.x, e.z - m.z) <= m.radius + e.radius) {
-            this.damageEnemy(e, m.damage, true, !m.isFrost, m.isFrost, false, false, undefined, 'elemental');
+            this.damageEnemy(e, m.damage, true, !m.isFrost, m.isFrost, false, false, undefined, 'elemental', undefined, { skillKey: 'meteor_shower' });
           }
         }
       }
@@ -15818,7 +16048,9 @@ export class GameEngine {
               false,
               false,
               undefined,
-              'elemental'
+              'elemental',
+              undefined,
+              { skillKey: 'orbit_orbs' }
             );
           }
         }
@@ -15876,7 +16108,7 @@ export class GameEngine {
             this.getCurrentAtkMultiplier() *
             dmgMult *
             (isCrit ? this.baseStats.critDamage : 1);
-          this.damageEnemy(e, amt, isCrit, false, false, false, false, undefined, 'elemental');
+          this.damageEnemy(e, amt, isCrit, false, false, false, false, undefined, 'elemental', undefined, { skillKey: 'flying_swords' });
         }
       }
     }
@@ -18167,10 +18399,42 @@ export class GameEngine {
         e.telegraphType !== 'none'
           ? Math.max(0, Math.min(1, 1 - e.telegraphTimer / Math.max(0.01, e.telegraphDuration)))
           : 0;
+      if (e.zodiacBossRegalia) {
+        stepZodiacBossRegalia(
+          e.zodiacBossRegalia.animNodes,
+          this.elapsed,
+          e.bossPhase ?? 1,
+          this.reducedMotionEnabled
+        );
+      }
+
+      if (!e.choreography) {
+        e.choreography = createEnemyChoreographyState();
+      }
+      const isBossBrokenNow = Boolean(
+        e.isBoss &&
+          this.bossStaggerState &&
+          this.bossStaggerOwnerId === e.id &&
+          this.bossStaggerState.brokenRemainingSec > 0
+      );
+      const choreo = stepEnemyChoreography(
+        e.choreography,
+        {
+          dt,
+          telegraphProgress: teleProgressAll,
+          isStaggeredOrBroken: Boolean((e.stunTimer && e.stunTimer > 0) || isBossBrokenNow),
+          isBoss: e.isBoss,
+          reducedMotion: this.reducedMotionEnabled,
+        },
+        this.enemyChoreographyDelta
+      );
+      e.model.root.position.y = Math.max(0, entityHeightY + choreo.offsetY);
+      e.model.root.rotation.x = choreo.rotX;
+      e.model.root.rotation.z = choreo.rotZ;
 
       const bScale = e.baseScale ?? 1;
-      const squashY = e.hitSquashY ?? 1;
-      const stretchXZ = e.hitStretchXZ ?? 1;
+      const squashY = (e.hitSquashY ?? 1) * choreo.scaleYMult;
+      const stretchXZ = (e.hitStretchXZ ?? 1) * choreo.scaleXZMult;
       if (e.hitFlashTimer > 0) {
         const s = 1 + e.hitFlashTimer * 1.25;
         e.model.root.scale.set(
@@ -20376,6 +20640,7 @@ export class GameEngine {
       attackerZ?: number;
       bypassShield?: boolean;
       fromChain?: boolean;
+      skillKey?: CombatDamageSkillKey;
     }
   ): void {
     if (!e || e.dead) return;
@@ -20833,10 +21098,50 @@ export class GameEngine {
 
     if (coopAllyIndex !== undefined && this.coopAllies[coopAllyIndex]) {
       this.coopAllies[coopAllyIndex].damageDealt += finalDmg;
-    } else if (dmgSource === 'ultimate') this.dmgUltimate += finalDmg;
-    else if (dmgSource === 'pet') this.dmgPet += finalDmg;
-    else if (dmgSource === 'elemental') this.dmgElemental += finalDmg;
-    else this.dmgBasic += finalDmg;
+    } else {
+      if (dmgSource === 'ultimate') this.dmgUltimate += finalDmg;
+      else if (dmgSource === 'pet') this.dmgPet += finalDmg;
+      else if (dmgSource === 'elemental') this.dmgElemental += finalDmg;
+      else this.dmgBasic += finalDmg;
+
+      const resolvedSkillKey: CombatDamageSkillKey =
+        options?.skillKey ??
+        (dmgSource === 'pet'
+          ? 'pet_companion'
+          : dmgSource === 'ultimate'
+          ? resolvedLabel &&
+            (resolvedLabel.includes('NGUYỆT ẤN') ||
+              resolvedLabel.includes('HUYẾT DƠI') ||
+              resolvedLabel.includes('BĂNG TRỤ') ||
+              resolvedLabel.includes('HỎA NGỤC') ||
+              resolvedLabel.includes('ĐỊA MẠCH') ||
+              resolvedLabel.includes('HỘI TỤ') ||
+              resolvedLabel.includes('SÉT LAN') ||
+              resolvedLabel.includes('LÔI ĐÌNH') ||
+              resolvedLabel.includes('HẮC GAI') ||
+              resolvedLabel.includes('KIM CÔ') ||
+              resolvedLabel.includes('TỬ LÔI'))
+            ? 'hero_active'
+            : resolvedLabel && resolvedLabel.includes('XUNG KÍCH')
+            ? 'weapon_overdrive'
+            : 'hero_ultimate'
+          : dmgSource === 'elemental'
+          ? resolvedLabel &&
+            (resolvedLabel.includes('PHẢN ỨNG') ||
+              resolvedLabel.includes('KÍCH NỔ') ||
+              resolvedLabel.includes('BỐC HƠI') ||
+              resolvedLabel.includes('QUÁ TẢI') ||
+              resolvedLabel.includes('SIÊU DẪN') ||
+              resolvedLabel.includes('SÉT HỖN MANG'))
+            ? 'elemental_reaction'
+            : 'elemental_procs'
+          : resolvedLabel && resolvedLabel.includes('PHÁ GIÁP')
+          ? 'heavy_break'
+          : this.weaponOverdrive.activeRemainingSec > 0
+          ? 'weapon_overdrive'
+          : 'basic_volley');
+      this.dmgBySkill[resolvedSkillKey] += finalDmg;
+    }
 
     if (coopAllyIndex === undefined) {
       recordRollingDpsSample(this.rollingDps, this.runElapsedSeconds, finalDmg, isCrit);
@@ -21631,7 +21936,14 @@ export class GameEngine {
           `+${gemDrop}💎 +${reforgeDrop} ĐÁ ĐÚC`
         );
         this.spawnShockwave(e.x, e.z, 0xfbbf24, 3.8, 0.36);
-        soundEngine.playPickup(true);
+        soundEngine.playLootRarityChime(
+          e.isBoss ? 'MYTHIC' : 'LEGENDARY',
+          computeSpatialPan(e.x, ARENA_HALF_W)
+        );
+      }
+
+      if (e.isBoss || e.isElite) {
+        soundEngine.playExecutionFinisherDrop(computeSpatialPan(e.x, ARENA_HALF_W));
       }
 
       if (this.isSkyCitadelMode) {
@@ -21652,7 +21964,14 @@ export class GameEngine {
         }
       }
 
-      // Hand off defeated model to 3D KO topple + starlight dissolve transition
+      // Hand off defeated model to capped Zero-GC 3D KO topple + starlight dissolve transition
+      const corpseCap = computeDissolveCap(
+        Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl)
+      );
+      while (this.dyingCorpses.length >= corpseCap) {
+        const oldest = this.dyingCorpses.shift();
+        if (oldest) this.releaseObject(oldest.root);
+      }
       const kbDx = e.x - this.px;
       const kbDz = e.z - this.pz;
       const kbDist = Math.hypot(kbDx, kbDz) || 1;
@@ -21663,7 +21982,7 @@ export class GameEngine {
         vx: (kbDx / kbDist) * kbSpeed,
         vz: (kbDz / kbDist) * kbSpeed,
         timer: 0,
-        maxTimer: e.isBoss ? 0.56 : 0.36,
+        maxTimer: e.isBoss ? 0.56 : 0.35,
         baseScale: e.baseScale ?? 1,
       });
       this.releaseObject(e.shadow);
@@ -21878,11 +22197,18 @@ export class GameEngine {
       });
     }
 
+    const skillDamageMap: Partial<Record<CombatDamageSkillKey, number>> = {};
+    (Object.keys(this.dmgBySkill) as CombatDamageSkillKey[]).forEach((k) => {
+      const val = Math.round(this.dmgBySkill[k]);
+      if (val > 0) skillDamageMap[k] = val;
+    });
+
     return {
       basic,
       ultimate,
       pet,
       elemental,
+      skillDamageMap,
       peakCrit: Math.round(this.peakCritDmg),
       elapsedSeconds: Math.max(1, Math.round(this.runElapsedSeconds)),
       perfectDodges: this.perfectDodgeCount,
@@ -24661,6 +24987,7 @@ export class GameEngine {
               trainingTotalDamage: snap.totalDamage,
               trainingCritRatePct: snap.critRatePct,
               trainingHits: snap.hits,
+              trainingMvpSkillLabel: this.getTrainingMvpSkillLabel(),
             };
           })()
         : {}),
@@ -24853,10 +25180,11 @@ export class GameEngine {
     }
     this.lootOrbs.forEach((o) => this.entitiesGroup.remove(o.mesh));
     this.lootOrbs = [];
-    this.groundTelegraphPool.releaseAll();
+    this.groundTelegraphPool?.releaseAll();
+    this.signatureVfxPool?.dispose();
     this.releaseObject(this.scene);
     this.lootOrbVisualCache.dispose();
-    this.groundTelegraphPool.dispose();
+    this.groundTelegraphPool?.dispose();
     disposeChapter1RosterTemplateCache();
     disposeSolarLeoTemplateCache();
     this.disposePostProcessing();

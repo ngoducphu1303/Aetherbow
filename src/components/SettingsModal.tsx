@@ -45,6 +45,8 @@ import {
   Chapter1MapMode,
   CombatCameraPreset,
   CombatKeybindAction,
+  FrameBenchmarkLiveSnapshot,
+  FrameBenchmarkReport,
   GameSettings,
   GpuProfileSummary,
   GraphicsQuality,
@@ -73,6 +75,13 @@ interface SettingsModalProps {
   onResetPlayerData?: () => Promise<void> | void;
   isVerifiedAdmin?: boolean;
   onOpenAdminLiveOps?: () => void;
+  onStartFrameBenchmark?: (
+    durationSec: number,
+    onComplete: (report: FrameBenchmarkReport) => void
+  ) => void;
+  onStopFrameBenchmark?: () => FrameBenchmarkReport | null;
+  onPollFrameBenchmark?: () => FrameBenchmarkLiveSnapshot | null;
+  initialBenchmarkReport?: FrameBenchmarkReport | null;
   onClose: () => void;
 }
 
@@ -116,8 +125,78 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetPlayerData,
   isVerifiedAdmin,
   onOpenAdminLiveOps,
+  onStartFrameBenchmark,
+  onStopFrameBenchmark,
+  onPollFrameBenchmark,
+  initialBenchmarkReport = null,
   onClose,
 }) => {
+  const [benchLive, setBenchLive] = useState<FrameBenchmarkLiveSnapshot | null>(() =>
+    onPollFrameBenchmark ? onPollFrameBenchmark() : null
+  );
+  const [benchReport, setBenchReport] = useState<FrameBenchmarkReport | null>(
+    initialBenchmarkReport
+  );
+  const [benchCopied, setBenchCopied] = useState(false);
+
+  useEffect(() => {
+    if (!benchLive?.running || !onPollFrameBenchmark) return;
+    const id = window.setInterval(() => {
+      const snap = onPollFrameBenchmark();
+      if (snap) setBenchLive(snap);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [benchLive?.running, onPollFrameBenchmark]);
+
+  const handleStartBench = (durationSec: number) => {
+    if (!onStartFrameBenchmark) return;
+    soundEngine.playUiClick(1.06);
+    setBenchCopied(false);
+    onStartFrameBenchmark(durationSec, (report) => {
+      setBenchReport(report);
+      setBenchLive(onPollFrameBenchmark ? onPollFrameBenchmark() : null);
+    });
+    const snap = onPollFrameBenchmark ? onPollFrameBenchmark() : null;
+    if (snap) setBenchLive(snap);
+  };
+
+  const handleStopBench = () => {
+    if (!onStopFrameBenchmark) return;
+    soundEngine.playUiClick(0.95);
+    const report = onStopFrameBenchmark();
+    if (report) setBenchReport(report);
+    const snap = onPollFrameBenchmark ? onPollFrameBenchmark() : null;
+    if (snap) setBenchLive(snap);
+  };
+
+  const handleCopyBenchJson = async () => {
+    if (!benchReport) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(benchReport, null, 2));
+      setBenchCopied(true);
+      soundEngine.playUiClick(1.1);
+      window.setTimeout(() => setBenchCopied(false), 2200);
+    } catch {
+      setBenchCopied(false);
+    }
+  };
+
+  const handleDownloadBenchJson = () => {
+    if (!benchReport) return;
+    soundEngine.playUiClick(1.08);
+    const blob = new Blob([JSON.stringify(benchReport, null, 2)], {
+      type: 'application/json;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aetherbow-e5430-benchmark-${benchReport.durationRequestedSec}s.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const [showPlaytestKpi, setShowPlaytestKpi] = useState(false);
   const [showSaveTransfer, setShowSaveTransfer] = useState(false);
   const [kpiTab, setKpiTab] = useState<'kpi' | 'history'>('kpi');
@@ -1552,6 +1631,158 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               Mỗi Chương Hoàng Đạo (Ch.1–12) có chủ đề nhạc nền riêng và đẩy cao trào theo Pha Boss I–III.
             </div>
           </button>
+
+          {/* Wave 12: Built-in 15s / 60s E5430 FPS 1% Low Field QA Benchmark Tool */}
+          {onStartFrameBenchmark && (
+            <div
+              data-testid="e5430-benchmark-panel"
+              className="col-span-2 p-3.5 rounded-xl border border-emerald-400/35 bg-[#070e1d] space-y-2.5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-black text-emerald-200 flex items-center gap-1.5">
+                    <BarChart3 className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                    <span>Kiểm Định Hiệu Năng 60 Giây (FPS 1% Low · E5430 Field QA)</span>
+                  </div>
+                  <div className="text-[10px] text-slate-300/85 mt-0.5">
+                    Đo trực tiếp khung hình thực tế Zero-GC (FPS TB, 1% Low, P95/P99 ms, Draw Calls, 0 PointLights) và xuất báo cáo JSON.
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {!benchLive?.running ? (
+                    <>
+                      <button
+                        type="button"
+                        data-testid="benchmark-run-15s"
+                        onClick={() => handleStartBench(15)}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-black bg-sky-500/20 border border-sky-400/60 text-sky-100 hover:bg-sky-500/30 cursor-pointer"
+                      >
+                        Chạy Nhanh 15s
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="benchmark-run-60s"
+                        onClick={() => handleStartBench(60)}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-black bg-emerald-500/20 border border-emerald-400/60 text-emerald-100 hover:bg-emerald-500/30 cursor-pointer"
+                      >
+                        Chạy Chuẩn 60s
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="benchmark-stop"
+                      onClick={handleStopBench}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-black bg-rose-500/20 border border-rose-400/60 text-rose-100 hover:bg-rose-500/30 cursor-pointer"
+                    >
+                      Dừng &amp; Chốt Báo Cáo
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {benchLive?.running && (
+                <div className="space-y-1.5 pt-1 border-t border-slate-800/80 tabular-nums">
+                  <div className="flex items-center justify-between text-[11px] text-emerald-200 font-bold">
+                    <span>
+                      Đang thu mẫu: {benchLive.elapsedSec}s / {benchLive.durationSec}s ({benchLive.sampleCount} khung)
+                    </span>
+                    <span>{benchLive.progressPct}%</span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-400 transition-[width] duration-200"
+                      style={{ width: `${benchLive.progressPct}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">FPS Trực Tiếp</div>
+                      <div className="font-black text-amber-300 font-mono-nums">{benchLive.liveAvgFps}</div>
+                    </div>
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">1% Low Ước Tính</div>
+                      <div className="font-black text-emerald-300 font-mono-nums">{benchLive.liveEst1LowFps}</div>
+                    </div>
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">Draw Calls</div>
+                      <div className="font-black text-sky-300 font-mono-nums">{benchLive.liveDrawCalls}</div>
+                    </div>
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">PointLights</div>
+                      <div className="font-black text-emerald-300 font-mono-nums">{benchLive.activePointLights}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {benchReport && !benchLive?.running && (
+                <div
+                  data-testid="e5430-benchmark-report"
+                  className="space-y-2 pt-2 border-t border-slate-800/80 tabular-nums"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <span className="font-black text-amber-200">
+                      Kết Quả ({benchReport.elapsedSec}s · {benchReport.sampleCount} khung) —{' '}
+                      {benchReport.verdict === 'DAT_E5430_60FPS'
+                        ? 'Đạt Chuẩn E5430 60 FPS'
+                        : benchReport.verdict === 'DAT_E5430_30FPS_ON_DINH'
+                          ? 'Ổn Định E5430 30+ FPS'
+                          : 'Cần Tối Ưu Thêm'}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="benchmark-copy-json"
+                        onClick={handleCopyBenchJson}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-[#0d1830] border border-slate-700 text-slate-200 hover:border-amber-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        {benchCopied ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+                        <span>{benchCopied ? 'Đã Chép JSON' : 'Sao Chép JSON'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="benchmark-download-json"
+                        onClick={handleDownloadBenchJson}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-500/20 border border-amber-400/55 text-amber-100 hover:bg-amber-500/30 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Tải JSON</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">FPS Trung Bình</div>
+                      <div className="font-black text-amber-300 font-mono-nums">{benchReport.avgFps}</div>
+                    </div>
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">FPS 1% Low</div>
+                      <div className="font-black text-emerald-300 font-mono-nums">{benchReport.fps1Low}</div>
+                    </div>
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">P95 / P99 ms</div>
+                      <div className="font-black text-sky-300 font-mono-nums">
+                        {benchReport.p95FrameMs} / {benchReport.p99FrameMs}
+                      </div>
+                    </div>
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">Draw Calls (TB/Đỉnh)</div>
+                      <div className="font-black text-slate-100 font-mono-nums">
+                        {benchReport.avgDrawCalls} / {benchReport.peakDrawCalls}
+                      </div>
+                    </div>
+                    <div className="bg-[#0b1428] border border-slate-800 rounded-lg px-2 py-1.5">
+                      <div className="text-[10px] text-slate-400">PointLights / Lite</div>
+                      <div className="font-black text-emerald-300 font-mono-nums">
+                        {benchReport.activePointLights} / {benchReport.liteActive ? 'Bật' : 'Tắt'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* AAA Wave 4: Controls, Haptics & Accessibility */}

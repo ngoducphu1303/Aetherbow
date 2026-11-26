@@ -231,6 +231,15 @@ import {
   transferGearUpgradeLevel,
 } from './data/gearData';
 import {
+  claimHeroMasteryMilestone,
+  claimWeeklyChallengeReward,
+  executeSmartSalvage,
+  normalizeAutoSalvageFilter,
+  recordWeeklyChallengeRun,
+  renameLoadoutPreset,
+} from './data/wave11RetentionSystems';
+import type { AutoSalvageFilterRule } from './types/game';
+import {
   RARITY_RANK,
   applyEarlyRunMilestones,
   applyLoadoutPreset,
@@ -911,7 +920,7 @@ export default function App() {
   const [lobbyInspectMode, setLobbyInspectMode] = useState<boolean>(false);
   const [lobbyInspectAutoRotate, setLobbyInspectAutoRotate] = useState<boolean>(true);
   const [rewardsModalTab, setRewardsModalTab] = useState<
-    'checkin' | 'quests' | 'welcome' | 'journey' | null
+    'checkin' | 'quests' | 'weekly' | 'welcome' | 'journey' | null
   >(null);
   const [talentsModalOpen, setTalentsModalOpen] = useState<boolean>(false);
   const [constellationModalOpen, setConstellationModalOpen] = useState<boolean>(false);
@@ -1105,6 +1114,7 @@ export default function App() {
     aiRewardBonusPct?: number;
     arenaRivalRemainingHpPct?: number;
     coachingNote?: string;
+    autoSalvageSummaryNote?: string;
   } | null>(null);
 
   const playerStats = useMemo(() => computePlayerStats(save), [save]);
@@ -2666,6 +2676,7 @@ export default function App() {
           }
 
           setSave((prev) => {
+            const computed: SaveData = (() => {
             const bp = normalizeBattlePass(prev.battlePass);
             const career = normalizeCareer(prev.career);
             const hasVip = isVipActive(prev.vip);
@@ -3454,6 +3465,29 @@ export default function App() {
                 : cur
             );
             return withTelemetry;
+            })();
+
+            const nextWeekly = recordWeeklyChallengeRun(computed.weeklyChallenges, {
+              runsCompleted: 1,
+              bossInterrupts: (summary.castInterrupts ?? 0) + (summary.bossGuardBreaks ?? 0),
+              elementalReactions: summary.damageBreakdown?.elementalReactions ?? 0,
+              heroWonId: victory ? prev.selectedHeroId : undefined,
+            });
+            let finalized: SaveData = {
+              ...computed,
+              weeklyChallenges: nextWeekly,
+            };
+
+            const salvageRule = normalizeAutoSalvageFilter(finalized.autoSalvageFilter);
+            if (salvageRule.autoRunAfterBattle) {
+              const autoRes = executeSmartSalvage(finalized, salvageRule);
+              if (autoRes.salvagedCount > 0) {
+                finalized = autoRes.nextSave;
+                const autoNote = `Tự động phân giải ${autoRes.salvagedCount} món thừa → +${autoRes.goldGained.toLocaleString('vi-VN')} Vàng · +${autoRes.starDustGained} Bụi Sao`;
+                setRunSummary((cur) => (cur ? { ...cur, autoSalvageSummaryNote: autoNote } : cur));
+              }
+            }
+            return finalized;
           });
         },
         onProgressEvent: ({ killsDelta, stageCleared, bossKilled, maxCombo, seenEnemyKind }) => {
@@ -3468,6 +3502,9 @@ export default function App() {
               seenEnemyKind && !career.seenEnemies.includes(seenEnemyKind)
                 ? [...career.seenEnemies, seenEnemyKind]
                 : career.seenEnemies;
+            const nextWeekly = bossKilled
+              ? recordWeeklyChallengeRun(prev.weeklyChallenges, { bossKills: 1 })
+              : prev.weeklyChallenges;
 
             return {
               ...prev,
@@ -3487,6 +3524,7 @@ export default function App() {
                 ...bp,
                 xp: bp.xp + xpGain,
               },
+              ...(nextWeekly ? { weeklyChallenges: nextWeekly } : {}),
             };
           });
         },
@@ -7828,6 +7866,62 @@ export default function App() {
     });
   }, [triggerUpgradeCelebration]);
 
+  const handleUpdateAutoSalvageFilter = useCallback((nextRule: AutoSalvageFilterRule) => {
+    setSave((prev) => ({
+      ...prev,
+      autoSalvageFilter: normalizeAutoSalvageFilter(nextRule),
+    }));
+  }, []);
+
+  const handleExecuteSmartSalvage = useCallback(
+    (overrideFilter?: AutoSalvageFilterRule) => {
+      setSave((prev) => {
+        const res = executeSmartSalvage(prev, overrideFilter ?? prev.autoSalvageFilter);
+        if (res.salvagedCount === 0) return prev;
+        soundEngine.playForgeCraft();
+        triggerUpgradeCelebration(
+          'Phân Giải Theo Bộ Lọc Hoàn Tất!',
+          `Tách ${res.salvagedCount} món thừa → +${res.goldGained.toLocaleString('vi-VN')} Vàng · +${res.starDustGained} Bụi Sao`
+        );
+        return res.nextSave;
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimWeeklyChallenge = useCallback(
+    (challengeId: string) => {
+      setSave((prev) => {
+        const res = claimWeeklyChallengeReward(prev, challengeId);
+        if (!res.claimed || !res.reward) return prev;
+        soundEngine.playVictory();
+        triggerUpgradeCelebration(
+          `Hoàn Thành Thử Thách Tuần!`,
+          `${res.reward.title} · +${res.reward.rewardGold} Vàng · +${res.reward.rewardGems} Ngọc · +${res.reward.rewardStarDust} Bụi Sao`
+        );
+        return res.nextSave;
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimHeroMasteryMilestone = useCallback(
+    (heroId: HeroId, level: number) => {
+      setSave((prev) => {
+        const res = claimHeroMasteryMilestone(prev, heroId, level);
+        if (!res.claimed || !res.def) return prev;
+        soundEngine.playLevelUp();
+        const titleNote = res.rewardTitle ? ` · Danh hiệu "${res.rewardTitle}"` : '';
+        triggerUpgradeCelebration(
+          `Mốc Tinh Thông Lv.${level} Đã Nhận!`,
+          `+${res.def.rewardGold} Vàng · +${res.def.rewardGems} Ngọc · +${res.def.rewardStarDust} Bụi Sao${titleNote}`
+        );
+        return res.nextSave;
+      });
+    },
+    [triggerUpgradeCelebration]
+  );
+
   const handleSetCoopTacticalOrder = useCallback((order: CoopTacticalOrder) => {
     engineRef.current?.setCoopTacticalOrder(order);
   }, []);
@@ -8866,6 +8960,14 @@ export default function App() {
     soundEngine.playLoadoutSwitch();
     setSave((prev) => applyLoadoutPreset(prev, slotId).nextSave);
   }, []);
+
+  const handleRenameLoadoutPreset = useCallback(
+    (slotId: 'preset_1' | 'preset_2' | 'preset_3', name: string) => {
+      soundEngine.playUiClick(1.06);
+      setSave((prev) => renameLoadoutPreset(prev, slotId, name));
+    },
+    []
+  );
 
   const handleSaveBuildPreset = useCallback((idx: number) => {
     soundEngine.playLevelUp();
@@ -11813,6 +11915,8 @@ export default function App() {
           onApplyChapterEquipmentSet={handleApplyChapterEquipmentSet}
           onSaveLoadoutPreset={handleSaveLoadoutPreset}
           onApplyLoadoutPreset={handleApplyLoadoutPreset}
+          onRenameLoadoutPreset={handleRenameLoadoutPreset}
+          onClaimHeroMasteryMilestone={handleClaimHeroMasteryMilestone}
           onSelectNightmareTier={handleSelectNightmareTier}
           onStartTrainingGrounds={handleStartTrainingGrounds}
           onOpenCodexGuide={() => {
@@ -12133,6 +12237,7 @@ export default function App() {
           playerPowerRating={playerStats.powerRating}
           recommendedChapterPower={activeChapter.recommendedPower}
           combatKeybinds={currentSettings.keybinds}
+          autoSalvageSummaryNote={runSummary?.autoSalvageSummaryNote}
           onOpenCodex={() => {
             handleReturnTitle();
             setCodexGuideOpen(true);
@@ -12355,6 +12460,7 @@ export default function App() {
           onClose={() => setRewardsModalTab(null)}
           onClaimCheckIn={handleClaimCheckIn}
           onClaimDailyQuest={handleClaimDailyQuest}
+          onClaimWeeklyChallenge={handleClaimWeeklyChallenge}
           onClaimWelcomeGift={handleClaimWelcomeGift}
           onClaimJourneyTask={handleClaimJourneyTask}
           onClaimJourneyDay={handleClaimJourneyDay}
@@ -12408,6 +12514,8 @@ export default function App() {
           initialGearUid={forgeConfig.gearUid}
           onSalvageGear={handleSalvageGear}
           onSafeSalvageExcess={handleSafeSalvageExcess}
+          onUpdateAutoSalvageFilter={handleUpdateAutoSalvageFilter}
+          onExecuteSmartSalvage={handleExecuteSmartSalvage}
           onCraftTargetSlotGear={handleCraftEarlyTargetGear}
           onProtectedForgeGear={handleProtectedForgeGear}
           onDirectCraftForgeShardGear={handleDirectCraftForgeShardGear}
@@ -12537,6 +12645,12 @@ export default function App() {
             setSettingsOpen(false);
             setAdminLiveOpsOpen(true);
           }}
+          onStartFrameBenchmark={(durationSec, onComplete) =>
+            engineRef.current?.startFrameBenchmark(durationSec, onComplete)
+          }
+          onStopFrameBenchmark={() => engineRef.current?.stopFrameBenchmark() ?? null}
+          onPollFrameBenchmark={() => engineRef.current?.getFrameBenchmarkLiveState() ?? null}
+          initialBenchmarkReport={engineRef.current?.getLastFrameBenchmarkReport() ?? null}
           onClose={() => setSettingsOpen(false)}
         />
       )}

@@ -10,6 +10,7 @@ import {
 } from '../data/progressionAdvisor';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
 import { evaluateMatchMvpReport } from '../data/wave11Data';
+import { buildPerSkillDamageReport } from '../data/wave11RetentionSystems';
 import { computeComboStyleRank } from '../engine/aaaCombatDirector';
 import { computePostRunDamageShares } from '../engine/aaaWave3Director';
 import { evaluateRunCombatMedals, renderAaaMedalCardPngDataUrl } from '../engine/aaaWave7Director';
@@ -142,6 +143,7 @@ interface PauseResultModalProps {
   onExecuteQuickUpgrade?: () => string | null;
   onOpenWeeklyBoss?: () => void;
   combatKeybinds?: Partial<CombatKeybinds>;
+  autoSalvageSummaryNote?: string | null;
 }
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
@@ -256,6 +258,7 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   onExecuteQuickUpgrade,
   onOpenWeeklyBoss,
   combatKeybinds,
+  autoSalvageSummaryNote,
 }) => {
   const [snapshotSaved, setSnapshotSaved] = useState(false);
   const [medalCardSaved, setMedalCardSaved] = useState(false);
@@ -864,6 +867,72 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                         </div>
                       </div>
                     </div>
+
+                    {/* Wave 11: Ranked Per-Skill Combat Damage Breakdown */}
+                    {(() => {
+                      const skillReport = buildPerSkillDamageReport(damageBreakdown);
+                      if (skillReport.rows.length === 0) return null;
+                      const topRows = skillReport.rows.slice(0, 6);
+                      return (
+                        <div
+                          data-testid="per-skill-damage-breakdown"
+                          className="pt-3 border-t border-slate-800/80 space-y-2.5"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 text-[11px] font-black text-amber-200 uppercase tracking-wider">
+                              <Flame className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                              <span>Bảng Sát Thương Từng Kỹ Năng</span>
+                            </span>
+                            {skillReport.mvpSkill && (
+                              <span className="text-[11px] font-bold text-emerald-300 font-mono-nums tabular-nums">
+                                Chủ Lực: {skillReport.mvpSkill.labelVi} ({skillReport.mvpSkill.pct}%)
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {topRows.map((row, idx) => (
+                              <div key={row.key} className="space-y-0.5">
+                                <div className="flex items-center justify-between gap-2 text-[11px]">
+                                  <span className="flex items-center gap-1.5 text-slate-200 font-bold truncate">
+                                    <span className="font-mono-nums tabular-nums text-[10px] text-slate-400 w-4 shrink-0">
+                                      #{idx + 1}
+                                    </span>
+                                    <span
+                                      className="h-2 w-2 rounded-sm shrink-0"
+                                      style={{ backgroundColor: row.dotHex }}
+                                    />
+                                    <span className="truncate">{row.labelVi}</span>
+                                  </span>
+                                  <span className={`font-mono-nums tabular-nums font-black shrink-0 ${row.textClass}`}>
+                                    {row.damage.toLocaleString('vi-VN')} ({row.pct}%)
+                                  </span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-slate-900 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full bg-gradient-to-r ${row.barClass}`}
+                                    style={{
+                                      width: `${Math.max(3, row.pct)}%`,
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="text-[11px] text-slate-300 leading-relaxed pt-1 border-t border-slate-800/60">
+                            <span className="font-black text-sky-300">Gợi Ý Tối Ưu Build: </span>
+                            <span>{skillReport.buildAdviceVi}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {autoSalvageSummaryNote && (
+                      <div className="pt-2 border-t border-emerald-500/25 text-[11px] font-bold text-emerald-300">
+                        {autoSalvageSummaryNote}
+                      </div>
+                    )}
                   </div>
                 );
               })()}

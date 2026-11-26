@@ -676,6 +676,8 @@ service cloud.firestore {
           'announcementBanner',
           'maintenanceNotice',
           'balanceNote',
+          'scheduledStartMs',
+          'scheduledEndMs',
           'updatedByUid',
           'updatedByLabel',
           'updatedAt'

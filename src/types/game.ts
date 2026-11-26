@@ -999,6 +999,20 @@ export interface CoopAllySummary {
   isMvp?: boolean;
 }
 
+export type CombatDamageSkillKey =
+  | 'basic_volley'
+  | 'hero_active'
+  | 'heavy_break'
+  | 'hero_ultimate'
+  | 'weapon_overdrive'
+  | 'orbit_orbs'
+  | 'flying_swords'
+  | 'meteor_shower'
+  | 'elemental_procs'
+  | 'elemental_reaction'
+  | 'pet_companion'
+  | 'arena_mechanism';
+
 export interface DamageBreakdown {
   basic: number;
   ultimate: number;
@@ -1011,6 +1025,32 @@ export interface DamageBreakdown {
   elementalReactions?: number;
   counterShots?: number;
   coopAllies?: CoopAllySummary[];
+  skillDamageMap?: Partial<Record<CombatDamageSkillKey, number>>;
+}
+
+export interface AutoSalvageFilterRule {
+  maxRarity: 'COMMON' | 'RARE' | 'EPIC';
+  protectSTier: boolean;
+  protectSetPieces: boolean;
+  protectUpgradedOrSocketed: boolean;
+  autoRunAfterBattle: boolean;
+}
+
+export type WeeklyChallengeMetric =
+  | 'runsCompleted'
+  | 'bossKills'
+  | 'bossInterrupts'
+  | 'elementalReactions'
+  | 'uniqueHeroesWon';
+
+export interface WeeklyChallengeProgress {
+  weekKey: string;
+  runsCompleted: number;
+  bossKills: number;
+  bossInterrupts: number;
+  elementalReactions: number;
+  heroesUsedToWin: HeroId[];
+  claimedIds: string[];
 }
 
 export interface EdgeThreatIndicator {
@@ -1557,6 +1597,10 @@ export interface SaveData {
   };
   // Global account reset epoch counter
   accountResetEpoch?: number;
+  // Wave 11: Smart Auto-Salvage Filter, Weekly Challenges & Claimed Hero Mastery Milestones
+  autoSalvageFilter?: AutoSalvageFilterRule;
+  weeklyChallenges?: WeeklyChallengeProgress;
+  claimedHeroMasteryMilestones?: Partial<Record<HeroId, number[]>>;
 }
 
 export type AiAutoPilotTactic = 'aggressive' | 'balanced' | 'evasive';
@@ -2315,6 +2359,7 @@ export interface HudSnapshot {
   trainingTotalDamage?: number;
   trainingCritRatePct?: number;
   trainingHits?: number;
+  trainingMvpSkillLabel?: string;
   // AAA Wave 2: Cinematic Letterbox, Boss Execution Slow-Mo & Synergy Awakening
   cinematicBarRatio?: number;
   bossFinisherTimer?: number;
@@ -3665,6 +3710,77 @@ export interface LiveServerBountyState {
   contributors: LiveServerBountyContributor[];
   lastUpdatedAt: number;
 }
+
+// ---------------------------------------------------------------------------
+// WAVE 12 — 60s E5430 FPS 1% LOW BENCHMARK & TRAINING PRESET DPS COMPARISON
+// ---------------------------------------------------------------------------
+
+export type FrameBenchmarkVerdict =
+  | 'DAT_E5430_60FPS'
+  | 'DAT_E5430_30FPS_ON_DINH'
+  | 'CAN_TOI_UU_THEM';
+
+export interface FrameBenchmarkLiveSnapshot {
+  running: boolean;
+  durationSec: number;
+  elapsedSec: number;
+  progressPct: number;
+  sampleCount: number;
+  liveAvgFps: number;
+  liveEst1LowFps: number;
+  liveDrawCalls: number;
+  liveTriangles: number;
+  activePointLights: number;
+  liteActive: boolean;
+  watchdogStage: number;
+}
+
+export interface FrameBenchmarkReport {
+  schemaVersion: string;
+  generatedAtIso: string;
+  durationRequestedSec: number;
+  elapsedSec: number;
+  sampleCount: number;
+  avgFps: number;
+  fps1Low: number;
+  avgFrameMs: number;
+  p95FrameMs: number;
+  p99FrameMs: number;
+  minFrameMs: number;
+  maxFrameMs: number;
+  jankFramesOver33ms: number;
+  jankFramesOver50ms: number;
+  avgDrawCalls: number;
+  peakDrawCalls: number;
+  avgTriangles: number;
+  peakTriangles: number;
+  activePointLights: number;
+  liteActive: boolean;
+  watchdogStage: number;
+  gpuRenderer: string;
+  chapterId: number;
+  heroId: string;
+  verdict: FrameBenchmarkVerdict;
+}
+
+export interface TrainingPresetDpsRecord {
+  slotId: LoadoutPresetSlotId;
+  presetName: string;
+  dps5s: number;
+  peakDps: number;
+  critRatePct: number;
+  totalDamage: number;
+  hits: number;
+  mvpSkillLabel: string;
+  recordedAt: number;
+}
+
+export interface TrainingPresetComparisonRow extends TrainingPresetDpsRecord {
+  deltaDpsPct: number;
+  isBaseline: boolean;
+  isLeader: boolean;
+}
+
 
 
 

@@ -8,6 +8,7 @@ import { resolveBossAudioLayers } from '../engine/aaaWave5Director';
 import {
   buildInterruptFanfareNotes,
   resolveChapterBossStepDuration,
+  resolveDynamicMusicLayers,
   resolveZodiacChapterMusic,
 } from './zodiacMusicDirector';
 import {
@@ -399,10 +400,30 @@ class SoundEngine {
       this.bossIntensity = 1;
     }
     if (mode === 'silent' || this.muted) {
+      if (this.ctx && this.bgmGain) {
+        const now = this.ctx.currentTime;
+        this.bgmGain.gain.cancelScheduledValues(now);
+        this.bgmGain.gain.setTargetAtTime(0.0001, now, 0.08);
+      }
       this.stopBgmScheduler();
       return;
     }
     if (this.ctx) {
+      if (this.bgmGain) {
+        const now = this.ctx.currentTime;
+        const lowEnd = this.sfxMixer.getStats(performance.now()).lowEndMode;
+        const layers = resolveDynamicMusicLayers({
+          mode: mode === 'boss' ? 'boss' : mode === 'combat' ? 'combat' : 'menu',
+          bossPhase: this.bossIntensity,
+          hpRatio: this.combatHpRatio,
+          combo: this.combatCombo,
+          lowEndMode: lowEnd,
+        });
+        const targetGain = Math.max(0.0001, this.bgmVol * 0.42);
+        this.bgmGain.gain.cancelScheduledValues(now);
+        this.bgmGain.gain.setValueAtTime(Math.max(0.0001, targetGain * 0.28), now);
+        this.bgmGain.gain.linearRampToValueAtTime(targetGain, now + layers.crossfadeSec);
+      }
       this.bgmNextNoteTime = this.ctx.currentTime + 0.06;
       this.startBgmScheduler();
     }
@@ -600,14 +621,38 @@ class SoundEngine {
           1.4
         );
       }
+      // Wave 12: Dynamic Phase-Layered Combat Tension Counter-Arpeggio (low-end CPU capped)
+      const lowEndMusic = this.sfxMixer.getStats(performance.now()).lowEndMode;
+      const dynCombat = resolveDynamicMusicLayers({
+        mode: 'combat',
+        bossPhase: 1,
+        hpRatio: this.combatHpRatio,
+        combo: this.combatCombo,
+        lowEndMode: lowEndMusic,
+      });
+      if (dynCombat.enableTensionArp && dynCombat.tensionCounterGain > 0 && step % 4 === 1) {
+        const cFreq = chapterProfile ? chapterProfile.combatMelody[(step + 2) % 16] : 523.25;
+        if (cFreq > 0) {
+          const tOsc = ctx.createOscillator();
+          const tGain = ctx.createGain();
+          tOsc.type = 'triangle';
+          tOsc.frequency.setValueAtTime(cFreq * 1.5, time);
+          tGain.gain.setValueAtTime(dynCombat.tensionCounterGain, time);
+          tGain.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 0.65);
+          tOsc.connect(tGain);
+          tGain.connect(dest);
+          tOsc.start(time);
+          tOsc.stop(time + stepDur * 0.7);
+        }
+      }
       // Subtle Low-HP adrenaline heartbeat sub-pulse
-      if (adaptive.lowHpPulse && (step === 0 || step === 1 || step === 8 || step === 9)) {
+      if ((adaptive.lowHpPulse || dynCombat.enableLowHpHeartbeat) && (step === 0 || step === 1 || step === 8 || step === 9)) {
         const hb = ctx.createOscillator();
         const hbg = ctx.createGain();
         hb.type = 'sine';
         hb.frequency.setValueAtTime(step % 2 === 0 ? 78 : 64, time);
         hb.frequency.exponentialRampToValueAtTime(38, time + 0.09);
-        hbg.gain.setValueAtTime(0.14, time);
+        hbg.gain.setValueAtTime(Math.max(0.11, dynCombat.lowHpPulseGain || 0.14), time);
         hbg.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
         hb.connect(hbg);
         hbg.connect(dest);
@@ -619,6 +664,14 @@ class SoundEngine {
 
     // Boss Encounter: Chapter-themed Adaptive 3-phase orchestral ostinato + power fifths + cathedral choir + war drum
     const intensity = this.bossIntensity;
+    const lowEndBossMusic = this.sfxMixer.getStats(performance.now()).lowEndMode;
+    const dynBoss = resolveDynamicMusicLayers({
+      mode: 'boss',
+      bossPhase: intensity,
+      hpRatio: this.combatHpRatio,
+      combo: this.combatCombo,
+      lowEndMode: lowEndBossMusic,
+    });
     const bossMix = resolveBossAudioLayers(intensity, this.combatCombo, this.combatHpRatio);
     const chapterBossProfile = this.adaptiveChapterMusic
       ? resolveZodiacChapterMusic(this.chapterThemeId)
@@ -656,8 +709,8 @@ class SoundEngine {
     osc.stop(time + stepDur * 0.85);
     fifth.stop(time + stepDur * 0.85);
 
-    // AAA Wave 5: Cathedral Choir harmonic swell on downbeats in Boss Phase II & III (or high combo)
-    if (bossMix.choirGain > 0 && step % 8 === 0) {
+    // AAA Wave 5 + Wave 12: Cathedral Choir harmonic swell (capped on low-end CPUs)
+    if (!lowEndBossMusic && bossMix.choirGain > 0 && step % 8 === 0) {
       const choirNotes = step === 0 ? [220, 261.63, 329.63] : [196, 246.94, 293.66];
       const choirFilter = ctx.createBiquadFilter();
       choirFilter.type = 'bandpass';
@@ -679,18 +732,33 @@ class SoundEngine {
       }
     }
 
-    // Phase III heroic high brass octave counter-line on accent steps
-    if (intensity === 3 && (step % 4 === 0 || step === 6 || step === 14)) {
+    // Phase II/III dynamic tension counter-line (respects lowEndMode voice budget)
+    if (dynBoss.enableTensionArp && dynBoss.tensionCounterGain > 0 && (step % 4 === 0 || step === 6 || step === 14)) {
       const lead = ctx.createOscillator();
       const lg = ctx.createGain();
       lead.type = 'triangle';
-      lead.frequency.setValueAtTime(bossSeq[step] * 2, time);
-      lg.gain.setValueAtTime(0.065, time);
-      lg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 1.15);
+      lead.frequency.setValueAtTime(bossSeq[step % bossSeq.length] * 2, time);
+      lg.gain.setValueAtTime(dynBoss.tensionCounterGain, time);
+      lg.gain.exponentialRampToValueAtTime(0.001, time + stepDur * 1.1);
       lead.connect(lg);
       lg.connect(dest);
       lead.start(time);
-      lead.stop(time + stepDur * 1.2);
+      lead.stop(time + stepDur * 1.15);
+    }
+
+    // Wave 12: Low-HP Boss tension sub-pulse
+    if (dynBoss.enableLowHpHeartbeat && dynBoss.lowHpPulseGain > 0 && (step === 2 || step === 10)) {
+      const hb = ctx.createOscillator();
+      const hbg = ctx.createGain();
+      hb.type = 'sine';
+      hb.frequency.setValueAtTime(74, time);
+      hb.frequency.exponentialRampToValueAtTime(36, time + 0.1);
+      hbg.gain.setValueAtTime(dynBoss.lowHpPulseGain, time);
+      hbg.gain.exponentialRampToValueAtTime(0.001, time + 0.11);
+      hb.connect(hbg);
+      hbg.connect(dest);
+      hb.start(time);
+      hb.stop(time + 0.12);
     }
 
     // War drum (4/4 in Phase I; driving double-time in Phase II & III)
@@ -1222,24 +1290,136 @@ class SoundEngine {
   }
 
   public playBossTelegraph(): void {
-    const dest = this.getSfxDest();
+    this.playBossTelegraphPing('normal', 0, 0);
+  }
+
+  /**
+   * Wave 12: Crisp metallic Boss telegraph warning ping routed through SfxPriorityMixer.
+   */
+  public playBossTelegraphPing(
+    severity: 'normal' | 'lethal' = 'normal',
+    pan = 0,
+    distanceUnits = 0
+  ): void {
+    const mix = this.gateSfx('boss_telegraph_ping', distanceUnits);
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.linearRampToValueAtTime(90, now + 0.22);
+    osc.type = severity === 'lethal' ? 'sawtooth' : 'triangle';
+    const startHz = (severity === 'lethal' ? 680 : 490) * mix.pitchMult;
+    const endHz = (severity === 'lethal' ? 980 : 340) * mix.pitchMult;
+    osc.frequency.setValueAtTime(startHz, now);
+    osc.frequency.exponentialRampToValueAtTime(endHz, now + 0.19);
 
-    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime((severity === 'lethal' ? 0.11 : 0.082) * mix.gainScale, now + 0.014);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
 
     osc.connect(gain);
     gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.25);
+
+    if (severity === 'lethal') {
+      const overtone = ctx.createOscillator();
+      const og = ctx.createGain();
+      overtone.type = 'sine';
+      overtone.frequency.setValueAtTime(1320 * mix.pitchMult, now + 0.05);
+      og.gain.setValueAtTime(0.055 * mix.gainScale, now + 0.05);
+      og.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      overtone.connect(og);
+      og.connect(dest);
+      overtone.start(now + 0.05);
+      overtone.stop(now + 0.27);
+    }
+  }
+
+  /**
+   * Wave 12: Rarity-escalating loot chime for Epic / Legendary / Mythic drops.
+   */
+  public playLootRarityChime(
+    rarity: 'EPIC' | 'LEGENDARY' | 'MYTHIC' | string,
+    pan = 0
+  ): void {
+    const norm = String(rarity || 'EPIC').toUpperCase();
+    const cat: SfxEventCategory =
+      norm === 'MYTHIC'
+        ? 'loot_rarity_mythic'
+        : norm === 'LEGENDARY'
+          ? 'loot_rarity_legendary'
+          : 'loot_rarity_epic';
+    const mix = this.gateSfx(cat);
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const notes =
+      cat === 'loot_rarity_mythic'
+        ? [523.25, 659.25, 783.99, 1046.5, 1567.98]
+        : cat === 'loot_rarity_legendary'
+          ? [523.25, 659.25, 783.99, 1046.5]
+          : [440, 554.37, 659.25];
+
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = cat === 'loot_rarity_mythic' && idx >= 3 ? 'triangle' : 'sine';
+      const t = now + idx * 0.055;
+      osc.frequency.setValueAtTime(freq * mix.pitchMult, t);
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime((cat === 'loot_rarity_mythic' ? 0.11 : 0.085) * mix.gainScale, t + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + (cat === 'loot_rarity_mythic' ? 0.36 : 0.24));
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.38);
+    });
+  }
+
+  /**
+   * Wave 12: Sub-bass impact drop + celestial ring when landing an Execution Finisher / Boss KO.
+   */
+  public playExecutionFinisherDrop(pan = 0): void {
+    const mix = this.gateSfx('execution_finisher_drop');
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+
+    const sub = ctx.createOscillator();
+    const sg = ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(145, now);
+    sub.frequency.exponentialRampToValueAtTime(34, now + 0.34);
+    sg.gain.setValueAtTime(0.24 * mix.gainScale, now);
+    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    sub.connect(sg);
+    sg.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.4);
+
+    const chord = [523.25, 783.99, 1046.5];
+    chord.forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + 0.04 + idx * 0.03;
+      osc.frequency.setValueAtTime(f * mix.pitchMult, t);
+      g.gain.setValueAtTime(0.075 * mix.gainScale, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.34);
+    });
   }
 
   public playVictory(): void {

@@ -61,8 +61,10 @@ import {
   LoadoutPreset,
   LoadoutPresetSlotId,
   SkillId,
+  TrainingPresetDpsRecord,
   TrainingTargetMode,
 } from '../types/game';
+import { computeTrainingPresetComparison } from '../engine/frameBenchmarkSampler';
 import {
   COOP_TACTICAL_ORDERS,
   WAVE9_COOP_QUICK_ORDERS,
@@ -148,6 +150,49 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onTrainingLoadoutSwitch,
   onTrainingExit,
 }) => {
+  const [trainingPresetRecords, setTrainingPresetRecords] = useState<
+    Record<string, TrainingPresetDpsRecord>
+  >({});
+
+  useEffect(() => {
+    if (!hud.isTrainingMode) {
+      setTrainingPresetRecords({});
+    }
+  }, [hud.isTrainingMode]);
+
+  const activePresetSlot: LoadoutPresetSlotId =
+    activeLoadoutPresetId ?? loadoutPresets?.[0]?.slotId ?? 'preset_1';
+  const activePresetName =
+    loadoutPresets?.find((p) => p.slotId === activePresetSlot)?.name ?? 'Bộ Trang Bị 1';
+
+  const captureCurrentTrainingSample = (slotId: LoadoutPresetSlotId, presetName: string) => {
+    const dps5s = hud.trainingDps5s ?? 0;
+    const peakDps = hud.trainingPeakDps ?? 0;
+    const totalDamage = hud.trainingTotalDamage ?? 0;
+    const hits = hud.trainingHits ?? 0;
+    const critRatePct = hud.trainingCritRatePct ?? 0;
+    const mvpSkillLabel = hud.trainingMvpSkillLabel ?? 'Đòn Cơ Bản';
+    setTrainingPresetRecords((prev) => ({
+      ...prev,
+      [slotId]: {
+        slotId,
+        presetName,
+        dps5s,
+        peakDps,
+        critRatePct,
+        totalDamage,
+        hits,
+        mvpSkillLabel,
+        recordedAt: Date.now(),
+      },
+    }));
+  };
+
+  const trainingComparisonRows = computeTrainingPresetComparison(
+    Object.values(trainingPresetRecords),
+    loadoutPresets?.[0]?.slotId
+  );
+
   const hudScaleFactor = resolveHudScaleFactor(hudScale);
   const isCompact = Boolean(compactHud);
   const activeKeybinds = normalizeCombatKeybinds(keybinds);
@@ -847,7 +892,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       <button
                         key={preset.slotId}
                         type="button"
-                        onClick={() => onTrainingLoadoutSwitch(preset.slotId)}
+                        onClick={() => {
+                          if ((hud.trainingHits ?? 0) > 0 && preset.slotId !== activePresetSlot) {
+                            captureCurrentTrainingSample(activePresetSlot, activePresetName);
+                          }
+                          onTrainingLoadoutSwitch(preset.slotId);
+                        }}
                         className={`px-2 py-1.5 rounded-xl text-[10px] font-black border whitespace-nowrap shrink-0 cursor-pointer ${
                           isActive
                             ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
@@ -858,6 +908,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       </button>
                     );
                   })}
+                  <button
+                    type="button"
+                    data-testid="training-capture-preset-dps"
+                    onClick={() => captureCurrentTrainingSample(activePresetSlot, activePresetName)}
+                    className="px-2 py-1.5 rounded-xl text-[10px] font-black bg-amber-500/20 border border-amber-400/60 text-amber-200 hover:bg-amber-500/30 whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    Chốt Mẫu DPS
+                  </button>
                 </div>
               )}
 
@@ -881,6 +939,88 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   <LogOut className="w-3.5 h-3.5 shrink-0" />
                   <span>Thoát</span>
                 </button>
+              )}
+            </div>
+
+            {/* Wave 12: Side-by-Side Loadout Preset DPS Comparison Table (0 backdrop-blur, tabular-nums) */}
+            <div
+              data-testid="training-preset-comparison"
+              className="pointer-events-auto rounded-2xl bg-[#070b1a]/95 border border-emerald-400/30 px-3 py-2 w-full sm:w-auto sm:min-w-[360px] shadow-xl"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1 mb-1.5">
+                <span className="text-[11px] font-black text-emerald-200 whitespace-nowrap">
+                  So Sánh DPS Bộ Trang Bị · MVP: {hud.trainingMvpSkillLabel ?? 'Đòn Cơ Bản'}
+                </span>
+                {trainingComparisonRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTrainingPresetRecords({})}
+                    className="text-[10px] font-bold text-slate-400 hover:text-amber-200 cursor-pointer"
+                  >
+                    Xóa Bảng
+                  </button>
+                )}
+              </div>
+
+              {trainingComparisonRows.length === 0 ? (
+                <div className="text-[10px] text-slate-400 leading-snug">
+                  Nhấn <span className="text-amber-200 font-bold">Chốt Mẫu DPS</span> hoặc chuyển Bộ Trang Bị sau vài giây đánh bù nhìn để so sánh chênh lệch % DPS trực tiếp.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-[10px] tabular-nums">
+                    <thead>
+                      <tr className="text-slate-400 border-b border-slate-800/90">
+                        <th className="py-1 pr-2 font-bold">Bộ Trang Bị</th>
+                        <th className="py-1 px-1.5 font-bold text-right">DPS 5s</th>
+                        <th className="py-1 px-1.5 font-bold text-right">Đỉnh</th>
+                        <th className="py-1 px-1.5 font-bold text-right">CM%</th>
+                        <th className="py-1 px-1.5 font-bold">Kỹ Năng MVP</th>
+                        <th className="py-1 pl-1.5 font-bold text-right">% ΔDPS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trainingComparisonRows.map((row) => (
+                        <tr
+                          key={row.slotId}
+                          className={`border-b border-slate-800/50 last:border-b-0 ${
+                            row.isLeader ? 'text-emerald-200 font-bold' : 'text-slate-200'
+                          }`}
+                        >
+                          <td className="py-1 pr-2 whitespace-nowrap">
+                            {row.presetName}
+                            {row.isLeader ? ' ★' : ''}
+                          </td>
+                          <td className="py-1 px-1.5 text-right font-mono-nums text-amber-300">
+                            {row.dps5s.toLocaleString('vi-VN')}
+                          </td>
+                          <td className="py-1 px-1.5 text-right font-mono-nums text-emerald-300">
+                            {row.peakDps.toLocaleString('vi-VN')}
+                          </td>
+                          <td className="py-1 px-1.5 text-right font-mono-nums text-sky-300">
+                            {row.critRatePct}%
+                          </td>
+                          <td className="py-1 px-1.5 truncate max-w-[120px] text-slate-300">
+                            {row.mvpSkillLabel}
+                          </td>
+                          <td
+                            className={`py-1 pl-1.5 text-right font-mono-nums font-black ${
+                              row.isBaseline
+                                ? 'text-slate-400'
+                                : row.deltaDpsPct >= 0
+                                  ? 'text-emerald-300'
+                                  : 'text-rose-300'
+                            }`}
+                          >
+                            {row.isBaseline
+                              ? 'Mốc'
+                              : `${row.deltaDpsPct >= 0 ? '+' : ''}${row.deltaDpsPct}%`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>

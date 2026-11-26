@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, Check, Compass, Gift, ScrollText, Sparkles, X } from 'lucide-react';
+import { Award, Calendar, Check, Compass, Gift, ScrollText, Sparkles, X } from 'lucide-react';
 import noviceJourneyBanner from '../assets/images/novice_journey_scroll_1794983176618.jpg';
 import {
   CHECK_IN_REWARDS,
@@ -14,16 +14,24 @@ import {
   getJourneyTaskCurrentValue,
   normalizeNoviceJourney,
 } from '../data/wave5Data';
+import {
+  WEEKLY_CHALLENGES,
+  countClaimableWeeklyChallenges,
+  getIsoWeekKey,
+  getWeeklyChallengeCurrentValue,
+  normalizeWeeklyChallenges,
+} from '../data/wave11RetentionSystems';
 import { SaveData } from '../types/game';
 import { GoldCoinIcon, SoulGemIcon, StarDustIcon } from './GameIcons';
 
 interface DailyRewardsModalProps {
   save: SaveData;
   powerRating: number;
-  initialTab?: 'checkin' | 'quests' | 'welcome' | 'journey';
+  initialTab?: 'checkin' | 'quests' | 'weekly' | 'welcome' | 'journey';
   onClose: () => void;
   onClaimCheckIn: () => void;
   onClaimDailyQuest: (questId: string) => void;
+  onClaimWeeklyChallenge?: (challengeId: string) => void;
   onClaimWelcomeGift: () => void;
   onClaimJourneyTask: (taskId: string) => void;
   onClaimJourneyDay: (day: number) => void;
@@ -36,18 +44,24 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
   onClose,
   onClaimCheckIn,
   onClaimDailyQuest,
+  onClaimWeeklyChallenge,
   onClaimWelcomeGift,
   onClaimJourneyTask,
   onClaimJourneyDay,
 }) => {
-  const [tab, setTab] = useState<'checkin' | 'quests' | 'welcome' | 'journey'>(initialTab);
+  const [tab, setTab] = useState<'checkin' | 'quests' | 'weekly' | 'welcome' | 'journey'>(
+    initialTab
+  );
   const [journeyDay, setJourneyDay] = useState<number>(1);
   const [journeyImgErr, setJourneyImgErr] = useState(false);
 
   const checkIn = normalizeCheckIn(save.checkIn);
   const today = getTodayKey();
+  const weekKey = getIsoWeekKey();
   const daily = normalizeDailyQuests(save.dailyQuests, today);
   const dailyQuestClaimable = countClaimableDailyQuests(save.dailyQuests, today);
+  const weekly = normalizeWeeklyChallenges(save.weeklyChallenges, weekKey);
+  const weeklyClaimable = countClaimableWeeklyChallenges(save.weeklyChallenges, weekKey);
   const journey = normalizeNoviceJourney(save.noviceJourney);
   const canCheckInToday = checkIn.count < 7 && checkIn.lastDate !== today;
 
@@ -75,7 +89,7 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
         </div>
 
         {/* Subtabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 px-4 pt-3 pb-2.5 bg-[#090e22] border-b border-amber-400/20">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 px-4 pt-3 pb-2.5 bg-[#090e22] border-b border-amber-400/20">
           <button
             type="button"
             onClick={() => setTab('checkin')}
@@ -110,6 +124,27 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
           </button>
           <button
             type="button"
+            data-testid="rewards-modal-weekly-tab"
+            onClick={() => setTab('weekly')}
+            className={`relative py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+              tab === 'weekly'
+                ? 'a2-purple-btn'
+                : 'cel-panel text-slate-300 hover:text-white'
+            }`}
+          >
+            <Award className="w-3.5 h-3.5 shrink-0" />
+            <span>Thử Thách Tuần</span>
+            {weeklyClaimable > 0 && (
+              <span
+                data-testid="rewards-modal-weekly-badge"
+                className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-mono-nums text-[9px] font-black leading-none"
+              >
+                {weeklyClaimable}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
             onClick={() => setTab('welcome')}
             className={`py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
               tab === 'welcome'
@@ -123,14 +158,14 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
           <button
             type="button"
             onClick={() => setTab('journey')}
-            className={`py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            className={`col-span-2 sm:col-span-1 py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
               tab === 'journey'
                 ? 'a2-emerald-btn'
                 : 'cel-panel text-slate-300 hover:text-white'
             }`}
           >
             <Compass className="w-3.5 h-3.5 shrink-0" />
-            <span>Hành Trình 7 Ngày</span>
+            <span>7 Ngày</span>
           </button>
         </div>
 
@@ -251,6 +286,97 @@ export const DailyRewardsModal: React.FC<DailyRewardsModalProps> = ({
                       }`}
                     >
                       {claimed ? 'Đã Nhận' : ready ? 'Nhận Thưởng' : 'Chưa Đạt'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {tab === 'weekly' && (
+            <div className="flex flex-col gap-3" data-testid="weekly-challenges-panel">
+              <div className="cel-panel rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-purple-400/30">
+                <div>
+                  <div className="text-xs sm:text-sm font-black text-amber-200">
+                    Khế Ước Chiến Đấu Tuần · {weekKey}
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    Tự động làm mới mỗi thứ Hai · Tích lũy từ mọi chế độ PvE, Boss &amp; Đấu Trường.
+                  </p>
+                </div>
+                <span className="font-mono-nums tabular-nums text-xs font-black text-emerald-300 shrink-0">
+                  {weekly.claimedIds.length}/{WEEKLY_CHALLENGES.length} Đã Nhận
+                </span>
+              </div>
+
+              {WEEKLY_CHALLENGES.map((ch) => {
+                const current = Math.min(
+                  ch.target,
+                  getWeeklyChallengeCurrentValue(weekly, ch.metric)
+                );
+                const pct = Math.round((current / ch.target) * 100);
+                const claimed = weekly.claimedIds.includes(ch.id);
+                const ready = !claimed && current >= ch.target;
+
+                return (
+                  <div
+                    key={ch.id}
+                    className="cel-panel rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs sm:text-sm font-black text-white">
+                          {ch.title}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{ch.desc}</p>
+                      <div className="flex flex-wrap items-center gap-2.5 text-[11px] font-mono-nums tabular-nums mt-1.5">
+                        <span className="flex items-center gap-1 text-amber-300 font-bold">
+                          +{ch.rewardGold} <GoldCoinIcon className="w-3 h-3" />
+                        </span>
+                        <span aria-hidden="true" className="text-slate-600">·</span>
+                        <span className="flex items-center gap-1 text-purple-300 font-bold">
+                          +{ch.rewardGems} <SoulGemIcon className="w-3 h-3" />
+                        </span>
+                        <span aria-hidden="true" className="text-slate-600">·</span>
+                        <span className="flex items-center gap-1 text-sky-300 font-bold">
+                          +{ch.rewardStarDust} <StarDustIcon className="w-3 h-3" />
+                        </span>
+                        {ch.rewardEpicShards > 0 && (
+                          <>
+                            <span aria-hidden="true" className="text-slate-600">·</span>
+                            <span className="text-fuchsia-300 font-bold">
+                              +{ch.rewardEpicShards} Mảnh Sử Thi
+                            </span>
+                          </>
+                        )}
+                        <span aria-hidden="true" className="text-slate-600">·</span>
+                        <span className="text-slate-200 font-bold">
+                          {current}/{ch.target}
+                        </span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-slate-950/90 mt-2 overflow-hidden border border-purple-400/20">
+                        <div
+                          className="h-full bg-gradient-to-r from-purple-400 via-fuchsia-400 to-amber-300 transition-all duration-200"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!ready || !onClaimWeeklyChallenge}
+                      onClick={() => onClaimWeeklyChallenge?.(ch.id)}
+                      className={`px-4 py-2 rounded-xl text-xs font-black shrink-0 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                        claimed
+                          ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 cursor-default'
+                          : ready
+                          ? 'a2-yellow-btn'
+                          : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {claimed && <Check className="w-3.5 h-3.5 shrink-0" />}
+                      <span>{claimed ? 'Đã Nhận' : ready ? 'Nhận Thưởng' : 'Chưa Đạt'}</span>
                     </button>
                   </div>
                 );

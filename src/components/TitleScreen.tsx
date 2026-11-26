@@ -357,6 +357,8 @@ interface TitleScreenProps {
   onApplyChapterEquipmentSet: (chapterId: number) => void;
   onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onRenameLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3', name: string) => void;
+  onClaimHeroMasteryMilestone?: (heroId: HeroId, level: number) => void;
   onSelectNightmareTier?: (tier: number) => void;
   onStartTrainingGrounds?: () => void;
   onOpenCodexGuide?: () => void;
@@ -580,6 +582,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onApplyChapterEquipmentSet,
   onSaveLoadoutPreset,
   onApplyLoadoutPreset,
+  onRenameLoadoutPreset,
+  onClaimHeroMasteryMilestone,
   onSelectNightmareTier,
   onStartTrainingGrounds,
   onOpenCodexGuide,
@@ -2137,6 +2141,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               onApplyBuildPreset={onApplyBuildPreset}
               onSaveLoadoutPreset={onSaveLoadoutPreset}
               onApplyLoadoutPreset={onApplyLoadoutPreset}
+              onRenameLoadoutPreset={onRenameLoadoutPreset}
               onStartTrainingGrounds={onStartTrainingGrounds}
               onOpenWardrobe={onOpenWardrobe}
               onRotateHero={onRotateHero}
@@ -2187,6 +2192,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               onUpgradeHalo={onUpgradeHalo}
               onOpenWardrobe={onOpenWardrobe}
               onPreviewUltimate={onPreviewUltimate}
+              onClaimHeroMasteryMilestone={onClaimHeroMasteryMilestone}
               onRotateHero={onRotateHero}
               onResetHeroRotation={onResetHeroRotation}
             />
@@ -2200,6 +2206,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               onFuseRune={onFuseRune}
               onBulkFuseRunes={onBulkFuseRunes}
               onCraftSelectedRune={onCraftSelectedRune}
+              onSaveLoadoutPreset={onSaveLoadoutPreset}
+              onApplyLoadoutPreset={onApplyLoadoutPreset}
               onRotateHero={onRotateHero}
               onResetHeroRotation={onResetHeroRotation}
               onGoShop={() => onOpenShopSection('gacha')}

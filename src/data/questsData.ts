@@ -1,4 +1,10 @@
-import { CheckInProgress, DailyQuestProgress, Rarity } from '../types/game';
+import {
+  CheckInProgress,
+  DailyQuestProgress,
+  Rarity,
+  WeeklyChallengeProgress,
+} from '../types/game';
+import { countClaimableWeeklyChallenges } from './wave11RetentionSystems';
 
 export function getTodayKey(): string {
   const now = new Date();
@@ -121,6 +127,7 @@ export function countClaimableWelfare(
     welcomeGiftClaimed?: boolean;
     checkIn?: CheckInProgress;
     dailyQuests?: DailyQuestProgress;
+    weeklyChallenges?: WeeklyChallengeProgress;
   },
   todayKey: string = getTodayKey()
 ): number {
@@ -131,6 +138,7 @@ export function countClaimableWelfare(
   if (ci.count < 7 && ci.lastDate !== todayKey) count += 1;
 
   count += countClaimableDailyQuests(save.dailyQuests, todayKey);
+  count += countClaimableWeeklyChallenges(save.weeklyChallenges);
   return count;
 }
 

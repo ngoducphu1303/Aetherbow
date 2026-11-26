@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Crown, Flame, Gem, Hammer, Lock, Plus, Recycle, RefreshCw, Sparkles, Star, Unlock, X } from 'lucide-react';
+import { Check, Crown, Flame, Gem, Hammer, Lock, Plus, Recycle, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles, Star, Unlock, X } from 'lucide-react';
 import awakeningAnvilArt from '../assets/images/awakening_star_anvil_1794982055198.jpg';
 import relicForgeArt from '../assets/images/relic_forge_anvil_art_1794977270695.jpg';
 import zodiacGemArt from '../assets/images/zodiac_gem_sockets_1794983175988.jpg';
@@ -20,6 +20,10 @@ import {
   computeForgePitySummary,
   FORGE_SHARD_EXCHANGE_COST,
 } from '../engine/wave11FivePillars';
+import {
+  normalizeAutoSalvageFilter,
+  previewSmartSalvage,
+} from '../data/wave11RetentionSystems';
 
 const TARGET_SLOT_LABELS: Record<GearSlot, string> = {
   [GearSlot.WEAPON]: 'Vũ Khí',
@@ -49,7 +53,7 @@ import {
   getSocketGemTierRoman,
   normalizeSocketGems,
 } from '../data/wave5Data';
-import { ForgeRecipe, GearInstance, GearSlot, Rarity, SaveData, SocketGemColor } from '../types/game';
+import { AutoSalvageFilterRule, ForgeRecipe, GearInstance, GearSlot, Rarity, SaveData, SocketGemColor } from '../types/game';
 import { GearSlotSvg, GoldCoinIcon, RARITY_FRAME_CLASS, StarDustIcon } from './GameIcons';
 
 interface RelicForgeModalProps {
@@ -58,6 +62,8 @@ interface RelicForgeModalProps {
   initialGearUid?: string;
   onSalvageGear: (uids: string[]) => void;
   onSafeSalvageExcess?: () => void;
+  onUpdateAutoSalvageFilter?: (next: AutoSalvageFilterRule) => void;
+  onExecuteSmartSalvage?: (overrideFilter?: AutoSalvageFilterRule) => void;
   onCraftTargetSlotGear?: (tier: 'rare' | 'epic' | 's_tier', targetSlot: GearSlot) => void;
   onProtectedForgeGear?: (targetSlot: GearSlot) => void;
   onDirectCraftForgeShardGear?: (targetSlot: GearSlot) => void;
@@ -77,6 +83,8 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   initialGearUid,
   onSalvageGear,
   onSafeSalvageExcess,
+  onUpdateAutoSalvageFilter,
+  onExecuteSmartSalvage,
   onCraftTargetSlotGear,
   onProtectedForgeGear,
   onDirectCraftForgeShardGear,
@@ -187,6 +195,23 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   const guildCoins = normalizeGuild(save.guild).guildCoins;
   const dropCodex = useMemo(() => computeDropRateCodex(save), [save]);
   const safeExcessCount = dropCodex.excessSalvageableCount;
+  const autoSalvageFilter = useMemo(
+    () => normalizeAutoSalvageFilter(save.autoSalvageFilter),
+    [save.autoSalvageFilter]
+  );
+  const smartPreview = useMemo(
+    () => previewSmartSalvage(save, autoSalvageFilter),
+    [save, autoSalvageFilter]
+  );
+  const updateFilter = (patch: Partial<AutoSalvageFilterRule>) => {
+    const next = normalizeAutoSalvageFilter({
+      ...autoSalvageFilter,
+      ...patch,
+      protectSTier: true,
+    });
+    soundEngine.playUiClick(1.04);
+    onUpdateAutoSalvageFilter?.(next);
+  };
 
   const focusMaxSubstats = focusedItem ? getMaxSubstatsForRarity(focusedItem.rarity) : 0;
   const focusSubstats = focusedItem ? getEffectiveSubstats(focusedItem) : [];
@@ -331,25 +356,151 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
 
         {subTab === 'salvage' && (
           <div>
+            {/* Wave 11: Smart Auto-Salvage Excess Gear Filter Deck */}
+            <div
+              data-testid="smart-auto-salvage-panel"
+              className="rounded-2xl bg-[#070b1a]/95 border border-amber-400/35 p-3.5 mb-3.5 space-y-2.5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span className="text-xs font-black text-amber-200 uppercase tracking-wider">
+                    Bộ Lọc Tự Động Phân Giải Trang Bị Thừa
+                  </span>
+                </div>
+                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-300">
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>Luôn bảo vệ Cấp [S] · Huyền Thoại+ · Đang Mặc · Mọi Preset</span>
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-300">Phân giải tối đa:</span>
+                {(
+                  [
+                    { id: Rarity.COMMON, label: 'Chỉ Thường' },
+                    { id: Rarity.RARE, label: 'Đến Hiếm' },
+                    { id: Rarity.EPIC, label: 'Đến Sử Thi' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => updateFilter({ maxRarity: opt.id })}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer border transition-colors ${
+                      autoSalvageFilter.maxRarity === opt.id
+                        ? 'a2-yellow-btn border-amber-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-amber-300/60'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateFilter({ protectSetPieces: !autoSalvageFilter.protectSetPieces })
+                  }
+                  className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer border ${
+                    autoSalvageFilter.protectSetPieces
+                      ? 'bg-emerald-950/75 border-emerald-400/60 text-emerald-200'
+                      : 'bg-slate-900 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {autoSalvageFilter.protectSetPieces && <Check className="w-3 h-3 shrink-0" />}
+                  <span>Bảo vệ Đồ Bộ (Set)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateFilter({
+                      protectUpgradedOrSocketed: !autoSalvageFilter.protectUpgradedOrSocketed,
+                    })
+                  }
+                  className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer border ${
+                    autoSalvageFilter.protectUpgradedOrSocketed
+                      ? 'bg-emerald-950/75 border-emerald-400/60 text-emerald-200'
+                      : 'bg-slate-900 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {autoSalvageFilter.protectUpgradedOrSocketed && (
+                    <Check className="w-3 h-3 shrink-0" />
+                  )}
+                  <span>Bảo vệ Đồ Đã Nâng / Khảm Ngọc</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateFilter({ autoRunAfterBattle: !autoSalvageFilter.autoRunAfterBattle })
+                  }
+                  className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer border ${
+                    autoSalvageFilter.autoRunAfterBattle
+                      ? 'bg-sky-950/80 border-sky-400/65 text-sky-200'
+                      : 'bg-slate-900 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {autoSalvageFilter.autoRunAfterBattle && <Check className="w-3 h-3 shrink-0" />}
+                  <span>Tự động tách sau mỗi trận</span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                <div className="text-[11px] font-mono-nums tabular-nums text-slate-300 flex flex-wrap items-center gap-2">
+                  <span>
+                    Khớp lọc: <strong className="text-white">{smartPreview.salvagedCount} món</strong>
+                  </span>
+                  <span aria-hidden="true" className="text-slate-600">·</span>
+                  <span>
+                    Được bảo vệ:{' '}
+                    <strong className="text-emerald-300">
+                      {smartPreview.protectedPresetCount + smartPreview.protectedSetOrUpgradedCount} món
+                    </strong>
+                  </span>
+                  {smartPreview.salvagedCount > 0 && (
+                    <>
+                      <span aria-hidden="true" className="text-slate-600">·</span>
+                      <span className="text-amber-300 font-bold">
+                        +{smartPreview.goldGained.toLocaleString('vi-VN')} Vàng
+                      </span>
+                      <span className="text-sky-300 font-bold">
+                        +{smartPreview.starDustGained} Bụi Sao
+                      </span>
+                      {(smartPreview.rareShardsGained > 0 || smartPreview.epicShardsGained > 0) && (
+                        <span className="text-fuchsia-300 font-bold">
+                          +{smartPreview.rareShardsGained} M.Hiếm / +{smartPreview.epicShardsGained} M.Sử Thi
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={smartPreview.salvagedCount === 0}
+                  onClick={() => {
+                    soundEngine.playForgeCraft();
+                    if (onExecuteSmartSalvage) {
+                      onExecuteSmartSalvage(autoSalvageFilter);
+                    } else if (onSafeSalvageExcess) {
+                      onSafeSalvageExcess();
+                    }
+                  }}
+                  className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Recycle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Phân Giải Theo Bộ Lọc ({smartPreview.salvagedCount})</span>
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <p className="text-[11px] text-slate-300 font-semibold">
-                Trang bị đang mặc và bậc Thần Thoại (Mythic) được bảo vệ an toàn.
+                Hoặc chọn thủ công từng trang bị dư bên dưới để tách lấy Bụi Sao &amp; Vàng ({safeExcessCount} món dư cơ bản).
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                {onSafeSalvageExcess && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playForgeCraft();
-                      onSafeSalvageExcess();
-                    }}
-                    disabled={safeExcessCount === 0}
-                    title="Tự động phân giải đồ Thường & Hiếm dư thành Mảnh Rèn (bảo vệ đồ đang mặc, [S], Sử Thi+)"
-                    className="a2-yellow-btn px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer disabled:opacity-40"
-                  >
-                    Tách Đồ Dư → Mảnh Rèn ({safeExcessCount} món)
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={selectAllCommonRare}

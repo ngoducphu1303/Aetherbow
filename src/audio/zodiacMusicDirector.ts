@@ -229,3 +229,115 @@ export function buildInterruptFanfareNotes(): InterruptFanfareNote[] {
     { freq: 1046.5, delay: 0.14, dur: 0.28, gain: 0.11, wave: 'triangle' },
   ];
 }
+
+// ============================================================================
+// WAVE 12: DYNAMIC PHASE-LAYERED MUSIC DIRECTOR (WITH LOW-END CPU CAP)
+// ============================================================================
+
+export type DynamicMusicMode = 'menu' | 'combat' | 'boss';
+
+export interface DynamicMusicLayerInput {
+  mode: DynamicMusicMode;
+  bossPhase: 1 | 2 | 3;
+  hpRatio: number;
+  combo: number;
+  lowEndMode: boolean;
+}
+
+export interface DynamicMusicLayerState {
+  percussionDrive: number;
+  tensionCounterGain: number;
+  lowHpPulseGain: number;
+  filterCutoffHz: number;
+  crossfadeSec: number;
+  maxExtraOscillators: number;
+  enableTensionArp: boolean;
+  enableLowHpHeartbeat: boolean;
+}
+
+/**
+ * Resolves layered adaptive music parameters across Menu / Combat / Boss Phase I-II-III,
+ * scaling smoothly with player HP urgency and combo momentum while automatically capping
+ * secondary oscillator layers on low-end laptops (Dell Latitude E5430).
+ */
+export function resolveDynamicMusicLayers(input: DynamicMusicLayerInput): DynamicMusicLayerState {
+  const hp = Math.max(0, Math.min(1, Number.isFinite(input.hpRatio) ? input.hpRatio : 1));
+  const combo = Math.max(0, Math.floor(input.combo || 0));
+  const lowHpUrgency = hp <= 0.3 ? Math.min(1, (0.3 - hp) / 0.3) : 0;
+  const comboTier = combo >= 30 ? 3 : combo >= 15 ? 2 : combo >= 6 ? 1 : 0;
+
+  if (input.mode === 'menu') {
+    return {
+      percussionDrive: 0,
+      tensionCounterGain: 0,
+      lowHpPulseGain: 0,
+      filterCutoffHz: 950,
+      crossfadeSec: 0.35,
+      maxExtraOscillators: 0,
+      enableTensionArp: false,
+      enableLowHpHeartbeat: false,
+    };
+  }
+
+  if (input.mode === 'boss') {
+    const phase = input.bossPhase === 3 ? 3 : input.bossPhase === 2 ? 2 : 1;
+    const basePerc = phase === 3 ? 1.0 : phase === 2 ? 0.72 : 0.42;
+    const baseCounter = phase === 3 ? 0.072 : phase === 2 ? 0.048 : comboTier >= 2 ? 0.032 : 0;
+    const baseFilter = phase === 3 ? 2150 : phase === 2 ? 1680 : 1280;
+    const lowHpPulseGain = lowHpUrgency > 0 ? Number((0.08 + lowHpUrgency * 0.07).toFixed(3)) : 0;
+
+    if (input.lowEndMode) {
+      return {
+        percussionDrive: Number(Math.min(0.75, basePerc * 0.8).toFixed(2)),
+        tensionCounterGain: phase >= 3 ? 0.042 : 0,
+        lowHpPulseGain: lowHpUrgency > 0.35 ? 0.09 : 0,
+        filterCutoffHz: Math.min(1750, baseFilter),
+        crossfadeSec: 0.24,
+        maxExtraOscillators: 1,
+        enableTensionArp: phase >= 3,
+        enableLowHpHeartbeat: lowHpUrgency > 0.35,
+      };
+    }
+
+    return {
+      percussionDrive: Number(Math.min(1.0, basePerc + comboTier * 0.06).toFixed(2)),
+      tensionCounterGain: Number(Math.min(0.085, baseCounter + comboTier * 0.008).toFixed(3)),
+      lowHpPulseGain,
+      filterCutoffHz: Math.min(2400, baseFilter + comboTier * 90),
+      crossfadeSec: 0.28,
+      maxExtraOscillators: phase === 3 ? 3 : 2,
+      enableTensionArp: baseCounter > 0,
+      enableLowHpHeartbeat: lowHpPulseGain > 0,
+    };
+  }
+
+  // Combat mode
+  const basePerc = 0.25 + comboTier * 0.2;
+  const baseCounter = comboTier >= 2 ? 0.03 + (comboTier - 2) * 0.016 : 0;
+  const lowHpPulseGain = lowHpUrgency > 0 ? Number((0.07 + lowHpUrgency * 0.06).toFixed(3)) : 0;
+
+  if (input.lowEndMode) {
+    return {
+      percussionDrive: Number(Math.min(0.6, basePerc * 0.75).toFixed(2)),
+      tensionCounterGain: 0,
+      lowHpPulseGain: lowHpUrgency > 0.4 ? 0.08 : 0,
+      filterCutoffHz: 1180 + comboTier * 60,
+      crossfadeSec: 0.24,
+      maxExtraOscillators: 1,
+      enableTensionArp: false,
+      enableLowHpHeartbeat: lowHpUrgency > 0.4,
+    };
+  }
+
+  return {
+    percussionDrive: Number(Math.min(0.95, basePerc).toFixed(2)),
+    tensionCounterGain: Number(baseCounter.toFixed(3)),
+    lowHpPulseGain,
+    filterCutoffHz: 1220 + comboTier * 140,
+    crossfadeSec: 0.28,
+    maxExtraOscillators: comboTier >= 2 ? 2 : 1,
+    enableTensionArp: baseCounter > 0,
+    enableLowHpHeartbeat: lowHpPulseGain > 0,
+  };
+}
+

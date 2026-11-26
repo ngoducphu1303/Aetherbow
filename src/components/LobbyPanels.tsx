@@ -17,6 +17,7 @@ import {
   Layers,
   Lock,
   Palette,
+  Pencil,
   Play,
   RefreshCw,
   RotateCcw,
@@ -55,6 +56,10 @@ import {
   RARITY_RANK,
 } from '../data/earlyProgressionData';
 import { getChapterMilestoneSummary } from '../data/chapterCollectionMilestones';
+import {
+  getHeroMasteryMilestoneStates,
+  getPresetActiveSetSummary,
+} from '../data/wave11RetentionSystems';
 import {
   CHEST_DROP_RATES,
   getDailyFlashDeals,
@@ -266,6 +271,7 @@ interface GearPanelProps {
   onApplyBuildPreset: (idx: number) => void;
   onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onRenameLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3', name: string) => void;
   onAutoOptimizeGear?: (goal: 'campaign' | 'boss' | 'arena') => void;
   onStartTrainingGrounds?: () => void;
   onOpenWardrobe?: () => void;
@@ -292,6 +298,7 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   onApplyBuildPreset,
   onSaveLoadoutPreset,
   onApplyLoadoutPreset,
+  onRenameLoadoutPreset,
   onAutoOptimizeGear,
   onStartTrainingGrounds,
   onOpenWardrobe,
@@ -303,6 +310,10 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
   const [selectedUid, setSelectedUid] = useState<string>(
     save.equipped[GearSlot.WEAPON] || save.inventory[0]?.uid || ''
   );
+  const [editingPresetSlotId, setEditingPresetSlotId] = useState<
+    'preset_1' | 'preset_2' | 'preset_3' | null
+  >(null);
+  const [editingPresetName, setEditingPresetName] = useState('');
   const dragRef = useRef<{ active: boolean; lastX: number }>({ active: false, lastX: 0 });
   const buildPresets = normalizeBuildPresets(save);
   const socketPool = normalizeSocketGems(save.socketGems);
@@ -1182,6 +1193,10 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                           savedPreset.equippedRunes
                         ).delta
                       : null;
+                    const activeSetLabel = savedPreset
+                      ? getPresetActiveSetSummary(save, savedPreset)
+                      : null;
+                    const isEditingName = editingPresetSlotId === slotMeta.slotId;
 
                     return (
                       <div
@@ -1190,25 +1205,78 @@ export const LobbyGearPanel: React.FC<GearPanelProps> = ({
                           isActive ? 'border-emerald-400/70' : 'border-amber-400/20'
                         }`}
                       >
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-black text-white truncate flex items-center gap-1">
-                            <span className="truncate">{savedPreset?.name ?? slotMeta.defaultName}</span>
-                            {isActive && <Check className="w-3 h-3 text-emerald-300 shrink-0" />}
-                            {cpDiff !== null && cpDiff !== 0 && !isActive && (
-                              <span
-                                className={`font-mono-nums tabular-nums text-[9px] font-black shrink-0 ${
-                                  cpDiff > 0 ? 'text-emerald-300' : 'text-amber-300'
-                                }`}
+                        <div className="min-w-0 flex-1">
+                          {isEditingName ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={editingPresetName}
+                                maxLength={22}
+                                autoFocus
+                                onChange={(e) => setEditingPresetName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    onRenameLoadoutPreset?.(slotMeta.slotId, editingPresetName);
+                                    setEditingPresetSlotId(null);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingPresetSlotId(null);
+                                  }
+                                }}
+                                aria-label="Đổi tên bộ trang bị"
+                                className="w-full min-w-0 bg-slate-950 border border-amber-300/70 rounded px-1.5 py-0.5 text-[10px] font-bold text-white outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onRenameLoadoutPreset?.(slotMeta.slotId, editingPresetName);
+                                  setEditingPresetSlotId(null);
+                                }}
+                                className="px-1 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-black cursor-pointer"
+                                title="Lưu tên mới"
                               >
-                                {cpDiff > 0 ? `+${cpDiff}` : cpDiff} LC
-                              </span>
-                            )}
-                          </div>
+                                <Check className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] font-black text-white truncate flex items-center gap-1">
+                              <span className="truncate">{savedPreset?.name ?? slotMeta.defaultName}</span>
+                              {onRenameLoadoutPreset && savedPreset && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    soundEngine.playUiClick(1.06);
+                                    setEditingPresetSlotId(slotMeta.slotId);
+                                    setEditingPresetName(savedPreset.name);
+                                  }}
+                                  title="Đổi tên bộ lưu"
+                                  aria-label="Đổi tên bộ lưu"
+                                  className="text-slate-400 hover:text-amber-300 cursor-pointer shrink-0"
+                                >
+                                  <Pencil className="w-2.5 h-2.5" />
+                                </button>
+                              )}
+                              {isActive && <Check className="w-3 h-3 text-emerald-300 shrink-0" />}
+                              {cpDiff !== null && cpDiff !== 0 && !isActive && (
+                                <span
+                                  className={`font-mono-nums tabular-nums text-[9px] font-black shrink-0 ${
+                                    cpDiff > 0 ? 'text-emerald-300' : 'text-amber-300'
+                                  }`}
+                                >
+                                  {cpDiff > 0 ? `+${cpDiff}` : cpDiff} LC
+                                </span>
+                              )}
+                            </div>
+                          )}
                           <div className="text-[9px] text-slate-400 font-semibold font-mono-nums truncate">
                             {savedPreset
                               ? `${presetHero} · ${gearCount}/6 đồ · ${runeCount} Ngọc`
                               : 'Chưa lưu · Bấm Lưu'}
                           </div>
+                          {activeSetLabel && (
+                            <div className="text-[9px] text-amber-300 font-bold truncate">
+                              {activeSetLabel}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
@@ -1298,6 +1366,7 @@ interface HeroesPanelProps {
   onUpgradeHalo?: (haloId: HaloId) => void;
   onOpenWardrobe?: () => void;
   onPreviewUltimate?: (heroId: HeroId) => void;
+  onClaimHeroMasteryMilestone?: (heroId: HeroId, level: number) => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
 }
@@ -1335,6 +1404,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
   onUpgradeHalo,
   onOpenWardrobe,
   onPreviewUltimate,
+  onClaimHeroMasteryMilestone,
   onRotateHero,
   onResetHeroRotation,
 }) => {
@@ -1498,7 +1568,7 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                 </p>
               </div>
 
-              {/* Phase 4: Hero Mastery Lv.1–10 Progress Strip */}
+              {/* Phase 4 + Wave 11: Hero Mastery Lv.1–10 Progress & Claimable Milestones */}
               {(() => {
                 const mastery = computeHeroMasteryBonuses(save.heroMastery, hero.id);
                 const expPct = mastery.isMax
@@ -1507,13 +1577,19 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                       4,
                       Math.min(100, Math.round((mastery.exp / Math.max(1, mastery.nextExp)) * 100))
                     );
+                const milestoneStates = getHeroMasteryMilestoneStates(save, hero.id);
+                const lv10Claimed = milestoneStates.find((m) => m.def.level === 10 && m.claimed);
                 return (
-                  <div className="rounded-xl bg-[#070b1a]/90 border border-amber-400/20 px-2.5 py-2 space-y-1">
+                  <div
+                    data-testid="hero-mastery-milestones"
+                    className="rounded-xl bg-[#070b1a]/90 border border-amber-400/20 px-2.5 py-2 space-y-1.5"
+                  >
                     <div className="flex items-center justify-between gap-2 text-[10px] font-black">
-                      <span className="text-amber-200 flex items-center gap-1">
+                      <span className="text-amber-200 flex items-center gap-1 truncate">
                         <Crown className="w-3 h-3 text-amber-300 shrink-0" />
-                        <span>
+                        <span className="truncate">
                           Tinh Thông Anh Hùng · Lv.{mastery.level}/{HERO_MASTERY_MAX_LEVEL}
+                          {lv10Claimed?.rewardTitle ? ` · ${lv10Claimed.rewardTitle}` : ''}
                         </span>
                       </span>
                       <span className="font-mono-nums text-slate-300 shrink-0">
@@ -1531,12 +1607,39 @@ export const LobbyHeroesPanel: React.FC<HeroesPanelProps> = ({
                         {mastery.summaryLabel}
                       </span>
                       <span className="text-slate-400">
-                        {mastery.level < 5
-                          ? 'Mốc Lv.5: +4% Chí Mạng'
-                          : mastery.level < 10
-                          ? 'Mốc Lv.10: +8% ST Boss'
-                          : 'Đã mở toàn bộ mốc Tinh Thông'}
+                        Mốc thưởng theo cấp tướng (Lv.2 → Lv.10)
                       </span>
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-1 pt-1 border-t border-slate-800/80">
+                      {milestoneStates.map((ms) => (
+                        <button
+                          key={ms.def.level}
+                          type="button"
+                          disabled={!ms.claimable || !onClaimHeroMasteryMilestone}
+                          onClick={() => onClaimHeroMasteryMilestone?.(hero.id, ms.def.level)}
+                          title={`Mốc Lv.${ms.def.level}: +${ms.def.rewardGold} Vàng, +${ms.def.rewardGems} Ngọc, +${ms.def.rewardStarDust} Bụi Sao${ms.rewardTitle ? `, Danh Hiệu "${ms.rewardTitle}"` : ''}`}
+                          className={`rounded-lg px-1.5 py-1 text-center border transition-colors ${
+                            ms.claimed
+                              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 cursor-default'
+                              : ms.claimable
+                              ? 'a2-yellow-btn border-amber-300 cursor-pointer'
+                              : 'bg-slate-950/80 border-slate-800 text-slate-500 cursor-not-allowed'
+                          }`}
+                        >
+                          <div className="font-mono-nums text-[9px] font-black leading-tight flex items-center justify-center gap-0.5">
+                            {ms.claimed && <Check className="w-2.5 h-2.5 shrink-0" />}
+                            <span>Lv.{ms.def.level}</span>
+                          </div>
+                          <div className="font-mono-nums text-[8px] font-bold leading-tight truncate mt-0.5">
+                            {ms.claimed
+                              ? 'Đã nhận'
+                              : ms.claimable
+                              ? 'Nhận'
+                              : `+${ms.def.rewardGems}N`}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 );
@@ -3620,6 +3723,8 @@ interface RunesPanelProps {
   onFuseRune: (uid: string) => void;
   onBulkFuseRunes: () => void;
   onCraftSelectedRune?: (runeId: RuneId) => void;
+  onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
+  onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
   onGoShop: () => void;
@@ -3639,6 +3744,8 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   onFuseRune,
   onBulkFuseRunes,
   onCraftSelectedRune,
+  onSaveLoadoutPreset,
+  onApplyLoadoutPreset,
   onRotateHero,
   onResetHeroRotation,
   onGoShop,
@@ -3876,6 +3983,79 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Wave 11: Quick-Swap Gear & Rune Loadout Preset Bar in Runes Tab */}
+          {(onSaveLoadoutPreset || onApplyLoadoutPreset) && (
+            <div
+              data-testid="runes-loadout-presets"
+              className="cel-panel rounded-2xl px-3 py-2 border border-amber-400/20 space-y-1.5"
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] font-black text-amber-200 uppercase tracking-wider">
+                <span className="flex items-center gap-1">
+                  <Bookmark className="w-3 h-3 text-amber-300 shrink-0" />
+                  <span>Bộ Lưu Trang Bị &amp; Cổ Ngữ Chuyển Nhanh</span>
+                </span>
+                <span className="text-[10px] font-semibold text-slate-400 normal-case">
+                  Đồng bộ trực tiếp với Kho Trang Bị
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                {DEFAULT_LOADOUT_PRESET_SLOTS.map((slotMeta) => {
+                  const savedPreset = normalizeLoadoutPresets(save.loadoutPresets).find(
+                    (p) => p.slotId === slotMeta.slotId
+                  );
+                  const isActive = save.activeLoadoutPresetId === slotMeta.slotId;
+                  const runeCount = savedPreset?.equippedRunes.length ?? 0;
+                  const gearCount = savedPreset
+                    ? Object.values(savedPreset.equipped).filter(Boolean).length
+                    : 0;
+                  return (
+                    <div
+                      key={slotMeta.slotId}
+                      className={`rounded-lg bg-[#070b1a] border px-2 py-1.5 flex items-center justify-between gap-1.5 ${
+                        isActive ? 'border-emerald-400/70' : 'border-amber-400/20'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black text-white truncate flex items-center gap-1">
+                          <span className="truncate">{savedPreset?.name ?? slotMeta.defaultName}</span>
+                          {isActive && <Check className="w-3 h-3 text-emerald-300 shrink-0" />}
+                        </div>
+                        <div className="text-[9px] font-mono-nums text-slate-400 truncate">
+                          {savedPreset ? `${gearCount}/6 đồ · ${runeCount}/4 Cổ Ngữ` : 'Chưa lưu'}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {onSaveLoadoutPreset && (
+                          <button
+                            type="button"
+                            onClick={() => onSaveLoadoutPreset(slotMeta.slotId)}
+                            className="a2-slate-btn px-1.5 py-0.5 rounded text-[9px] font-black text-sky-200 whitespace-nowrap cursor-pointer"
+                          >
+                            Lưu
+                          </button>
+                        )}
+                        {onApplyLoadoutPreset && (
+                          <button
+                            type="button"
+                            disabled={!savedPreset}
+                            onClick={() => onApplyLoadoutPreset(slotMeta.slotId)}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-black whitespace-nowrap ${
+                              savedPreset
+                                ? 'a2-emerald-btn cursor-pointer'
+                                : 'bg-slate-900 border border-slate-700 text-slate-500 cursor-not-allowed'
+                            }`}
+                          >
+                            Dùng
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {onCraftSelectedRune && showShardExchange && (
             <div className="cel-panel rounded-2xl p-3 border border-cyan-400/40 space-y-2.5">
