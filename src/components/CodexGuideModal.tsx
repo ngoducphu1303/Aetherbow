@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, Flame, GitBranch, Sparkles, Skull, Star, Trophy, X, Zap } from 'lucide-react';
+import { BookOpen, CheckCircle2, Compass, Flame, GitBranch, Sparkles, Skull, Star, Trophy, X, Zap } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 import { buildBossCodexEntries, buildSynergyCodexEntries } from '../data/phase5Data';
 import { getZodiacChapterLore } from '../data/zodiacWorldLore';
+import { evaluateZodiacJourneyProgress } from '../data/zodiacJourneyLog';
 import { buildEvolutionCodexEntries } from '../engine/skillEvolutionEngine';
 import {
-  ELEMENTAL_REACTION_GUIDE,
+  EXTENDED_ELEMENTAL_REACTION_GUIDE,
   buildPersonalRecordsSummary,
 } from '../engine/aaaWave5Director';
 import { SaveData } from '../types/game';
@@ -13,7 +14,8 @@ import { BossPortraitBadge } from './GameIcons';
 
 interface CodexGuideModalProps {
   save: SaveData;
-  initialTab?: 'synergies' | 'evolutions' | 'bosses' | 'reactions';
+  initialTab?: 'journey' | 'synergies' | 'evolutions' | 'bosses' | 'reactions';
+  onClaimJourneyMilestone?: (milestoneId: string) => void;
   onClose: () => void;
 }
 
@@ -22,10 +24,13 @@ const NIGHTMARE_ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
   save,
   initialTab = 'synergies',
+  onClaimJourneyMilestone,
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'synergies' | 'evolutions' | 'bosses' | 'reactions'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'journey' | 'synergies' | 'evolutions' | 'bosses' | 'reactions'>(initialTab);
+  const [journeyFilter, setJourneyFilter] = useState<'all' | 'claimable' | 'completed'>('all');
 
+  const journeyProgress = useMemo(() => evaluateZodiacJourneyProgress(save), [save]);
   const synergyEntries = useMemo(() => buildSynergyCodexEntries(save), [save]);
   const evolutionEntries = useMemo(() => buildEvolutionCodexEntries(save), [save]);
   const bossEntries = useMemo(() => buildBossCodexEntries(save), [save]);
@@ -43,6 +48,15 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
     () => bossEntries.filter((entry) => entry.cleared).length,
     [bossEntries]
   );
+  const filteredJourneyChapters = useMemo(() => {
+    if (journeyFilter === 'claimable') {
+      return journeyProgress.chapters.filter((ch) => ch.claimableCount > 0);
+    }
+    if (journeyFilter === 'completed') {
+      return journeyProgress.chapters.filter((ch) => ch.claimedCount > 0 || ch.bossCleared);
+    }
+    return journeyProgress.chapters;
+  }, [journeyProgress.chapters, journeyFilter]);
 
   return (
     <div
@@ -85,6 +99,29 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
 
         {/* Segmented Tab Switcher */}
         <div className="px-5 pt-3 pb-2 bg-[#070b1a] border-b border-amber-400/15 flex items-center gap-2 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick(1.04);
+              setActiveTab('journey');
+            }}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'journey'
+                ? 'bg-amber-400/15 border-amber-300 text-amber-200'
+                : 'bg-[#0b1126] border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              Hành Trình (<span className="font-mono-nums">{journeyProgress.claimedCount}/{journeyProgress.totalMilestones}</span>)
+              {journeyProgress.claimableCount > 0 && (
+                <span className="ml-1 text-emerald-300 font-mono-nums">
+                  · +{journeyProgress.claimableCount}
+                </span>
+              )}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -158,12 +195,158 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-[#060a17]">
-          {activeTab === 'synergies' ? (
+          {activeTab === 'journey' ? (
+            <div className="space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[#0a1024] border border-amber-400/20 rounded-xl px-3.5 py-2.5">
+                <div className="text-xs text-slate-200 font-mono-nums">
+                  Tiến độ Hành Trình 12 Cung:{' '}
+                  <strong className="text-amber-300">
+                    {journeyProgress.completedCount}/{journeyProgress.totalMilestones}
+                  </strong>
+                  {' · '}Ấn Triện Hoàng Đạo:{' '}
+                  <strong className="text-emerald-300">{journeyProgress.sealsEarnedCount}/12</strong>
+                  {journeyProgress.claimableCount > 0 && (
+                    <>
+                      {' · '}Chờ nhận:{' '}
+                      <strong className="text-sky-300">{journeyProgress.claimableCount}</strong>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {(
+                    [
+                      { id: 'all', label: 'Tất cả (12)' },
+                      { id: 'claimable', label: `Có thể nhận (${journeyProgress.claimableCount})` },
+                      { id: 'completed', label: 'Đã chinh phục' },
+                    ] as const
+                  ).map((btn) => (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.03);
+                        setJourneyFilter(btn.id);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer font-mono-nums ${
+                        journeyFilter === btn.id
+                          ? 'bg-amber-400/15 border-amber-300 text-amber-200'
+                          : 'bg-[#080d1e] border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredJourneyChapters.length === 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-[#080d1c] p-6 text-center text-xs text-slate-400">
+                  Không có chương nào khớp bộ lọc hiện tại. Tiếp tục vượt ải Hoàng Đạo để mở khóa mốc thưởng mới.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredJourneyChapters.map((ch) => (
+                    <div
+                      key={ch.chapterId}
+                      className={`rounded-2xl border p-3.5 space-y-2.5 ${
+                        ch.claimableCount > 0
+                          ? 'bg-[#0d152e] border-amber-300/60'
+                          : ch.bossCleared
+                          ? 'bg-[#0c1329] border-emerald-400/30'
+                          : 'bg-[#080d1c] border-slate-800/90'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-amber-300 font-mono-nums truncate">
+                            Chương {ch.chapterId} · {ch.zodiacName} · {ch.eraTag}
+                          </div>
+                          <h3 className="font-display text-sm font-black text-white truncate mt-0.5">
+                            {ch.realmTitle}
+                          </h3>
+                        </div>
+                        <div className="text-[11px] font-bold font-mono-nums text-slate-300 shrink-0">
+                          {ch.bossCleared ? (
+                            <span className="text-emerald-300">★ {ch.starsEarned}/4</span>
+                          ) : (
+                            <span>Ải {ch.bestStage}/{ch.totalStages}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-slate-300 leading-relaxed">
+                        <span className="font-bold text-sky-300">Cổ Vật {ch.relic.has3dStoryProp ? '3D' : 'Thánh Địa'}:</span>{' '}
+                        <span className="text-white font-semibold">{ch.relic.relicName}</span>
+                        {' — '}
+                        {ch.relic.relicDesc}
+                      </div>
+
+                      <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                        {ch.milestones.map((ms) => {
+                          const rewardParts: string[] = [];
+                          if (ms.def.rewardGold > 0) {
+                            rewardParts.push(`${ms.def.rewardGold.toLocaleString('vi-VN')} Vàng`);
+                          }
+                          if (ms.def.rewardGems > 0) {
+                            rewardParts.push(`${ms.def.rewardGems} Ngọc`);
+                          }
+                          if (ms.def.rewardStarDust > 0) {
+                            rewardParts.push(`${ms.def.rewardStarDust} Bụi Sao`);
+                          }
+                          return (
+                            <div
+                              key={ms.def.id}
+                              className="flex items-center justify-between gap-2 rounded-xl bg-[#060a18] border border-slate-800/80 px-2.5 py-2"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-bold text-slate-100 truncate">
+                                  {ms.def.title}{' '}
+                                  <span className="text-slate-400 font-mono-nums font-normal">
+                                    · {ms.progressText}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-amber-200/90 font-mono-nums truncate">
+                                  {rewardParts.join(' · ')}
+                                </div>
+                              </div>
+                              {ms.status === 'claimed' ? (
+                                <span className="text-[10px] font-bold text-emerald-300 shrink-0 inline-flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Đã nhận
+                                </span>
+                              ) : ms.status === 'claimable' && onClaimJourneyMilestone ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    soundEngine.playLevelUp();
+                                    onClaimJourneyMilestone(ms.def.id);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black cursor-pointer shrink-0"
+                                >
+                                  Nhận Thưởng
+                                </button>
+                              ) : (
+                                <span className="text-[10px] font-semibold text-slate-500 shrink-0">
+                                  Chưa mở
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'synergies' ? (
             <div className="space-y-3">
               <div className="text-xs text-slate-300 leading-relaxed bg-[#0a1024] border border-amber-400/20 rounded-xl px-3.5 py-2.5">
                 Chọn ít nhất 1 kỹ năng từ <strong className="text-amber-200">Nhánh A</strong> và 1 kỹ
-                năng từ <strong className="text-sky-200">Nhánh B</strong> trong cùng một trận chiến
-                để kích hoạt tức thì hiệu ứng Cộng Hưởng 3D.
+                năng từ <strong className="text-sky-200">Nhánh B</strong> để mở Cộng Hưởng{' '}
+                <strong className="text-emerald-300">Bậc I (×1.0)</strong>, cộng dồn đạt{' '}
+                <strong className="text-amber-200">4 tầng → Bậc II (×1.35)</strong> và{' '}
+                <strong className="text-amber-300">6+ tầng → Bậc III (×1.70)</strong>.
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -434,15 +617,15 @@ export const CodexGuideModal: React.FC<CodexGuideModalProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-300">
                     <Zap className="w-4 h-4 shrink-0" />
-                    <span>Ma Trận Phản Ứng Nguyên Tố 3D</span>
+                    <span>Ma Trận 6 Phản Ứng Nguyên Tố 3D &amp; Chuỗi Cộng Hưởng</span>
                   </div>
                   <span className="text-[11px] font-semibold text-slate-400">
-                    Bắn xen kẽ 2 nguyên tố trong 3.2s
+                    Đủ 6 cặp nguyên tố · Nối 2 phản ứng khác nhau trong 6s kích hoạt +18% ST
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {ELEMENTAL_REACTION_GUIDE.map((rx) => (
+                  {EXTENDED_ELEMENTAL_REACTION_GUIDE.map((rx) => (
                     <div
                       key={rx.id}
                       className="rounded-2xl bg-[#0c1329] border border-slate-800/90 p-3.5 space-y-2"

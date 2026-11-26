@@ -94,6 +94,10 @@ import {
   RUNE_LEGENDARY_SOFT_PITY_START,
 } from '../engine/wave10FivePillars';
 import {
+  previewRuneRefinement,
+  RUNE_REFINEMENT_MAX_TIER,
+} from '../data/runeAndAffixRefining';
+import {
   HERO_SKINS,
   PETS_CATALOG,
   getPetStats,
@@ -3723,6 +3727,7 @@ interface RunesPanelProps {
   onFuseRune: (uid: string) => void;
   onBulkFuseRunes: () => void;
   onCraftSelectedRune?: (runeId: RuneId) => void;
+  onRefineRune?: (runeId: RuneId) => void;
   onSaveLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onApplyLoadoutPreset?: (slotId: 'preset_1' | 'preset_2' | 'preset_3') => void;
   onRotateHero?: (deltaRad: number) => void;
@@ -3744,6 +3749,7 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
   onFuseRune,
   onBulkFuseRunes,
   onCraftSelectedRune,
+  onRefineRune,
   onSaveLoadoutPreset,
   onApplyLoadoutPreset,
   onRotateHero,
@@ -4124,6 +4130,8 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                 const rMeta = RARITY_META[selectedRune.rarity];
                 const isEq = save.equippedRunes.includes(selectedRune.uid);
                 const fuseReady = canFuseRune(selectedRune);
+                const refinePreview = previewRuneRefinement(save, selectedRune.runeId);
+                const refineMult = 1 + refinePreview.currentBonusPct / 100;
 
                 return (
                   <div className="flex flex-col gap-2">
@@ -4138,6 +4146,14 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                         <span style={{ color: def.color }} className="font-bold">
                           {def.archetype}
                         </span>
+                        {refinePreview.currentTier > 0 && (
+                          <>
+                            <span aria-hidden="true" className="text-slate-600">·</span>
+                            <span className="font-mono-nums tabular-nums font-black text-amber-300">
+                              Tinh Luyện +{refinePreview.currentTier}
+                            </span>
+                          </>
+                        )}
                       </div>
                       {isEq && (
                         <span className="text-[10px] font-black text-emerald-300">Đang Khảm</span>
@@ -4147,11 +4163,68 @@ export const LobbyRunesPanel: React.FC<RunesPanelProps> = ({
                     <h3 className="font-display text-base font-black text-white">{def.name}</h3>
                     <p className="text-[11px] text-slate-200 leading-snug">{def.description}</p>
 
-                    <div className="flex flex-wrap gap-2.5 text-[11px] font-mono-nums text-amber-200 font-bold">
-                      <span>+{Math.round(def.atkBonusPct * 100)}% ATK</span>
-                      <span>+{Math.round(def.hpBonusPct * 100)}% HP</span>
-                      <span>+{Math.round(def.critBonus * 100)}% Crit</span>
+                    <div className="flex flex-wrap gap-2.5 text-[11px] font-mono-nums tabular-nums text-amber-200 font-bold">
+                      <span>+{Math.round(def.atkBonusPct * refineMult * 100)}% ATK</span>
+                      <span>+{Math.round(def.hpBonusPct * refineMult * 100)}% HP</span>
+                      <span>+{(def.critBonus * refineMult * 100).toFixed(1)}% Crit</span>
                     </div>
+
+                    {/* Wave 13: Ancient Rune Refinement (+0 -> +5) Endgame Sink */}
+                    {onRefineRune && (
+                      <div
+                        data-testid="rune-refinement-panel"
+                        className="rounded-xl bg-[#070b1a] border border-amber-400/25 p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2 text-[11px]">
+                          <span className="font-black text-amber-200">
+                            Tinh Luyện Cổ Ngữ (+{refinePreview.currentTier}/{RUNE_REFINEMENT_MAX_TIER})
+                          </span>
+                          <span className="font-mono-nums tabular-nums font-bold text-cyan-300">
+                            {refinePreview.alreadyMaxed
+                              ? `Tối Đa (+${refinePreview.currentBonusPct}%)`
+                              : `+${refinePreview.currentBonusPct}% → +${refinePreview.nextBonusPct}%`}
+                          </span>
+                        </div>
+                        {!refinePreview.unlocked ? (
+                          <div className="text-[10px] text-slate-400">
+                            {refinePreview.lockReason}
+                          </div>
+                        ) : refinePreview.alreadyMaxed ? (
+                          <div className="text-[10px] font-semibold text-emerald-300">
+                            Cổ Ngữ đã đạt tầng Tinh Luyện đỉnh cao (+30% hiệu lực chỉ số).
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-[10px] font-mono-nums tabular-nums text-slate-300">
+                              <span className={save.gold >= refinePreview.cost.gold ? 'text-amber-300' : 'text-rose-400'}>
+                                {refinePreview.cost.gold.toLocaleString('vi-VN')} Vàng
+                              </span>
+                              {' · '}
+                              <span className={(save.starDust ?? 0) >= refinePreview.cost.starDust ? 'text-sky-300' : 'text-rose-400'}>
+                                {refinePreview.cost.starDust} Bụi Sao
+                              </span>
+                              {' · '}
+                              <span className={(save.pity?.ancientRuneShards ?? 0) >= refinePreview.cost.ancientRuneShards ? 'text-cyan-300' : 'text-rose-400'}>
+                                {refinePreview.cost.ancientRuneShards} Mảnh Cổ Ngữ
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              data-testid="btn-refine-rune"
+                              disabled={!refinePreview.canAfford}
+                              onClick={() => onRefineRune(selectedRune.runeId)}
+                              className={`px-3 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                                refinePreview.canAfford
+                                  ? 'a2-emerald-btn'
+                                  : 'a2-slate-btn text-slate-400'
+                              }`}
+                            >
+                              Tinh Luyện +{refinePreview.nextTier}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-amber-400/20">
                       <button

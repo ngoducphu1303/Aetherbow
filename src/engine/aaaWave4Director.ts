@@ -1,12 +1,20 @@
 import { HudScaleMode } from '../types/game';
 
 export type ElementalHitType = 'fire' | 'ice' | 'storm' | 'poison';
-export type ElementalReactionId = 'melt' | 'superconduct' | 'overload' | 'venom_detonation';
+export type ElementalReactionId =
+  | 'melt'
+  | 'superconduct'
+  | 'overload'
+  | 'venom_detonation'
+  | 'electro_venom'
+  | 'cryo_blight';
 
 export interface EnemyElementalStatus {
   burning: boolean;
   chilled: boolean;
   poisoned: boolean;
+  /** Wave 13: Optional electro-charged status for full bidirectional pair reactions */
+  shocked?: boolean;
 }
 
 export interface ElementalReactionResult {
@@ -19,6 +27,79 @@ export interface ElementalReactionResult {
   primaryHex: number;
   secondaryHex: number;
   cooldownSec: number;
+  /** Wave 13: Optional armor sunder duration (Cryo Blight) */
+  sunderDurationSec?: number;
+  /** Wave 13: Optional extra chain jumps (Electro Venom) */
+  chainTargets?: number;
+}
+
+export interface ElementalChainState {
+  lastReactionId: ElementalReactionId | null;
+  chainCount: number;
+  timerSec: number;
+}
+
+export interface ElementalChainBonusResult {
+  chainCount: number;
+  triggeredChainResonance: boolean;
+  damageMultiplier: number;
+  extraBreakShieldRatio: number;
+  calloutLabel: string | null;
+}
+
+export function createElementalChainState(): ElementalChainState {
+  return {
+    lastReactionId: null,
+    chainCount: 0,
+    timerSec: 0,
+  };
+}
+
+export function stepElementalChainState(state: ElementalChainState, dt: number): void {
+  if (state.timerSec > 0) {
+    state.timerSec = Math.max(0, state.timerSec - Math.max(0, dt));
+    if (state.timerSec <= 0) {
+      state.chainCount = 0;
+      state.lastReactionId = null;
+    }
+  }
+}
+
+/**
+ * Zero-GC Elemental Chain tracker: triggering 2+ distinct reactions within 6.0s
+ * activates "Cộng Hưởng Chuỗi" (+18% reaction damage & +15% Boss Break-Shield shred).
+ */
+export function advanceElementalReactionChain(
+  state: ElementalChainState,
+  reactionId: ElementalReactionId
+): ElementalChainBonusResult {
+  const isDistinctFollowup =
+    state.timerSec > 0 && state.lastReactionId !== null && state.lastReactionId !== reactionId;
+  if (isDistinctFollowup) {
+    state.chainCount = Math.min(5, Math.max(2, state.chainCount + 1));
+  } else if (state.timerSec <= 0) {
+    state.chainCount = 1;
+  }
+  state.lastReactionId = reactionId;
+  state.timerSec = 6.0;
+
+  if (state.chainCount >= 2) {
+    const extraTier = Math.min(3, state.chainCount - 2);
+    return {
+      chainCount: state.chainCount,
+      triggeredChainResonance: true,
+      damageMultiplier: 1.18 + extraTier * 0.06,
+      extraBreakShieldRatio: 0.15,
+      calloutLabel: `CỘNG HƯỞNG ×${state.chainCount}!`,
+    };
+  }
+  return {
+    chainCount: state.chainCount,
+    triggeredChainResonance: false,
+    damageMultiplier: 1.0,
+    extraBreakShieldRatio: 0,
+    calloutLabel: null,
+  };
 }
 
 export interface GamepadPrevButtons {
@@ -135,6 +216,38 @@ export function evaluateElementalReaction(
       primaryHex: 0x4ade80,
       secondaryHex: 0xfbbf24,
       cooldownSec: 1.6,
+    };
+  }
+
+  // Wave 13 — Electro-Venom: Storm + Poison -> chains toxic-electric damage across up to 3 foes
+  if ((incoming === 'storm' && status.poisoned) || (incoming === 'poison' && status.shocked)) {
+    return {
+      id: 'electro_venom',
+      label: 'ĐỘC LÔI LAN!',
+      bonusDamage: Math.max(1, Math.round(hitDamage * 0.36)),
+      breakShieldBonusRatio: 0.13,
+      aoeRadius: 3.3,
+      knockbackForce: 0.35,
+      primaryHex: 0xa3e635,
+      secondaryHex: 0xa855f7,
+      cooldownSec: 1.6,
+      chainTargets: 3,
+    };
+  }
+
+  // Wave 13 — Cryo-Blight: Ice + Poison (either order) -> brittle armor sunder (+22% dmg taken)
+  if ((incoming === 'ice' && status.poisoned) || (incoming === 'poison' && status.chilled)) {
+    return {
+      id: 'cryo_blight',
+      label: 'HÀN ĐỘC PHÁ GIÁP!',
+      bonusDamage: Math.max(1, Math.round(hitDamage * 0.34)),
+      breakShieldBonusRatio: 0.16,
+      aoeRadius: 2.4,
+      knockbackForce: 0.25,
+      primaryHex: 0x2dd4bf,
+      secondaryHex: 0x86efac,
+      cooldownSec: 1.6,
+      sunderDurationSec: 4.5,
     };
   }
 

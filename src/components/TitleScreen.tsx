@@ -394,6 +394,7 @@ interface TitleScreenProps {
   onFuseRune: (uid: string) => void;
   onBulkFuseRunes: () => void;
   onCraftSelectedRune?: (runeId: RuneId) => void;
+  onRefineRune?: (runeId: RuneId) => void;
   onRotateHero?: (deltaRad: number) => void;
   onResetHeroRotation?: () => void;
   photoMode?: boolean;
@@ -616,6 +617,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onFuseRune,
   onBulkFuseRunes,
   onCraftSelectedRune,
+  onRefineRune,
   onRotateHero,
   onResetHeroRotation,
   photoMode = false,
@@ -2206,6 +2208,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               onFuseRune={onFuseRune}
               onBulkFuseRunes={onBulkFuseRunes}
               onCraftSelectedRune={onCraftSelectedRune}
+              onRefineRune={onRefineRune}
               onSaveLoadoutPreset={onSaveLoadoutPreset}
               onApplyLoadoutPreset={onApplyLoadoutPreset}
               onRotateHero={onRotateHero}

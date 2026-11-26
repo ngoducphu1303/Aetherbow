@@ -28,7 +28,12 @@ import {
   VolumeX,
   Zap,
 } from 'lucide-react';
-import { SKILLS_CATALOG, SKILL_SYNERGY_MAP } from '../data/skillsData';
+import {
+  SKILLS_CATALOG,
+  SKILL_SYNERGY_MAP,
+  SYNERGY_TIER_GLYPH,
+  SYNERGY_TIER_ROMAN,
+} from '../data/skillsData';
 import { HERO_MAP } from '../data/heroesData';
 import { ENEMY_LABEL_VI, getHeroAssetPack } from '../data/assetRegistry';
 import { COOP_DIFFICULTY_MAP, ELEMENTAL_TOWER_MAP } from '../data/wave6Data';
@@ -1803,6 +1808,49 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         ) : null}
 
+        {/* Wave 13: Tactical Room Modifier & Elemental Chain Resonance (Zero-Pill, 0 backdrop-blur) */}
+        {!hud.isTrainingMode && hud.tacticalRoomModifier && (
+          <div
+            data-testid="hud-tactical-room-modifier"
+            className={`rounded-lg px-2.5 py-1 text-[10px] font-semibold max-w-full border ${
+              hud.tacticalRoomModifier.buffActive
+                ? 'bg-[#072028]/92 border-cyan-300/80 text-cyan-100'
+                : 'bg-[#060a18]/90 border-slate-500/45 text-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span
+                aria-hidden="true"
+                className="font-black shrink-0"
+                style={{ color: hud.tacticalRoomModifier.accentHex }}
+              >
+                {hud.tacticalRoomModifier.symbol}
+              </span>
+              <span className="font-black text-white truncate">
+                {hud.tacticalRoomModifier.name}
+              </span>
+              {hud.tacticalRoomModifier.buffActive && (
+                <span className="text-cyan-300 font-black shrink-0">· KÍCH HOẠT</span>
+              )}
+            </div>
+            {!isCompact && (
+              <div className="text-[10px] text-slate-300 truncate mt-0.5">
+                {hud.tacticalRoomModifier.shortRule}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!hud.isTrainingMode && hud.elementalChainLabel && (hud.elementalChainCount ?? 0) >= 2 && (
+          <div
+            data-testid="hud-elemental-chain"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 bg-[#140a24]/92 border border-violet-400/75 text-[10px] font-black text-violet-100 font-mono-nums tabular-nums max-w-full"
+          >
+            <span aria-hidden="true" className="text-amber-300">✦</span>
+            <span className="truncate">{hud.elementalChainLabel} · +18% ST · +15% Phá Khiên</span>
+          </div>
+        )}
+
         {(hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode && (
           <div className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 bg-[#180912]/92 border border-rose-400/40 text-[10px] font-bold text-rose-200 max-w-full">
             <Flame className="w-3 h-3 text-rose-400 shrink-0" />
@@ -2421,13 +2469,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           )}
 
-          {(hud.activeSynergies?.length ?? 0) > 0 && (
-            <div className="hv2-panel px-2.5 py-1 rounded-lg text-[10px] font-bold text-amber-200 max-w-full truncate">
+          {((hud.activeSynergyTiers?.length ?? 0) > 0 || (hud.activeSynergies?.length ?? 0) > 0) && (
+            <div className="hv2-panel px-2.5 py-1 rounded-lg text-[10px] font-bold text-amber-200 max-w-full truncate font-mono-nums">
               Cộng Hưởng:{' '}
               <span className="text-emerald-300">
-                {hud.activeSynergies!
-                  .map((id) => SKILL_SYNERGY_MAP[id]?.name ?? id)
-                  .join(' · ')}
+                {(hud.activeSynergyTiers?.length ?? 0) > 0
+                  ? hud.activeSynergyTiers!
+                      .map(
+                        (entry) =>
+                          `${SYNERGY_TIER_GLYPH[entry.tier]} ${
+                            SKILL_SYNERGY_MAP[entry.id]?.name ?? entry.id
+                          } ${SYNERGY_TIER_ROMAN[entry.tier]}`
+                      )
+                      .join(' · ')
+                  : hud.activeSynergies!
+                      .map((id) => SKILL_SYNERGY_MAP[id]?.name ?? id)
+                      .join(' · ')}
               </span>
             </div>
           )}

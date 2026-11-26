@@ -90,7 +90,8 @@ export type SecurityAnomalyCategory =
   | 'rate_limit'
   | 'ws_clamped'
   | 'auth_invalid'
-  | 'admin_denied';
+  | 'admin_denied'
+  | 'run_integrity_flagged';
 
 export interface SecurityAnomalyEvent {
   id: string;
@@ -123,6 +124,7 @@ export class SecurityAnomalyTracker {
     ws_clamped: 0,
     auth_invalid: 0,
     admin_denied: 0,
+    run_integrity_flagged: 0,
   };
 
   constructor(maxCapacity = 200) {
@@ -274,4 +276,58 @@ export function clampWsGuildWarScore(raw: unknown, mode?: string): number {
       ? 3500
       : WS_SECURITY_LIMITS.guildWarMaxAssaultScore;
   return Math.round(clampFinite(raw, 0, cap, 0));
+}
+
+export interface RunNonceReplayVerdict {
+  accepted: boolean;
+  reason?: 'invalid_nonce' | 'replay_detected';
+}
+
+/**
+ * Bounded in-memory replay guard for combat run verification nonces (`runNonce`).
+ * Uses FIFO eviction + TTL expiry so memory usage stays strictly bounded.
+ */
+export class RunNonceReplayGuard {
+  private readonly maxEntries: number;
+  private readonly ttlMs: number;
+  private readonly seen = new Map<string, number>();
+
+  constructor(options?: { maxEntries?: number; ttlMs?: number }) {
+    this.maxEntries = Math.max(64, Math.floor(options?.maxEntries ?? 2000));
+    this.ttlMs = Math.max(10_000, Math.floor(options?.ttlMs ?? 6 * 3_600_000));
+  }
+
+  public consume(rawNonce: unknown, nowMs = Date.now()): RunNonceReplayVerdict {
+    if (typeof rawNonce !== 'string') {
+      return { accepted: false, reason: 'invalid_nonce' };
+    }
+    const nonce = rawNonce.trim();
+    if (nonce.length < 8 || nonce.length > 96 || !/^[\w.-]+$/.test(nonce)) {
+      return { accepted: false, reason: 'invalid_nonce' };
+    }
+
+    const prevTs = this.seen.get(nonce);
+    if (prevTs !== undefined && nowMs - prevTs < this.ttlMs) {
+      return { accepted: false, reason: 'replay_detected' };
+    }
+
+    this.seen.set(nonce, nowMs);
+    this.prune(nowMs);
+    return { accepted: true };
+  }
+
+  public size(): number {
+    return this.seen.size;
+  }
+
+  private prune(nowMs: number): void {
+    if (this.seen.size <= this.maxEntries) return;
+    const cutoff = nowMs - this.ttlMs;
+    for (const [k, ts] of this.seen.entries()) {
+      if (ts < cutoff || this.seen.size > this.maxEntries) {
+        this.seen.delete(k);
+      }
+      if (this.seen.size <= Math.floor(this.maxEntries * 0.85)) break;
+    }
+  }
 }

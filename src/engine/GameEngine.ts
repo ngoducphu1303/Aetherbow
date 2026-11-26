@@ -59,10 +59,27 @@ import {
   VfxFrameBudgetCache,
 } from './vfxPoolManager';
 import {
+  buildZodiacArenaFloorMedallion,
   buildZodiacRealmLandmarks,
+  buildZodiacStorytellingProps,
+  disposeZodiacFloorMedallion,
+  disposeZodiacStorytellingProps,
   stepZodiacRealmLandmarks,
+  type BuiltZodiacFloorMedallion,
+  type BuiltZodiacStorytellingProps,
   type ZodiacLandmarkAnimNode,
 } from './zodiacRealmArchitecture';
+import {
+  computeLeylineConduitPosition,
+  computeVanguardLinkDamageMultiplier,
+  evaluatePillarShatterShockwave,
+  isPhalanxVanguardKind,
+  QUAKE_PULSE_CONFIG,
+  resolveEligibleEliteAffixes,
+  resolveTacticalRoomModifier,
+  toTacticalRoomModifierSnapshot,
+  type TacticalRoomModifierDef,
+} from './tacticalRoomModifiers';
 import {
   buildZodiacBossRegalia,
   disposeZodiacBossRegalia,
@@ -551,7 +568,13 @@ import {
   resolvePerfectDodgeTrigger,
   TrainingDpsState,
 } from '../data/phase5Data';
-import { evaluateActiveSynergies, SKILL_SYNERGY_MAP } from '../data/skillsData';
+import {
+  evaluateActiveSynergies,
+  evaluateTieredSkillSynergies,
+  getSynergyTierPowerScale,
+  SKILL_SYNERGY_MAP,
+  SYNERGY_TIER_ROMAN,
+} from '../data/skillsData';
 import { PET_MAP } from '../data/wave3Data';
 import {
   CONSTELLATIONS,
@@ -689,12 +712,16 @@ import {
   resolveEnemyStatusTint,
 } from './combatFeedback';
 import {
+  advanceElementalReactionChain,
   computeVictoryOrbitCamera,
+  createElementalChainState,
+  ElementalChainState,
   ElementalHitType,
   evaluateElementalReaction,
   GamepadPrevButtons,
   resolveTelegraphPalette,
   sampleGamepadInput,
+  stepElementalChainState,
   triggerHapticPulse,
 } from './aaaWave4Director';
 import {
@@ -814,6 +841,11 @@ interface EnemyEntity {
   eliteAffixes?: EliteAffix[];
   eliteShieldHp?: number;
   eliteFrostPulseTimer?: number;
+  eliteQuakeTimer?: number;
+  eliteQuakeChargingTimer?: number;
+  eliteQuakeRing?: THREE.Mesh;
+  eliteQuakeFill?: THREE.Mesh;
+  shockTimer?: number;
   eliteAuraRingMesh?: THREE.Mesh;
   eliteAuraRingMesh2?: THREE.Mesh;
   laserLine: THREE.Line;
@@ -882,8 +914,17 @@ const ELITE_AFFIX_META: Record<EliteAffix, { label: string; colorHex: number }> 
   haste: { label: 'Cuồng Tốc', colorHex: 0xfacc15 },
   volatile: { label: 'Hỏa Bộc', colorHex: 0xf97316 },
   frost: { label: 'Hàn Khí', colorHex: 0x67e8f9 },
+  vanguard_link: { label: 'Liên Kết Giáp', colorHex: 0x10b981 },
+  quake_pulse: { label: 'Chấn Địa Xung', colorHex: 0xd97706 },
 };
-const ELITE_AFFIX_LIST: EliteAffix[] = ['aegis', 'haste', 'volatile', 'frost'];
+const ELITE_AFFIX_LIST: EliteAffix[] = [
+  'aegis',
+  'haste',
+  'volatile',
+  'frost',
+  'vanguard_link',
+  'quake_pulse',
+];
 
 const ARENA_HAZARD_META: Record<ArenaHazardType, { label: string; colorHex: number }> = {
   solar_eruption: { label: 'Bẫy Phun Trào Thái Dương', colorHex: 0xf97316 },
@@ -1530,6 +1571,32 @@ export class GameEngine {
   private roomBounty: RoomBountyState | null = null;
   private roomBountyBanner: string | null = null;
   private roomBountyBannerTimer = 0;
+  // Wave 13: Tactical Room Modifiers, Elemental Chain Resonance & Ch.5-12 Procedural Floor Medallions
+  private zodiacFloorMedallion: BuiltZodiacFloorMedallion | null = null;
+  // Wave 14: Ch.5-12 Procedural 3D Storytelling Relic Shrines & Zero-GC 3-Tier Skill Synergy Cache
+  private zodiacStorytellingProps: BuiltZodiacStorytellingProps | null = null;
+  private activeSynergyTiersCache: ReturnType<typeof evaluateTieredSkillSynergies> = [];
+  private activeTacticalRoomModifier: TacticalRoomModifierDef | null = null;
+  private leylineConduitPos: { x: number; z: number; radius: number } | null = null;
+  private leylineConduitRing: THREE.Mesh | null = null;
+  private leylineConduitFill: THREE.Mesh | null = null;
+  private playerInLeylineConduit = false;
+  private elementalChainState: ElementalChainState = createElementalChainState();
+  private pillarShatterHitsScratch: Array<{
+    id: number;
+    damage: number;
+    stunSec: number;
+    knockX: number;
+    knockZ: number;
+  }> = [];
+  private vanguardLinkPeersScratch: Array<{
+    id: number;
+    x: number;
+    z: number;
+    hp: number;
+    hasVanguardLink: boolean;
+    stunTimer: number;
+  }> = [];
   private combatKeybinds: CombatKeybinds = { ...DEFAULT_COMBAT_KEYBINDS };
   private showFpsOverlay = false;
   private cameraPresetToast: string | null = null;
@@ -5294,6 +5361,14 @@ export class GameEngine {
     this.arenaBrazierGems = [];
     this.arenaBrazierFlames = [];
     this.arenaLightShafts = [];
+    if (this.zodiacFloorMedallion) {
+      disposeZodiacFloorMedallion(this.zodiacFloorMedallion);
+      this.zodiacFloorMedallion = null;
+    }
+    if (this.zodiacStorytellingProps) {
+      disposeZodiacStorytellingProps(this.zodiacStorytellingProps);
+      this.zodiacStorytellingProps = null;
+    }
     this.zodiacLandmarkAnimNodes = [];
     this.constellationGroup = null;
     this.chapterWeatherPoints = null;
@@ -5819,6 +5894,39 @@ export class GameEngine {
     if (realmLandmarks) {
       proceduralShell.add(realmLandmarks.group);
       this.zodiacLandmarkAnimNodes = realmLandmarks.animNodes;
+    }
+
+    // 7c. Wave 13: Bespoke Procedural Celestial Arena Floor Medallions for Chapters 5-12 (0 PointLights)
+    const floorMedallion = buildZodiacArenaFloorMedallion({
+      chapterId: chapter.id,
+      trimHex: chapter.trimHex,
+      arenaHalfW: ARENA_HALF_W,
+      arenaHalfD: ARENA_HALF_D,
+      liteActive: arenaBudget.liteActive,
+    });
+    if (floorMedallion) {
+      proceduralShell.add(floorMedallion.group);
+      this.zodiacFloorMedallion = floorMedallion;
+      for (let mi = 0; mi < floorMedallion.animNodes.length; mi++) {
+        this.zodiacLandmarkAnimNodes.push(floorMedallion.animNodes[mi]);
+      }
+    }
+
+    // 7d. Wave 14: Bespoke Procedural 3D Environmental Storytelling Relic Shrines for Chapters 5-12 (0 PointLights)
+    const storyProps = buildZodiacStorytellingProps({
+      chapterId: chapter.id,
+      trimHex: chapter.trimHex,
+      stoneHex: chapter.stoneHex,
+      arenaHalfW: ARENA_HALF_W,
+      arenaHalfD: ARENA_HALF_D,
+      liteActive: arenaBudget.liteActive,
+    });
+    if (storyProps) {
+      proceduralShell.add(storyProps.group);
+      this.zodiacStorytellingProps = storyProps;
+      for (let si = 0; si < storyProps.animNodes.length; si++) {
+        this.zodiacLandmarkAnimNodes.push(storyProps.animNodes[si]);
+      }
     }
 
     // 8. Volumetric-Feel Zodiac Sanctuary Light Shafts (skipped on Lite/Software GPUs)
@@ -8695,6 +8803,7 @@ export class GameEngine {
     this.stageIndex = 0;
     this.waveIndex = 0;
     this.activeSkills = {};
+    this.activeSynergyTiersCache = [];
     this.activeEvolutions.clear();
     this.gpuWatchdog = createGpuWatchdogState(this.gpuProfile, this.gpuWatchdog.enabled);
     this.furyBonusMult = 1.0;
@@ -8974,12 +9083,22 @@ export class GameEngine {
     this.lobbyAutoSpinIdleTimer = 0;
   }
 
+  private getSynergyScale(id: SkillSynergyId): number {
+    return getSynergyTierPowerScale(this.activeSynergyTiersCache, id);
+  }
+
   public applySkillChoice(skillId: SkillId): void {
-    const prevSynergies = new Set(evaluateActiveSynergies(this.activeSkills));
+    const prevTiers = new Map<SkillSynergyId, number>(
+      evaluateTieredSkillSynergies(this.activeSkills).map((t) => [t.id, t.tier])
+    );
     const current = this.activeSkills[skillId] ?? 0;
     this.activeSkills[skillId] = current + 1;
-    const nextSynergies = evaluateActiveSynergies(this.activeSkills);
-    const newlyUnlocked = nextSynergies.filter((id) => !prevSynergies.has(id));
+    this.activeSynergyTiersCache = evaluateTieredSkillSynergies(this.activeSkills);
+
+    const awakenedOrUpgraded = this.activeSynergyTiersCache.filter(
+      (entry) => entry.tier > (prevTiers.get(entry.id) ?? 0)
+    );
+    const aegisScale = this.getSynergyScale('aegis_sanctuary');
 
     if (skillId === 'fountain_of_life') {
       const addHp = Math.round(this.baseStats.maxHp * 0.25);
@@ -8991,7 +9110,7 @@ export class GameEngine {
       this.hp = Math.min(this.maxHp, this.hp + addHp);
       this.furyBonusMult += 0.15;
     } else if (skillId === 'sacred_protection') {
-      const aegisMult = nextSynergies.includes('aegis_sanctuary') ? 1.25 : 1.0;
+      const aegisMult = aegisScale > 0 ? 1 + 0.25 * aegisScale : 1.0;
       this.shield += Math.round(this.maxHp * 0.45 * aegisMult);
     } else if (skillId === 'revive') {
       this.revivesLeft += 1;
@@ -9000,18 +9119,24 @@ export class GameEngine {
       this.rebuildCompanions();
     }
 
-    if (newlyUnlocked.includes('aegis_sanctuary') && (this.activeSkills.sacred_protection ?? 0) > 0) {
-      this.shield += Math.round(this.maxHp * 0.12);
+    const aegisUpgraded = awakenedOrUpgraded.find((u) => u.id === 'aegis_sanctuary');
+    if (aegisUpgraded && (this.activeSkills.sacred_protection ?? 0) > 0) {
+      this.shield += Math.round(this.maxHp * 0.12 * aegisUpgraded.powerScale);
     }
 
-    if (newlyUnlocked.length > 0) {
-      const syn = SKILL_SYNERGY_MAP[newlyUnlocked[0]];
+    if (awakenedOrUpgraded.length > 0) {
+      const top = awakenedOrUpgraded[0];
+      const syn = SKILL_SYNERGY_MAP[top.id];
       if (syn) {
+        const tierRoman = SYNERGY_TIER_ROMAN[top.tier];
         soundEngine.playSynergyUnlock();
-        this.synergyAwakenedName = syn.name;
+        this.synergyAwakenedName =
+          top.tier > 1 ? `${syn.name} · Bậc ${tierRoman}` : syn.name;
         this.synergyAwakenedTimer = 2.6;
-        this.spawnParticles(this.px, 1.3, this.pz, 0xfbbf24, 24);
-        this.spawnShockwave(this.px, this.pz, 0xfbbf24, 3.4, 0.4);
+        if (!this.reducedMotionEnabled) {
+          this.spawnParticles(this.px, 1.3, this.pz, 0xfbbf24, top.tier >= 2 ? 28 : 24);
+          this.spawnShockwave(this.px, this.pz, 0xfbbf24, 3.2 + top.tier * 0.45, 0.4);
+        }
         this.emitFloatingNumber(
           this.px,
           2.25,
@@ -9020,7 +9145,7 @@ export class GameEngine {
           true,
           false,
           undefined,
-          `CỘNG HƯỞNG · ${syn.name.toUpperCase()}!`,
+          `CỘNG HƯỞNG BẬC ${tierRoman} · ${syn.name.toUpperCase()}!`,
           true
         );
       }
@@ -9292,6 +9417,19 @@ export class GameEngine {
     this.roomBounty = null;
     this.roomBountyBanner = null;
     this.roomBountyBannerTimer = 0;
+    this.activeTacticalRoomModifier = null;
+    this.leylineConduitPos = null;
+    this.playerInLeylineConduit = false;
+    if (this.leylineConduitRing && this.leylineConduitFill) {
+      this.groundTelegraphPool?.release(this.leylineConduitRing, this.leylineConduitFill);
+      this.leylineConduitRing = null;
+      this.leylineConduitFill = null;
+    }
+    if (this.elementalChainState) {
+      this.elementalChainState.chainCount = 0;
+      this.elementalChainState.timerSec = 0;
+      this.elementalChainState.lastReactionId = null;
+    }
     this.bossWeakPointState = null;
     this.bossWeakPointEnemyId = null;
     if (this.bossWeakPointGroup) this.bossWeakPointGroup.visible = false;
@@ -9769,6 +9907,54 @@ export class GameEngine {
       this.roomBounty = null;
       this.activeRoomChaosEvent = null;
       this.ambushBossSpawnedInStage = false;
+    }
+
+    // Wave 13: Tactical Room Modifiers (strictly disabled on Ch.1 Stages 1-5 & special modes)
+    if (this.leylineConduitRing && this.leylineConduitFill) {
+      this.groundTelegraphPool?.release(this.leylineConduitRing, this.leylineConduitFill);
+      this.leylineConduitRing = null;
+      this.leylineConduitFill = null;
+    }
+    this.leylineConduitPos = null;
+    this.playerInLeylineConduit = false;
+    if (this.elementalChainState) {
+      this.elementalChainState.chainCount = 0;
+      this.elementalChainState.timerSec = 0;
+      this.elementalChainState.lastReactionId = null;
+    }
+    this.activeTacticalRoomModifier = resolveTacticalRoomModifier({
+      chapterId: this.currentChapter.id,
+      stageIndex: this.stageIndex,
+      isBossStage,
+      isTower: this.isTowerMode,
+      towerFloor: this.towerFloor,
+      isTraining: this.isTrainingMode,
+      isArena: this.isArenaMode,
+      isWorldBoss: this.isWorldBossMode || !supportsRoomBounty,
+      hasObstacles: true,
+    });
+    if (this.activeTacticalRoomModifier?.id === 'leyline_conduit') {
+      const pos = computeLeylineConduitPosition(
+        ARENA_HALF_W,
+        ARENA_HALF_D,
+        [],
+        this.stageIndex
+      );
+      this.leylineConduitPos = pos;
+      const pooledZone = this.groundTelegraphPool.acquire({
+        colorHex: 0x38bdf8,
+        x: pos.x,
+        z: pos.z,
+        radius: pos.radius,
+        ringY: 0.042,
+        fillY: 0.036,
+        ringOpacity: 0.78,
+        fillOpacity: 0.16,
+        initialFillScale: 0.96,
+        parent: this.entitiesGroup,
+      });
+      this.leylineConduitRing = pooledZone.ring;
+      this.leylineConduitFill = pooledZone.fill;
     }
 
     const pillarCoords: Array<[number, number]> = [];
@@ -10686,8 +10872,14 @@ export class GameEngine {
         (this.nightmareTier > 0 && this.nightmareConfig.extraEliteAffix) ||
         (this.isTowerMode && this.towerFloor >= 12));
     if (allowEliteAffix) {
-      const idx1 = this.nextEntityId % ELITE_AFFIX_LIST.length;
-      eliteAffix = ELITE_AFFIX_LIST[idx1];
+      const eligibleAffixes = resolveEligibleEliteAffixes(
+        this.currentChapter.id,
+        this.isTowerMode,
+        this.towerFloor
+      );
+      const pool = eligibleAffixes.length > 0 ? eligibleAffixes : ELITE_AFFIX_LIST;
+      const idx1 = this.nextEntityId % pool.length;
+      eliteAffix = pool[idx1];
       eliteAffixes = [eliteAffix];
       const affixMeta = ELITE_AFFIX_META[eliteAffix];
       eliteAuraRingMesh = new THREE.Mesh(
@@ -10709,9 +10901,9 @@ export class GameEngine {
       eliteAuraRingMesh.renderOrder = 6;
       this.entitiesGroup.add(eliteAuraRingMesh);
 
-      if (allowDualAffix) {
-        const idx2 = (idx1 + 1 + (this.nextEntityId % 2)) % ELITE_AFFIX_LIST.length;
-        const affix2 = ELITE_AFFIX_LIST[idx2];
+      if (allowDualAffix && pool.length > 1) {
+        const idx2 = (idx1 + 1 + (this.nextEntityId % 2)) % pool.length;
+        const affix2 = pool[idx2];
         if (affix2 !== eliteAffix) {
           eliteAffixes.push(affix2);
           const affixMeta2 = ELITE_AFFIX_META[affix2];
@@ -10743,6 +10935,15 @@ export class GameEngine {
 
     const hasHasteAffix = Boolean(eliteAffixes?.includes('haste'));
     const hasFrostAffix = Boolean(eliteAffixes?.includes('frost'));
+    const hasQuakeAffix = Boolean(eliteAffixes?.includes('quake_pulse'));
+    const hasteCurrentsEnemyBoost =
+      this.activeTacticalRoomModifier?.id === 'haste_currents' &&
+      !isBoss &&
+      (kind === EnemyKind.SKIRMISHER ||
+        kind === EnemyKind.SHADOW_STALKER ||
+        kind === EnemyKind.DRAGON_WHELP)
+        ? 1.12
+        : 1.0;
 
     let hpBarGroup: THREE.Group | undefined;
     let hpBarFill: THREE.Mesh | undefined;
@@ -10888,7 +11089,7 @@ export class GameEngine {
       radius,
       hp: finalHp,
       maxHp: finalHp,
-      speed: speed * speedScale * (hasHasteAffix ? 1.25 : 1.0),
+      speed: speed * speedScale * (hasHasteAffix ? 1.25 : 1.0) * hasteCurrentsEnemyBoost,
       damage: Math.round(
         damage *
           dmgMult *
@@ -10940,6 +11141,8 @@ export class GameEngine {
       eliteAffixes,
       eliteShieldHp,
       eliteFrostPulseTimer: hasFrostAffix ? 2.6 : undefined,
+      eliteQuakeTimer: hasQuakeAffix ? QUAKE_PULSE_CONFIG.intervalSec * 0.65 : undefined,
+      shockTimer: 0,
       eliteAuraRingMesh,
       eliteAuraRingMesh2,
       laserLine,
@@ -14244,6 +14447,27 @@ export class GameEngine {
     if (this.roomBounty && this.roomBounty.status === 'active' && !this.portalOpen) {
       this.advanceRoomBounty({ type: 'tick', dt: simDt });
     }
+    stepElementalChainState(this.elementalChainState, simDt);
+    if (this.leylineConduitPos && !this.portalOpen) {
+      const distLeyline = Math.hypot(
+        this.px - this.leylineConduitPos.x,
+        this.pz - this.leylineConduitPos.z
+      );
+      this.playerInLeylineConduit = distLeyline <= this.leylineConduitPos.radius;
+      if (this.playerInLeylineConduit) {
+        this.ultCharge = Math.min(100, this.ultCharge + simDt * 2.4);
+      }
+      if (this.leylineConduitRing && this.leylineConduitFill) {
+        const ringMat = this.leylineConduitRing.material as THREE.MeshBasicMaterial;
+        const fillMat = this.leylineConduitFill.material as THREE.MeshBasicMaterial;
+        ringMat.opacity = this.playerInLeylineConduit
+          ? 0.92
+          : 0.62 + Math.sin(this.elapsed * 3.2) * 0.12;
+        fillMat.opacity = this.playerInLeylineConduit ? 0.24 : 0.12;
+      }
+    } else {
+      this.playerInLeylineConduit = false;
+    }
     const baseShrineY = this.arenaThemeSpec.style === 'earth_monolith' ? 2.22 : 1.5;
     for (let bi = 0; bi < this.arenaBrazierGems.length; bi++) {
       const gem = this.arenaBrazierGems[bi];
@@ -14798,7 +15022,8 @@ export class GameEngine {
     if (this.dashBufferTimer > 0 && this.dashCooldown <= 0 && this.dashTimer <= 0) {
       this.dashBufferTimer = 0;
       this.dashTimer = 0.2;
-      this.dashCooldown = 1.25;
+      this.dashCooldown =
+        1.25 * (this.activeTacticalRoomModifier?.id === 'haste_currents' ? 0.85 : 1.0);
       this.invulnTimer = 0.28;
       if (inputLen > 0.1) {
         this.dashDirX = moveX / Math.max(0.01, inputLen);
@@ -15217,6 +15442,7 @@ export class GameEngine {
         (this.alexOverdriveTimer > 0 ? 0.45 : 0) +
         (this.mechanismBuffTimer > 0 ? this.mechanismAspdBonusPct : 0) +
         (this.setProcBuffTimer > 0 ? this.setProcAspdBonus : 0) +
+        (this.playerInLeylineConduit ? 0.18 : 0) +
         (this.activeRoomChaosEvent?.id === 'wind_frenzy' ? 0.35 : 0)) *
       this.weaponOverdriveBuffs.aspdMult *
       evoModsSpeed.attackSpeedMult;
@@ -15544,10 +15770,10 @@ export class GameEngine {
     proj.x = this.px + dirX * 0.65 + perpX * lateralOffset;
     proj.y = 1.02;
     proj.z = this.pz + dirZ * 0.65 + perpZ * lateralOffset;
-    const hasPiercingVolley = evaluateActiveSynergies(this.activeSkills).includes('piercing_volley');
+    const piercingVolleyScale = this.getSynergyScale('piercing_volley');
     const finalArrowSpeed =
       this.baseStats.arrowSpeed *
-      (hasPiercingVolley ? 1.15 : 1.0) *
+      (piercingVolleyScale > 0 ? 1 + 0.15 * piercingVolleyScale : 1.0) *
       (isCounterShot ? 1.38 : isOvercharge ? 1.24 : isComboFinisher ? 1.18 : 1.0);
     proj.vx = dirX * finalArrowSpeed;
     proj.vz = dirZ * finalArrowSpeed;
@@ -15619,7 +15845,7 @@ export class GameEngine {
         blaze ||
         frost ||
         storm ||
-        hasPiercingVolley;
+        piercingVolleyScale > 0;
       trailMat.opacity = isCounterShot
         ? 0.94
         : isOvercharge
@@ -15781,12 +16007,14 @@ export class GameEngine {
     // 2. Flying Swords / Sword of Time (+ Homing Blades Synergy + Branching Skill Evolutions)
     const swordStacks = (this.activeSkills.flying_swords ?? 0) + (this.hasRune('sword_of_time') ? 1 : 0);
     if (swordStacks > 0) {
-      const hasHomingBlades = evaluateActiveSynergies(this.activeSkills).includes('homing_blades');
+      const homingBladesScale = this.getSynergyScale('homing_blades');
       const evoSword = resolveEvolutionCombatModifiers(this.activeEvolutions);
       this.swordStrikeTimer += dt;
       const baseInterval = this.hasRune('sword_of_time') ? 1.45 : 1.7;
       const interval =
-        (hasHomingBlades ? baseInterval * 0.8 : baseInterval) * evoSword.swordCooldownMult;
+        (homingBladesScale > 0
+          ? baseInterval * Math.max(0.62, 1 - 0.2 * homingBladesScale)
+          : baseInterval) * evoSword.swordCooldownMult;
       if (this.swordStrikeTimer >= interval) {
         this.swordStrikeTimer = 0;
         const twinMult = (this.activeSkills.twin_strike ?? 0) > 0 ? 2 : 1;
@@ -15822,7 +16050,7 @@ export class GameEngine {
             this.baseStats.attack *
             this.getCurrentAtkMultiplier() *
             1.22 *
-            (hasHomingBlades ? 1.2 : 1.0) *
+            (homingBladesScale > 0 ? 1 + 0.2 * homingBladesScale : 1.0) *
             (target.isBoss ? evoSword.swordBossDamageMult : 1.0) *
             executeMult;
           proj.radius = 0.35;
@@ -15880,8 +16108,8 @@ export class GameEngine {
     const m = this.meteorPool.find((x) => !x.active);
     if (!m) return;
     const isGiant = this.hasRune('giant_meteor');
-    const hasInfernoMeteor = evaluateActiveSynergies(this.activeSkills).includes('inferno_meteor');
-    const radius = (isGiant ? 3.2 : 2.3) * (hasInfernoMeteor ? 1.25 : 1.0);
+    const infernoMeteorScale = this.getSynergyScale('inferno_meteor');
+    const radius = (isGiant ? 3.2 : 2.3) * (infernoMeteorScale > 0 ? 1 + 0.25 * infernoMeteorScale : 1.0);
     const mult = (isFrost ? 1.5 : 1.85) * (isGiant ? 1.6 : 1.0);
 
     m.active = true;
@@ -16061,20 +16289,19 @@ export class GameEngine {
   private updateOrbitOrbs(dt: number): void {
     const count = this.getOrbitOrbCount();
     if (count <= 0) return;
-    const activeSynergies = evaluateActiveSynergies(this.activeSkills);
-    const hasSolarOrbit = activeSynergies.includes('solar_orbit');
+    const solarOrbitScale = this.getSynergyScale('solar_orbit');
     const evoOrbs = resolveEvolutionCombatModifiers(this.activeEvolutions);
     const orbitR = 2.45;
     const speed =
       ((this.activeSkills.super_circle ?? 0) > 0 ? 4.8 : 3.8) *
-      (hasSolarOrbit ? 1.28 : 1.0) *
+      (solarOrbitScale > 0 ? 1 + 0.28 * solarOrbitScale : 1.0) *
       evoOrbs.orbitSpeedMult;
     const baseAngle = this.elapsed * speed;
     const sawRune = this.hasRune('sawblade_circle');
     const dmgMult =
       0.72 *
       (sawRune ? 1.55 : 1.0) *
-      (hasSolarOrbit ? 1.25 : 1.0) *
+      (solarOrbitScale > 0 ? 1 + 0.25 * solarOrbitScale : 1.0) *
       evoOrbs.orbitDamageMult;
 
     if (!this.isBossEntranceLocked()) {
@@ -16283,8 +16510,9 @@ export class GameEngine {
         (this.activeSkills.laser_sprite ?? 0) > 0 ||
         this.hasRune('healing_sprite');
 
-      const hasVenomEclipse = evaluateActiveSynergies(this.activeSkills).includes('venom_eclipse');
-      const spriteInterval = hasVenomEclipse ? 1.16 : 1.45;
+      const venomEclipseScale = this.getSynergyScale('venom_eclipse');
+      const spriteInterval =
+        venomEclipseScale > 0 ? Math.max(0.84, 1.45 / (1 + 0.25 * venomEclipseScale)) : 1.45;
       if (hasSprites && this.spriteFireTimer >= spriteInterval) {
         this.spriteFireTimer = 0;
         const comp = this.companionModels[count - 1];
@@ -17156,6 +17384,7 @@ export class GameEngine {
       const rawSlowMult = e.chillTimer > 0 ? (superFreeze ? 0.42 : 0.58) : 1.0;
       const slowMult = clampBossChillSlowMult(rawSlowMult, e.isBoss && !e.isArenaRival);
       if (e.chillTimer > 0) e.chillTimer -= dt;
+      if (e.shockTimer && e.shockTimer > 0) e.shockTimer = Math.max(0, e.shockTimer - dt);
       if (e.exposedTimer && e.exposedTimer > 0) e.exposedTimer = Math.max(0, e.exposedTimer - dt);
       if (e.interruptCdTimer && e.interruptCdTimer > 0) e.interruptCdTimer = Math.max(0, e.interruptCdTimer - dt);
 
@@ -17208,6 +17437,78 @@ export class GameEngine {
               this.spawnShockwave(e.x, e.z, 0x67e8f9, 4.6, 0.38);
               this.playerFrostSlowTimer = 1.4;
               this.emitFloatingNumber(this.px, 2.0, this.pz, 0, false, false, 'ice', 'HÀN KHÍ CHẬM!');
+            }
+          }
+        }
+        // Wave 13: Quake Pulse Elite Affix (interruptible ring telegraph -> +25% Exposed window)
+        if (activeAffixes.includes('quake_pulse')) {
+          if (e.eliteQuakeChargingTimer && e.eliteQuakeChargingTimer > 0) {
+            if ((e.stunTimer ?? 0) > 0) {
+              if (e.eliteQuakeRing && e.eliteQuakeFill) {
+                this.groundTelegraphPool.release(e.eliteQuakeRing, e.eliteQuakeFill);
+                e.eliteQuakeRing = undefined;
+                e.eliteQuakeFill = undefined;
+              }
+              e.eliteQuakeChargingTimer = 0;
+              e.eliteQuakeTimer = QUAKE_PULSE_CONFIG.intervalSec;
+              e.exposedTimer = Math.max(e.exposedTimer ?? 0, QUAKE_PULSE_CONFIG.interruptExposedSec);
+              this.spawnShockwave(e.x, e.z, 0xfbbf24, 3.4, 0.3);
+              this.emitFloatingNumber(e.x, 2.2, e.z, 0, true, false, 'storm', 'NGẮT CHẤN ĐỊA!');
+            } else {
+              e.eliteQuakeChargingTimer -= dt;
+              if (e.eliteQuakeRing && e.eliteQuakeFill) {
+                e.eliteQuakeRing.position.set(e.x, 0.052, e.z);
+                e.eliteQuakeFill.position.set(e.x, 0.048, e.z);
+                const progress = Math.max(
+                  0.12,
+                  Math.min(1, 1 - e.eliteQuakeChargingTimer / QUAKE_PULSE_CONFIG.telegraphDurationSec)
+                );
+                e.eliteQuakeFill.scale.setScalar(QUAKE_PULSE_CONFIG.radius * progress);
+              }
+              if (e.eliteQuakeChargingTimer <= 0) {
+                if (e.eliteQuakeRing && e.eliteQuakeFill) {
+                  this.groundTelegraphPool.release(e.eliteQuakeRing, e.eliteQuakeFill);
+                  e.eliteQuakeRing = undefined;
+                  e.eliteQuakeFill = undefined;
+                }
+                e.eliteQuakeChargingTimer = 0;
+                e.eliteQuakeTimer = QUAKE_PULSE_CONFIG.intervalSec;
+                soundEngine.playEliteAffixTrigger('quake_pulse');
+                this.spawnShockwave(e.x, e.z, 0xd97706, QUAKE_PULSE_CONFIG.radius, 0.38);
+                const dHero = Math.hypot(this.px - e.x, this.pz - e.z);
+                if (dHero <= QUAKE_PULSE_CONFIG.radius && this.invulnTimer <= 0) {
+                  this.damagePlayer(
+                    Math.max(6, Math.round(e.damage * QUAKE_PULSE_CONFIG.damageMult)),
+                    {
+                      code: 'boss_slam',
+                      label: 'Xung Chấn Địa Tinh Anh',
+                      tip: 'Ngắt tụ lực Chấn Địa bằng Khống Chế hoặc Phá Giáp Trảm để mở cửa sổ Sơ Hở 2.5s.',
+                    },
+                    e.x,
+                    e.z
+                  );
+                }
+              }
+            }
+          } else if (e.eliteQuakeTimer !== undefined) {
+            e.eliteQuakeTimer -= dt;
+            if (e.eliteQuakeTimer <= 0 && Math.hypot(this.px - e.x, this.pz - e.z) <= 8.4) {
+              e.eliteQuakeChargingTimer = QUAKE_PULSE_CONFIG.telegraphDurationSec;
+              const pooledQuake = this.groundTelegraphPool.acquire({
+                colorHex: 0xd97706,
+                x: e.x,
+                z: e.z,
+                radius: QUAKE_PULSE_CONFIG.radius,
+                ringY: 0.052,
+                fillY: 0.048,
+                ringOpacity: 0.85,
+                fillOpacity: 0.24,
+                initialFillScale: 0.14,
+                parent: this.entitiesGroup,
+              });
+              e.eliteQuakeRing = pooledQuake.ring;
+              e.eliteQuakeFill = pooledQuake.fill;
+              this.emitFloatingNumber(e.x, 2.25, e.z, 0, false, false, 'fire', 'CHẤN ĐỊA XUNG!');
             }
           }
         }
@@ -20233,9 +20534,8 @@ export class GameEngine {
 
   private updateProjectiles(dt: number): void {
     this.syncProjectileEnemyGrid();
-    const activeSynergies = evaluateActiveSynergies(this.activeSkills);
-    const hasFrostShatterSynergy = activeSynergies.includes('frost_shatter');
-    const hasPiercingVolleySynergy = activeSynergies.includes('piercing_volley');
+    const frostShatterScale = this.getSynergyScale('frost_shatter');
+    const piercingVolleyScale = this.getSynergyScale('piercing_volley');
 
     for (const p of this.arrowPool) {
       if (!p.active) continue;
@@ -20449,8 +20749,8 @@ export class GameEngine {
         }
 
         let critMult = this.baseStats.critDamage + critStacks * 0.35;
-        if (e.chillTimer > 0 && hasFrostShatterSynergy) {
-          critMult += 0.25;
+        if (e.chillTimer > 0 && frostShatterScale > 0) {
+          critMult += 0.25 * frostShatterScale;
         }
         const dmg = p.damage * (isCrit ? critMult : 1);
 
@@ -20553,7 +20853,7 @@ export class GameEngine {
 
         if (p.pierceLeft > 0) {
           p.pierceLeft--;
-          p.damage *= hasPiercingVolleySynergy ? 1.0 : 0.85;
+          p.damage *= piercingVolleyScale >= 1.35 ? 1.06 : piercingVolleyScale > 0 ? 1.0 : 0.85;
         } else {
           p.active = false;
           p.mesh.visible = false;
@@ -20662,7 +20962,7 @@ export class GameEngine {
       }
     }
 
-    const activeSynergies = evaluateActiveSynergies(this.activeSkills);
+    const bossBarrageScale = this.getSynergyScale('boss_barrage');
     const evoMods = resolveEvolutionCombatModifiers(this.activeEvolutions);
     let mult = 1.0;
     if (this.markedEnemyIds.has(e.id)) mult += 0.2;
@@ -20678,8 +20978,8 @@ export class GameEngine {
     if (this.isCoopRaidMode && e.isBoss) {
       mult *= getCoopResonanceDamageMult(this.coopSynergyClock);
     }
-    if ((e.isBoss || e.isElite) && !e.isArenaRival && activeSynergies.includes('boss_barrage')) {
-      mult += 0.14;
+    if ((e.isBoss || e.isElite) && !e.isArenaRival && bossBarrageScale > 0) {
+      mult += 0.14 * bossBarrageScale;
     }
     if (e.chillTimer > 0) {
       if ((this.activeSkills.super_freeze ?? 0) > 0 || this.hasRune('rune_frost')) {
@@ -20840,7 +21140,7 @@ export class GameEngine {
       mult *= this.activePowerPressure.enemyDamageTakenMult;
     }
 
-    const finalDmg = Math.max(1, Math.round(amount * mult));
+    let finalDmg = Math.max(1, Math.round(amount * mult));
     if (e.isTrainingDummy) {
       recordTrainingHit(this.trainingDpsState, this.trainingClockSec, finalDmg, isCrit);
       e.hp = e.maxHp;
@@ -20857,6 +21157,41 @@ export class GameEngine {
       }
       e.hitFlashTimer = 0.1;
     } else {
+      // Wave 13: Vanguard Link Elite Affix mitigates 18% damage on nearby allies (Zero-GC scratch)
+      if (!e.isBoss && !e.isVaultPillar) {
+        const hasOwnVanguardLink =
+          e.eliteAffix === 'vanguard_link' || Boolean(e.eliteAffixes?.includes('vanguard_link'));
+        if (!hasOwnVanguardLink) {
+          this.vanguardLinkPeersScratch.length = 0;
+          for (let li = 0; li < this.enemies.length; li++) {
+            const ally = this.enemies[li];
+            if (!ally || ally.dead) continue;
+            const isLinker =
+              ally.eliteAffix === 'vanguard_link' ||
+              Boolean(ally.eliteAffixes?.includes('vanguard_link'));
+            if (!isLinker) continue;
+            this.vanguardLinkPeersScratch.push({
+              id: ally.id,
+              x: ally.x,
+              z: ally.z,
+              hp: ally.hp,
+              hasVanguardLink: true,
+              stunTimer: ally.stunTimer ?? 0,
+            });
+          }
+          if (this.vanguardLinkPeersScratch.length > 0) {
+            const linkMult = computeVanguardLinkDamageMultiplier(
+              e.id,
+              e.x,
+              e.z,
+              this.vanguardLinkPeersScratch
+            );
+            if (linkMult < 1.0) {
+              finalDmg = Math.max(1, Math.round(finalDmg * linkMult));
+            }
+          }
+        }
+      }
       const hasAegisAffix = e.eliteAffix === 'aegis' || Boolean(e.eliteAffixes?.includes('aegis'));
       if (hasAegisAffix && e.eliteShieldHp && e.eliteShieldHp > 0) {
         const absorbed = Math.min(e.eliteShieldHp, finalDmg);
@@ -21328,7 +21663,7 @@ export class GameEngine {
       this.hp = Math.min(this.maxHp, this.hp + leach);
     }
 
-    // AAA Wave 4: 3D Elemental Reactions (Melt, Superconduct, Overload, Venom Detonation)
+    // AAA Wave 4 + Wave 13: Complete 6-Pair 3D Elemental Reactions + Elemental Chain Resonance
     const incomingElement: ElementalHitType | null = blaze
       ? 'fire'
       : frost
@@ -21343,6 +21678,7 @@ export class GameEngine {
         burning: e.burnTimer > 0,
         chilled: e.chillTimer > 0,
         poisoned: e.poisonDps > 0,
+        shocked: (e.shockTimer ?? 0) > 0,
       },
       incomingElement,
       finalDmg,
@@ -21350,8 +21686,10 @@ export class GameEngine {
     );
 
     const flameRuneMult = this.hasRune('rune_flame') ? 1.6 : 1.0;
-    const infernoBurnMult = activeSynergies.includes('inferno_meteor') ? 1.22 : 1.0;
-    const venomSynergyMult = activeSynergies.includes('venom_eclipse') ? 1.3 : 1.0;
+    const infernoMeteorScale = this.getSynergyScale('inferno_meteor');
+    const venomEclipseScale = this.getSynergyScale('venom_eclipse');
+    const infernoBurnMult = infernoMeteorScale > 0 ? 1 + 0.22 * infernoMeteorScale : 1.0;
+    const venomSynergyMult = venomEclipseScale > 0 ? 1 + 0.3 * venomEclipseScale : 1.0;
     if (blaze) {
       const superMult = (this.activeSkills.super_blaze ?? 0) > 0 ? 2.2 : 1.0;
       e.burnTimer = 2.8;
@@ -21381,11 +21719,15 @@ export class GameEngine {
     if (poison) {
       e.poisonDps = Math.max(e.poisonDps, finalDmg * 0.22 * flameRuneMult * venomSynergyMult);
     }
+    if (storm) {
+      e.shockTimer = Math.max(e.shockTimer ?? 0, 2.8);
+    }
     if (frost) {
       e.chillTimer = 2.6;
       if (evoMods.iceNovaRadius > 0 && coopAllyIndex === undefined) {
         let frostedCount = 0;
         for (const other of this.enemies) {
+          if (frostedCount >= 4) break;
           if (!other || other.dead || other.id === e.id || other.spawnTimer > 0) continue;
           if (Math.hypot(other.x - e.x, other.z - e.z) <= evoMods.iceNovaRadius) {
             frostedCount += 1;
@@ -21403,7 +21745,16 @@ export class GameEngine {
 
     const hitPan = computeSpatialPan(e.x, ARENA_HALF_W);
     if (reaction) {
-      const reactionDmg = reaction.bonusDamage;
+      const chainRes = advanceElementalReactionChain(this.elementalChainState, reaction.id);
+      const roomResonanceDmgMult =
+        this.activeTacticalRoomModifier?.id === 'elemental_resonance' ? 1.25 : 1.0;
+      const roomResonanceRadiusMult =
+        this.activeTacticalRoomModifier?.id === 'elemental_resonance' ? 1.2 : 1.0;
+      const reactionDmg = Math.max(
+        1,
+        Math.round(reaction.bonusDamage * roomResonanceDmgMult * chainRes.damageMultiplier)
+      );
+      const effectiveReactionRadius = reaction.aoeRadius * roomResonanceRadiusMult;
       e.reactionCd = reaction.cooldownSec;
       this.elementalReactionsCount += 1;
       this.advanceRoomBounty({ type: 'elemental_reaction' });
@@ -21411,38 +21762,51 @@ export class GameEngine {
         e.hp -= reactionDmg;
       }
       this.dmgElemental += reactionDmg;
+      if (reaction.sunderDurationSec && reaction.sunderDurationSec > 0) {
+        e.exposedTimer = Math.max(e.exposedTimer ?? 0, reaction.sunderDurationSec);
+      }
+      const totalBreakRatio = reaction.breakShieldBonusRatio + chainRes.extraBreakShieldRatio;
       if (
         e.isBoss &&
         e.maxBreakShield &&
         e.breakShield &&
         e.breakShield > 0 &&
-        reaction.breakShieldBonusRatio > 0
+        totalBreakRatio > 0
       ) {
         e.breakShield = Math.max(
           0,
-          e.breakShield - e.maxBreakShield * reaction.breakShieldBonusRatio
+          e.breakShield - e.maxBreakShield * totalBreakRatio
         );
       }
-      if (reaction.aoeRadius > 0) {
+      if (effectiveReactionRadius > 0) {
         const reactionScan = this.combatScratchPool.copyEnemiesInto(
           this.enemies,
           this.combatScratchPool.reactionScanScratch
         );
         const reactionKillTargets = this.combatScratchPool.reactionKillScratch;
         reactionKillTargets.length = 0;
+        let chainJumpsRemaining = reaction.chainTargets ?? 0;
         for (let oi = 0; oi < reactionScan.length; oi++) {
           const other = reactionScan[oi];
           if (!other || other.dead || other.id === e.id || other.spawnTimer > 0) continue;
           const rdx = other.x - e.x;
           const rdz = other.z - e.z;
           const rdist = Math.hypot(rdx, rdz);
-          if (rdist <= reaction.aoeRadius) {
-            const splashDmg = Math.max(1, Math.round(reaction.bonusDamage * 0.65));
+          if (rdist <= effectiveReactionRadius) {
+            const splashDmg = Math.max(1, Math.round(reactionDmg * 0.65));
             if (!other.isTrainingDummy) {
               other.hp -= splashDmg;
             }
             this.dmgElemental += splashDmg;
             other.hitFlashTimer = 0.09;
+            if (reaction.sunderDurationSec && reaction.sunderDurationSec > 0) {
+              other.exposedTimer = Math.max(other.exposedTimer ?? 0, reaction.sunderDurationSec * 0.75);
+            }
+            if (chainJumpsRemaining > 0) {
+              chainJumpsRemaining -= 1;
+              other.shockTimer = Math.max(other.shockTimer ?? 0, 2.2);
+              other.poisonDps = Math.max(other.poisonDps, Math.max(4, reactionDmg * 0.18));
+            }
             if (
               reaction.knockbackForce > 0 &&
               !other.isBoss &&
@@ -21468,16 +21832,38 @@ export class GameEngine {
       }
       soundEngine.playElementalReaction(reaction.id, hitPan);
       triggerHapticPulse('reaction', this.hapticsEnabled);
-      this.spawnShockwave(e.x, e.z, reaction.primaryHex, Math.max(2.2, reaction.aoeRadius), 0.34);
+      this.spawnShockwave(
+        e.x,
+        e.z,
+        reaction.primaryHex,
+        Math.max(2.2, effectiveReactionRadius),
+        0.34
+      );
       this.spawnCritStar(e.x, 1.32, e.z, reaction.secondaryHex, 1.75);
       this.spawnImpactLight(
         e.x,
         1.4,
         e.z,
-        reaction.id === 'superconduct' ? 'storm' : reaction.id === 'melt' ? 'crit' : 'super_crit'
+        reaction.id === 'superconduct' || reaction.id === 'electro_venom'
+          ? 'storm'
+          : reaction.id === 'melt' || reaction.id === 'cryo_blight'
+          ? 'crit'
+          : 'super_crit'
       );
       this.spawnParticles(e.x, 1.1, e.z, reaction.primaryHex, 14);
       this.spawnParticles(e.x, 1.15, e.z, reaction.secondaryHex, 10);
+      if (chainRes.triggeredChainResonance && chainRes.calloutLabel) {
+        this.emitFloatingNumber(
+          e.x,
+          2.55,
+          e.z,
+          0,
+          true,
+          false,
+          'storm',
+          chainRes.calloutLabel
+        );
+      }
       this.emitFloatingNumber(
         e.x,
         2.12,
@@ -21646,10 +22032,10 @@ export class GameEngine {
     // Chain Lightning (Storm Skill + Storm Chain Synergy)
     const shouldChain = storm;
     if (shouldChain) {
-      const hasStormChain = activeSynergies.includes('storm_chain');
+      const stormChainScale = this.getSynergyScale('storm_chain');
       const maxChains =
         ((this.activeSkills.super_bolt ?? 0) > 0 ? 3 : 1) +
-        (hasStormChain ? 1 : 0) +
+        (stormChainScale >= 1.7 ? 2 : stormChainScale > 0 ? 1 : 0) +
         evoMods.lightningExtraJumps;
       const chainRange = 6.2 * evoMods.lightningRangeMult;
       const chainExclude = new Set<number>([e.id]);
@@ -21664,7 +22050,7 @@ export class GameEngine {
           Math.round(
             finalDmg *
               (this.hasRune('rune_frost') ? 0.6 : 0.45) *
-              (hasStormChain ? 1.2 : 1.0)
+              (stormChainScale > 0 ? 1 + 0.2 * stormChainScale : 1.0)
           )
         );
         nearby.hp -= arcDmg;
@@ -21772,14 +22158,14 @@ export class GameEngine {
 
       // Bloodthirst / Healing Sprite + Aegis Sanctuary Synergy heal on Elite/Boss kill
       const vamp = (this.activeSkills.bloodthirst ?? 0) + (this.hasRune('healing_sprite') ? 0.6 : 0);
-      const hasAegisSanctuary = evaluateActiveSynergies(this.activeSkills).includes('aegis_sanctuary');
+      const aegisKillScale = this.getSynergyScale('aegis_sanctuary');
       if (vamp > 0) {
         const healAmt = Math.round(4 + this.maxHp * 0.025 * vamp);
         this.hp = Math.min(this.maxHp, this.hp + healAmt);
         this.emitFloatingNumber(this.px, 1.9, this.pz, healAmt, false, true);
       }
-      if (hasAegisSanctuary && (e.isBoss || e.isElite)) {
-        const synHeal = Math.max(8, Math.round(this.maxHp * 0.06));
+      if (aegisKillScale > 0 && (e.isBoss || e.isElite)) {
+        const synHeal = Math.max(8, Math.round(this.maxHp * 0.06 * aegisKillScale));
         this.hp = Math.min(this.maxHp, this.hp + synHeal);
         this.emitFloatingNumber(this.px, 2.2, this.pz, synHeal, false, true, undefined, 'THÁNH GIÁP!');
       }
@@ -21814,6 +22200,50 @@ export class GameEngine {
           ring,
           fill,
         });
+      }
+
+      // Wave 13: Release pooled Quake Pulse telegraph on Elite death & trigger Vanguard Link / Phalanx counterplay
+      if (e.eliteQuakeRing && e.eliteQuakeFill) {
+        this.groundTelegraphPool.release(e.eliteQuakeRing, e.eliteQuakeFill);
+        e.eliteQuakeRing = undefined;
+        e.eliteQuakeFill = undefined;
+      }
+      if (e.eliteAffix === 'vanguard_link' || e.eliteAffixes?.includes('vanguard_link')) {
+        soundEngine.playEliteAffixTrigger('vanguard_link');
+        this.spawnShockwave(e.x, e.z, 0x10b981, QUAKE_PULSE_CONFIG.vanguardLinkShatterRadius, 0.36);
+        let stunnedCount = 0;
+        for (let vi = 0; vi < this.enemies.length; vi++) {
+          const ally = this.enemies[vi];
+          if (!ally || ally.dead || ally.isBoss || ally.isTrainingDummy) continue;
+          if (Math.hypot(ally.x - e.x, ally.z - e.z) <= QUAKE_PULSE_CONFIG.vanguardLinkShatterRadius) {
+            ally.stunTimer = Math.max(ally.stunTimer ?? 0, QUAKE_PULSE_CONFIG.vanguardLinkShatterStunSec);
+            stunnedCount += 1;
+          }
+        }
+        if (stunnedCount > 0) {
+          this.emitFloatingNumber(e.x, 2.2, e.z, 0, true, false, 'poison', 'VỠ LIÊN KẾT GIÁP!');
+        }
+      }
+      if (
+        this.activeTacticalRoomModifier?.id === 'vanguard_phalanx' &&
+        (isPhalanxVanguardKind(e.kind) || e.tacticalRole === 'shield_bearer')
+      ) {
+        let exposedAllies = 0;
+        for (let pi = 0; pi < this.enemies.length; pi++) {
+          const ally = this.enemies[pi];
+          if (!ally || ally.dead || ally.isBoss || ally.isTrainingDummy) continue;
+          if (Math.hypot(ally.x - e.x, ally.z - e.z) <= 8.5) {
+            ally.exposedTimer = Math.max(
+              ally.exposedTimer ?? 0,
+              this.activeTacticalRoomModifier.phalanxExposeSec
+            );
+            exposedAllies += 1;
+          }
+        }
+        if (exposedAllies > 0) {
+          this.spawnShockwave(e.x, e.z, 0xf59e0b, 5.0, 0.32);
+          this.emitFloatingNumber(e.x, 2.35, e.z, 0, true, false, 'fire', 'PHÁ VỠ ĐỘI HÌNH! +20% ST');
+        }
       }
 
       // Boss Phase 2 Shield Totem Shatter -> Stun owner Boss & strip break shield
@@ -23385,6 +23815,33 @@ export class GameEngine {
     this.spawnLootOrb(obs.x, obs.z, 'heal', Math.max(18, Math.round(this.maxHp * 0.1)));
     this.ultCharge = Math.min(100, this.ultCharge + 8);
     this.emitFloatingNumber(obs.x, 1.9, obs.z, 0, true, false, 'ice', 'TRỤ PHA LÊ VỠ!', false);
+    // Wave 13: Fragile Sanctuary Tactical Room Modifier — Pillar Shatter Physics Shockwave (Zero-GC)
+    if (this.activeTacticalRoomModifier?.id === 'fragile_sanctuary') {
+      const hitCount = evaluatePillarShatterShockwave(
+        obs,
+        this.enemies,
+        this.baseStats.attack,
+        this.pillarShatterHitsScratch
+      );
+      if (hitCount > 0) {
+        let maxDmg = 0;
+        for (let hi = 0; hi < hitCount; hi++) {
+          const h = this.pillarShatterHitsScratch[hi];
+          const target = this.enemies.find((en) => !en.dead && en.id === h.id);
+          if (!target) continue;
+          target.stunTimer = Math.max(target.stunTimer ?? 0, h.stunSec);
+          target.knockVx = (target.knockVx ?? 0) + h.knockX * 5.2;
+          target.knockVz = (target.knockVz ?? 0) + h.knockZ * 5.2;
+          if (!target.isTrainingDummy) {
+            target.hp -= h.damage;
+          }
+          if (h.damage > maxDmg) maxDmg = h.damage;
+          target.hitFlashTimer = 0.12;
+        }
+        this.spawnShockwave(obs.x, obs.z, 0x38bdf8, 3.6, 0.38);
+        this.emitFloatingNumber(obs.x, 2.35, obs.z, maxDmg, true, false, 'ice', 'SÓNG XUNG KÍCH TRỤ!');
+      }
+    }
   }
 
   private updateWave5Effects(dt: number): void {
@@ -24770,6 +25227,7 @@ export class GameEngine {
         : null,
       activeSkills: { ...this.activeSkills },
       activeSynergies: evaluateActiveSynergies(this.activeSkills),
+      activeSynergyTiers: this.activeSynergyTiersCache,
       activeEvolutions: Array.from(this.activeEvolutions),
       stageBannerText: this.stageBannerText,
       comboCount: this.comboCount,
@@ -24874,6 +25332,18 @@ export class GameEngine {
           astralOverchargeRatio: Number(this.astralOvercharge.toFixed(2)),
           roomBounty: toRoomBountySnapshot(this.roomBounty),
           roomBountyBanner: this.roomBountyBannerTimer > 0 ? this.roomBountyBanner : null,
+          tacticalRoomModifier: toTacticalRoomModifierSnapshot(
+            this.activeTacticalRoomModifier,
+            this.playerInLeylineConduit
+          ),
+          elementalChainCount:
+            this.elementalChainState.chainCount >= 2 && this.elementalChainState.timerSec > 0
+              ? this.elementalChainState.chainCount
+              : undefined,
+          elementalChainLabel:
+            this.elementalChainState.chainCount >= 2 && this.elementalChainState.timerSec > 0
+              ? `CỘNG HƯỞNG ×${this.elementalChainState.chainCount}`
+              : undefined,
           cameraPresetToast: this.cameraPresetToastTimer > 0 ? this.cameraPresetToast : null,
           fps: fpsRead?.fps,
           frameTimeMs: fpsRead?.frameTimeMs,
@@ -25180,6 +25650,14 @@ export class GameEngine {
     }
     this.lootOrbs.forEach((o) => this.entitiesGroup.remove(o.mesh));
     this.lootOrbs = [];
+    if (this.zodiacFloorMedallion) {
+      disposeZodiacFloorMedallion(this.zodiacFloorMedallion);
+      this.zodiacFloorMedallion = null;
+    }
+    if (this.zodiacStorytellingProps) {
+      disposeZodiacStorytellingProps(this.zodiacStorytellingProps);
+      this.zodiacStorytellingProps = null;
+    }
     this.groundTelegraphPool?.releaseAll();
     this.signatureVfxPool?.dispose();
     this.releaseObject(this.scene);

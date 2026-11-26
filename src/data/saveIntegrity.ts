@@ -1,10 +1,14 @@
-import { Rarity, type ChapterMilestoneProgress, type HeroId, type SaveData } from '../types/game';
+import { Rarity, type ChapterMilestoneProgress, type HeroId, type RuneId, type SaveData } from '../types/game';
 import { sanitizeDiscoveredEvolutions } from '../engine/skillEvolutionEngine';
 import {
   HERO_MASTERY_MILESTONES,
   normalizeAutoSalvageFilter,
   normalizeWeeklyChallenges,
 } from './wave11RetentionSystems';
+import { RUNES_CATALOG } from './runesData';
+import { RUNE_REFINEMENT_MAX_TIER } from './runeAndAffixRefining';
+import { SUBSTAT_DEFS } from './wave4Data';
+import { VALID_JOURNEY_MILESTONE_IDS } from './zodiacJourneyLog';
 
 export interface SaveIntegrityReport {
   ok: boolean;
@@ -100,11 +104,26 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
           item.awakeningLevel !== undefined
             ? clampFiniteInt(item.awakeningLevel, 0, 10, 0)
             : undefined;
+        let subFixed = false;
+        const cleanSubstats = Array.isArray(item.substats)
+          ? item.substats.map((sub) => {
+              const def = SUBSTAT_DEFS[sub.kind];
+              if (!def) return sub;
+              const clampedVal = clampFiniteFloat(sub.value, def.minPct, def.maxPct, def.minPct);
+              const roundedVal = Math.round(clampedVal * 100) / 100;
+              if (roundedVal !== sub.value) {
+                subFixed = true;
+                return { ...sub, value: roundedVal };
+              }
+              return sub;
+            })
+          : item.substats;
         validInventoryUids.add(item.uid);
         if (
           item.level !== cleanLevel ||
           item.rarity !== cleanRarity ||
-          item.awakeningLevel !== cleanAwakening
+          item.awakeningLevel !== cleanAwakening ||
+          subFixed
         ) {
           gearStatFixed = true;
           return {
@@ -112,6 +131,7 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
             level: cleanLevel,
             rarity: cleanRarity,
             ...(cleanAwakening !== undefined ? { awakeningLevel: cleanAwakening } : {}),
+            ...(subFixed && cleanSubstats ? { substats: cleanSubstats } : {}),
           };
         }
         return item;
@@ -364,6 +384,60 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
         next.claimedHeroMasteryMilestones = cleanMap;
         issuesFixed.push('claimedHeroMasteryMilestones');
       }
+    }
+  }
+
+  if (next.runeRefinements !== undefined) {
+    if (!next.runeRefinements || typeof next.runeRefinements !== 'object') {
+      next.runeRefinements = {};
+      issuesFixed.push('runeRefinements');
+    } else {
+      const cleanRefines: Partial<Record<RuneId, number>> = {};
+      let changed = false;
+      for (const [rawKey, rawTier] of Object.entries(next.runeRefinements)) {
+        if (!(rawKey in RUNES_CATALOG)) {
+          changed = true;
+          continue;
+        }
+        const cleanTier = clampFiniteInt(rawTier, 0, RUNE_REFINEMENT_MAX_TIER, 0);
+        if (cleanTier !== rawTier) {
+          changed = true;
+        }
+        if (cleanTier > 0) {
+          cleanRefines[rawKey as RuneId] = cleanTier;
+        } else if (rawTier !== 0) {
+          changed = true;
+        }
+      }
+      if (changed) {
+        next.runeRefinements = cleanRefines;
+        issuesFixed.push('runeRefinements');
+      }
+    }
+  }
+
+  if (next.claimedJourneyMilestones !== undefined) {
+    const rawList = Array.isArray(next.claimedJourneyMilestones)
+      ? next.claimedJourneyMilestones
+      : [];
+    const seen = new Set<string>();
+    const cleanJourney: string[] = [];
+    let changed = !Array.isArray(next.claimedJourneyMilestones);
+    for (const entry of rawList) {
+      if (
+        typeof entry !== 'string' ||
+        !VALID_JOURNEY_MILESTONE_IDS.has(entry) ||
+        seen.has(entry)
+      ) {
+        changed = true;
+        continue;
+      }
+      seen.add(entry);
+      cleanJourney.push(entry);
+    }
+    if (changed) {
+      next.claimedJourneyMilestones = cleanJourney;
+      issuesFixed.push('claimedJourneyMilestones');
     }
   }
 

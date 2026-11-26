@@ -131,7 +131,29 @@ export enum EnemyKind {
   ZODIAC_BOSS = 'ZODIAC_BOSS',
 }
 
-export type EliteAffix = 'aegis' | 'haste' | 'volatile' | 'frost';
+export type EliteAffix =
+  | 'aegis'
+  | 'haste'
+  | 'volatile'
+  | 'frost'
+  | 'vanguard_link'
+  | 'quake_pulse';
+
+export type TacticalRoomModifierId =
+  | 'leyline_conduit'
+  | 'fragile_sanctuary'
+  | 'vanguard_phalanx'
+  | 'elemental_resonance'
+  | 'haste_currents';
+
+export interface TacticalRoomModifierSnapshot {
+  id: TacticalRoomModifierId;
+  name: string;
+  shortRule: string;
+  symbol: string;
+  accentHex: string;
+  buffActive?: boolean;
+}
 
 export type GearSetId =
   | 'Destruction Set'
@@ -426,6 +448,16 @@ export type SkillSynergyId =
   | 'aegis_sanctuary'
   | 'solar_orbit'
   | 'venom_eclipse';
+
+export type SkillSynergyTier = 1 | 2 | 3;
+
+export interface ActiveSkillSynergyTierInfo {
+  id: SkillSynergyId;
+  tier: SkillSynergyTier;
+  totalStacks: number;
+  nextTierStacks: number | null;
+  powerScale: number;
+}
 
 export interface SkillSynergyDef {
   id: SkillSynergyId;
@@ -1429,6 +1461,7 @@ export interface SaveData {
   inventory: GearInstance[];
   equippedRunes: string[]; // rune instance uids (up to 4)
   runeInventory: RuneInstance[];
+  runeRefinements?: Partial<Record<RuneId, number>>; // Wave 13: +0..+5 ancient rune refinement tiers
   muted: boolean;
   welcomeGiftClaimed?: boolean;
   checkIn?: CheckInProgress;
@@ -1601,6 +1634,8 @@ export interface SaveData {
   autoSalvageFilter?: AutoSalvageFilterRule;
   weeklyChallenges?: WeeklyChallengeProgress;
   claimedHeroMasteryMilestones?: Partial<Record<HeroId, number[]>>;
+  // Wave 14: 12-Chapter Zodiac Journey Log Claimed Milestone IDs
+  claimedJourneyMilestones?: string[];
 }
 
 export type AiAutoPilotTactic = 'aggressive' | 'balanced' | 'evasive';
@@ -2255,6 +2290,7 @@ export interface HudSnapshot {
   activeArenaMechanismReady?: boolean;
   activeSetProcBanner?: string | null;
   activeSynergies?: SkillSynergyId[];
+  activeSynergyTiers?: ActiveSkillSynergyTierInfo[];
   activeEvolutions?: SkillEvolutionId[];
   isTowerMode: boolean;
   towerFloor: number;
@@ -2387,6 +2423,10 @@ export interface HudSnapshot {
   astralOverchargeRatio?: number;
   roomBounty?: RoomBountySnapshot | null;
   roomBountyBanner?: string | null;
+  // AAA Wave 13: Tactical Room Modifiers & Elemental Chain Resonance
+  tacticalRoomModifier?: TacticalRoomModifierSnapshot | null;
+  elementalChainCount?: number;
+  elementalChainLabel?: string | null;
   cameraPresetToast?: string | null;
   fps?: number;
   frameTimeMs?: number;

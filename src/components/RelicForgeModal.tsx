@@ -24,6 +24,7 @@ import {
   normalizeAutoSalvageFilter,
   previewSmartSalvage,
 } from '../data/wave11RetentionSystems';
+import { previewGearSubstatPolish } from '../data/runeAndAffixRefining';
 
 const TARGET_SLOT_LABELS: Record<GearSlot, string> = {
   [GearSlot.WEAPON]: 'Vũ Khí',
@@ -69,6 +70,7 @@ interface RelicForgeModalProps {
   onDirectCraftForgeShardGear?: (targetSlot: GearSlot) => void;
   onCraftForgeRecipe: (recipe: ForgeRecipe) => void;
   onReforgeGear: (uid: string, lockedIds: string[]) => void;
+  onPolishGearSubstat?: (uid: string, substatId: string) => void;
   onAwakenGear: (uid: string) => void;
   onCraftSocketGem: (tier: 1 | 2) => void;
   onFuseSocketGem: (color: SocketGemColor, tier: 1 | 2) => void;
@@ -90,6 +92,7 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   onDirectCraftForgeShardGear,
   onCraftForgeRecipe,
   onReforgeGear,
+  onPolishGearSubstat,
   onAwakenGear,
   onCraftSocketGem,
   onFuseSocketGem,
@@ -1285,42 +1288,103 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
                                   const def = SUBSTAT_DEFS[sub.kind];
                                   const locked = validLockedIds.includes(sub.id);
                                   const canLock = locked || validLockedIds.length < maxAllowedLocks;
+                                  const polishPreview = previewGearSubstatPolish(
+                                    focusedItem,
+                                    sub.id,
+                                    save
+                                  );
                                   return (
                                     <div
                                       key={sub.id}
-                                      className={`rounded-xl px-3 py-2.5 border flex items-center justify-between gap-2 ${
+                                      className={`rounded-xl px-3 py-2.5 border flex flex-col gap-2 ${
                                         locked
                                           ? 'bg-amber-500/15 border-amber-300/70'
                                           : 'bg-[#070b1a] border-amber-400/20'
                                       }`}
                                     >
-                                      <div>
-                                        <span className={`text-xs font-black ${getSubstatTierColor(sub.tier)}`}>
-                                          {def.format(sub.value)}
-                                        </span>
-                                        <span className="ml-2 text-[10px] text-slate-400 font-semibold">
-                                          ({def.label})
-                                        </span>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <span className={`text-xs font-black font-mono-nums tabular-nums ${getSubstatTierColor(sub.tier)}`}>
+                                            {def.format(sub.value)}
+                                          </span>
+                                          <span className="ml-2 text-[10px] text-slate-400 font-semibold">
+                                            ({def.label})
+                                          </span>
+                                          {polishPreview && (
+                                            <span className="ml-2 text-[10px] font-mono-nums tabular-nums text-sky-300 font-bold">
+                                              · {polishPreview.completionPct}% Đỉnh
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          {onPolishGearSubstat && polishPreview && (
+                                            <button
+                                              type="button"
+                                              data-testid={`polish-substat-${sub.id}`}
+                                              disabled={!polishPreview.canAfford}
+                                              onClick={() => {
+                                                soundEngine.playForgeCraft();
+                                                onPolishGearSubstat(focusedItem.uid, sub.id);
+                                              }}
+                                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black font-mono-nums tabular-nums whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                                                polishPreview.alreadyMaxed
+                                                  ? 'bg-emerald-950/70 border border-emerald-400/40 text-emerald-300'
+                                                  : polishPreview.canAfford
+                                                  ? 'a2-emerald-btn'
+                                                  : 'a2-slate-btn text-slate-400'
+                                              }`}
+                                              title={
+                                                polishPreview.alreadyMaxed
+                                                  ? 'Dòng phụ đã đạt chỉ số tối đa'
+                                                  : `Tôi luyện chắc chắn: ${polishPreview.currentFormatted} → ${polishPreview.nextFormatted} (${polishPreview.cost.gold} Vàng · ${polishPreview.cost.starDust} Bụi Sao)`
+                                              }
+                                            >
+                                              {polishPreview.alreadyMaxed
+                                                ? 'Đạt Đỉnh'
+                                                : `Tôi Luyện → ${polishPreview.nextFormatted}`}
+                                            </button>
+                                          )}
+                                          {maxAllowedLocks > 0 && (
+                                            <button
+                                              type="button"
+                                              disabled={!canLock}
+                                              onClick={() => toggleLockSubstat(sub.id)}
+                                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer disabled:opacity-35 ${
+                                                locked
+                                                  ? 'a2-yellow-btn'
+                                                  : 'a2-slate-btn text-slate-300'
+                                              }`}
+                                            >
+                                              {locked ? (
+                                                <Lock className="w-3 h-3" />
+                                              ) : (
+                                                <Unlock className="w-3 h-3" />
+                                              )}
+                                              <span>{locked ? 'Đã Khóa' : 'Khóa'}</span>
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
 
-                                      {maxAllowedLocks > 0 && (
-                                        <button
-                                          type="button"
-                                          disabled={!canLock}
-                                          onClick={() => toggleLockSubstat(sub.id)}
-                                          className={`px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer disabled:opacity-35 ${
-                                            locked
-                                              ? 'a2-yellow-btn'
-                                              : 'a2-slate-btn text-slate-300'
-                                          }`}
-                                        >
-                                          {locked ? (
-                                            <Lock className="w-3 h-3" />
-                                          ) : (
-                                            <Unlock className="w-3 h-3" />
-                                          )}
-                                          <span>{locked ? 'Đã Khóa' : 'Khóa'}</span>
-                                        </button>
+                                      {onPolishGearSubstat && polishPreview && !polishPreview.alreadyMaxed && (
+                                        <div className="flex items-center justify-between gap-2 text-[10px] font-mono-nums tabular-nums text-slate-300 border-t border-slate-800/80 pt-1.5">
+                                          <span>
+                                            Tôi Luyện Chắc Chắn: {polishPreview.currentFormatted} →{' '}
+                                            <strong className="text-emerald-300">
+                                              {polishPreview.nextFormatted}
+                                            </strong>
+                                          </span>
+                                          <span className="shrink-0">
+                                            <span className={save.gold >= polishPreview.cost.gold ? 'text-amber-300' : 'text-rose-400'}>
+                                              {polishPreview.cost.gold.toLocaleString('vi-VN')} Vàng
+                                            </span>
+                                            {' · '}
+                                            <span className={starDust >= polishPreview.cost.starDust ? 'text-sky-300' : 'text-rose-400'}>
+                                              {polishPreview.cost.starDust} Bụi Sao
+                                            </span>
+                                          </span>
+                                        </div>
                                       )}
                                     </div>
                                   );

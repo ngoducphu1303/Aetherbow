@@ -20,10 +20,15 @@ import {
   clampWsGuildWarScore,
   createApiRateLimitMiddleware,
   isVerifiedAdminClaims,
+  RunNonceReplayGuard,
   SecurityAnomalyTracker,
   SlidingWindowRateLimiter,
   WS_SECURITY_LIMITS,
 } from './src/server/serverSecurity.ts';
+import {
+  verifyCombatRunIntegrity,
+  type RunIntegrityReportInput,
+} from './src/data/runIntegrityVerifier.ts';
 import {
   DEFAULT_LIVEOPS_CONFIG,
   sanitizeLiveOpsConfig,
@@ -34,6 +39,7 @@ import { verifyWorkerAdminSession } from './src/server/assetDeployService.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const securityAnomalies = new SecurityAnomalyTracker(200);
+const runNonceReplayGuard = new RunNonceReplayGuard({ maxEntries: 2000, ttlMs: 6 * 3_600_000 });
 const recordApiRateLimit = (info: { scope: string; ip: string; retryAfterMs: number }) => {
   securityAnomalies.record({
     category: 'rate_limit',
@@ -1554,6 +1560,110 @@ async function startServer() {
     (_req, res) => {
       const humanCount = wsHub ? Math.max(1, wsHub.wss.clients.size) : 1;
       res.json(liveAiService.getSnapshot(humanCount));
+    }
+  );
+
+  app.post(
+    '/api/runs/verify',
+    createApiRateLimitMiddleware({
+      scope: 'runs-verify',
+      maxRequests: 45,
+      windowMs: 60_000,
+      onRateLimited: recordApiRateLimit,
+    }),
+    async (req, res) => {
+      try {
+        let actorLabel = req.ip || 'anonymous';
+        const authHeader = req.headers.authorization;
+        if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+          try {
+            const verifiedUser = await resolveBearerUser(req);
+            if (verifiedUser) {
+              actorLabel = verifiedUser.email || verifiedUser.uid;
+            }
+          } catch {
+            securityAnomalies.record({
+              category: 'auth_invalid',
+              scope: 'api:runs:verify',
+              actor: actorLabel,
+              detail: 'Invalid Bearer token submitted to POST /api/runs/verify',
+            });
+            res.status(401).json({
+              ok: false,
+              error: 'AUTH_INVALID',
+              message: 'Phiên đăng nhập không hợp lệ.',
+            });
+            return;
+          }
+        }
+
+        const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+        if (!body) {
+          res.status(400).json({ ok: false, error: 'INVALID_BODY' });
+          return;
+        }
+
+        const nonceVerdict = runNonceReplayGuard.consume(body.runNonce);
+        if (!nonceVerdict.accepted) {
+          securityAnomalies.record({
+            category: 'run_integrity_flagged',
+            scope: 'api:runs:verify',
+            actor: actorLabel,
+            detail:
+              nonceVerdict.reason === 'replay_detected'
+                ? `Duplicate runNonce replay blocked (${String(body.runNonce ?? '').slice(0, 32)})`
+                : 'Invalid or missing runNonce on POST /api/runs/verify',
+          });
+          res.status(nonceVerdict.reason === 'replay_detected' ? 409 : 400).json({
+            ok: false,
+            verdict: 'rejected',
+            anomalies: [nonceVerdict.reason === 'replay_detected' ? 'replay_nonce' : 'invalid_payload'],
+          });
+          return;
+        }
+
+        const liveCfg = readServerLiveOpsConfig();
+        const reportInput: RunIntegrityReportInput = {
+          runNonce: String(body.runNonce),
+          mode: body.mode as RunIntegrityReportInput['mode'],
+          chapterId: Number(body.chapterId),
+          stageReached: Number(body.stageReached),
+          victory: Boolean(body.victory),
+          kills: Number(body.kills),
+          durationSec: Number(body.durationSec),
+          basePowerRating: Number(body.basePowerRating),
+          totalDamageDealt:
+            body.totalDamageDealt !== undefined ? Number(body.totalDamageDealt) : undefined,
+          peakDps: body.peakDps !== undefined ? Number(body.peakDps) : undefined,
+          claimedGold: Number(body.claimedGold),
+          claimedGems: Number(body.claimedGems),
+          claimedSeasonXp: Number(body.claimedSeasonXp),
+          nightmareTier: body.nightmareTier !== undefined ? Number(body.nightmareTier) : 0,
+          // Authoritative server-side LiveOps multipliers (never trust client-supplied multipliers)
+          liveOpsGoldMult: liveCfg.goldRewardMult * (liveCfg.weekendBlitzEnabled ? 1.15 : 1),
+          liveOpsGemMult: liveCfg.gemRewardMult,
+        };
+
+        const verdict = verifyCombatRunIntegrity(reportInput);
+        if (!verdict.ok) {
+          securityAnomalies.record({
+            category: 'run_integrity_flagged',
+            scope: `run:${String(reportInput.mode)}`,
+            actor: actorLabel,
+            detail: `${verdict.verdict.toUpperCase()} ch=${reportInput.chapterId} st=${reportInput.stageReached} flags=${verdict.anomalies.join(',')}`,
+          });
+        }
+
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({
+          ok: verdict.ok,
+          verdict: verdict.verdict,
+          anomalies: verdict.anomalies,
+          sanitizedRewards: verdict.sanitizedRewards,
+        });
+      } catch (err) {
+        handleApiError(res, err);
+      }
     }
   );
 

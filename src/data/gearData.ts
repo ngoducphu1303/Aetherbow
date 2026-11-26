@@ -23,6 +23,7 @@ import {
 } from './liveOpsData';
 import { getTodayKey } from './questsData';
 import { RUNES_CATALOG } from './runesData';
+import { getRuneRefinementMultiplier } from './runeAndAffixRefining';
 import { computeParagonInfusionBonuses, computeTalentBonuses } from './talentsData';
 import {
   AURA_MAP,
@@ -1031,11 +1032,12 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
     if (!rDef) continue;
     equippedRunes.push(rDef.id);
     const tierMult = RARITY_META[rInst.rarity].multiplier;
-    runeAtkPct += rDef.atkBonusPct * (0.8 + tierMult * 0.25);
-    runeHpPct += rDef.hpBonusPct * (0.8 + tierMult * 0.25);
-    critChance += rDef.critBonus * (0.8 + tierMult * 0.2);
-    if (rDef.id === 'equinox_bloom') critDamage += 0.25;
-    if (rDef.id === 'arrow_rain') attackSpeedMult += 0.15;
+    const refineMult = getRuneRefinementMultiplier(save, rDef.id);
+    runeAtkPct += rDef.atkBonusPct * (0.8 + tierMult * 0.25) * refineMult;
+    runeHpPct += rDef.hpBonusPct * (0.8 + tierMult * 0.25) * refineMult;
+    critChance += rDef.critBonus * (0.8 + tierMult * 0.2) * refineMult;
+    if (rDef.id === 'equinox_bloom') critDamage += 0.25 * refineMult;
+    if (rDef.id === 'arrow_rain') attackSpeedMult += 0.15 * refineMult;
   }
 
   // Apply Equipped Pet (with Wave 11 Spirit Beast Evolution multiplier), Hero Skin, and Zodiac Aura bonuses

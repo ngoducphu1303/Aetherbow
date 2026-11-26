@@ -1775,7 +1775,9 @@ class SoundEngine {
     horn.stop(now + 0.46);
   }
 
-  public playEliteAffixTrigger(kind: 'volatile' | 'frost' | 'aegis' = 'volatile'): void {
+  public playEliteAffixTrigger(
+    kind: 'volatile' | 'frost' | 'aegis' | 'vanguard_link' | 'quake_pulse' = 'volatile'
+  ): void {
     const dest = this.getSfxDest();
     const ctx = this.ctx;
     if (!ctx || !dest) return;
@@ -1786,10 +1788,14 @@ class SoundEngine {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(1120, now);
       osc.frequency.exponentialRampToValueAtTime(520, now + 0.18);
-    } else if (kind === 'aegis') {
+    } else if (kind === 'aegis' || kind === 'vanguard_link') {
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.exponentialRampToValueAtTime(660, now + 0.12);
+      osc.frequency.setValueAtTime(kind === 'vanguard_link' ? 520 : 440, now);
+      osc.frequency.exponentialRampToValueAtTime(kind === 'vanguard_link' ? 780 : 660, now + 0.14);
+    } else if (kind === 'quake_pulse') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(175, now);
+      osc.frequency.exponentialRampToValueAtTime(48, now + 0.24);
     } else {
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(320, now);
@@ -2483,7 +2489,13 @@ class SoundEngine {
    * (Melt, Superconduct, Overload, Venom Detonation).
    */
   public playElementalReaction(
-    kind: 'melt' | 'superconduct' | 'overload' | 'venom_detonation',
+    kind:
+      | 'melt'
+      | 'superconduct'
+      | 'overload'
+      | 'venom_detonation'
+      | 'electro_venom'
+      | 'cryo_blight',
     pan = 0
   ): void {
     const dest = this.getSfxDest(pan, true);
@@ -2510,13 +2522,13 @@ class SoundEngine {
       return;
     }
 
-    if (kind === 'superconduct') {
-      // High-voltage crystalline crackle + descending armor-shred zap
+    if (kind === 'superconduct' || kind === 'electro_venom') {
+      // High-voltage crystalline crackle + descending armor-shred / corrosive arc zap
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(1680, now);
-      osc.frequency.exponentialRampToValueAtTime(240, now + 0.28);
+      osc.frequency.setValueAtTime(kind === 'electro_venom' ? 1420 : 1680, now);
+      osc.frequency.exponentialRampToValueAtTime(kind === 'electro_venom' ? 310 : 240, now + 0.28);
       g.gain.setValueAtTime(0.11, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
       osc.connect(g);
@@ -2524,6 +2536,23 @@ class SoundEngine {
       osc.start(now);
       osc.stop(now + 0.32);
       this.playNoiseBurst(ctx, dest, now, 0.16, 'highpass', 3200, 1400, 0.09, 1.2);
+      return;
+    }
+
+    if (kind === 'cryo_blight') {
+      // Crystalline frost fracture + resonant armor-sunder chime
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1240, now);
+      osc.frequency.exponentialRampToValueAtTime(340, now + 0.24);
+      g.gain.setValueAtTime(0.11, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(now);
+      osc.stop(now + 0.28);
+      this.playNoiseBurst(ctx, dest, now, 0.18, 'bandpass', 2800, 1100, 0.09, 1.6);
       return;
     }
 

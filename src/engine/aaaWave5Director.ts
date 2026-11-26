@@ -356,6 +356,28 @@ export const ELEMENTAL_REACTION_GUIDE: ElementalReactionGuideEntry[] = [
   },
 ];
 
+export const EXTENDED_ELEMENTAL_REACTION_GUIDE: ElementalReactionGuideEntry[] = [
+  ...ELEMENTAL_REACTION_GUIDE,
+  {
+    id: 'electro_venom',
+    name: 'Độc Lôi Dẫn Truyền',
+    formula: 'Độc + Lôi',
+    accentColor: '#a3e635',
+    bonusPctLabel: '+36% ST Lan 3 Mục Tiêu',
+    breakShredPct: 13,
+    tacticalUse: 'Truyền xung điện độc sang tối đa 3 quái lân cận trong 3.3m, dọn tuyến sau cực hiệu quả.',
+  },
+  {
+    id: 'cryo_blight',
+    name: 'Hàn Độc Tê Liệt',
+    formula: 'Băng + Độc',
+    accentColor: '#2dd4bf',
+    bonusPctLabel: '+34% ST & Phá Giáp 4.5s',
+    breakShredPct: 16,
+    tacticalUse: 'Làm giòn giáp kẻ địch trong 4.5 giây và rút 16% thanh Giáp Phá Vỡ Boss.',
+  },
+];
+
 /**
  * Aggregates personal career records strictly from existing SaveData fields
  * without requiring any new persistence schema.

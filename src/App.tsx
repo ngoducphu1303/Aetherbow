@@ -4,6 +4,13 @@ import { canClaimChapter3Asset } from './data/chapter3Collection';
 import { canClaimChapter4Asset } from './data/chapter4Collection';
 import { applyChapterCollectionMilestones } from './data/chapterCollectionMilestones';
 import { validateAndSanitizeSaveIntegrity } from './data/saveIntegrity';
+import { claimZodiacJourneyMilestoneInSave } from './data/zodiacJourneyLog';
+import {
+  verifyCombatRunIntegrity,
+  type RunIntegrityMode,
+  type RunIntegrityReportInput,
+} from './data/runIntegrityVerifier';
+import { shouldSkipNodeApiEndpoints } from './engine/glbFetchResilience';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { soundEngine } from './audio/soundEngine';
@@ -291,6 +298,10 @@ import {
   normalizeDailyQuests,
 } from './data/questsData';
 import { RUNES_CATALOG, craftSelectedRuneFromShards, rollRuneChestBatch } from './data/runesData';
+import {
+  polishGearSubstatInSave,
+  refineRuneInSave,
+} from './data/runeAndAffixRefining';
 import { rollSkillChoices } from './data/skillsData';
 import {
   PARAGON_INFUSION_MAX_LEVEL,
@@ -2024,6 +2035,33 @@ export default function App() {
     engineRef.current?.retryAppearance();
   }, [currentSettings.chapter1MapMode, currentSettings.lowEndSafetyMode, gpuProfile, save.selectedHeroId]);
 
+  const handleClaimJourneyMilestone = useCallback(
+    (milestoneId: string) => {
+      const preview = claimZodiacJourneyMilestoneInSave(saveRef.current, milestoneId);
+      if (!preview.claimed || !preview.milestone) return;
+      const rewardParts: string[] = [];
+      if (preview.milestone.rewardGold > 0) {
+        rewardParts.push(`+${preview.milestone.rewardGold.toLocaleString('vi-VN')} Vàng`);
+      }
+      if (preview.milestone.rewardGems > 0) {
+        rewardParts.push(`+${preview.milestone.rewardGems.toLocaleString('vi-VN')} Ngọc`);
+      }
+      if (preview.milestone.rewardStarDust > 0) {
+        rewardParts.push(`+${preview.milestone.rewardStarDust.toLocaleString('vi-VN')} Bụi Sao`);
+      }
+      setSave((prev) => {
+        const res = claimZodiacJourneyMilestoneInSave(prev, milestoneId);
+        return res.claimed ? res.nextSave : prev;
+      });
+      soundEngine.playAchievement();
+      triggerUpgradeCelebration(
+        preview.milestone.sealTitle ?? preview.milestone.title,
+        rewardParts.join(' · ')
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
   const handleResetGpuCrashGuard = useCallback(() => {
     const nextProfile = engineRef.current?.resetGpuCrashGuard() ?? detectStartupGpuProfile();
     setGpuProfile(nextProfile);
@@ -2355,8 +2393,8 @@ export default function App() {
             liveOpsConfigRef.current,
             Date.now()
           );
-          const totalGold = scaledRunRewards.gold;
-          const totalGems = scaledRunRewards.gems;
+          const claimedRunGold = scaledRunRewards.gold;
+          const claimedRunGems = scaledRunRewards.gems;
           const baseStarDustGain =
             (isDailyRift || isBossRush) && sideModeScale
               ? Math.round((summary.starDust ?? 0) * sideModeScale.goldRewardMult) +
@@ -2424,7 +2462,98 @@ export default function App() {
             : victory
             ? 85 + summary.kills
             : summary.stageReached * 12 + summary.kills;
-          const runSeasonXp = vipActiveRef.current ? Math.round(rawSeasonXp * 1.25) : rawSeasonXp;
+          const claimedSeasonXp = vipActiveRef.current
+            ? Math.round(rawSeasonXp * 1.25)
+            : rawSeasonXp;
+          const runIntegrityMode: RunIntegrityMode = isSkyCitadel
+            ? 'sky_citadel'
+            : isDragonLair
+            ? 'dragon_lair'
+            : isCrystalVault
+            ? 'crystal_vault'
+            : isChampionship
+            ? 'championship_3round'
+            : isPantheon
+            ? 'pantheon_expedition'
+            : isAbyssal
+            ? 'abyssal_gauntlet'
+            : isGuildWar
+            ? 'guild_war'
+            : isBloodMoon
+            ? 'blood_moon'
+            : isCrystalDefense
+            ? 'crystal_defense'
+            : isWorldBoss
+            ? 'world_boss'
+            : isCoopRaid
+            ? 'coop_raid'
+            : isElementalTower
+            ? 'elemental_tower'
+            : isGuildBoss
+            ? 'guild_boss'
+            : isDailyRift
+            ? 'daily_rift'
+            : isBossRush
+            ? 'boss_rush'
+            : isTower
+            ? 'tower'
+            : isArena
+            ? 'arena'
+            : 'chapter';
+          const runElapsedSec =
+            campaignRunStartAtRef.current > 0
+              ? Math.max(1, Math.round((performance.now() - campaignRunStartAtRef.current) / 1000))
+              : Math.max(15, summary.stageReached * 4);
+          const runIntegrityPayload: RunIntegrityReportInput = {
+            runNonce: `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
+            mode: runIntegrityMode,
+            chapterId: summary.chapterId,
+            stageReached: summary.stageReached,
+            victory,
+            kills: summary.kills,
+            durationSec: runElapsedSec,
+            basePowerRating: computePlayerStats(saveRef.current).powerRating,
+            totalDamageDealt: Math.max(
+              0,
+              summary.guildBossDamage ?? summary.worldBossDamage ?? dragonDamageDealt ?? 0
+            ),
+            claimedGold: claimedRunGold,
+            claimedGems: claimedRunGems,
+            claimedSeasonXp,
+            nightmareTier: activeNightmareTier,
+            liveOpsGoldMult:
+              preLiveOpsGold > 0
+                ? Math.min(3, Math.max(1, claimedRunGold / preLiveOpsGold))
+                : 1,
+            liveOpsGemMult:
+              preLiveOpsGems > 0
+                ? Math.min(3, Math.max(1, claimedRunGems / preLiveOpsGems))
+                : 1,
+          };
+          const runIntegrityVerdict = verifyCombatRunIntegrity(runIntegrityPayload);
+          const totalGold = runIntegrityVerdict.sanitizedRewards.gold;
+          const totalGems = runIntegrityVerdict.sanitizedRewards.gems;
+          const runSeasonXp = runIntegrityVerdict.sanitizedRewards.seasonXp;
+          if (typeof fetch === 'function' && !shouldSkipNodeApiEndpoints()) {
+            void (async () => {
+              try {
+                const headers: Record<string, string> = {
+                  'Content-Type': 'application/json',
+                };
+                const token = await auth.currentUser?.getIdToken().catch(() => null);
+                if (token) {
+                  headers.Authorization = `Bearer ${token}`;
+                }
+                await fetch('/api/runs/verify', {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify(runIntegrityPayload),
+                });
+              } catch {
+                // Non-blocking anti-cheat telemetry: never interrupt reward settlement
+              }
+            })();
+          }
 
           setRunSummary({
             ...summary,
@@ -2680,7 +2809,7 @@ export default function App() {
             const bp = normalizeBattlePass(prev.battlePass);
             const career = normalizeCareer(prev.career);
             const hasVip = isVipActive(prev.vip);
-            const actualXp = hasVip ? Math.round(rawSeasonXp * 1.25) : rawSeasonXp;
+            const actualXp = runSeasonXp;
             const nextBp = { ...bp, xp: bp.xp + actualXp };
             const nextCareer = { ...career, totalRuns: career.totalRuns + 1 };
             const prevFest = normalizeFestivalState(prev.festivalState);
@@ -8902,6 +9031,41 @@ export default function App() {
     [triggerUpgradeCelebration]
   );
 
+  // Wave 13 Handlers: Targeted Gear Substat Polishing & Ancient Rune Refinement (+0 -> +5)
+  const handlePolishGearSubstat = useCallback(
+    (uid: string, substatId: string) => {
+      let summaryMsg: string | null = null;
+      setSave((prev) => {
+        const res = polishGearSubstatInSave(prev, uid, substatId);
+        if (!res.ok) return prev;
+        summaryMsg = res.message;
+        soundEngine.playForgeCraft();
+        return res.nextSave;
+      });
+      if (summaryMsg) {
+        triggerUpgradeCelebration('Tôi Luyện Dòng Phụ Thành Công!', summaryMsg);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleRefineRune = useCallback(
+    (runeId: RuneId) => {
+      let summaryMsg: string | null = null;
+      setSave((prev) => {
+        const res = refineRuneInSave(prev, runeId);
+        if (!res.ok) return prev;
+        summaryMsg = res.message;
+        soundEngine.playVictory();
+        return res.nextSave;
+      });
+      if (summaryMsg) {
+        triggerUpgradeCelebration('Tinh Luyện Cổ Ngữ Thành Công!', summaryMsg);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
   const handleAwakenGear = useCallback((uid: string) => {
     setSave((prev) => {
       const idx = prev.inventory.findIndex((g) => g.uid === uid);
@@ -11953,6 +12117,7 @@ export default function App() {
           onFuseRune={handleFuseRune}
           onBulkFuseRunes={handleBulkFuseRunes}
           onCraftSelectedRune={handleCraftSelectedRune}
+          onRefineRune={handleRefineRune}
           onRotateHero={(deltaRad) => engineRef.current?.rotateLobbyHero(deltaRad)}
           onResetHeroRotation={() => engineRef.current?.resetLobbyHeroRotation()}
           photoMode={photoMode}
@@ -12521,6 +12686,7 @@ export default function App() {
           onDirectCraftForgeShardGear={handleDirectCraftForgeShardGear}
           onCraftForgeRecipe={handleCraftForgeRecipe}
           onReforgeGear={handleReforgeGear}
+          onPolishGearSubstat={handlePolishGearSubstat}
           onAwakenGear={handleAwakenGear}
           onCraftSocketGem={handleCraftSocketGem}
           onFuseSocketGem={handleFuseSocketGem}
@@ -12666,7 +12832,11 @@ export default function App() {
       )}
 
       {phase === GamePhase.TITLE && enteredGame && codexGuideOpen && (
-        <CodexGuideModal save={save} onClose={() => setCodexGuideOpen(false)} />
+        <CodexGuideModal
+          save={save}
+          onClaimJourneyMilestone={handleClaimJourneyMilestone}
+          onClose={() => setCodexGuideOpen(false)}
+        />
       )}
 
       {phase === GamePhase.TITLE && enteredGame && earlyRoadmapOpen && (

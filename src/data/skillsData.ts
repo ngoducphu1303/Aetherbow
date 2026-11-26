@@ -1,9 +1,11 @@
 import {
+  ActiveSkillSynergyTierInfo,
   SkillDefinition,
   SkillId,
   SkillRarity,
   SkillSynergyDef,
   SkillSynergyId,
+  SkillSynergyTier,
   WheelOutcome,
 } from '../types/game';
 
@@ -541,6 +543,159 @@ export function getSynergyHintsForSkill(
     }
   }
   return hints;
+}
+
+// ============================================================================
+// WAVE 14 PILLAR 1: 3-TIER SKILL SYNERGY MASTERY (TIER I / II / III)
+// ============================================================================
+
+export const SYNERGY_TIER_THRESHOLDS: Readonly<Record<SkillSynergyTier, number>> = {
+  1: 2,
+  2: 4,
+  3: 6,
+};
+
+export const SYNERGY_TIER_SCALES: Readonly<Record<0 | SkillSynergyTier, number>> = {
+  0: 0,
+  1: 1.0,
+  2: 1.35,
+  3: 1.7,
+};
+
+export const SYNERGY_TIER_ROMAN: Readonly<Record<SkillSynergyTier, string>> = {
+  1: 'I',
+  2: 'II',
+  3: 'III',
+};
+
+export const SYNERGY_TIER_GLYPH: Readonly<Record<SkillSynergyTier, string>> = {
+  1: '◆',
+  2: '✦',
+  3: '★',
+};
+
+function sumSkillGroupStacks(
+  stacks: Partial<Record<SkillId, number>>,
+  ids: readonly SkillId[]
+): number {
+  let total = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const val = stacks[ids[i]] ?? 0;
+    if (val > 0) total += val;
+  }
+  return total;
+}
+
+function resolveTierFromStacks(totalStacks: number): SkillSynergyTier {
+  if (totalStacks >= SYNERGY_TIER_THRESHOLDS[3]) return 3;
+  if (totalStacks >= SYNERGY_TIER_THRESHOLDS[2]) return 2;
+  return 1;
+}
+
+/**
+ * Evaluates all active Skill Synergies along with their 3-Tier Mastery level:
+ * - Tier I  (2–3 combined stacks across Group A + Group B): 1.00× base synergy bonus
+ * - Tier II (4–5 combined stacks across Group A + Group B): 1.35× synergy bonus
+ * - Tier III (6+ combined stacks across Group A + Group B): 1.70× synergy bonus
+ */
+export function evaluateTieredSkillSynergies(
+  currentStacks: Partial<Record<SkillId, number>>
+): ActiveSkillSynergyTierInfo[] {
+  const result: ActiveSkillSynergyTierInfo[] = [];
+  for (let i = 0; i < SKILL_SYNERGIES.length; i++) {
+    const syn = SKILL_SYNERGIES[i];
+    const stacksA = sumSkillGroupStacks(currentStacks, syn.groupA);
+    const stacksB = sumSkillGroupStacks(currentStacks, syn.groupB);
+    if (stacksA <= 0 || stacksB <= 0) continue;
+    const totalStacks = stacksA + stacksB;
+    const tier = resolveTierFromStacks(totalStacks);
+    const nextTierStacks =
+      tier === 1
+        ? SYNERGY_TIER_THRESHOLDS[2]
+        : tier === 2
+        ? SYNERGY_TIER_THRESHOLDS[3]
+        : null;
+    result.push({
+      id: syn.id,
+      tier,
+      totalStacks,
+      nextTierStacks,
+      powerScale: SYNERGY_TIER_SCALES[tier],
+    });
+  }
+  return result;
+}
+
+/**
+ * Returns the active synergy powerScale (1.0 / 1.35 / 1.70) or 0 if inactive.
+ */
+export function getSynergyTierPowerScale(
+  tiers: readonly ActiveSkillSynergyTierInfo[] | null | undefined,
+  synergyId: SkillSynergyId
+): number {
+  if (!tiers || tiers.length === 0) return 0;
+  for (let i = 0; i < tiers.length; i++) {
+    if (tiers[i].id === synergyId) return tiers[i].powerScale;
+  }
+  return 0;
+}
+
+export interface SynergyTierUpgradeHint {
+  synergy: SkillSynergyDef;
+  currentTier: 0 | SkillSynergyTier;
+  nextTier: SkillSynergyTier;
+  currentTotalStacks: number;
+  nextTotalStacks: number;
+  willActivateOrUpgrade: boolean;
+}
+
+/**
+ * Computes whether picking `skillId` activates a synergy at Tier I or upgrades an
+ * already active synergy to Tier II / Tier III (or progresses it toward the next tier).
+ */
+export function getSynergyTierUpgradeHint(
+  skillId: SkillId,
+  currentStacks: Partial<Record<SkillId, number>>
+): SynergyTierUpgradeHint | null {
+  let best: SynergyTierUpgradeHint | null = null;
+  for (let i = 0; i < SKILL_SYNERGIES.length; i++) {
+    const syn = SKILL_SYNERGIES[i];
+    const inA = syn.groupA.includes(skillId);
+    const inB = syn.groupB.includes(skillId);
+    if (!inA && !inB) continue;
+
+    const stacksA = sumSkillGroupStacks(currentStacks, syn.groupA);
+    const stacksB = sumSkillGroupStacks(currentStacks, syn.groupB);
+    const nextA = stacksA + (inA ? 1 : 0);
+    const nextB = stacksB + (inB ? 1 : 0);
+    if (nextA <= 0 || nextB <= 0) continue;
+
+    const currentActive = stacksA > 0 && stacksB > 0;
+    const currentTotalStacks = stacksA + stacksB;
+    const nextTotalStacks = nextA + nextB;
+    const currentTier: 0 | SkillSynergyTier = currentActive
+      ? resolveTierFromStacks(currentTotalStacks)
+      : 0;
+    const nextTier: SkillSynergyTier = resolveTierFromStacks(nextTotalStacks);
+    const willActivateOrUpgrade = nextTier > currentTier;
+
+    const candidate: SynergyTierUpgradeHint = {
+      synergy: syn,
+      currentTier,
+      nextTier,
+      currentTotalStacks,
+      nextTotalStacks,
+      willActivateOrUpgrade,
+    };
+    if (
+      !best ||
+      (candidate.willActivateOrUpgrade && !best.willActivateOrUpgrade) ||
+      candidate.nextTier > best.nextTier
+    ) {
+      best = candidate;
+    }
+  }
+  return best;
 }
 
 // Chapter 1–6 Valkyrie milestones (Stages 2, 6, 10) guarantee clear build identity choices:

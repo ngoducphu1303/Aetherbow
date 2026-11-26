@@ -16,9 +16,13 @@ import {
   SKILL_RARITY_META,
   SKILL_SYNERGIES,
   SKILL_SYNERGY_MAP,
+  SYNERGY_TIER_GLYPH,
+  SYNERGY_TIER_ROMAN,
   WHEEL_OUTCOMES,
   evaluateActiveSynergies,
+  evaluateTieredSkillSynergies,
   getSynergyHintsForSkill,
+  getSynergyTierUpgradeHint,
 } from '../data/skillsData';
 import { computeSkillSynergyProgress } from '../engine/aaaWave3Director';
 import { explainAiSkillChoice } from '../engine/aaaFivePillarsDirector';
@@ -216,6 +220,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   const isEvolutionMode = mode === 'skill' && Boolean(evolutionOffer && onPickEvolution);
   const isSkillMode = (mode === 'skill' || mode === 'valkyrie') && !isEvolutionMode;
   const activeSynergyIds = evaluateActiveSynergies(currentStacks);
+  const activeSynergyTiers = evaluateTieredSkillSynergies(currentStacks);
   const recommendedAutoEvolution =
     isEvolutionMode && evolutionOffer && autoPilotEnabled && autoSkillPick && !autoCancelled
       ? selectAiEvolutionBranch(evolutionOffer, autoPilotTactic, isBossStage)
@@ -392,12 +397,15 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
           <div className="cel-divider-gold max-w-xs mx-auto mt-3" />
           {isSkillMode && (activeSynergyIds.length > 0 || activeEvolutions.length > 0) && (
             <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-amber-200">
-              {activeSynergyIds.length > 0 && (
+              {activeSynergyTiers.length > 0 && (
                 <span>
                   Cộng Hưởng đang bật:{' '}
-                  <span className="text-emerald-300">
-                    {activeSynergyIds
-                      .map((id) => SKILL_SYNERGY_MAP[id]?.name ?? id)
+                  <span className="text-emerald-300 font-mono-nums">
+                    {activeSynergyTiers
+                      .map((entry) => {
+                        const name = SKILL_SYNERGY_MAP[entry.id]?.name ?? entry.id;
+                        return `${SYNERGY_TIER_GLYPH[entry.tier]} ${name} Bậc ${SYNERGY_TIER_ROMAN[entry.tier]} (×${entry.powerScale.toFixed(2)})`;
+                      })
                       .join(' · ')}
                   </span>
                 </span>
@@ -487,6 +495,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                   currentStacks,
                   SKILL_SYNERGIES
                 );
+                const tierUpgradeHint = getSynergyTierUpgradeHint(skill.id, currentStacks);
                 const evoPreview = getSkillEvolutionPreview(
                   skill.id,
                   currentStacks,
@@ -495,6 +504,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                 const isHighlightEvolution = Boolean(
                   completingSynergy ||
                     synergyPreview?.willActivateNow ||
+                    tierUpgradeHint?.willActivateOrUpgrade ||
                     comboTag?.isEvolution ||
                     evoPreview?.status === 'triggers_now'
                 );
@@ -614,7 +624,9 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                       {relatedSynergy ? (
                         <div
                           className={`mt-3 pt-2.5 w-full border-t text-left ${
-                            completingSynergy || synergyPreview?.willActivateNow
+                            completingSynergy ||
+                            synergyPreview?.willActivateNow ||
+                            tierUpgradeHint?.willActivateOrUpgrade
                               ? 'border-amber-300/75 text-amber-200'
                               : isRelatedAlreadyActive
                               ? 'border-emerald-400/45 text-emerald-300'
@@ -623,18 +635,28 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                         >
                           <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider">
                             <span className="flex items-center gap-1 min-w-0 truncate">
-                              {(completingSynergy || synergyPreview?.willActivateNow) && (
+                              {(completingSynergy ||
+                                synergyPreview?.willActivateNow ||
+                                tierUpgradeHint?.willActivateOrUpgrade) && (
                                 <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
                               )}
                               <span className="truncate">
-                                {completingSynergy || synergyPreview?.willActivateNow
-                                  ? `Kích Hoạt Ngay · ${relatedSynergy.name}`
-                                  : isRelatedAlreadyActive
-                                  ? `Đã Bật · ${relatedSynergy.name}`
+                                {tierUpgradeHint &&
+                                tierUpgradeHint.willActivateOrUpgrade &&
+                                tierUpgradeHint.currentTier !== 0
+                                  ? `Thăng Bậc ${SYNERGY_TIER_ROMAN[tierUpgradeHint.currentTier]}→${SYNERGY_TIER_ROMAN[tierUpgradeHint.nextTier]} · ${relatedSynergy.name}`
+                                  : completingSynergy || synergyPreview?.willActivateNow
+                                  ? `Kích Hoạt Bậc I · ${relatedSynergy.name}`
+                                  : isRelatedAlreadyActive && tierUpgradeHint
+                                  ? `${SYNERGY_TIER_GLYPH[tierUpgradeHint.nextTier]} Bậc ${SYNERGY_TIER_ROMAN[tierUpgradeHint.nextTier]} · ${relatedSynergy.name}`
                                   : `Ghép Cặp · ${relatedSynergy.name}`}
                               </span>
                             </span>
-                            {synergyPreview && (
+                            {tierUpgradeHint ? (
+                              <span className="font-mono-nums shrink-0 text-[10px]">
+                                {tierUpgradeHint.nextTotalStacks}/6
+                              </span>
+                            ) : synergyPreview ? (
                               <span className="font-mono-nums shrink-0 text-[10px]">
                                 {synergyPreview.alreadyActive
                                   ? '2/2'
@@ -642,7 +664,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                                   ? '1→2/2'
                                   : `${synergyPreview.matchedCount}/2`}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                           {synergyPreview && (
                             <div className="grid grid-cols-2 gap-1 mt-1.5">

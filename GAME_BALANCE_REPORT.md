@@ -46,7 +46,9 @@ Kết quả kiểm toán tự động từ `evaluatePass3EconomyAndSetBalance()`
 | Kiểm tra chênh lệch mua-bán Flash Deal (`flashDealArbitrageDetected`) | **`false`** | ĐẠT (0 vòng lặp tiền vô hạn) |
 | Kiểm tra TTK Chương 12 & cân bằng hướng Build Kỹ Năng | `chapter12TtkHealthy: true`, `skillBuildsBalanced: true` | ĐẠT |
 | Tổng Vàng kiếm được mốc 100 giờ (`hour100GoldEarned`) | **13,451,338 Vàng** | Đo thực tế |
-| Tổng bể tiêu Vàng Endgame (Thiên Phú 160 + 6 món Thần Thoại Lv.80 + **Tinh Tuý Hoàng Đạo 500 bậc**) | **1,763,396,749 Vàng** (riêng Paragon: `1,758,359,773`) | **Vượt xa nguồn thu 100h — triệt tiêu hoàn toàn lạm phát Vàng dư Endgame** |
+| Bể tiêu Đợt 13 — Tinh Luyện 4 Cổ Ngữ (`+0 → +5`, mở khóa sau Ch.2) | **204,400 Vàng · 2,780 Bụi Sao · 472 Mảnh Cổ Ngữ** | **ĐẠT** (0 ảnh hưởng Ch.1–2 & Fresh `702 LC`) |
+| Bể tiêu Đợt 13 — Tôi Luyện Dòng Phụ 6 Món Trang Bị (tất định `≤ 5` bước/dòng) | **121,194 Vàng · 2,304 Bụi Sao** | **ĐẠT** (Tổng phụ Đợt 13: `325,594 Vàng · 5,084 Bụi Sao`) |
+| Tổng bể tiêu Vàng Endgame hợp nhất (Thiên Phú 160 + 6 món Thần Thoại Lv.80 + **Tinh Tuý Hoàng Đạo 500 bậc** + **Đợt 13 Cổ Ngữ & Dòng Phụ**) | **1,763,722,343 Vàng** (`13,111.9%` nguồn thu 100h) | **Triệt tiêu hoàn toàn lạm phát Vàng & Bụi Sao dư Endgame** |
 
 ---
 

@@ -107,13 +107,19 @@ export default function AssetAdminLiveOpsTab({
         ws_clamped: number;
         auth_invalid: number;
         admin_denied: number;
+        run_integrity_flagged?: number;
       };
       lastEventAtMs: number | null;
     };
     recent: Array<{
       id: string;
       ts: number;
-      category: 'rate_limit' | 'ws_clamped' | 'auth_invalid' | 'admin_denied';
+      category:
+        | 'rate_limit'
+        | 'ws_clamped'
+        | 'auth_invalid'
+        | 'admin_denied'
+        | 'run_integrity_flagged';
       scope: string;
       actor: string;
       detail: string;
@@ -806,7 +812,7 @@ export default function AssetAdminLiveOpsTab({
           </p>
         ) : (
           <>
-            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4 tabular-nums">
+            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5 tabular-nums">
               <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
                 <div className="text-[11px] font-semibold text-slate-400">Chặn Rate Limit (429)</div>
                 <div className="mt-1 text-lg font-bold text-amber-300">
@@ -831,6 +837,12 @@ export default function AssetAdminLiveOpsTab({
                   {anomalyData.summary.countsByCategory.admin_denied}
                 </div>
               </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <div className="text-[11px] font-semibold text-slate-400">Bất Thường Kết Quả Trận</div>
+                <div className="mt-1 text-lg font-bold text-purple-300">
+                  {anomalyData.summary.countsByCategory.run_integrity_flagged ?? 0}
+                </div>
+              </div>
             </div>
 
             {anomalyData.recent.length === 0 ? (
@@ -850,19 +862,31 @@ export default function AssetAdminLiveOpsTab({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70 text-slate-200">
-                    {anomalyData.recent.map((evt) => (
-                      <tr key={evt.id}>
-                        <td className="py-2 pr-3 text-slate-400 whitespace-nowrap">
-                          {formatTimeLabel(evt.ts)}
-                        </td>
-                        <td className="py-2 px-3 font-semibold text-amber-300 whitespace-nowrap">
-                          {evt.category}
-                        </td>
-                        <td className="py-2 px-3 text-slate-300 whitespace-nowrap">{evt.scope}</td>
-                        <td className="py-2 px-3 text-slate-400 whitespace-nowrap">{evt.actor}</td>
-                        <td className="py-2 pl-3 text-slate-300">{evt.detail}</td>
-                      </tr>
-                    ))}
+                    {anomalyData.recent.map((evt) => {
+                      const catLabel =
+                        evt.category === 'run_integrity_flagged'
+                          ? 'Xác thực trận'
+                          : evt.category === 'rate_limit'
+                          ? 'Rate Limit'
+                          : evt.category === 'ws_clamped'
+                          ? 'Kẹp trần WS'
+                          : evt.category === 'auth_invalid'
+                          ? 'Lỗi xác thực'
+                          : 'Chặn Admin';
+                      return (
+                        <tr key={evt.id}>
+                          <td className="py-2 pr-3 text-slate-400 whitespace-nowrap">
+                            {formatTimeLabel(evt.ts)}
+                          </td>
+                          <td className="py-2 px-3 font-semibold text-amber-300 whitespace-nowrap">
+                            {catLabel}
+                          </td>
+                          <td className="py-2 px-3 text-slate-300 whitespace-nowrap">{evt.scope}</td>
+                          <td className="py-2 px-3 text-slate-400 whitespace-nowrap">{evt.actor}</td>
+                          <td className="py-2 pl-3 text-slate-300">{evt.detail}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

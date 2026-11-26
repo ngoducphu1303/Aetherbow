@@ -56,6 +56,25 @@ Bên cạnh 4 đấu trường GLB độc bản của Chương 1–4, toàn bộ
 
 ---
 
+## 2c. Phù Điêu Sàn Đấu Hoàng Đạo Thủ Tục Chương 5–12 & Ngôn Ngữ Chiến Thuật Đợt 13 (`zodiacRealmArchitecture.ts` + `tacticalRoomModifiers.ts`)
+
+- **8 Phù Điêu Sàn Đấu Thủ Tục Ch.5–12 (`buildZodiacArenaFloorMedallion`)**: Mỗi đấu trường từ Chương 5 (Cự Giải) đến Chương 12 (Song Ngư) hiển thị một phù điêu tinh vân khảm sát mặt sàn ở cao độ chuẩn `y = 0.025` với `polygonOffset: true` và `depthWrite: false` (triệt tiêu hoàn toàn Z-fighting với sàn đấu và vòng telegraph), **0 `PointLight` mới**, tự giảm số phân đoạn đỉnh (`radialSegments`) ở Lite Mode, 1 nút xoay Zero-GC chậm rãi (`reducedMotion = 0.25×`), và giải phóng sạch tài nguyên GPU (`disposeZodiacFloorMedallion`) khi đổi chương hoặc đóng engine:
+  - **Ch.5 Cự Giải**: *Vòng Nguyệt Triều 3 tầng + đỉnh trăng khuyết*; **Ch.6 Xử Nữ**: *Tinh Bàn Nhật Khuê 6 tia*; **Ch.7 Thiên Bình**: *Bát Giác Công Lý & 2 đĩa cân đối xứng*; **Ch.8 Bọ Cạp**: *Vòng Hắc Diện 8 gai*; **Ch.9 Nhân Mã**: *Vòng Cung Tinh Đạo & mũi tên Bắc Nam*; **Ch.10 Ma Kết**: *Ấn Thạch Đỉnh Núi tam giác lồng*; **Ch.11 Bảo Bình**: *Sóng Tinh Lưu đồng tâm*; **Ch.12 Song Ngư**: *Vòng Song Nguyệt giao thoa*.
+- **Ngôn Ngữ Hình Học Mù Màu Đợt 13 (5 Biến Thể Phòng · 6 Phản Ứng Nguyên Tố · 6 Đặc Tính Tinh Anh)**:
+  - Biến thể phòng chiến thuật (`GameHUD.tsx`, Zero-Pill, `0 backdrop-blur`): `◈` Mạch Tinh Năng (`leyline_conduit`), `▲` Đền Thờ Rạn Nứt (`fragile_sanctuary`), `◆` Đội Hình Tiên Phong (`vanguard_phalanx`), `✦` Cộng Hưởng Nguyên Tố (`elemental_resonance`), `⚡` Dòng Khí Tốc (`haste_currents`).
+  - 2 Phản ứng Nguyên tố mới hoàn thiện ma trận 6 cặp: **Độc Lôi Lan** (`electro_venom`, Lục Điện `#a3e635` + Tím `#a855f7`) và **Hàn Độc Phá Giáp** (`cryo_blight`, Ngọc Băng `#2dd4bf` + Lục `#86efac`), nối chuỗi **Cộng Hưởng ×N** (`elementalChainCount >= 2`).
+  - 2 Đặc tính Tinh Anh chiến thuật (Ch.4+ / Tháp F12+): **Liên Kết Tiên Phong** (`vanguard_link`, vòng hào quang lam-ngọc liên kết giảm 18% sát thương đồng đội, vỡ choáng khi hạ Tinh Anh) và **Chấn Động Vòng Tròn** (`quake_pulse`, vòng telegraph mở rộng có thể ngắt bằng Khống Chế/Phá Giáp để mở cửa sổ Sơ Hở `2.5s`).
+
+---
+
+## 2d. Vật Thể 3D Kể Chuyện Môi Trường (Relic Shrines) Chương 5–12 & Ký Hiệu Cộng Hưởng 3 Tầng Đợt 14 (`zodiacRealmArchitecture.ts` + `zodiacJourneyLog.ts`)
+
+- **8 Cụm Thánh Vật 3D Kể Chuyện Môi Trường Ch.5–12 (`buildZodiacStorytellingProps`)**: Đặt đối xứng hai bên sườn ngoài vùng di chuyển (`x = ±(arenaHalfW + 2.35)`, `z = arenaHalfD × 0.34`), tuyệt đối không che chắn tầm nhìn camera hay va chạm, **0 `PointLight` mới**, tương phản vật liệu PBR rõ nét (`stoneRoughness: 0.84` vs `metalRoughness: 0.26`, chênh lệch `0.58 >= 0.25`), đĩa bóng tiếp xúc đáy `depthWrite: false`, tự giảm số đỉnh ở Lite Mode (Dell E5430), chuyển động Zero-GC tôn trọng `reducedMotion = 0.25×` và giải phóng đầy đủ GPU (`disposeZodiacStorytellingProps`):
+  - **Ch.5 Cự Giải**: *Bàn Thờ Ngọc Triều* · **Ch.6 Xử Nữ**: *Lò Hương Tinh Bàn* · **Ch.7 Thiên Bình**: *Cột Cán Cân Ngọc* · **Ch.8 Bọ Cạp**: *Đỉnh Lư Hắc Diện* · **Ch.9 Nhân Mã**: *Giá Cung Tinh Đạo* · **Ch.10 Ma Kết**: *Bia Cổ Ngữ Sơn Đỉnh* · **Ch.11 Bảo Bình**: *Bình Gốm Tinh Lưu* · **Ch.12 Song Ngư**: *Cổng Ngọc Song Nguyệt*.
+- **Ngôn Ngữ Mù Màu Cộng Hưởng Kỹ Năng 3 Tầng (`SkillDraftModal.tsx` & `GameHUD.tsx`, Zero-Pill, `font-mono-nums`)**: `◆ Bậc I` (`1.00×`), `✦ Bậc II` (`1.35×`), `★ Bậc III` (`1.70×`).
+
+---
+
 ## 3. Quy Chuẩn Tài Sản 3D High / Lite (Chuẩn Dell Latitude E5430)
 
 - Mọi nhân vật, quái, Boss và bản đồ mới (Ch.5–12) khi bổ sung tài sản GLB bắt buộc xuất **đủ 2 biến thể** trong `Runtime/`:
