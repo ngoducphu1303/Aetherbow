@@ -60,6 +60,13 @@ import {
   isLowEndSafetyModeActive,
   resolveChapter1MapVariant,
 } from '../engine/gpuSafetyGuard';
+import {
+  listSaveRollbackSnapshots,
+  loadLocalRollbackVault,
+  recordLocalRollbackSnapshot,
+  restoreSaveRollbackSnapshot,
+  SAVE_ROLLBACK_MAX_SNAPSHOTS,
+} from '../data/wave17EndgameAndBackup';
 
 interface SettingsModalProps {
   settings: GameSettings;
@@ -213,6 +220,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   } | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  // Wave 17: Local Save Snapshot & Rollback Vault (max 5 FNV-1a checksummed snapshots)
+  const [rollbackTick, setRollbackTick] = useState(0);
+  const [confirmRollbackId, setConfirmRollbackId] = useState<string | null>(null);
+  const [rollbackNotice, setRollbackNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const rollbackSnapshots = useMemo(
+    () => listSaveRollbackSnapshots(loadLocalRollbackVault()),
+    [rollbackTick, showSaveTransfer]
+  );
   const [confirmHeavyMapOverride, setConfirmHeavyMapOverride] = useState(false);
   const [confirmDisableLiteOnLowEnd, setConfirmDisableLiteOnLowEnd] = useState(false);
   const [gamepadLabel, setGamepadLabel] = useState<string | null>(null);
@@ -539,11 +554,154 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
 
+            {/* Wave 17: Automatic Local Save Snapshot & Rollback Vault (Max 5 Mốc) */}
+            <div
+              data-testid="settings-rollback-vault"
+              className="rounded-2xl bg-[#080d1e] border border-emerald-400/30 p-3.5 space-y-2.5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-black text-emerald-200">
+                    3. Kho Sao Lưu &amp; Khôi Phục Nhanh ({rollbackSnapshots.length}/{SAVE_ROLLBACK_MAX_SNAPSHOTS} Mốc)
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Hệ thống tự động lưu mốc có mã kiểm tra FNV-1a trước khi nhập Save hoặc đặt lại dữ liệu.
+                  </p>
+                </div>
+                {save && (
+                  <button
+                    type="button"
+                    data-testid="settings-create-rollback-snapshot"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.08);
+                      recordLocalRollbackSnapshot(save, 'manual');
+                      setRollbackTick((t) => t + 1);
+                      setConfirmRollbackId(null);
+                      setRollbackNotice({
+                        ok: true,
+                        text: 'Đã tạo mốc sao lưu thủ công có mã kiểm tra FNV-1a.',
+                      });
+                    }}
+                    className="a2-emerald-btn px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap cursor-pointer"
+                  >
+                    Tạo Mốc Ngay
+                  </button>
+                )}
+              </div>
+
+              {rollbackSnapshots.length === 0 ? (
+                <div className="rounded-xl bg-[#040712] border border-slate-800 px-3 py-2.5 text-[11px] text-slate-400">
+                  Chưa có mốc sao lưu cục bộ. Bấm &ldquo;Tạo Mốc Ngay&rdquo; để lưu trạng thái hiện tại.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {rollbackSnapshots.map((snap) => {
+                    const isConfirming = confirmRollbackId === snap.id;
+                    const dateLabel = new Date(snap.createdAtMs).toLocaleString('vi-VN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      day: '2-digit',
+                      month: '2-digit',
+                    });
+                    return (
+                      <div
+                        key={snap.id}
+                        className="rounded-xl bg-[#050916] border border-slate-800 p-2.5 space-y-2"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-black text-white">
+                              {snap.reasonLabel} · <span className="text-slate-400 font-mono-nums tabular-nums">{dateLabel}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-300 font-mono-nums tabular-nums">
+                              Ch.{snap.highestChapterCleared} · {snap.powerRating.toLocaleString('vi-VN')} LC ·{' '}
+                              {snap.gold.toLocaleString('vi-VN')} Vàng · {snap.gems.toLocaleString('vi-VN')} Ngọc ·{' '}
+                              <span className="text-emerald-300">#{snap.checksum}</span>
+                            </div>
+                          </div>
+                          {onImportSave && !isConfirming && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playUiClick(1.02);
+                                setConfirmRollbackId(snap.id);
+                                setRollbackNotice(null);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-[#142038] border border-sky-400/45 hover:border-sky-300 text-sky-200 text-[11px] font-black whitespace-nowrap cursor-pointer"
+                            >
+                              Khôi Phục
+                            </button>
+                          )}
+                        </div>
+                        {isConfirming && onImportSave && (
+                          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800">
+                            <span className="text-[11px] font-bold text-amber-200">
+                              Lưu hiện tại sẽ được tự động sao lưu trước khi khôi phục. Xác nhận?
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setConfirmRollbackId(null)}
+                                className="a2-slate-btn px-2.5 py-1 rounded-lg text-[11px] font-black cursor-pointer"
+                              >
+                                Hủy
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const vault = loadLocalRollbackVault();
+                                  const restored = restoreSaveRollbackSnapshot(vault, snap.id);
+                                  if (!restored.ok || !restored.save) {
+                                    setRollbackNotice({
+                                      ok: false,
+                                      text: restored.error ?? 'Không thể khôi phục mốc sao lưu này.',
+                                    });
+                                    setConfirmRollbackId(null);
+                                    return;
+                                  }
+                                  if (save) {
+                                    recordLocalRollbackSnapshot(save, 'pre_restore');
+                                  }
+                                  soundEngine.playLevelUp();
+                                  onImportSave(restored.save);
+                                  setConfirmRollbackId(null);
+                                  setRollbackTick((t) => t + 1);
+                                  setRollbackNotice({
+                                    ok: true,
+                                    text: `Đã khôi phục mốc ${snap.reasonLabel} (#${snap.checksum}) thành công!`,
+                                  });
+                                }}
+                                className="a2-emerald-btn px-2.5 py-1 rounded-lg text-[11px] font-black cursor-pointer"
+                              >
+                                Xác Nhận
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {rollbackNotice && (
+                <div
+                  className={`rounded-xl px-3 py-2 text-xs font-bold border ${
+                    rollbackNotice.ok
+                      ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-200'
+                      : 'bg-rose-500/15 border-rose-400/50 text-rose-200'
+                  }`}
+                >
+                  {rollbackNotice.text}
+                </div>
+              )}
+            </div>
+
             {onResetPlayerData && (
               <div className="rounded-2xl bg-[#080d1e] border border-rose-500/35 p-3.5 space-y-2.5">
                 <div className="text-xs font-black text-rose-300 flex items-center gap-1.5">
                   <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>3. Đặt Lại Dữ Liệu Về Ban Đầu</span>
+                  <span>4. Đặt Lại Dữ Liệu Về Ban Đầu</span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed">
                   Xóa toàn bộ tiến trình chương, vàng, ngọc, trang bị, bảng xếp hạng cá nhân và đưa tài khoản hiện tại về trạng thái khởi đầu mới.

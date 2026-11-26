@@ -152,6 +152,17 @@ import {
   countScenePointLights,
   HeroAndBossSignatureVfxPool,
 } from './heroAndBossSignatureVfx';
+import {
+  buildInterruptCounterSurgeHud,
+  createBossPracticeHudState,
+  createInterruptCounterSurgeState,
+  getInterruptSurgeBossDamageMult,
+  InterruptCounterSurgeState,
+  resetInterruptCounterSurgeState,
+  resolveBossPracticeConfig,
+  stepInterruptCounterSurge,
+  triggerInterruptCounterSurge,
+} from './wave17CombatAndPractice';
 import { FrameBenchmarkSampler } from './frameBenchmarkSampler';
 import type {
   FrameBenchmarkLiveSnapshot,
@@ -1616,6 +1627,14 @@ export class GameEngine {
     createBossEntrancePoseScratch();
   private audioCaptionsEnabled = false;
   private readonly audioCaptionQueue = new CombatAudioCaptionQueue();
+  // Wave 17: Zero-GC Boss Interrupt Counter-Surge & 12-Zodiac Boss Practice (0 Farm)
+  private readonly interruptCounterSurgeState: InterruptCounterSurgeState =
+    createInterruptCounterSurgeState();
+  private trainingBossPracticeChapterId: number | null = null;
+  private trainingBossDefeated = false;
+  private trainingBossPracticeTitle = '';
+  private trainingBossPracticeZodiacTitle = '';
+  private trainingBossInterruptCount = 0;
   private activeSynergyTiersCache: ReturnType<typeof evaluateTieredSkillSynergies> = [];
   private activeTacticalRoomModifier: TacticalRoomModifierDef | null = null;
   private leylineConduitPos: { x: number; z: number; radius: number } | null = null;
@@ -6205,6 +6224,11 @@ export class GameEngine {
     this.nightmareConfig = getNightmareTierConfig(1, 0);
     this.isTrainingMode = true;
     this.trainingTargetMode = targetMode;
+    this.trainingBossPracticeChapterId = null;
+    this.trainingBossDefeated = false;
+    this.trainingBossPracticeTitle = '';
+    this.trainingBossPracticeZodiacTitle = '';
+    this.trainingBossInterruptCount = 0;
     this.trainingDpsState = createTrainingDpsState();
     this.trainingClockSec = 0;
     this.currentChapter = ch;
@@ -6237,6 +6261,11 @@ export class GameEngine {
   public setTrainingTargetMode(mode: TrainingTargetMode): void {
     if (!this.isTrainingMode) return;
     this.trainingTargetMode = mode;
+    this.trainingBossPracticeChapterId = null;
+    this.trainingBossDefeated = false;
+    this.trainingBossPracticeTitle = '';
+    this.trainingBossPracticeZodiacTitle = '';
+    this.trainingBossInterruptCount = 0;
     this.trainingDpsState = createTrainingDpsState();
     this.trainingClockSec = 0;
     this.clearCombatEntities();
@@ -6248,8 +6277,64 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
+  /**
+   * Wave 17: 12-Zodiac Boss Practice / Sparring Mode (Strictly 0 Gold / 0 Gems / 0 Loot / 0 Progress).
+   */
+  public startBossPractice(chapterId: number): void {
+    if (!this.isTrainingMode) return;
+    const ch = CHAPTERS.find((c) => c.id === chapterId) ?? CHAPTERS[0];
+    const cfg = resolveBossPracticeConfig(ch.id, this.baseStats?.powerRating ?? 702);
+    this.currentChapter = ch;
+    this.trainingBossPracticeChapterId = ch.id;
+    this.trainingBossDefeated = false;
+    this.trainingBossPracticeTitle = cfg.bossName;
+    this.trainingBossPracticeZodiacTitle = cfg.zodiacTitle;
+    this.trainingBossInterruptCount = 0;
+    this.trainingDpsState = createTrainingDpsState();
+    this.trainingClockSec = 0;
+    this.resetTrainingSkillTotals();
+    this.clearCombatEntities();
+    this.buildArena(ch);
+    this.px = 0;
+    this.pz = 4.6;
+    this.pvx = 0;
+    this.pvz = 0;
+    this.pFacing = Math.PI;
+    this.hp = this.maxHp;
+    this.activeSkillCooldown = 0;
+    this.ultCharge = 100;
+    this.perfectDodgeCount = 0;
+    this.hero.root.position.set(this.px, 0, this.pz);
+    this.heroShadow.position.set(this.px, 0.02, this.pz);
+
+    const hpMult = Math.max(0.65, cfg.bossHp / 3600);
+    const dmgMult = Math.max(0.45, cfg.bossDamage / 38);
+    this.createEnemy(EnemyKind.ZODIAC_BOSS, 0, -4.4, hpMult, dmgMult, false, cfg.bossName);
+    const spawned = this.enemies[this.enemies.length - 1];
+    if (spawned) {
+      spawned.hp = cfg.bossHp;
+      spawned.maxHp = cfg.bossHp;
+      spawned.damage = cfg.bossDamage;
+      spawned.goldValue = 0;
+      spawned.xpValue = 0;
+    }
+    soundEngine.playTrainingReset();
+    this.stageBannerText = `LUYỆN BOSS CH.${ch.id}: ${cfg.bossName.toUpperCase()} · 0 PHẦN THƯỞNG`;
+    this.stageBannerTimer = 2.2;
+    this.syncHudImmediate();
+  }
+
+  public returnToTrainingDummies(): void {
+    if (!this.isTrainingMode) return;
+    this.setTrainingTargetMode(this.trainingTargetMode);
+  }
+
   public resetTrainingMetrics(): void {
     if (!this.isTrainingMode) return;
+    if (this.trainingBossPracticeChapterId !== null) {
+      this.startBossPractice(this.trainingBossPracticeChapterId);
+      return;
+    }
     this.trainingDpsState = createTrainingDpsState();
     this.trainingClockSec = 0;
     this.resetTrainingSkillTotals();
@@ -6354,6 +6439,11 @@ export class GameEngine {
 
   public exitTrainingGrounds(): void {
     this.isTrainingMode = false;
+    this.trainingBossPracticeChapterId = null;
+    this.trainingBossDefeated = false;
+    this.trainingBossPracticeTitle = '';
+    this.trainingBossPracticeZodiacTitle = '';
+    this.trainingBossInterruptCount = 0;
     this.trainingDpsState = createTrainingDpsState();
     this.trainingClockSec = 0;
     this.setPhase(GamePhase.TITLE);
@@ -9427,6 +9517,9 @@ export class GameEngine {
     this.wave16BossIntroOverlayTimer = 0;
     this.wave16BossIntroProfile = null;
     this.audioCaptionQueue?.clear();
+    if (this.interruptCounterSurgeState) {
+      resetInterruptCounterSurgeState(this.interruptCounterSurgeState);
+    }
     this.bossFinisherTimer = 0;
     this.bossFinisherName = null;
     this.synergyAwakenedTimer = 0;
@@ -10758,7 +10851,9 @@ export class GameEngine {
 
     model.root.position.set(x, 0, z);
     this.entitiesGroup.add(model.root);
-    this.callbacks.onProgressEvent?.({ seenEnemyKind: kind });
+    if (!this.isTrainingMode) {
+      this.callbacks.onProgressEvent?.({ seenEnemyKind: kind });
+    }
 
     const baseRadius =
       kind === EnemyKind.ZODIAC_BOSS
@@ -11141,7 +11236,8 @@ export class GameEngine {
 
     let bossParts: BossBreakablePart[] | undefined;
     let bossPartMeshes: Partial<Record<BossPartId, THREE.Mesh[]>> | undefined;
-    if (isBoss && !this.isTrainingMode) {
+    const allowBossMechanics = !this.isTrainingMode || this.trainingBossPracticeChapterId !== null;
+    if (isBoss && allowBossMechanics) {
       const isMajor = kind === EnemyKind.ZODIAC_BOSS || kind === EnemyKind.TITAN_BOSS;
       bossParts = createBossBreakableParts(finalHp, isMajor);
       bossPartMeshes = {};
@@ -11198,7 +11294,7 @@ export class GameEngine {
     let zodiacBossRegalia: BuiltZodiacBossRegalia | undefined;
     if (
       kind === EnemyKind.ZODIAC_BOSS &&
-      !this.isTrainingMode &&
+      allowBossMechanics &&
       this.currentChapter.id >= 5 &&
       this.currentChapter.id <= 12
     ) {
@@ -11291,7 +11387,7 @@ export class GameEngine {
       tacticalRole,
       chargerCooldown: tacticalRole === 'charger' ? 2.1 : undefined,
       bossAiState:
-        isBoss && !this.isTrainingMode && !this.isArenaMode
+        isBoss && allowBossMechanics && !this.isArenaMode
           ? this.buildBossAiStateForKind(kind)
           : undefined,
     });
@@ -14463,6 +14559,9 @@ export class GameEngine {
     if (this.wallSlamToastTimer > 0) {
       this.wallSlamToastTimer = Math.max(0, this.wallSlamToastTimer - dt);
       if (this.wallSlamToastTimer <= 0) this.wallSlamToast = null;
+    }
+    if (this.interruptCounterSurgeState) {
+      stepInterruptCounterSurge(this.interruptCounterSurgeState, dt);
     }
     if (this.isTrainingMode) {
       this.trainingClockSec += dt;
@@ -21410,12 +21509,51 @@ export class GameEngine {
         resolvedLabel = interruptOutcome.floatingLabel;
         soundEngine.playBossGuardBreak(computeSpatialPan(e.x, ARENA_HALF_W));
         soundEngine.playInterruptFanfare();
-        this.callbacks.onCombatMilestoneEvent?.('cast_interrupt');
+        if (!this.isTrainingMode) {
+          this.callbacks.onCombatMilestoneEvent?.('cast_interrupt');
+        }
         this.handleGearSetProc('cast_interrupt', { targetX: e.x, targetZ: e.z });
+        // Wave 17: Boss Interrupt Counter-Surge (-35% Active CD, +18 Ult, +25% Boss Weakpoint 3.8s, 0-PointLight VFX)
+        if (e.isBoss && this.interruptCounterSurgeState) {
+          const surgeRes = triggerInterruptCounterSurge(this.interruptCounterSurgeState, {
+            isBoss: true,
+            currentActiveSkillCooldown: this.activeSkillCooldown,
+            currentUltCharge: this.ultCharge,
+            reducedMotion: this.reducedMotionEnabled,
+          });
+          if (surgeRes.triggered) {
+            this.activeSkillCooldown = surgeRes.nextActiveSkillCooldown;
+            this.ultCharge = surgeRes.nextUltCharge;
+            if (this.isTrainingMode && this.trainingBossPracticeChapterId !== null) {
+              this.trainingBossInterruptCount += 1;
+            }
+            this.signatureVfxPool?.spawnTacticalImpactVfx({
+              kind: 'interrupt_surge',
+              x: e.x,
+              z: e.z,
+              radius: 5.6,
+              options: {
+                liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+                reducedMotion: this.reducedMotionEnabled,
+                reduceScreenFlash: this.reduceScreenFlashEnabled,
+                colorblindTelegraphs: this.colorblindTelegraphs,
+              },
+            });
+            this.pushAudioCaption(
+              'boss_shatter',
+              `Phá chiêu phản công! -${Math.round(surgeRes.cdTrimmedSec * 10) / 10}s hồi chiêu, +${surgeRes.ultGained} Tuyệt Kỹ, +25% ST Boss!`
+            );
+            resolvedLabel = 'PHÁ CHIÊU PHẢN CÔNG! +25% ST';
+          }
+        }
         if (!this.reducedMotionEnabled) {
           this.spawnShockwave(e.x, e.z, 0x38bdf8, e.isBoss ? 3.0 : 2.0, 0.26);
         }
       }
+    }
+
+    if (this.interruptCounterSurgeState && e.isBoss && !e.isTrainingDummy) {
+      mult *= getInterruptSurgeBossDamageMult(this.interruptCounterSurgeState, true);
     }
 
     if (this.isCoopRaidMode && this.coopRoleSynergy && e.isBoss) {
@@ -21442,6 +21580,10 @@ export class GameEngine {
     if (e.isTrainingDummy) {
       recordTrainingHit(this.trainingDpsState, this.trainingClockSec, finalDmg, isCrit);
       e.hp = e.maxHp;
+      e.hitFlashTimer = 0.1;
+    } else if (this.isTrainingMode && this.trainingBossPracticeChapterId !== null) {
+      recordTrainingHit(this.trainingDpsState, this.trainingClockSec, finalDmg, isCrit);
+      e.hp -= finalDmg;
       e.hitFlashTimer = 0.1;
     } else if (e.isArenaRival && this.aiRivalBrainState && this.aiRivalBrainState.shieldHp > 0) {
       const absorbed = Math.min(this.aiRivalBrainState.shieldHp, finalDmg);
@@ -22396,11 +22538,17 @@ export class GameEngine {
     try {
       this.kills++;
       this.ultCharge = Math.min(100, this.ultCharge + (e.isBoss ? 35 : 14));
-      this.callbacks.onProgressEvent?.({
-        killsDelta: 1,
-        bossKilled: e.isBoss,
-        maxCombo: this.maxRunCombo,
-      });
+      if (!this.isTrainingMode) {
+        this.callbacks.onProgressEvent?.({
+          killsDelta: 1,
+          bossKilled: e.isBoss,
+          maxCombo: this.maxRunCombo,
+        });
+      } else if (this.trainingBossPracticeChapterId !== null && e.isBoss) {
+        this.trainingBossDefeated = true;
+        this.stageBannerText = `HẠ GỤC ${this.trainingBossPracticeTitle.toUpperCase()} · 0 PHẦN THƯỞNG (LUYỆN TẬP)`;
+        this.stageBannerTimer = 3.2;
+      }
       this.markedEnemyIds.delete(e.id);
       releaseSquadAttackToken(this.enemySquadDirectorState, e.id);
       const killPan = computeSpatialPan(e.x, ARENA_HALF_W);
@@ -22623,32 +22771,35 @@ export class GameEngine {
         }
       }
 
-      const goldAmt = Math.max(1, Math.round(e.goldValue * this.baseStats.goldGainMult));
-      this.spawnLootOrb(e.x, e.z, 'xp', e.xpValue);
-      this.spawnLootOrb(e.x + 0.35, e.z - 0.25, 'gold', goldAmt);
-      if (this.activeRoomChaosEvent?.id === 'gold_meteor_shower') {
-        this.spawnLootOrb(e.x - 0.2, e.z - 0.35, 'gold', Math.max(3, Math.round(goldAmt * 0.35)));
-      }
-      if (e.isBoss || Math.random() < 0.14) {
-        this.spawnLootOrb(
-          e.x - 0.35,
-          e.z + 0.25,
-          'gem',
-          e.isBoss ? (this.isTowerMode ? 15 + Math.floor(this.towerFloor / 3) * 3 : 12) : 2
-        );
-        if (e.isBoss) {
-          this.pushAudioCaption('loot_rare', 'Boss rơi Ngọc Tinh Giới & chiến lợi phẩm hiếm!');
+      // Wave 17 Hard 0-Farm Lock: Training Grounds / Boss Practice NEVER spawns Gold, Gems, XP, or Loot!
+      if (!this.isTrainingMode) {
+        const goldAmt = Math.max(1, Math.round(e.goldValue * this.baseStats.goldGainMult));
+        this.spawnLootOrb(e.x, e.z, 'xp', e.xpValue);
+        this.spawnLootOrb(e.x + 0.35, e.z - 0.25, 'gold', goldAmt);
+        if (this.activeRoomChaosEvent?.id === 'gold_meteor_shower') {
+          this.spawnLootOrb(e.x - 0.2, e.z - 0.35, 'gold', Math.max(3, Math.round(goldAmt * 0.35)));
         }
-      }
-      if (Math.random() < (this.activeRoomChaosEvent?.id === 'solar_orb_surge' ? 0.45 : 0.15)) {
-        this.spawnLootOrb(e.x, e.z + 0.4, 'heal', Math.round(this.maxHp * 0.12));
-      }
-      if (this.activeRoomChaosEvent?.id === 'solar_orb_surge') {
-        this.ultCharge = Math.min(100, this.ultCharge + 22);
-      }
-      if (e.ambushBounty) {
-        this.runGems += 5;
-        this.emitFloatingNumber(e.x, 2.3, e.z, 5, true, false, undefined, 'TRUY NÃ! +5💎', true);
+        if (e.isBoss || Math.random() < 0.14) {
+          this.spawnLootOrb(
+            e.x - 0.35,
+            e.z + 0.25,
+            'gem',
+            e.isBoss ? (this.isTowerMode ? 15 + Math.floor(this.towerFloor / 3) * 3 : 12) : 2
+          );
+          if (e.isBoss) {
+            this.pushAudioCaption('loot_rare', 'Boss rơi Ngọc Tinh Giới & chiến lợi phẩm hiếm!');
+          }
+        }
+        if (Math.random() < (this.activeRoomChaosEvent?.id === 'solar_orb_surge' ? 0.45 : 0.15)) {
+          this.spawnLootOrb(e.x, e.z + 0.4, 'heal', Math.round(this.maxHp * 0.12));
+        }
+        if (this.activeRoomChaosEvent?.id === 'solar_orb_surge') {
+          this.ultCharge = Math.min(100, this.ultCharge + 22);
+        }
+        if (e.ambushBounty) {
+          this.runGems += 5;
+          this.emitFloatingNumber(e.x, 2.3, e.z, 5, true, false, undefined, 'TRUY NÃ! +5💎', true);
+        }
       }
 
       if (this.isBloodMoonMode) {
@@ -23466,6 +23617,14 @@ export class GameEngine {
     this.emitFloatingNumber(this.px, 1.9, this.pz, dmg, false, false, 'playerHit');
 
     if (this.hp <= 0) {
+      if (this.isTrainingMode) {
+        // Wave 17: Immortal Boss Sparring — instant HP reset so player keeps practicing without Game Over
+        this.hp = this.maxHp;
+        this.invulnTimer = 1.6;
+        this.emitFloatingNumber(this.px, 2.15, this.pz, this.maxHp, false, true, undefined, 'HỒI MÁU LUYỆN TẬP');
+        this.syncHudImmediate();
+        return;
+      }
       if (this.revivesLeft > 0) {
         this.revivesLeft--;
         this.runRevivesUsed += 1;
@@ -25995,6 +26154,24 @@ export class GameEngine {
       audioCaptionCues: this.audioCaptionsEnabled
         ? (this.audioCaptionQueue?.getActive(Date.now()) ?? [])
         : [],
+      interruptCounterSurge: buildInterruptCounterSurgeHud(this.interruptCounterSurgeState),
+      bossPractice:
+        this.isTrainingMode && this.trainingBossPracticeChapterId !== null
+          ? createBossPracticeHudState({
+              chapterId: this.trainingBossPracticeChapterId,
+              bossName: this.trainingBossPracticeTitle,
+              zodiacTitle: this.trainingBossPracticeZodiacTitle,
+              bossPhase: ((boss?.bossPhase ?? 1) === 3
+                ? 3
+                : (boss?.bossPhase ?? 1) === 2
+                  ? 2
+                  : 1) as 1 | 2 | 3,
+              defeated: this.trainingBossDefeated,
+              elapsedSec: this.trainingClockSec,
+              interruptCount: this.trainingBossInterruptCount,
+              perfectDodgeCount: this.perfectDodgeCount,
+            })
+          : null,
     });
   }
 

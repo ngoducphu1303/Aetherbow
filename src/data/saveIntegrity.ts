@@ -132,13 +132,39 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
               : undefined
             : undefined;
         const transmutedSetFixed = item.transmutedSetId !== cleanTransmutedSetId;
+        const validImprintAspects = new Set([
+          'solar_sunder',
+          'astral_pierce',
+          'jade_aegis',
+          'lunar_execution',
+        ]);
+        const rawImprint = item.mythicImprint;
+        const cleanMythicImprint =
+          rawImprint !== undefined &&
+          cleanRarity === Rarity.MYTHIC &&
+          typeof rawImprint === 'object' &&
+          rawImprint !== null &&
+          typeof rawImprint.aspectId === 'string' &&
+          validImprintAspects.has(rawImprint.aspectId)
+            ? {
+                aspectId: rawImprint.aspectId,
+                tier: clampFiniteInt(rawImprint.tier, 1, 5, 1),
+              }
+            : undefined;
+        const mythicImprintFixed =
+          (rawImprint !== undefined && cleanMythicImprint === undefined) ||
+          (rawImprint !== undefined &&
+            cleanMythicImprint !== undefined &&
+            (rawImprint.aspectId !== cleanMythicImprint.aspectId ||
+              rawImprint.tier !== cleanMythicImprint.tier));
         validInventoryUids.add(item.uid);
         if (
           item.level !== cleanLevel ||
           item.rarity !== cleanRarity ||
           item.awakeningLevel !== cleanAwakening ||
           subFixed ||
-          transmutedSetFixed
+          transmutedSetFixed ||
+          mythicImprintFixed
         ) {
           gearStatFixed = true;
           const nextItem = {
@@ -152,6 +178,11 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
             nextItem.transmutedSetId = cleanTransmutedSetId;
           } else {
             delete nextItem.transmutedSetId;
+          }
+          if (cleanMythicImprint !== undefined) {
+            nextItem.mythicImprint = cleanMythicImprint;
+          } else {
+            delete nextItem.mythicImprint;
           }
           return nextItem;
         }

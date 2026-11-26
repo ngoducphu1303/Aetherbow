@@ -782,6 +782,11 @@ export function getGearPowerScore(
   const perkBonus = (tpl?.innatePierce ? 45 : 0) + (tpl?.innateHoming ? 45 : 0) + (tpl?.isSTier ? 35 : 0);
   const substatScore = getEffectiveSubstats(item).reduce((sum, sub) => sum + Math.round(sub.value * 420), 0);
   const awakenBonus = (item.awakeningLevel ?? 0) * 55;
+  let imprintBonus = 0;
+  if (item.rarity === Rarity.MYTHIC && item.mythicImprint && item.mythicImprint.tier > 0) {
+    const safeTier = Math.max(0, Math.min(5, Math.floor(item.mythicImprint.tier)));
+    imprintBonus = safeTier * 115;
+  }
   let socketBonus = 0;
   if (item.socketedGems && item.socketedGems.length > 0) {
     if (socketPool && socketPool.length > 0) {
@@ -807,6 +812,7 @@ export function getGearPowerScore(
       perkBonus +
       substatScore +
       awakenBonus +
+      imprintBonus +
       socketBonus
   );
 }
@@ -1026,6 +1032,34 @@ export function computePlayerStats(save: SaveData): ComputedPlayerStats {
       critChance += b.critChance;
       attackSpeedMult += b.attackSpeed;
       damageReduction += b.damageReduction;
+    }
+
+    // Wave 17: Apply Mythic Zodiac Imprint (+1..+5, strictly MYTHIC rarity only)
+    if (item.rarity === Rarity.MYTHIC && item.mythicImprint) {
+      const tier = Math.max(0, Math.min(5, Math.floor(item.mythicImprint.tier || 0)));
+      if (tier > 0) {
+        switch (item.mythicImprint.aspectId) {
+          case 'solar_sunder':
+            subAtkPct += 0.024 * tier;
+            bossDamageBonus += 0.03 * tier;
+            break;
+          case 'astral_pierce':
+            subAtkPct += 0.022 * tier;
+            critChance += 0.014 * tier;
+            critDamage += 0.035 * tier;
+            break;
+          case 'jade_aegis':
+            subHpPct += 0.032 * tier;
+            damageReduction += 0.016 * tier;
+            break;
+          case 'lunar_execution':
+            subAtkPct += 0.012 * tier;
+            bossDamageBonus += 0.02 * tier;
+            critChance += 0.008 * tier;
+            critDamage += 0.06 * tier;
+            break;
+        }
+      }
     }
   }
 

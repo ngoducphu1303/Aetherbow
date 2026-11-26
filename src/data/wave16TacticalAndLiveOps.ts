@@ -1,6 +1,7 @@
-import type { ComputedPlayerStats, SaveData } from '../types/game';
+import type { ComputedPlayerStats, SaveData, SmartUpgradeRoiEntry } from '../types/game';
 import { CHAPTERS } from './chaptersData';
 import { computePlayerStats } from './gearData';
+import { computeSmartUpgradeRoi } from './wave17EndgameAndBackup';
 import {
   LIVEOPS_PRESETS,
   resolveEffectiveLiveOpsConfig,
@@ -33,7 +34,7 @@ import { resolveBossEntranceProfile } from '../engine/wave16BossAndPortal';
 // ============================================================================
 
 export type TacticalReadinessTier = 'ready' | 'challenging' | 'underpowered';
-export type TacticalBottleneckTarget = 'gear' | 'talents' | 'runes' | 'hero';
+export type TacticalBottleneckTarget = 'gear' | 'talents' | 'runes' | 'hero' | 'forge_imprint';
 
 export interface PreBattleTacticalBriefing {
   chapterId: number;
@@ -65,6 +66,7 @@ export interface PreBattleTacticalBriefing {
     headline: string;
     detail: string;
   };
+  smartUpgradeRoi: SmartUpgradeRoiEntry[];
 }
 
 function resolveWeakestBottleneck(
@@ -195,6 +197,7 @@ export function buildPreBattleTacticalBriefing(
     arenaMechanismShort: mechanism.shortLabel,
     arenaMechanismTip,
     crossroadsPreview,
+    smartUpgradeRoi: computeSmartUpgradeRoi(save, 3),
   };
 }
 

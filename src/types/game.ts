@@ -352,6 +352,17 @@ export interface SocketGemInstance {
   tier: SocketGemTier;
 }
 
+export type MythicImprintAspectId =
+  | 'solar_sunder'
+  | 'astral_pierce'
+  | 'jade_aegis'
+  | 'lunar_execution';
+
+export interface MythicZodiacImprint {
+  aspectId: MythicImprintAspectId;
+  tier: number; // 1..5
+}
+
 export interface GearInstance {
   uid: string;
   templateId: string;
@@ -361,6 +372,7 @@ export interface GearInstance {
   substats?: GearSubstat[];
   socketedGems?: string[]; // SocketGemInstance uids
   transmutedSetId?: GearSetId; // Wave 15: Deterministic Gear Set Transmutation override
+  mythicImprint?: MythicZodiacImprint; // Wave 17: Mythic Zodiac Imprint (+1..+5, gated Ch.4+ & MYTHIC)
 }
 
 export interface ComputedPlayerStats {
@@ -2583,6 +2595,56 @@ export interface HudSnapshot {
   // Wave 16: 12-Zodiac Boss Entrance Choreography & Combat Audio Captions
   bossIntroOverlay?: BossIntroOverlayState | null;
   audioCaptionCues?: CombatAudioCaptionCue[];
+  // Wave 17: Boss Interrupt Counter-Surge & 12-Zodiac Boss Practice (0 Farm)
+  interruptCounterSurge?: InterruptCounterSurgeHudState | null;
+  bossPractice?: BossPracticeHudState | null;
+}
+
+export interface InterruptCounterSurgeHudState {
+  active: boolean;
+  remainingSec: number;
+  maxDurationSec: number;
+  bossWeakpointBonusPct: number;
+  activeCdTrimmedPct: number;
+  ultGained: number;
+  totalSurgesTriggered: number;
+}
+
+export interface BossPracticeHudState {
+  active: boolean;
+  chapterId: number;
+  bossName: string;
+  zodiacTitle: string;
+  bossPhase: 1 | 2 | 3;
+  defeated: boolean;
+  elapsedSec: number;
+  interruptCount: number;
+  perfectDodgeCount: number;
+  zeroRewardLocked: true;
+}
+
+export interface SmartUpgradeRoiEntry {
+  id: string;
+  targetTab: 'gear' | 'talents' | 'runes' | 'hero' | 'forge_imprint';
+  title: string;
+  detail: string;
+  goldCost: number;
+  estimatedLcGain: number;
+  lcPer1000Gold: number;
+  affordableNow: boolean;
+  actionLabel: string;
+}
+
+export interface SaveRollbackSnapshotMeta {
+  id: string;
+  createdAtMs: number;
+  reason: 'manual' | 'pre_import' | 'pre_reset' | 'pre_restore' | 'pre_cloud_overwrite';
+  reasonLabel: string;
+  highestChapterCleared: number;
+  powerRating: number;
+  gold: number;
+  gems: number;
+  checksum: string;
 }
 
 export interface BossIntroOverlayState {

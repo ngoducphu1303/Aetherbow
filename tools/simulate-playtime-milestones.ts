@@ -6,6 +6,7 @@ import {
   RUNE_REFINEMENT_MAX_TIER,
 } from '../src/data/runeAndAffixRefining';
 import { computeWave15TransmutationSinkAudit } from '../src/data/gearSetTransmutation';
+import { computeWave17MythicImprintSinkAudit } from '../src/data/wave17EndgameAndBackup';
 import { Rarity } from '../src/types/game';
 
 /**
@@ -63,10 +64,12 @@ const substatPolishDustSink =
 const wave13TotalGoldSink = fourRunesGoldSink + substatPolishGoldSink;
 const wave13TotalDustSink = fourRunesDustSink + substatPolishDustSink;
 const wave15TransmutationSinks = computeWave15TransmutationSinkAudit();
+const wave17MythicImprintSinks = computeWave17MythicImprintSinkAudit();
 const combinedEndgameGoldSink =
   pass3Audit.totalEndgameGoldSink +
   wave13TotalGoldSink +
-  wave15TransmutationSinks.total100hTransmutationGoldSink;
+  wave15TransmutationSinks.total100hTransmutationGoldSink +
+  wave17MythicImprintSinks.full6SlotGoldSink;
 const combinedSinkRatioPct = Number(
   ((combinedEndgameGoldSink / Math.max(1, pass3Audit.hour100GoldEarned)) * 100).toFixed(1)
 );
@@ -90,6 +93,7 @@ console.log(
         wave13TotalDustSink,
       },
       wave15TransmutationSinks,
+      wave17MythicImprintSinks,
       combinedEndgameGoldSink,
       combinedGoldSinkTo100hRatioPct: combinedSinkRatioPct,
     },

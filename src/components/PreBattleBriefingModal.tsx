@@ -134,6 +134,62 @@ export const PreBattleBriefingModal: React.FC<PreBattleBriefingModalProps> = ({
           </div>
         </div>
 
+        {/* Wave 17: Smart Upgrade ROI Advisor (+LC / 1.000 Vàng) */}
+        {briefing.smartUpgradeRoi && briefing.smartUpgradeRoi.length > 0 && (
+          <div
+            data-testid="briefing-smart-roi"
+            className="rounded-xl bg-[#111726] border border-emerald-500/30 p-3.5 space-y-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-300 shrink-0" />
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-200">
+                  Gợi Ý Đầu Tư LC Tối Ưu (+LC / 1.000 Vàng)
+                </span>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-400">
+                Top {briefing.smartUpgradeRoi.length} hiệu suất cao nhất
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {briefing.smartUpgradeRoi.map((entry, idx) => (
+                <div
+                  key={entry.id}
+                  className="rounded-lg bg-[#0a0f1c] border border-slate-800 px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-2 text-xs font-black text-white">
+                      <span className="font-mono-nums tabular-nums text-amber-300">#{idx + 1}</span>
+                      <span className="truncate">{entry.title}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 leading-snug">{entry.detail}</div>
+                  </div>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="text-right font-mono-nums tabular-nums">
+                      <div className="text-xs font-black text-emerald-300">
+                        +{entry.lcPer1000Gold} LC / 1k Vàng
+                      </div>
+                      <div className="text-[10px] font-semibold text-slate-400">
+                        {entry.affordableNow ? 'Đủ tài nguyên' : 'Cần thêm Vàng'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.08);
+                        onJumpToUpgrade(entry.targetTab);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#16213a] border border-emerald-400/45 hover:border-emerald-300 text-emerald-200 text-[11px] font-black whitespace-nowrap cursor-pointer"
+                    >
+                      {entry.actionLabel}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Boss Phase II & Phase III Counterplay */}
         <div className="rounded-xl bg-[#111726] border border-slate-800 p-3.5 space-y-2.5">
           <div className="flex items-center gap-2">

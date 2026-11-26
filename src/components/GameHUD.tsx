@@ -79,6 +79,7 @@ import {
   type AiSquadFormationId,
 } from '../engine/wave11FivePillars';
 import { getStyleRewardBonusPct } from '../engine/wave7CombatSystems';
+import { getBossPracticeCatalog } from '../engine/wave17CombatAndPractice';
 import {
   BossPortraitBadge,
   EnemyPortraitBadge,
@@ -120,6 +121,9 @@ interface GameHUDProps {
   onTrainingReset?: () => void;
   onTrainingLoadoutSwitch?: (slotId: LoadoutPresetSlotId) => void;
   onTrainingExit?: () => void;
+  highestChapterCleared?: number;
+  onStartBossPractice?: (chapterId: number) => void;
+  onReturnToTrainingDummies?: () => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -154,10 +158,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onTrainingReset,
   onTrainingLoadoutSwitch,
   onTrainingExit,
+  highestChapterCleared = 0,
+  onStartBossPractice,
+  onReturnToTrainingDummies,
 }) => {
   const [trainingPresetRecords, setTrainingPresetRecords] = useState<
     Record<string, TrainingPresetDpsRecord>
   >({});
+  const [selectedPracticeChapterId, setSelectedPracticeChapterId] = useState<number>(1);
+  const bossPracticeCatalog = useMemo(
+    () => getBossPracticeCatalog(highestChapterCleared),
+    [highestChapterCleared]
+  );
 
   useEffect(() => {
     if (!hud.isTrainingMode) {
@@ -924,6 +936,57 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </div>
               )}
 
+              {onStartBossPractice && (
+                <div
+                  data-testid="training-boss-practice-bar"
+                  className="flex items-center gap-1.5 pl-1.5 border-l border-slate-700/80"
+                >
+                  <select
+                    aria-label="Chọn Boss 12 Cung để luyện tập"
+                    value={hud.bossPractice?.active ? hud.bossPractice.chapterId : selectedPracticeChapterId}
+                    onChange={(e) => {
+                      const cid = Number(e.target.value) || 1;
+                      setSelectedPracticeChapterId(cid);
+                      if (hud.bossPractice?.active) {
+                        onStartBossPractice(cid);
+                      }
+                    }}
+                    className="rounded-lg bg-[#0c1328] border border-amber-400/45 text-[11px] font-bold text-amber-100 px-2 py-1.5 outline-none cursor-pointer"
+                  >
+                    {bossPracticeCatalog.map((entry) => (
+                      <option
+                        key={entry.chapterId}
+                        value={entry.chapterId}
+                        disabled={!entry.unlocked}
+                      >
+                        {entry.unlocked
+                          ? `Ch.${entry.chapterId} · ${entry.bossName}`
+                          : `🔒 Ch.${entry.chapterId} · ${entry.bossName}`}
+                      </option>
+                    ))}
+                  </select>
+                  {hud.bossPractice?.active ? (
+                    <button
+                      type="button"
+                      data-testid="training-return-dummies"
+                      onClick={() => onReturnToTrainingDummies?.()}
+                      className="px-2.5 py-1.5 rounded-xl text-[11px] font-black bg-amber-500/20 border border-amber-400/60 text-amber-100 hover:bg-amber-500/30 whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      Về Hình Nhân
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="training-launch-boss-practice"
+                      onClick={() => onStartBossPractice(selectedPracticeChapterId)}
+                      className="px-2.5 py-1.5 rounded-xl text-[11px] font-black bg-rose-500/20 border border-rose-400/60 text-rose-100 hover:bg-rose-500/30 whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      Luyện Boss (0 Thưởng)
+                    </button>
+                  )}
+                </div>
+              )}
+
               {onTrainingReset && (
                 <button
                   type="button"
@@ -931,7 +994,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   className="px-2.5 py-1.5 rounded-xl text-[11px] font-black bg-[#0c1328] border border-sky-400/40 text-sky-200 hover:border-sky-300 flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-                  <span>Đặt Lại</span>
+                  <span>{hud.bossPractice?.active ? 'Đấu Lại Boss' : 'Đặt Lại'}</span>
                 </button>
               )}
 
@@ -946,6 +1009,31 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </button>
               )}
             </div>
+
+            {hud.bossPractice?.active && (
+              <div
+                data-testid="hud-boss-practice-status"
+                className="pointer-events-auto rounded-xl bg-[#120b1c]/95 border border-rose-400/55 px-3 py-2 flex flex-wrap items-center gap-3 text-[11px] font-mono-nums tabular-nums shadow-lg"
+              >
+                <span className="font-black text-rose-200">
+                  ⚔ LUYỆN BOSS CH.{hud.bossPractice.chapterId}: {hud.bossPractice.bossName}
+                </span>
+                <span className="text-amber-200 font-bold">
+                  Pha {hud.bossPractice.bossPhase}/3
+                </span>
+                <span className="text-sky-200 font-bold">
+                  Phá chiêu: {hud.bossPractice.interruptCount}
+                </span>
+                <span className="text-emerald-200 font-bold">
+                  Né chuẩn: {hud.bossPractice.perfectDodgeCount}
+                </span>
+                <span className="text-slate-300 font-semibold">
+                  {hud.bossPractice.defeated
+                    ? '✓ Đã hạ gục · Bấm Đấu Lại Boss'
+                    : '0 Vàng · 0 Ngọc · 0 Loot'}
+                </span>
+              </div>
+            )}
 
             {/* Wave 12: Side-by-Side Loadout Preset DPS Comparison Table (0 backdrop-blur, tabular-nums) */}
             <div
@@ -1859,6 +1947,20 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           >
             <span aria-hidden="true" className="text-amber-300">⚡</span>
             <span className="truncate">PHẢN TIỄN SẴN SÀNG · +1 XUYÊN · +45% PHÁ KHIÊN</span>
+          </div>
+        )}
+
+        {/* Wave 17: Boss Interrupt Counter-Surge Bar (0 backdrop-blur, Zero-Pill, tabular-nums) */}
+        {hud.interruptCounterSurge?.active && (
+          <div
+            data-testid="hud-interrupt-surge"
+            className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1 bg-[#071829]/95 border border-cyan-300/85 text-[10px] font-black text-cyan-100 font-mono-nums tabular-nums max-w-full"
+          >
+            <span aria-hidden="true" className="text-amber-300">⚡</span>
+            <span className="truncate">
+              PHÁ CHIÊU PHẢN CÔNG · +{hud.interruptCounterSurge.bossWeakpointBonusPct}% ST BOSS ·{' '}
+              {hud.interruptCounterSurge.remainingSec.toFixed(1)}s
+            </span>
           </div>
         )}
 

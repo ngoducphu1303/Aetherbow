@@ -61,12 +61,29 @@ import {
   getSocketGemTierRoman,
   normalizeSocketGems,
 } from '../data/wave5Data';
-import { AutoSalvageFilterRule, ForgeRecipe, GearInstance, GearSetId, GearSlot, Rarity, SaveData, SocketGemColor } from '../types/game';
+import {
+  AutoSalvageFilterRule,
+  ForgeRecipe,
+  GearInstance,
+  GearSetId,
+  GearSlot,
+  MythicImprintAspectId,
+  Rarity,
+  SaveData,
+  SocketGemColor,
+} from '../types/game';
+import {
+  MYTHIC_IMPRINT_ASPECT_LIST,
+  MYTHIC_IMPRINT_ASPECTS,
+  MYTHIC_IMPRINT_MAX_TIER,
+  MYTHIC_IMPRINT_MIN_CHAPTER,
+  previewMythicImprint,
+} from '../data/wave17EndgameAndBackup';
 import { GearSlotSvg, GoldCoinIcon, RARITY_FRAME_CLASS, StarDustIcon } from './GameIcons';
 
 interface RelicForgeModalProps {
   save: SaveData;
-  initialSubTab?: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets' | 'transmute';
+  initialSubTab?: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets' | 'transmute' | 'imprint';
   initialGearUid?: string;
   onSalvageGear: (uids: string[]) => void;
   onSafeSalvageExcess?: () => void;
@@ -79,6 +96,7 @@ interface RelicForgeModalProps {
   onReforgeGear: (uid: string, lockedIds: string[]) => void;
   onPolishGearSubstat?: (uid: string, substatId: string) => void;
   onTransmuteGearSet?: (uid: string, targetSetId: GearSetId) => void;
+  onInfuseMythicImprint?: (uid: string, aspectId: MythicImprintAspectId) => void;
   onAwakenGear: (uid: string) => void;
   onCraftSocketGem: (tier: 1 | 2) => void;
   onFuseSocketGem: (color: SocketGemColor, tier: 1 | 2) => void;
@@ -102,6 +120,7 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   onReforgeGear,
   onPolishGearSubstat,
   onTransmuteGearSet,
+  onInfuseMythicImprint,
   onAwakenGear,
   onCraftSocketGem,
   onFuseSocketGem,
@@ -109,11 +128,13 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   onUnsocketGemFromGear,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets' | 'transmute'>(
-    initialSubTab
-  );
+  const [subTab, setSubTab] = useState<
+    'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets' | 'transmute' | 'imprint'
+  >(initialSubTab);
   const [selectedTargetSlot, setSelectedTargetSlot] = useState<GearSlot>(GearSlot.WEAPON);
   const [selectedTransmuteSetId, setSelectedTransmuteSetId] = useState<GearSetId>('Destruction Set');
+  const [selectedImprintAspectId, setSelectedImprintAspectId] =
+    useState<MythicImprintAspectId>('solar_sunder');
   const [showDropCodex, setShowDropCodex] = useState(false);
   const [selectedUids, setSelectedUids] = useState<string[]>([]);
   const [imgErr, setImgErr] = useState(false);
@@ -288,8 +309,8 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
           </div>
         </div>
 
-        {/* 6 Sub Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-4">
+        {/* 7 Sub Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 mb-4">
           <button
             type="button"
             onClick={() => {
@@ -379,6 +400,22 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
           >
             <Gem className="w-4 h-4" />
             <span>Khảm Ngọc ({spareGems.length})</span>
+          </button>
+          <button
+            type="button"
+            data-testid="forge-tab-imprint"
+            onClick={() => {
+              soundEngine.playUiClick();
+              setSubTab('imprint');
+            }}
+            className={`py-2.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+              subTab === 'imprint'
+                ? 'a2-purple-btn shadow-lg'
+                : 'a2-slate-btn text-slate-300'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Ấn Tinh</span>
           </button>
         </div>
 
@@ -1756,6 +1793,234 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
                   )}
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {subTab === 'imprint' && (
+          <div data-testid="forge-imprint-panel" className="space-y-4">
+            <div className="rounded-2xl bg-[#080d1e] border border-fuchsia-400/35 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-fuchsia-200">
+                  Thức Tỉnh Ấn Tinh Thần Thoại (+1 → +{MYTHIC_IMPRINT_MAX_TIER})
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Khắc 1 trong 4 Tinh Ấn Hoàng Đạo tất định lên trang bị Thần Thoại sau Chương {MYTHIC_IMPRINT_MIN_CHAPTER}, tăng trực tiếp Lực Chiến &amp; chỉ số Endgame.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-xs font-mono-nums tabular-nums text-slate-300 whitespace-nowrap">
+                <span>
+                  Mảnh Thánh Lò:{' '}
+                  <strong className="text-amber-300">{save.pity?.forgeRelicShards ?? 0}</strong>
+                </span>
+                <span>
+                  Hồn Tinh:{' '}
+                  <strong className="text-fuchsia-300">{save.spiritCores ?? 0}</strong>
+                </span>
+              </div>
+            </div>
+
+            {(save.highestChapterCleared ?? 0) < MYTHIC_IMPRINT_MIN_CHAPTER ? (
+              <div className="rounded-2xl bg-[#0a1022] border border-slate-700 p-5 text-center space-y-1.5">
+                <Lock className="w-6 h-6 text-fuchsia-300 mx-auto" />
+                <div className="text-sm font-black text-white">
+                  Mở khóa sau khi vượt Chương {MYTHIC_IMPRINT_MIN_CHAPTER}
+                </div>
+                <p className="text-xs text-slate-400">
+                  Vượt Chương {MYTHIC_IMPRINT_MIN_CHAPTER} để mở khóa Thức Tỉnh Ấn Tinh Thần Thoại cho trang bị phẩm chất Thần Thoại.
+                </p>
+              </div>
+            ) : (
+              (() => {
+                const mythicGear = sortedAllGear.filter((g) => g.rarity === Rarity.MYTHIC);
+                const selectedMythic =
+                  (focusedItem && focusedItem.rarity === Rarity.MYTHIC ? focusedItem : null) ??
+                  mythicGear[0] ??
+                  null;
+
+                if (mythicGear.length === 0) {
+                  return (
+                    <div className="rounded-2xl bg-[#0a1022] border border-slate-700 p-5 text-center space-y-1.5">
+                      <Sparkles className="w-6 h-6 text-amber-300 mx-auto" />
+                      <div className="text-sm font-black text-white">
+                        Chưa có trang bị Thần Thoại trong túi đồ
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Ghép hoặc đúc trang bị lên phẩm chất Thần Thoại để khắc Ấn Tinh +1 → +{MYTHIC_IMPRINT_MAX_TIER}.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                    {/* Left: Mythic Gear List */}
+                    <div className="lg:col-span-5 rounded-2xl bg-[#080d1e] border border-slate-700/80 p-3 space-y-2 max-h-[380px] overflow-y-auto a2-scroll">
+                      <div className="text-xs font-black text-slate-300 uppercase tracking-wider px-1">
+                        Chọn Trang Bị Thần Thoại ({mythicGear.length})
+                      </div>
+                      {mythicGear.map((item) => {
+                        const tpl = GEAR_TEMPLATES[item.templateId];
+                        if (!tpl) return null;
+                        const isSel = selectedMythic?.uid === item.uid;
+                        const imp = item.mythicImprint;
+                        const impDef = imp ? MYTHIC_IMPRINT_ASPECTS[imp.aspectId] : null;
+                        return (
+                          <button
+                            key={item.uid}
+                            type="button"
+                            onClick={() => {
+                              soundEngine.playUiClick();
+                              setFocusGearUid(item.uid);
+                              if (imp) setSelectedImprintAspectId(imp.aspectId);
+                            }}
+                            className={`w-full text-left p-2.5 rounded-xl border transition-colors cursor-pointer flex items-center gap-2.5 ${
+                              isSel
+                                ? 'bg-fuchsia-500/15 border-fuchsia-400/75'
+                                : 'bg-[#0b1227] border-slate-800 hover:border-slate-600'
+                            }`}
+                          >
+                            <div
+                              className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${
+                                RARITY_FRAME_CLASS[item.rarity]
+                              }`}
+                            >
+                              <GearSlotSvg slot={tpl.slot} className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-black text-white truncate">
+                                {tpl.name}
+                              </div>
+                              <div className="text-[11px] text-slate-300 truncate font-mono-nums">
+                                {impDef && imp
+                                  ? `${impDef.glyph} ${impDef.name} +${imp.tier}`
+                                  : 'Chưa khắc Ấn Tinh'}
+                              </div>
+                            </div>
+                            {equippedSet.has(item.uid) && (
+                              <span className="text-[10px] font-black text-emerald-300 whitespace-nowrap">
+                                Đang mặc
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Right: Celestial Aspect Selector & Cost/Delta Preview */}
+                    <div className="lg:col-span-7 space-y-3">
+                      {selectedMythic &&
+                        (() => {
+                          const preview = previewMythicImprint(
+                            save,
+                            selectedMythic.uid,
+                            selectedImprintAspectId
+                          );
+                          const targetAspect = MYTHIC_IMPRINT_ASPECTS[selectedImprintAspectId];
+                          return (
+                            <div className="rounded-2xl bg-[#080d1e] border border-slate-700/80 p-4 space-y-3">
+                              <div className="text-xs font-black text-slate-300 uppercase tracking-wider">
+                                Chọn 1 Trong 4 Tinh Ấn Hoàng Đạo
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {MYTHIC_IMPRINT_ASPECT_LIST.map((asp) => {
+                                  const active = selectedImprintAspectId === asp.id;
+                                  const isCur = preview.currentImprint?.aspectId === asp.id;
+                                  return (
+                                    <button
+                                      key={asp.id}
+                                      type="button"
+                                      onClick={() => {
+                                        soundEngine.playUiClick(1.06);
+                                        setSelectedImprintAspectId(asp.id);
+                                      }}
+                                      className={`text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                                        active
+                                          ? 'bg-[#171230] border-fuchsia-400/80'
+                                          : 'bg-[#0b1124] border-slate-800 hover:border-slate-600'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span
+                                          className="text-xs font-black truncate"
+                                          style={{ color: asp.accentHex }}
+                                        >
+                                          {asp.glyph} {asp.name}
+                                        </span>
+                                        {isCur && preview.currentImprint && (
+                                          <span className="text-[10px] font-mono-nums text-emerald-300 whitespace-nowrap">
+                                            +{preview.currentImprint.tier}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-slate-300 mt-1">
+                                        {asp.summary}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="rounded-xl bg-[#060a18] border border-slate-800 p-3 space-y-1.5 text-xs font-mono-nums tabular-nums">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-300">Bậc Ấn Tinh:</span>
+                                  <span className="font-black text-fuchsia-200">
+                                    +{preview.currentImprint?.tier ?? 0} → +{preview.nextImprint?.tier ?? preview.currentImprint?.tier ?? 0}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-300">Dự kiến Lực Chiến:</span>
+                                  <span className="font-black text-emerald-300">
+                                    {preview.beforePower.toLocaleString('vi-VN')} →{' '}
+                                    {preview.afterPower.toLocaleString('vi-VN')} (
+                                    {preview.powerDelta >= 0 ? `+${preview.powerDelta}` : preview.powerDelta} LC)
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                                <div className="flex flex-wrap items-center gap-3 text-xs font-mono-nums tabular-nums font-black">
+                                  <span className={(save.gold ?? 0) >= preview.cost.gold ? 'text-amber-300' : 'text-rose-400'}>
+                                    {preview.cost.gold.toLocaleString('vi-VN')} Vàng
+                                  </span>
+                                  <span className={(save.starDust ?? 0) >= preview.cost.starDust ? 'text-sky-300' : 'text-rose-400'}>
+                                    {preview.cost.starDust} Bụi Sao
+                                  </span>
+                                  <span className={(save.pity?.forgeRelicShards ?? 0) >= preview.cost.forgeShards ? 'text-emerald-300' : 'text-rose-400'}>
+                                    {preview.cost.forgeShards} Mảnh Lò
+                                  </span>
+                                  <span className={(save.spiritCores ?? 0) >= preview.cost.spiritCores ? 'text-fuchsia-300' : 'text-rose-400'}>
+                                    {preview.cost.spiritCores} Hồn Tinh
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  data-testid="forge-imprint-submit"
+                                  disabled={!preview.eligible || !preview.canAfford || !onInfuseMythicImprint}
+                                  onClick={() => {
+                                    if (!preview.eligible || !preview.canAfford || !onInfuseMythicImprint) return;
+                                    soundEngine.playVictory();
+                                    onInfuseMythicImprint(selectedMythic.uid, selectedImprintAspectId);
+                                  }}
+                                  className="a2-purple-btn px-4 py-2.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  Khắc {targetAspect.name} +{preview.nextImprint?.tier ?? 1}
+                                </button>
+                              </div>
+
+                              {preview.blockedReason && (
+                                <div className="text-[11px] text-rose-300 font-semibold">
+                                  {preview.blockedReason}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                    </div>
+                  </div>
+                );
+              })()
             )}
           </div>
         )}
