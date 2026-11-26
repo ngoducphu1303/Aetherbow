@@ -6,7 +6,8 @@ export type TacticalImpactVfxKind =
   | 'riposte_lance'
   | 'wall_slam_burst'
   | 'boss_phase3_eruption'
-  | 'interrupt_surge';
+  | 'interrupt_surge'
+  | 'imprint_resonance';
 export type PooledSignatureVfxKind = HeroSignatureVfxKind | TacticalImpactVfxKind;
 
 export interface SignatureVfxOptions {
@@ -111,6 +112,25 @@ export function getSignatureDefaultColor(kind: HeroSignatureVfxKind, colorblind:
   }
 }
 
+export function getImprintAspectVfxColor(
+  aspectId: string | null | undefined,
+  colorblind: boolean
+): number {
+  const key = (aspectId ?? '').toLowerCase();
+  if (colorblind) {
+    if (key.includes('solar') || key.includes('sun') || key.includes('flame')) return 0xf59e0b;
+    if (key.includes('lunar') || key.includes('moon') || key.includes('frost')) return 0xe2e8f0;
+    if (key.includes('tempest') || key.includes('storm') || key.includes('volt')) return 0x38bdf8;
+    if (key.includes('aegis') || key.includes('bastion') || key.includes('jade')) return 0x2dd4bf;
+    return 0xfef08a;
+  }
+  if (key.includes('solar') || key.includes('sun') || key.includes('flame')) return 0xf59e0b;
+  if (key.includes('lunar') || key.includes('moon') || key.includes('frost')) return 0x67e8f9;
+  if (key.includes('tempest') || key.includes('storm') || key.includes('volt')) return 0xa78bfa;
+  if (key.includes('aegis') || key.includes('bastion') || key.includes('jade')) return 0x34d399;
+  return 0xfde047;
+}
+
 export function getTacticalImpactDefaultColor(
   kind: TacticalImpactVfxKind,
   colorblind: boolean
@@ -125,6 +145,8 @@ export function getTacticalImpactDefaultColor(
         return 0xfef08a;
       case 'interrupt_surge':
         return 0x2dd4bf;
+      case 'imprint_resonance':
+        return 0xe2e8f0;
     }
   }
   switch (kind) {
@@ -136,6 +158,8 @@ export function getTacticalImpactDefaultColor(
       return 0xef4444;
     case 'interrupt_surge':
       return 0x38bdf8;
+    case 'imprint_resonance':
+      return 0xfde047;
   }
 }
 
@@ -505,9 +529,11 @@ export class HeroAndBossSignatureVfxPool {
         ? 0.85
         : kind === 'interrupt_surge'
           ? 0.62
-          : kind === 'wall_slam_burst'
-            ? 0.56
-            : 0.48;
+          : kind === 'imprint_resonance'
+            ? 0.58
+            : kind === 'wall_slam_burst'
+              ? 0.56
+              : 0.48;
     chosen.originX = params.x;
     chosen.originZ = params.z;
     chosen.targetX = params.targetX ?? params.x;
@@ -521,9 +547,11 @@ export class HeroAndBossSignatureVfxPool {
             ? 7.2
             : kind === 'interrupt_surge'
               ? 5.6
-              : kind === 'wall_slam_burst'
-                ? 4.4
-                : 5.2)
+              : kind === 'imprint_resonance'
+                ? 4.8
+                : kind === 'wall_slam_burst'
+                  ? 4.4
+                  : 5.2)
       )
     );
     chosen.reducedMotion = params.options.reducedMotion;
@@ -538,13 +566,17 @@ export class HeroAndBossSignatureVfxPool {
         ? 0x38bdf8
         : kind === 'interrupt_surge'
           ? 0xfef08a
-          : kind === 'wall_slam_burst'
-            ? 0xfde68a
-            : 0xfbbf24
+          : kind === 'imprint_resonance'
+            ? 0xffffff
+            : kind === 'wall_slam_burst'
+              ? 0xfde68a
+              : 0xfbbf24
     );
     chosen.domeMat.color.setHex(baseColor);
     chosen.shardMat.color.setHex(
-      kind === 'boss_phase3_eruption' || kind === 'interrupt_surge' ? 0xfef08a : baseColor
+      kind === 'boss_phase3_eruption' || kind === 'interrupt_surge' || kind === 'imprint_resonance'
+        ? 0xfef08a
+        : baseColor
     );
     chosen.boltMat.color.setHex(kind === 'riposte_lance' ? 0xfef08a : baseColor);
 
@@ -572,6 +604,9 @@ export class HeroAndBossSignatureVfxPool {
     } else if (kind === 'interrupt_surge') {
       chosen.secondaryRing.rotation.set(0, 0, 0);
       chosen.secondaryRing.position.y = 0.52;
+    } else if (kind === 'imprint_resonance') {
+      chosen.secondaryRing.rotation.set(Math.PI * 0.18, 0, -Math.PI * 0.14);
+      chosen.secondaryRing.position.y = 0.68;
     } else {
       chosen.secondaryRing.rotation.set(0, 0, 0);
       chosen.secondaryRing.position.y = 0.65;
@@ -712,6 +747,12 @@ export class HeroAndBossSignatureVfxPool {
       slot.secondaryRing.position.y = 0.32 + Math.sin(t * Math.PI) * 1.15;
       slot.secondaryRing.rotation.y = -t * Math.PI * 2.4 * spinRate;
       slot.secondaryRingMat.opacity = 0.92 * fade * flashDamp;
+    } else if (slot.kind === 'imprint_resonance') {
+      const resScale = 0.62 + slot.radius * 0.68 * easeOut;
+      slot.secondaryRing.scale.setScalar(resScale);
+      slot.secondaryRing.position.y = 0.55 + Math.sin(t * Math.PI) * 0.92;
+      slot.secondaryRing.rotation.y = t * Math.PI * 2.2 * spinRate;
+      slot.secondaryRingMat.opacity = 0.9 * fade * flashDamp;
     } else if (slot.kind === 'boss_phase3_eruption') {
       const eruptScale = 0.85 + slot.radius * 0.82 * easeOut;
       slot.domeMesh.scale.set(eruptScale * 0.65, 1.15 + easeOut * 1.35, eruptScale * 0.65);

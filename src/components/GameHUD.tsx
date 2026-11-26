@@ -1990,6 +1990,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
+        {!hud.isTrainingMode && hud.activeVowLabels && hud.activeVowLabels.length > 0 && (
+          <div
+            data-testid="hud-active-vows"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 bg-[#1a1106]/92 border border-amber-400/60 text-[10px] font-bold text-amber-100 max-w-full font-mono-nums tabular-nums"
+          >
+            <span className="text-amber-300 font-black">KHẾ ƯỚC</span>
+            <span className="truncate">
+              {hud.activeVowLabels.join(' + ')}
+              {(hud.activeVowGoldBonusPct ?? 0) > 0 ? ` · +${hud.activeVowGoldBonusPct}% Vàng` : ''}
+            </span>
+          </div>
+        )}
+
         {/* Wave 16: 12-Zodiac Boss Entrance Choreography Title Plate (0 backdrop-blur) */}
         {!hud.isTrainingMode && hud.bossIntroOverlay?.active && (
           <div

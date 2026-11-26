@@ -5,9 +5,17 @@ import type {
   PreBattleTacticalBriefing,
   TacticalBottleneckTarget,
 } from '../data/wave16TacticalAndLiveOps';
+import {
+  computeZodiacVowAggregate,
+  sanitizeZodiacVowsForRun,
+  ZODIAC_VOW_CATALOG,
+} from '../engine/wave18TacticalAndAtmosphere';
+import type { ZodiacVowId } from '../types/game';
 
 interface PreBattleBriefingModalProps {
   briefing: PreBattleTacticalBriefing;
+  selectedZodiacVows?: ZodiacVowId[];
+  onToggleZodiacVow?: (vowId: ZodiacVowId) => void;
   onClose: () => void;
   onLaunchBattle: () => void;
   onJumpToUpgrade: (target: TacticalBottleneckTarget) => void;
@@ -15,10 +23,19 @@ interface PreBattleBriefingModalProps {
 
 export const PreBattleBriefingModal: React.FC<PreBattleBriefingModalProps> = ({
   briefing,
+  selectedZodiacVows = [],
+  onToggleZodiacVow,
   onClose,
   onLaunchBattle,
   onJumpToUpgrade,
 }) => {
+  const sanitizedVows = sanitizeZodiacVowsForRun(
+    selectedZodiacVows,
+    briefing.chapterId,
+    true
+  );
+  const vowAggregate = computeZodiacVowAggregate(sanitizedVows, briefing.chapterId, true);
+  const vowsUnlocked = briefing.chapterId >= 2;
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -241,6 +258,74 @@ export const PreBattleBriefingModal: React.FC<PreBattleBriefingModalProps> = ({
               {briefing.crossroadsPreview.detail}
             </p>
           </div>
+        </div>
+
+        {/* Wave 18: Zodiac Vow Difficulty Modifiers (Ch.2-12 interactive, Ch.1 FTUE locked) */}
+        <div
+          data-testid="briefing-zodiac-vows"
+          className="rounded-xl bg-[#111726] border border-amber-500/30 p-3.5 space-y-2.5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+              <span className="text-xs font-black uppercase tracking-wider text-amber-200">
+                Khế Ước Độ Khó Hoàng Đạo
+              </span>
+            </div>
+            {vowsUnlocked ? (
+              <span className="text-[11px] font-mono-nums tabular-nums font-black text-emerald-300">
+                {sanitizedVows.length > 0
+                  ? `+${vowAggregate.goldBonusPct}% Vàng · +${vowAggregate.starDustBonusPct}% Bụi Sao`
+                  : 'Chuẩn (+0% thưởng)'}
+              </span>
+            ) : (
+              <span className="text-[11px] font-semibold text-slate-400">
+                Mở từ Chương 2
+              </span>
+            )}
+          </div>
+
+          {!vowsUnlocked ? (
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Chương 1 giữ nguyên nhịp chuẩn Tân Thủ. Từ Chương 2 trở đi, bạn có thể ký Khế Ước để tăng thử thách và nhân thưởng Vàng cùng Bụi Sao.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {ZODIAC_VOW_CATALOG.map((vow) => {
+                const active = sanitizedVows.includes(vow.id);
+                return (
+                  <button
+                    key={vow.id}
+                    type="button"
+                    data-testid={`zodiac-vow-${vow.id}`}
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (!onToggleZodiacVow) return;
+                      soundEngine.playVowSealChime(
+                        active ? Math.max(1, sanitizedVows.length - 1) : sanitizedVows.length + 1
+                      );
+                      onToggleZodiacVow(vow.id);
+                    }}
+                    className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
+                      active
+                        ? 'bg-amber-500/15 border-amber-300 text-amber-100'
+                        : 'bg-[#0a0f1c] border-slate-800 hover:border-slate-600 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-black truncate">{vow.name}</span>
+                      <span className="text-[10px] font-mono-nums tabular-nums font-black text-emerald-300 shrink-0">
+                        +{vow.goldBonusPct}% Vàng
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                      {vow.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}

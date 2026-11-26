@@ -108,6 +108,17 @@ Bên cạnh 4 đấu trường GLB độc bản của Chương 1–4, toàn bộ
 
 ---
 
+## 2h. Vành Chân Trời Hoàng Đạo 12 Chương, VFX Cộng Hưởng Ấn Tinh, Khế Ước Độ Khó & Hồ Sơ Tiếp Cận 1-Click Đợt 18 (`wave18TacticalAndAtmosphere.ts` + `heroAndBossSignatureVfx.ts`)
+
+- **Vành Chân Trời Hoàng Đạo 12 Chương (`buildZodiacArenaAtmosphereBand`, đồng bộ Ch.1–12, 0 `PointLight` mới)**: Vòng thiên hà ngoại vi đặt tại `y = 0.035` (`depthWrite: false`, `polygonOffset: true`, triệt tiêu Z-fighting) kèm 4 trụ mốc thiên cầu có bóng tiếp xúc đáy đặt ngoài vùng di chuyển, tương phản vật liệu PBR rõ nét giữa đá mờ (`stoneRoughness: 0.86`) và viền kim hoàn bóng (`goldRoughness: 0.24`, biên độ `0.62 >= 0.25`), Lite giảm phân đoạn & lược bỏ chóp để giảm đỉnh nghiêm ngặt cho Intel HD 4000, xoay chậm Zero-GC (`reducedMotion = 0.25×`) và dọn sạch GPU (`disposeZodiacArenaAtmosphereBand`).
+- **VFX Cộng Hưởng Ấn Tinh (`imprint_resonance` trong `HeroAndBossSignatureVfxPool`, 0 `PointLight` mới, trần `<= 3` slot Lite)**: Kích hoạt từ 4 hệ Ấn Tinh Thần Thoại qua bảng màu riêng (`getImprintAspectVfxColor`) hỗ trợ tự động chuyển sang bảng màu Mù Màu tương phản cao, kết hợp biên đạo **Giật Chí Mạng (`applyCriticalStaggerSnap`) & Theo Đà Kết Liễu (`applyFinisherFollowThrough`)** Zero-GC (`reducedMotion = 0.25×`).
+- **Ngôn Ngữ Zero-Pill Khế Ước Hoàng Đạo, Khuếch Đại Kỹ Năng & Tiếp Cận Đợt 18 (`0 backdrop-blur`, `tabular-nums`, `0 animate-pulse`)**:
+  - `briefing-zodiac-vows` (`PreBattleBriefingModal.tsx`) & `hud-active-vows` (`GameHUD.tsx`): Dùng 3 ký hiệu hình học độc lập `◆ Huyết Chiến`, `⚡ Tốc Biến`, `▲ Khổ Hạnh` kèm số liệu `+Vàng% · +Bụi Sao%` thẳng hàng `tabular-nums` (Ch.1 hiển thị khóa FTUE rõ ràng).
+  - `skill-focus-badge` (`SkillDraftModal.tsx`): Nhãn phẳng Zero-Pill `★ Cộng Hưởng` / `◆ Khuếch Đại` giúp nhận diện ngay thẻ ưu tiên Focus Pity khi chọn kỹ năng.
+  - `settings-accessibility-presets` & `settings-asset-readiness-center` (`SettingsModal.tsx`): 4 nút Hồ Sơ Tiếp Cận 1-Click và bảng kiểm định sẵn sàng 12/12 Chương nền đặc `#0d111a`, sắc nét trên 3 cỡ chữ `100% / 115% / 130%`.
+
+---
+
 ## 3. Quy Chuẩn Tài Sản 3D High / Lite (Chuẩn Dell Latitude E5430)
 
 - Mọi nhân vật, quái, Boss và bản đồ mới (Ch.5–12) khi bổ sung tài sản GLB bắt buộc xuất **đủ 2 biến thể** trong `Runtime/`:

@@ -10,6 +10,11 @@ import {
   type RunIntegrityMode,
   type RunIntegrityReportInput,
 } from './data/runIntegrityVerifier';
+import {
+  computeZodiacVowAggregate,
+  sanitizeZodiacVowsForRun,
+} from './engine/wave18TacticalAndAtmosphere';
+import type { ZodiacVowId } from './types/game';
 import { shouldSkipNodeApiEndpoints } from './engine/glbFetchResilience';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -1063,6 +1068,8 @@ export default function App() {
     stageCleared: number;
   } | null>(null);
   const [preBattleBriefingOpen, setPreBattleBriefingOpen] = useState(false);
+  const [selectedZodiacVows, setSelectedZodiacVows] = useState<ZodiacVowId[]>([]);
+  const activeZodiacVowsRef = useRef<ZodiacVowId[]>([]);
   const [liveOpsScheduleOpen, setLiveOpsScheduleOpen] = useState(false);
   const [runSummary, setRunSummary] = useState<{
     chapterId: number;
@@ -2561,6 +2568,11 @@ export default function App() {
             claimedGems: claimedRunGems,
             claimedSeasonXp,
             nightmareTier: activeNightmareTier,
+            zodiacVowGoldMult: computeZodiacVowAggregate(
+              activeZodiacVowsRef.current,
+              isTower ? 2 : summary.chapterId,
+              runIntegrityMode === 'chapter' || runIntegrityMode === 'tower'
+            ).goldMult,
             liveOpsGoldMult:
               preLiveOpsGold > 0
                 ? Math.min(3, Math.max(1, claimedRunGold / preLiveOpsGold))
@@ -3891,9 +3903,21 @@ export default function App() {
       ...prev,
       playtestMetrics: recordPlaytestRunStart(prev.playtestMetrics),
     }));
+    const activeVows = sanitizeZodiacVowsForRun(
+      selectedZodiacVows,
+      selectedChapterId,
+      true
+    );
+    activeZodiacVowsRef.current = activeVows;
     setPhase(GamePhase.PLAYING);
-    engineRef.current?.startChapter(selectedChapterId, playerStats, activeTier);
-  }, [selectedChapterId, save.highestChapterCleared, save.selectedNightmareTier, playerStats]);
+    engineRef.current?.startChapter(selectedChapterId, playerStats, activeTier, 0, activeVows);
+  }, [
+    selectedChapterId,
+    selectedZodiacVows,
+    save.highestChapterCleared,
+    save.selectedNightmareTier,
+    playerStats,
+  ]);
 
   const handleSelectNightmareTier = useCallback((tier: number) => {
     const clamped = Math.max(0, Math.min(5, Math.floor(tier)));
@@ -4041,9 +4065,15 @@ export default function App() {
     transitionTimerRef.current = window.setTimeout(() => {
       setTransitionState(null);
     }, 560);
+    const activeTowerVows = sanitizeZodiacVowsForRun(selectedZodiacVows, 2, true);
+    activeZodiacVowsRef.current = activeTowerVows;
     setPhase(GamePhase.PLAYING);
-    engineRef.current?.startEndlessTower(playerStats, save.highestChapterCleared);
-  }, [guardFeatureUnlock, playerStats, save.highestChapterCleared]);
+    engineRef.current?.startEndlessTower(
+      playerStats,
+      save.highestChapterCleared,
+      activeTowerVows
+    );
+  }, [guardFeatureUnlock, playerStats, save.highestChapterCleared, selectedZodiacVows]);
 
   const handleStartBossRush = useCallback(() => {
     soundEngine.unlock();
@@ -12345,6 +12375,12 @@ export default function App() {
         <Suspense fallback={null}>
           <PreBattleBriefingModal
             briefing={buildPreBattleTacticalBriefing(save, selectedChapterId, playerStats)}
+            selectedZodiacVows={selectedZodiacVows}
+            onToggleZodiacVow={(vowId) => {
+              setSelectedZodiacVows((prev) =>
+                prev.includes(vowId) ? prev.filter((id) => id !== vowId) : [...prev, vowId]
+              );
+            }}
             onClose={() => setPreBattleBriefingOpen(false)}
             onLaunchBattle={() => {
               setPreBattleBriefingOpen(false);
@@ -12409,6 +12445,7 @@ export default function App() {
             const rolled = rollSkillChoices(draftStacks, 3, minR, {
               chapterId: selectedChapterIdRef.current,
               isValkyrie: phase === GamePhase.VALKYRIE_DRAFT,
+              isReroll: true,
             });
             if (rolled.length > 0) setDraftChoices(rolled);
           }}

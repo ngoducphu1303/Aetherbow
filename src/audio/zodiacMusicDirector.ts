@@ -410,4 +410,64 @@ export function resolveChapterEndingCadence(
   };
 }
 
+// ============================================================================
+// WAVE 18: 12-CHAPTER MODAL BOSS PHASE TRANSITION STINGER (PHASE II / III)
+// ============================================================================
 
+export interface BossPhaseTransitionStinger {
+  chapterId: number;
+  zodiacKey: string;
+  musicalScale: string;
+  targetPhase: 2 | 3;
+  lowEndMode: boolean;
+  maxOscillators: number;
+  notes: ChapterEndingCadenceNote[];
+}
+
+/**
+ * Generates a 3-note modal transition bridge derived from the chapter's Zodiac scale
+ * when a Boss shifts into Phase II or Phase III, capping oscillator density on low-end CPUs.
+ */
+export function resolveBossPhaseTransitionStinger(
+  chapterId: number,
+  targetPhase: 2 | 3,
+  lowEndMode = false
+): BossPhaseTransitionStinger {
+  const profile = resolveZodiacChapterMusic(chapterId);
+  const scaleNotes = Array.from(
+    new Set(profile.bossMelody.filter((f) => Number.isFinite(f) && f > 110))
+  ).sort((a, b) => a - b);
+
+  const root = scaleNotes[0] ?? 220;
+  const mid = scaleNotes[Math.min(scaleNotes.length - 1, 1)] ?? Number((root * 1.25).toFixed(2));
+  const peak = scaleNotes[scaleNotes.length - 1] ?? Number((root * 1.5).toFixed(2));
+  const phase3Top = Number((peak * profile.phase3HarmonicRatio).toFixed(2));
+  const leadWave: OscillatorType = lowEndMode
+    ? 'triangle'
+    : targetPhase === 3
+      ? profile.bossWave
+      : 'triangle';
+
+  const notes: ChapterEndingCadenceNote[] =
+    targetPhase === 3
+      ? [
+          { freq: root, delay: 0, dur: 0.18, gain: 0.095, wave: leadWave },
+          { freq: peak, delay: 0.09, dur: 0.2, gain: 0.105, wave: leadWave },
+          { freq: phase3Top, delay: 0.18, dur: 0.36, gain: 0.115, wave: 'triangle' },
+        ]
+      : [
+          { freq: root, delay: 0, dur: 0.17, gain: 0.088, wave: 'triangle' },
+          { freq: mid, delay: 0.085, dur: 0.19, gain: 0.094, wave: leadWave },
+          { freq: peak, delay: 0.17, dur: 0.3, gain: 0.102, wave: 'triangle' },
+        ];
+
+  return {
+    chapterId: profile.chapterId,
+    zodiacKey: profile.zodiacKey,
+    musicalScale: profile.musicalScale,
+    targetPhase,
+    lowEndMode,
+    maxOscillators: lowEndMode ? 1 : 2,
+    notes,
+  };
+}

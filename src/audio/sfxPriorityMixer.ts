@@ -19,9 +19,11 @@ export type SfxEventCategory =
   | 'arena_mechanism'
   | 'wall_slam_impact'
   | 'set_proc'
+  | 'vow_seal_chime'
   | 'player_hurt'
   | 'meteor_impact'
   | 'shockwave'
+  | 'ricochet_ping'
   | 'crit_hit'
   | 'sword_strike'
   | 'enemy_defeated'
@@ -182,6 +184,14 @@ export const SFX_CATEGORY_SPECS: Record<SfxEventCategory, SfxCategorySpec> = {
     pitchSpread: 0.035,
     filterSpread: 0.06,
   },
+  vow_seal_chime: {
+    priority: 84,
+    dedupeMs: 110,
+    durationMs: 300,
+    maxConcurrent: 2,
+    pitchSpread: 0.02,
+    filterSpread: 0.04,
+  },
   player_hurt: {
     priority: 84,
     dedupeMs: 100,
@@ -205,6 +215,14 @@ export const SFX_CATEGORY_SPECS: Record<SfxEventCategory, SfxCategorySpec> = {
     maxConcurrent: 3,
     pitchSpread: 0.05,
     filterSpread: 0.07,
+  },
+  ricochet_ping: {
+    priority: 72,
+    dedupeMs: 42,
+    durationMs: 145,
+    maxConcurrent: 3,
+    pitchSpread: 0.04,
+    filterSpread: 0.06,
   },
   crit_hit: {
     priority: 70,
@@ -510,3 +528,29 @@ export class SfxPriorityMixer {
     };
   }
 }
+
+/**
+ * Wave 18: Pentatonic combo staircase pitch multiplier (1.00..1.24).
+ * Smoothly raises kill/combo resonance feedback without harsh clipping.
+ */
+const COMBO_PITCH_STAIRCASE = [
+  1.0,
+  1.03,
+  1.06,
+  1.09,
+  1.12,
+  1.15,
+  1.18,
+  1.21,
+  1.24,
+] as const;
+
+export function computeComboPitchStep(comboCount: number): number {
+  if (!Number.isFinite(comboCount) || comboCount <= 0) return 1.0;
+  const bucket = Math.min(
+    COMBO_PITCH_STAIRCASE.length - 1,
+    Math.floor(comboCount / 3)
+  );
+  return COMBO_PITCH_STAIRCASE[bucket];
+}
+

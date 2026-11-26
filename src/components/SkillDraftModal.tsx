@@ -21,6 +21,7 @@ import {
   WHEEL_OUTCOMES,
   evaluateActiveSynergies,
   evaluateTieredSkillSynergies,
+  getSkillDraftFocusBadge,
   getSynergyHintsForSkill,
   getSynergyTierUpgradeHint,
 } from '../data/skillsData';
@@ -496,6 +497,7 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                   SKILL_SYNERGIES
                 );
                 const tierUpgradeHint = getSynergyTierUpgradeHint(skill.id, currentStacks);
+                const focusBadge = getSkillDraftFocusBadge(skill.id, currentStacks);
                 const evoPreview = getSkillEvolutionPreview(
                   skill.id,
                   currentStacks,
@@ -602,6 +604,16 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
                           </>
                         )}
                       </div>
+
+                      {focusBadge && (
+                        <div
+                          data-testid="skill-focus-badge"
+                          className="w-full text-[10px] font-black uppercase tracking-wider mb-2 truncate"
+                          style={{ color: focusBadge.accentColor }}
+                        >
+                          ★ {focusBadge.label}
+                        </div>
+                      )}
 
                       {/* Emblem Medallion */}
                       <div

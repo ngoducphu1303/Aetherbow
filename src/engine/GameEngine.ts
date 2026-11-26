@@ -133,8 +133,10 @@ import {
 } from './chapterArenaMechanisms';
 import {
   applyAttackReleaseRecoil,
+  applyCriticalStaggerSnap,
   applyDirectionalHitRecoil,
   applyDodgeBank,
+  applyFinisherFollowThrough,
   applySkillCastPulse,
   applySpawnSettle,
   CombatKinematicPose,
@@ -150,6 +152,7 @@ import {
 } from './combatAnimationKinematics';
 import {
   countScenePointLights,
+  getImprintAspectVfxColor,
   HeroAndBossSignatureVfxPool,
 } from './heroAndBossSignatureVfx';
 import {
@@ -163,10 +166,27 @@ import {
   stepInterruptCounterSurge,
   triggerInterruptCounterSurge,
 } from './wave17CombatAndPractice';
+import {
+  buildZodiacArenaAtmosphereBand,
+  canRegisterProjectileEnemyHit,
+  computeRicochetResonanceMult,
+  computeZodiacVowAggregate,
+  createSquadComboSynergyScratch,
+  disposeZodiacArenaAtmosphereBand,
+  evaluateSquadComboSynergy,
+  sanitizeZodiacVowsForRun,
+  SquadComboSynergyInput,
+  SquadComboSynergyOut,
+  stepZodiacArenaAtmosphereBand,
+  TacticalEnemyRole,
+  ZodiacArenaAtmosphereHandle,
+  ZodiacVowAggregate,
+} from './wave18TacticalAndAtmosphere';
 import { FrameBenchmarkSampler } from './frameBenchmarkSampler';
 import type {
   FrameBenchmarkLiveSnapshot,
   FrameBenchmarkReport,
+  ZodiacVowId,
 } from '../types/game';
 import {
   createGearSetProcRuntime,
@@ -989,6 +1009,9 @@ interface Projectile {
   life: number;
   pierceLeft: number;
   ricochetLeft: number;
+  ricochetBounceCount?: number;
+  lastHitEnemyId?: number;
+  lastHitElapsed?: number;
   wallBounceLeft: number;
   hitEnemyIds: Set<number>;
   blaze: boolean;
@@ -1635,6 +1658,21 @@ export class GameEngine {
   private trainingBossPracticeTitle = '';
   private trainingBossPracticeZodiacTitle = '';
   private trainingBossInterruptCount = 0;
+  // Wave 18: Zodiac Vow Modifiers, Squad Combo AI Scratch, Ricochet Resonance & 12-Chapter Atmosphere Band
+  private zodiacAtmosphereBand: ZodiacArenaAtmosphereHandle | null = null;
+  private activeZodiacVows: ZodiacVowId[] = [];
+  private zodiacVowAggregate: ZodiacVowAggregate = computeZodiacVowAggregate([], 1, false);
+  private readonly squadComboScratch: SquadComboSynergyOut = createSquadComboSynergyScratch();
+  private readonly squadComboInputScratch: SquadComboSynergyInput = {
+    chapterId: 1,
+    role: 'vanguard',
+    aliveVanguardCount: 0,
+    aliveCasterCount: 0,
+    aliveSquadCount: 0,
+    liteActive: false,
+  };
+  private runRicochetHitsCount = 0;
+  private imprintResonanceVfxCd = 0;
   private activeSynergyTiersCache: ReturnType<typeof evaluateTieredSkillSynergies> = [];
   private activeTacticalRoomModifier: TacticalRoomModifierDef | null = null;
   private leylineConduitPos: { x: number; z: number; radius: number } | null = null;
@@ -5449,6 +5487,10 @@ export class GameEngine {
       disposeCelestialPortalArch(this.celestialPortalArch);
       this.celestialPortalArch = null;
     }
+    if (this.zodiacAtmosphereBand) {
+      disposeZodiacArenaAtmosphereBand(this.zodiacAtmosphereBand);
+      this.zodiacAtmosphereBand = null;
+    }
     this.zodiacLandmarkAnimNodes = [];
     this.constellationGroup = null;
     this.chapterWeatherPoints = null;
@@ -6019,6 +6061,16 @@ export class GameEngine {
     this.arenaGroup.add(portalArch.group);
     this.celestialPortalArch = portalArch;
 
+    // 7f. Wave 18: 12-Chapter Atmospheric Horizon Band & Zodiac Rim Accents (0 PointLights, Lite-scaled)
+    const atmoBand = buildZodiacArenaAtmosphereBand(
+      chapter.id,
+      ARENA_HALF_W,
+      ARENA_HALF_D,
+      arenaBudget.liteActive
+    );
+    this.arenaGroup.add(atmoBand.group);
+    this.zodiacAtmosphereBand = atmoBand;
+
     // 8. Volumetric-Feel Zodiac Sanctuary Light Shafts (skipped on Lite/Software GPUs)
     if (!this.isSoftwareGl && !arenaBudget.liteActive) {
       const shaftGeo = new THREE.ConeGeometry(2.8, 17, 14, 1, true);
@@ -6142,7 +6194,8 @@ export class GameEngine {
     chapterId: number,
     stats: ComputedPlayerStats,
     nightmareTier = 0,
-    initialStageIndex = 0
+    initialStageIndex = 0,
+    zodiacVows: ZodiacVowId[] = []
   ): void {
     const ch = CHAPTERS.find((c) => c.id === chapterId) || CHAPTERS[0];
     this.isTowerMode = false;
@@ -6175,6 +6228,11 @@ export class GameEngine {
       this.prefetchCampaignRosterModels(ch.id);
     }
     this.resetRunState(stats);
+    this.activeZodiacVows = sanitizeZodiacVowsForRun(zodiacVows, ch.id, true);
+    this.zodiacVowAggregate = computeZodiacVowAggregate(this.activeZodiacVows, ch.id, true);
+    if (this.activeZodiacVows.length > 0) {
+      soundEngine.playVowSealChime(this.activeZodiacVows.length);
+    }
     if (ch.id === 1) {
       this.prefetchSolarLionBossModel();
       this.prefetchCampaignRosterModels(1);
@@ -6193,6 +6251,9 @@ export class GameEngine {
       const mutLabel = this.nightmareConfig.mutators.map((m) => m.name).join(' + ');
       this.stageBannerText = `${this.nightmareConfig.label.toUpperCase()} · ${mutLabel}`;
       this.stageBannerTimer = 1.55;
+    } else if (this.activeZodiacVows.length > 0) {
+      this.stageBannerText = `KHẾ ƯỚC HOÀNG ĐẠO · ${this.zodiacVowAggregate.labels.join(' + ')} (+${this.zodiacVowAggregate.goldBonusPct}% VÀNG)`;
+      this.stageBannerTimer = 1.75;
     }
     this.phase = GamePhase.SKILL_DRAFT;
     this.keys = {};
@@ -6628,7 +6689,11 @@ export class GameEngine {
     });
   }
 
-  public startEndlessTower(stats: ComputedPlayerStats, highestChapterCleared = 0): void {
+  public startEndlessTower(
+    stats: ComputedPlayerStats,
+    highestChapterCleared = 0,
+    zodiacVows: ZodiacVowId[] = []
+  ): void {
     this.isTowerMode = true;
     this.towerFloor = 1;
     this.towerHighestCleared = highestChapterCleared;
@@ -6649,6 +6714,11 @@ export class GameEngine {
     this.baseStats = stats;
 
     this.resetRunState(stats);
+    this.activeZodiacVows = sanitizeZodiacVowsForRun(zodiacVows, 2, true);
+    this.zodiacVowAggregate = computeZodiacVowAggregate(this.activeZodiacVows, 2, true);
+    if (this.activeZodiacVows.length > 0) {
+      soundEngine.playVowSealChime(this.activeZodiacVows.length);
+    }
     this.rebuildCompanions();
     this.loadTowerFloor(1);
     this.phase = GamePhase.SKILL_DRAFT;
@@ -8881,6 +8951,10 @@ export class GameEngine {
     this.comboCount = 0;
     this.comboTimer = 0;
     this.maxRunCombo = 0;
+    this.runRicochetHitsCount = 0;
+    this.imprintResonanceVfxCd = 0;
+    this.activeZodiacVows = [];
+    this.zodiacVowAggregate = computeZodiacVowAggregate([], 1, false);
     this.lastPlayerHitAt = 0;
     this.ultCharge = 65;
     this.coopSynergyClock = createCoopSynergyClock();
@@ -10616,8 +10690,10 @@ export class GameEngine {
     this.waveIndex = waveIdx;
 
     const towerScale = getEndlessTowerScaling(this.towerFloor, this.towerHighestCleared);
-    const hpMult = towerScale.enemyHpScale * this.liveOpsEnemyHpMult;
-    const dmgMult = towerScale.enemyDmgScale * this.liveOpsEnemyDmgMult;
+    const vowHpMult = this.zodiacVowAggregate?.enemyHpMult ?? 1;
+    const vowDmgMult = this.zodiacVowAggregate?.enemyDmgMult ?? 1;
+    const hpMult = towerScale.enemyHpScale * this.liveOpsEnemyHpMult * vowHpMult;
+    const dmgMult = towerScale.enemyDmgScale * this.liveOpsEnemyDmgMult * vowDmgMult;
     const bossTitle = `Thủ Lĩnh Tầng ${this.towerFloor} · ${this.currentChapter.bossName}`;
     this.spawnEnemyGroups(groups, hpMult, dmgMult, bossTitle);
   }
@@ -10633,18 +10709,22 @@ export class GameEngine {
     const nmDmgMult = this.nightmareTier > 0 ? this.nightmareConfig.enemyDmgMult : 1;
     const crossroadsHpMult = this.activeCrossroadsOption ? this.activeCrossroadsOption.enemyHpMult : 1;
     const crossroadsDmgMult = this.activeCrossroadsOption ? this.activeCrossroadsOption.enemyDmgMult : 1;
+    const vowHpMult = this.zodiacVowAggregate?.enemyHpMult ?? 1;
+    const vowDmgMult = this.zodiacVowAggregate?.enemyDmgMult ?? 1;
     const hpMult =
       this.currentChapter.hpScale *
       stageMult *
       nmHpMult *
       this.liveOpsEnemyHpMult *
-      crossroadsHpMult;
+      crossroadsHpMult *
+      vowHpMult;
     const dmgMult =
       this.currentChapter.dmgScale *
       (1 + this.stageIndex * 0.085) *
       nmDmgMult *
       this.liveOpsEnemyDmgMult *
-      crossroadsDmgMult;
+      crossroadsDmgMult *
+      vowDmgMult;
     this.spawnEnemyGroups(wave.enemies, hpMult, dmgMult, stage.bossTitle);
   }
 
@@ -14662,6 +14742,16 @@ export class GameEngine {
         this.reducedMotionEnabled
       );
     }
+    if (this.zodiacAtmosphereBand) {
+      stepZodiacArenaAtmosphereBand(
+        this.zodiacAtmosphereBand,
+        simDt,
+        this.reducedMotionEnabled
+      );
+    }
+    if (this.imprintResonanceVfxCd > 0) {
+      this.imprintResonanceVfxCd = Math.max(0, this.imprintResonanceVfxCd - simDt);
+    }
     if (this.wave16BossIntroOverlayTimer > 0) {
       this.wave16BossIntroOverlayTimer = Math.max(0, this.wave16BossIntroOverlayTimer - dt);
       if (this.wave16BossIntroOverlayTimer <= 0 || this.portalOpen) {
@@ -17776,6 +17866,30 @@ export class GameEngine {
       if (e.shockTimer && e.shockTimer > 0) e.shockTimer = Math.max(0, e.shockTimer - dt);
       if (e.exposedTimer && e.exposedTimer > 0) e.exposedTimer = Math.max(0, e.exposedTimer - dt);
       if (e.interruptCdTimer && e.interruptCdTimer > 0) e.interruptCdTimer = Math.max(0, e.interruptCdTimer - dt);
+
+      // Wave 18: Zero-GC Tactical Squad Combo AI + Zodiac Vow attack cadence acceleration (strictly neutral in Ch.1)
+      if (!e.isTrainingDummy && !e.isVaultPillar) {
+        const vowCadence = this.zodiacVowAggregate?.enemyCadenceMult ?? 1;
+        let combinedCadenceMult = vowCadence;
+        if (this.currentChapter.id >= 2 && this.squadComboScratch) {
+          const syn = this.evaluateEnemySquadSynergy(resolveEnemyTacticalArchetype(e.kind));
+          combinedCadenceMult *= syn.casterRallyCadenceMult;
+          if (syn.flankerSyncSpeedMult > 1.0 && !e.isBoss) {
+            const extraStep = dt * (syn.flankerSyncSpeedMult - 1.0) * 0.45;
+            const pdx = this.px - e.x;
+            const pdz = this.pz - e.z;
+            const pdist = Math.hypot(pdx, pdz);
+            if (pdist > 2.2) {
+              e.x += (pdx / pdist) * e.speed * extraStep * slowMult;
+              e.z += (pdz / pdist) * e.speed * extraStep * slowMult;
+            }
+          }
+        }
+        if (combinedCadenceMult < 0.999 && e.attackTimer > 0) {
+          const extraCadenceDt = dt * (1 / Math.max(0.65, combinedCadenceMult) - 1);
+          e.attackTimer = Math.max(0, e.attackTimer - extraCadenceDt);
+        }
+      }
 
       // Phase 2: 3D Boss Punish Window emerald halo tick
       if (e.isBoss && e.punishWindowTimer && e.punishWindowTimer > 0) {
@@ -21113,7 +21227,13 @@ export class GameEngine {
       for (let hIdx = 0; hIdx < hitCandidates.length; hIdx++) {
         const e = hitCandidates[hIdx];
         if (!e || e.dead || e.spawnTimer > 0 || p.hitEnemyIds.has(e.id)) continue;
+        const lastSameEnemyHitAt = p.lastHitEnemyId === e.id ? p.lastHitElapsed : undefined;
+        if (!canRegisterProjectileEnemyHit(lastSameEnemyHitAt, this.elapsed)) {
+          continue;
+        }
         p.hitEnemyIds.add(e.id);
+        p.lastHitEnemyId = e.id;
+        p.lastHitElapsed = this.elapsed;
 
         const critStacks = this.activeSkills.crit_mastery ?? 0;
         let critChance = Math.min(
@@ -21142,7 +21262,8 @@ export class GameEngine {
         if (e.chillTimer > 0 && frostShatterScale > 0) {
           critMult += 0.25 * frostShatterScale;
         }
-        const dmg = p.damage * (isCrit ? critMult : 1);
+        const ricochetResonanceMult = computeRicochetResonanceMult(p.ricochetBounceCount ?? 0);
+        const dmg = p.damage * (isCrit ? critMult : 1) * ricochetResonanceMult;
 
         if (
           (p.isOvercharge || p.isCounterShot) &&
@@ -21171,6 +21292,8 @@ export class GameEngine {
           p.poison,
           p.isCounterShot
             ? 'PHẢN TIỄN!'
+            : (p.ricochetBounceCount ?? 0) > 0
+            ? `CỘNG HƯỞNG ×${ricochetResonanceMult.toFixed(2)}`
             : p.isOvercharge
             ? 'TỤ LỰC!'
             : p.isComboFinisher
@@ -21237,10 +21360,16 @@ export class GameEngine {
           const nextTarget = this.findNearestEnemy(e.x, e.z, p.hitEnemyIds, 8.5);
           if (nextTarget) {
             p.ricochetLeft--;
+            p.ricochetBounceCount = (p.ricochetBounceCount ?? 0) + 1;
+            this.runRicochetHitsCount += 1;
+            soundEngine.playRicochetPing(
+              p.ricochetBounceCount,
+              computeSpatialPan(e.x, ARENA_HALF_W)
+            );
             const speed = Math.hypot(p.vx, p.vz);
             const rx = nextTarget.x - p.x;
             const rz = nextTarget.z - p.z;
-            const rd = Math.hypot(rx, rz);
+            const rd = Math.hypot(rx, rz) || 1;
             p.vx = (rx / rd) * speed;
             p.vz = (rz / rd) * speed;
             p.mesh.rotation.y = Math.atan2(p.vx, p.vz);
@@ -21253,6 +21382,9 @@ export class GameEngine {
           p.damage *= piercingVolleyScale >= 1.35 ? 1.06 : piercingVolleyScale > 0 ? 1.0 : 0.85;
         } else {
           p.active = false;
+          p.ricochetBounceCount = 0;
+          p.lastHitEnemyId = undefined;
+          p.lastHitElapsed = undefined;
           p.mesh.visible = false;
           break;
         }
@@ -21554,6 +21686,41 @@ export class GameEngine {
 
     if (this.interruptCounterSurgeState && e.isBoss && !e.isTrainingDummy) {
       mult *= getInterruptSurgeBossDamageMult(this.interruptCounterSurgeState, true);
+    }
+
+    // Wave 18: Tactical Squad Combo Vanguard Cover DR (Ch.2+ only, Zero-GC) + Crit Stagger Snap + Imprint Resonance VFX
+    if (!e.isBoss && !e.isTrainingDummy && this.currentChapter.id >= 2 && this.squadComboScratch) {
+      const coverSyn = this.evaluateEnemySquadSynergy(resolveEnemyTacticalArchetype(e.kind));
+      if (coverSyn.vanguardCoverDamageReduction > 0) {
+        mult *= 1 - coverSyn.vanguardCoverDamageReduction;
+      }
+    }
+    if (isCrit && (e.isBoss || e.isElite) && !e.isTrainingDummy) {
+      if (this.heroKinematicPose) {
+        applyCriticalStaggerSnap(this.heroKinematicPose, e.isBoss ? 1.0 : 0.72, this.reducedMotionEnabled);
+      }
+      if (
+        this.imprintResonanceVfxCd <= 0 &&
+        ((this.baseStats.mythicWeaponTier ?? 0) > 0 || Boolean(this.baseStats.equippedWeaponAuraId))
+      ) {
+        this.imprintResonanceVfxCd = 1.6;
+        this.signatureVfxPool?.spawnTacticalImpactVfx({
+          kind: 'imprint_resonance',
+          x: e.x,
+          z: e.z,
+          radius: e.isBoss ? 5.2 : 4.2,
+          accentHex: getImprintAspectVfxColor(
+            this.baseStats.equippedWeaponAuraId ?? 'solar',
+            this.colorblindTelegraphs
+          ),
+          options: {
+            liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+            reducedMotion: this.reducedMotionEnabled,
+            reduceScreenFlash: this.reduceScreenFlashEnabled,
+            colorblindTelegraphs: this.colorblindTelegraphs,
+          },
+        });
+      }
     }
 
     if (this.isCoopRaidMode && this.coopRoleSynergy && e.isBoss) {
@@ -22552,7 +22719,14 @@ export class GameEngine {
       this.markedEnemyIds.delete(e.id);
       releaseSquadAttackToken(this.enemySquadDirectorState, e.id);
       const killPan = computeSpatialPan(e.x, ARENA_HALF_W);
-      soundEngine.playEnemyDefeated(e.isBoss || e.isElite, killPan);
+      soundEngine.playEnemyDefeated(e.isBoss || e.isElite, killPan, this.comboCount);
+      if ((e.isBoss || e.isElite) && this.heroKinematicPose) {
+        applyFinisherFollowThrough(
+          this.heroKinematicPose,
+          e.isBoss ? 1.15 : 0.75,
+          this.reducedMotionEnabled
+        );
+      }
 
       const burstColor = e.isBoss ? 0xfbbf24 : e.isElite ? 0xc084fc : 0x38bdf8;
       this.spawnParticles(e.x, 1.0, e.z, burstColor, e.isBoss ? 44 : e.isElite ? 28 : 20);
@@ -23494,8 +23668,10 @@ export class GameEngine {
         { gold: this.runGold, starDust: this.runBossPartStarDust },
         this.activeCrossroadsOption?.id
       );
-      this.runGold = finalRewards.gold;
-      this.runBossPartStarDust = finalRewards.starDust;
+      const vowGoldMult = this.zodiacVowAggregate?.goldMult ?? 1;
+      const vowStarDustMult = this.zodiacVowAggregate?.starDustMult ?? 1;
+      this.runGold = Math.round(finalRewards.gold * vowGoldMult);
+      this.runBossPartStarDust = Math.round(finalRewards.starDust * vowStarDustMult);
       this.syncHudImmediate();
       this.callbacks.onRunEnded(true, {
         chapterId: this.currentChapter.id,
@@ -23934,8 +24110,12 @@ export class GameEngine {
           this.runGems += o.value;
           soundEngine.playPickup(true);
         } else if (o.kind === 'heal') {
-          this.hp = Math.min(this.maxHp, this.hp + o.value);
-          this.emitFloatingNumber(this.px, 1.9, this.pz, o.value, false, true);
+          const effectiveHeal = Math.max(
+            1,
+            Math.round(o.value * (this.zodiacVowAggregate?.healEffectivenessMult ?? 1))
+          );
+          this.hp = Math.min(this.maxHp, this.hp + effectiveHeal);
+          this.emitFloatingNumber(this.px, 1.9, this.pz, effectiveHeal, false, true);
           soundEngine.playPickup(true);
         } else if (o.kind === 'xp') {
           const xpBonus = this.hasCadencePassive ? 1.12 : 1.0;
@@ -25764,6 +25944,9 @@ export class GameEngine {
       comboTimerRatio: this.comboCount > 0 ? Math.max(0, this.comboTimer / this.comboWindow) : 0,
       comboTierLabel: getComboTierMeta(this.comboCount).tierLabel,
       comboDmgBonusPct: getComboTierMeta(this.comboCount).dmgBonusPct,
+      activeVowLabels: this.zodiacVowAggregate?.labels ?? [],
+      activeVowGoldBonusPct: this.zodiacVowAggregate?.goldBonusPct ?? 0,
+      ricochetHitsCount: this.runRicochetHitsCount,
       radarData: {
         playerX: Math.max(-1, Math.min(1, this.px / ARENA_HALF_W)),
         playerZ: Math.max(-1, Math.min(1, this.pz / ARENA_HALF_D)),
@@ -26244,6 +26427,10 @@ export class GameEngine {
       disposeZodiacStorytellingProps(this.zodiacStorytellingProps);
       this.zodiacStorytellingProps = null;
     }
+    if (this.zodiacAtmosphereBand) {
+      disposeZodiacArenaAtmosphereBand(this.zodiacAtmosphereBand);
+      this.zodiacAtmosphereBand = null;
+    }
     if (this.celestialPortalArch) {
       disposeCelestialPortalArch(this.celestialPortalArch);
       this.celestialPortalArch = null;
@@ -26266,5 +26453,31 @@ export class GameEngine {
     }
     void _mat4;
     void _v3;
+  }
+
+  private evaluateEnemySquadSynergy(role: TacticalEnemyRole): SquadComboSynergyOut {
+    let aliveVanguardCount = 0;
+    let aliveCasterCount = 0;
+    let aliveSquadCount = 0;
+    for (let i = 0; i < this.enemies.length; i++) {
+      const en = this.enemies[i];
+      if (!en || en.dead || en.isTrainingDummy || en.isVaultPillar) continue;
+      aliveSquadCount++;
+      const arch = resolveEnemyTacticalArchetype(en.kind);
+      if (arch === 'vanguard') {
+        aliveVanguardCount++;
+      } else if (arch === 'caster') {
+        aliveCasterCount++;
+      }
+    }
+    this.squadComboInputScratch.chapterId = this.currentChapter.id;
+    this.squadComboInputScratch.role = role;
+    this.squadComboInputScratch.aliveVanguardCount = aliveVanguardCount;
+    this.squadComboInputScratch.aliveCasterCount = aliveCasterCount;
+    this.squadComboInputScratch.aliveSquadCount = aliveSquadCount;
+    this.squadComboInputScratch.liteActive = Boolean(
+      this.lowEndGpu || this.isSoftwareGl || this.systemBudget.liteActive
+    );
+    return evaluateSquadComboSynergy(this.squadComboInputScratch, this.squadComboScratch);
   }
 }

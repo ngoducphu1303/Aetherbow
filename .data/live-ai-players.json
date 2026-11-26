@@ -7,25 +7,25 @@
       "displayName": "Tề Thiên",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 7732,
+      "powerRating": 7886,
       "highestChapterCleared": 10,
-      "worldBossBestDamage": 238844,
+      "worldBossBestDamage": 243447,
       "bestTowerFloor": 48,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 27500,
       "guildRole": "Bang Chủ",
-      "guildContribution": 23149,
+      "guildContribution": 25073,
       "guildBossDamage": 280000,
       "titleBadge": "Chí Tôn Tinh Giới",
       "frameId": "world_dragon",
       "personality": "assassin",
-      "status": "ready_duel",
-      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
+      "status": "campaign",
+      "statusDetail": "Đang vượt Chương cao · Cường hóa trang bị",
       "duelRating": 1620,
       "duelWins": 8,
       "duelLosses": 4,
       "winStreak": 0,
-      "lastActiveAt": 1795681243285,
+      "lastActiveAt": 1795698918185,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Thần Giáp Chí Tôn +20",
@@ -44,14 +44,14 @@
       "displayName": "Sát Tinh",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 6898,
+      "powerRating": 7042,
       "highestChapterCleared": 9,
-      "worldBossBestDamage": 218275,
+      "worldBossBestDamage": 243363,
       "bestTowerFloor": 45,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 28900,
       "guildRole": "Phó Bang",
-      "guildContribution": 25409,
+      "guildContribution": 29418,
       "guildBossDamage": 280000,
       "titleBadge": "Ảnh Sát Hoàng Đạo",
       "frameId": "royal_vip",
@@ -62,7 +62,7 @@
       "duelWins": 9,
       "duelLosses": 5,
       "winStreak": 1,
-      "lastActiveAt": 1795681324352,
+      "lastActiveAt": 1795698927186,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Thần Giáp Chí Tôn +20",
@@ -81,7 +81,7 @@
       "displayName": "Cửu Thiên",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 7316,
+      "powerRating": 7842,
       "highestChapterCleared": 9,
       "worldBossBestDamage": 186227,
       "bestTowerFloor": 43,
@@ -93,13 +93,13 @@
       "titleBadge": "Lôi Thần Chinh Phạt",
       "frameId": "seraph_crown",
       "personality": "aggressive",
-      "status": "campaign",
-      "statusDetail": "Đang leo Tháp Vô Tận · Tầng 44",
+      "status": "weekly_practice",
+      "statusDetail": "Đang tập né đòn Boss Tuần",
       "duelRating": 1540,
       "duelWins": 10,
       "duelLosses": 6,
       "winStreak": 2,
-      "lastActiveAt": 1795681261289,
+      "lastActiveAt": 1795698936188,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Thần Giáp Chí Tôn +20",
@@ -118,25 +118,25 @@
       "displayName": "Hạo Thiên",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 7206,
+      "powerRating": 7382,
       "highestChapterCleared": 8,
-      "worldBossBestDamage": 205864,
+      "worldBossBestDamage": 206900,
       "bestTowerFloor": 41,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 27650,
       "guildRole": "Tinh Anh",
-      "guildContribution": 20229,
+      "guildContribution": 22183,
       "guildBossDamage": 280000,
       "titleBadge": "Hạo Nhật Thần Xạ",
       "frameId": "royal_vip",
       "personality": "aggressive",
-      "status": "ready_duel",
-      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
+      "status": "weekly_practice",
+      "statusDetail": "Đang tập né đòn Boss Tuần",
       "duelRating": 1510,
       "duelWins": 11,
       "duelLosses": 7,
       "winStreak": 3,
-      "lastActiveAt": 1795681270291,
+      "lastActiveAt": 1795698945191,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Thần Giáp Chí Tôn +20",
@@ -155,25 +155,25 @@
       "displayName": "Kiếm Thánh",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 6140,
+      "powerRating": 6266,
       "highestChapterCleared": 8,
-      "worldBossBestDamage": 189817,
+      "worldBossBestDamage": 210603,
       "bestTowerFloor": 39,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 29650,
       "guildRole": "Tinh Anh",
-      "guildContribution": 23886,
+      "guildContribution": 28154,
       "guildBossDamage": 280000,
       "titleBadge": "Vô Song Kiếm Ảnh",
       "frameId": "crystal_guardian",
       "personality": "assassin",
       "status": "campaign",
-      "statusDetail": "Đang vượt Chương cao · Cường hóa trang bị",
+      "statusDetail": "Đang săn Boss Thế Giới Liên Server",
       "duelRating": 1495,
       "duelWins": 12,
       "duelLosses": 8,
       "winStreak": 0,
-      "lastActiveAt": 1795681324050,
+      "lastActiveAt": 1795698954253,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Thần Giáp Chí Tôn +20",
@@ -192,7 +192,7 @@
       "displayName": "Lôi Đế",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 6726,
+      "powerRating": 7270,
       "highestChapterCleared": 7,
       "worldBossBestDamage": 167027,
       "bestTowerFloor": 37,
@@ -204,13 +204,13 @@
       "titleBadge": "Lôi Đình Hộ Pháp",
       "frameId": "seraph_crown",
       "personality": "aggressive",
-      "status": "campaign",
-      "statusDetail": "Đang leo Tháp Vô Tận · Tầng 38",
+      "status": "ready_duel",
+      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
       "duelRating": 1475,
       "duelWins": 13,
       "duelLosses": 9,
       "winStreak": 1,
-      "lastActiveAt": 1795681288295,
+      "lastActiveAt": 1795698886677,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -229,25 +229,25 @@
       "displayName": "Linh Vũ",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 6780,
+      "powerRating": 6978,
       "highestChapterCleared": 7,
-      "worldBossBestDamage": 203701,
+      "worldBossBestDamage": 206639,
       "bestTowerFloor": 35,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 30750,
       "guildRole": "Tinh Anh",
-      "guildContribution": 17817,
-      "guildBossDamage": 253931,
+      "guildContribution": 19747,
+      "guildBossDamage": 280000,
       "titleBadge": "Thần Xạ Ngân Hà",
       "frameId": "astral_crescent",
       "personality": "tactical",
-      "status": "campaign",
-      "statusDetail": "Đang leo Tháp Vô Tận · Tầng 36",
+      "status": "ready_duel",
+      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
       "duelRating": 1420,
       "duelWins": 14,
       "duelLosses": 10,
       "winStreak": 2,
-      "lastActiveAt": 1795681323749,
+      "lastActiveAt": 1795698895679,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -266,25 +266,25 @@
       "displayName": "Phong Vân",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 5932,
+      "powerRating": 6040,
       "highestChapterCleared": 6,
-      "worldBossBestDamage": 179132,
+      "worldBossBestDamage": 196016,
       "bestTowerFloor": 33,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 29800,
       "guildRole": "Tinh Vệ",
-      "guildContribution": 21955,
+      "guildContribution": 26470,
       "guildBossDamage": 280000,
       "titleBadge": "Liệt Phong Săn Boss",
       "frameId": "crystal_guardian",
       "personality": "assassin",
       "status": "campaign",
-      "statusDetail": "Đang công phá Boss Bang Hội",
+      "statusDetail": "Đang leo Tháp Vô Tận · Tầng 34",
       "duelRating": 1460,
       "duelWins": 15,
       "duelLosses": 11,
       "winStreak": 3,
-      "lastActiveAt": 1795681306298,
+      "lastActiveAt": 1795698904680,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -303,7 +303,7 @@
       "displayName": "Hỏa Phượng",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 6230,
+      "powerRating": 6756,
       "highestChapterCleared": 6,
       "worldBossBestDamage": 145343,
       "bestTowerFloor": 31,
@@ -315,13 +315,13 @@
       "titleBadge": "Phượng Hoàng Cháy Rực",
       "frameId": "royal_vip",
       "personality": "aggressive",
-      "status": "campaign",
-      "statusDetail": "Đang leo Tháp Vô Tận · Tầng 32",
+      "status": "ready_duel",
+      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
       "duelRating": 1440,
       "duelWins": 16,
       "duelLosses": 12,
       "winStreak": 0,
-      "lastActiveAt": 1795681315301,
+      "lastActiveAt": 1795698913684,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -340,25 +340,25 @@
       "displayName": "Hàn Băng",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 6298,
+      "powerRating": 6474,
       "highestChapterCleared": 6,
-      "worldBossBestDamage": 189984,
+      "worldBossBestDamage": 191518,
       "bestTowerFloor": 30,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 33100,
       "guildRole": "Tinh Vệ",
-      "guildContribution": 16691,
-      "guildBossDamage": 244223,
+      "guildContribution": 18585,
+      "guildBossDamage": 268705,
       "titleBadge": "Hàn Sương Thánh Nữ",
       "frameId": "astral_crescent",
       "personality": "tactical",
-      "status": "campaign",
-      "statusDetail": "Đang săn Boss Thế Giới Liên Server",
+      "status": "ready_duel",
+      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
       "duelRating": 1410,
       "duelWins": 17,
       "duelLosses": 4,
       "winStreak": 1,
-      "lastActiveAt": 1795681324151,
+      "lastActiveAt": 1795698922685,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -377,25 +377,25 @@
       "displayName": "Thanh Vân",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 5922,
+      "powerRating": 6048,
       "highestChapterCleared": 5,
-      "worldBossBestDamage": 169698,
+      "worldBossBestDamage": 192916,
       "bestTowerFloor": 28,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 35250,
       "guildRole": "Tinh Vệ",
-      "guildContribution": 19314,
-      "guildBossDamage": 270842,
+      "guildContribution": 23789,
+      "guildBossDamage": 280000,
       "titleBadge": "Thanh Vân Vệ Sĩ",
       "frameId": "default_gold",
       "personality": "tactical",
-      "status": "ready_duel",
-      "statusDetail": "Sẵn sàng nhận thách đấu 1v1",
+      "status": "campaign",
+      "statusDetail": "Đang leo Tháp Vô Tận · Tầng 29",
       "duelRating": 1390,
       "duelWins": 18,
       "duelLosses": 5,
       "winStreak": 2,
-      "lastActiveAt": 1795681256788,
+      "lastActiveAt": 1795698931687,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -414,7 +414,7 @@
       "displayName": "Kiệt Tác",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 5742,
+      "powerRating": 6228,
       "highestChapterCleared": 5,
       "worldBossBestDamage": 113166,
       "bestTowerFloor": 26,
@@ -426,13 +426,13 @@
       "titleBadge": "Huyết Nguyệt Kỵ Sĩ",
       "frameId": "crystal_guardian",
       "personality": "aggressive",
-      "status": "ready_duel",
-      "statusDetail": "Sẵn sàng nhận thách đấu 1v1",
+      "status": "campaign",
+      "statusDetail": "Đang leo Tháp Vô Tận · Tầng 27",
       "duelRating": 1340,
       "duelWins": 19,
       "duelLosses": 6,
       "winStreak": 3,
-      "lastActiveAt": 1795681323849,
+      "lastActiveAt": 1795698940689,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -451,25 +451,25 @@
       "displayName": "Bạch Tuyết",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 6028,
+      "powerRating": 6182,
       "highestChapterCleared": 5,
-      "worldBossBestDamage": 175661,
+      "worldBossBestDamage": 181758,
       "bestTowerFloor": 25,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 35350,
       "guildRole": "Thành Viên",
-      "guildContribution": 16367,
-      "guildBossDamage": 234111,
+      "guildContribution": 18071,
+      "guildBossDamage": 258353,
       "titleBadge": "Băng Tuyết Pháp Sư",
       "frameId": "astral_crescent",
       "personality": "tactical",
-      "status": "campaign",
-      "statusDetail": "Đang công phá Boss Bang Hội",
+      "status": "ready_duel",
+      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
       "duelRating": 1365,
       "duelWins": 20,
       "duelLosses": 7,
       "winStreak": 0,
-      "lastActiveAt": 1795681274792,
+      "lastActiveAt": 1795698949753,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -488,25 +488,25 @@
       "displayName": "Dương Quang",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 5632,
+      "powerRating": 5776,
       "highestChapterCleared": 4,
-      "worldBossBestDamage": 150750,
+      "worldBossBestDamage": 173792,
       "bestTowerFloor": 22,
       "weeklyPracticeBest": 16114,
       "weeklyPracticeClearTimeMs": 39550,
       "guildRole": "Thành Viên",
-      "guildContribution": 18109,
-      "guildBossDamage": 255867,
+      "guildContribution": 21974,
+      "guildBossDamage": 280000,
       "titleBadge": "Nhật Luân Cung Thủ",
       "frameId": "default_gold",
       "personality": "aggressive",
-      "status": "ready_duel",
-      "statusDetail": "Sẵn sàng nhận thách đấu 1v1",
+      "status": "campaign",
+      "statusDetail": "Đang công phá Boss Bang Hội",
       "duelRating": 1325,
       "duelWins": 21,
       "duelLosses": 8,
       "winStreak": 1,
-      "lastActiveAt": 1795681283794,
+      "lastActiveAt": 1795698873174,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -525,7 +525,7 @@
       "displayName": "Tinh Hà",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 5412,
+      "powerRating": 5862,
       "highestChapterCleared": 4,
       "worldBossBestDamage": 90831,
       "bestTowerFloor": 20,
@@ -537,13 +537,13 @@
       "titleBadge": "Tinh Hà Chiêm Tinh",
       "frameId": "astral_crescent",
       "personality": "tactical",
-      "status": "campaign",
-      "statusDetail": "Đang công phá Boss Bang Hội",
+      "status": "weekly_practice",
+      "statusDetail": "Đang tập né đòn Boss Tuần",
       "duelRating": 1310,
       "duelWins": 8,
       "duelLosses": 9,
       "winStreak": 2,
-      "lastActiveAt": 1795681324251,
+      "lastActiveAt": 1795698882176,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -562,25 +562,25 @@
       "displayName": "Nguyệt Ảnh",
       "tag": "[AI Live]",
       "heroId": "aurelia",
-      "powerRating": 5456,
+      "powerRating": 5588,
       "highestChapterCleared": 3,
-      "worldBossBestDamage": 139856,
+      "worldBossBestDamage": 146859,
       "bestTowerFloor": 18,
       "weeklyPracticeBest": 16850,
       "weeklyPracticeClearTimeMs": 40800,
       "guildRole": "Thành Viên",
-      "guildContribution": 15885,
-      "guildBossDamage": 231265,
+      "guildContribution": 17679,
+      "guildBossDamage": 256577,
       "titleBadge": "Nguyệt Quang Xạ Thủ",
       "frameId": "default_gold",
       "personality": "tactical",
       "status": "campaign",
-      "statusDetail": "Đang công phá Boss Bang Hội",
+      "statusDetail": "Đang vượt Chương cao · Cường hóa trang bị",
       "duelRating": 1280,
       "duelWins": 9,
       "duelLosses": 10,
       "winStreak": 3,
-      "lastActiveAt": 1795681301797,
+      "lastActiveAt": 1795698891178,
       "buildSnapshot": {
         "weaponName": "Cung Ngân Hà Tinh Tú +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -599,25 +599,25 @@
       "displayName": "Thiên Duyên",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 4910,
+      "powerRating": 5072,
       "highestChapterCleared": 3,
-      "worldBossBestDamage": 130725,
+      "worldBossBestDamage": 155949,
       "bestTowerFloor": 15,
       "weeklyPracticeBest": 15948,
       "weeklyPracticeClearTimeMs": 46100,
       "guildRole": "Thành Viên",
-      "guildContribution": 17670,
-      "guildBossDamage": 244570,
+      "guildContribution": 21339,
+      "guildBossDamage": 280000,
       "titleBadge": "Thiên Duyên Hỏa Vũ",
       "frameId": "default_gold",
       "personality": "tactical",
-      "status": "ready_duel",
-      "statusDetail": "Đang tìm đối thủ Arena 1v1 trực tiếp",
+      "status": "campaign",
+      "statusDetail": "Đang công phá Boss Bang Hội",
       "duelRating": 1245,
       "duelWins": 10,
       "duelLosses": 11,
       "winStreak": 0,
-      "lastActiveAt": 1795681323950,
+      "lastActiveAt": 1795698900179,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -636,7 +636,7 @@
       "displayName": "Minh Triết",
       "tag": "[AI Live]",
       "heroId": "bellona",
-      "powerRating": 5066,
+      "powerRating": 5516,
       "highestChapterCleared": 2,
       "worldBossBestDamage": 77284,
       "bestTowerFloor": 13,
@@ -654,7 +654,7 @@
       "duelWins": 11,
       "duelLosses": 12,
       "winStreak": 1,
-      "lastActiveAt": 1795681319802,
+      "lastActiveAt": 1795698909182,
       "buildSnapshot": {
         "weaponName": "Cung Nhịp Điệu +20",
         "armorName": "Chiến Giáp Hoàng Đạo +16",
@@ -671,1034 +671,1034 @@
   ],
   "activities": [
     {
-      "id": "evt_guild_1795681324352_2a385b",
-      "timestamp": 1795681324352,
-      "kind": "guild",
-      "actorName": "Sát Tinh [AI Live]",
-      "summary": "công phá Boss Bang Live gây +757 ST (+69 Cống Hiến).",
-      "accent": "amber"
-    },
-    {
-      "id": "evt_guild_1795681324251_c2496d",
-      "timestamp": 1795681324251,
-      "kind": "guild",
-      "actorName": "Tinh Hà [AI Live]",
-      "summary": "công phá Boss Bang Live gây +2.434 ST (+148 Cống Hiến).",
-      "accent": "amber"
-    },
-    {
-      "id": "evt_wbai_1795681324151_73dac5",
-      "timestamp": 1795681324151,
+      "id": "evt_wbai_1795698954253_adda58",
+      "timestamp": 1795698954253,
       "kind": "world_boss",
-      "actorName": "Hàn Băng [AI Live]",
-      "summary": "vừa lập kỷ lục Boss Thế Giới mới: 189.984 ST!",
+      "actorName": "Kiếm Thánh [AI Live]",
+      "summary": "vừa lập kỷ lục Boss Thế Giới mới: 210.603 ST!",
       "accent": "rose"
     },
     {
-      "id": "evt_camp_1795681324050_6c7744",
-      "timestamp": 1795681324050,
-      "kind": "campaign",
-      "actorName": "Kiếm Thánh [AI Live]",
-      "summary": "nâng Lực Chiến lên 6.140 LC tại Chương 8.",
-      "accent": "emerald"
-    },
-    {
-      "id": "evt_rd_1795681323950_670980",
-      "timestamp": 1795681323950,
+      "id": "evt_rd_1795698949753_daecba",
+      "timestamp": 1795698949753,
       "kind": "status",
-      "actorName": "Thiên Duyên [AI Live]",
-      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1245 điểm).",
+      "actorName": "Bạch Tuyết [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1365 điểm).",
       "accent": "sky"
     },
     {
-      "id": "evt_rd_1795681323849_0792d1",
-      "timestamp": 1795681323849,
-      "kind": "status",
-      "actorName": "Kiệt Tác [AI Live]",
-      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1340 điểm).",
-      "accent": "sky"
-    },
-    {
-      "id": "evt_tower_1795681323749_8c6cce",
-      "timestamp": 1795681323749,
-      "kind": "tower",
-      "actorName": "Linh Vũ [AI Live]",
-      "summary": "chinh phục Tháp Vô Tận Tầng 35 (Lực Chiến 6.780).",
-      "accent": "emerald"
-    },
-    {
-      "id": "evt_guild_1795681323624_ac1363",
-      "timestamp": 1795681323624,
-      "kind": "guild",
-      "actorName": "Sát Tinh [AI Live]",
-      "summary": "công phá Boss Bang Live gây +1.096 ST (+142 Cống Hiến).",
+      "id": "evt_wp_1795698945191_003b88",
+      "timestamp": 1795698945191,
+      "kind": "weekly_practice",
+      "actorName": "Hạo Thiên [AI Live]",
+      "summary": "hoàn tất Tập Boss Tuần đạt 16.802 điểm đối chiếu.",
       "accent": "amber"
     },
     {
-      "id": "evt_rd_1795681323524_52bc1b",
-      "timestamp": 1795681323524,
+      "id": "evt_tower_1795698940689_d4261f",
+      "timestamp": 1795698940689,
+      "kind": "tower",
+      "actorName": "Kiệt Tác [AI Live]",
+      "summary": "chinh phục Tháp Vô Tận Tầng 26 (Lực Chiến 6.228).",
+      "accent": "emerald"
+    },
+    {
+      "id": "evt_wp_1795698936188_57c4e1",
+      "timestamp": 1795698936188,
+      "kind": "weekly_practice",
+      "actorName": "Cửu Thiên [AI Live]",
+      "summary": "hoàn tất Tập Boss Tuần đạt 16.850 điểm đối chiếu.",
+      "accent": "amber"
+    },
+    {
+      "id": "evt_tower_1795698931687_ab6438",
+      "timestamp": 1795698931687,
+      "kind": "tower",
+      "actorName": "Thanh Vân [AI Live]",
+      "summary": "chinh phục Tháp Vô Tận Tầng 28 (Lực Chiến 6.048).",
+      "accent": "emerald"
+    },
+    {
+      "id": "evt_guild_1795698927186_99d3de",
+      "timestamp": 1795698927186,
+      "kind": "guild",
+      "actorName": "Sát Tinh [AI Live]",
+      "summary": "công phá Boss Bang Live gây +960 ST (+130 Cống Hiến).",
+      "accent": "amber"
+    },
+    {
+      "id": "evt_rd_1795698922685_e5237a",
+      "timestamp": 1795698922685,
       "kind": "status",
-      "actorName": "Tinh Hà [AI Live]",
-      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1310 điểm).",
+      "actorName": "Hàn Băng [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1410 điểm).",
       "accent": "sky"
     },
     {
-      "id": "evt_wp_1795681319802_7a8b07",
-      "timestamp": 1795681319802,
+      "id": "evt_camp_1795698918185_b46858",
+      "timestamp": 1795698918185,
+      "kind": "campaign",
+      "actorName": "Tề Thiên [AI Live]",
+      "summary": "nâng Lực Chiến lên 7.886 LC tại Chương 10.",
+      "accent": "emerald"
+    },
+    {
+      "id": "evt_rd_1795698913684_c007f4",
+      "timestamp": 1795698913684,
+      "kind": "status",
+      "actorName": "Hỏa Phượng [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1440 điểm).",
+      "accent": "sky"
+    },
+    {
+      "id": "evt_wp_1795698909182_cd0621",
+      "timestamp": 1795698909182,
       "kind": "weekly_practice",
       "actorName": "Minh Triết [AI Live]",
       "summary": "hoàn tất Tập Boss Tuần đạt 16.850 điểm đối chiếu.",
       "accent": "amber"
     },
     {
-      "id": "evt_tower_1795681315301_c00641",
-      "timestamp": 1795681315301,
+      "id": "evt_tower_1795698904680_c082d9",
+      "timestamp": 1795698904680,
       "kind": "tower",
-      "actorName": "Hỏa Phượng [AI Live]",
-      "summary": "chinh phục Tháp Vô Tận Tầng 31 (Lực Chiến 6.230).",
+      "actorName": "Phong Vân [AI Live]",
+      "summary": "chinh phục Tháp Vô Tận Tầng 33 (Lực Chiến 6.040).",
       "accent": "emerald"
     },
     {
-      "id": "evt_rd_1795681310800_dd23e6",
-      "timestamp": 1795681310800,
-      "kind": "status",
+      "id": "evt_guild_1795698900179_aa75ea",
+      "timestamp": 1795698900179,
+      "kind": "guild",
       "actorName": "Thiên Duyên [AI Live]",
-      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1245 điểm).",
-      "accent": "sky"
-    },
-    {
-      "id": "evt_guild_1795681306298_4b5680",
-      "timestamp": 1795681306298,
-      "kind": "guild",
-      "actorName": "Phong Vân [AI Live]",
-      "summary": "công phá Boss Bang Live gây +2.201 ST (+177 Cống Hiến).",
+      "summary": "công phá Boss Bang Live gây +1.522 ST (+124 Cống Hiến).",
       "accent": "amber"
     },
     {
-      "id": "evt_guild_1795681301797_b5c0bb",
-      "timestamp": 1795681301797,
-      "kind": "guild",
-      "actorName": "Nguyệt Ảnh [AI Live]",
-      "summary": "công phá Boss Bang Live gây +1.978 ST (+136 Cống Hiến).",
-      "accent": "amber"
-    },
-    {
-      "id": "evt_rd_1795681297296_9a2364",
-      "timestamp": 1795681297296,
+      "id": "evt_rd_1795698895679_81c7cb",
+      "timestamp": 1795698895679,
       "kind": "status",
       "actorName": "Linh Vũ [AI Live]",
       "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1420 điểm).",
       "accent": "sky"
     },
     {
-      "id": "evt_wp_1795681292796_1c4a55",
-      "timestamp": 1795681292796,
+      "id": "evt_camp_1795698891178_a8d69c",
+      "timestamp": 1795698891178,
+      "kind": "campaign",
+      "actorName": "Nguyệt Ảnh [AI Live]",
+      "summary": "nâng Lực Chiến lên 5.588 LC tại Chương 3.",
+      "accent": "emerald"
+    },
+    {
+      "id": "evt_rd_1795698886677_75aa88",
+      "timestamp": 1795698886677,
+      "kind": "status",
+      "actorName": "Lôi Đế [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1475 điểm).",
+      "accent": "sky"
+    },
+    {
+      "id": "evt_wp_1795698882176_708267",
+      "timestamp": 1795698882176,
       "kind": "weekly_practice",
       "actorName": "Tinh Hà [AI Live]",
       "summary": "hoàn tất Tập Boss Tuần đạt 16.850 điểm đối chiếu.",
       "accent": "amber"
     },
     {
-      "id": "evt_tower_1795681288295_77ce66",
-      "timestamp": 1795681288295,
+      "id": "evt_tower_1795698877675_c3020d",
+      "timestamp": 1795698877675,
       "kind": "tower",
-      "actorName": "Lôi Đế [AI Live]",
-      "summary": "chinh phục Tháp Vô Tận Tầng 37 (Lực Chiến 6.726).",
+      "actorName": "Kiếm Thánh [AI Live]",
+      "summary": "chinh phục Tháp Vô Tận Tầng 39 (Lực Chiến 6.266).",
       "accent": "emerald"
     },
     {
-      "id": "evt_rd_1795681283794_b9de13",
-      "timestamp": 1795681283794,
-      "kind": "status",
+      "id": "evt_guild_1795698873174_60eb5c",
+      "timestamp": 1795698873174,
+      "kind": "guild",
       "actorName": "Dương Quang [AI Live]",
-      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1325 điểm).",
-      "accent": "sky"
-    },
-    {
-      "id": "evt_guild_1795681279293_638185",
-      "timestamp": 1795681279293,
-      "kind": "guild",
-      "actorName": "Kiếm Thánh [AI Live]",
-      "summary": "công phá Boss Bang Live gây +863 ST (+171 Cống Hiến).",
+      "summary": "công phá Boss Bang Live gây +2.084 ST (+118 Cống Hiến).",
       "accent": "amber"
     },
     {
-      "id": "evt_guild_1795681274792_29a7e1",
-      "timestamp": 1795681274792,
-      "kind": "guild",
-      "actorName": "Bạch Tuyết [AI Live]",
-      "summary": "công phá Boss Bang Live gây +2.540 ST (+130 Cống Hiến).",
-      "accent": "amber"
-    },
-    {
-      "id": "evt_rd_1795681270291_f62dd7",
-      "timestamp": 1795681270291,
+      "id": "evt_rd_1795698868673_c5c881",
+      "timestamp": 1795698868673,
       "kind": "status",
       "actorName": "Hạo Thiên [AI Live]",
       "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1510 điểm).",
       "accent": "sky"
     },
     {
-      "id": "evt_wp_1795681265790_eaf2d7",
-      "timestamp": 1795681265790,
-      "kind": "weekly_practice",
-      "actorName": "Kiệt Tác [AI Live]",
-      "summary": "hoàn tất Tập Boss Tuần đạt 16.844 điểm đối chiếu.",
-      "accent": "amber"
-    },
-    {
-      "id": "evt_tower_1795681261289_9b94ed",
-      "timestamp": 1795681261289,
-      "kind": "tower",
-      "actorName": "Cửu Thiên [AI Live]",
-      "summary": "chinh phục Tháp Vô Tận Tầng 43 (Lực Chiến 7.316).",
+      "id": "evt_camp_1795698864172_488860",
+      "timestamp": 1795698864172,
+      "kind": "campaign",
+      "actorName": "Bạch Tuyết [AI Live]",
+      "summary": "nâng Lực Chiến lên 6.182 LC tại Chương 5.",
       "accent": "emerald"
     },
     {
-      "id": "evt_rd_1795681256788_399d33",
-      "timestamp": 1795681256788,
+      "id": "evt_rd_1795698859672_7878c5",
+      "timestamp": 1795698859672,
       "kind": "status",
-      "actorName": "Thanh Vân [AI Live]",
-      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1390 điểm).",
+      "actorName": "Cửu Thiên [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1540 điểm).",
       "accent": "sky"
     },
     {
-      "id": "evt_guild_1795681252287_5a6bc0",
-      "timestamp": 1795681252287,
+      "id": "evt_rd_1795698855170_b2a7ea",
+      "timestamp": 1795698855170,
+      "kind": "status",
+      "actorName": "Kiệt Tác [AI Live]",
+      "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1340 điểm).",
+      "accent": "sky"
+    },
+    {
+      "id": "evt_guild_1795698850670_e1d2ea",
+      "timestamp": 1795698850670,
       "kind": "guild",
       "actorName": "Sát Tinh [AI Live]",
-      "summary": "công phá Boss Bang Live gây +1.425 ST (+165 Cống Hiến).",
+      "summary": "công phá Boss Bang Live gây +969 ST (+153 Cống Hiến).",
       "accent": "amber"
     },
     {
-      "id": "evt_guild_1795681247786_2f86d6",
-      "timestamp": 1795681247786,
-      "kind": "guild",
-      "actorName": "Hàn Băng [AI Live]",
-      "summary": "công phá Boss Bang Live gây +1.202 ST (+124 Cống Hiến).",
-      "accent": "amber"
+      "id": "evt_wbai_1795698846170_d2ce56",
+      "timestamp": 1795698846170,
+      "kind": "world_boss",
+      "actorName": "Thanh Vân [AI Live]",
+      "summary": "vừa lập kỷ lục Boss Thế Giới mới: 192.916 ST!",
+      "accent": "rose"
     },
     {
-      "id": "evt_rd_1795681243285_444d94",
-      "timestamp": 1795681243285,
+      "id": "evt_rd_1795698841669_82f2a6",
+      "timestamp": 1795698841669,
       "kind": "status",
       "actorName": "Tề Thiên [AI Live]",
       "summary": "mở khiêu chiến Arena 1v1 trực tiếp (Hạng 1620 điểm).",
       "accent": "sky"
     },
     {
-      "id": "evt_wp_1795681238784_e14443",
-      "timestamp": 1795681238784,
+      "id": "evt_wp_1795698837168_8872c3",
+      "timestamp": 1795698837168,
       "kind": "weekly_practice",
-      "actorName": "Hỏa Phượng [AI Live]",
-      "summary": "hoàn tất Tập Boss Tuần đạt 16.766 điểm đối chiếu.",
+      "actorName": "Hàn Băng [AI Live]",
+      "summary": "hoàn tất Tập Boss Tuần đạt 16.850 điểm đối chiếu.",
       "accent": "amber"
+    },
+    {
+      "id": "evt_tower_1795698832667_d59902",
+      "timestamp": 1795698832667,
+      "kind": "tower",
+      "actorName": "Minh Triết [AI Live]",
+      "summary": "chinh phục Tháp Vô Tận Tầng 13 (Lực Chiến 5.516).",
+      "accent": "emerald"
     }
   ],
   "processedDuelIds": {},
   "chatHistory": {
     "lobby": [
       {
-        "id": "chat_tick_lobby_1795665057830_8d8187",
-        "channel": "lobby",
-        "senderName": "Thanh Vân",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_thanh_van",
-        "heroId": "aurelia",
-        "text": "Mình vừa vượt Tầng 28 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665057830
-      },
-      {
-        "id": "chat_tick_lobby_1795665102837_5ac5d5",
-        "channel": "lobby",
-        "senderName": "Linh Vũ",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_linh_vu",
-        "heroId": "aurelia",
-        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665102837
-      },
-      {
-        "id": "chat_tick_lobby_1795665147844_952fd1",
-        "channel": "lobby",
-        "senderName": "Cửu Thiên",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_cuu_thien",
-        "heroId": "bellona",
-        "text": "Mình vừa vượt Tầng 43 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665147844
-      },
-      {
-        "id": "chat_tick_lobby_1795665192849_8d83c7",
-        "channel": "lobby",
-        "senderName": "Thiên Duyên",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_thien_duyen",
-        "heroId": "bellona",
-        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665192849
-      },
-      {
-        "id": "chat_tick_lobby_1795665237859_f21f48",
-        "channel": "lobby",
-        "senderName": "Bạch Tuyết",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_bach_tuyet",
-        "heroId": "aurelia",
-        "text": "Mình vừa vượt Tầng 25 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665237859
-      },
-      {
-        "id": "chat_tick_lobby_1795665282867_53136c",
-        "channel": "lobby",
-        "senderName": "Hỏa Phượng",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_hoa_phuong",
-        "heroId": "aurelia",
-        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665282867
-      },
-      {
-        "id": "chat_tick_lobby_1795665327878_ccc7ce",
+        "id": "chat_tick_lobby_1795697171844_d54687",
         "channel": "lobby",
         "senderName": "Kiếm Thánh",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_kiem_thanh",
         "heroId": "bellona",
         "text": "Mình vừa vượt Tầng 39 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665327878
+        "timestamp": 1795697171844
       },
       {
-        "id": "chat_tick_lobby_1795665372884_94adfe",
+        "id": "chat_tick_lobby_1795697216848_2aad66",
         "channel": "lobby",
         "senderName": "Tề Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_te_thien",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665372884
+        "timestamp": 1795697216848
       },
       {
-        "id": "chat_tick_lobby_1795665417890_5af0ce",
+        "id": "chat_tick_lobby_1795697261859_3b0a79",
         "channel": "lobby",
         "senderName": "Tinh Hà",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_tinh_ha",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 20 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665417890
+        "timestamp": 1795697261859
       },
       {
-        "id": "chat_tick_lobby_1795665462896_d6056a",
+        "id": "chat_tick_lobby_1795697306863_f9a1e3",
         "channel": "lobby",
         "senderName": "Thanh Vân",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_thanh_van",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665462896
+        "timestamp": 1795697306863
       },
       {
-        "id": "chat_tick_lobby_1795665507902_94ab06",
+        "id": "chat_tick_lobby_1795697351871_3273b6",
         "channel": "lobby",
         "senderName": "Linh Vũ",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_linh_vu",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 35 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665507902
+        "timestamp": 1795697351871
       },
       {
-        "id": "chat_tick_lobby_1795665552910_adb4e0",
+        "id": "chat_tick_lobby_1795697396879_6919de",
         "channel": "lobby",
         "senderName": "Cửu Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_cuu_thien",
         "heroId": "bellona",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665552910
+        "timestamp": 1795697396879
       },
       {
-        "id": "chat_tick_lobby_1795665597923_49896c",
+        "id": "chat_tick_lobby_1795697441888_4d745e",
         "channel": "lobby",
         "senderName": "Thiên Duyên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_thien_duyen",
         "heroId": "bellona",
         "text": "Mình vừa vượt Tầng 15 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665597923
+        "timestamp": 1795697441888
       },
       {
-        "id": "chat_tick_lobby_1795665642926_c8869b",
+        "id": "chat_tick_lobby_1795697486893_093c67",
         "channel": "lobby",
         "senderName": "Bạch Tuyết",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_bach_tuyet",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665642926
+        "timestamp": 1795697486893
       },
       {
-        "id": "chat_tick_lobby_1795665687947_70330d",
+        "id": "chat_tick_lobby_1795697531903_03dd2f",
         "channel": "lobby",
         "senderName": "Hỏa Phượng",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_hoa_phuong",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 31 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665687947
+        "timestamp": 1795697531903
       },
       {
-        "id": "chat_tick_lobby_1795665732955_dabf59",
+        "id": "chat_tick_lobby_1795697576912_fbadd1",
         "channel": "lobby",
         "senderName": "Kiếm Thánh",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_kiem_thanh",
         "heroId": "bellona",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665732955
+        "timestamp": 1795697576912
       },
       {
-        "id": "chat_tick_lobby_1795665777962_a6ead5",
+        "id": "chat_tick_lobby_1795697621921_8844e7",
         "channel": "lobby",
         "senderName": "Tề Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_te_thien",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 48 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665777962
+        "timestamp": 1795697621921
       },
       {
-        "id": "chat_tick_lobby_1795665822973_52cc97",
+        "id": "chat_tick_lobby_1795697666924_b692c1",
         "channel": "lobby",
         "senderName": "Tinh Hà",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_tinh_ha",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665822973
+        "timestamp": 1795697666924
       },
       {
-        "id": "chat_tick_lobby_1795665867977_8162fd",
+        "id": "chat_tick_lobby_1795697711934_4cda34",
         "channel": "lobby",
         "senderName": "Thanh Vân",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_thanh_van",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 28 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665867977
+        "timestamp": 1795697711934
       },
       {
-        "id": "chat_tick_lobby_1795665912985_27b2bc",
+        "id": "chat_tick_lobby_1795697756943_4bb30f",
         "channel": "lobby",
         "senderName": "Linh Vũ",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_linh_vu",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795665912985
+        "timestamp": 1795697756943
       },
       {
-        "id": "chat_tick_lobby_1795665958050_82bc18",
+        "id": "chat_tick_lobby_1795697801951_f15a54",
         "channel": "lobby",
         "senderName": "Cửu Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_cuu_thien",
         "heroId": "bellona",
         "text": "Mình vừa vượt Tầng 43 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795665958050
+        "timestamp": 1795697801951
       },
       {
-        "id": "chat_tick_lobby_1795669226644_f2b140",
-        "channel": "lobby",
-        "senderName": "Tinh Hà",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_tinh_ha",
-        "heroId": "aurelia",
-        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669226644
-      },
-      {
-        "id": "chat_tick_lobby_1795669271655_e012b6",
-        "channel": "lobby",
-        "senderName": "Thanh Vân",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_thanh_van",
-        "heroId": "aurelia",
-        "text": "Mình vừa vượt Tầng 28 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669271655
-      },
-      {
-        "id": "chat_tick_lobby_1795669316660_79de32",
-        "channel": "lobby",
-        "senderName": "Linh Vũ",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_linh_vu",
-        "heroId": "aurelia",
-        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669316660
-      },
-      {
-        "id": "chat_tick_lobby_1795669361668_7bf6f5",
-        "channel": "lobby",
-        "senderName": "Cửu Thiên",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_cuu_thien",
-        "heroId": "bellona",
-        "text": "Mình vừa vượt Tầng 43 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669361668
-      },
-      {
-        "id": "chat_tick_lobby_1795669406673_2c9e28",
+        "id": "chat_tick_lobby_1795697846958_6030b1",
         "channel": "lobby",
         "senderName": "Thiên Duyên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_thien_duyen",
         "heroId": "bellona",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669406673
+        "timestamp": 1795697846958
       },
       {
-        "id": "chat_tick_lobby_1795669451685_767541",
+        "id": "chat_tick_lobby_1795697891974_48e520",
         "channel": "lobby",
         "senderName": "Bạch Tuyết",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_bach_tuyet",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 25 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669451685
+        "timestamp": 1795697891974
       },
       {
-        "id": "chat_tick_lobby_1795669496698_e8eff9",
+        "id": "chat_tick_lobby_1795697936983_28aa40",
         "channel": "lobby",
         "senderName": "Hỏa Phượng",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_hoa_phuong",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669496698
+        "timestamp": 1795697936983
       },
       {
-        "id": "chat_tick_lobby_1795669541709_f4e414",
+        "id": "chat_tick_lobby_1795697981996_7e0152",
         "channel": "lobby",
         "senderName": "Kiếm Thánh",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_kiem_thanh",
         "heroId": "bellona",
         "text": "Mình vừa vượt Tầng 39 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669541709
+        "timestamp": 1795697981996
       },
       {
-        "id": "chat_tick_lobby_1795669586717_ded508",
+        "id": "chat_tick_lobby_1795698027003_4664f9",
         "channel": "lobby",
         "senderName": "Tề Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_te_thien",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669586717
+        "timestamp": 1795698027003
       },
       {
-        "id": "chat_tick_lobby_1795669631728_cb47a9",
+        "id": "chat_tick_lobby_1795698072011_70f8a5",
         "channel": "lobby",
         "senderName": "Tinh Hà",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_tinh_ha",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 20 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669631728
+        "timestamp": 1795698072011
       },
       {
-        "id": "chat_tick_lobby_1795669676734_2b6ab3",
+        "id": "chat_tick_lobby_1795698117020_7198d5",
         "channel": "lobby",
         "senderName": "Thanh Vân",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_thanh_van",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669676734
+        "timestamp": 1795698117020
       },
       {
-        "id": "chat_tick_lobby_1795669721741_2b1ab7",
+        "id": "chat_tick_lobby_1795698162032_bab487",
         "channel": "lobby",
         "senderName": "Linh Vũ",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_linh_vu",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 35 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669721741
+        "timestamp": 1795698162032
       },
       {
-        "id": "chat_tick_lobby_1795669766748_0ecba2",
+        "id": "chat_tick_lobby_1795698207039_11648c",
         "channel": "lobby",
         "senderName": "Cửu Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_cuu_thien",
         "heroId": "bellona",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669766748
+        "timestamp": 1795698207039
       },
       {
-        "id": "chat_tick_lobby_1795669811759_ed3088",
+        "id": "chat_tick_lobby_1795698252059_3037d6",
         "channel": "lobby",
         "senderName": "Thiên Duyên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_thien_duyen",
         "heroId": "bellona",
         "text": "Mình vừa vượt Tầng 15 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669811759
+        "timestamp": 1795698252059
       },
       {
-        "id": "chat_tick_lobby_1795669856774_6ca558",
+        "id": "chat_tick_lobby_1795698297072_b8b73f",
         "channel": "lobby",
         "senderName": "Bạch Tuyết",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_bach_tuyet",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669856774
+        "timestamp": 1795698297072
       },
       {
-        "id": "chat_tick_lobby_1795669901788_c10e30",
+        "id": "chat_tick_lobby_1795698342075_dbeba4",
         "channel": "lobby",
         "senderName": "Hỏa Phượng",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_hoa_phuong",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 31 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669901788
+        "timestamp": 1795698342075
       },
       {
-        "id": "chat_tick_lobby_1795669946793_84d510",
+        "id": "chat_tick_lobby_1795698387083_c95c7c",
         "channel": "lobby",
         "senderName": "Kiếm Thánh",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_kiem_thanh",
         "heroId": "bellona",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795669946793
+        "timestamp": 1795698387083
       },
       {
-        "id": "chat_tick_lobby_1795669991800_8e7974",
+        "id": "chat_tick_lobby_1795698432093_8ed511",
         "channel": "lobby",
         "senderName": "Tề Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_te_thien",
         "heroId": "aurelia",
         "text": "Mình vừa vượt Tầng 48 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
-        "timestamp": 1795669991800
+        "timestamp": 1795698432093
       },
       {
-        "id": "chat_tick_lobby_1795670036806_363a93",
+        "id": "chat_tick_lobby_1795698477102_1d5cf5",
         "channel": "lobby",
         "senderName": "Tinh Hà",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_tinh_ha",
         "heroId": "aurelia",
         "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
-        "timestamp": 1795670036806
+        "timestamp": 1795698477102
+      },
+      {
+        "id": "chat_tick_lobby_1795698522113_fce6cc",
+        "channel": "lobby",
+        "senderName": "Thanh Vân",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_thanh_van",
+        "heroId": "aurelia",
+        "text": "Mình vừa vượt Tầng 28 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
+        "timestamp": 1795698522113
+      },
+      {
+        "id": "chat_tick_lobby_1795698567120_ed549b",
+        "channel": "lobby",
+        "senderName": "Linh Vũ",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_linh_vu",
+        "heroId": "aurelia",
+        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
+        "timestamp": 1795698567120
+      },
+      {
+        "id": "chat_tick_lobby_1795698612130_69d3e6",
+        "channel": "lobby",
+        "senderName": "Cửu Thiên",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_cuu_thien",
+        "heroId": "bellona",
+        "text": "Mình vừa vượt Tầng 43 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
+        "timestamp": 1795698612130
+      },
+      {
+        "id": "chat_tick_lobby_1795698657134_615c15",
+        "channel": "lobby",
+        "senderName": "Thiên Duyên",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_thien_duyen",
+        "heroId": "bellona",
+        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
+        "timestamp": 1795698657134
+      },
+      {
+        "id": "chat_tick_lobby_1795698702144_2dd5ac",
+        "channel": "lobby",
+        "senderName": "Bạch Tuyết",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_bach_tuyet",
+        "heroId": "aurelia",
+        "text": "Mình vừa vượt Tầng 25 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
+        "timestamp": 1795698702144
+      },
+      {
+        "id": "chat_tick_lobby_1795698747151_a163fb",
+        "channel": "lobby",
+        "senderName": "Hỏa Phượng",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_hoa_phuong",
+        "heroId": "aurelia",
+        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
+        "timestamp": 1795698747151
+      },
+      {
+        "id": "chat_tick_lobby_1795698792161_e89bb2",
+        "channel": "lobby",
+        "senderName": "Kiếm Thánh",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_kiem_thanh",
+        "heroId": "bellona",
+        "text": "Mình vừa vượt Tầng 39 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
+        "timestamp": 1795698792161
+      },
+      {
+        "id": "chat_tick_lobby_1795698837169_3f37de",
+        "channel": "lobby",
+        "senderName": "Tề Thiên",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_te_thien",
+        "heroId": "aurelia",
+        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
+        "timestamp": 1795698837169
+      },
+      {
+        "id": "chat_tick_lobby_1795698882179_92a769",
+        "channel": "lobby",
+        "senderName": "Tinh Hà",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_tinh_ha",
+        "heroId": "aurelia",
+        "text": "Mình vừa vượt Tầng 20 Tháp Vô Tận, ai muốn xem Build thì bấm vào hồ sơ mình nhé!",
+        "timestamp": 1795698882179
+      },
+      {
+        "id": "chat_tick_lobby_1795698927187_795deb",
+        "channel": "lobby",
+        "senderName": "Thanh Vân",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_thanh_van",
+        "heroId": "aurelia",
+        "text": "Ai đi Co-op 3D săn mảnh rèn bù xui không? Mình hỗ trợ kích hoạt Liên Kích Tuyệt Kỹ luôn!",
+        "timestamp": 1795698927187
       }
     ],
     "guild": [
       {
-        "id": "chat_tick_guild_1795665035325_b7fc4f",
-        "channel": "guild",
-        "senderName": "Hạo Thiên",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_hao_thien",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 18.937, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665035325
-      },
-      {
-        "id": "chat_tick_guild_1795665080334_175813",
-        "channel": "guild",
-        "senderName": "Minh Triết",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_minh_triet",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 12.207, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665080334
-      },
-      {
-        "id": "chat_tick_guild_1795665125340_a1c4fd",
-        "channel": "guild",
-        "senderName": "Dương Quang",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_duong_quang",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 16.097, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665125340
-      },
-      {
-        "id": "chat_tick_guild_1795665170346_4e547b",
-        "channel": "guild",
-        "senderName": "Hàn Băng",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_han_bang",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.607, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665170346
-      },
-      {
-        "id": "chat_tick_guild_1795665215354_abc07b",
-        "channel": "guild",
-        "senderName": "Lôi Đế",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_loi_de",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 14.870, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665215354
-      },
-      {
-        "id": "chat_tick_guild_1795665260362_4292b8",
-        "channel": "guild",
-        "senderName": "Sát Tinh",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_sat_tinh",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 23.298, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665260362
-      },
-      {
-        "id": "chat_tick_guild_1795665305373_e282bc",
-        "channel": "guild",
-        "senderName": "Nguyệt Ảnh",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_nguyet_anh",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 14.327, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665305373
-      },
-      {
-        "id": "chat_tick_guild_1795665350379_b31028",
-        "channel": "guild",
-        "senderName": "Kiệt Tác",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_kiet_tac",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.211, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665350379
-      },
-      {
-        "id": "chat_tick_guild_1795665395387_051e67",
-        "channel": "guild",
-        "senderName": "Phong Vân",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_phong_van",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 20.215, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665395387
-      },
-      {
-        "id": "chat_tick_guild_1795665440392_7957d0",
-        "channel": "guild",
-        "senderName": "Hạo Thiên",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_hao_thien",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 18.937, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665440392
-      },
-      {
-        "id": "chat_tick_guild_1795665485398_4efb39",
-        "channel": "guild",
-        "senderName": "Minh Triết",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_minh_triet",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 12.477, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665485398
-      },
-      {
-        "id": "chat_tick_guild_1795665530405_46ac23",
-        "channel": "guild",
-        "senderName": "Dương Quang",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_duong_quang",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 16.309, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665530405
-      },
-      {
-        "id": "chat_tick_guild_1795665575416_48e4e6",
-        "channel": "guild",
-        "senderName": "Hàn Băng",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_han_bang",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.607, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665575416
-      },
-      {
-        "id": "chat_tick_guild_1795665620426_b584a4",
-        "channel": "guild",
-        "senderName": "Lôi Đế",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_loi_de",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.245, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665620426
-      },
-      {
-        "id": "chat_tick_guild_1795665665443_b3b24e",
-        "channel": "guild",
-        "senderName": "Sát Tinh",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_sat_tinh",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 23.706, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665665443
-      },
-      {
-        "id": "chat_tick_guild_1795665710449_9dca13",
-        "channel": "guild",
-        "senderName": "Nguyệt Ảnh",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_nguyet_anh",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 14.327, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665710449
-      },
-      {
-        "id": "chat_tick_guild_1795665755456_4f0e16",
-        "channel": "guild",
-        "senderName": "Kiệt Tác",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_kiet_tac",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.481, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665755456
-      },
-      {
-        "id": "chat_tick_guild_1795665800472_154b9b",
-        "channel": "guild",
-        "senderName": "Phong Vân",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_phong_van",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 20.427, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665800472
-      },
-      {
-        "id": "chat_tick_guild_1795665845475_9eeb7e",
-        "channel": "guild",
-        "senderName": "Hạo Thiên",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_hao_thien",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 18.937, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665845475
-      },
-      {
-        "id": "chat_tick_guild_1795665890481_83584b",
-        "channel": "guild",
-        "senderName": "Minh Triết",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_minh_triet",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 12.792, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665890481
-      },
-      {
-        "id": "chat_tick_guild_1795665935487_01c732",
-        "channel": "guild",
-        "senderName": "Dương Quang",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_duong_quang",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 16.657, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795665935487
-      },
-      {
-        "id": "chat_tick_guild_1795669204138_e6985c",
-        "channel": "guild",
-        "senderName": "Phong Vân",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_phong_van",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 20.527, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669204138
-      },
-      {
-        "id": "chat_tick_guild_1795669249150_503e2c",
-        "channel": "guild",
-        "senderName": "Hạo Thiên",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_hao_thien",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 18.937, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669249150
-      },
-      {
-        "id": "chat_tick_guild_1795669294157_1c8e44",
-        "channel": "guild",
-        "senderName": "Minh Triết",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_minh_triet",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 12.910, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669294157
-      },
-      {
-        "id": "chat_tick_guild_1795669339165_66009e",
-        "channel": "guild",
-        "senderName": "Dương Quang",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_duong_quang",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 16.726, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669339165
-      },
-      {
-        "id": "chat_tick_guild_1795669384170_34e43a",
-        "channel": "guild",
-        "senderName": "Hàn Băng",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_han_bang",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.607, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669384170
-      },
-      {
-        "id": "chat_tick_guild_1795669429179_bcbfef",
-        "channel": "guild",
-        "senderName": "Lôi Đế",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_loi_de",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.515, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669429179
-      },
-      {
-        "id": "chat_tick_guild_1795669474191_9c216a",
-        "channel": "guild",
-        "senderName": "Sát Tinh",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_sat_tinh",
-        "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 23.992, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669474191
-      },
-      {
-        "id": "chat_tick_guild_1795669519203_4074f7",
-        "channel": "guild",
-        "senderName": "Nguyệt Ảnh",
-        "senderTag": "[AI Live]",
-        "aiPlayerId": "ai_nguyet_anh",
-        "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 14.587, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669519203
-      },
-      {
-        "id": "chat_tick_guild_1795669564211_ccd8d9",
+        "id": "chat_tick_guild_1795697194344_e1a33e",
         "channel": "guild",
         "senderName": "Kiệt Tác",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_kiet_tac",
         "heroId": "bellona",
         "text": "Điểm cống hiến Bang mình đã chạm 15.610, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669564211
+        "timestamp": 1795697194344
       },
       {
-        "id": "chat_tick_guild_1795669609224_0802a9",
+        "id": "chat_tick_guild_1795697239350_1e4b2f",
         "channel": "guild",
         "senderName": "Phong Vân",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_phong_van",
         "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 20.749, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669609224
+        "text": "Điểm cống hiến Bang mình đã chạm 25.015, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697239350
       },
       {
-        "id": "chat_tick_guild_1795669654232_962965",
+        "id": "chat_tick_guild_1795697284360_50ed83",
         "channel": "guild",
         "senderName": "Hạo Thiên",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_hao_thien",
         "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 19.101, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669654232
+        "text": "Điểm cống hiến Bang mình đã chạm 21.503, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697284360
       },
       {
-        "id": "chat_tick_guild_1795669699238_04de81",
+        "id": "chat_tick_guild_1795697329367_569eb6",
         "channel": "guild",
         "senderName": "Minh Triết",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_minh_triet",
         "heroId": "bellona",
         "text": "Điểm cống hiến Bang mình đã chạm 12.910, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669699238
+        "timestamp": 1795697329367
       },
       {
-        "id": "chat_tick_guild_1795669744245_fa887b",
+        "id": "chat_tick_guild_1795697374373_fa2fec",
         "channel": "guild",
         "senderName": "Dương Quang",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_duong_quang",
         "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 17.149, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669744245
+        "text": "Điểm cống hiến Bang mình đã chạm 20.825, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697374373
       },
       {
-        "id": "chat_tick_guild_1795669789254_7122b2",
+        "id": "chat_tick_guild_1795697419381_539221",
         "channel": "guild",
         "senderName": "Hàn Băng",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_han_bang",
         "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 15.943, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669789254
+        "text": "Điểm cống hiến Bang mình đã chạm 18.285, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697419381
       },
       {
-        "id": "chat_tick_guild_1795669834262_9f763a",
+        "id": "chat_tick_guild_1795697464388_28ed53",
         "channel": "guild",
         "senderName": "Lôi Đế",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_loi_de",
         "heroId": "aurelia",
         "text": "Điểm cống hiến Bang mình đã chạm 15.515, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669834262
+        "timestamp": 1795697464388
       },
       {
-        "id": "chat_tick_guild_1795669879280_a3016e",
+        "id": "chat_tick_guild_1795697509397_ec6749",
         "channel": "guild",
         "senderName": "Sát Tinh",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_sat_tinh",
         "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 24.214, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669879280
+        "text": "Điểm cống hiến Bang mình đã chạm 28.420, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697509397
       },
       {
-        "id": "chat_tick_guild_1795669924288_895453",
+        "id": "chat_tick_guild_1795697554407_2082ec",
         "channel": "guild",
         "senderName": "Nguyệt Ảnh",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_nguyet_anh",
         "heroId": "aurelia",
-        "text": "Điểm cống hiến Bang mình đã chạm 14.871, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669924288
+        "text": "Điểm cống hiến Bang mình đã chạm 17.343, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697554407
       },
       {
-        "id": "chat_tick_guild_1795669969296_6b54f1",
+        "id": "chat_tick_guild_1795697599418_b94502",
         "channel": "guild",
         "senderName": "Kiệt Tác",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_kiet_tac",
         "heroId": "bellona",
         "text": "Điểm cống hiến Bang mình đã chạm 15.610, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795669969296
+        "timestamp": 1795697599418
       },
       {
-        "id": "chat_tick_guild_1795670014302_64041d",
+        "id": "chat_tick_guild_1795697644423_5f2b6a",
         "channel": "guild",
         "senderName": "Phong Vân",
         "senderTag": "[AI Live]",
         "aiPlayerId": "ai_phong_van",
         "heroId": "bellona",
-        "text": "Điểm cống hiến Bang mình đã chạm 21.112, cùng nâng Công Nghệ Bang nào!",
-        "timestamp": 1795670014302
+        "text": "Điểm cống hiến Bang mình đã chạm 25.378, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697644423
+      },
+      {
+        "id": "chat_tick_guild_1795697689428_582bcf",
+        "channel": "guild",
+        "senderName": "Hạo Thiên",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_hao_thien",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 21.899, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697689428
+      },
+      {
+        "id": "chat_tick_guild_1795697734438_d35a64",
+        "channel": "guild",
+        "senderName": "Minh Triết",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_minh_triet",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 12.910, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697734438
+      },
+      {
+        "id": "chat_tick_guild_1795697779448_cb5ff1",
+        "channel": "guild",
+        "senderName": "Dương Quang",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_duong_quang",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 21.047, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697779448
+      },
+      {
+        "id": "chat_tick_guild_1795697824455_7c9a4e",
+        "channel": "guild",
+        "senderName": "Hàn Băng",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_han_bang",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 18.449, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697824455
+      },
+      {
+        "id": "chat_tick_guild_1795697869468_a4f745",
+        "channel": "guild",
+        "senderName": "Lôi Đế",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_loi_de",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 15.515, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697869468
+      },
+      {
+        "id": "chat_tick_guild_1795697914478_288f52",
+        "channel": "guild",
+        "senderName": "Sát Tinh",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_sat_tinh",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 28.843, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697914478
+      },
+      {
+        "id": "chat_tick_guild_1795697959489_d0c56c",
+        "channel": "guild",
+        "senderName": "Nguyệt Ảnh",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_nguyet_anh",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 17.679, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795697959489
+      },
+      {
+        "id": "chat_tick_guild_1795698004499_cbdb19",
+        "channel": "guild",
+        "senderName": "Kiệt Tác",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_kiet_tac",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 15.610, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698004499
+      },
+      {
+        "id": "chat_tick_guild_1795698049506_5424f9",
+        "channel": "guild",
+        "senderName": "Phong Vân",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_phong_van",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 25.600, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698049506
+      },
+      {
+        "id": "chat_tick_guild_1795698094516_ec5053",
+        "channel": "guild",
+        "senderName": "Hạo Thiên",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_hao_thien",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 22.183, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698094516
+      },
+      {
+        "id": "chat_tick_guild_1795698139525_401dc6",
+        "channel": "guild",
+        "senderName": "Minh Triết",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_minh_triet",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 12.910, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698139525
+      },
+      {
+        "id": "chat_tick_guild_1795698184535_92790a",
+        "channel": "guild",
+        "senderName": "Dương Quang",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_duong_quang",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 21.293, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698184535
+      },
+      {
+        "id": "chat_tick_guild_1795698229544_280352",
+        "channel": "guild",
+        "senderName": "Hàn Băng",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_han_bang",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 18.585, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698229544
+      },
+      {
+        "id": "chat_tick_guild_1795698274562_fd4474",
+        "channel": "guild",
+        "senderName": "Lôi Đế",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_loi_de",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 15.515, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698274562
+      },
+      {
+        "id": "chat_tick_guild_1795698319570_e13560",
+        "channel": "guild",
+        "senderName": "Sát Tinh",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_sat_tinh",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 29.135, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698319570
+      },
+      {
+        "id": "chat_tick_guild_1795698364578_b40c1d",
+        "channel": "guild",
+        "senderName": "Nguyệt Ảnh",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_nguyet_anh",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 17.679, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698364578
+      },
+      {
+        "id": "chat_tick_guild_1795698409586_52fedf",
+        "channel": "guild",
+        "senderName": "Kiệt Tác",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_kiet_tac",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 15.610, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698409586
+      },
+      {
+        "id": "chat_tick_guild_1795698454596_513830",
+        "channel": "guild",
+        "senderName": "Phong Vân",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_phong_van",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 26.223, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698454596
+      },
+      {
+        "id": "chat_tick_guild_1795698499608_e86e80",
+        "channel": "guild",
+        "senderName": "Hạo Thiên",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_hao_thien",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 22.183, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698499608
+      },
+      {
+        "id": "chat_tick_guild_1795698544617_12e98b",
+        "channel": "guild",
+        "senderName": "Minh Triết",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_minh_triet",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 12.910, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698544617
+      },
+      {
+        "id": "chat_tick_guild_1795698589627_65c0e2",
+        "channel": "guild",
+        "senderName": "Dương Quang",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_duong_quang",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 21.528, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698589627
+      },
+      {
+        "id": "chat_tick_guild_1795698634632_b68355",
+        "channel": "guild",
+        "senderName": "Hàn Băng",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_han_bang",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 18.585, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698634632
+      },
+      {
+        "id": "chat_tick_guild_1795698679641_2ed9bd",
+        "channel": "guild",
+        "senderName": "Lôi Đế",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_loi_de",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 15.515, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698679641
+      },
+      {
+        "id": "chat_tick_guild_1795698724647_e8bada",
+        "channel": "guild",
+        "senderName": "Sát Tinh",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_sat_tinh",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 29.135, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698724647
+      },
+      {
+        "id": "chat_tick_guild_1795698769655_044729",
+        "channel": "guild",
+        "senderName": "Nguyệt Ảnh",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_nguyet_anh",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 17.679, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698769655
+      },
+      {
+        "id": "chat_tick_guild_1795698814664_451817",
+        "channel": "guild",
+        "senderName": "Kiệt Tác",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_kiet_tac",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 15.610, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698814664
+      },
+      {
+        "id": "chat_tick_guild_1795698859672_8cd026",
+        "channel": "guild",
+        "senderName": "Phong Vân",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_phong_van",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 26.470, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698859672
+      },
+      {
+        "id": "chat_tick_guild_1795698904680_0d9f82",
+        "channel": "guild",
+        "senderName": "Hạo Thiên",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_hao_thien",
+        "heroId": "aurelia",
+        "text": "Điểm cống hiến Bang mình đã chạm 22.183, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698904680
+      },
+      {
+        "id": "chat_tick_guild_1795698949755_6b6e32",
+        "channel": "guild",
+        "senderName": "Minh Triết",
+        "senderTag": "[AI Live]",
+        "aiPlayerId": "ai_minh_triet",
+        "heroId": "bellona",
+        "text": "Điểm cống hiến Bang mình đã chạm 12.910, cùng nâng Công Nghệ Bang nào!",
+        "timestamp": 1795698949755
       }
     ]
   },
@@ -1719,63 +1719,63 @@
     "bossName": "Cự Long Hắc Tinh · Boss Bang Live",
     "bossTitle": "Chiến dịch Hợp Lực Bang Hội Hằng Ngày (Bạn & Đồng Đội [AI Live])",
     "maxHp": 180000,
-    "currentHp": 159204,
-    "totalDamage": 925807,
-    "defeatedCount": 5,
+    "currentHp": 32686,
+    "totalDamage": 1414470,
+    "defeatedCount": 7,
     "contributors": [
       {
-        "id": "ai_sat_tinh",
-        "displayName": "Sát Tinh [AI Live]",
+        "id": "ai_phong_van",
+        "displayName": "Phong Vân [AI Live]",
         "isHuman": false,
         "heroId": "bellona",
-        "damage": 87818,
-        "attacks": 53,
-        "lastHitAt": 1795681324352
+        "damage": 144960,
+        "attacks": 89,
+        "lastHitAt": 1795698580624
       },
       {
         "id": "ai_kiem_thanh",
         "displayName": "Kiếm Thánh [AI Live]",
         "isHuman": false,
         "heroId": "bellona",
-        "damage": 85982,
-        "attacks": 52,
-        "lastHitAt": 1795681279293
+        "damage": 144766,
+        "attacks": 88,
+        "lastHitAt": 1795698391584
+      },
+      {
+        "id": "ai_sat_tinh",
+        "displayName": "Sát Tinh [AI Live]",
+        "isHuman": false,
+        "heroId": "bellona",
+        "damage": 140205,
+        "attacks": 87,
+        "lastHitAt": 1795698927186
       },
       {
         "id": "ai_duong_quang",
         "displayName": "Dương Quang [AI Live]",
         "isHuman": false,
         "heroId": "bellona",
-        "damage": 84183,
-        "attacks": 49,
-        "lastHitAt": 1795681198267
-      },
-      {
-        "id": "ai_phong_van",
-        "displayName": "Phong Vân [AI Live]",
-        "isHuman": false,
-        "heroId": "bellona",
-        "damage": 81975,
-        "attacks": 51,
-        "lastHitAt": 1795681306298
-      },
-      {
-        "id": "ai_thien_duyen",
-        "displayName": "Thiên Duyên [AI Live]",
-        "isHuman": false,
-        "heroId": "bellona",
-        "damage": 76159,
-        "attacks": 48,
-        "lastHitAt": 1795681225281
+        "damage": 138038,
+        "attacks": 83,
+        "lastHitAt": 1795698873174
       },
       {
         "id": "ai_thanh_van",
         "displayName": "Thanh Vân [AI Live]",
         "isHuman": false,
         "heroId": "aurelia",
-        "damage": 75360,
-        "attacks": 49,
-        "lastHitAt": 1795681171261
+        "damage": 136235,
+        "attacks": 86,
+        "lastHitAt": 1795698769655
+      },
+      {
+        "id": "ai_thien_duyen",
+        "displayName": "Thiên Duyên [AI Live]",
+        "isHuman": false,
+        "heroId": "bellona",
+        "damage": 124576,
+        "attacks": 79,
+        "lastHitAt": 1795698900179
       },
       {
         "id": "ai_tinh_ha",
@@ -1794,6 +1794,15 @@
         "damage": 55643,
         "attacks": 32,
         "lastHitAt": 1795665976051
+      },
+      {
+        "id": "ai_te_thien",
+        "displayName": "Tề Thiên [AI Live]",
+        "isHuman": false,
+        "heroId": "aurelia",
+        "damage": 52400,
+        "attacks": 29,
+        "lastHitAt": 1795697954987
       },
       {
         "id": "ai_loi_de",
@@ -1823,6 +1832,15 @@
         "lastHitAt": 1795665949046
       },
       {
+        "id": "ai_hao_thien",
+        "displayName": "Hạo Thiên [AI Live]",
+        "isHuman": false,
+        "heroId": "aurelia",
+        "damage": 49334,
+        "attacks": 30,
+        "lastHitAt": 1795697981993
+      },
+      {
         "id": "ai_hoa_phuong",
         "displayName": "Hỏa Phượng [AI Live]",
         "isHuman": false,
@@ -1830,24 +1848,6 @@
         "damage": 45976,
         "attacks": 30,
         "lastHitAt": 1795665791461
-      },
-      {
-        "id": "ai_te_thien",
-        "displayName": "Tề Thiên [AI Live]",
-        "isHuman": false,
-        "heroId": "aurelia",
-        "damage": 26608,
-        "attacks": 13,
-        "lastHitAt": 1795681166760
-      },
-      {
-        "id": "ai_hao_thien",
-        "displayName": "Hạo Thiên [AI Live]",
-        "isHuman": false,
-        "heroId": "aurelia",
-        "damage": 24772,
-        "attacks": 14,
-        "lastHitAt": 1795681193766
       }
     ],
     "milestones": [
@@ -1877,7 +1877,7 @@
       }
     ],
     "claimedMilestoneIds": [],
-    "lastUpdatedAt": 1795681324352
+    "lastUpdatedAt": 1795698927186
   },
   "guildBossClaimsByPlayer": {},
   "miniCupsByPlayer": {},
@@ -1888,7 +1888,7 @@
     "subtitle": "Hoàn tất mốc chung hằng ngày để mở Rương Truy Nã Server cho toàn bộ chiến binh.",
     "objectiveLabel": "Chiến Tích Tinh Tú Toàn Server",
     "targetPoints": 2200,
-    "currentPoints": 4791,
+    "currentPoints": 6600,
     "completed": true,
     "rewardGold": 3000,
     "rewardGems": 115,
@@ -1900,80 +1900,88 @@
         "displayName": "Kiếm Thánh [AI Live]",
         "isHuman": false,
         "heroId": "bellona",
-        "points": 743,
-        "lastContributedAt": 1795670051780
+        "points": 1410,
+        "lastContributedAt": 1795698954253
       },
       {
         "id": "ai_sat_tinh",
         "displayName": "Sát Tinh [AI Live]",
         "isHuman": false,
         "heroId": "bellona",
-        "points": 732,
-        "lastContributedAt": 1795659447689
-      },
-      {
-        "id": "ai_phong_van",
-        "displayName": "Phong Vân [AI Live]",
-        "isHuman": false,
-        "heroId": "bellona",
-        "points": 488,
-        "lastContributedAt": 1795663185664
+        "points": 1348,
+        "lastContributedAt": 1795698765154
       },
       {
         "id": "ai_thien_duyen",
         "displayName": "Thiên Duyên [AI Live]",
         "isHuman": false,
         "heroId": "bellona",
-        "points": 452,
-        "lastContributedAt": 1795663266678
+        "points": 1180,
+        "lastContributedAt": 1795698576123
       },
       {
         "id": "ai_thanh_van",
         "displayName": "Thanh Vân [AI Live]",
         "isHuman": false,
         "heroId": "aurelia",
-        "points": 450,
-        "lastContributedAt": 1795665971550
+        "points": 1091,
+        "lastContributedAt": 1795698846170
+      },
+      {
+        "id": "ai_phong_van",
+        "displayName": "Phong Vân [AI Live]",
+        "isHuman": false,
+        "heroId": "bellona",
+        "points": 1001,
+        "lastContributedAt": 1795698819164
       },
       {
         "id": "ai_duong_quang",
         "displayName": "Dương Quang [AI Live]",
         "isHuman": false,
         "heroId": "bellona",
-        "points": 388,
-        "lastContributedAt": 1795663239674
-      },
-      {
-        "id": "ai_hao_thien",
-        "displayName": "Hạo Thiên [AI Live]",
-        "isHuman": false,
-        "heroId": "aurelia",
-        "points": 361,
-        "lastContributedAt": 1795669217640
-      },
-      {
-        "id": "ai_han_bang",
-        "displayName": "Hàn Băng [AI Live]",
-        "isHuman": false,
-        "heroId": "bellona",
-        "points": 351,
-        "lastContributedAt": 1795681324151
+        "points": 987,
+        "lastContributedAt": 1795698387082
       },
       {
         "id": "ai_te_thien",
         "displayName": "Tề Thiên [AI Live]",
         "isHuman": false,
         "heroId": "aurelia",
-        "points": 333,
-        "lastContributedAt": 1795669190635
+        "points": 514,
+        "lastContributedAt": 1795696982805
+      },
+      {
+        "id": "ai_hao_thien",
+        "displayName": "Hạo Thiên [AI Live]",
+        "isHuman": false,
+        "heroId": "aurelia",
+        "points": 438,
+        "lastContributedAt": 1795696847783
+      },
+      {
+        "id": "ai_han_bang",
+        "displayName": "Hàn Băng [AI Live]",
+        "isHuman": false,
+        "heroId": "bellona",
+        "points": 424,
+        "lastContributedAt": 1795693139710
+      },
+      {
+        "id": "ai_bach_tuyet",
+        "displayName": "Bạch Tuyết [AI Live]",
+        "isHuman": false,
+        "heroId": "aurelia",
+        "points": 305,
+        "lastContributedAt": 1795696928796
       },
       {
         "id": "ai_linh_vu",
         "displayName": "Linh Vũ [AI Live]",
         "isHuman": false,
         "heroId": "aurelia",
-        "points": 216,
-        "lastContributedAt": 1795680248593
+        "points": 297,
+        "lastContributedAt": 1795696874789
       },
       {
         "id": "ai_cuu_thien",
@@ -1982,17 +1990,9 @@
         "heroId": "bellona",
         "points": 196,
         "lastContributedAt": 1795653392184
-      },
-      {
-        "id": "ai_bach_tuyet",
-        "displayName": "Bạch Tuyết [AI Live]",
-        "isHuman": false,
-        "heroId": "aurelia",
-        "points": 81,
-        "lastContributedAt": 1795680302603
       }
     ],
-    "lastUpdatedAt": 1795681324151
+    "lastUpdatedAt": 1795698954253
   },
   "serverBountyClaimsByPlayer": {},
   "adaptationByPlayer": {
@@ -2192,57 +2192,99 @@
   },
   "guildWarClaimsByPlayer": {},
   "spectatorMatch": {
-    "matchId": "spec_1795681323555_528",
-    "roundLabel": "Trận Tranh Hạng 1 Máy Chủ",
+    "matchId": "spec_1795698922685_610",
+    "roundLabel": "Bán Kết Hoàng Đạo",
     "status": "live",
-    "startedAt": 1795681323555,
-    "updatedAt": 1795681323555,
-    "tickCount": 0,
+    "startedAt": 1795698922685,
+    "updatedAt": 1795698954253,
+    "tickCount": 7,
     "maxTicks": 18,
     "fighterA": {
-      "aiPlayerId": "ai_te_thien",
-      "displayName": "Tề Thiên",
+      "aiPlayerId": "ai_bach_tuyet",
+      "displayName": "Bạch Tuyết",
       "heroId": "aurelia",
-      "powerRating": 7732,
-      "personality": "assassin",
-      "hp": 3200,
+      "powerRating": 6182,
+      "personality": "tactical",
+      "hp": 96,
       "maxHp": 3200,
-      "momentum": 22,
-      "styleGrade": "B",
-      "damageDealt": 0,
-      "critsLanded": 0,
-      "dodgesLanded": 0,
-      "cheersCount": 6
-    },
-    "fighterB": {
-      "aiPlayerId": "ai_cuu_thien",
-      "displayName": "Cửu Thiên",
-      "heroId": "bellona",
-      "powerRating": 7316,
-      "personality": "aggressive",
-      "hp": 3200,
-      "maxHp": 3200,
-      "momentum": 22,
-      "styleGrade": "B",
-      "damageDealt": 0,
-      "critsLanded": 0,
+      "momentum": 46,
+      "styleGrade": "A",
+      "damageDealt": 3078,
+      "critsLanded": 4,
       "dodgesLanded": 0,
       "cheersCount": 3
+    },
+    "fighterB": {
+      "aiPlayerId": "ai_thanh_van",
+      "displayName": "Thanh Vân",
+      "heroId": "aurelia",
+      "powerRating": 6030,
+      "personality": "tactical",
+      "hp": 122,
+      "maxHp": 3200,
+      "momentum": 46,
+      "styleGrade": "A",
+      "damageDealt": 3104,
+      "critsLanded": 3,
+      "dodgesLanded": 0,
+      "cheersCount": 5
     },
     "winnerId": null,
     "tickerLog": [
       {
-        "id": "spec_1795681323555_528_t0",
-        "tick": 0,
-        "text": "Tề Thiên chạm trán Cửu Thiên tại Trận Tranh Hạng 1 Máy Chủ!",
-        "accent": "sky"
+        "id": "spec_1795698922685_610_t7_2",
+        "tick": 7,
+        "text": "Thanh Vân gây 376 ST liên hoàn lên Bạch Tuyết.",
+        "accent": "emerald"
+      },
+      {
+        "id": "spec_1795698922685_610_t7_1",
+        "tick": 7,
+        "text": "Bạch Tuyết gây 382 ST liên hoàn lên Thanh Vân.",
+        "accent": "emerald"
+      },
+      {
+        "id": "spec_1795698922685_610_t6_2",
+        "tick": 6,
+        "text": "Thanh Vân kích hoạt Vũ Khí Thức Tỉnh gây 612 ST vào Bạch Tuyết!",
+        "accent": "amber"
+      },
+      {
+        "id": "spec_1795698922685_610_t6_1",
+        "tick": 6,
+        "text": "Bạch Tuyết kích hoạt Vũ Khí Thức Tỉnh gây 520 ST vào Thanh Vân!",
+        "accent": "amber"
+      },
+      {
+        "id": "spec_1795698922685_610_t5_2",
+        "tick": 5,
+        "text": "Thanh Vân gây 343 ST liên hoàn lên Bạch Tuyết.",
+        "accent": "emerald"
+      },
+      {
+        "id": "spec_1795698922685_610_t5_1",
+        "tick": 5,
+        "text": "Bạch Tuyết tung đòn Chí Mạng 598 ST lên Thanh Vân!",
+        "accent": "rose"
+      },
+      {
+        "id": "spec_1795698922685_610_t4_2",
+        "tick": 4,
+        "text": "Thanh Vân gây 385 ST liên hoàn lên Bạch Tuyết.",
+        "accent": "emerald"
+      },
+      {
+        "id": "spec_1795698922685_610_t4_1",
+        "tick": 4,
+        "text": "Bạch Tuyết tung đòn Chí Mạng 459 ST lên Thanh Vân!",
+        "accent": "rose"
       }
     ],
     "cheerRewardGold": 280,
     "cheerRewardGems": 18,
     "cheerRewardStarDust": 26
   },
-  "spectatorMatchSeq": 528,
+  "spectatorMatchSeq": 610,
   "spectatorCheersByMatch": {
     "spec_1795670051104_510": {
       "testerw11": "ai_te_thien"

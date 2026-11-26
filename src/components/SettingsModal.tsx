@@ -67,6 +67,16 @@ import {
   restoreSaveRollbackSnapshot,
   SAVE_ROLLBACK_MAX_SNAPSHOTS,
 } from '../data/wave17EndgameAndBackup';
+import {
+  auditChapterAssetReadiness,
+  type UnifiedChapterAssetReadinessReport,
+} from '../data/wave16TacticalAndLiveOps';
+import type { GlbManifestDocument } from '../engine/glbPipelineValidator';
+import {
+  ACCESSIBILITY_PRESETS,
+  applyAccessibilityPreset,
+  detectActiveAccessibilityPreset,
+} from '../engine/wave18TacticalAndAtmosphere';
 
 interface SettingsModalProps {
   settings: GameSettings;
@@ -233,7 +243,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [gamepadLabel, setGamepadLabel] = useState<string | null>(null);
   const [capturingKeyAction, setCapturingKeyAction] = useState<CombatKeybindAction | null>(null);
   const [keybindNotice, setKeybindNotice] = useState<string | null>(null);
+  // Wave 18: 12-Chapter Asset Readiness Audit Center (lazy fetch manifest, read-only)
+  const [assetAuditReport, setAssetAuditReport] =
+    useState<UnifiedChapterAssetReadinessReport | null>(null);
+  const [showAssetAuditGrid, setShowAssetAuditGrid] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+    const loadManifestAudit = async () => {
+      try {
+        const res = await fetch('/models/manifest.json');
+        if (!res.ok) throw new Error('manifest unavailable');
+        const doc = (await res.json()) as GlbManifestDocument;
+        if (active) setAssetAuditReport(auditChapterAssetReadiness(doc));
+      } catch {
+        if (active) setAssetAuditReport(auditChapterAssetReadiness(null));
+      }
+    };
+    void loadManifestAudit();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const activeAccessibilityPreset = detectActiveAccessibilityPreset(settings);
   const activeKeybinds = normalizeCombatKeybinds(settings.keybinds);
 
   useEffect(() => {
@@ -1960,6 +1993,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </span>
           </div>
 
+          {/* Wave 18: 1-Click Accessibility Presets (Zero-Pill, 0 backdrop-blur) */}
+          <div
+            data-testid="settings-accessibility-presets"
+            className="rounded-xl bg-[#080d1e] border border-sky-400/30 p-3 space-y-2 mb-2.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-sky-200">
+                Hồ Sơ Tiếp Cận Nhanh (1-Click)
+              </span>
+              <span className="text-[10px] font-semibold text-slate-400">
+                {activeAccessibilityPreset !== 'custom'
+                  ? `Đang dùng: ${ACCESSIBILITY_PRESETS.find((p) => p.id === activeAccessibilityPreset)?.label}`
+                  : 'Tùy chỉnh riêng'}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {ACCESSIBILITY_PRESETS.map((preset) => {
+                const isSelected = activeAccessibilityPreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    data-testid={`accessibility-preset-${preset.id}`}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      soundEngine.playUiClick(1.06);
+                      const nextSettings = applyAccessibilityPreset(settings, preset.id);
+                      onUpdateSettings({
+                        colorblindTelegraphs: nextSettings.colorblindTelegraphs,
+                        highContrastTelegraphs: nextSettings.highContrastTelegraphs,
+                        reducedMotion: nextSettings.reducedMotion,
+                        reduceScreenFlash: nextSettings.reduceScreenFlash,
+                        screenShake: nextSettings.screenShake,
+                        uiTextScale: nextSettings.uiTextScale,
+                        audioCaptions: nextSettings.audioCaptions,
+                      });
+                    }}
+                    className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-sky-500/18 border-sky-300 text-sky-100'
+                        : 'bg-[#0b1224] border-slate-800 hover:border-slate-600 text-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs font-black">{preset.label}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">
+                      {preset.summary}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <button
               type="button"
@@ -2307,6 +2393,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
         </div>
+
+        {/* Wave 18: 12-Chapter Asset Readiness Audit Center (Read-Only, 0 PointLight, E5430 Safe) */}
+        {assetAuditReport && (
+          <div
+            data-testid="settings-asset-readiness-center"
+            className="rounded-2xl bg-[#080d1e] border border-emerald-500/30 p-3.5 space-y-2.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-xs font-black text-emerald-200 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                  <span>Trung Tâm Kiểm Định Tài Nguyên 12 Chương</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono-nums tabular-nums mt-0.5">
+                  Sẵn sàng: {assetAuditReport.readyChaptersCount}/{assetAuditReport.totalChapters} Chương ·{' '}
+                  {assetAuditReport.totalProceduralPointLights} PointLight ·{' '}
+                  {assetAuditReport.e5430Safe ? 'Dell E5430 An Toàn' : 'Cần kiểm tra GLB'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playUiClick(1.02);
+                  setShowAssetAuditGrid((v) => !v);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-[#111930] border border-slate-700 hover:border-emerald-300 text-[10px] font-black text-emerald-200 cursor-pointer whitespace-nowrap"
+              >
+                {showAssetAuditGrid ? 'Thu Gọn' : 'Xem 12 Chương'}
+              </button>
+            </div>
+            {showAssetAuditGrid && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 border-t border-slate-800/80">
+                {assetAuditReport.chapters.map((row) => (
+                  <div
+                    key={row.chapterId}
+                    className="rounded-lg bg-[#050814] border border-slate-800 px-2.5 py-1.5 flex items-center justify-between gap-1.5 text-[10px]"
+                  >
+                    <span className="font-mono-nums tabular-nums font-bold text-slate-200 truncate">
+                      Ch.{row.chapterId} · {row.tier === 'glb_high_lite' ? 'GLB H/L' : '3D Proc'}
+                    </span>
+                    <span
+                      className={`font-black shrink-0 ${
+                        row.ready ? 'text-emerald-300' : 'text-amber-300'
+                      }`}
+                    >
+                      {row.ready ? 'OK' : 'Đang tải'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-col gap-2 pt-1">
           {onReplayTutorial && (

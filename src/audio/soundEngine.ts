@@ -7,12 +7,14 @@ import { computeBossBgmStepDuration } from '../engine/zodiacArena';
 import { resolveBossAudioLayers } from '../engine/aaaWave5Director';
 import {
   buildInterruptFanfareNotes,
+  resolveBossPhaseTransitionStinger,
   resolveChapterBossStepDuration,
   resolveChapterEndingCadence,
   resolveDynamicMusicLayers,
   resolveZodiacChapterMusic,
 } from './zodiacMusicDirector';
 import {
+  computeComboPitchStep,
   SfxPriorityMixer,
   type SfxEventCategory,
   type SfxMixDecision,
@@ -456,6 +458,10 @@ class SoundEngine {
    */
   public playBossPhaseStinger(phase: 2 | 3): void {
     this.setBossIntensity(phase);
+    if (this.adaptiveChapterMusic) {
+      this.playBossPhaseTransitionStinger(this.chapterThemeId, phase);
+      return;
+    }
     const mix = this.gateSfx('boss_phase_stinger');
     if (!mix) return;
     const dest = this.getSfxDest(0, true);
@@ -479,6 +485,39 @@ class SoundEngine {
       osc.connect(filter).connect(gain).connect(dest);
       osc.start(t0);
       osc.stop(t0 + 0.48);
+    });
+  }
+
+  /**
+   * Wave 18: 12-Chapter Modal Boss Phase Transition Stinger (Phase II / III),
+   * derived from each Zodiac chapter's bespoke musical scale and CPU-capped on low-end laptops.
+   */
+  public playBossPhaseTransitionStinger(chapterId: number, targetPhase: 2 | 3): void {
+    this.setBossIntensity(targetPhase);
+    const mix = this.gateSfx('boss_phase_stinger');
+    if (!mix) return;
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const lowEnd = this.sfxMixer.getStats(performance.now()).lowEndMode;
+    const stinger = resolveBossPhaseTransitionStinger(chapterId, targetPhase, lowEnd);
+    const now = ctx.currentTime;
+
+    stinger.notes.forEach((note) => {
+      const osc = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      osc.type = note.wave;
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(targetPhase === 3 ? 1720 : 1280, now);
+      const t0 = now + note.delay;
+      osc.frequency.setValueAtTime(note.freq, t0);
+      gain.gain.setValueAtTime(0.001, t0);
+      gain.gain.linearRampToValueAtTime(note.gain * mix.gainScale, t0 + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + note.dur);
+      osc.connect(filter).connect(gain).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + note.dur + 0.03);
     });
   }
 
@@ -1331,13 +1370,14 @@ class SoundEngine {
     osc.stop(now + 0.135);
   }
 
-  public playEnemyDefeated(isMajor = false, pan = 0): void {
+  public playEnemyDefeated(isMajor = false, pan = 0, comboCount?: number): void {
     const mix = this.gateSfx('enemy_defeated');
     if (!mix) return;
     const dest = this.getSfxDest(pan, isMajor);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
+    const comboStep = computeComboPitchStep(comboCount ?? this.combatCombo);
 
     // Harmonic starlight shatter chord (deeper imperial triad for Elite/Boss)
     const freqs = isMajor ? [261.63, 392.0, 523.25, 783.99] : [329.63, 493.88, 659.25];
@@ -1346,8 +1386,9 @@ class SoundEngine {
       const gain = ctx.createGain();
       osc.type = idx === 0 ? 'triangle' : 'sine';
       const t = now + idx * 0.025;
-      osc.frequency.setValueAtTime(freq * mix.pitchMult, t);
-      osc.frequency.exponentialRampToValueAtTime(freq * 1.12 * mix.pitchMult, t + (isMajor ? 0.22 : 0.12));
+      const pitched = freq * mix.pitchMult * comboStep;
+      osc.frequency.setValueAtTime(pitched, t);
+      osc.frequency.exponentialRampToValueAtTime(pitched * 1.12, t + (isMajor ? 0.22 : 0.12));
       gain.gain.setValueAtTime((isMajor ? 0.085 : 0.065) * mix.gainScale, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + (isMajor ? 0.24 : 0.14));
       osc.connect(gain);
@@ -3469,6 +3510,55 @@ class SoundEngine {
       osc.connect(g).connect(dest);
       osc.start(t);
       osc.stop(t + 0.25);
+    });
+  }
+
+  /**
+   * Wave 18: Crystalline Ricochet Resonance ping scaling with bounce index.
+   */
+  public playRicochetPing(bounceCount = 1, pan = 0): void {
+    const mix = this.gateSfx('ricochet_ping');
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, false);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const bounceStep = 1 + Math.min(3, Math.max(0, bounceCount)) * 0.12;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    const baseFreq = 920 * bounceStep * mix.pitchMult;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.28, now + 0.09);
+    g.gain.setValueAtTime(0.068 * mix.gainScale, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    osc.connect(g).connect(dest);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  /**
+   * Wave 18: Imperial Zodiac Vow oath seal chime when toggling or locking difficulty vows.
+   */
+  public playVowSealChime(vowCount = 1): void {
+    const mix = this.gateSfx('vow_seal_chime');
+    if (!mix) return;
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const countBoost = 1 + Math.min(3, Math.max(0, vowCount - 1)) * 0.08;
+    [392.0, 587.33].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.045;
+      osc.frequency.setValueAtTime(freq * countBoost * mix.pitchMult, t);
+      g.gain.setValueAtTime(0.08 * mix.gainScale, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(g).connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.24);
     });
   }
 }

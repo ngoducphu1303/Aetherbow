@@ -2598,6 +2598,10 @@ export interface HudSnapshot {
   // Wave 17: Boss Interrupt Counter-Surge & 12-Zodiac Boss Practice (0 Farm)
   interruptCounterSurge?: InterruptCounterSurgeHudState | null;
   bossPractice?: BossPracticeHudState | null;
+  // Wave 18: Zodiac Vow Modifiers & Ricochet Resonance
+  activeVowLabels?: string[];
+  activeVowGoldBonusPct?: number;
+  ricochetHitsCount?: number;
 }
 
 export interface InterruptCounterSurgeHudState {
@@ -3951,6 +3955,41 @@ export interface TrainingPresetComparisonRow extends TrainingPresetDpsRecord {
   deltaDpsPct: number;
   isBaseline: boolean;
   isLeader: boolean;
+}
+
+// ============================================================================
+// WAVE 18: ZODIAC VOWS, SKILL DRAFT FOCUS PITY & 1-CLICK ACCESSIBILITY PRESETS
+// ============================================================================
+
+export type ZodiacVowId = 'vow_ferocity' | 'vow_haste' | 'vow_austerity';
+
+export interface ZodiacVowDefinition {
+  id: ZodiacVowId;
+  title: string;
+  name: string;
+  shortLabel: string;
+  glyph: string;
+  challengeText: string;
+  description: string;
+  rewardText: string;
+  enemyHpMult: number;
+  enemyDmgMult: number;
+  enemyCadenceMult: number;
+  healEffectivenessMult: number;
+  goldBonusPct: number;
+  starDustBonusPct: number;
+}
+
+export type AccessibilityPresetId =
+  | 'standard'
+  | 'colorblind'
+  | 'comfort_antiflash'
+  | 'large_captions';
+
+export interface SkillDraftFocusBadge {
+  kind: 'synergy_unlock' | 'synergy_tier_up' | 'synergy_progress' | 'build_focus';
+  label: string;
+  accentColor: string;
 }
 
 

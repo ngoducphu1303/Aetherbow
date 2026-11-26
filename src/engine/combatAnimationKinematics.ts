@@ -62,6 +62,8 @@ export interface CombatKinematicPose {
   skillCastPulse?: number;
   spawnSettle?: number;
   deathBlend?: number;
+  criticalSnap?: number;
+  finisherFollowThrough?: number;
 }
 
 export interface CombatKinematicTransformDelta {
@@ -83,6 +85,8 @@ export function createCombatKinematicPose(): CombatKinematicPose {
     skillCastPulse: 0,
     spawnSettle: 0,
     deathBlend: 0,
+    criticalSnap: 0,
+    finisherFollowThrough: 0,
   };
 }
 
@@ -178,6 +182,8 @@ export function stepCombatKinematicPose(
   pose.dodgeLean = (pose.dodgeLean ?? 0) * damp;
   pose.skillCastPulse = (pose.skillCastPulse ?? 0) * slowDamp;
   pose.spawnSettle = (pose.spawnSettle ?? 0) * slowDamp;
+  pose.criticalSnap = (pose.criticalSnap ?? 0) * damp;
+  pose.finisherFollowThrough = (pose.finisherFollowThrough ?? 0) * slowDamp;
 
   const targetStagger = options.isStunnedOrStaggered ? 1 : 0;
   const staggerRate = targetStagger > pose.staggerBlend ? 10 : 8;
@@ -205,6 +211,8 @@ export function stepCombatKinematicPose(
 
   const castLiftY = (pose.skillCastPulse ?? 0) * 0.65;
   const spawnDropY = (pose.spawnSettle ?? 0) * 0.85;
+  const finisherLiftY = (pose.finisherFollowThrough ?? 0) * 0.48;
+  const critSnapRotX = -(pose.criticalSnap ?? 0) * 0.28;
   const deathOffsetY = -0.26 * (pose.deathBlend ?? 0) * motionScale;
   const deathRotX = 0.42 * (pose.deathBlend ?? 0) * motionScale;
 
@@ -219,23 +227,82 @@ export function stepCombatKinematicPose(
     Math.abs(pose.squashImpulse) > 0.002 ||
     Math.abs(pose.dodgeLean ?? 0) > 0.002 ||
     Math.abs(pose.skillCastPulse ?? 0) > 0.002 ||
-    Math.abs(pose.spawnSettle ?? 0) > 0.002;
+    Math.abs(pose.spawnSettle ?? 0) > 0.002 ||
+    Math.abs(pose.criticalSnap ?? 0) > 0.002 ||
+    Math.abs(pose.finisherFollowThrough ?? 0) > 0.002;
 
-  out.offsetY = victoryBounce + staggerOffsetY + castLiftY + spawnDropY + deathOffsetY;
-  out.rotX = pose.recoilPitch + staggerRotX + (pose.dodgeLean ?? 0) + deathRotX;
+  out.offsetY =
+    victoryBounce + staggerOffsetY + castLiftY + spawnDropY + finisherLiftY + deathOffsetY;
+  out.rotX =
+    pose.recoilPitch + staggerRotX + (pose.dodgeLean ?? 0) + critSnapRotX + deathRotX;
   out.rotZ = pose.recoilRoll;
   out.scaleY = Math.max(
     0.76,
     Math.min(
-      1.16,
+      1.18,
       1 +
         pose.squashImpulse +
         staggerSquash +
         victoryBounce * 0.25 +
-        (pose.skillCastPulse ?? 0) * 0.22
+        (pose.skillCastPulse ?? 0) * 0.22 +
+        (pose.finisherFollowThrough ?? 0) * 0.16
     )
   );
   return out;
+}
+
+/**
+ * Wave 18: Zero-GC Critical Stagger Snap impulse on heavy crits / ripostes.
+ * Respects reducedMotion (0.25x amplitude).
+ */
+export function applyCriticalStaggerSnap(
+  pose: CombatKinematicPose,
+  strength = 1.0,
+  reducedMotion = false
+): void {
+  const motionScale = reducedMotion ? 0.25 : 1.0;
+  const clamped = Math.max(0.2, Math.min(1.5, strength)) * motionScale;
+  pose.active = true;
+  pose.criticalSnap = Math.min(0.45, (pose.criticalSnap ?? 0) + 0.3 * clamped);
+  pose.recoilPitch = Math.max(-0.36, pose.recoilPitch - 0.16 * clamped);
+  pose.squashImpulse = Math.max(-0.18, pose.squashImpulse - 0.09 * clamped);
+}
+
+/**
+ * Wave 18: Zero-GC Finisher Follow-Through trigger on Boss / Elite kills or Riposte executions.
+ */
+export function applyFinisherFollowThrough(
+  pose: CombatKinematicPose,
+  strength = 1.0,
+  reducedMotion = false
+): void {
+  const motionScale = reducedMotion ? 0.25 : 1.0;
+  const clamped = Math.max(0.2, Math.min(1.5, strength)) * motionScale;
+  pose.active = true;
+  pose.finisherFollowThrough = Math.min(0.46, (pose.finisherFollowThrough ?? 0) + 0.34 * clamped);
+  pose.squashImpulse = Math.min(0.16, pose.squashImpulse + 0.08 * clamped);
+}
+
+/**
+ * Wave 18: Standalone Zero-GC step for Finisher Follow-Through arc (for callers
+ * or unit tests stepping finisher recovery directly without allocating).
+ */
+export function stepFinisherFollowThrough(
+  pose: CombatKinematicPose,
+  dt: number,
+  reducedMotion = false
+): number {
+  const safeDt = Math.max(0, Math.min(0.1, dt));
+  const current = pose.finisherFollowThrough ?? 0;
+  if (current <= 0.001) {
+    pose.finisherFollowThrough = 0;
+    return 0;
+  }
+  const damp = Math.exp(-7.5 * safeDt);
+  const next = current * damp;
+  pose.finisherFollowThrough = next < 0.001 ? 0 : next;
+  const motionScale = reducedMotion ? 0.25 : 1.0;
+  return pose.finisherFollowThrough * 0.48 * motionScale;
 }
 
 // ============================================================================

@@ -1,6 +1,7 @@
 import {
   ActiveSkillSynergyTierInfo,
   SkillDefinition,
+  SkillDraftFocusBadge,
   SkillId,
   SkillRarity,
   SkillSynergyDef,
@@ -396,6 +397,7 @@ export interface SkillRollContext {
   chapterId?: number;
   stage?: number;
   isValkyrie?: boolean;
+  isReroll?: boolean;
   rng?: () => number;
 }
 
@@ -722,6 +724,53 @@ const EARLY_VALKYRIE_PILLARS: Record<
   },
 };
 
+/**
+ * Wave 18: Resolves a clean Zero-Pill Focus Pity / Synergy progression label
+ * for a skill card based on the player's current run build.
+ */
+export function getSkillDraftFocusBadge(
+  skillId: SkillId,
+  currentStacks: Partial<Record<SkillId, number>>
+): SkillDraftFocusBadge | null {
+  const upgradeHint = getSynergyTierUpgradeHint(skillId, currentStacks);
+  if (upgradeHint) {
+    if (upgradeHint.currentTier === 0 && upgradeHint.willActivateOrUpgrade) {
+      return {
+        kind: 'synergy_unlock',
+        label: `KÍCH HOẠT ${upgradeHint.synergy.name.toUpperCase()}`,
+        accentColor: upgradeHint.synergy.accentColor,
+      };
+    }
+    if (upgradeHint.currentTier >= 1 && upgradeHint.willActivateOrUpgrade) {
+      const roman = upgradeHint.nextTier === 3 ? 'III' : 'II';
+      return {
+        kind: 'synergy_tier_up',
+        label: `NÂNG TẦNG ${roman} · ${upgradeHint.synergy.name.toUpperCase()}`,
+        accentColor: upgradeHint.synergy.accentColor,
+      };
+    }
+    if (upgradeHint.currentTier >= 1 && upgradeHint.currentTier < 3) {
+      return {
+        kind: 'synergy_progress',
+        label: `TIẾN ĐỘ ${upgradeHint.synergy.name.toUpperCase()}`,
+        accentColor: upgradeHint.synergy.accentColor,
+      };
+    }
+  }
+
+  const skill = SKILLS_CATALOG[skillId];
+  const stacks = currentStacks[skillId] ?? 0;
+  if (skill && stacks >= 1 && stacks < skill.maxStacks) {
+    return {
+      kind: 'build_focus',
+      label: `KHUẾCH ĐẠI TẦNG ${stacks + 1}`,
+      accentColor: '#fbbf24',
+    };
+  }
+
+  return null;
+}
+
 export function rollSkillChoices(
   currentStacks: Partial<Record<SkillId, number>>,
   count = 3,
@@ -740,7 +789,7 @@ export function rollSkillChoices(
   const pickedIds = new Set<SkillId>();
 
   // Chapter 1–12 Valkyrie Stages 2/6/10: guarantee 1 AoE + 1 Boss + 1 Sustain/Flex meaningful choice,
-  // prioritizing Synergy-completing skills when the player already holds half a pair.
+  // prioritizing Synergy-completing skills (and guaranteeing Focus Pity on Reroll).
   if (
     context?.isValkyrie &&
     context.chapterId &&
@@ -752,17 +801,32 @@ export function rollSkillChoices(
       (context.stage ? EARLY_VALKYRIE_PILLARS[context.stage] : undefined) ??
       EARLY_VALKYRIE_PILLARS[6];
     const lanes = [pillars.aoe, pillars.boss, pillars.third];
+    let satisfiedFocus = false;
     for (const laneIds of lanes) {
       const lanePool = laneIds
         .map((id) => SKILLS_CATALOG[id])
         .filter((s) => s && !pickedIds.has(s.id) && isEligible(s, false));
       const synergyCompleters = lanePool.filter(
-        (s) => getSynergyHintsForSkill(s.id, currentStacks).length > 0
+        (s) =>
+          getSynergyHintsForSkill(s.id, currentStacks).length > 0 ||
+          getSynergyTierUpgradeHint(s.id, currentStacks) !== null
       );
-      const chosen =
-        synergyCompleters.length > 0 && rng() < 0.72
-          ? pickWeightedFromPool(synergyCompleters, rng)
-          : pickWeightedFromPool(lanePool, rng);
+      const focusCandidates = lanePool.filter(
+        (s) => getSkillDraftFocusBadge(s.id, currentStacks) !== null
+      );
+      let chosen: SkillDefinition | null = null;
+      if (synergyCompleters.length > 0 && (context.isReroll || !satisfiedFocus || rng() < 0.72)) {
+        chosen = pickWeightedFromPool(synergyCompleters, rng);
+        if (chosen) satisfiedFocus = true;
+      } else if (context.isReroll && !satisfiedFocus && focusCandidates.length > 0) {
+        chosen = pickWeightedFromPool(focusCandidates, rng);
+        if (chosen) satisfiedFocus = true;
+      } else {
+        chosen = pickWeightedFromPool(lanePool, rng);
+        if (chosen && getSkillDraftFocusBadge(chosen.id, currentStacks) !== null) {
+          satisfiedFocus = true;
+        }
+      }
       if (chosen) {
         picked.push(chosen);
         pickedIds.add(chosen.id);
@@ -773,6 +837,34 @@ export function rollSkillChoices(
   const remaining = Object.values(SKILLS_CATALOG).filter(
     (skill) => !pickedIds.has(skill.id) && isEligible(skill, true)
   );
+
+  // Wave 18 Skill Draft Focus Pity: on standard drafts or Rerolls, guarantee at least 1 card
+  // that activates/upgrades an owned Synergy pair (or amplifies an existing stack on Reroll).
+  if (picked.length < count && remaining.length > 0) {
+    const alreadyHasFocus = picked.some(
+      (s) => getSkillDraftFocusBadge(s.id, currentStacks) !== null
+    );
+    if (!alreadyHasFocus) {
+      const synergyPool = remaining.filter(
+        (s) => getSynergyTierUpgradeHint(s.id, currentStacks) !== null
+      );
+      const focusPool = context?.isReroll
+        ? remaining.filter((s) => getSkillDraftFocusBadge(s.id, currentStacks) !== null)
+        : [];
+      const pityCandidate =
+        synergyPool.length > 0
+          ? pickWeightedFromPool(synergyPool, rng)
+          : focusPool.length > 0
+            ? pickWeightedFromPool(focusPool, rng)
+            : null;
+      if (pityCandidate) {
+        picked.push(pityCandidate);
+        pickedIds.add(pityCandidate.id);
+        const idx = remaining.findIndex((s) => s.id === pityCandidate.id);
+        if (idx >= 0) remaining.splice(idx, 1);
+      }
+    }
+  }
 
   while (picked.length < count && remaining.length > 0) {
     const chosen = pickWeightedFromPool(remaining, rng);

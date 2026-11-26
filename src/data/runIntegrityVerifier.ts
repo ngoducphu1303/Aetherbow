@@ -61,6 +61,7 @@ export interface RunIntegrityReportInput {
   nightmareTier?: number;
   liveOpsGoldMult?: number;
   liveOpsGemMult?: number;
+  zodiacVowGoldMult?: number;
 }
 
 export interface RunIntegrityBounds {
@@ -126,6 +127,7 @@ export function computeAuthoritativeRunBounds(input: {
   nightmareTier?: number;
   liveOpsGoldMult?: number;
   liveOpsGemMult?: number;
+  zodiacVowGoldMult?: number;
 }): RunIntegrityBounds {
   const ch = clamp(Math.floor(input.chapterId || 1), 1, 12);
   const stage = clamp(Math.floor(input.stageReached || 1), 1, 500);
@@ -134,6 +136,10 @@ export function computeAuthoritativeRunBounds(input: {
   const nmGoldMult = 1 + nmTier * 0.45;
   const goldMult = clamp(Number.isFinite(input.liveOpsGoldMult) ? input.liveOpsGoldMult! : 1, 0.5, 3.0);
   const gemMult = clamp(Number.isFinite(input.liveOpsGemMult) ? input.liveOpsGemMult! : 1, 0.5, 3.0);
+  const vowGoldMult =
+    ch <= 1 || (input.mode !== 'chapter' && input.mode !== 'tower')
+      ? 1.0
+      : clamp(Number.isFinite(input.zodiacVowGoldMult) ? input.zodiacVowGoldMult! : 1.0, 1.0, 1.7);
 
   // Minimum physically plausible clear time for multi-room runs (generous for overgeared speedruns)
   const roomsCleared =
@@ -177,7 +183,7 @@ export function computeAuthoritativeRunBounds(input: {
   return {
     minPlausibleDurationSec,
     maxPlausibleDps,
-    maxAllowedGold: Math.round(baseGoldCap * nmGoldMult * goldMult),
+    maxAllowedGold: Math.round(baseGoldCap * nmGoldMult * goldMult * vowGoldMult),
     maxAllowedGems: Math.round(baseGemsCap * gemMult),
     maxAllowedSeasonXp: Math.round(baseXpCap * 1.4),
   };
@@ -225,6 +231,7 @@ export function verifyCombatRunIntegrity(raw: RunIntegrityReportInput): RunInteg
     nightmareTier: raw.nightmareTier,
     liveOpsGoldMult: raw.liveOpsGoldMult,
     liveOpsGemMult: raw.liveOpsGemMult,
+    zodiacVowGoldMult: raw.zodiacVowGoldMult,
   });
 
   // 1. Speedhack / impossible clear duration check
