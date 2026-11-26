@@ -92,6 +92,10 @@ import {
   rollProtectedForgeGear,
   type AiSquadFormationId,
 } from './engine/wave11FivePillars';
+import {
+  applyMythicImprint,
+  recordLocalRollbackSnapshot,
+} from './data/wave17EndgameAndBackup';
 
 // Lazy-loaded non-startup event, shop, and progression modals to minimize initial JS payload
 const ArenaModal = lazy(() =>
@@ -956,7 +960,7 @@ export default function App() {
   const [vipModalOpen, setVipModalOpen] = useState<boolean>(false);
   const [forgeConfig, setForgeConfig] = useState<{
     open: boolean;
-    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets';
+    subTab: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets' | 'transmute' | 'imprint';
     gearUid?: string;
   }>({ open: false, subTab: 'salvage' });
   const [guildModalOpen, setGuildModalOpen] = useState<boolean>(false);
@@ -1869,7 +1873,8 @@ export default function App() {
 
   const handleChooseCloudConflict = useCallback(() => {
     if (!saveConflict || conflictBusy) return;
-    const { user, cloudRecord } = saveConflict;
+    const { user, localSave, cloudRecord } = saveConflict;
+    recordLocalRollbackSnapshot(localSave, 'pre_cloud_overwrite');
     const migrated = touchFairActiveDays(migrateSaveData(cloudRecord.saveData));
     skipNextAutoSyncRef.current = true;
     cloudHydratedUidRef.current = user.uid;
@@ -3939,7 +3944,18 @@ export default function App() {
     setPhase(GamePhase.TITLE);
   }, []);
 
+  const handleStartBossPractice = useCallback((chapterId: number) => {
+    soundEngine.playUiClick(1.1);
+    engineRef.current?.startBossPractice(chapterId);
+  }, []);
+
+  const handleReturnToTrainingDummies = useCallback(() => {
+    soundEngine.playUiClick(1.02);
+    engineRef.current?.returnToTrainingDummies();
+  }, []);
+
   const handleImportSave = useCallback((nextSave: SaveData) => {
+    recordLocalRollbackSnapshot(saveRef.current, 'pre_import');
     const integrity = validateAndSanitizeSaveIntegrity(nextSave);
     const cleanSave = integrity.sanitizedSave;
     setSave(cleanSave);
@@ -3950,6 +3966,7 @@ export default function App() {
   }, []);
 
   const handleResetAllPlayerData = useCallback(async () => {
+    recordLocalRollbackSnapshot(saveRef.current, 'pre_reset');
     if (cloudSaveTimerRef.current) {
       window.clearTimeout(cloudSaveTimerRef.current);
       cloudSaveTimerRef.current = null;
@@ -9105,6 +9122,24 @@ export default function App() {
     [triggerUpgradeCelebration]
   );
 
+  // Wave 17 Handler: Mythic Zodiac Imprint (+1 -> +5, Ch.4+ & MYTHIC gear)
+  const handleInfuseMythicImprint = useCallback(
+    (uid: string, aspectId: import('./types/game').MythicImprintAspectId) => {
+      let successMessage: string | null = null;
+      setSave((prev) => {
+        const res = applyMythicImprint(prev, uid, aspectId);
+        if (!res.ok) return prev;
+        successMessage = res.message;
+        soundEngine.playForgeCraft();
+        return res.save;
+      });
+      if (successMessage) {
+        triggerUpgradeCelebration('Thức Tỉnh Ấn Tinh Thành Công!', successMessage);
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
   const handleRefineRune = useCallback(
     (runeId: RuneId) => {
       let summaryMsg: string | null = null;
@@ -12260,6 +12295,9 @@ export default function App() {
           onTrainingReset={handleTrainingReset}
           onTrainingLoadoutSwitch={(slotId: LoadoutPresetSlotId) => handleApplyLoadoutPreset(slotId)}
           onTrainingExit={handleTrainingExit}
+          highestChapterCleared={save.highestChapterCleared}
+          onStartBossPractice={handleStartBossPractice}
+          onReturnToTrainingDummies={handleReturnToTrainingDummies}
         />
       )}
 
@@ -12320,6 +12358,8 @@ export default function App() {
                 setActiveLobbyTab('gear');
               } else if (target === 'runes') {
                 setActiveLobbyTab('runes');
+              } else if (target === 'forge_imprint') {
+                setForgeConfig({ open: true, subTab: 'imprint' });
               } else {
                 setHeroSubTabInitial('roster');
                 setActiveLobbyTab('heroes');
@@ -12797,6 +12837,7 @@ export default function App() {
           onReforgeGear={handleReforgeGear}
           onPolishGearSubstat={handlePolishGearSubstat}
           onTransmuteGearSet={handleTransmuteGearSet}
+          onInfuseMythicImprint={handleInfuseMythicImprint}
           onAwakenGear={handleAwakenGear}
           onCraftSocketGem={handleCraftSocketGem}
           onFuseSocketGem={handleFuseSocketGem}

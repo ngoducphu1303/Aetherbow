@@ -100,6 +100,14 @@ Bên cạnh 4 đấu trường GLB độc bản của Chương 1–4, toàn bộ
 
 ---
 
+## 2g. Phá Chiêu Phản Công, Luyện Boss 12 Cung, Ấn Tinh Thần Thoại, Cố Vấn ROI & Kho Sao Lưu Đợt 17 (`wave17CombatAndPractice.ts` + `wave17EndgameAndBackup.ts`)
+
+- **VFX Phá Chiêu Phản Công (`interrupt_surge` trong `HeroAndBossSignatureVfxPool`, 0 `PointLight` mới, trần `<= 3` slot Lite)**: Vòng xung kích hoàng kim phá chiêu kèm tia nổ điểm yếu khi ngắt chiêu niệm Boss (bảng màu chuẩn Vàng Kim `#facc15` / Cam Rực `#f59e0b`; bảng màu Mù Màu Lam Sáng `#38bdf8` / Vàng Nhạt `#fef08a`), tôn trọng `reduceScreenFlash` và `reducedMotion`.
+- **Thanh Phá Chiêu Phản Công (`hud-interrupt-surge`) & Sảnh Luyện Boss 12 Cung (`training-boss-practice-bar`, `hud-boss-practice-status`) trên `GameHUD.tsx`**: Nền đặc `#0d111a` (`0 backdrop-blur`), đường viền sắc cạnh Zero-Pill, số liệu đếm ngược `3.8s` / DPS / Phá Chiêu / Né Hoàn Hảo thẳng hàng `tabular-nums`, gắn nhãn rõ `0 Thưởng · Không Farm` và ký hiệu hình học mù màu `★`.
+- **Cố Vấn Đầu Tư LC (`briefing-smart-roi` trong `PreBattleBriefingModal.tsx`), Phân Khu `Ấn Tinh` (`forge-tab-imprint` trong `RelicForgeModal.tsx`) & Kho Sao Lưu 5 Mốc (`settings-rollback-vault` trong `SettingsModal.tsx`)**: Đồng bộ 100% ngôn ngữ Celestial Gold Zero-Pill, `0 backdrop-blur`, `0 animate-pulse`, số liệu `+LC / 1.000 Vàng`, chi phí đa tài nguyên và mã băm FNV-1a dùng `tabular-nums` rõ ràng trên 3 mức cỡ chữ `100% / 115% / 130%`.
+
+---
+
 ## 3. Quy Chuẩn Tài Sản 3D High / Lite (Chuẩn Dell Latitude E5430)
 
 - Mọi nhân vật, quái, Boss và bản đồ mới (Ch.5–12) khi bổ sung tài sản GLB bắt buộc xuất **đủ 2 biến thể** trong `Runtime/`:

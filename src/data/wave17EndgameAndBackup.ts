@@ -11,14 +11,18 @@ import {
 import {
   computePlayerStats,
   GEAR_TEMPLATES,
-  getGearUpgradeCost,
-  getTalentUpgradeCost,
+  getUpgradeCost,
 } from './gearData';
 import {
+  getTalentLevel,
+  getTalentUpgradeCost,
+  TALENTS,
+} from './talentsData';
+import {
   getRuneRefinementCost,
-  getRuneRefinementLevel,
-  RUNE_REFINEMENT_MAX_LEVEL,
-} from './wave4Data';
+  getRuneRefinementTier,
+  RUNE_REFINEMENT_MAX_TIER,
+} from './runeAndAffixRefining';
 import { validateAndSanitizeSaveIntegrity } from './saveIntegrity';
 
 /**
@@ -331,12 +335,10 @@ export function applyMythicImprint(
     starDust: Math.max(0, (save.starDust ?? 0) - preview.cost.starDust),
     spiritCores: Math.max(0, (save.spiritCores ?? 0) - preview.cost.spiritCores),
     pity: {
-      ...(save.pity ?? {
-        goldChestCounter: 0,
-        astralChestCounter: 0,
-        forgeRelicShards: 0,
-        zodiacBannerCounter: 0,
-      }),
+      mythicRollsSinceEpic: save.pity?.mythicRollsSinceEpic ?? 0,
+      mythicRollsSinceSTier: save.pity?.mythicRollsSinceSTier ?? 0,
+      runeRollsSinceEpic: save.pity?.runeRollsSinceEpic ?? 0,
+      ...(save.pity ?? {}),
       forgeRelicShards: Math.max(
         0,
         (save.pity?.forgeRelicShards ?? 0) - preview.cost.forgeShards
@@ -410,7 +412,7 @@ export function computeSmartUpgradeRoi(
     if (!item || item.level >= 60) continue;
     const tpl = GEAR_TEMPLATES[item.templateId];
     if (!tpl) continue;
-    const goldCost = getGearUpgradeCost(item.level, item.rarity);
+    const goldCost = getUpgradeCost(item);
     if (goldCost <= 0) continue;
 
     const simSave: SaveData = {
@@ -436,23 +438,17 @@ export function computeSmartUpgradeRoi(
     });
   }
 
-  // 2. Cheapest Talent Candidate (Attack / HP / Crit / AtkSpeed)
-  const talentKeys: Array<{ key: keyof SaveData['talents']; label: string }> = [
-    { key: 'attack', label: 'Thiên Phú Sức Mạnh' },
-    { key: 'hp', label: 'Thiên Phú Sinh Mệnh' },
-    { key: 'crit', label: 'Thiên Phú Chí Mạng' },
-    { key: 'atkSpeed', label: 'Thiên Phú Tốc Bắn' },
-  ];
-  for (const tk of talentKeys) {
-    const curLv = save.talents?.[tk.key] ?? 0;
-    if (curLv >= 50) continue;
-    const goldCost = getTalentUpgradeCost(curLv);
+  // 2. Talent Candidates (real TALENTS catalog)
+  for (const tDef of TALENTS) {
+    const curLv = getTalentLevel(save.talents, tDef.id);
+    if (curLv >= tDef.maxLevel) continue;
+    const goldCost = getTalentUpgradeCost(tDef.id, curLv);
     if (goldCost <= 0) continue;
     const simSave: SaveData = {
       ...save,
       talents: {
         ...save.talents,
-        [tk.key]: curLv + 1,
+        [tDef.id]: curLv + 1,
       },
     };
     const nextPower = computePlayerStats(simSave).powerRating;
@@ -460,9 +456,9 @@ export function computeSmartUpgradeRoi(
     if (delta <= 0) continue;
 
     candidates.push({
-      id: `talent_${tk.key}`,
+      id: `talent_${tDef.id}`,
       targetTab: 'talents',
-      title: `${tk.label} Lv.${curLv} → ${curLv + 1}`,
+      title: `Thiên Phú ${tDef.name} Lv.${curLv} → ${curLv + 1}`,
       detail: `Buff vĩnh viễn toàn đội hình (+${delta} LC) · Tốn ${goldCost.toLocaleString('vi-VN')} Vàng.`,
       goldCost,
       estimatedLcGain: delta,
@@ -476,8 +472,8 @@ export function computeSmartUpgradeRoi(
   for (const rUid of save.equippedRunes ?? []) {
     const rInst = (save.runeInventory ?? []).find((r) => r.uid === rUid);
     if (!rInst) continue;
-    const curLv = getRuneRefinementLevel(save, rInst.runeId);
-    if (curLv >= RUNE_REFINEMENT_MAX_LEVEL) continue;
+    const curLv = getRuneRefinementTier(save, rInst.runeId);
+    if (curLv >= RUNE_REFINEMENT_MAX_TIER) continue;
     const cost = getRuneRefinementCost(curLv);
     const simSave: SaveData = {
       ...save,

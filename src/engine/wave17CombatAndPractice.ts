@@ -1,4 +1,4 @@
-import { CHAPTERS } from '../data/gameData';
+import { CHAPTERS } from '../data/chaptersData';
 import {
   BossPracticeHudState,
   InterruptCounterSurgeHudState,
