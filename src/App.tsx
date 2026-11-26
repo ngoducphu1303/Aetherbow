@@ -168,6 +168,11 @@ const SettingsModal = lazy(() =>
 const TalentsModal = lazy(() =>
   import('./components/TalentsModal').then((m) => ({ default: m.TalentsModal }))
 );
+const TacticalCrossroadsModal = lazy(() =>
+  import('./components/TacticalCrossroadsModal').then((m) => ({
+    default: m.TacticalCrossroadsModal,
+  }))
+);
 const UpgradeCelebrationOverlay = lazy(() =>
   import('./components/UpgradeCelebrationOverlay').then((m) => ({
     default: m.UpgradeCelebrationOverlay,
@@ -302,6 +307,7 @@ import {
   polishGearSubstatInSave,
   refineRuneInSave,
 } from './data/runeAndAffixRefining';
+import { transmuteGearSetInSave } from './data/gearSetTransmutation';
 import { rollSkillChoices } from './data/skillsData';
 import {
   PARAGON_INFUSION_MAX_LEVEL,
@@ -1033,6 +1039,14 @@ export default function App() {
   const [draftStacks, setDraftStacks] = useState<Partial<Record<SkillId, number>>>({});
   const [rerollUsed, setRerollUsed] = useState<boolean>(false);
   const [encounterOffer, setEncounterOffer] = useState<EncounterOffer | null>(null);
+  const [crossroadsOffer, setCrossroadsOffer] = useState<{
+    options: [
+      import('./types/game').TacticalCrossroadsOption,
+      import('./types/game').TacticalCrossroadsOption,
+    ];
+    chapterId: number;
+    stageCleared: number;
+  } | null>(null);
   const [runSummary, setRunSummary] = useState<{
     chapterId: number;
     stageReached: number;
@@ -2208,6 +2222,14 @@ export default function App() {
           } else {
             engine.resumeFromDraft();
           }
+        },
+        onRequestCrossroads: (options, context) => {
+          setCrossroadsOffer({
+            options,
+            chapterId: context.chapterId,
+            stageCleared: context.stageCleared,
+          });
+          setPhase(GamePhase.PAUSED);
         },
         onRunEnded: (victory, summary) => {
           const isTower = Boolean(summary.isTowerMode);
@@ -9049,6 +9071,27 @@ export default function App() {
     [triggerUpgradeCelebration]
   );
 
+  // Wave 15 Handler: Deterministic Gear Set Transmutation (Ch.3+, Epic+ gear)
+  const handleTransmuteGearSet = useCallback(
+    (uid: string, targetSetId: import('./types/game').GearSetId) => {
+      let targetLabel: string | null = null;
+      setSave((prev) => {
+        const res = transmuteGearSetInSave(prev, uid, targetSetId);
+        if (!res.ok) return prev;
+        targetLabel = res.targetSetDisplayName ?? targetSetId;
+        soundEngine.playForgeCraft();
+        return res.nextSave;
+      });
+      if (targetLabel) {
+        triggerUpgradeCelebration(
+          'Chuyển Hóa Đồ Bộ Thành Công!',
+          `Trang bị đã chuyển sang ${targetLabel} (100% Tất Định).`
+        );
+      }
+    },
+    [triggerUpgradeCelebration]
+  );
+
   const handleRefineRune = useCallback(
     (runeId: RuneId) => {
       let summaryMsg: string | null = null;
@@ -12229,6 +12272,21 @@ export default function App() {
         </div>
       )}
 
+      {crossroadsOffer && (
+        <Suspense fallback={null}>
+          <TacticalCrossroadsModal
+            options={crossroadsOffer.options}
+            chapterId={crossroadsOffer.chapterId}
+            stageCleared={crossroadsOffer.stageCleared}
+            onSelect={(optionId) => {
+              setCrossroadsOffer(null);
+              setPhase(GamePhase.PLAYING);
+              engineRef.current?.applyCrossroadsChoice(optionId);
+            }}
+          />
+        </Suspense>
+      )}
+
       {draftModalMode && (
         <SkillDraftModal
           mode={draftModalMode}
@@ -12687,6 +12745,7 @@ export default function App() {
           onCraftForgeRecipe={handleCraftForgeRecipe}
           onReforgeGear={handleReforgeGear}
           onPolishGearSubstat={handlePolishGearSubstat}
+          onTransmuteGearSet={handleTransmuteGearSet}
           onAwakenGear={handleAwakenGear}
           onCraftSocketGem={handleCraftSocketGem}
           onFuseSocketGem={handleFuseSocketGem}

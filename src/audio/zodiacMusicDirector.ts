@@ -341,3 +341,73 @@ export function resolveDynamicMusicLayers(input: DynamicMusicLayerInput): Dynami
   };
 }
 
+// ============================================================================
+// WAVE 15: 12-CHAPTER MODAL ENDING CADENCES (VICTORY / DEFEAT STINGERS)
+// ============================================================================
+
+export interface ChapterEndingCadenceNote {
+  freq: number;
+  delay: number;
+  dur: number;
+  gain: number;
+  wave: OscillatorType;
+}
+
+export interface ChapterEndingCadence {
+  chapterId: number;
+  zodiacKey: string;
+  musicalScale: string;
+  victory: boolean;
+  notes: ChapterEndingCadenceNote[];
+}
+
+/**
+ * Generates a scale-matched Victory (ascending triad + octave peak) or Defeat
+ * (descending modal resolution) cadence derived directly from the chapter's
+ * bespoke Zodiac musical scale so all 12 chapters end with a distinct signature.
+ */
+export function resolveChapterEndingCadence(
+  chapterId: number,
+  victory: boolean
+): ChapterEndingCadence {
+  const profile = resolveZodiacChapterMusic(chapterId);
+  const scaleNotes = Array.from(
+    new Set(profile.combatMelody.filter((f) => Number.isFinite(f) && f > 120))
+  ).sort((a, b) => a - b);
+
+  const root = scaleNotes[0] ?? 293.66;
+  const third = scaleNotes[1] ?? Number((root * 1.25).toFixed(2));
+  const fifth = scaleNotes[2] ?? Number((root * 1.5).toFixed(2));
+  const peak = scaleNotes[scaleNotes.length - 1] ?? Number((root * 2).toFixed(2));
+
+  if (victory) {
+    const wave: OscillatorType = profile.leadWave === 'sawtooth' ? 'triangle' : profile.leadWave;
+    return {
+      chapterId: profile.chapterId,
+      zodiacKey: profile.zodiacKey,
+      musicalScale: profile.musicalScale,
+      victory: true,
+      notes: [
+        { freq: root, delay: 0, dur: 0.24, gain: 0.1, wave },
+        { freq: third, delay: 0.09, dur: 0.26, gain: 0.105, wave },
+        { freq: fifth, delay: 0.18, dur: 0.3, gain: 0.11, wave: 'triangle' },
+        { freq: peak, delay: 0.28, dur: 0.52, gain: 0.12, wave: 'triangle' },
+      ],
+    };
+  }
+
+  return {
+    chapterId: profile.chapterId,
+    zodiacKey: profile.zodiacKey,
+    musicalScale: profile.musicalScale,
+    victory: false,
+    notes: [
+      { freq: fifth, delay: 0, dur: 0.26, gain: 0.095, wave: 'triangle' },
+      { freq: third, delay: 0.13, dur: 0.28, gain: 0.09, wave: 'sine' },
+      { freq: root, delay: 0.27, dur: 0.36, gain: 0.095, wave: 'sine' },
+      { freq: Number((root * 0.5).toFixed(2)), delay: 0.42, dur: 0.58, gain: 0.11, wave: 'triangle' },
+    ],
+  };
+}
+
+

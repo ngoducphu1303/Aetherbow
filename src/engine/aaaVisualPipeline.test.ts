@@ -283,7 +283,8 @@ test('AAA Adaptive Audio Mix: spatial stereo pan clamping, 4-tier combo layering
   assert.ok(t1.filterCutoffHz > t0.filterCutoffHz);
   assert.ok(t3.harmonicGain > t1.harmonicGain);
 
-  assert.equal(computeTimeScaleAudioFilter(true, 0.9), 1450);
+  assert.equal(computeTimeScaleAudioFilter(true, 0.9), 820);
+  assert.equal(computeTimeScaleAudioFilter(true, 0.9, true), 2400);
   assert.equal(computeTimeScaleAudioFilter(false, 0.18), 6200);
   assert.equal(computeTimeScaleAudioFilter(false, 0.8), 18000);
 

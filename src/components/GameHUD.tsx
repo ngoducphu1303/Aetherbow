@@ -1851,6 +1851,43 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
+        {/* Wave 15: Zodiac Riposte, Wall-Slam Impact & Tactical Room Crossroads (Zero-Pill, 0 backdrop-blur) */}
+        {!hud.isTrainingMode && hud.riposteReady && (
+          <div
+            data-testid="hud-riposte-ready"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 bg-[#1c1505]/92 border border-amber-300/80 text-[10px] font-black text-amber-200 font-mono-nums tabular-nums max-w-full"
+          >
+            <span aria-hidden="true" className="text-amber-300">⚡</span>
+            <span className="truncate">PHẢN TIỄN SẴN SÀNG · +1 XUYÊN · +45% PHÁ KHIÊN</span>
+          </div>
+        )}
+
+        {!hud.isTrainingMode && (hud.wallSlamToast || (hud.wallSlamCount ?? 0) > 0) && (
+          <div
+            data-testid="hud-wall-slam"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 bg-[#171108]/90 border border-amber-500/55 text-[10px] font-bold text-amber-100 font-mono-nums tabular-nums max-w-full"
+          >
+            <span aria-hidden="true" className="text-amber-400">▲</span>
+            <span className="truncate">
+              {hud.wallSlamToast ?? `Va Tường Choáng ×${hud.wallSlamCount}`}
+            </span>
+          </div>
+        )}
+
+        {!hud.isTrainingMode && hud.activeCrossroads && (
+          <div
+            data-testid="hud-active-crossroads"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 bg-[#081224]/90 border border-sky-400/50 text-[10px] font-bold text-sky-100 max-w-full"
+          >
+            <span aria-hidden="true" className="text-amber-300 font-black">
+              {hud.activeCrossroads.glyph}
+            </span>
+            <span className="truncate">
+              {hud.activeCrossroads.title} · {hud.activeCrossroads.doctrineLabel}
+            </span>
+          </div>
+        )}
+
         {(hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode && (
           <div className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 bg-[#180912]/92 border border-rose-400/40 text-[10px] font-bold text-rose-200 max-w-full">
             <Flame className="w-3 h-3 text-rose-400 shrink-0" />

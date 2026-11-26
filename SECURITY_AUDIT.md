@@ -1,7 +1,7 @@
 # SECURITY AUDIT — BÁO CÁO KIỂM TOÁN BẢO MẬT & CHỐNG GIAN LẬN
 
-- **Phạm vi kiểm toán**: `firestore.rules`, `firebase-blueprint.json`, `server.ts`, `src/server/serverSecurity.ts`, `src/data/runIntegrityVerifier.ts`, `src/server/weeklyBossService.ts`, `src/data/saveIntegrity.ts`, `src/data/liveOpsConfig.ts`, `src/components/AssetAdminLiveOpsTab.tsx`, và `.env.example`.
-- **Trạng thái chung**: **AN TOÀN CAO (Đợt 14)** — 0 lỗi ESLint trên `firestore.rules` (đã deploy live lên Firestore), 0 bí mật lộ phía client, đầy đủ Rate Limit + WS Clamp + Admin Auth + **Xác Thực Kết Quả Trận Đấu (`POST /api/runs/verify`) & Chống Phát Lại Nonce (`RunNonceReplayGuard`)** + Giám sát 5 nhóm Bất thường An ninh + kiểm biên lịch sự kiện LiveOps.
+- **Phạm vi kiểm toán**: `firestore.rules`, `firebase-blueprint.json`, `server.ts`, `src/server/serverSecurity.ts`, `src/data/runIntegrityVerifier.ts`, `src/data/gearSetTransmutation.ts`, `src/server/weeklyBossService.ts`, `src/data/saveIntegrity.ts`, `src/data/liveOpsConfig.ts`, `src/components/AssetAdminLiveOpsTab.tsx`, và `.env.example`.
+- **Trạng thái chung**: **AN TOÀN CAO (Đợt 15)** — 0 lỗi ESLint trên `firestore.rules` (đã deploy live lên Firestore), 0 bí mật lộ phía client, đầy đủ Rate Limit + WS Clamp + Admin Auth + **Xác Thực Kết Quả Trận Đấu (`POST /api/runs/verify`) & Chống Phát Lại Nonce (`RunNonceReplayGuard`)** + lọc trắng **`transmutedSetId` (chỉ chấp nhận `GEAR_SET_DEFINITIONS` trên trang bị Sử Thi trở lên)** + Giám sát 5 nhóm Bất thường An ninh + kiểm biên lịch sự kiện LiveOps.
 
 ---
 
@@ -36,7 +36,7 @@
 
 - **Gói xuất/nhập JSON-V2 có Checksum (`aetherbow_save_v2`)**: `encodeSignedSaveJson` đóng gói `{ format, exportedAt, checksum, payload }` kèm mã kiểm tra toàn vẹn FNV-1a; `decodeSaveTransferCode` từ chối ngay tệp JSON-V2 bị chỉnh sửa thủ công, đồng thời giữ **100% tương thích ngược** cho tệp JSON cũ và chuỗi `ABW5`.
 - **Phòng vệ hai lớp khi Import (`handleImportSave`)**: Cả `decodeSaveTransferCode` lẫn `handleImportSave` đều chạy qua `validateAndSanitizeSaveIntegrity`.
-- **Tự phục hồi & kẹp biên an toàn**: Kẹp trần `gold`, `gems`, `starDust (0..50,000,000)`, `scrolls`, `spiritCores`, `paragonInfusionLevel (0..500)`, `career (0..1,000,000)`, dọn UID `equipped` trỏ tới vật phẩm không tồn tại, lọc trắng `discoveredEvolutions`, `chapterMilestones (Ch.1–12, ★1–★4)`, **`claimedJourneyMilestones` (`VALID_JOURNEY_MILESTONE_IDS`, Đợt 14)**, khử trùng lặp `inventory`/`mailIds`, và trả về báo cáo `{ ok, repairs }` với 0 cảnh báo giả trên save sạch.
+- **Tự phục hồi & kẹp biên an toàn**: Kẹp trần `gold`, `gems`, `starDust (0..50,000,000)`, `scrolls`, `spiritCores`, `paragonInfusionLevel (0..500)`, `career (0..1,000,000)`, dọn UID `equipped` trỏ tới vật phẩm không tồn tại, lọc trắng `discoveredEvolutions`, `chapterMilestones (Ch.1–12, ★1–★4)`, **`claimedJourneyMilestones` (`VALID_JOURNEY_MILESTONE_IDS`, Đợt 14)**, **`GearInstance.transmutedSetId` (lọc trắng theo `GEAR_SET_DEFINITIONS` và tự động tước bỏ trên đồ Thường/Hiếm để chặn tiêm giả hiệu ứng Bộ Trang Bị, Đợt 15)**, khử trùng lặp `inventory`/`mailIds`, và trả về báo cáo `{ ok, repairs }` với 0 cảnh báo giả trên save sạch.
 
 ---
 

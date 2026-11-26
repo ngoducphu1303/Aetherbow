@@ -75,6 +75,18 @@ Bên cạnh 4 đấu trường GLB độc bản của Chương 1–4, toàn bộ
 
 ---
 
+## 2e. Ngôn Ngữ Hình Ảnh Ngã Rẽ Chiến Thuật, Phản Tiễn & Va Tường Choáng Đợt 15 (`TacticalCrossroadsModal.tsx` + `GameHUD.tsx`)
+
+- **Cổng Ngã Rẽ Chiến Thuật (`TacticalCrossroadsModal.tsx`)**: Sử dụng hoàn toàn bề mặt đặc (`bg-[#0d111a]`, **0 `backdrop-blur`** đè canvas WebGL 3D), chuẩn Zero-Pill với viền sắc cạnh và số liệu thẳng hàng (`font-mono-nums`), hỗ trợ chọn nhanh bằng phím `1` / `2` và ký hiệu hình học mù màu độc lập cho 3 nhánh:
+  - `◆` **Phòng Phục Kích Kho Báu** (`ambush_vault`, Hổ Phách `#f59e0b` — Đội hình Gọng Kìm).
+  - `✦` **Phòng Thánh Tuyền Hồi Phục** (`sanctuary_spring`, Ngọc Lục `#34d399` — Đội hình Cân Bằng).
+  - `▲` **Phòng Cổ Ngữ Kiên Cố** (`rune_bastion`, Lam Ngọc `#38bdf8` — Đội hình Tường Khiên).
+- **Tín Hiệu Chiến Đấu Phản Tiễn & Va Tường (`GameHUD.tsx`, 0 `PointLight` mới, 0 `backdrop-blur`)**:
+  - `⚡ PHẢN TIỄN` (`hud-riposte-ready`): Đánh dấu trực quan mũi tên Phản Tiễn Né Hoàn Hảo tiếp theo (`+1` xuyên, `+45%` phá giáp Boss, `+35%` đẩy lùi).
+  - `◆ VA TƯỜNG` (`hud-wall-slam`): Hiển thị bộ đếm & thông báo Va Tường Choáng kết hợp sóng xung kích tái dùng pool VFX hiện có (`0` PointLight mới, an toàn Intel HD 4000).
+
+---
+
 ## 3. Quy Chuẩn Tài Sản 3D High / Lite (Chuẩn Dell Latitude E5430)
 
 - Mọi nhân vật, quái, Boss và bản đồ mới (Ch.5–12) khi bổ sung tài sản GLB bắt buộc xuất **đủ 2 biến thể** trong `Runtime/`:

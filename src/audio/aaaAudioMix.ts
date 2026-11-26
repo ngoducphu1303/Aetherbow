@@ -66,14 +66,16 @@ export function computeAdaptiveCombatIntensity(
 
 /**
  * Computes the master dynamic low-pass filter cutoff for cinematic Perfect Dodge
- * slow-motion focus and subtle low-HP tunnel tension.
+ * slow-motion focus (820 Hz immersive sweep, or 2400 Hz gentler sweep under
+ * reducedMotion) and subtle low-HP tunnel tension.
  */
 export function computeTimeScaleAudioFilter(
   slowMoActive: boolean,
-  hpRatio: number
+  hpRatio: number,
+  reducedMotion = false
 ): number {
   if (slowMoActive) {
-    return 1450;
+    return reducedMotion ? 2400 : 820;
   }
   if (hpRatio > 0 && hpRatio <= 0.22) {
     return 6200;

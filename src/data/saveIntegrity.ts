@@ -9,6 +9,7 @@ import { RUNES_CATALOG } from './runesData';
 import { RUNE_REFINEMENT_MAX_TIER } from './runeAndAffixRefining';
 import { SUBSTAT_DEFS } from './wave4Data';
 import { VALID_JOURNEY_MILESTONE_IDS } from './zodiacJourneyLog';
+import { GEAR_SET_DEFINITIONS } from './gearData';
 
 export interface SaveIntegrityReport {
   ok: boolean;
@@ -118,21 +119,41 @@ export function validateAndSanitizeSaveIntegrity(rawSave: SaveData): SaveIntegri
               return sub;
             })
           : item.substats;
+        const isTransmutableRarity =
+          cleanRarity === Rarity.EPIC ||
+          cleanRarity === Rarity.LEGENDARY ||
+          cleanRarity === Rarity.MYTHIC;
+        const cleanTransmutedSetId =
+          item.transmutedSetId !== undefined
+            ? isTransmutableRarity &&
+              typeof item.transmutedSetId === 'string' &&
+              item.transmutedSetId in GEAR_SET_DEFINITIONS
+              ? item.transmutedSetId
+              : undefined
+            : undefined;
+        const transmutedSetFixed = item.transmutedSetId !== cleanTransmutedSetId;
         validInventoryUids.add(item.uid);
         if (
           item.level !== cleanLevel ||
           item.rarity !== cleanRarity ||
           item.awakeningLevel !== cleanAwakening ||
-          subFixed
+          subFixed ||
+          transmutedSetFixed
         ) {
           gearStatFixed = true;
-          return {
+          const nextItem = {
             ...item,
             level: cleanLevel,
             rarity: cleanRarity,
             ...(cleanAwakening !== undefined ? { awakeningLevel: cleanAwakening } : {}),
             ...(subFixed && cleanSubstats ? { substats: cleanSubstats } : {}),
           };
+          if (cleanTransmutedSetId !== undefined) {
+            nextItem.transmutedSetId = cleanTransmutedSetId;
+          } else {
+            delete nextItem.transmutedSetId;
+          }
+          return nextItem;
         }
         return item;
       });

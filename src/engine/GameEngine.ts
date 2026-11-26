@@ -45,6 +45,17 @@ import {
   stepProjectileHomingVelocity,
 } from './projectilePhysicsSystem';
 import {
+  TACTICAL_CROSSROADS_CATALOG,
+  applyCrossroadsRewardBonus,
+  computeRiposteArrowEnhancement,
+  createWallSlamResultScratch,
+  evaluateWallSlamImpact,
+  resolveFormationDoctrineProfile,
+  rollTacticalCrossroadsPair,
+  type WallSlamImpactResult,
+} from './wave15CombatSystems';
+import type { TacticalCrossroadsId, TacticalCrossroadsOption } from '../types/game';
+import {
   countActivePooled,
   GroundTelegraphVisualPool,
   LootOrbVisualCache,
@@ -854,6 +865,7 @@ interface EnemyEntity {
   hitStretchXZ?: number;
   knockVx?: number;
   knockVz?: number;
+  wallSlamCooldown?: number;
   hpBarGroup?: THREE.Group;
   hpBarFill?: THREE.Mesh;
   hpBarGhost?: THREE.Mesh;
@@ -1066,6 +1078,10 @@ export interface EngineCallbacks {
     kind: StageEventAfter,
     skills: Partial<Record<SkillId, number>>,
     context?: { chapterId: number; stage: number }
+  ) => void;
+  onRequestCrossroads?: (
+    options: [TacticalCrossroadsOption, TacticalCrossroadsOption],
+    context: { chapterId: number; stageCleared: number }
   ) => void;
   onRunEnded: (
     victory: boolean,
@@ -2110,6 +2126,16 @@ export class GameEngine {
   private styleMomentum: StyleMomentumState = createStyleMomentumState();
   private coopPingToast: string | null = null;
   private coopPingToastTimer = 0;
+  // Wave 15: Zodiac Riposte, Zero-GC Wall-Slam Physics & Tactical Room Crossroads
+  private readonly wallSlamScratch: WallSlamImpactResult = createWallSlamResultScratch();
+  private wallSlamCount = 0;
+  private wallSlamToast: string | null = null;
+  private wallSlamToastTimer = 0;
+  private activeCrossroadsOption: TacticalCrossroadsOption | null = null;
+  private crossroadsBonusAtkPct = 0;
+  private crossroadsBonusCritPct = 0;
+  private lastCrossroadsOfferedStage = -1;
+  private pendingCrossroadsNextStageIdx = 0;
   private victoryOrbitClock = 0;
   private gamepadConnected = false;
   private gamepadMoveX = 0;
@@ -8800,6 +8826,14 @@ export class GameEngine {
     this.perfectDodgeBannerTimer = 0;
     this.perfectDodgeSlowTimer = 0;
     this.perfectDodgeCount = 0;
+    this.wallSlamCount = 0;
+    this.wallSlamToast = null;
+    this.wallSlamToastTimer = 0;
+    this.activeCrossroadsOption = null;
+    this.crossroadsBonusAtkPct = 0;
+    this.crossroadsBonusCritPct = 0;
+    this.lastCrossroadsOfferedStage = -1;
+    this.pendingCrossroadsNextStageIdx = 0;
     this.stageIndex = 0;
     this.waveIndex = 0;
     this.activeSkills = {};
@@ -10453,10 +10487,42 @@ export class GameEngine {
     const stageMult = 1 + this.stageIndex * 0.14;
     const nmHpMult = this.nightmareTier > 0 ? this.nightmareConfig.enemyHpMult : 1;
     const nmDmgMult = this.nightmareTier > 0 ? this.nightmareConfig.enemyDmgMult : 1;
-    const hpMult = this.currentChapter.hpScale * stageMult * nmHpMult * this.liveOpsEnemyHpMult;
+    const crossroadsHpMult = this.activeCrossroadsOption ? this.activeCrossroadsOption.enemyHpMult : 1;
+    const crossroadsDmgMult = this.activeCrossroadsOption ? this.activeCrossroadsOption.enemyDmgMult : 1;
+    const hpMult =
+      this.currentChapter.hpScale *
+      stageMult *
+      nmHpMult *
+      this.liveOpsEnemyHpMult *
+      crossroadsHpMult;
     const dmgMult =
-      this.currentChapter.dmgScale * (1 + this.stageIndex * 0.085) * nmDmgMult * this.liveOpsEnemyDmgMult;
+      this.currentChapter.dmgScale *
+      (1 + this.stageIndex * 0.085) *
+      nmDmgMult *
+      this.liveOpsEnemyDmgMult *
+      crossroadsDmgMult;
     this.spawnEnemyGroups(wave.enemies, hpMult, dmgMult, stage.bossTitle);
+  }
+
+  public applyCrossroadsChoice(optionId: TacticalCrossroadsId): void {
+    const opt = TACTICAL_CROSSROADS_CATALOG[optionId];
+    if (!opt) {
+      this.phase = GamePhase.PLAYING;
+      this.loadStage(this.pendingCrossroadsNextStageIdx);
+      return;
+    }
+    this.activeCrossroadsOption = opt;
+    this.crossroadsBonusAtkPct += opt.bonusAtkPct;
+    this.crossroadsBonusCritPct += opt.bonusCritPct;
+    if (opt.instantHealRatio > 0 && this.hp > 0) {
+      const healAmt = Math.max(1, Math.round(this.maxHp * opt.instantHealRatio));
+      this.hp = Math.min(this.maxHp, this.hp + healAmt);
+      this.spawnParticles(this.px, 1.1, this.pz, 0x10b981, 14);
+      this.emitFloatingNumber(this.px, 2.2, this.pz, healAmt, false, true, undefined, 'SUỐI THÁNH!');
+    }
+    soundEngine.playUiClick(1.12);
+    this.phase = GamePhase.PLAYING;
+    this.loadStage(this.pendingCrossroadsNextStageIdx);
   }
 
   private spawnEnemyGroups(
@@ -10465,6 +10531,9 @@ export class GameEngine {
     dmgMult: number,
     bossTitle?: string
   ): void {
+    const doctrineProfile = this.activeCrossroadsOption
+      ? resolveFormationDoctrineProfile(this.activeCrossroadsOption.doctrine)
+      : null;
     const spawnPoints: Array<[number, number]> = [];
     for (let x = -7.5; x <= 7.5; x += 3) {
       spawnPoints.push([x, -6.8]);
@@ -10489,6 +10558,10 @@ export class GameEngine {
           group.kind === EnemyKind.WARDEN_BOSS ||
           group.kind === EnemyKind.TITAN_BOSS ||
           group.kind === EnemyKind.ZODIAC_BOSS;
+        const isVanguardKind =
+          group.kind === EnemyKind.SKIRMISHER ||
+          group.kind === EnemyKind.GOLEM ||
+          group.kind === EnemyKind.SHADOW_STALKER;
 
         if (isBossKind) {
           sx = totalBossesInWave > 1 ? (bossSpawnIndex === 0 ? -3.4 : 3.4) : 0;
@@ -10498,13 +10571,25 @@ export class GameEngine {
           const pt = spawnPoints[(spIdx * 5 + i * 3) % spawnPoints.length];
           sx = pt[0] + (Math.random() - 0.5) * 1.4;
           sz = pt[1] + (Math.random() - 0.5) * 1.4;
+          if (doctrineProfile) {
+            sx = THREE.MathUtils.clamp(sx * doctrineProfile.flankSpreadX, -ARENA_HALF_W + 1.6, ARENA_HALF_W - 1.6);
+            sz = THREE.MathUtils.clamp(
+              sz + (isVanguardKind ? doctrineProfile.vanguardForwardBiasZ : doctrineProfile.rangedBackBiasZ),
+              -ARENA_HALF_D + 1.6,
+              1.6
+            );
+          }
           spIdx++;
         }
+        const effectiveHpMult =
+          doctrineProfile && !isBossKind && isVanguardKind
+            ? hpMult * doctrineProfile.vanguardHpMult
+            : hpMult;
         this.createEnemy(
           group.kind,
           sx,
           sz,
-          hpMult,
+          effectiveHpMult,
           dmgMult,
           Boolean(group.isElite),
           isBossKind ? bossTitle : undefined
@@ -14304,8 +14389,15 @@ export class GameEngine {
     soundEngine.setCombatTelemetry(
       this.comboCount,
       this.hp / Math.max(1, this.maxHp),
-      this.perfectDodgeSlowTimer > 0 || finisherKinematics.active
+      this.perfectDodgeSlowTimer > 0 ||
+        this.perfectDodgeCounter.visualSlowMoRemainingSec > 0 ||
+        finisherKinematics.active,
+      this.reducedMotionEnabled
     );
+    if (this.wallSlamToastTimer > 0) {
+      this.wallSlamToastTimer = Math.max(0, this.wallSlamToastTimer - dt);
+      if (this.wallSlamToastTimer <= 0) this.wallSlamToast = null;
+    }
     if (this.isTrainingMode) {
       this.trainingClockSec += dt;
     }
@@ -14864,6 +14956,9 @@ export class GameEngine {
     }
     if (this.weaponOverdriveBuffs.atkMult > 1) {
       mult *= this.weaponOverdriveBuffs.atkMult;
+    }
+    if (this.crossroadsBonusAtkPct > 0) {
+      mult *= 1 + this.crossroadsBonusAtkPct;
     }
     return mult;
   }
@@ -15703,6 +15798,17 @@ export class GameEngine {
       : enhancement.nextCounterShotTimer;
     this.astralOvercharge = enhancement.nextAstralOvercharge;
 
+    const maxSynergyScale = this.activeSynergyTiersCache.reduce(
+      (best, entry) => Math.max(best, entry.tier),
+      0
+    );
+    const riposteBonus = isCounterShot
+      ? computeRiposteArrowEnhancement({
+          activeSynergyMaxScale: maxSynergyScale,
+          reducedMotion: this.reducedMotionEnabled,
+        })
+      : null;
+
     if (isCounterShot) {
       const weaponSig = getWeaponKineticSignature(this.baseStats.weaponArchetype);
       this.counterShotsCount += 1;
@@ -15713,6 +15819,9 @@ export class GameEngine {
       }
       triggerHapticPulse('crit', this.hapticsEnabled);
       triggerDeterministicHitStop(this.kinestheticsClock, weaponSig.hitstopTicks);
+      if (riposteBonus && riposteBonus.hitStopSec > 0) {
+        this.hitstopTimer = Math.max(this.hitstopTimer, riposteBonus.hitStopSec);
+      }
       this.shakeIntensity = Math.max(this.shakeIntensity, weaponSig.recoilKick * 1.35);
       this.spawnShockwave(this.px, this.pz, 0xfde047, 3.0, 0.28);
       this.spawnShockwave(this.px, this.pz, weaponSig.impactHex, 2.0, 0.24);
@@ -15725,7 +15834,7 @@ export class GameEngine {
         true,
         false,
         undefined,
-        wave6Counter.empowered ? 'PHẢN KÍCH HOÀNG KIM!' : 'PHẢN TIỄN TINH QUANG!'
+        riposteBonus ? riposteBonus.label : wave6Counter.empowered ? 'PHẢN KÍCH HOÀNG KIM!' : 'PHẢN TIỄN TINH QUANG!'
       );
       this.triggerCompanionSynergyStrike();
     } else if (isOvercharge) {
@@ -15786,7 +15895,8 @@ export class GameEngine {
         ? 1.35
         : isOvercharge
         ? 1.22
-        : 1.0);
+        : 1.0) *
+      (riposteBonus ? riposteBonus.damageBonusMult : 1.0);
     proj.radius = isCounterShot
       ? 0.46
       : isOvercharge || isComboFinisher
@@ -15801,6 +15911,7 @@ export class GameEngine {
       (this.baseStats.weaponArchetype === 'claw' ? 1 : 0) +
       (isAtreusOrb ? 3 : 0) +
       (wave6Counter.piercing ? 3 : isCounterShot ? 2 : 0) +
+      (riposteBonus ? riposteBonus.extraPierce : 0) +
       (isOvercharge ? 2 : isComboFinisher ? 1 : 0);
     proj.ricochetLeft =
       (this.activeSkills.ricochet ?? 0) * 2 +
@@ -17193,12 +17304,75 @@ export class GameEngine {
       } else {
         e.model.root.scale.setScalar(baseScale);
       }
+      if (e.wallSlamCooldown && e.wallSlamCooldown > 0) {
+        e.wallSlamCooldown = Math.max(0, e.wallSlamCooldown - dt);
+      }
       if ((e.knockVx || e.knockVz) && !e.isTrainingDummy && !e.isVaultPillar) {
-        e.x = THREE.MathUtils.clamp(e.x + (e.knockVx ?? 0) * dt, -ARENA_HALF_W + e.radius, ARENA_HALF_W - e.radius);
-        e.z = THREE.MathUtils.clamp(e.z + (e.knockVz ?? 0) * dt, -ARENA_HALF_D + e.radius, ARENA_HALF_D - e.radius);
-        const damp = Math.exp(-13.5 * dt);
-        e.knockVx = Math.abs(e.knockVx ?? 0) > 0.05 ? (e.knockVx ?? 0) * damp : 0;
-        e.knockVz = Math.abs(e.knockVz ?? 0) > 0.05 ? (e.knockVz ?? 0) * damp : 0;
+        const kvx = e.knockVx ?? 0;
+        const kvz = e.knockVz ?? 0;
+        const nextX = e.x + kvx * dt;
+        const nextZ = e.z + kvz * dt;
+        const clampedX = THREE.MathUtils.clamp(nextX, -ARENA_HALF_W + e.radius, ARENA_HALF_W - e.radius);
+        const clampedZ = THREE.MathUtils.clamp(nextZ, -ARENA_HALF_D + e.radius, ARENA_HALF_D - e.radius);
+        e.x = clampedX;
+        e.z = clampedZ;
+
+        // Wave 15 Zero-GC Wall-Slam Impact Physics against Arena Walls & Intact Stone Pillars
+        const slamImpulse = Math.hypot(kvx, kvz) * Math.max(dt, 0.016) * 4.5;
+        const slam = evaluateWallSlamImpact(
+          {
+            nextX,
+            nextZ,
+            clampedX,
+            clampedZ,
+            knockbackImpulse: slamImpulse,
+            arenaHalfW: ARENA_HALF_W,
+            arenaHalfD: ARENA_HALF_D,
+            enemyRadius: e.radius,
+            isBoss: Boolean(e.isBoss),
+            isDummy: Boolean(e.isTrainingDummy || e.isVaultPillar),
+            wallSlamCooldownRemaining: e.wallSlamCooldown ?? 0,
+            pillars: this.intactObstacleScratch,
+          },
+          this.wallSlamScratch
+        );
+        if (slam.triggered) {
+          e.wallSlamCooldown = slam.nextCooldownSec;
+          e.knockVx = 0;
+          e.knockVz = 0;
+          if (!slam.bossStaggerOnly && slam.stunDurationSec > 0) {
+            e.stunTimer = Math.max(e.stunTimer ?? 0, slam.stunDurationSec);
+          }
+          const slamDmg = Math.max(
+            12,
+            Math.round(this.baseStats.attack * this.getCurrentAtkMultiplier() * slam.bonusDamageMultiplier)
+          );
+          this.wallSlamCount += 1;
+          this.wallSlamToast =
+            slam.source === 'pillar'
+              ? `VA TRỤ ĐÁ · CHOÁNG (+${slamDmg})`
+              : `VA TƯỜNG · CHOÁNG (+${slamDmg})`;
+          this.wallSlamToastTimer = 1.65;
+          const slamDist = Math.hypot(e.x - this.px, e.z - this.pz);
+          soundEngine.playWallSlamImpact(computeSpatialPan(e.x, ARENA_HALF_W), slamDist);
+          this.spawnShockwave(slam.hitX, slam.hitZ, 0xf59e0b, 2.35, 0.28);
+          this.spawnParticles(slam.hitX, 0.9, slam.hitZ, 0xfbbf24, 10);
+          this.damageEnemy(
+            e,
+            slamDmg,
+            true,
+            false,
+            false,
+            false,
+            false,
+            slam.source === 'pillar' ? 'VA TRỤ CHOÁNG!' : 'VA TƯỜNG CHOÁNG!',
+            'basic'
+          );
+        } else {
+          const damp = Math.exp(-13.5 * dt);
+          e.knockVx = Math.abs(kvx) > 0.05 ? kvx * damp : 0;
+          e.knockVz = Math.abs(kvz) > 0.05 ? kvz * damp : 0;
+        }
       }
 
       if (e.hitFlashTimer > 0) e.hitFlashTimer -= dt;
@@ -20733,6 +20907,7 @@ export class GameEngine {
             critStacks * 0.12 +
             (this.alexOverdriveTimer > 0 ? 0.25 : 0) +
             this.weaponOverdriveBuffs.critChanceBonus +
+            this.crossroadsBonusCritPct +
             (this.isDailyRiftMode && this.dailyRiftPair ? this.dailyRiftPair.critBonus : 0)
         );
         if (this.hasRune('rune_flame') && (e.burnTimer > 0 || e.poisonDps > 0)) {
@@ -20755,13 +20930,20 @@ export class GameEngine {
         const dmg = p.damage * (isCrit ? critMult : 1);
 
         if (
-          p.isOvercharge &&
+          (p.isOvercharge || p.isCounterShot) &&
           e.isBoss &&
           e.maxBreakShield &&
           e.breakShield &&
           e.breakShield > 0
         ) {
-          e.breakShield = Math.max(0, e.breakShield - e.maxBreakShield * 0.18);
+          const breakMult = p.isCounterShot ? 1.45 : 1.0;
+          e.breakShield = Math.max(0, e.breakShield - e.maxBreakShield * 0.18 * breakMult);
+        }
+        if (p.isCounterShot && !e.isTrainingDummy && !e.isVaultPillar) {
+          const spd = Math.hypot(p.vx, p.vz) || 1;
+          const kbForce = e.isBoss ? 5.2 : 11.5;
+          e.knockVx = (e.knockVx ?? 0) + (p.vx / spd) * kbForce * 1.35;
+          e.knockVz = (e.knockVz ?? 0) + (p.vz / spd) * kbForce * 1.35;
         }
 
         this.damageEnemy(
@@ -21369,6 +21551,7 @@ export class GameEngine {
           const breakPan = computeSpatialPan(e.x, ARENA_HALF_W);
           soundEngine.playBossGuardBreak(breakPan);
           soundEngine.playBossBreakShatter(breakPan);
+          soundEngine.playBossWeakpointShatterChord(this.currentChapter.id);
           soundEngine.playBossStaggerRoar(breakPan);
           soundEngine.playImpactScorchThump(breakPan);
           triggerHapticPulse('boss_break', this.hapticsEnabled);
@@ -23020,8 +23203,15 @@ export class GameEngine {
 
     const stage = this.currentChapter.stages[this.stageIndex];
     if (this.stageIndex >= this.currentChapter.stages.length - 1) {
-      soundEngine.playVictory();
+      soundEngine.setTimeDilationAudioFilter(false);
+      soundEngine.playVictory(this.currentChapter.id);
       this.phase = GamePhase.VICTORY;
+      const finalRewards = applyCrossroadsRewardBonus(
+        { gold: this.runGold, starDust: this.runBossPartStarDust },
+        this.activeCrossroadsOption?.id
+      );
+      this.runGold = finalRewards.gold;
+      this.runBossPartStarDust = finalRewards.starDust;
       this.syncHudImmediate();
       this.callbacks.onRunEnded(true, {
         chapterId: this.currentChapter.id,
@@ -23166,6 +23356,7 @@ export class GameEngine {
         return;
       }
 
+      soundEngine.playDefeatCadence(this.currentChapter.id);
       this.phase = GamePhase.GAME_OVER;
       this.syncHudImmediate();
       const stage = this.currentChapter.stages[this.stageIndex];
@@ -23534,7 +23725,52 @@ export class GameEngine {
         } else if (this.isTowerMode) {
           this.loadTowerFloor(this.towerFloor + 1);
         } else {
-          this.loadStage(this.stageIndex + 1);
+          const nextStageIdx = this.stageIndex + 1;
+          const isPureCampaign =
+            !this.isTowerMode &&
+            !this.isBossRushMode &&
+            !this.isDailyRiftMode &&
+            !this.isGuildBossMode &&
+            !this.isArenaMode &&
+            !this.isCoopRaidMode &&
+            !this.isElementalTowerMode &&
+            !this.isCrystalDefenseMode &&
+            !this.isWorldBossMode &&
+            !this.isBloodMoonMode &&
+            !this.isAbyssalMode &&
+            !this.isGuildWarMode &&
+            !this.isPantheonMode &&
+            !this.isChampionshipMode &&
+            !this.isCrystalVaultMode &&
+            !this.isDragonLairMode &&
+            !this.isSkyCitadelMode &&
+            !this.isTrainingMode &&
+            !this.isWeeklyRankedBossMode &&
+            !this.isEqualizedRiftMode;
+          const stageClearedNumber = this.stageIndex + 1;
+          const crossroadsPair =
+            this.callbacks.onRequestCrossroads &&
+            this.lastCrossroadsOfferedStage !== stageClearedNumber
+              ? rollTacticalCrossroadsPair({
+                  chapterId: this.currentChapter.id,
+                  stageCleared: stageClearedNumber,
+                  isCampaignMode: isPureCampaign,
+                  runSeed: this.currentChapter.id * 1009 + this.kills * 17 + stageClearedNumber,
+                })
+              : null;
+          if (crossroadsPair && this.callbacks.onRequestCrossroads) {
+            this.lastCrossroadsOfferedStage = stageClearedNumber;
+            this.pendingCrossroadsNextStageIdx = nextStageIdx;
+            this.keys = {};
+            this.phase = GamePhase.PAUSED;
+            soundEngine.setTimeDilationAudioFilter(false);
+            this.callbacks.onRequestCrossroads(crossroadsPair, {
+              chapterId: this.currentChapter.id,
+              stageCleared: stageClearedNumber,
+            });
+          } else {
+            this.loadStage(nextStageIdx);
+          }
         }
       }
     } else {
@@ -24016,6 +24252,7 @@ export class GameEngine {
     }
     this.damageEnemy(boss, bonusDmg, true, false, false, false, false, 'ĐIỂM YẾU!', 'basic');
     soundEngine.playWeakPointShatter(computeSpatialPan(wx, ARENA_HALF_W));
+    soundEngine.playBossWeakpointShatterChord(this.currentChapter.id);
     triggerHapticPulse('crit', this.hapticsEnabled);
     this.spawnCritStar(wx, wy, wz, 0xfde047, 2.2);
     this.spawnShockwave(wx, wz, 0x38bdf8, 3.2, 0.36);
@@ -25586,6 +25823,19 @@ export class GameEngine {
       squadFormationId: this.squadFormationId,
       squadPingBanner: this.squadPingBannerTimer > 0 ? this.squadPingBanner : null,
       interactiveHazardsRemaining: this.wave11Hazards.filter((h) => !h.spec.detonated).length,
+      riposteReady:
+        this.perfectDodgeCounter.chargesRemaining > 0 || this.counterShotTimer > 0,
+      wallSlamCount: this.wallSlamCount > 0 ? this.wallSlamCount : undefined,
+      wallSlamToast: this.wallSlamToastTimer > 0 ? this.wallSlamToast : null,
+      activeCrossroads: this.activeCrossroadsOption
+        ? {
+            id: this.activeCrossroadsOption.id,
+            title: this.activeCrossroadsOption.title,
+            glyph: this.activeCrossroadsOption.glyph,
+            doctrineLabel: this.activeCrossroadsOption.doctrineLabel,
+            rewardSummary: this.activeCrossroadsOption.rewardSummary,
+          }
+        : null,
     });
   }
 

@@ -8,6 +8,7 @@ import { resolveBossAudioLayers } from '../engine/aaaWave5Director';
 import {
   buildInterruptFanfareNotes,
   resolveChapterBossStepDuration,
+  resolveChapterEndingCadence,
   resolveDynamicMusicLayers,
   resolveZodiacChapterMusic,
 } from './zodiacMusicDirector';
@@ -267,18 +268,140 @@ class SoundEngine {
    * Feeds live combat telemetry (combo tier, HP ratio, Perfect Dodge slow-mo)
    * into the adaptive BGM layer mixer and dynamic master low-pass filter.
    */
-  public setCombatTelemetry(comboCount: number, hpRatio: number, slowMoActive: boolean): void {
+  public setCombatTelemetry(
+    comboCount: number,
+    hpRatio: number,
+    slowMoActive: boolean,
+    reducedMotion = false
+  ): void {
     this.combatCombo = Math.max(0, Math.floor(comboCount));
     this.combatHpRatio = Math.max(0, Math.min(1, hpRatio));
     this.combatSlowMo = slowMoActive;
     if (this.ctx && this.masterFilter) {
-      const targetHz = computeTimeScaleAudioFilter(this.combatSlowMo, this.combatHpRatio);
+      const targetHz = computeTimeScaleAudioFilter(
+        this.combatSlowMo,
+        this.combatHpRatio,
+        reducedMotion
+      );
       this.masterFilter.frequency.setTargetAtTime(
         targetHz,
         this.ctx.currentTime,
-        slowMoActive ? 0.045 : 0.14
+        slowMoActive ? 0.04 : 0.14
       );
     }
+  }
+
+  /**
+   * Wave 15: Explicit master low-pass sweep for Perfect Dodge slow-mo focus
+   * (820 Hz immersive / 2400 Hz reducedMotion) with instant reset to 18 kHz on exit/pause.
+   */
+  public setTimeDilationAudioFilter(active: boolean, reducedMotion = false): void {
+    this.combatSlowMo = active;
+    if (this.ctx && this.masterFilter) {
+      const targetHz = active ? (reducedMotion ? 2400 : 820) : 18000;
+      this.masterFilter.frequency.setTargetAtTime(
+        targetHz,
+        this.ctx.currentTime,
+        active ? 0.035 : 0.12
+      );
+    }
+  }
+
+  /**
+   * Wave 15: Heavy stone/pillar Wall-Slam Impact SFX (sub-thud + crunch noise).
+   */
+  public playWallSlamImpact(pan = 0, distanceUnits?: number): void {
+    const mix = this.gateSfx('wall_slam_impact', distanceUnits);
+    if (!mix) return;
+    const dest = this.getSfxDest(pan, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const lowEnd = this.sfxMixer.getStats(performance.now()).lowEndMode;
+
+    // Heavy stone impact sub-thud
+    const sub = ctx.createOscillator();
+    const sg = ctx.createGain();
+    sub.type = 'triangle';
+    sub.frequency.setValueAtTime(135 * mix.pitchMult, now);
+    sub.frequency.exponentialRampToValueAtTime(38, now + 0.22);
+    sg.gain.setValueAtTime(0.001, now);
+    sg.gain.linearRampToValueAtTime(0.24 * mix.gainScale, now + 0.01);
+    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    sub.connect(sg);
+    sg.connect(dest);
+    sub.start(now);
+    sub.stop(now + 0.25);
+
+    if (!lowEnd) {
+      const crack = ctx.createOscillator();
+      const cg = ctx.createGain();
+      crack.type = 'sawtooth';
+      crack.frequency.setValueAtTime(340 * mix.pitchMult, now);
+      crack.frequency.exponentialRampToValueAtTime(92, now + 0.11);
+      cg.gain.setValueAtTime(0.09 * mix.gainScale, now);
+      cg.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      crack.connect(cg);
+      cg.connect(dest);
+      crack.start(now);
+      crack.stop(now + 0.13);
+    }
+
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.16,
+      'bandpass',
+      980 * mix.filterShift,
+      210,
+      0.14 * mix.gainScale,
+      1.3
+    );
+  }
+
+  /**
+   * Wave 15: Resonant Boss Weak-Point / Guard-Break Shatter Chord tuned to the
+   * current Zodiac chapter's modal scale (respects lowEndMode voice cap).
+   */
+  public playBossWeakpointShatterChord(chapterId?: number): void {
+    const mix = this.gateSfx('boss_weakpoint_shatter');
+    if (!mix) return;
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    const lowEnd = this.sfxMixer.getStats(performance.now()).lowEndMode;
+    const cadence = resolveChapterEndingCadence(chapterId ?? this.chapterThemeId, true);
+    const chordNotes = lowEnd ? cadence.notes.slice(0, 2) : cadence.notes.slice(0, 3);
+
+    chordNotes.forEach((n, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.025;
+      const shimmerFreq = Math.min(2200, n.freq * 1.5 * mix.pitchMult);
+      osc.frequency.setValueAtTime(shimmerFreq, t);
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.11 * mix.gainScale, t + 0.014);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.38);
+    });
+
+    this.playNoiseBurst(
+      ctx,
+      dest,
+      now,
+      0.14,
+      'highpass',
+      3200 * mix.filterShift,
+      1400,
+      0.09 * mix.gainScale,
+      1.6
+    );
   }
 
   public getVolumes(): { master: number; bgm: number; sfx: number } {
@@ -1422,24 +1545,53 @@ class SoundEngine {
     });
   }
 
-  public playVictory(): void {
-    const dest = this.getSfxDest();
+  public playVictory(chapterId?: number): void {
+    const dest = this.getSfxDest(0, true);
     const ctx = this.ctx;
     if (!ctx || !dest) return;
     const now = ctx.currentTime;
-    const notes = [392, 493.88, 587.33, 783.99];
-    notes.forEach((freq, idx) => {
+    const lowEnd = this.sfxMixer.getStats(performance.now()).lowEndMode;
+    const cadence = resolveChapterEndingCadence(chapterId ?? this.chapterThemeId, true);
+    const notes = lowEnd ? cadence.notes.slice(0, 3) : cadence.notes;
+    notes.forEach((n) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'triangle';
-      const t = now + idx * 0.1;
-      osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.11, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+      osc.type = n.wave;
+      const t = now + n.delay;
+      osc.frequency.setValueAtTime(n.freq, t);
+      gain.gain.setValueAtTime(n.gain, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
       osc.connect(gain);
       gain.connect(dest);
       osc.start(t);
-      osc.stop(t + 0.46);
+      osc.stop(t + n.dur + 0.02);
+    });
+  }
+
+  /**
+   * Wave 15: Chapter-specific descending modal resolution stinger played on defeat.
+   */
+  public playDefeatCadence(chapterId?: number): void {
+    const dest = this.getSfxDest(0, true);
+    const ctx = this.ctx;
+    if (!ctx || !dest) return;
+    const now = ctx.currentTime;
+    this.setTimeDilationAudioFilter(false);
+    const lowEnd = this.sfxMixer.getStats(performance.now()).lowEndMode;
+    const cadence = resolveChapterEndingCadence(chapterId ?? this.chapterThemeId, false);
+    const notes = lowEnd ? cadence.notes.slice(0, 3) : cadence.notes;
+    notes.forEach((n) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = n.wave;
+      const t = now + n.delay;
+      osc.frequency.setValueAtTime(n.freq, t);
+      gain.gain.setValueAtTime(n.gain, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + n.dur + 0.02);
     });
   }
 

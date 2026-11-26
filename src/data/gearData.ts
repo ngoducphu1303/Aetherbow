@@ -679,7 +679,15 @@ export function evaluateEquippedGearSets(
     if (!item) continue;
     const tpl = GEAR_TEMPLATES[item.templateId];
     if (!tpl) continue;
-    const setId = tpl.setName as GearSetId;
+    const isTransmutable =
+      item.rarity === Rarity.EPIC ||
+      item.rarity === Rarity.LEGENDARY ||
+      item.rarity === Rarity.MYTHIC;
+    const setId = (
+      isTransmutable && item.transmutedSetId && GEAR_SET_DEFINITIONS[item.transmutedSetId]
+        ? item.transmutedSetId
+        : tpl.setName
+    ) as GearSetId;
     if (GEAR_SET_DEFINITIONS[setId]) {
       counts[setId] = (counts[setId] ?? 0) + 1;
     }

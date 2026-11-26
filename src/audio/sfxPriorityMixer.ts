@@ -7,6 +7,7 @@
 
 export type SfxEventCategory =
   | 'boss_interrupt'
+  | 'boss_weakpoint_shatter'
   | 'boss_guard_break'
   | 'boss_phase_stinger'
   | 'boss_telegraph_ping'
@@ -16,6 +17,7 @@ export type SfxEventCategory =
   | 'loot_rarity_epic'
   | 'perfect_dodge'
   | 'arena_mechanism'
+  | 'wall_slam_impact'
   | 'set_proc'
   | 'player_hurt'
   | 'meteor_impact'
@@ -82,6 +84,14 @@ export const SFX_CATEGORY_SPECS: Record<SfxEventCategory, SfxCategorySpec> = {
     durationMs: 420,
     maxConcurrent: 2,
     pitchSpread: 0.02,
+    filterSpread: 0.04,
+  },
+  boss_weakpoint_shatter: {
+    priority: 99,
+    dedupeMs: 120,
+    durationMs: 480,
+    maxConcurrent: 2,
+    pitchSpread: 0.015,
     filterSpread: 0.04,
   },
   boss_guard_break: {
@@ -155,6 +165,14 @@ export const SFX_CATEGORY_SPECS: Record<SfxEventCategory, SfxCategorySpec> = {
     maxConcurrent: 2,
     pitchSpread: 0.03,
     filterSpread: 0.05,
+  },
+  wall_slam_impact: {
+    priority: 88,
+    dedupeMs: 95,
+    durationMs: 280,
+    maxConcurrent: 2,
+    pitchSpread: 0.04,
+    filterSpread: 0.06,
   },
   set_proc: {
     priority: 86,

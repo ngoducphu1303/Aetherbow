@@ -25,6 +25,13 @@ import {
   previewSmartSalvage,
 } from '../data/wave11RetentionSystems';
 import { previewGearSubstatPolish } from '../data/runeAndAffixRefining';
+import {
+  GEAR_SET_TRANSMUTATION_MIN_CHAPTER,
+  TRANSMUTABLE_GEAR_SET_IDS,
+  previewGearSetTransmutation,
+  resolveEffectiveGearSetId,
+} from '../data/gearSetTransmutation';
+import { GEAR_SET_DEFINITIONS } from '../data/gearData';
 
 const TARGET_SLOT_LABELS: Record<GearSlot, string> = {
   [GearSlot.WEAPON]: 'Vũ Khí',
@@ -54,12 +61,12 @@ import {
   getSocketGemTierRoman,
   normalizeSocketGems,
 } from '../data/wave5Data';
-import { AutoSalvageFilterRule, ForgeRecipe, GearInstance, GearSlot, Rarity, SaveData, SocketGemColor } from '../types/game';
+import { AutoSalvageFilterRule, ForgeRecipe, GearInstance, GearSetId, GearSlot, Rarity, SaveData, SocketGemColor } from '../types/game';
 import { GearSlotSvg, GoldCoinIcon, RARITY_FRAME_CLASS, StarDustIcon } from './GameIcons';
 
 interface RelicForgeModalProps {
   save: SaveData;
-  initialSubTab?: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets';
+  initialSubTab?: 'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets' | 'transmute';
   initialGearUid?: string;
   onSalvageGear: (uids: string[]) => void;
   onSafeSalvageExcess?: () => void;
@@ -71,6 +78,7 @@ interface RelicForgeModalProps {
   onCraftForgeRecipe: (recipe: ForgeRecipe) => void;
   onReforgeGear: (uid: string, lockedIds: string[]) => void;
   onPolishGearSubstat?: (uid: string, substatId: string) => void;
+  onTransmuteGearSet?: (uid: string, targetSetId: GearSetId) => void;
   onAwakenGear: (uid: string) => void;
   onCraftSocketGem: (tier: 1 | 2) => void;
   onFuseSocketGem: (color: SocketGemColor, tier: 1 | 2) => void;
@@ -93,6 +101,7 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   onCraftForgeRecipe,
   onReforgeGear,
   onPolishGearSubstat,
+  onTransmuteGearSet,
   onAwakenGear,
   onCraftSocketGem,
   onFuseSocketGem,
@@ -100,10 +109,11 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
   onUnsocketGemFromGear,
   onClose,
 }) => {
-  const [subTab, setSubTab] = useState<'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets'>(
+  const [subTab, setSubTab] = useState<'salvage' | 'forge' | 'reforge' | 'awaken' | 'sockets' | 'transmute'>(
     initialSubTab
   );
   const [selectedTargetSlot, setSelectedTargetSlot] = useState<GearSlot>(GearSlot.WEAPON);
+  const [selectedTransmuteSetId, setSelectedTransmuteSetId] = useState<GearSetId>('Destruction Set');
   const [showDropCodex, setShowDropCodex] = useState(false);
   const [selectedUids, setSelectedUids] = useState<string[]>([]);
   const [imgErr, setImgErr] = useState(false);
@@ -278,15 +288,15 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
           </div>
         </div>
 
-        {/* 5 Sub Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+        {/* 6 Sub Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-4">
           <button
             type="button"
             onClick={() => {
               soundEngine.playUiClick();
               setSubTab('salvage');
             }}
-            className={`py-2.5 px-3 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+            className={`py-2.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
               subTab === 'salvage'
                 ? 'a2-emerald-btn shadow-lg'
                 : 'a2-slate-btn text-slate-300'
@@ -301,14 +311,14 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
               soundEngine.playUiClick();
               setSubTab('forge');
             }}
-            className={`py-2.5 px-3 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+            className={`py-2.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
               subTab === 'forge'
                 ? 'a2-yellow-btn shadow-lg'
                 : 'a2-slate-btn text-slate-300'
             }`}
           >
             <Sparkles className="w-4 h-4" />
-            <span>Đúc Thánh Vật [S]</span>
+            <span>Đúc [S]</span>
           </button>
           <button
             type="button"
@@ -316,14 +326,29 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
               soundEngine.playUiClick();
               setSubTab('reforge');
             }}
-            className={`py-2.5 px-3 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+            className={`py-2.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
               subTab === 'reforge'
                 ? 'a2-purple-btn shadow-lg'
                 : 'a2-slate-btn text-slate-300'
             }`}
           >
             <RefreshCw className="w-4 h-4" />
-            <span>Tẩy Luyện Dòng</span>
+            <span>Tẩy Dòng</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playUiClick();
+              setSubTab('transmute');
+            }}
+            className={`py-2.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+              subTab === 'transmute'
+                ? 'a2-yellow-btn shadow-lg'
+                : 'a2-slate-btn text-slate-300'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span>Chuyển Bộ</span>
           </button>
           <button
             type="button"
@@ -331,7 +356,7 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
               soundEngine.playUiClick();
               setSubTab('awaken');
             }}
-            className={`py-2.5 px-3 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+            className={`py-2.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
               subTab === 'awaken'
                 ? 'a2-yellow-btn shadow-lg'
                 : 'a2-slate-btn text-slate-300'
@@ -346,7 +371,7 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
               soundEngine.playUiClick();
               setSubTab('sockets');
             }}
-            className={`py-2.5 px-3 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all col-span-2 sm:col-span-1 ${
+            className={`py-2.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
               subTab === 'sockets'
                 ? 'a2-emerald-btn shadow-lg'
                 : 'a2-slate-btn text-slate-300'
@@ -1527,6 +1552,211 @@ export const RelicForgeModal: React.FC<RelicForgeModalProps> = ({
                 })()
               ) : null}
             </div>
+          </div>
+        )}
+
+        {subTab === 'transmute' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-[#080d1e] border border-amber-400/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-amber-300">
+                  Chuyển Hóa Đồ Bộ Tất Định (Đồ Sử Thi Trở Lên)
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Chọn trực tiếp 1 trong 5 Đồ Bộ Hoàng Đạo đích để kích hoạt mốc 2 món / 3 món mà không phụ thuộc may rủi.
+                </p>
+              </div>
+              <div className="text-xs font-mono-nums text-slate-300 whitespace-nowrap">
+                Mảnh Thánh Lò:{' '}
+                <span className="font-black text-amber-300">
+                  {save.pity?.forgeRelicShards ?? 0}
+                </span>
+              </div>
+            </div>
+
+            {(save.highestChapterCleared ?? 0) < GEAR_SET_TRANSMUTATION_MIN_CHAPTER ? (
+              <div className="rounded-2xl bg-[#0a1022] border border-slate-700 p-5 text-center space-y-1.5">
+                <Lock className="w-6 h-6 text-amber-300 mx-auto" />
+                <div className="text-sm font-black text-white">
+                  Mở khóa sau khi vượt Chương {GEAR_SET_TRANSMUTATION_MIN_CHAPTER}
+                </div>
+                <p className="text-xs text-slate-400">
+                  Hoàn thành Chương {GEAR_SET_TRANSMUTATION_MIN_CHAPTER} để mở Chuyển Hóa Đồ Bộ Tất Định cho trang bị Sử Thi / Huyền Thoại / Thần Thoại.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                {/* Left: Eligible Gear Picker */}
+                <div className="lg:col-span-5 rounded-2xl bg-[#080d1e] border border-slate-700/80 p-3 space-y-2 max-h-[380px] overflow-y-auto a2-scroll">
+                  <div className="text-xs font-black text-slate-300 uppercase tracking-wider px-1">
+                    Chọn Trang Bị (Sử Thi+)
+                  </div>
+                  {sortedAllGear
+                    .filter(
+                      (g) =>
+                        g.rarity === Rarity.EPIC ||
+                        g.rarity === Rarity.LEGENDARY ||
+                        g.rarity === Rarity.MYTHIC
+                    )
+                    .map((item) => {
+                      const tpl = GEAR_TEMPLATES[item.templateId];
+                      if (!tpl) return null;
+                      const effSetId = resolveEffectiveGearSetId(item);
+                      const effSetDef = effSetId ? GEAR_SET_DEFINITIONS[effSetId] : null;
+                      const isSel = focusedItem?.uid === item.uid;
+                      return (
+                        <button
+                          key={item.uid}
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playUiClick();
+                            setFocusGearUid(item.uid);
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl border transition-colors cursor-pointer flex items-center gap-2.5 ${
+                            isSel
+                              ? 'bg-amber-500/15 border-amber-400/70'
+                              : 'bg-[#0b1227] border-slate-800 hover:border-slate-600'
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${
+                              RARITY_FRAME_CLASS[item.rarity]
+                            }`}
+                          >
+                            <GearSlotSvg slot={tpl.slot} className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-black text-white truncate">
+                              {tpl.name}
+                            </div>
+                            <div className="text-[11px] text-slate-300 truncate">
+                              {RARITY_META[item.rarity].label} ·{' '}
+                              <span style={{ color: effSetDef?.accentColor ?? '#94a3b8' }}>
+                                {effSetDef?.displayName ?? tpl.setName}
+                              </span>
+                            </div>
+                          </div>
+                          {equippedSet.has(item.uid) && (
+                            <span className="text-[10px] font-black text-emerald-300 whitespace-nowrap">
+                              Đang mặc
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+
+                {/* Right: Deterministic Set Selector & Preview */}
+                <div className="lg:col-span-7 space-y-3">
+                  {focusedItem ? (
+                    (() => {
+                      const preview = previewGearSetTransmutation(
+                        save,
+                        focusedItem.uid,
+                        selectedTransmuteSetId
+                      );
+                      const targetDef = GEAR_SET_DEFINITIONS[selectedTransmuteSetId];
+                      return (
+                        <div className="rounded-2xl bg-[#080d1e] border border-slate-700/80 p-4 space-y-3">
+                          <div className="text-xs font-black text-slate-300 uppercase tracking-wider">
+                            Chọn Đồ Bộ Đích (100% Tất Định)
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {TRANSMUTABLE_GEAR_SET_IDS.map((setId) => {
+                              const def = GEAR_SET_DEFINITIONS[setId];
+                              const active = selectedTransmuteSetId === setId;
+                              const isCurrent = preview.currentSetId === setId;
+                              return (
+                                <button
+                                  key={setId}
+                                  type="button"
+                                  onClick={() => {
+                                    soundEngine.playUiClick(1.06);
+                                    setSelectedTransmuteSetId(setId);
+                                  }}
+                                  className={`text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                                    active
+                                      ? 'bg-[#121d3b] border-amber-400/80'
+                                      : 'bg-[#0b1124] border-slate-800 hover:border-slate-600'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span
+                                      className="text-xs font-black truncate"
+                                      style={{ color: def.accentColor }}
+                                    >
+                                      {def.displayName}
+                                    </span>
+                                    {isCurrent && (
+                                      <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                                        Hiện tại
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-300 mt-1 line-clamp-2">
+                                    {def.tiers.map((t) => `(${t.piecesRequired}) ${t.label}`).join(' · ')}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="rounded-xl bg-[#060a18] border border-slate-800 p-3 space-y-1.5 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-300">Hiệu ứng Bộ kích hoạt:</span>
+                              <span className="font-mono-nums font-black text-emerald-300">
+                                {preview.beforeActiveTiers} mốc → {preview.afterActiveTiers} mốc
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              Đích: <strong style={{ color: targetDef.accentColor }}>{targetDef.displayName}</strong>
+                            </div>
+                          </div>
+
+                          {preview.cost && (
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                              <div className="flex flex-wrap items-center gap-3 text-xs font-mono-nums font-black">
+                                <span className={preview.hasEnoughGold ? 'text-amber-300' : 'text-rose-400'}>
+                                  {preview.cost.gold.toLocaleString('vi-VN')} Vàng
+                                </span>
+                                <span className={preview.hasEnoughDust ? 'text-sky-300' : 'text-rose-400'}>
+                                  {preview.cost.starDust} Bụi Sao
+                                </span>
+                                <span className={preview.hasEnoughShards ? 'text-emerald-300' : 'text-rose-400'}>
+                                  {preview.cost.forgeRelicShards} Mảnh Thánh Lò
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={!preview.canTransmute || !onTransmuteGearSet}
+                                onClick={() => {
+                                  if (!preview.canTransmute || !onTransmuteGearSet) return;
+                                  soundEngine.playVictory();
+                                  onTransmuteGearSet(focusedItem.uid, selectedTransmuteSetId);
+                                }}
+                                className="a2-yellow-btn px-4 py-2.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Chuyển Hóa Sang {targetDef.displayName}
+                              </button>
+                            </div>
+                          )}
+
+                          {preview.reason && !preview.canTransmute && (
+                            <div className="text-[11px] text-rose-300 font-semibold">
+                              {preview.reason}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="rounded-2xl bg-[#080d1e] border border-slate-800 p-5 text-xs text-slate-400 text-center">
+                      Hãy chọn một trang bị Sử Thi trở lên để Chuyển Hóa Đồ Bộ.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -155,6 +155,29 @@ export interface TacticalRoomModifierSnapshot {
   buffActive?: boolean;
 }
 
+export type TacticalCrossroadsId = 'ambush_vault' | 'sanctuary_spring' | 'rune_bastion';
+
+export type EnemyFormationDoctrine = 'pincer_flank' | 'balanced_line' | 'shield_wall';
+
+export interface TacticalCrossroadsOption {
+  id: TacticalCrossroadsId;
+  title: string;
+  subtitle: string;
+  glyph: string;
+  accentHex: string;
+  doctrine: EnemyFormationDoctrine;
+  doctrineLabel: string;
+  riskSummary: string;
+  rewardSummary: string;
+  enemyHpMult: number;
+  enemyDmgMult: number;
+  goldBonusPct: number;
+  starDustBonusPct: number;
+  instantHealRatio: number;
+  bonusAtkPct: number;
+  bonusCritPct: number;
+}
+
 export type GearSetId =
   | 'Destruction Set'
   | 'Echo Set'
@@ -337,6 +360,7 @@ export interface GearInstance {
   awakeningLevel?: number; // 0..3
   substats?: GearSubstat[];
   socketedGems?: string[]; // SocketGemInstance uids
+  transmutedSetId?: GearSetId; // Wave 15: Deterministic Gear Set Transmutation override
 }
 
 export interface ComputedPlayerStats {
@@ -2544,6 +2568,17 @@ export interface HudSnapshot {
   squadFormationId?: 'break_focus' | 'guard_sustain' | 'elemental_chain';
   squadPingBanner?: string | null;
   interactiveHazardsRemaining?: number;
+  // Wave 15: Zodiac Riposte, Wall-Slam Impact Physics & Tactical Room Crossroads
+  riposteReady?: boolean;
+  wallSlamCount?: number;
+  wallSlamToast?: string | null;
+  activeCrossroads?: {
+    id: TacticalCrossroadsId;
+    title: string;
+    glyph: string;
+    doctrineLabel: string;
+    rewardSummary: string;
+  } | null;
 }
 
 export interface EncounterOffer {
