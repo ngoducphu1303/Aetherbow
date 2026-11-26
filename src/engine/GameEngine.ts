@@ -54,7 +54,23 @@ import {
   rollTacticalCrossroadsPair,
   type WallSlamImpactResult,
 } from './wave15CombatSystems';
-import type { TacticalCrossroadsId, TacticalCrossroadsOption } from '../types/game';
+import type {
+  CombatAudioCaptionKind,
+  TacticalCrossroadsId,
+  TacticalCrossroadsOption,
+} from '../types/game';
+import {
+  CombatAudioCaptionQueue,
+  buildCelestialPortalArch,
+  createBossEntrancePoseScratch,
+  disposeCelestialPortalArch,
+  resolveBossEntranceProfile,
+  stepBossEntrancePose,
+  stepCelestialPortalArch,
+  type BossEntrancePoseScratch,
+  type BuiltCelestialPortalArch,
+  type ZodiacBossEntranceProfile,
+} from './wave16BossAndPortal';
 import {
   countActivePooled,
   GroundTelegraphVisualPool,
@@ -1591,6 +1607,15 @@ export class GameEngine {
   private zodiacFloorMedallion: BuiltZodiacFloorMedallion | null = null;
   // Wave 14: Ch.5-12 Procedural 3D Storytelling Relic Shrines & Zero-GC 3-Tier Skill Synergy Cache
   private zodiacStorytellingProps: BuiltZodiacStorytellingProps | null = null;
+  // Wave 16: 3D Celestial Portal Waypoint Arch, 12-Zodiac Boss Intro Choreography & Audio Captions
+  private celestialPortalArch: BuiltCelestialPortalArch | null = null;
+  private wave16BossIntroOverlayTimer = 0;
+  private wave16BossIntroOverlayDuration = 1.8;
+  private wave16BossIntroProfile: ZodiacBossEntranceProfile | null = null;
+  private readonly wave16BossEntrancePoseScratch: BossEntrancePoseScratch =
+    createBossEntrancePoseScratch();
+  private audioCaptionsEnabled = false;
+  private readonly audioCaptionQueue = new CombatAudioCaptionQueue();
   private activeSynergyTiersCache: ReturnType<typeof evaluateTieredSkillSynergies> = [];
   private activeTacticalRoomModifier: TacticalRoomModifierDef | null = null;
   private leylineConduitPos: { x: number; z: number; radius: number } | null = null;
@@ -4752,10 +4777,16 @@ export class GameEngine {
     soundEngine.playPickup(true);
   }
 
+  private pushAudioCaption(kind: CombatAudioCaptionKind, detailOverride?: string): void {
+    if (!this.audioCaptionsEnabled) return;
+    this.audioCaptionQueue?.push(kind, Date.now(), detailOverride);
+  }
+
   private triggerBossWarning(title: string, subtitle: string): void {
     this.bossWarningTitle = title;
     this.bossWarningSubtitle = subtitle;
     this.bossWarningTimer = 2.45;
+    this.pushAudioCaption('boss_telegraph', `${title}: ${subtitle}`);
   }
 
   public updateLoadoutAppearance(
@@ -5395,6 +5426,10 @@ export class GameEngine {
       disposeZodiacStorytellingProps(this.zodiacStorytellingProps);
       this.zodiacStorytellingProps = null;
     }
+    if (this.celestialPortalArch) {
+      disposeCelestialPortalArch(this.celestialPortalArch);
+      this.celestialPortalArch = null;
+    }
     this.zodiacLandmarkAnimNodes = [];
     this.constellationGroup = null;
     this.chapterWeatherPoints = null;
@@ -5954,6 +5989,16 @@ export class GameEngine {
         this.zodiacLandmarkAnimNodes.push(storyProps.animNodes[si]);
       }
     }
+
+    // 7e. Wave 16: 3D Celestial Portal Waypoint Arch at North Gate across all 12 Chapters (0 PointLights)
+    const portalArch = buildCelestialPortalArch({
+      chapterId: chapter.id,
+      accentHex: chapter.trimHex,
+      liteActive: arenaBudget.liteActive,
+      arenaHalfD: ARENA_HALF_D,
+    });
+    this.arenaGroup.add(portalArch.group);
+    this.celestialPortalArch = portalArch;
 
     // 8. Volumetric-Feel Zodiac Sanctuary Light Shafts (skipped on Lite/Software GPUs)
     if (!this.isSoftwareGl && !arenaBudget.liteActive) {
@@ -8829,6 +8874,9 @@ export class GameEngine {
     this.wallSlamCount = 0;
     this.wallSlamToast = null;
     this.wallSlamToastTimer = 0;
+    this.wave16BossIntroOverlayTimer = 0;
+    this.wave16BossIntroProfile = null;
+    this.audioCaptionQueue?.clear();
     this.activeCrossroadsOption = null;
     this.crossroadsBonusAtkPct = 0;
     this.crossroadsBonusCritPct = 0;
@@ -9376,6 +9424,9 @@ export class GameEngine {
     this.bossEntranceBossName = null;
     this.bossEntranceLandingFired = false;
     this.bossEntranceHintCd = 0;
+    this.wave16BossIntroOverlayTimer = 0;
+    this.wave16BossIntroProfile = null;
+    this.audioCaptionQueue?.clear();
     this.bossFinisherTimer = 0;
     this.bossFinisherName = null;
     this.synergyAwakenedTimer = 0;
@@ -11359,8 +11410,15 @@ export class GameEngine {
     }
 
     const reducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      this.reducedMotionEnabled ||
+      (typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    const introProfile = resolveBossEntranceProfile(this.currentChapter.id);
+    this.wave16BossIntroProfile = introProfile;
+    this.wave16BossIntroOverlayDuration = introProfile.overlayDurationSec;
+    this.wave16BossIntroOverlayTimer = introProfile.overlayDurationSec;
+    stepBossEntrancePose(0, introProfile, reducedMotion, this.wave16BossEntrancePoseScratch);
+    this.pushAudioCaption('boss_telegraph', `${introProfile.bossName} — ${introProfile.entranceCallout}`);
     this.bossIntroFocusX = bossEntity.x;
     this.bossIntroFocusZ = bossEntity.z;
     this.bossIntroDuration = duration;
@@ -11690,6 +11748,7 @@ export class GameEngine {
     lowEndSafetyMode?: LowEndSafetyMode;
     reducedMotion?: boolean;
     reduceScreenFlash?: boolean;
+    audioCaptions?: boolean;
     liveOpsEnemyHpMult?: number;
     liveOpsEnemyDmgMult?: number;
   }): void {
@@ -11726,6 +11785,12 @@ export class GameEngine {
     this.graphicsQuality = quality;
     this.reducedMotionEnabled = Boolean(cfg.reducedMotion);
     this.reduceScreenFlashEnabled = Boolean(cfg.reduceScreenFlash);
+    if (typeof cfg.audioCaptions === 'boolean') {
+      this.audioCaptionsEnabled = cfg.audioCaptions;
+      if (!cfg.audioCaptions) {
+        this.audioCaptionQueue?.clear();
+      }
+    }
     this.screenShakeEnabled = this.reducedMotionEnabled ? false : cfg.screenShake;
     if (typeof cfg.liveOpsEnemyHpMult === 'number' && Number.isFinite(cfg.liveOpsEnemyHpMult)) {
       this.liveOpsEnemyHpMult = Math.max(0.6, Math.min(2.0, cfg.liveOpsEnemyHpMult));
@@ -12145,6 +12210,7 @@ export class GameEngine {
     this.perfectDodgeCount += 1;
     this.counterShotTimer = 3.5;
     triggerPerfectDodgeCounter(this.perfectDodgeCounter);
+    this.pushAudioCaption('riposte_ready');
     const dodgeStyleRes = recordStyleAction(this.styleMomentum, 'perfect_dodge');
     if (dodgeStyleRes.promoted) {
       soundEngine.playComboRankUp(dodgeStyleRes.pitchBoost);
@@ -14488,6 +14554,22 @@ export class GameEngine {
     this.updateCritStars(dt);
     this.updateImpactLights(dt);
     this.updatePortalAndShrine(simDt);
+    if (this.celestialPortalArch) {
+      stepCelestialPortalArch(
+        this.celestialPortalArch,
+        simDt,
+        this.elapsed,
+        this.portalOpen,
+        this.reducedMotionEnabled
+      );
+    }
+    if (this.wave16BossIntroOverlayTimer > 0) {
+      this.wave16BossIntroOverlayTimer = Math.max(0, this.wave16BossIntroOverlayTimer - dt);
+      if (this.wave16BossIntroOverlayTimer <= 0 || this.portalOpen) {
+        this.wave16BossIntroOverlayTimer = 0;
+        this.wave16BossIntroProfile = null;
+      }
+    }
     for (let oi = 0; oi < this.obstacles.length; oi++) {
       const obs = this.obstacles[oi];
       if (obs.intact !== false && obs.crystalCap) {
@@ -15826,6 +15908,21 @@ export class GameEngine {
       this.spawnShockwave(this.px, this.pz, 0xfde047, 3.0, 0.28);
       this.spawnShockwave(this.px, this.pz, weaponSig.impactHex, 2.0, 0.24);
       this.spawnParticles(this.px, 1.05, this.pz, weaponSig.impactHex, weaponSig.sparkCount + 8);
+      this.signatureVfxPool?.spawnTacticalImpactVfx({
+        kind: 'riposte_lance',
+        x: this.px,
+        z: this.pz,
+        targetX: this.px + dirX * 5.2,
+        targetZ: this.pz + dirZ * 5.2,
+        radius: 5.4,
+        accentHex: weaponSig.impactHex,
+        options: {
+          liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+          reducedMotion: this.reducedMotionEnabled,
+          reduceScreenFlash: this.reduceScreenFlashEnabled,
+          colorblindTelegraphs: this.colorblindTelegraphs,
+        },
+      });
       this.emitFloatingNumber(
         this.px,
         2.15,
@@ -17357,6 +17454,25 @@ export class GameEngine {
           soundEngine.playWallSlamImpact(computeSpatialPan(e.x, ARENA_HALF_W), slamDist);
           this.spawnShockwave(slam.hitX, slam.hitZ, 0xf59e0b, 2.35, 0.28);
           this.spawnParticles(slam.hitX, 0.9, slam.hitZ, 0xfbbf24, 10);
+          this.signatureVfxPool?.spawnTacticalImpactVfx({
+            kind: 'wall_slam_burst',
+            x: slam.hitX,
+            z: slam.hitZ,
+            radius: 4.4,
+            accentHex: 0xf59e0b,
+            options: {
+              liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+              reducedMotion: this.reducedMotionEnabled,
+              reduceScreenFlash: this.reduceScreenFlashEnabled,
+              colorblindTelegraphs: this.colorblindTelegraphs,
+            },
+          });
+          this.pushAudioCaption(
+            'wall_slam',
+            slam.source === 'pillar'
+              ? `Đập vào Trụ Đá gây choáng (+${slamDmg} sát thương)!`
+              : `Đập vào Tường Đấu Trường gây choáng (+${slamDmg} sát thương)!`
+          );
           this.damageEnemy(
             e,
             slamDmg,
@@ -21564,6 +21680,7 @@ export class GameEngine {
           this.spawnBattleScar(e.x, e.z, 1.25);
           this.spawnParticles(e.x, 1.3, e.z, 0xfde047, 38);
           this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', 'PHÁ GIÁP! +45% ST', true);
+          this.pushAudioCaption('boss_shatter', `${e.bossTitle || this.currentChapter.bossName} vỡ giáp (+45% ST)!`);
           this.runBossBreaksCount += 1;
           this.advanceRoomBounty({ type: 'boss_break' });
           const gbStyle = recordStyleAction(this.styleMomentum, 'guard_break');
@@ -21831,6 +21948,19 @@ export class GameEngine {
       }
       this.spawnBattleScar(e.x, e.z, 1.55);
       this.spawnParticles(e.x, 1.35, e.z, 0xfbbf24, 42);
+      this.signatureVfxPool?.spawnTacticalImpactVfx({
+        kind: 'boss_phase3_eruption',
+        x: e.x,
+        z: e.z,
+        radius: 7.4,
+        accentHex: this.currentChapter.trimHex,
+        options: {
+          liteActive: Boolean(this.lowEndSafetyMode === 'on' || this.lowEndGpu || this.isSoftwareGl),
+          reducedMotion: this.reducedMotionEnabled,
+          reduceScreenFlash: this.reduceScreenFlashEnabled,
+          colorblindTelegraphs: this.colorblindTelegraphs,
+        },
+      });
       const phase3Plan = getChapterBossPhasePlan(this.currentChapter.id, 0.2);
       this.emitFloatingNumber(e.x, 2.55, e.z, 0, true, false, 'fire', phase3Plan.phaseTitle, true);
       this.triggerBossWarning(
@@ -22506,6 +22636,9 @@ export class GameEngine {
           'gem',
           e.isBoss ? (this.isTowerMode ? 15 + Math.floor(this.towerFloor / 3) * 3 : 12) : 2
         );
+        if (e.isBoss) {
+          this.pushAudioCaption('loot_rare', 'Boss rơi Ngọc Tinh Giới & chiến lợi phẩm hiếm!');
+        }
       }
       if (Math.random() < (this.activeRoomChaosEvent?.id === 'solar_orb_surge' ? 0.45 : 0.15)) {
         this.spawnLootOrb(e.x, e.z + 0.4, 'heal', Math.round(this.maxHp * 0.12));
@@ -24958,6 +25091,7 @@ export class GameEngine {
     this.shakeIntensity = Math.max(this.shakeIntensity, 0.56);
     this.spawnImpactLight(eligible.x, 2.0, eligible.z, 'ultimate');
     this.spawnCritStar(eligible.x, 1.5, eligible.z, 0xfde047, 2.6);
+    this.pushAudioCaption('execution_finisher');
 
     // 5 converging Golden Star-Spear beams from overhead arc radii
     for (let i = 0; i < 5; i++) {
@@ -25836,6 +25970,31 @@ export class GameEngine {
             rewardSummary: this.activeCrossroadsOption.rewardSummary,
           }
         : null,
+      bossIntroOverlay:
+        this.wave16BossIntroOverlayTimer > 0 && this.wave16BossIntroProfile
+          ? {
+              active: true,
+              chapterId: this.wave16BossIntroProfile.chapterId,
+              zodiacTitle: this.wave16BossIntroProfile.zodiacTitle,
+              bossName: this.wave16BossIntroProfile.bossName,
+              epithet: this.wave16BossIntroProfile.epithet,
+              entranceCallout: this.wave16BossIntroProfile.entranceCallout,
+              counterplayHint: this.wave16BossIntroProfile.counterplayHint,
+              accentHex: this.wave16BossIntroProfile.accentHex,
+              progress: Math.max(
+                0,
+                Math.min(
+                  1,
+                  1 -
+                    this.wave16BossIntroOverlayTimer /
+                      Math.max(0.2, this.wave16BossIntroOverlayDuration)
+                )
+              ),
+            }
+          : null,
+      audioCaptionCues: this.audioCaptionsEnabled
+        ? (this.audioCaptionQueue?.getActive(Date.now()) ?? [])
+        : [],
     });
   }
 
@@ -25907,6 +26066,10 @@ export class GameEngine {
     if (this.zodiacStorytellingProps) {
       disposeZodiacStorytellingProps(this.zodiacStorytellingProps);
       this.zodiacStorytellingProps = null;
+    }
+    if (this.celestialPortalArch) {
+      disposeCelestialPortalArch(this.celestialPortalArch);
+      this.celestialPortalArch = null;
     }
     this.groundTelegraphPool?.releaseAll();
     this.signatureVfxPool?.dispose();

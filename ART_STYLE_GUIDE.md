@@ -87,6 +87,19 @@ Bên cạnh 4 đấu trường GLB độc bản của Chương 1–4, toàn bộ
 
 ---
 
+## 2f. Cổng Tinh Đạo 3D 12 Chương, Khai Màn Boss, VFX Chiến Thuật & Phụ Đề Âm Thanh Đợt 16 (`wave16BossAndPortal.ts` + `heroAndBossSignatureVfx.ts`)
+
+- **Cổng Tinh Đạo 3D Cổng Bắc (`buildCelestialPortalArch`, đồng bộ Ch.1–12, 0 `PointLight` mới)**: Khung vòm 14 khối đặt tại Cổng Bắc đấu trường, tương phản vật liệu PBR sắc nét giữa đá hắc diện mờ (`stoneRoughness: 0.85`) và viền kim hoàn bóng (`goldRoughness: 0.24`, biên độ `0.61 >= 0.25`), đĩa bóng tiếp xúc đáy `depthWrite: false`, lõi cổ ngữ đổi màu theo cung Hoàng Đạo (đóng mờ khi đang chiến đấu, bùng sáng xoay Zero-GC khi mở Cổng Bắc, tôn trọng `reducedMotion = 0.25×`), tự giảm phân đoạn đỉnh ở Lite Mode và giải phóng đầy đủ GPU (`disposeCelestialPortalArch`).
+- **3 Hiệu Ứng Va Chạm Chiến Thuật Dùng Chung Pool (`spawnTacticalImpactVfx`, 0 `PointLight` mới, trần `<= 3` slot Lite)**:
+  - **`riposte_lance`**: Mũi thương tinh quang xuyên thẳng khi phóng Phản Tiễn Né Hoàn Hảo.
+  - **`wall_slam_burst`**: Vòng xung kích nứt tường khi quái va đập biên đấu trường hoặc trụ đá nguyên vẹn.
+  - **`boss_phase3_eruption`**: Cột bùng nổ cổ ngữ hoàng gia khi Boss bước vào Pha III (`<= 30% HP`).
+- **Bảng Khai Màn Boss 12 Cung (`hud-boss-intro-plate`) & Phụ Đề Âm Thanh Khiếm Thính (`hud-audio-captions`, `role="status" aria-live="polite"`, nền đặc `0 backdrop-blur`)**:
+  - Khai màn Boss hiển thị cung Hoàng Đạo, danh hiệu, biệt danh, khẩu hiệu xuất trận và mẹo khắc chế theo màu điểm nhấn cung.
+  - Phụ đề âm thanh giới hạn tối đa 2 dòng, khử trùng lặp `350ms`, tự ẩn sau `2400ms`, gắn bộ ký hiệu hình học độc lập không phụ thuộc màu sắc: `◆` Báo chiêu Boss · `⚡` Phản Tiễn sẵn sàng · `▲` Va Tường Choáng · `★` Vỡ điểm yếu / Phá giáp Boss · `✦` Rơi trang bị quý · `◈` Kết Liễu Hoàng Đạo.
+
+---
+
 ## 3. Quy Chuẩn Tài Sản 3D High / Lite (Chuẩn Dell Latitude E5430)
 
 - Mọi nhân vật, quái, Boss và bản đồ mới (Ch.5–12) khi bổ sung tài sản GLB bắt buộc xuất **đủ 2 biến thể** trong `Runtime/`:

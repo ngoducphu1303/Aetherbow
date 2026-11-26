@@ -1,7 +1,7 @@
 # SECURITY AUDIT — BÁO CÁO KIỂM TOÁN BẢO MẬT & CHỐNG GIAN LẬN
 
-- **Phạm vi kiểm toán**: `firestore.rules`, `firebase-blueprint.json`, `server.ts`, `src/server/serverSecurity.ts`, `src/data/runIntegrityVerifier.ts`, `src/data/gearSetTransmutation.ts`, `src/server/weeklyBossService.ts`, `src/data/saveIntegrity.ts`, `src/data/liveOpsConfig.ts`, `src/components/AssetAdminLiveOpsTab.tsx`, và `.env.example`.
-- **Trạng thái chung**: **AN TOÀN CAO (Đợt 15)** — 0 lỗi ESLint trên `firestore.rules` (đã deploy live lên Firestore), 0 bí mật lộ phía client, đầy đủ Rate Limit + WS Clamp + Admin Auth + **Xác Thực Kết Quả Trận Đấu (`POST /api/runs/verify`) & Chống Phát Lại Nonce (`RunNonceReplayGuard`)** + lọc trắng **`transmutedSetId` (chỉ chấp nhận `GEAR_SET_DEFINITIONS` trên trang bị Sử Thi trở lên)** + Giám sát 5 nhóm Bất thường An ninh + kiểm biên lịch sự kiện LiveOps.
+- **Phạm vi kiểm toán**: `firestore.rules`, `firebase-blueprint.json`, `server.ts`, `src/server/serverSecurity.ts`, `src/data/runIntegrityVerifier.ts`, `src/data/gearSetTransmutation.ts`, `src/data/wave16TacticalAndLiveOps.ts`, `src/server/weeklyBossService.ts`, `src/data/saveIntegrity.ts`, `src/data/liveOpsConfig.ts`, `src/components/AssetAdminLiveOpsTab.tsx`, và `.env.example`.
+- **Trạng thái chung**: **AN TOÀN CAO (Đợt 16)** — 0 thay đổi & 0 lỗi ESLint trên `firestore.rules` (đã deploy live lên Firestore), 0 bí mật lộ phía client, đầy đủ Rate Limit + WS Clamp + Admin Auth + Xác Thực Kết Quả Trận Đấu (`POST /api/runs/verify`) & Chống Phát Lại Nonce (`RunNonceReplayGuard`) + lọc trắng `transmutedSetId` + Giám sát 5 nhóm Bất thường An ninh + **Tóm Tắt Chiến Thuật Trước Trận hoàn toàn chỉ-đọc (không biến đổi save `702 LC`) & Lịch Sự Kiện LiveOps Sảnh Chính chỉ hiển thị dữ liệu đã lọc qua `sanitizeLiveOpsConfig` + `resolveEffectiveLiveOpsConfig`**.
 
 ---
 

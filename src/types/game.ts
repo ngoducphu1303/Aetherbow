@@ -725,6 +725,7 @@ export interface GameSettings {
   reducedMotion?: boolean;
   reduceScreenFlash?: boolean;
   uiTextScale?: UiTextScaleMode;
+  audioCaptions?: boolean;
 }
 
 export interface GachaPullHistoryEntry {
@@ -2579,6 +2580,40 @@ export interface HudSnapshot {
     doctrineLabel: string;
     rewardSummary: string;
   } | null;
+  // Wave 16: 12-Zodiac Boss Entrance Choreography & Combat Audio Captions
+  bossIntroOverlay?: BossIntroOverlayState | null;
+  audioCaptionCues?: CombatAudioCaptionCue[];
+}
+
+export interface BossIntroOverlayState {
+  active: boolean;
+  chapterId: number;
+  zodiacTitle: string;
+  bossName: string;
+  epithet: string;
+  entranceCallout: string;
+  counterplayHint: string;
+  accentHex: string;
+  progress: number;
+}
+
+export type CombatAudioCaptionKind =
+  | 'boss_telegraph'
+  | 'riposte_ready'
+  | 'wall_slam'
+  | 'boss_shatter'
+  | 'loot_rare'
+  | 'execution_finisher';
+
+export interface CombatAudioCaptionCue {
+  id: string;
+  kind: CombatAudioCaptionKind;
+  glyph: string;
+  label: string;
+  detail: string;
+  tone: 'warning' | 'counter' | 'impact' | 'reward';
+  createdAtMs: number;
+  expiresAtMs: number;
 }
 
 export interface EncounterOffer {

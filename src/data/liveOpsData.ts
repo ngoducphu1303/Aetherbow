@@ -51,6 +51,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   reducedMotion: false,
   reduceScreenFlash: false,
   uiTextScale: 'normal',
+  audioCaptions: false,
 };
 
 export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
@@ -104,6 +105,7 @@ export function normalizeSettings(s?: Partial<GameSettings>): GameSettings {
     reducedMotion: Boolean(s?.reducedMotion ?? DEFAULT_SETTINGS.reducedMotion),
     reduceScreenFlash: Boolean(s?.reduceScreenFlash ?? DEFAULT_SETTINGS.reduceScreenFlash),
     uiTextScale,
+    audioCaptions: Boolean(s?.audioCaptions ?? DEFAULT_SETTINGS.audioCaptions),
   };
 }
 

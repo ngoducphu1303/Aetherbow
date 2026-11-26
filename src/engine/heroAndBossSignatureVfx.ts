@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import { HeroId } from '../types/game';
 
 export type HeroSignatureVfxKind = 'aurelia' | 'bellona' | 'sylvia' | 'celeste';
+export type TacticalImpactVfxKind =
+  | 'riposte_lance'
+  | 'wall_slam_burst'
+  | 'boss_phase3_eruption';
+export type PooledSignatureVfxKind = HeroSignatureVfxKind | TacticalImpactVfxKind;
 
 export interface SignatureVfxOptions {
   liteActive: boolean;
@@ -13,6 +18,17 @@ export interface SignatureVfxOptions {
 export interface SpawnHeroSignatureParams {
   heroId: HeroId | string;
   effectKind?: string;
+  x: number;
+  z: number;
+  targetX?: number;
+  targetZ?: number;
+  radius?: number;
+  accentHex?: number;
+  options: SignatureVfxOptions;
+}
+
+export interface SpawnTacticalImpactVfxParams {
+  kind: TacticalImpactVfxKind;
   x: number;
   z: number;
   targetX?: number;
@@ -34,7 +50,7 @@ export interface SyncBossAuraParams {
 
 interface BurstSlot {
   active: boolean;
-  kind: HeroSignatureVfxKind;
+  kind: PooledSignatureVfxKind;
   age: number;
   duration: number;
   originX: number;
@@ -91,6 +107,30 @@ export function getSignatureDefaultColor(kind: HeroSignatureVfxKind, colorblind:
       return 0x10b981;
     case 'celeste':
       return 0x38bdf8;
+  }
+}
+
+export function getTacticalImpactDefaultColor(
+  kind: TacticalImpactVfxKind,
+  colorblind: boolean
+): number {
+  if (colorblind) {
+    switch (kind) {
+      case 'riposte_lance':
+        return 0x38bdf8;
+      case 'wall_slam_burst':
+        return 0xf59e0b;
+      case 'boss_phase3_eruption':
+        return 0xfef08a;
+    }
+  }
+  switch (kind) {
+    case 'riposte_lance':
+      return 0xfef08a;
+    case 'wall_slam_burst':
+      return 0xf59e0b;
+    case 'boss_phase3_eruption':
+      return 0xef4444;
   }
 }
 
@@ -423,6 +463,101 @@ export class HeroAndBossSignatureVfxPool {
     this.applySlotPose(chosen, 0);
   }
 
+  /**
+   * Wave 16: Spawns a pooled, 0-PointLight tactical impact burst for
+   * Riposte Piercing Lance, Wall-Slam Shockwave, or Boss Phase III Eruption.
+   */
+  public spawnTacticalImpactVfx(params: SpawnTacticalImpactVfxParams): void {
+    const activeLimit = params.options.liteActive
+      ? Math.min(MAX_SLOTS_LITE, this.slots.length)
+      : this.slots.length;
+
+    let chosen = this.slots[0];
+    let oldestAge = -1;
+    for (let i = 0; i < activeLimit; i++) {
+      const candidate = this.slots[i];
+      if (!candidate.active) {
+        chosen = candidate;
+        break;
+      }
+      if (candidate.age > oldestAge) {
+        oldestAge = candidate.age;
+        chosen = candidate;
+      }
+    }
+
+    const kind = params.kind;
+    const baseColor =
+      params.accentHex !== undefined && !params.options.colorblindTelegraphs
+        ? params.accentHex
+        : getTacticalImpactDefaultColor(kind, params.options.colorblindTelegraphs);
+
+    chosen.active = true;
+    chosen.kind = kind;
+    chosen.age = 0;
+    chosen.duration =
+      kind === 'boss_phase3_eruption' ? 0.85 : kind === 'wall_slam_burst' ? 0.56 : 0.48;
+    chosen.originX = params.x;
+    chosen.originZ = params.z;
+    chosen.targetX = params.targetX ?? params.x;
+    chosen.targetZ = params.targetZ ?? params.z - 3.6;
+    chosen.radius = Math.max(
+      2.0,
+      Math.min(
+        9.5,
+        params.radius ??
+          (kind === 'boss_phase3_eruption' ? 7.2 : kind === 'wall_slam_burst' ? 4.4 : 5.2)
+      )
+    );
+    chosen.reducedMotion = params.options.reducedMotion;
+    chosen.reduceScreenFlash = params.options.reduceScreenFlash;
+
+    chosen.group.visible = true;
+    chosen.group.position.set(params.x, 0, params.z);
+
+    chosen.primaryRingMat.color.setHex(baseColor);
+    chosen.secondaryRingMat.color.setHex(
+      kind === 'riposte_lance'
+        ? 0x38bdf8
+        : kind === 'wall_slam_burst'
+          ? 0xfde68a
+          : 0xfbbf24
+    );
+    chosen.domeMat.color.setHex(baseColor);
+    chosen.shardMat.color.setHex(
+      kind === 'boss_phase3_eruption' ? 0xfef08a : baseColor
+    );
+    chosen.boltMat.color.setHex(kind === 'riposte_lance' ? 0xfef08a : baseColor);
+
+    chosen.domeMesh.visible = kind === 'boss_phase3_eruption';
+    chosen.boltMesh.visible = kind === 'riposte_lance';
+
+    const visibleShards = params.options.liteActive ? 4 : SHARDS_PER_SLOT;
+    for (let s = 0; s < chosen.shards.length; s++) {
+      chosen.shards[s].visible = s < visibleShards;
+    }
+
+    if (kind === 'riposte_lance') {
+      const dx = chosen.targetX - chosen.originX;
+      const dz = chosen.targetZ - chosen.originZ;
+      const len = Math.max(2.2, Math.min(9.0, Math.hypot(dx, dz) || 4.2));
+      const yaw = Math.atan2(dx, dz);
+      chosen.boltMesh.position.set(dx * 0.5, 1.05, dz * 0.5);
+      chosen.boltMesh.rotation.set(0, yaw, 0);
+      chosen.boltMesh.scale.set(1.25, 1.25, len);
+      chosen.secondaryRing.rotation.set(Math.PI * 0.5, yaw, 0);
+      chosen.secondaryRing.position.y = 1.05;
+    } else if (kind === 'wall_slam_burst') {
+      chosen.secondaryRing.rotation.set(0, 0, 0);
+      chosen.secondaryRing.position.y = 0.32;
+    } else {
+      chosen.secondaryRing.rotation.set(0, 0, 0);
+      chosen.secondaryRing.position.y = 0.65;
+    }
+
+    this.applySlotPose(chosen, 0);
+  }
+
   public syncBossPhaseAura(params: SyncBossAuraParams): void {
     this.bossAuraPhase = params.phase;
     this.bossAuraRadius = Math.max(1.8, params.baseRadius);
@@ -535,6 +670,29 @@ export class HeroAndBossSignatureVfxPool {
       slot.secondaryRing.scale.setScalar(domeRadius * 1.04);
       slot.secondaryRing.position.y = 0.22 + Math.sin(t * Math.PI) * 0.85;
       slot.secondaryRingMat.opacity = 0.76 * fade * flashDamp;
+    } else if (slot.kind === 'riposte_lance') {
+      const pierceScale = 0.55 + slot.radius * 0.44 * easeOut;
+      slot.secondaryRing.scale.setScalar(pierceScale);
+      slot.secondaryRingMat.opacity = 0.88 * fade * flashDamp;
+      slot.boltMat.opacity = (t < 0.5 ? 0.94 : fade * 1.15) * flashDamp;
+      const lanceWidth = Math.max(0.25, 1.35 - t * 0.85);
+      slot.boltMesh.scale.x = lanceWidth;
+      slot.boltMesh.scale.y = lanceWidth;
+    } else if (slot.kind === 'wall_slam_burst') {
+      const shockScale = 0.72 + slot.radius * 0.78 * easeOut;
+      slot.secondaryRing.scale.setScalar(shockScale);
+      slot.secondaryRing.position.y = 0.22 + easeOut * 0.48;
+      slot.secondaryRing.rotation.y = t * Math.PI * 1.9 * spinRate;
+      slot.secondaryRingMat.opacity = 0.9 * fade * flashDamp;
+    } else if (slot.kind === 'boss_phase3_eruption') {
+      const eruptScale = 0.85 + slot.radius * 0.82 * easeOut;
+      slot.domeMesh.scale.set(eruptScale * 0.65, 1.15 + easeOut * 1.35, eruptScale * 0.65);
+      slot.domeMesh.rotation.y = -t * Math.PI * 1.1 * spinRate;
+      slot.domeMat.opacity = 0.48 * fade * flashDamp;
+      slot.secondaryRing.scale.setScalar(eruptScale);
+      slot.secondaryRing.position.y = 0.35 + easeOut * 1.45;
+      slot.secondaryRing.rotation.y = t * Math.PI * 2.1 * spinRate;
+      slot.secondaryRingMat.opacity = 0.92 * fade * flashDamp;
     } else {
       // Celeste: twin lunar mirror reflection halo
       const mirrorScale = 0.8 + slot.radius * 0.42 * easeOut;

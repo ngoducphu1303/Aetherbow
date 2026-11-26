@@ -173,6 +173,16 @@ const TacticalCrossroadsModal = lazy(() =>
     default: m.TacticalCrossroadsModal,
   }))
 );
+const PreBattleBriefingModal = lazy(() =>
+  import('./components/PreBattleBriefingModal').then((m) => ({
+    default: m.PreBattleBriefingModal,
+  }))
+);
+const LiveOpsScheduleModal = lazy(() =>
+  import('./components/LiveOpsScheduleModal').then((m) => ({
+    default: m.LiveOpsScheduleModal,
+  }))
+);
 const UpgradeCelebrationOverlay = lazy(() =>
   import('./components/UpgradeCelebrationOverlay').then((m) => ({
     default: m.UpgradeCelebrationOverlay,
@@ -561,6 +571,7 @@ import {
   resolveEffectiveLiveOpsConfig,
   type LiveOpsConfig,
 } from './data/liveOpsConfig';
+import { buildPreBattleTacticalBriefing } from './data/wave16TacticalAndLiveOps';
 import { isVerifiedAdminUser, subscribeLiveOpsConfig } from './services/liveOpsConfigService';
 import { GameEngine, type AppearanceStatus } from './engine/GameEngine';
 import {
@@ -1047,6 +1058,8 @@ export default function App() {
     chapterId: number;
     stageCleared: number;
   } | null>(null);
+  const [preBattleBriefingOpen, setPreBattleBriefingOpen] = useState(false);
+  const [liveOpsScheduleOpen, setLiveOpsScheduleOpen] = useState(false);
   const [runSummary, setRunSummary] = useState<{
     chapterId: number;
     stageReached: number;
@@ -12206,6 +12219,9 @@ export default function App() {
           }}
           onToggleLobbyAutoRotate={() => setLobbyInspectAutoRotate((prev) => !prev)}
           lobbyHeadPos={lobbyHeadPos}
+          liveOpsConfig={liveOpsConfig}
+          onOpenPreBattleBriefing={() => setPreBattleBriefingOpen(true)}
+          onOpenLiveOpsSchedule={() => setLiveOpsScheduleOpen(true)}
         />
       )}
 
@@ -12283,6 +12299,41 @@ export default function App() {
               setPhase(GamePhase.PLAYING);
               engineRef.current?.applyCrossroadsChoice(optionId);
             }}
+          />
+        </Suspense>
+      )}
+
+      {preBattleBriefingOpen && phase === GamePhase.TITLE && (
+        <Suspense fallback={null}>
+          <PreBattleBriefingModal
+            briefing={buildPreBattleTacticalBriefing(save, selectedChapterId, playerStats)}
+            onClose={() => setPreBattleBriefingOpen(false)}
+            onLaunchBattle={() => {
+              setPreBattleBriefingOpen(false);
+              handleStartTrial();
+            }}
+            onJumpToUpgrade={(target) => {
+              setPreBattleBriefingOpen(false);
+              if (target === 'talents') {
+                setTalentsModalOpen(true);
+              } else if (target === 'gear') {
+                setActiveLobbyTab('gear');
+              } else if (target === 'runes') {
+                setActiveLobbyTab('runes');
+              } else {
+                setHeroSubTabInitial('roster');
+                setActiveLobbyTab('heroes');
+              }
+            }}
+          />
+        </Suspense>
+      )}
+
+      {liveOpsScheduleOpen && phase === GamePhase.TITLE && (
+        <Suspense fallback={null}>
+          <LiveOpsScheduleModal
+            liveOpsConfig={liveOpsConfig}
+            onClose={() => setLiveOpsScheduleOpen(false)}
           />
         </Suspense>
       )}

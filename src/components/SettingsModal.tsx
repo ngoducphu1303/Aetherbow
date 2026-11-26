@@ -2020,6 +2020,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </button>
 
+            <button
+              type="button"
+              data-testid="setting-audio-captions"
+              onClick={() => {
+                soundEngine.playUiClick();
+                onUpdateSettings({ audioCaptions: !settings.audioCaptions });
+              }}
+              className={`p-3 rounded-xl border text-left cursor-pointer transition-colors ${
+                settings.audioCaptions
+                  ? 'bg-emerald-500/15 border-emerald-400/55 text-emerald-100'
+                  : 'bg-[#080d1e] border-slate-700 text-slate-300'
+              }`}
+            >
+              <div className="text-xs font-black">Phụ Đề Âm Thanh Chiến Đấu</div>
+              <div className="text-[11px] mt-0.5 font-semibold">
+                {settings.audioCaptions
+                  ? 'Đang bật (Hiển thị phụ đề cảnh báo Boss, Phản Tiễn & Rơi Đồ)'
+                  : 'Tắt (Hỗ trợ người khiếm thính hoặc chơi tắt tiếng)'}
+              </div>
+            </button>
+
             <div className="p-3 rounded-xl border bg-[#080d1e] border-slate-700/90 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-black text-white">Cỡ Chữ Giao Diện</div>

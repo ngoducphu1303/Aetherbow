@@ -1888,6 +1888,63 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         )}
 
+        {/* Wave 16: 12-Zodiac Boss Entrance Choreography Title Plate (0 backdrop-blur) */}
+        {!hud.isTrainingMode && hud.bossIntroOverlay?.active && (
+          <div
+            data-testid="hud-boss-intro-plate"
+            className="rounded-xl px-3 py-2 bg-[#0d111a]/95 border border-amber-400/75 max-w-sm space-y-0.5 shadow-lg"
+          >
+            <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">
+              {hud.bossIntroOverlay.zodiacTitle}
+            </div>
+            <div className="font-display text-sm font-black text-white text-balance leading-tight">
+              {hud.bossIntroOverlay.bossName}{' '}
+              <span className="text-[11px] font-semibold text-slate-300">
+                · {hud.bossIntroOverlay.epithet}
+              </span>
+            </div>
+            <div className="text-[11px] text-amber-100/95 leading-snug">
+              {hud.bossIntroOverlay.entranceCallout}
+            </div>
+            <div className="text-[10px] font-semibold text-sky-200 leading-snug">
+              Mẹo khắc chế: {hud.bossIntroOverlay.counterplayHint}
+            </div>
+          </div>
+        )}
+
+        {/* Wave 16: Hearing-Impaired Combat Audio Captions (aria-live="polite", max 2 rows, 0 backdrop-blur) */}
+        {!hud.isTrainingMode && hud.audioCaptionCues && hud.audioCaptionCues.length > 0 && (
+          <div
+            data-testid="hud-audio-captions"
+            role="status"
+            aria-live="polite"
+            className="flex flex-col gap-1 max-w-xs"
+          >
+            {hud.audioCaptionCues.slice(-2).map((cue) => {
+              const borderClass =
+                cue.tone === 'warning'
+                  ? 'border-rose-400/75 text-rose-100'
+                  : cue.tone === 'counter'
+                    ? 'border-amber-300/80 text-amber-100'
+                    : cue.tone === 'reward'
+                      ? 'border-emerald-400/75 text-emerald-100'
+                      : 'border-sky-400/75 text-sky-100';
+              return (
+                <div
+                  key={cue.id}
+                  className={`rounded-lg px-2.5 py-1 bg-[#0a0f1c]/95 border ${borderClass} text-[10px] leading-snug`}
+                >
+                  <span aria-hidden="true" className="mr-1.5 font-black text-amber-300">
+                    {cue.glyph}
+                  </span>
+                  <span className="font-black mr-1.5">{cue.label}:</span>
+                  <span className="text-slate-200 font-medium">{cue.detail}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {(hud.nightmareTier ?? 0) > 0 && !hud.isTrainingMode && (
           <div className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 bg-[#180912]/92 border border-rose-400/40 text-[10px] font-bold text-rose-200 max-w-full">
             <Flame className="w-3 h-3 text-rose-400 shrink-0" />

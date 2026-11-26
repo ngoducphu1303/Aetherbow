@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import {
   Bot,
+  Calendar,
   Camera,
   ChevronLeft,
   ChevronRight,
@@ -45,6 +46,8 @@ import {
   countClaimableAchievements,
   countClaimableBattlePass,
 } from '../data/liveOpsData';
+import type { LiveOpsConfig } from '../data/liveOpsConfig';
+import { buildPlayerLiveOpsSchedule } from '../data/wave16TacticalAndLiveOps';
 import { isNightmareUnlocked } from '../data/phase5Data';
 import {
   computePowerPressure,
@@ -433,6 +436,9 @@ interface TitleScreenProps {
   onToggleLobbyAutoRotate?: () => void;
   onCraftEarlyTargetGear?: (tier: 'rare' | 'epic' | 's_tier') => void;
   lobbyHeadPos?: { x: number; y: number; visible: boolean };
+  liveOpsConfig?: LiveOpsConfig;
+  onOpenPreBattleBriefing?: () => void;
+  onOpenLiveOpsSchedule?: () => void;
 }
 
 const NAV_TABS: Array<{
@@ -660,6 +666,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onToggleLobbyAutoRotate,
   onCraftEarlyTargetGear,
   lobbyHeadPos,
+  liveOpsConfig,
+  onOpenPreBattleBriefing,
+  onOpenLiveOpsSchedule,
 }) => {
   const [modeDrawerOpen, setModeDrawerOpen] = useState(false);
   const [modeDetailOpen, setModeDetailOpen] = useState(false);
@@ -1974,6 +1983,35 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   </button>
                 </div>
               )}
+              {/* Wave 16: Compact Zero-Pill LiveOps Event Schedule Banner (0 backdrop-blur, tabular-nums) */}
+              {liveOpsConfig && onOpenLiveOpsSchedule && (() => {
+                const liveSchedule = buildPlayerLiveOpsSchedule(liveOpsConfig);
+                return (
+                  <button
+                    type="button"
+                    data-testid="lobby-liveops-banner"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.04);
+                      onOpenLiveOpsSchedule();
+                    }}
+                    className="w-full mb-1.5 px-3 py-1.5 rounded-xl bg-[#0a1024]/92 border border-amber-400/30 hover:border-amber-300/70 flex items-center justify-between gap-2 text-left cursor-pointer transition-colors"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <Calendar className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span className="text-[11px] font-black text-amber-200 shrink-0">
+                        {liveSchedule.statusLabel}
+                      </span>
+                      <span aria-hidden="true" className="text-slate-600 shrink-0">·</span>
+                      <span className="text-[11px] text-slate-300 truncate">
+                        {liveSchedule.headline}
+                      </span>
+                    </span>
+                    <span className="text-[11px] font-mono-nums tabular-nums font-bold text-sky-300 whitespace-nowrap shrink-0">
+                      {liveSchedule.countdownLabel}
+                    </span>
+                  </button>
+                );
+              })()}
               <div className="cel-panel-ornate rounded-2xl px-2.5 sm:px-3.5 py-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shadow-2xl">
                 {/* Left Pair: Compact Mode Picker + Events Hub */}
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -2104,22 +2142,39 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   )}
                 </div>
 
-                {/* Right: Single High-Contrast Primary Battle CTA */}
-                <button
-                  type="button"
-                  data-start="true"
-                  disabled={!activeModeMeta.canStart}
-                  onClick={activeModeMeta.onStart}
-                  className={`sm:w-48 py-2.5 px-5 rounded-xl font-display font-black text-sm tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
-                    activeModeMeta.canStart
-                      ? 'a2-yellow-btn'
-                      : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-not-allowed'
-                  }`}
-                >
-                  {!activeModeMeta.canStart && <Lock className="w-3.5 h-3.5" />}
-                  <span>{activeModeMeta.ctaLabel}</span>
-                  {activeModeMeta.canStart && <ChevronRight className="w-4 h-4" />}
-                </button>
+                {/* Right: Optional 1-Click Pre-Battle Tactical Briefing + Primary Battle CTA */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {gameMode === 'chapter' && onOpenPreBattleBriefing && (
+                    <button
+                      type="button"
+                      data-testid="btn-prebattle-briefing"
+                      onClick={() => {
+                        soundEngine.playUiClick(1.04);
+                        onOpenPreBattleBriefing();
+                      }}
+                      title="Xem phân tích Lực Chiến, Khắc Chế Boss & Cơ Quan Đấu Trường trước trận"
+                      className="a2-slate-btn px-3 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border border-sky-400/40 hover:border-sky-300 text-sky-100 whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <ScrollText className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                      <span>Chiến Thuật</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-start="true"
+                    disabled={!activeModeMeta.canStart}
+                    onClick={activeModeMeta.onStart}
+                    className={`flex-1 sm:flex-initial sm:w-44 py-2.5 px-5 rounded-xl font-display font-black text-sm tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+                      activeModeMeta.canStart
+                        ? 'a2-yellow-btn'
+                        : 'bg-slate-900 border border-slate-700 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {!activeModeMeta.canStart && <Lock className="w-3.5 h-3.5" />}
+                    <span>{activeModeMeta.ctaLabel}</span>
+                    {activeModeMeta.canStart && <ChevronRight className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
