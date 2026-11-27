@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import type {
+  AiInferenceSource,
   AiLiveActivityEvent,
   AiLiveAuctionBidEvent,
   AiLiveAuctionSyncLot,
@@ -26,6 +27,10 @@ import type {
   LiveMiniCupState,
   LiveServerBountyContributor,
   LiveServerBountyState,
+  VirtualDmMessage,
+  VirtualMemoryKind,
+  VirtualPlayerRelationshipMemory,
+  VirtualRelationshipTier,
 } from '../types/game.ts';
 import {
   applyGuildWarBastionStrike,
@@ -70,9 +75,13 @@ interface LiveAiStoreData {
   spectatorMatchSeq?: number;
   spectatorCheersByMatch?: Record<string, Record<string, string>>;
   spectatorClaimsByMatch?: Record<string, Record<string, boolean>>;
+  relationshipsByPlayer?: Record<string, Record<string, VirtualPlayerRelationshipMemory>>;
 }
 
 const MAX_CHAT_PER_CHANNEL = 40;
+const MAX_RELATIONSHIP_PLAYERS = 80;
+const MAX_RELATIONSHIP_MEMORIES = 6;
+const MAX_DM_MESSAGES = 12;
 
 function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
   const weaponByHero: Record<HeroId, string> = {
@@ -992,6 +1001,17 @@ export class LiveAiPlayersService {
       aiPlayerId: opponent.id,
       playerWon: params.playerWon,
       reason: `Đấu Trường 1v1 · ${meta.label}`,
+      nowMs,
+    });
+
+    this.recordRelationshipInteraction({
+      playerName: params.challengerName,
+      aiPlayerId: opponent.id,
+      kind: params.playerWon ? 'arena_win' : 'arena_loss',
+      summaryVi: params.playerWon
+        ? `Thua bạn tại Đấu Trường 1v1 (${cleanDur}s)`
+        : `Thắng bạn tại Đấu Trường 1v1 (${cleanDur}s)`,
+      affinityDelta: params.playerWon ? -6 : 4,
       nowMs,
     });
 
@@ -2572,6 +2592,227 @@ export class LiveAiPlayersService {
         : `Quà cổ vũ Khán Đài: +${reward.goldReward} Vàng · +${reward.gemsReward} Ngọc · +${reward.starDustReward} Bụi!`,
       state: this.getLiveSpectatorMatch(params.playerName, nowMs),
     };
+  }
+
+  // ============================================================================
+  // LIVING VIRTUAL CHARACTER AI (PHASE 2): MEMORY, 1-ON-1 DM & AUTONOMOUS BANTER
+  // ============================================================================
+
+  private resolveRelationshipTier(
+    affinityScore: number,
+    player: AiLivePlayerProfile | undefined,
+    rival: AiRivalRecord | undefined,
+    memoryCount: number
+  ): VirtualRelationshipTier {
+    if (affinityScore <= -18 || (rival && rival.rivalryScore >= 40)) {
+      return 'rival';
+    }
+    if (affinityScore >= 24) {
+      return 'ally';
+    }
+    if (player && player.personality === 'tactical' && affinityScore >= 10) {
+      return 'mentor';
+    }
+    if (memoryCount > 0 || Math.abs(affinityScore) >= 4) {
+      return 'acquaintance';
+    }
+    return 'stranger';
+  }
+
+  private ensureRelationshipBucket(
+    playerName: string,
+    aiPlayerId: string,
+    nowMs: number
+  ): VirtualPlayerRelationshipMemory {
+    const pKey = this.normalizePlayerKey(playerName);
+    if (!this.store.relationshipsByPlayer) {
+      this.store.relationshipsByPlayer = {};
+    }
+    const existingKeys = Object.keys(this.store.relationshipsByPlayer);
+    if (!this.store.relationshipsByPlayer[pKey] && existingKeys.length >= MAX_RELATIONSHIP_PLAYERS) {
+      delete this.store.relationshipsByPlayer[existingKeys[0]];
+    }
+    if (!this.store.relationshipsByPlayer[pKey]) {
+      this.store.relationshipsByPlayer[pKey] = {};
+    }
+
+    const ai = this.getPlayerById(aiPlayerId) ?? this.store.players[0];
+    const resolvedId = ai?.id ?? aiPlayerId;
+    const rival = this.store.rivalsByPlayer?.[pKey]?.[resolvedId];
+
+    let record = this.store.relationshipsByPlayer[pKey][resolvedId];
+    if (!record) {
+      record = {
+        aiPlayerId: resolvedId,
+        aiName: ai?.displayName ?? 'Linh Vũ',
+        affinityScore: rival ? Math.max(-45, -Math.round(rival.rivalryScore * 0.35)) : 0,
+        tier: 'stranger',
+        memories: [],
+        dmMessages: [],
+        updatedAtMs: nowMs,
+      };
+      record.tier = this.resolveRelationshipTier(record.affinityScore, ai, rival, 0);
+      this.store.relationshipsByPlayer[pKey][resolvedId] = record;
+    } else {
+      record.aiName = ai?.displayName ?? record.aiName;
+      record.tier = this.resolveRelationshipTier(
+        record.affinityScore,
+        ai,
+        rival,
+        record.memories.length
+      );
+    }
+    return record;
+  }
+
+  public getRelationshipMemory(
+    playerName: string,
+    aiPlayerId: string,
+    nowMs = Date.now()
+  ): VirtualPlayerRelationshipMemory {
+    const rec = this.ensureRelationshipBucket(playerName, aiPlayerId, nowMs);
+    return {
+      ...rec,
+      memories: rec.memories.map((m) => ({ ...m })),
+      dmMessages: rec.dmMessages.map((m) => ({ ...m })),
+    };
+  }
+
+  public recordRelationshipInteraction(params: {
+    playerName: string;
+    aiPlayerId: string;
+    kind: VirtualMemoryKind;
+    summaryVi: string;
+    affinityDelta: number;
+    nowMs?: number;
+  }): VirtualPlayerRelationshipMemory {
+    const nowMs = params.nowMs ?? Date.now();
+    const rec = this.ensureRelationshipBucket(params.playerName, params.aiPlayerId, nowMs);
+    const ai = this.getPlayerById(rec.aiPlayerId);
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const rival = this.store.rivalsByPlayer?.[pKey]?.[rec.aiPlayerId];
+
+    const clampedDelta = Math.max(-20, Math.min(20, Math.round(params.affinityDelta)));
+    rec.affinityScore = Math.max(-100, Math.min(100, rec.affinityScore + clampedDelta));
+    const cleanSummary = params.summaryVi.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (cleanSummary.length > 0) {
+      rec.memories.unshift({
+        id: `mem_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
+        kind: params.kind,
+        summaryVi: cleanSummary,
+        timestampMs: nowMs,
+      });
+      if (rec.memories.length > MAX_RELATIONSHIP_MEMORIES) {
+        rec.memories = rec.memories.slice(0, MAX_RELATIONSHIP_MEMORIES);
+      }
+    }
+    rec.tier = this.resolveRelationshipTier(
+      rec.affinityScore,
+      ai ?? undefined,
+      rival,
+      rec.memories.length
+    );
+    rec.updatedAtMs = nowMs;
+    this.persistStore();
+    return this.getRelationshipMemory(params.playerName, rec.aiPlayerId, nowMs);
+  }
+
+  public appendDirectMessage(params: {
+    playerName: string;
+    aiPlayerId: string;
+    sender: 'player' | 'ai';
+    text: string;
+    source?: AiInferenceSource;
+    affinityDelta?: number;
+    nowMs?: number;
+  }): { memory: VirtualPlayerRelationshipMemory; message: VirtualDmMessage } {
+    const nowMs = params.nowMs ?? Date.now();
+    const rec = this.ensureRelationshipBucket(params.playerName, params.aiPlayerId, nowMs);
+    const ai = this.getPlayerById(rec.aiPlayerId);
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const rival = this.store.rivalsByPlayer?.[pKey]?.[rec.aiPlayerId];
+
+    const cleanText = params.text.replace(/\s+/g, ' ').trim().slice(0, 220);
+    const message: VirtualDmMessage = {
+      id: `dm_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
+      sender: params.sender,
+      text: cleanText,
+      timestampMs: nowMs,
+      source: params.source,
+    };
+    rec.dmMessages.push(message);
+    if (rec.dmMessages.length > MAX_DM_MESSAGES) {
+      rec.dmMessages = rec.dmMessages.slice(rec.dmMessages.length - MAX_DM_MESSAGES);
+    }
+
+    if (typeof params.affinityDelta === 'number' && params.affinityDelta !== 0) {
+      const clampedDelta = Math.max(-10, Math.min(10, Math.round(params.affinityDelta)));
+      rec.affinityScore = Math.max(-100, Math.min(100, rec.affinityScore + clampedDelta));
+    }
+    rec.tier = this.resolveRelationshipTier(
+      rec.affinityScore,
+      ai ?? undefined,
+      rival,
+      rec.memories.length
+    );
+    rec.updatedAtMs = nowMs;
+    this.persistStore();
+
+    return {
+      memory: this.getRelationshipMemory(params.playerName, rec.aiPlayerId, nowMs),
+      message,
+    };
+  }
+
+  public pickContextualMentor(chapterId: number): AiLivePlayerProfile {
+    const tacticals = this.store.players.filter((p) => p.personality === 'tactical');
+    const pool = tacticals.length > 0 ? tacticals : this.store.players;
+    const idx = Math.abs(Math.floor(chapterId) - 1) % pool.length;
+    return pool[idx];
+  }
+
+  public findPlayerByNameOrId(idOrName?: string): AiLivePlayerProfile | null {
+    if (!idOrName) return null;
+    const clean = idOrName.trim().toLowerCase();
+    if (!clean) return null;
+    return (
+      this.store.players.find(
+        (p) => p.id.toLowerCase() === clean || p.displayName.toLowerCase() === clean
+      ) ?? null
+    );
+  }
+
+  public addAutonomousAiChatMessage(params: {
+    channel: AiLiveChatChannel;
+    aiPlayerId: string;
+    text: string;
+    nowMs?: number;
+  }): AiLiveChatMessage | null {
+    const ai = this.getPlayerById(params.aiPlayerId);
+    if (!ai) return null;
+    const cleanText = params.text.replace(/\s+/g, ' ').trim().slice(0, 180);
+    if (!cleanText) return null;
+    const nowMs = params.nowMs ?? Date.now();
+    if (!this.store.chatHistory) {
+      this.store.chatHistory = createInitialChatHistory(nowMs);
+    }
+    const msg: AiLiveChatMessage = {
+      id: `chat_banter_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
+      channel: params.channel,
+      senderName: ai.displayName,
+      senderTag: '[AI Live]',
+      aiPlayerId: ai.id,
+      heroId: ai.heroId,
+      text: cleanText,
+      timestamp: nowMs,
+    };
+    const bucket = params.channel === 'guild' ? this.store.chatHistory.guild : this.store.chatHistory.lobby;
+    bucket.push(msg);
+    if (bucket.length > MAX_CHAT_PER_CHANNEL) {
+      bucket.splice(0, bucket.length - MAX_CHAT_PER_CHANNEL);
+    }
+    this.persistStore();
+    return msg;
   }
 }
 

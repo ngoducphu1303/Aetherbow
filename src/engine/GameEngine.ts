@@ -184,8 +184,11 @@ import {
 } from './wave18TacticalAndAtmosphere';
 import { FrameBenchmarkSampler } from './frameBenchmarkSampler';
 import type {
+  AiTacticalDirective,
   FrameBenchmarkLiveSnapshot,
   FrameBenchmarkReport,
+  VirtualCompanionCommandId,
+  VirtualPlayerPersonaId,
   ZodiacVowId,
 } from '../types/game';
 import {
@@ -226,13 +229,26 @@ import {
   AI_COMPANION_ROLES,
   computeAiCompanionDecision,
   computeAiRivalDuelDecision,
-  computeAutoPilotDecision,
   createDeterministicKinestheticsClock,
   DeterministicKinestheticsClock,
   shouldManualOverride,
   triggerDeterministicHitStop,
   triggerDeterministicPerfectDodgeBurst,
 } from './aiCombatBrain';
+import {
+  computeLocalFallbackTacticalDirective,
+  createHumanReflexRuntimeState,
+  HumanReflexRuntimeState,
+  normalizeVirtualPlayerPersonaId,
+  notifyManualTakeover,
+  resetHumanReflexRuntimeState,
+  stepHumanLikeAutoPilotDecision,
+  VIRTUAL_PLAYER_PERSONAS,
+} from './humanVirtualPlayerBrain';
+import {
+  requestNvidiaTacticalPlan,
+  requestVirtualCompanionCallout,
+} from '../services/nvidiaVirtualPlayerClient';
 import {
   clearCombatInputBuffer,
   CombatInputBufferState,
@@ -1387,6 +1403,12 @@ export class GameEngine {
   private bossFinisherFocusZ = 0;
   private bossFinisherName: string | null = null;
   private coopTacticalOrder: CoopTacticalOrder = 'focus_boss';
+  private activeCompanionCommand: VirtualCompanionCommandId = 'focus_boss';
+  private companionCalloutSpeaker: string | null = null;
+  private companionCalloutText: string | null = null;
+  private companionCalloutSource: 'nvidia_nim' | 'local_fallback' | null = null;
+  private companionCalloutTimer = 0;
+  private lastAutoCompanionCalloutAtMs = 0;
   private adaptiveFpsGovernor: AdaptiveFpsGovernor = createAdaptiveFpsGovernor(true);
   private gpuWatchdog: GpuWatchdogState = createGpuWatchdogState(null, true);
   private gpuWatchdogNotice: string | null = null;
@@ -1959,12 +1981,18 @@ export class GameEngine {
   private kinestheticsClock: DeterministicKinestheticsClock =
     createDeterministicKinestheticsClock();
   private combatRng: () => number = Math.random;
-  // Pillar 5: Real-Time AI Auto-Pilot, 3D AI Squad & Live AI 1v1 Duel
+  // Pillar 5 + NVIDIA NIM: Real-Time Human-Like AI Auto-Pilot, 3D AI Squad & Live AI 1v1 Duel
   private autoPilotEnabled = false;
   private autoPilotTactic: AiAutoPilotTactic = 'balanced';
+  private autoPilotPersona: VirtualPlayerPersonaId = 'natural_balanced';
   private autoPilotUsedInRun = false;
   private autoPilotStatusText: string | null = null;
   private autoPilotManualOverride = false;
+  private readonly humanReflexRuntime: HumanReflexRuntimeState = createHumanReflexRuntimeState();
+  private activeTacticalDirective: AiTacticalDirective | null = null;
+  private lastNvidiaPlanStageKey = '';
+  private lastNvidiaPlanBossPhase = 1;
+  private lowHpDirectiveTriggered = false;
   private aiSquadAssistEnabled = false;
   private aiSquadRoles: AiCompanionRole[] = ['vanguard', 'ranger'];
   private liveAiDuelId: string | null = null;
@@ -7554,9 +7582,16 @@ export class GameEngine {
     this.syncHudImmediate();
   }
 
-  public setAutoPilot(enabled: boolean, tactic?: AiAutoPilotTactic): void {
+  public setAutoPilot(
+    enabled: boolean,
+    tactic?: AiAutoPilotTactic,
+    persona?: VirtualPlayerPersonaId
+  ): void {
     if (tactic) {
       this.autoPilotTactic = tactic;
+    }
+    if (persona) {
+      this.autoPilotPersona = normalizeVirtualPlayerPersonaId(persona);
     }
     if (this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode) {
       this.autoPilotEnabled = false;
@@ -7567,17 +7602,79 @@ export class GameEngine {
     this.autoPilotEnabled = enabled;
     if (enabled && this.phase === GamePhase.PLAYING) {
       this.autoPilotUsedInRun = true;
+      this.maybeRefreshNvidiaTacticalDirective('stage_start', true);
     }
     if (!enabled) {
       this.autoPilotStatusText = null;
       this.autoPilotManualOverride = false;
+      this.activeTacticalDirective = null;
+      resetHumanReflexRuntimeState(this.humanReflexRuntime);
     }
     this.syncHudImmediate();
   }
 
   public setAutoPilotTactic(tactic: AiAutoPilotTactic): void {
     this.autoPilotTactic = tactic;
+    if (this.activeTacticalDirective) {
+      this.activeTacticalDirective = {
+        ...this.activeTacticalDirective,
+        tactic,
+      };
+    }
     this.syncHudImmediate();
+  }
+
+  public setAutoPilotPersona(personaId: VirtualPlayerPersonaId): void {
+    const normalized = normalizeVirtualPlayerPersonaId(personaId);
+    this.autoPilotPersona = normalized;
+    this.autoPilotTactic = VIRTUAL_PLAYER_PERSONAS[normalized].defaultTactic;
+    if (this.autoPilotEnabled && this.phase === GamePhase.PLAYING) {
+      this.maybeRefreshNvidiaTacticalDirective('persona_switch', true);
+    }
+    this.syncHudImmediate();
+  }
+
+  private maybeRefreshNvidiaTacticalDirective(
+    eventReason: 'stage_start' | 'boss_phase' | 'low_hp' | 'persona_switch' | 'periodic',
+    force = false
+  ): void {
+    if (!this.autoPilotEnabled || (this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode)) {
+      return;
+    }
+    const boss = this.enemies.find((en) => en.isBoss && !en.dead && en.hp > 0) ?? null;
+    const bossPhase = boss ? (boss.bossPhase ?? 1) : 1;
+    const payload = {
+      personaId: this.autoPilotPersona,
+      chapterId: this.currentChapter.id,
+      stageNumber: this.stageIndex + 1,
+      hpRatio: this.hp / Math.max(1, this.maxHp),
+      ultCharge: this.ultCharge,
+      enemyCount: this.enemies.filter((en) => !en.dead && en.hp > 0).length,
+      hasBoss: Boolean(boss),
+      bossName: boss?.bossTitle ?? (boss ? this.currentChapter.bossName : undefined),
+      bossHpRatio: boss ? boss.hp / Math.max(1, boss.maxHp) : undefined,
+      bossPhase: boss ? bossPhase : undefined,
+      bossStaggerBroken: Boolean(
+        this.bossStaggerState &&
+          boss &&
+          this.bossStaggerOwnerId === boss.id &&
+          this.bossStaggerState.brokenRemainingSec > 0
+      ),
+      activeSynergies: this.activeSynergyTiersCache.map((s) => `${s.id} (${s.tier})`).slice(0, 4),
+      eventReason,
+    };
+
+    // Provide instant deterministic thought immediately while NVIDIA NIM responds asynchronously
+    if (!this.activeTacticalDirective || force) {
+      this.activeTacticalDirective = computeLocalFallbackTacticalDirective(payload, Date.now());
+    }
+
+    const requestPersona = this.autoPilotPersona;
+    void requestNvidiaTacticalPlan(payload, force).then((directive) => {
+      if (!this.autoPilotEnabled || this.autoPilotPersona !== requestPersona) return;
+      this.activeTacticalDirective = directive;
+      this.syncHudImmediate();
+    });
   }
 
   public setAiSquadConfig(enabled: boolean, roles: AiCompanionRole[]): void {
@@ -12142,7 +12239,88 @@ export class GameEngine {
         meta.callout
       );
       this.syncHudImmediate();
+      const mappedCmd: VirtualCompanionCommandId =
+        order === 'protect_player'
+          ? 'protect_player'
+          : order === 'break_guard'
+          ? 'sync_burst'
+          : 'focus_boss';
+      this.activeCompanionCommand = mappedCmd;
+      this.requestCompanionCalloutAsync(mappedCmd, 'player_command');
     }
+  }
+
+  public issueVirtualCompanionCommand(command: VirtualCompanionCommandId): void {
+    if (this.coopAllies.length === 0) return;
+    if (this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode) return;
+    this.activeCompanionCommand = command;
+    const mappedOrder: CoopTacticalOrder =
+      command === 'protect_player'
+        ? 'protect_player'
+        : command === 'sync_burst'
+        ? 'break_guard'
+        : 'focus_boss';
+    if (command === 'sync_burst') {
+      // Immediate 60Hz tactical surge: boost companion ult readiness so allies unleash together
+      for (const ally of this.coopAllies) {
+        ally.ultCharge = Math.min(100, (ally.ultCharge ?? 0) + 28);
+      }
+      this.spawnShockwave(this.px, this.pz, 0x38bdf8, 3.0, 0.32);
+    } else if (command === 'protect_player') {
+      this.spawnShockwave(this.px, this.pz, 0x34d399, 2.5, 0.28);
+    }
+    this.setCoopTacticalOrder(mappedOrder);
+  }
+
+  private requestCompanionCalloutAsync(
+    command: VirtualCompanionCommandId,
+    trigger: 'player_command' | 'boss_break' | 'boss_phase' | 'low_hp'
+  ): void {
+    const primaryAlly = this.coopAllies[0];
+    if (!primaryAlly) return;
+    const boss = this.enemies.find((en) => en.isBoss && !en.dead && en.hp > 0) ?? null;
+    const allyName = primaryAlly.name || 'Đồng Đội AI';
+    const allyRole = primaryAlly.roleLabel || 'Chiến Binh';
+
+    const immediateText =
+      trigger === 'low_hp'
+        ? 'Máu bạn thấp rồi, để mình chắn đòn!'
+        : trigger === 'boss_break'
+        ? 'Boss vỡ giáp rồi, dồn sát thương ngay!'
+        : command === 'protect_player'
+        ? 'Đang áp sát bảo vệ bạn!'
+        : command === 'sync_burst'
+        ? 'Đồng loạt xả Tuyệt Kỹ liên kích!'
+        : boss
+        ? `Tập trung hỏa lực vào ${boss.bossTitle ?? this.currentChapter.bossName}!`
+        : 'Dồn hỏa lực mục tiêu chính!';
+
+    this.companionCalloutSpeaker = allyName;
+    this.companionCalloutText = immediateText;
+    this.companionCalloutSource = 'local_fallback';
+    this.companionCalloutTimer = 3.5;
+    this.syncHudImmediate();
+
+    void requestVirtualCompanionCallout({
+      allyName,
+      allyRole,
+      command,
+      trigger,
+      chapterId: this.currentChapter.id,
+      hpRatio: this.hp / Math.max(1, this.maxHp),
+      bossName: boss?.bossTitle ?? (boss ? this.currentChapter.bossName : undefined),
+    }).then((res) => {
+      if (this.phase !== GamePhase.PLAYING || this.coopAllies.length === 0) return;
+      this.companionCalloutSpeaker = res.allyName || allyName;
+      this.companionCalloutText = res.calloutVi;
+      this.companionCalloutSource = res.source;
+      this.companionCalloutTimer = 3.6;
+      if (this.coopAllies[0]) {
+        this.coopAllies[0].calloutText = res.calloutVi;
+        this.coopAllies[0].calloutTimer = 3.2;
+      }
+      this.syncHudImmediate();
+    });
   }
 
   public triggerCoopTacticalPing(order: CoopTacticalOrder): void {
@@ -15262,6 +15440,7 @@ export class GameEngine {
       if (manualActive) {
         // Zero-latency instant manual takeover whenever player touches joystick/WASD
         this.autoPilotManualOverride = true;
+        notifyManualTakeover(this.humanReflexRuntime, this.autoPilotPersona);
         this.autoPilotStatusText = 'Ưu tiên điều khiển tay';
       } else {
         this.autoPilotManualOverride = false;
@@ -15283,30 +15462,57 @@ export class GameEngine {
             })()
           : null;
 
-        const decision = computeAutoPilotDecision({
-          tactic: this.autoPilotTactic,
-          simTimeSec: this.simClock.totalSimTime,
-          playerX: this.px,
-          playerZ: this.pz,
-          hpRatio: this.hp / Math.max(1, this.maxHp),
-          ultCharge: this.ultCharge,
-          dashReady: this.dashCooldown <= 0.05 && this.dashTimer <= 0,
-          activeSkillReady: this.activeSkillCooldown <= 0.05,
-          overchargeRatio: this.astralOvercharge,
-          counterShotReady: this.counterShotTimer > 0,
-          portalOpen: this.portalOpen,
-          portalX: 0,
-          portalZ: -ARENA_HALF_D + 1.4,
-          arenaHalfW: ARENA_HALF_W,
-          arenaHalfD: ARENA_HALF_D,
-          enemies: this.combatScratchPool.autoEnemies,
-          telegraphs: this.combatScratchPool.autoTelegraphs,
-          incomingBullets: this.combatScratchPool.incomingBullets,
-          healOrbs: this.combatScratchPool.autoHealOrbs,
-          obstacles: this.combatScratchPool.intactObstacles,
-          bossWeakPoint: activeBossWp,
-          resonanceTraps: this.combatScratchPool.autoTraps,
-        });
+        // Event-driven System 2 (NVIDIA NIM) strategic check — non-blocking, zero frame stalls
+        const curStageKey = `${this.currentChapter.id}:${this.stageIndex}:${this.towerFloor}`;
+        const liveBoss = this.enemies.find((en) => en.isBoss && !en.dead && en.hp > 0) ?? null;
+        const liveBossPhase = liveBoss?.bossPhase ?? 1;
+        const hpRatioNow = this.hp / Math.max(1, this.maxHp);
+        if (curStageKey !== this.lastNvidiaPlanStageKey) {
+          this.lastNvidiaPlanStageKey = curStageKey;
+          this.lastNvidiaPlanBossPhase = liveBossPhase;
+          this.lowHpDirectiveTriggered = false;
+          this.maybeRefreshNvidiaTacticalDirective('stage_start', false);
+        } else if (liveBoss && liveBossPhase > this.lastNvidiaPlanBossPhase) {
+          this.lastNvidiaPlanBossPhase = liveBossPhase;
+          this.maybeRefreshNvidiaTacticalDirective('boss_phase', true);
+        } else if (hpRatioNow < 0.36 && !this.lowHpDirectiveTriggered) {
+          this.lowHpDirectiveTriggered = true;
+          this.maybeRefreshNvidiaTacticalDirective('low_hp', false);
+        } else if (hpRatioNow >= 0.55) {
+          this.lowHpDirectiveTriggered = false;
+        }
+
+        const decision = stepHumanLikeAutoPilotDecision(
+          {
+            tactic: this.autoPilotTactic,
+            simTimeSec: this.simClock.totalSimTime,
+            playerX: this.px,
+            playerZ: this.pz,
+            hpRatio: hpRatioNow,
+            ultCharge: this.ultCharge,
+            dashReady: this.dashCooldown <= 0.05 && this.dashTimer <= 0,
+            activeSkillReady: this.activeSkillCooldown <= 0.05,
+            overchargeRatio: this.astralOvercharge,
+            counterShotReady: this.counterShotTimer > 0,
+            portalOpen: this.portalOpen,
+            portalX: 0,
+            portalZ: -ARENA_HALF_D + 1.4,
+            arenaHalfW: ARENA_HALF_W,
+            arenaHalfD: ARENA_HALF_D,
+            enemies: this.combatScratchPool.autoEnemies,
+            telegraphs: this.combatScratchPool.autoTelegraphs,
+            incomingBullets: this.combatScratchPool.incomingBullets,
+            healOrbs: this.combatScratchPool.autoHealOrbs,
+            obstacles: this.combatScratchPool.intactObstacles,
+            bossWeakPoint: activeBossWp,
+            resonanceTraps: this.combatScratchPool.autoTraps,
+          },
+          this.activeTacticalDirective,
+          this.autoPilotPersona,
+          this.humanReflexRuntime,
+          dt,
+          Date.now()
+        );
 
         moveX = decision.moveX;
         moveZ = decision.moveZ;
@@ -16996,8 +17202,36 @@ export class GameEngine {
       if (this.coopPrimerBannerTimer <= 0) this.coopPrimerBanner = null;
     }
 
+    if (this.companionCalloutTimer > 0) {
+      this.companionCalloutTimer = Math.max(0, this.companionCalloutTimer - dt);
+      if (this.companionCalloutTimer <= 0) {
+        this.companionCalloutText = null;
+        this.companionCalloutSpeaker = null;
+        this.companionCalloutSource = null;
+      }
+    }
+
     if (this.coopAllies.length === 0) return;
     if (!this.isCoopRaidMode && !this.aiSquadAssistEnabled) return;
+
+    // Non-blocking automatic companion callouts at key combat inflection points (paced >= 18s)
+    const nowCalloutMs = Date.now();
+    if (nowCalloutMs - this.lastAutoCompanionCalloutAtMs >= 18_000) {
+      const activeBoss = this.enemies.find((en) => en.isBoss && !en.dead && en.hp > 0) ?? null;
+      const bossBroken = Boolean(
+        activeBoss &&
+          this.bossStaggerState &&
+          this.bossStaggerOwnerId === activeBoss.id &&
+          this.bossStaggerState.brokenRemainingSec > 0
+      );
+      if (bossBroken) {
+        this.lastAutoCompanionCalloutAtMs = nowCalloutMs;
+        this.requestCompanionCalloutAsync(this.activeCompanionCommand, 'boss_break');
+      } else if (this.hp / Math.max(1, this.maxHp) < 0.35) {
+        this.lastAutoCompanionCalloutAtMs = nowCalloutMs;
+        this.requestCompanionCalloutAsync('protect_player', 'low_hp');
+      }
+    }
     const nearest = this.findNearestEnemy(this.px, this.pz);
 
     // Wave 9 Pillar 5: Co-op AI Emergency <35% HP Sanctuary Rescue
@@ -26081,11 +26315,14 @@ export class GameEngine {
       autoPilotEnabled:
         this.autoPilotEnabled && !(this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode),
       autoPilotTactic: this.autoPilotTactic,
+      autoPilotPersona: this.autoPilotPersona,
       autoPilotLockedReason:
         this.isWeeklyRankedBossMode && !this.isWeeklyBossPracticeMode
           ? 'Khóa AI ở Boss Tuần Tính Hạng'
           : null,
       autoPilotStatusText: this.autoPilotStatusText,
+      autoPilotThoughtVi: this.activeTacticalDirective?.thoughtVi ?? null,
+      autoPilotThoughtSource: this.activeTacticalDirective?.source ?? null,
       autoPilotManualOverride: this.autoPilotManualOverride || undefined,
       aiSquadAllies:
         this.coopAllies.length > 0
@@ -26099,6 +26336,11 @@ export class GameEngine {
               callout: a.calloutTimer && a.calloutTimer > 0 ? a.calloutText : null,
             }))
           : undefined,
+      activeCompanionCommand:
+        this.coopAllies.length > 0 ? this.activeCompanionCommand : undefined,
+      companionCalloutSpeaker: this.companionCalloutSpeaker,
+      companionCalloutText: this.companionCalloutText,
+      companionCalloutSource: this.companionCalloutSource,
       isWeeklyRankedBossMode: this.isWeeklyRankedBossMode || undefined,
       isWeeklyBossPracticeMode: this.isWeeklyBossPracticeMode || undefined,
       weeklyBossTimeLeft: this.isWeeklyRankedBossMode ? Math.ceil(this.weeklyBossTimeLeft) : undefined,

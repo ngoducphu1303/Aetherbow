@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  Bot,
   Check,
   CheckCircle2,
   Clock,
@@ -42,6 +43,7 @@ import { HERO_MAP } from '../data/heroesData';
 import { decodeSaveTransferCode, encodeSaveTransferCode, encodeSignedSaveJson } from '../data/phase5Data';
 import { SKILL_SYNERGIES, SKILL_SYNERGY_MAP } from '../data/skillsData';
 import {
+  AiPreferencesState,
   Chapter1MapMode,
   CombatCameraPreset,
   CombatKeybindAction,
@@ -52,9 +54,16 @@ import {
   GraphicsQuality,
   HudScaleMode,
   LowEndSafetyMode,
+  NvidiaAiStatusSnapshot,
   SaveData,
   SaveTransferPreview,
 } from '../types/game';
+import {
+  normalizeVirtualPlayerPersonaId,
+  VIRTUAL_PLAYER_PERSONA_LIST,
+  VIRTUAL_PLAYER_PERSONAS,
+} from '../engine/humanVirtualPlayerBrain';
+import { fetchNvidiaAiStatus } from '../services/nvidiaVirtualPlayerClient';
 import { resolveSystemLiteBudget } from '../engine/aaaVisualPipeline';
 import {
   isLowEndSafetyModeActive,
@@ -82,6 +91,8 @@ interface SettingsModalProps {
   settings: GameSettings;
   muted: boolean;
   save?: SaveData;
+  aiPreferences?: AiPreferencesState;
+  onUpdateAiPreferences?: (next: AiPreferencesState) => void;
   gpuProfile?: GpuProfileSummary;
   onResetGpuCrashGuard?: () => void;
   onUpdateSettings: (patch: Partial<GameSettings>) => void;
@@ -132,6 +143,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   muted,
   save,
+  aiPreferences,
+  onUpdateAiPreferences,
   gpuProfile,
   onResetGpuCrashGuard,
   onUpdateSettings,
@@ -148,6 +161,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   initialBenchmarkReport = null,
   onClose,
 }) => {
+  const [nvidiaStatus, setNvidiaStatus] = useState<NvidiaAiStatusSnapshot | null>(null);
   const [benchLive, setBenchLive] = useState<FrameBenchmarkLiveSnapshot | null>(() =>
     onPollFrameBenchmark ? onPollFrameBenchmark() : null
   );
@@ -155,6 +169,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     initialBenchmarkReport
   );
   const [benchCopied, setBenchCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchNvidiaAiStatus().then((snap) => {
+      if (!cancelled) setNvidiaStatus(snap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!benchLive?.running || !onPollFrameBenchmark) return;
@@ -1974,6 +1998,93 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
           )}
+        </div>
+
+        {/* NVIDIA NIM Virtual Player AI Persona & Server Proxy Status (Zero-Pill, 0 backdrop-blur) */}
+        <div
+          data-testid="settings-nvidia-virtual-player"
+          className="space-y-2.5 border-t border-sky-400/25 pt-3.5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-black uppercase tracking-wider text-sky-200 flex items-center gap-1.5">
+              <Bot className="w-4 h-4 shrink-0 text-sky-300" />
+              <span>AI Người Chơi Ảo &amp; NVIDIA NIM</span>
+            </span>
+            <span className="text-[11px] font-mono-nums tabular-nums font-semibold text-slate-300">
+              {nvidiaStatus?.configured
+                ? `NVIDIA NIM Sẵn Sàng · ${nvidiaStatus.remainingRpm}/${nvidiaStatus.rpmBudget} RPM`
+                : 'Chế Độ Bộ Não Nội Bộ · 60Hz Phản Xạ Người Thật'}
+            </span>
+          </div>
+
+          <div className="rounded-xl bg-[#080d1e] border border-slate-800 p-3 space-y-2.5">
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              {nvidiaStatus?.configured
+                ? `Máy chủ đang kết nối mô hình ${nvidiaStatus.primaryModel} (dự phòng ${nvidiaStatus.fastModel}) để điều phối chiến thuật, chọn kỹ năng và hội thoại 18 Người Chơi Ảo.`
+                : 'Hệ thống đang chạy Bộ Não Phản Xạ 60Hz nội bộ hoàn toàn ngoại tuyến. Để kích hoạt suy luận NVIDIA NIM miễn phí, đặt biến môi trường NVIDIA_API_KEY trên máy chủ.'}
+            </p>
+
+            {aiPreferences && onUpdateAiPreferences && (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {VIRTUAL_PLAYER_PERSONA_LIST.map((persona) => {
+                    const selected =
+                      normalizeVirtualPlayerPersonaId(aiPreferences.persona) === persona.id;
+                    return (
+                      <button
+                        key={persona.id}
+                        type="button"
+                        data-testid={`settings-ai-persona-${persona.id}`}
+                        aria-pressed={selected}
+                        onClick={() => {
+                          soundEngine.playUiClick(1.06);
+                          onUpdateAiPreferences({
+                            ...aiPreferences,
+                            persona: persona.id,
+                            tactic: VIRTUAL_PLAYER_PERSONAS[persona.id].defaultTactic,
+                          });
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-colors cursor-pointer ${
+                          selected
+                            ? 'bg-sky-500/18 border-sky-300 text-sky-100'
+                            : 'bg-[#0b1224] border-slate-800 hover:border-slate-600 text-slate-300'
+                        }`}
+                      >
+                        <div className="text-xs font-black">{persona.label}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">
+                          {persona.summary}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-800/80">
+                  <span className="text-[11px] text-slate-300">
+                    Tự chọn Kỹ Năng &amp; Ngã Rẽ (đếm ngược 2,4 giây, hủy bất cứ lúc nào)
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="settings-ai-autoskill-toggle"
+                    onClick={() => {
+                      soundEngine.playUiClick(1.02);
+                      onUpdateAiPreferences({
+                        ...aiPreferences,
+                        autoSkillPick: !aiPreferences.autoSkillPick,
+                      });
+                    }}
+                    className={`px-3 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors ${
+                      aiPreferences.autoSkillPick
+                        ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200'
+                        : 'bg-[#0b1224] border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    {aiPreferences.autoSkillPick ? 'Đang Bật' : 'Đã Tắt'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* AAA Wave 4: Controls, Haptics & Accessibility */}

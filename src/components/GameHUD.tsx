@@ -68,7 +68,10 @@ import {
   SkillId,
   TrainingPresetDpsRecord,
   TrainingTargetMode,
+  VirtualCompanionCommandId,
+  VirtualPlayerPersonaId,
 } from '../types/game';
+import { VIRTUAL_PLAYER_PERSONA_LIST } from '../engine/humanVirtualPlayerBrain';
 import { computeTrainingPresetComparison } from '../engine/frameBenchmarkSampler';
 import {
   COOP_TACTICAL_ORDERS,
@@ -112,6 +115,8 @@ interface GameHUDProps {
   onTriggerWeaponOverdrive?: () => void;
   onToggleAutoPilot?: () => void;
   onSelectAutoPilotTactic?: (tactic: AiAutoPilotTactic) => void;
+  onSelectAutoPilotPersona?: (personaId: VirtualPlayerPersonaId) => void;
+  onIssueCompanionCommand?: (command: VirtualCompanionCommandId) => void;
   onSetCoopTacticalOrder?: (order: CoopTacticalOrder) => void;
   onSelectSquadFormation?: (formationId: AiSquadFormationId) => void;
   onSelectChampionshipTactic?: (tacticId: ChampionshipTacticId) => void;
@@ -149,6 +154,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onTriggerWeaponOverdrive,
   onToggleAutoPilot,
   onSelectAutoPilotTactic,
+  onSelectAutoPilotPersona,
+  onIssueCompanionCommand,
   onSetCoopTacticalOrder,
   onSelectSquadFormation,
   onSelectChampionshipTactic,
@@ -2258,6 +2265,61 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <span className="truncate">{hud.coopPrimerBanner}</span>
               </div>
             )}
+            {onIssueCompanionCommand && !hud.isWeeklyRankedBossMode && (
+              <div
+                data-testid="hud-companion-command-bar"
+                className="pointer-events-auto flex items-center gap-1 rounded-lg bg-[#060a18]/94 border border-sky-400/40 p-1"
+                role="group"
+                aria-label="Ra lệnh nhanh cho đồng đội AI"
+              >
+                {(
+                  [
+                    { id: 'focus_boss', label: 'Dồn Boss' },
+                    { id: 'protect_player', label: 'Bảo Vệ' },
+                    { id: 'sync_burst', label: 'Xả Chiêu' },
+                  ] as Array<{ id: VirtualCompanionCommandId; label: string }>
+                ).map((cmd) => {
+                  const active = (hud.activeCompanionCommand ?? 'focus_boss') === cmd.id;
+                  return (
+                    <button
+                      key={cmd.id}
+                      type="button"
+                      tabIndex={-1}
+                      data-testid={`hud-companion-cmd-${cmd.id}`}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onIssueCompanionCommand(cmd.id);
+                      }}
+                      className={`flex-1 px-1.5 py-1 rounded text-[9px] font-black whitespace-nowrap cursor-pointer transition-colors ${
+                        active
+                          ? 'bg-amber-400/25 text-amber-100 border border-amber-300/75'
+                          : 'text-slate-300 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      {cmd.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {hud.companionCalloutText && (
+              <div
+                data-testid="hud-companion-callout"
+                className="rounded-lg px-2 py-1 bg-[#071024]/95 border border-sky-400/45 text-[10px] text-slate-100 leading-snug"
+              >
+                <span className="font-black text-sky-300">
+                  {hud.companionCalloutSpeaker || 'Đồng Đội AI'}
+                </span>
+                <span aria-hidden="true" className="mx-1 text-slate-500">·</span>
+                <span className="font-semibold">{hud.companionCalloutText}</span>
+                {hud.companionCalloutSource === 'nvidia_nim' && (
+                  <>
+                    <span aria-hidden="true" className="mx-1 text-slate-500">·</span>
+                    <span className="text-[9px] font-bold text-emerald-300">NIM</span>
+                  </>
+                )}
+              </div>
+            )}
             {onSetCoopTacticalOrder && (
               <div
                 className="pointer-events-auto flex flex-wrap items-center gap-1 rounded-lg bg-[#060a18]/92 border border-sky-400/40 p-1"
@@ -2426,6 +2488,48 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {hud.autoPilotEnabled && !hud.autoPilotLockedReason && !hud.isTrainingMode && (
+            <div
+              data-testid="hud-virtual-player-strip"
+              className="w-full max-w-[274px] bg-[#060a18]/92 border border-sky-400/30 rounded-xl px-2.5 py-1.5 space-y-1 text-right"
+            >
+              {onSelectAutoPilotPersona && (
+                <div className="flex items-center justify-end gap-0.5 flex-wrap">
+                  {VIRTUAL_PLAYER_PERSONA_LIST.map((p) => {
+                    const active = (hud.autoPilotPersona ?? 'natural_balanced') === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        data-testid={`hud-ai-persona-${p.id}`}
+                        onClick={() => onSelectAutoPilotPersona(p.id)}
+                        title={p.summary}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                          active
+                            ? 'bg-sky-500/25 text-sky-200 border border-sky-400/60'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {p.shortLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="text-[10px] text-slate-200 leading-snug line-clamp-2">
+                {hud.autoPilotManualOverride
+                  ? 'Ưu tiên điều khiển tay · Sẽ trả về AI sau khi thả phím'
+                  : hud.autoPilotThoughtVi || hud.autoPilotStatusText || 'AI đang đọc tình huống chiến đấu'}
+              </div>
+              <div className="text-[9px] text-slate-400 font-semibold">
+                {hud.autoPilotThoughtSource === 'nvidia_nim'
+                  ? 'NVIDIA NIM · Người Chơi Ảo'
+                  : 'Bộ Não Nội Bộ · Phản Xạ 60Hz'}
+                {hud.autoPilotStatusText ? ` · ${hud.autoPilotStatusText}` : ''}
+              </div>
             </div>
           )}
 

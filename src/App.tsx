@@ -682,7 +682,12 @@ import {
   AiPreferencesState,
   AiRivalRecord,
   CoopTacticalOrder,
+  VirtualPlayerPersonaId,
 } from './types/game';
+import {
+  normalizeVirtualPlayerPersonaId,
+  VIRTUAL_PLAYER_PERSONAS,
+} from './engine/humanVirtualPlayerBrain';
 
 const STORAGE_KEY = 'artemis_3d_save_v1';
 const GUEST_STORAGE_KEY = 'artemis_3d_guest_save_v1';
@@ -1269,7 +1274,11 @@ export default function App() {
   }, [playerDisplayName, triggerUpgradeCelebration]);
 
   useEffect(() => {
-    engineRef.current?.setAutoPilot(currentAiPrefs.autoPilotEnabled, currentAiPrefs.tactic);
+    engineRef.current?.setAutoPilot(
+      currentAiPrefs.autoPilotEnabled,
+      currentAiPrefs.tactic,
+      currentAiPrefs.persona
+    );
     engineRef.current?.setAiSquadConfig(currentAiPrefs.squadAssistEnabled, currentAiPrefs.squadRoles);
     engineRef.current?.setSquadFormation(normalizeAiSquadFormation(currentAiPrefs.squadFormation));
     engineRef.current?.setAiChallengeConfig(
@@ -1280,6 +1289,7 @@ export default function App() {
   }, [
     currentAiPrefs.autoPilotEnabled,
     currentAiPrefs.tactic,
+    currentAiPrefs.persona,
     currentAiPrefs.squadAssistEnabled,
     currentAiPrefs.squadRoles,
     currentAiPrefs.squadFormation,
@@ -4699,7 +4709,7 @@ export default function App() {
 
   const handleUpdateAiPreferences = useCallback((next: AiPreferencesState) => {
     setSave((prev) => ({ ...prev, aiPreferences: next }));
-    engineRef.current?.setAutoPilot(next.autoPilotEnabled, next.tactic);
+    engineRef.current?.setAutoPilot(next.autoPilotEnabled, next.tactic, next.persona);
     engineRef.current?.setAiSquadConfig(next.squadAssistEnabled, next.squadRoles);
     engineRef.current?.setSquadFormation(normalizeAiSquadFormation(next.squadFormation));
     engineRef.current?.setAiChallengeConfig(
@@ -4725,7 +4735,7 @@ export default function App() {
     setSave((prev) => {
       const cur = normalizeAiPreferences(prev.aiPreferences);
       const nextEnabled = !cur.autoPilotEnabled;
-      engineRef.current?.setAutoPilot(nextEnabled, cur.tactic);
+      engineRef.current?.setAutoPilot(nextEnabled, cur.tactic, cur.persona);
       return {
         ...prev,
         aiPreferences: { ...cur, autoPilotEnabled: nextEnabled },
@@ -4740,6 +4750,19 @@ export default function App() {
       return {
         ...prev,
         aiPreferences: { ...cur, tactic },
+      };
+    });
+  }, []);
+
+  const handleSelectAutoPilotPersona = useCallback((personaId: VirtualPlayerPersonaId) => {
+    const normalized = normalizeVirtualPlayerPersonaId(personaId);
+    const defaultTactic = VIRTUAL_PLAYER_PERSONAS[normalized].defaultTactic;
+    setSave((prev) => {
+      const cur = normalizeAiPreferences(prev.aiPreferences);
+      engineRef.current?.setAutoPilotPersona(normalized);
+      return {
+        ...prev,
+        aiPreferences: { ...cur, persona: normalized, tactic: defaultTactic },
       };
     });
   }, []);
@@ -12316,6 +12339,8 @@ export default function App() {
           onTriggerWeaponOverdrive={() => engineRef.current?.triggerWeaponOverdrive()}
           onToggleAutoPilot={handleToggleAutoPilotInCombat}
           onSelectAutoPilotTactic={handleSelectAutoPilotTactic}
+          onSelectAutoPilotPersona={handleSelectAutoPilotPersona}
+          onIssueCompanionCommand={(cmd) => engineRef.current?.issueVirtualCompanionCommand(cmd)}
           onSetCoopTacticalOrder={handleSetCoopTacticalOrder}
           onSelectSquadFormation={handleSelectSquadFormation}
           onSelectChampionshipTactic={handleSelectChampionshipTactic}
@@ -12362,6 +12387,11 @@ export default function App() {
             options={crossroadsOffer.options}
             chapterId={crossroadsOffer.chapterId}
             stageCleared={crossroadsOffer.stageCleared}
+            autoPilotEnabled={Boolean(hud.autoPilotEnabled)}
+            autoPilotTactic={currentAiPrefs.tactic}
+            autoPilotPersona={currentAiPrefs.persona}
+            autoSkillPick={currentAiPrefs.autoSkillPick}
+            hpRatio={hud.hp / Math.max(1, hud.maxHp)}
             onSelect={(optionId) => {
               setCrossroadsOffer(null);
               setPhase(GamePhase.PLAYING);
@@ -12426,8 +12456,12 @@ export default function App() {
           encounterOffer={encounterOffer}
           autoPilotEnabled={Boolean(hud.autoPilotEnabled)}
           autoPilotTactic={currentAiPrefs.tactic}
+          autoPilotPersona={currentAiPrefs.persona}
           autoSkillPick={currentAiPrefs.autoSkillPick}
           isBossStage={Boolean(hud.isBossStage)}
+          chapterId={hud.chapterId}
+          stageNumber={hud.stage}
+          hpRatio={hud.hp / Math.max(1, hud.maxHp)}
           onPickSkill={(skillId) => {
             setDraftEvolutionOffer(null);
             setPhase(GamePhase.PLAYING);
@@ -12469,6 +12503,7 @@ export default function App() {
         phase === GamePhase.GAME_OVER) && (
         <PauseResultModal
           phase={phase}
+          playerDisplayName={playerDisplayName}
           chapterName={activeChapter.name}
           stageReached={runSummary?.stageReached ?? hud.stage}
           totalStages={
@@ -12980,6 +13015,8 @@ export default function App() {
           settings={currentSettings}
           muted={save.muted}
           save={save}
+          aiPreferences={currentAiPrefs}
+          onUpdateAiPreferences={handleUpdateAiPreferences}
           gpuProfile={gpuProfile}
           onResetGpuCrashGuard={handleResetGpuCrashGuard}
           onUpdateSettings={handleUpdateSettings}
@@ -13263,11 +13300,26 @@ export default function App() {
         const inspected = allAi.find((p) => p.id === inspectedAiPlayerId) ?? null;
         if (!inspected) return null;
         const matchedRival = liveAiRivals.find((r) => r.aiPlayerId === inspected.id) ?? null;
+        const equippedWeaponItem = save.equipped[GearSlot.WEAPON]
+          ? save.inventory.find((g) => g.uid === save.equipped[GearSlot.WEAPON])
+          : undefined;
+        const equippedArmorItem = save.equipped[GearSlot.ARMOR]
+          ? save.inventory.find((g) => g.uid === save.equipped[GearSlot.ARMOR])
+          : undefined;
         return (
           <AiPlayerProfileModal
             player={inspected}
             rivalRecord={matchedRival}
             isPinnedForCoop={pinnedCoopAiIds.includes(inspected.id)}
+            playerDisplayName={playerDisplayName}
+            playerPowerRating={playerStats.powerRating}
+            currentChapterId={activeChapter.id}
+            playerWeaponName={
+              equippedWeaponItem ? GEAR_TEMPLATES[equippedWeaponItem.templateId]?.name : undefined
+            }
+            playerArmorName={
+              equippedArmorItem ? GEAR_TEMPLATES[equippedArmorItem.templateId]?.name : undefined
+            }
             onChallengeDuel={(aiId) => {
               setInspectedAiPlayerId(null);
               setLiveChatOpen(false);

@@ -35,6 +35,7 @@ import {
 } from '../engine/skillEvolutionEngine';
 import {
   AiAutoPilotTactic,
+  AiDraftDecision,
   EncounterOffer,
   SkillBuildTag,
   SkillCategory,
@@ -42,8 +43,10 @@ import {
   SkillEvolutionId,
   SkillEvolutionOffer,
   SkillId,
+  VirtualPlayerPersonaId,
   WheelOutcome,
 } from '../types/game';
+import { requestNvidiaSkillDraftDecision } from '../services/nvidiaVirtualPlayerClient';
 
 interface SkillDraftModalProps {
   mode: 'skill' | 'valkyrie' | 'angel' | 'devil' | 'wheel';
@@ -56,8 +59,12 @@ interface SkillDraftModalProps {
   encounterOffer: EncounterOffer | null;
   autoPilotEnabled?: boolean;
   autoPilotTactic?: AiAutoPilotTactic;
+  autoPilotPersona?: VirtualPlayerPersonaId;
   autoSkillPick?: boolean;
   isBossStage?: boolean;
+  chapterId?: number;
+  stageNumber?: number;
+  hpRatio?: number;
   onPickSkill: (skillId: SkillId) => void;
   onPickEvolution?: (evoId: SkillEvolutionId) => void;
   onRerollSkills: () => void;
@@ -185,8 +192,12 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   encounterOffer,
   autoPilotEnabled = false,
   autoPilotTactic = 'balanced',
+  autoPilotPersona = 'natural_balanced',
   autoSkillPick = true,
   isBossStage = false,
+  chapterId = 1,
+  stageNumber = 1,
+  hpRatio = 1,
   onPickSkill,
   onPickEvolution,
   onRerollSkills,
@@ -200,7 +211,8 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
   const [tarotArtFailed, setTarotArtFailed] = useState(false);
   const [tiltCard, setTiltCard] = useState<{ id: string; rx: number; ry: number } | null>(null);
   const [autoCancelled, setAutoCancelled] = useState(false);
-  const [autoCountdownMs, setAutoCountdownMs] = useState(3500);
+  const [autoCountdownMs, setAutoCountdownMs] = useState(2400);
+  const [nvidiaDraftDecision, setNvidiaDraftDecision] = useState<AiDraftDecision | null>(null);
 
   const handleSpinWheel = () => {
     if (wheelSpinning || wheelResult) return;
@@ -226,21 +238,71 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
     isEvolutionMode && evolutionOffer && autoPilotEnabled && autoSkillPick && !autoCancelled
       ? selectAiEvolutionBranch(evolutionOffer, autoPilotTactic, isBossStage)
       : null;
-  const recommendedAutoSkill =
+
+  useEffect(() => {
+    if (!isSkillMode || !autoPilotEnabled || !autoSkillPick || autoCancelled || skillChoices.length === 0) {
+      setNvidiaDraftDecision(null);
+      return;
+    }
+    let cancelled = false;
+    const synergyHintsBySkillId: Record<string, string> = {};
+    for (const s of skillChoices) {
+      const badge = getSkillDraftFocusBadge(s.id, currentStacks);
+      if (badge) synergyHintsBySkillId[s.id] = badge.label;
+    }
+    void requestNvidiaSkillDraftDecision({
+      personaId: autoPilotPersona,
+      tactic: autoPilotTactic,
+      chapterId,
+      stageNumber,
+      hpRatio,
+      isBossStage,
+      choices: skillChoices,
+      currentStacks,
+      synergyHintsBySkillId,
+    }).then((dec) => {
+      if (!cancelled) setNvidiaDraftDecision(dec);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isSkillMode,
+    autoPilotEnabled,
+    autoSkillPick,
+    autoCancelled,
+    skillChoices,
+    currentStacks,
+    autoPilotPersona,
+    autoPilotTactic,
+    chapterId,
+    stageNumber,
+    hpRatio,
+    isBossStage,
+  ]);
+
+  const fallbackAutoSkill =
     isSkillMode && autoPilotEnabled && autoSkillPick && !autoCancelled
       ? selectBestSkillChoice(skillChoices, currentStacks, autoPilotTactic)
       : null;
 
+  const recommendedAutoSkill =
+    isSkillMode && autoPilotEnabled && autoSkillPick && !autoCancelled
+      ? skillChoices.find((s) => s.id === nvidiaDraftDecision?.selectedId) ?? fallbackAutoSkill
+      : null;
+
   const autoSkillRationale = recommendedAutoSkill
-    ? explainAiSkillChoice(recommendedAutoSkill, currentStacks, autoPilotTactic)
+    ? nvidiaDraftDecision && nvidiaDraftDecision.selectedId === recommendedAutoSkill.id
+      ? `${nvidiaDraftDecision.reasonVi} (${nvidiaDraftDecision.source === 'nvidia_nim' ? 'NVIDIA NIM' : 'Bộ Não Nội Bộ'})`
+      : explainAiSkillChoice(recommendedAutoSkill, currentStacks, autoPilotTactic)
     : null;
 
   useEffect(() => {
     if (!recommendedAutoEvolution || !onPickEvolution) return;
-    setAutoCountdownMs(3500);
+    setAutoCountdownMs(2400);
     const startedAt = Date.now();
     const interval = window.setInterval(() => {
-      const left = Math.max(0, 3500 - (Date.now() - startedAt));
+      const left = Math.max(0, 2400 - (Date.now() - startedAt));
       setAutoCountdownMs(left);
       if (left <= 0) {
         window.clearInterval(interval);
@@ -252,10 +314,10 @@ export const SkillDraftModal: React.FC<SkillDraftModalProps> = ({
 
   useEffect(() => {
     if (!recommendedAutoSkill) return;
-    setAutoCountdownMs(3500);
+    setAutoCountdownMs(2400);
     const startedAt = Date.now();
     const interval = window.setInterval(() => {
-      const left = Math.max(0, 3500 - (Date.now() - startedAt));
+      const left = Math.max(0, 2400 - (Date.now() - startedAt));
       setAutoCountdownMs(left);
       if (left <= 0) {
         window.clearInterval(interval);

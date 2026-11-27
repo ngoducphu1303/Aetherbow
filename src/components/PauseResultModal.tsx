@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AlertTriangle, ArrowUpRight, Award, BarChart3, Camera, Check, Compass, Crown, Download, Flag, Flame, Hammer, Home, Play, RotateCcw, Settings, ShieldCheck, Skull, Sparkles, Sun, Swords, Trophy, Users } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertTriangle, ArrowUpRight, Award, BarChart3, Camera, Check, Compass, Crown, Download, Flag, Flame, Hammer, Home, MessageSquare, Play, RotateCcw, Settings, ShieldCheck, Skull, Sparkles, Sun, Swords, Trophy, Users } from 'lucide-react';
 import { soundEngine } from '../audio/soundEngine';
 import { getNextTargetGoal } from '../data/earlyProgressionData';
 import { GEAR_TEMPLATES, getUpgradeCost } from '../data/gearData';
@@ -18,7 +18,25 @@ import {
   analyzeDefeatDiagnostics,
   type TacticalRecommendationTarget,
 } from '../engine/defeatDiagnostics';
-import { CombatCameraPreset, CombatKeybinds, CoopRaidDifficulty, DamageBreakdown, DefeatCauseInfo, ElementalTowerId, GamePhase, GearSlot, PhotoLightingPreset, RunCombatHighlights, SaveData } from '../types/game';
+import {
+  CombatCameraPreset,
+  CombatKeybinds,
+  CoopRaidDifficulty,
+  DamageBreakdown,
+  DefeatCauseInfo,
+  ElementalTowerId,
+  GamePhase,
+  GearSlot,
+  PhotoLightingPreset,
+  RunCombatHighlights,
+  SaveData,
+  VirtualBuildCoachResult,
+  VirtualPostMatchCommentaryResult,
+} from '../types/game';
+import {
+  requestVirtualBuildCoach,
+  requestVirtualPostMatchCommentary,
+} from '../services/nvidiaVirtualPlayerClient';
 import {
   ArtifactRelicIcon,
   AwakenCrystalIcon,
@@ -144,6 +162,7 @@ interface PauseResultModalProps {
   onOpenWeeklyBoss?: () => void;
   combatKeybinds?: Partial<CombatKeybinds>;
   autoSalvageSummaryNote?: string | null;
+  playerDisplayName?: string;
 }
 
 export const PauseResultModal: React.FC<PauseResultModalProps> = ({
@@ -259,12 +278,69 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
   onOpenWeeklyBoss,
   combatKeybinds,
   autoSalvageSummaryNote,
+  playerDisplayName = 'Xạ Thủ',
 }) => {
   const [snapshotSaved, setSnapshotSaved] = useState(false);
   const [medalCardSaved, setMedalCardSaved] = useState(false);
   const [quickUpgradeFeedback, setQuickUpgradeFeedback] = useState<string | null>(null);
+  const [postMatchComment, setPostMatchComment] =
+    useState<VirtualPostMatchCommentaryResult | null>(null);
+  const [coachResult, setCoachResult] = useState<VirtualBuildCoachResult | null>(null);
+  const [coachLoading, setCoachLoading] = useState(false);
   const isPause = phase === GamePhase.PAUSED;
   const isVictory = phase === GamePhase.VICTORY;
+
+  useEffect(() => {
+    if (isPause) return;
+    let cancelled = false;
+    setCoachResult(null);
+    const mode: 'campaign' | 'arena' | 'coop' | 'boss' = isArenaMode
+      ? 'arena'
+      : isCoopRaidMode
+      ? 'coop'
+      : isGuildBossMode || isWorldBossMode || isBossRushMode || isWeeklyRankedBossMode
+      ? 'boss'
+      : 'campaign';
+    const matchedName = isArenaMode
+      ? arenaOpponentName || undefined
+      : isCoopRaidMode && damageBreakdown?.coopAllies?.[0]?.name
+      ? damageBreakdown.coopAllies[0].name
+      : undefined;
+
+    void requestVirtualPostMatchCommentary({
+      aiName: matchedName,
+      playerName: playerDisplayName,
+      mode,
+      isVictory,
+      chapterId,
+      stageReached,
+      kills,
+      maxCombo,
+      defeatCause: defeatCause?.killerName
+        ? `${defeatCause.killerName} (${defeatCause.label})`
+        : defeatCause?.label,
+    }).then((res) => {
+      if (!cancelled) setPostMatchComment(res);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isPause,
+    isVictory,
+    isArenaMode,
+    isCoopRaidMode,
+    isGuildBossMode,
+    isWorldBossMode,
+    isBossRushMode,
+    isWeeklyRankedBossMode,
+    arenaOpponentName,
+    chapterId,
+    stageReached,
+    kills,
+    maxCombo,
+    playerDisplayName,
+  ]);
   const medalEvaluation = !isPause
     ? evaluateRunCombatMedals({
         isVictory,
@@ -1815,6 +1891,107 @@ export const PauseResultModal: React.FC<PauseResultModalProps> = ({
                   </>
                 )}
               </button>
+            </div>
+          )}
+
+          {!isPause && postMatchComment && (
+            <div
+              data-testid="result-ai-commentary-card"
+              className="rounded-2xl bg-[#071024] border border-sky-400/35 px-4 py-3 space-y-2.5 text-left"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                  <span className="font-black text-white">{postMatchComment.aiName}</span>
+                  <span aria-hidden="true" className="text-slate-600">·</span>
+                  <span className="text-slate-300">{postMatchComment.aiTitle}</span>
+                  <span aria-hidden="true" className="text-slate-600">·</span>
+                  <span
+                    className={`font-mono-nums tabular-nums font-bold ${
+                      postMatchComment.affinityDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                    }`}
+                  >
+                    {postMatchComment.affinityDelta >= 0
+                      ? `+${postMatchComment.affinityDelta} Gắn Kết`
+                      : `${postMatchComment.affinityDelta} Duyên Nợ`}
+                  </span>
+                </div>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  {postMatchComment.source === 'nvidia_nim' ? 'NVIDIA NIM' : 'Nhân vật ảo'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-100 leading-relaxed">
+                “{postMatchComment.commentVi}”
+              </p>
+
+              {!coachResult && (
+                <button
+                  type="button"
+                  data-testid="result-build-coach-btn"
+                  disabled={coachLoading}
+                  onClick={async () => {
+                    if (coachLoading) return;
+                    setCoachLoading(true);
+                    try {
+                      const weaponItem =
+                        save && save.equipped[GearSlot.WEAPON]
+                          ? save.inventory.find((g) => g.uid === save.equipped[GearSlot.WEAPON])
+                          : undefined;
+                      const armorItem =
+                        save && save.equipped[GearSlot.ARMOR]
+                          ? save.inventory.find((g) => g.uid === save.equipped[GearSlot.ARMOR])
+                          : undefined;
+                      const weaponTpl = weaponItem ? GEAR_TEMPLATES[weaponItem.templateId] : null;
+                      const armorTpl = armorItem ? GEAR_TEMPLATES[armorItem.templateId] : null;
+                      const res = await requestVirtualBuildCoach({
+                        aiPlayerId: postMatchComment.aiPlayerId,
+                        aiName: postMatchComment.aiName,
+                        playerName: playerDisplayName,
+                        playerPowerRating,
+                        recommendedPower: recommendedChapterPower,
+                        chapterId,
+                        stageReached,
+                        weaponName: weaponTpl?.name,
+                        armorName: armorTpl?.name,
+                        defeatCause: defeatCause?.label,
+                        question: isVictory
+                          ? `Tối ưu build cho chương kế tiếp sau Chương ${chapterId}`
+                          : `Cách qua phòng ${stageReached} Chương ${chapterId}`,
+                      });
+                      setCoachResult(res);
+                    } finally {
+                      setCoachLoading(false);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-400/15 border border-amber-400/45 text-[11px] font-bold text-amber-100 hover:bg-amber-400/25 cursor-pointer whitespace-nowrap disabled:opacity-60"
+                >
+                  {coachLoading
+                    ? 'Cao thủ đang phân tích trận vừa rồi…'
+                    : isVictory
+                    ? 'Hỏi Cao Thủ Mẹo Leo Chương Tiếp'
+                    : 'Hỏi Cao Thủ Cách Qua Ải Chi Tiết'}
+                </button>
+              )}
+
+              {coachResult && (
+                <div
+                  data-testid="result-build-coach-panel"
+                  className="pt-2 border-t border-slate-800 space-y-1.5 text-xs"
+                >
+                  <div className="font-bold text-amber-200">{coachResult.headlineVi}</div>
+                  <ul className="space-y-1 text-[11px] text-slate-200 list-disc pl-4">
+                    {coachResult.tipsVi.map((tip, idx) => (
+                      <li key={idx} className="leading-relaxed">
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="text-[11px] font-semibold text-emerald-300">
+                    Đề xuất ngay: {coachResult.recommendedActionVi}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

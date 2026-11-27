@@ -11,6 +11,7 @@ import {
   WeeklyBossServiceError,
 } from './src/server/weeklyBossService.ts';
 import { LiveAiPlayersService } from './src/server/liveAiPlayersService.ts';
+import { NvidiaNimAiService } from './src/server/nvidiaNimAiService.ts';
 import type { WeeklyBossLeaderboardEntry } from './src/data/weeklyBossData.ts';
 import {
   applySecurityHeadersMiddleware,
@@ -358,10 +359,448 @@ export interface LiveAiWsHubHandle {
  * on the same HTTP server (port 3000) to broadcast real-time AI player presence,
  * live activities, 1v1 duel matchmaking, and verified Weekly Boss rank shifts.
  */
+export function createNvidiaAiRouter(
+  nvidiaAiService: NvidiaNimAiService,
+  liveAiService?: LiveAiPlayersService
+): express.Router {
+  const router = express.Router();
+
+  router.get('/status', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(nvidiaAiService.getStatus());
+  });
+
+  router.post('/tactical-plan', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const directive = await nvidiaAiService.planTacticalDirective({
+        personaId: body.personaId as any,
+        chapterId: Number(body.chapterId ?? 1),
+        stageNumber: Number(body.stageNumber ?? 1),
+        hpRatio: Number(body.hpRatio ?? 1),
+        ultCharge: Number(body.ultCharge ?? 0),
+        enemyCount: Number(body.enemyCount ?? 0),
+        hasBoss: Boolean(body.hasBoss),
+        bossName: typeof body.bossName === 'string' ? body.bossName : undefined,
+        bossHpRatio:
+          body.bossHpRatio !== undefined ? Number(body.bossHpRatio) : undefined,
+        bossPhase: body.bossPhase !== undefined ? Number(body.bossPhase) : undefined,
+        bossStaggerBroken: Boolean(body.bossStaggerBroken),
+        activeSynergies: Array.isArray(body.activeSynergies)
+          ? body.activeSynergies.map((s) => String(s))
+          : [],
+        eventReason: body.eventReason as any,
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(directive);
+    } catch {
+      res.status(500).json({ error: 'AI_TACTICAL_PLAN_FAILED' });
+    }
+  });
+
+  router.post('/draft-decision', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body || !Array.isArray(body.choices) || body.choices.length === 0) {
+        res.status(400).json({ error: 'INVALID_CHOICES' });
+        return;
+      }
+      const decision = await nvidiaAiService.decideDraftChoice({
+        kind: body.kind === 'crossroads' ? 'crossroads' : 'skill',
+        personaId: body.personaId as any,
+        tactic:
+          body.tactic === 'aggressive' || body.tactic === 'evasive' ? body.tactic : 'balanced',
+        chapterId: Number(body.chapterId ?? 1),
+        stageNumber: Number(body.stageNumber ?? 1),
+        hpRatio: Number(body.hpRatio ?? 1),
+        isBossStage: Boolean(body.isBossStage),
+        currentSkillSummary: Array.isArray(body.currentSkillSummary)
+          ? body.currentSkillSummary.map((s) => String(s))
+          : [],
+        choices: body.choices.slice(0, 4).map((c: any) => ({
+          id: String(c?.id ?? ''),
+          name: String(c?.name ?? ''),
+          rarity: typeof c?.rarity === 'string' ? c.rarity : '',
+          summary: String(c?.summary ?? ''),
+          synergyHint: typeof c?.synergyHint === 'string' ? c.synergyHint : '',
+        })),
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(decision);
+    } catch {
+      res.status(500).json({ error: 'AI_DRAFT_DECISION_FAILED' });
+    }
+  });
+
+  router.post('/virtual-chat', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const fallback =
+        typeof body.fallbackText === 'string' && body.fallbackText.trim().length > 0
+          ? body.fallbackText.trim().slice(0, 160)
+          : 'Cùng vào trận thử đội hình mới thôi!';
+      const result = await nvidiaAiService.generateVirtualPlayerChat(
+        {
+          channel: body.channel as any,
+          aiName: String(body.aiName ?? 'Linh Vũ'),
+          aiPersonality: body.aiPersonality as any,
+          aiTitle: typeof body.aiTitle === 'string' ? body.aiTitle : undefined,
+          senderName: String(body.senderName ?? 'Chiến Binh'),
+          userText: String(body.userText ?? ''),
+          contextSummary:
+            typeof body.contextSummary === 'string' ? body.contextSummary : undefined,
+        },
+        fallback
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(result);
+    } catch {
+      res.status(500).json({ error: 'AI_VIRTUAL_CHAT_FAILED' });
+    }
+  });
+
+  // Phase 2: Persistent Relationship Memory & 1-on-1 DM
+  router.get('/memory/:aiPlayerId', (req, res) => {
+    const aiPlayerId = String(req.params.aiPlayerId ?? '').trim().slice(0, 48);
+    const playerName = sanitizeServerDisplayName(req.query.playerName ?? 'Xạ Thủ');
+    if (!aiPlayerId) {
+      res.status(400).json({ error: 'INVALID_AI_PLAYER_ID' });
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    if (liveAiService) {
+      res.json(liveAiService.getRelationshipMemory(playerName, aiPlayerId));
+      return;
+    }
+    res.json({
+      aiPlayerId,
+      aiName: 'Linh Vũ',
+      affinityScore: 0,
+      tier: 'stranger',
+      memories: [],
+      dmMessages: [],
+      updatedAtMs: Date.now(),
+    });
+  });
+
+  router.post('/dm', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body || typeof body.message !== 'string' || body.message.trim().length === 0) {
+        res.status(400).json({ error: 'INVALID_MESSAGE' });
+        return;
+      }
+      const aiPlayerId = String(body.aiPlayerId ?? '').trim().slice(0, 48);
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const cleanMessage = body.message.replace(/\s+/g, ' ').trim().slice(0, 200);
+      const aiProfile = liveAiService?.findPlayerByNameOrId(aiPlayerId) ?? null;
+
+      let currentMemory = liveAiService
+        ? liveAiService.getRelationshipMemory(playerName, aiProfile?.id ?? aiPlayerId)
+        : {
+            aiPlayerId: aiPlayerId || 'ai_01',
+            aiName: String(body.aiName ?? 'Linh Vũ').slice(0, 28),
+            affinityScore: 0,
+            tier: 'stranger' as const,
+            memories: [],
+            dmMessages: [],
+            updatedAtMs: Date.now(),
+          };
+
+      const playerMsgRes = liveAiService
+        ? liveAiService.appendDirectMessage({
+            playerName,
+            aiPlayerId: currentMemory.aiPlayerId,
+            sender: 'player',
+            text: cleanMessage,
+          })
+        : {
+            memory: currentMemory,
+            message: {
+              id: `dm_p_${Date.now()}`,
+              sender: 'player' as const,
+              text: cleanMessage,
+              timestampMs: Date.now(),
+            },
+          };
+      currentMemory = playerMsgRes.memory;
+
+      const reply = await nvidiaAiService.generateDirectMessageReply({
+        aiPlayerId: currentMemory.aiPlayerId,
+        aiName: aiProfile?.displayName ?? String(body.aiName ?? currentMemory.aiName),
+        aiPersonality: (aiProfile?.personality ?? body.aiPersonality ?? 'tactical') as any,
+        aiTitle: aiProfile?.titleBadge ?? (typeof body.aiTitle === 'string' ? body.aiTitle : undefined),
+        aiFavoriteSkills: aiProfile?.buildSnapshot?.favoriteSkills ?? [],
+        playerName,
+        playerMessage: cleanMessage,
+        playerPowerRating: Number(body.playerPowerRating ?? 702),
+        playerChapterId: Number(body.playerChapterId ?? 1),
+        playerWeaponName:
+          typeof body.playerWeaponName === 'string' ? body.playerWeaponName : undefined,
+        relationshipTier: currentMemory.tier,
+        affinityScore: currentMemory.affinityScore,
+        recentMemories: currentMemory.memories,
+        recentDmMessages: currentMemory.dmMessages,
+      });
+
+      const aiMsgRes = liveAiService
+        ? liveAiService.appendDirectMessage({
+            playerName,
+            aiPlayerId: currentMemory.aiPlayerId,
+            sender: 'ai',
+            text: reply.replyVi,
+            source: reply.source,
+            affinityDelta: reply.affinityDelta,
+          })
+        : {
+            memory: {
+              ...currentMemory,
+              affinityScore: currentMemory.affinityScore + reply.affinityDelta,
+              dmMessages: [
+                ...currentMemory.dmMessages,
+                playerMsgRes.message,
+                {
+                  id: `dm_a_${Date.now()}`,
+                  sender: 'ai' as const,
+                  text: reply.replyVi,
+                  timestampMs: Date.now(),
+                  source: reply.source,
+                },
+              ].slice(-12),
+            },
+            message: {
+              id: `dm_a_${Date.now()}`,
+              sender: 'ai' as const,
+              text: reply.replyVi,
+              timestampMs: Date.now(),
+              source: reply.source,
+            },
+          };
+
+      if (liveAiService && currentMemory.memories.length === 0) {
+        liveAiService.recordRelationshipInteraction({
+          playerName,
+          aiPlayerId: currentMemory.aiPlayerId,
+          kind: 'dm_chat',
+          summaryVi: `Bắt đầu trò chuyện riêng cùng ${playerName}`,
+          affinityDelta: 1,
+        });
+      }
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        playerMessage: playerMsgRes.message,
+        aiMessage: aiMsgRes.message,
+        affinityDelta: reply.affinityDelta,
+        source: reply.source,
+        model: reply.model,
+        memory: liveAiService
+          ? liveAiService.getRelationshipMemory(playerName, currentMemory.aiPlayerId)
+          : aiMsgRes.memory,
+      });
+    } catch {
+      res.status(500).json({ error: 'AI_DM_FAILED' });
+    }
+  });
+
+  // Phase 2: Build & Stage Clear Coach
+  router.post('/build-coach', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const chapterId = Math.max(1, Math.min(12, Math.floor(Number(body.chapterId ?? 1))));
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const requestedAi = liveAiService?.findPlayerByNameOrId(
+        typeof body.aiPlayerId === 'string' ? body.aiPlayerId : undefined
+      );
+      const mentor = requestedAi ?? liveAiService?.pickContextualMentor(chapterId) ?? null;
+
+      const advice = await nvidiaAiService.generateBuildCoachAdvice({
+        aiPlayerId: mentor?.id ?? String(body.aiPlayerId ?? 'ai_mentor'),
+        aiName: mentor?.displayName ?? String(body.aiName ?? 'Linh Vũ'),
+        aiPersonality: (mentor?.personality ?? body.aiPersonality ?? 'tactical') as any,
+        playerName,
+        playerPowerRating: Number(body.playerPowerRating ?? 702),
+        recommendedPower:
+          body.recommendedPower !== undefined ? Number(body.recommendedPower) : undefined,
+        chapterId,
+        stageReached: Number(body.stageReached ?? 1),
+        weaponName: typeof body.weaponName === 'string' ? body.weaponName : undefined,
+        armorName: typeof body.armorName === 'string' ? body.armorName : undefined,
+        activeSkills: Array.isArray(body.activeSkills)
+          ? body.activeSkills.map((s) => String(s))
+          : [],
+        defeatCause: typeof body.defeatCause === 'string' ? body.defeatCause : undefined,
+        question: typeof body.question === 'string' ? body.question : undefined,
+      });
+
+      if (liveAiService && mentor) {
+        liveAiService.recordRelationshipInteraction({
+          playerName,
+          aiPlayerId: mentor.id,
+          kind: 'coach_advice',
+          summaryVi: `Tư vấn build Chương ${chapterId} cho ${playerName}`,
+          affinityDelta: 2,
+        });
+      }
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(advice);
+    } catch {
+      res.status(500).json({ error: 'AI_BUILD_COACH_FAILED' });
+    }
+  });
+
+  // Phase 2: Post-Match Virtual Player Commentary + Memory Update
+  router.post('/post-match', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const chapterId = Math.max(1, Math.min(12, Math.floor(Number(body.chapterId ?? 1))));
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const mode: 'campaign' | 'arena' | 'coop' | 'boss' =
+        body.mode === 'arena' || body.mode === 'coop' || body.mode === 'boss'
+          ? body.mode
+          : 'campaign';
+      const isVictory = Boolean(body.isVictory);
+
+      const matchedAi =
+        liveAiService?.findPlayerByNameOrId(
+          typeof body.aiPlayerId === 'string'
+            ? body.aiPlayerId
+            : typeof body.aiName === 'string'
+            ? body.aiName
+            : undefined
+        ) ?? liveAiService?.pickContextualMentor(chapterId) ?? null;
+
+      const aiId = matchedAi?.id ?? String(body.aiPlayerId ?? 'ai_01');
+      const aiName = matchedAi?.displayName ?? String(body.aiName ?? 'Linh Vũ');
+      const aiTitle = matchedAi?.titleBadge ?? 'Cao Thủ Tinh Giới';
+
+      let mem = liveAiService
+        ? liveAiService.getRelationshipMemory(playerName, aiId)
+        : {
+            aiPlayerId: aiId,
+            aiName,
+            affinityScore: 0,
+            tier: 'acquaintance' as const,
+            memories: [],
+            dmMessages: [],
+            updatedAtMs: Date.now(),
+          };
+
+      const result = await nvidiaAiService.generatePostMatchCommentary({
+        aiPlayerId: aiId,
+        aiName,
+        aiPersonality: matchedAi?.personality ?? 'tactical',
+        aiTitle,
+        mode,
+        isVictory,
+        chapterId,
+        stageReached: Number(body.stageReached ?? 1),
+        kills: Number(body.kills ?? 0),
+        maxCombo: Number(body.maxCombo ?? 0),
+        relationshipTier: mem.tier,
+        affinityScore: mem.affinityScore,
+        recentMemories: mem.memories,
+        defeatCause: typeof body.defeatCause === 'string' ? body.defeatCause : undefined,
+      });
+
+      if (liveAiService && matchedAi && (mode === 'coop' || mode === 'campaign' || mode === 'boss')) {
+        const summaryVi =
+          mode === 'coop'
+            ? isVictory
+              ? `Cùng bạn chinh phục Phó Bản Co-op (${Number(body.kills ?? 0)} quái)`
+              : `Cùng bạn sát cánh Phó Bản Co-op`
+            : isVictory
+            ? `Chứng kiến bạn vượt Chương ${chapterId}`
+            : `Động viên bạn ở phòng ${Number(body.stageReached ?? 1)} Chương ${chapterId}`;
+        mem = liveAiService.recordRelationshipInteraction({
+          playerName,
+          aiPlayerId: matchedAi.id,
+          kind: mode === 'coop' ? 'coop_clear' : 'coach_advice',
+          summaryVi,
+          affinityDelta: result.affinityDelta,
+        });
+      }
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ...result,
+        relationshipTier: mem.tier,
+        affinityScore: mem.affinityScore,
+      });
+    } catch {
+      res.status(500).json({ error: 'AI_POST_MATCH_FAILED' });
+    }
+  });
+
+  // Phase 2: In-Match Tactical Companion Callout
+  router.post('/callout', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const command =
+        body.command === 'protect_player' || body.command === 'sync_burst'
+          ? body.command
+          : 'focus_boss';
+      const trigger =
+        body.trigger === 'boss_break' ||
+        body.trigger === 'boss_phase' ||
+        body.trigger === 'low_hp'
+          ? body.trigger
+          : 'player_command';
+      const result = await nvidiaAiService.generateCompanionCallout({
+        allyName: String(body.allyName ?? 'Đồng Đội AI'),
+        allyRole: String(body.allyRole ?? 'Chiến Binh'),
+        command,
+        trigger,
+        chapterId: Number(body.chapterId ?? 1),
+        hpRatio: Number(body.hpRatio ?? 1),
+        bossName: typeof body.bossName === 'string' ? body.bossName : undefined,
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(result);
+    } catch {
+      res.status(500).json({ error: 'AI_CALLOUT_FAILED' });
+    }
+  });
+
+  return router;
+}
+
 export function attachLiveAiWebSocketServer(
   server: http.Server,
   liveAiService: LiveAiPlayersService,
-  options?: { tickIntervalMs?: number; chatReplyDelayMs?: number }
+  options?: {
+    tickIntervalMs?: number;
+    chatReplyDelayMs?: number;
+    nvidiaAiService?: NvidiaNimAiService;
+  }
 ): LiveAiWsHubHandle {
   const wss = new WebSocketServer({
     server,
@@ -576,15 +1015,41 @@ export function attachLiveAiWebSocketServer(
 
           const replyDelay = Math.max(20, options?.chatReplyDelayMs ?? 850);
           const replyTimer = setTimeout(() => {
-            const reply = liveAiService.generateContextualAiChatReply({
-              channel,
-              senderName,
-              userText: text,
-            });
-            broadcast({
-              type: 'chat:message',
-              payload: reply,
-            });
+            void (async () => {
+              const fallbackReply = liveAiService.generateContextualAiChatReply({
+                channel,
+                senderName,
+                userText: text,
+              });
+              let finalReply = fallbackReply;
+              if (options?.nvidiaAiService?.isConfigured()) {
+                const speakerProfile = liveAiService
+                  .getSnapshot(Math.max(1, wss.clients.size))
+                  .players.find((p) => p.id === fallbackReply.aiPlayerId);
+                const llmChat = await options.nvidiaAiService.generateVirtualPlayerChat(
+                  {
+                    channel,
+                    aiName: fallbackReply.senderName,
+                    aiPersonality: speakerProfile?.personality ?? 'tactical',
+                    aiTitle: speakerProfile?.titleBadge,
+                    senderName,
+                    userText: text,
+                    contextSummary: speakerProfile
+                      ? `LC ${speakerProfile.powerRating}, Chương ${speakerProfile.highestChapterCleared}`
+                      : undefined,
+                  },
+                  fallbackReply.text
+                );
+                if (llmChat.source === 'nvidia_nim' && llmChat.replyVi.trim().length > 0) {
+                  fallbackReply.text = llmChat.replyVi;
+                  finalReply = fallbackReply;
+                }
+              }
+              broadcast({
+                type: 'chat:message',
+                payload: finalReply,
+              });
+            })();
           }, replyDelay);
           replyTimer.unref?.();
           return;
@@ -1297,8 +1762,68 @@ export function attachLiveAiWebSocketServer(
           }
         }
       }
-      // Every 5th server tick (~22s), an [AI Live] player posts an organic Lobby/Guild chat note
-      if (wsTickCount % 5 === 0) {
+      // Every 12th server tick (~54s), run Balanced Autonomous Server-Event Banter via NVIDIA NIM
+      // (strictly gated by active WebSocket clients + >10 remaining RPM reserve)
+      if (
+        wsTickCount % 12 === 0 &&
+        options?.nvidiaAiService?.isConfigured() &&
+        options.nvidiaAiService.getRemainingRpm() > 10
+      ) {
+        const snap = liveAiService.getSnapshot(Math.max(1, wss.clients.size));
+        if (snap.players.length >= 2) {
+          const idxA = wsTickCount % snap.players.length;
+          const idxB = (wsTickCount * 3 + 5) % snap.players.length;
+          const speakerA = snap.players[idxA];
+          const speakerB = snap.players[idxB === idxA ? (idxA + 1) % snap.players.length : idxB];
+          const channel: 'lobby' | 'guild' =
+            tick.event.kind === 'guild' ? 'guild' : 'lobby';
+          const eventSummary = `${tick.event.actorName} ${tick.event.summary}`;
+          void options.nvidiaAiService
+            .generateAutonomousBanter({
+              channel,
+              eventSummary,
+              speakerA: {
+                id: speakerA.id,
+                name: speakerA.displayName,
+                personality: speakerA.personality,
+                title: speakerA.titleBadge,
+              },
+              speakerB: {
+                id: speakerB.id,
+                name: speakerB.displayName,
+                personality: speakerB.personality,
+                title: speakerB.titleBadge,
+              },
+            })
+            .then((banter) => {
+              if (wss.clients.size === 0) return;
+              const msgA = liveAiService.addAutonomousAiChatMessage({
+                channel,
+                aiPlayerId: speakerA.id,
+                text: banter.lineA,
+              });
+              if (msgA) {
+                broadcast({ type: 'chat:message', payload: msgA });
+              }
+              const followTimer = setTimeout(() => {
+                if (wss.clients.size === 0) return;
+                const msgB = liveAiService.addAutonomousAiChatMessage({
+                  channel,
+                  aiPlayerId: speakerB.id,
+                  text: banter.lineB,
+                });
+                if (msgB) {
+                  broadcast({ type: 'chat:message', payload: msgB });
+                }
+              }, 2400);
+              followTimer.unref?.();
+            })
+            .catch(() => {
+              // Silent fallback on background banter
+            });
+        }
+      } else if (wsTickCount % 5 === 0) {
+        // Organic periodic Lobby/Guild chat note when not running autonomous NIM banter
         const aiChat = liveAiService.generatePeriodicAiChat();
         broadcast({
           type: 'chat:message',
@@ -1389,6 +1914,7 @@ async function startServer() {
   const liveAiService = new LiveAiPlayersService(
     path.resolve(__dirname, '.data/live-ai-players.json')
   );
+  const nvidiaAiService = new NvidiaNimAiService();
   let wsHub: LiveAiWsHubHandle | null = null;
 
   const weeklyBossService = new WeeklyBossService(
@@ -1561,6 +2087,17 @@ async function startServer() {
       const humanCount = wsHub ? Math.max(1, wsHub.wss.clients.size) : 1;
       res.json(liveAiService.getSnapshot(humanCount));
     }
+  );
+
+  app.use(
+    '/api/ai/nvidia',
+    createApiRateLimitMiddleware({
+      scope: 'nvidia-ai',
+      maxRequests: 30,
+      windowMs: 60_000,
+      onRateLimited: recordApiRateLimit,
+    }),
+    createNvidiaAiRouter(nvidiaAiService, liveAiService)
   );
 
   app.post(
@@ -1817,7 +2354,9 @@ async function startServer() {
   }
 
   const httpServer = http.createServer(app);
-  wsHub = attachLiveAiWebSocketServer(httpServer, liveAiService);
+  wsHub = attachLiveAiWebSocketServer(httpServer, liveAiService, {
+    nvidiaAiService,
+  });
 
   const port = Number(process.env.PORT) || 3000;
   httpServer.listen(port, '0.0.0.0', () => {

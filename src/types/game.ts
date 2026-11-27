@@ -1687,9 +1687,49 @@ export type AiLivePlayerStatus =
 
 export type AiDuelDifficultyTier = 'challenger' | 'master' | 'sovereign' | 'mythic';
 
+export type VirtualPlayerPersonaId =
+  | 'natural_balanced'
+  | 'boss_hunter'
+  | 'cautious_kiter'
+  | 'synergy_architect';
+
+export type AiTacticalTargetPriority = 'boss' | 'caster' | 'low_hp' | 'traps' | 'nearest';
+
+export type AiInferenceSource = 'nvidia_nim' | 'local_fallback';
+
+export interface AiTacticalDirective {
+  tactic: AiAutoPilotTactic;
+  targetPriority: AiTacticalTargetPriority;
+  holdUltForBreak: boolean;
+  kitingRangeDelta: number;
+  dashAggression: number;
+  thoughtVi: string;
+  personaId: VirtualPlayerPersonaId;
+  source: AiInferenceSource;
+  model: string;
+  expiresAtMs: number;
+}
+
+export interface AiDraftDecision {
+  selectedId: string;
+  reasonVi: string;
+  source: AiInferenceSource;
+  model: string;
+}
+
+export interface NvidiaAiStatusSnapshot {
+  configured: boolean;
+  mode: AiInferenceSource;
+  primaryModel: string;
+  fastModel: string;
+  rpmBudget: number;
+  remainingRpm: number;
+}
+
 export interface AiPreferencesState {
   autoPilotEnabled: boolean;
   tactic: AiAutoPilotTactic;
+  persona?: VirtualPlayerPersonaId;
   autoSkillPick: boolean;
   squadAssistEnabled: boolean;
   squadRoles: AiCompanionRole[];
@@ -2476,8 +2516,11 @@ export interface HudSnapshot {
   // AAA Wave 2 + Pillar 5 Real-Time AI & Diagnostics
   autoPilotEnabled?: boolean;
   autoPilotTactic?: AiAutoPilotTactic;
+  autoPilotPersona?: VirtualPlayerPersonaId;
   autoPilotLockedReason?: string | null;
   autoPilotStatusText?: string | null;
+  autoPilotThoughtVi?: string | null;
+  autoPilotThoughtSource?: AiInferenceSource | null;
   autoPilotManualOverride?: boolean;
   aiSquadAllies?: Array<{
     role: AiCompanionRole;
@@ -2488,6 +2531,10 @@ export interface HudSnapshot {
     ultCharge: number;
     callout?: string | null;
   }>;
+  activeCompanionCommand?: VirtualCompanionCommandId;
+  companionCalloutSpeaker?: string | null;
+  companionCalloutText?: string | null;
+  companionCalloutSource?: AiInferenceSource | null;
   isWeeklyRankedBossMode?: boolean;
   isWeeklyBossPracticeMode?: boolean;
   weeklyBossTimeLeft?: number;
@@ -3991,6 +4038,85 @@ export interface SkillDraftFocusBadge {
   label: string;
   accentColor: string;
 }
+
+// ============================================================================
+// LIVING VIRTUAL CHARACTER AI (PHASE 2 — MEMORY, 1-ON-1 DM, COACH & CALLOUTS)
+// ============================================================================
+
+export type VirtualRelationshipTier =
+  | 'stranger'
+  | 'acquaintance'
+  | 'ally'
+  | 'rival'
+  | 'mentor';
+
+export type VirtualMemoryKind =
+  | 'arena_win'
+  | 'arena_loss'
+  | 'coop_clear'
+  | 'dm_chat'
+  | 'coach_advice';
+
+export interface VirtualMemoryEntry {
+  id: string;
+  kind: VirtualMemoryKind;
+  summaryVi: string;
+  timestampMs: number;
+}
+
+export interface VirtualDmMessage {
+  id: string;
+  sender: 'player' | 'ai';
+  text: string;
+  timestampMs: number;
+  source?: AiInferenceSource;
+}
+
+export interface VirtualPlayerRelationshipMemory {
+  aiPlayerId: string;
+  aiName: string;
+  affinityScore: number; // -100..100
+  tier: VirtualRelationshipTier;
+  memories: VirtualMemoryEntry[]; // max 6
+  dmMessages: VirtualDmMessage[]; // max 12
+  updatedAtMs: number;
+}
+
+export type VirtualCompanionCommandId =
+  | 'focus_boss'
+  | 'protect_player'
+  | 'sync_burst';
+
+export interface VirtualCompanionCalloutResult {
+  allyName: string;
+  command: VirtualCompanionCommandId;
+  calloutVi: string;
+  source: AiInferenceSource;
+  model: string;
+}
+
+export interface VirtualPostMatchCommentaryResult {
+  aiPlayerId: string;
+  aiName: string;
+  aiTitle: string;
+  relationshipTier: VirtualRelationshipTier;
+  affinityScore: number;
+  affinityDelta: number;
+  commentVi: string;
+  source: AiInferenceSource;
+  model: string;
+}
+
+export interface VirtualBuildCoachResult {
+  aiPlayerId: string;
+  aiName: string;
+  headlineVi: string;
+  tipsVi: string[];
+  recommendedActionVi: string;
+  source: AiInferenceSource;
+  model: string;
+}
+
 
 
 

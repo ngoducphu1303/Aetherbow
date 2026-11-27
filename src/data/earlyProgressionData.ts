@@ -614,6 +614,12 @@ export function normalizeAiPreferences(
   raw?: SaveData['aiPreferences']
 ): NonNullable<SaveData['aiPreferences']> {
   const validTactics = new Set(['aggressive', 'balanced', 'evasive']);
+  const validPersonas = new Set([
+    'natural_balanced',
+    'boss_hunter',
+    'cautious_kiter',
+    'synergy_architect',
+  ]);
   const validRoles = new Set(['vanguard', 'ranger', 'mystic']);
   const validTiers = new Set(['challenger', 'master', 'sovereign', 'mythic']);
   const roles = Array.isArray(raw?.squadRoles)
@@ -622,6 +628,8 @@ export function normalizeAiPreferences(
   return {
     autoPilotEnabled: Boolean(raw?.autoPilotEnabled ?? false),
     tactic: raw?.tactic && validTactics.has(raw.tactic) ? raw.tactic : 'balanced',
+    persona:
+      raw?.persona && validPersonas.has(raw.persona) ? raw.persona : 'natural_balanced',
     autoSkillPick: raw?.autoSkillPick !== undefined ? Boolean(raw.autoSkillPick) : true,
     squadAssistEnabled: Boolean(raw?.squadAssistEnabled ?? false),
     squadRoles: roles.length > 0 ? roles : ['vanguard', 'ranger'],
