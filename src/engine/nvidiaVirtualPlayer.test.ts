@@ -595,3 +595,398 @@ test('NV-7: Express Phase 2 routes (/memory, /dm, /build-coach, /post-match, /ca
   }
 });
 
+test('NV-8: Phase 3 Nemesis counter-tactic derivation & Dynamic Contracts (max 3 active, bounded rewards, idempotent single-claim)', () => {
+  const tmpStore = path.join(os.tmpdir(), `aetherbow-live-ai-nv8-${Date.now()}.json`);
+  const liveSvc = new LiveAiPlayersService(tmpStore);
+  const players = liveSvc.getSnapshot(1).players;
+  assert.ok(players.length >= 4);
+
+  // Nemesis counter profile maps real combat adaptation telemetry -> counterStyle
+  liveSvc.recordPlayerCombatTelemetry({
+    playerName: 'KiterArcher',
+    telemetry: {
+      leftDodges: 8,
+      rightDodges: 2,
+      avgDistance: 12.5,
+      dashCount: 2,
+      durationSec: 20,
+      dominantElement: 'ice',
+      elementalReactions: 3,
+      won: true,
+    },
+  });
+  const kiterCounter = liveSvc.deriveNemesisCounterProfile('KiterArcher');
+  assert.equal(kiterCounter.counterStyle, 'anti_kite');
+
+  liveSvc.recordPlayerCombatTelemetry({
+    playerName: 'DashMaster',
+    telemetry: {
+      leftDodges: 6,
+      rightDodges: 6,
+      avgDistance: 6.2,
+      dashCount: 10,
+      durationSec: 20,
+      dominantElement: 'storm',
+      elementalReactions: 4,
+      won: true,
+    },
+  });
+  const dashCounter = liveSvc.deriveNemesisCounterProfile('DashMaster');
+  assert.equal(dashCounter.counterStyle, 'anti_dodge');
+
+  // Create up to 3 active contracts -> 4th must be rejected by server cap
+  const createdIds: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const spec = liveSvc.prepareContractSpec({
+      playerName: 'Phase3Hero',
+      aiPlayerId: players[i].id,
+      chapterId: 3,
+      playerPowerRating: 2200,
+    });
+    assert.equal(spec.canCreate, true, `Expected spec #${i + 1} to be creatable`);
+    assert.ok(spec.rewardGold >= 250 && spec.rewardGold <= 1500, 'Gold reward must stay bounded');
+    assert.ok(spec.rewardGems >= 25 && spec.rewardGems <= 120, 'Gems reward must stay bounded');
+    assert.ok(spec.rewardAffinity >= 6 && spec.rewardAffinity <= 15, 'Affinity reward must stay bounded');
+    const c = liveSvc.createPlayerContract('Phase3Hero', {
+      id: `ctr_test_${i + 1}`,
+      aiPlayerId: spec.issuer.id,
+      aiName: spec.issuer.displayName,
+      aiTitle: spec.issuer.titleBadge,
+      relationshipTier: spec.relationshipTier,
+      titleVi: `Kèo Thử Nghiệm #${i + 1}`,
+      pitchVi: 'Thử sức cùng ta ngay hôm nay!',
+      objectiveKind: spec.objectiveKind,
+      objectiveLabelVi: spec.objectiveLabelVi,
+      targetCount: spec.targetCount,
+      currentCount: 0,
+      chapterTarget: spec.chapterTarget,
+      rewardGold: spec.rewardGold,
+      rewardGems: spec.rewardGems,
+      rewardAffinity: spec.rewardAffinity,
+      status: 'active',
+      createdAtMs: Date.now(),
+      source: 'local_fallback',
+      model: 'local-contract-v1',
+    });
+    createdIds.push(c.id);
+  }
+  assert.equal(liveSvc.getPlayerContracts('Phase3Hero').length, 3);
+
+  const fourthSpec = liveSvc.prepareContractSpec({
+    playerName: 'Phase3Hero',
+    aiPlayerId: players[3].id,
+    chapterId: 3,
+    playerPowerRating: 2200,
+  });
+  assert.equal(fourthSpec.canCreate, false, 'Server must cap active contracts at 3 per player');
+
+  // Advance first contract to completion and claim once -> second claim MUST be idempotent (0 reward)
+  const firstContract = liveSvc.getPlayerContracts('Phase3Hero').find((c) => c.id === createdIds[0])!;
+  liveSvc.recordContractProgress({
+    playerName: 'Phase3Hero',
+    objectiveKind: firstContract.objectiveKind,
+    delta: firstContract.targetCount,
+    chapterId: firstContract.chapterTarget ?? 3,
+    hpRatio: 0.9,
+  });
+  const claim1 = liveSvc.claimContractReward({
+    playerName: 'Phase3Hero',
+    contractId: firstContract.id,
+  });
+  assert.equal(claim1.ok, true);
+  assert.equal(claim1.alreadyClaimed, false);
+  assert.equal(claim1.goldReward, firstContract.rewardGold);
+  assert.equal(claim1.gemsReward, firstContract.rewardGems);
+
+  const claim2 = liveSvc.claimContractReward({
+    playerName: 'Phase3Hero',
+    contractId: firstContract.id,
+  });
+  assert.equal(claim2.ok, true);
+  assert.equal(claim2.alreadyClaimed, true);
+  assert.equal(claim2.goldReward, 0);
+  assert.equal(claim2.gemsReward, 0);
+});
+
+test('NV-9: Phase 3 Haggle Desk affinity floors, lowball defense, single-purchase lock & Guild War-Room +8% bonus', () => {
+  const tmpStore = path.join(os.tmpdir(), `aetherbow-live-ai-nv9-${Date.now()}.json`);
+  const liveSvc = new LiveAiPlayersService(tmpStore);
+
+  // Compare stranger minFloor vs ally minFloor
+  const strangerOffers = liveSvc.getHaggleOffers('StrangerBuyer');
+  assert.ok(strangerOffers.length >= 2);
+  const targetOffer = strangerOffers[0];
+
+  // Stranger lowball attempt (1 gem) MUST NEVER be accepted below minFloorGems
+  const lowballStep = liveSvc.evaluateServerHaggleStep({
+    playerName: 'StrangerBuyer',
+    offerId: targetOffer.offerId,
+    offeredGems: 1,
+  });
+  assert.equal(lowballStep.ok, true);
+  assert.notEqual(lowballStep.decision, 'accept', 'Lowball below minFloorGems must never be accepted');
+  assert.ok(
+    lowballStep.serverCounterGems >= targetOffer.minFloorGems,
+    'Counter ask must stay at or above server minFloorGems'
+  );
+
+  // Promote relationship to ally for another buyer -> gets deeper discount floor
+  liveSvc.recordRelationshipInteraction({
+    playerName: 'AllyBuyer',
+    aiPlayerId: targetOffer.sellerId,
+    kind: 'coop_clear',
+    summaryVi: 'Phối hợp ăn ý nhiều trận Co-op',
+    affinityDelta: 35,
+  });
+  const allyOffers = liveSvc.getHaggleOffers('AllyBuyer');
+  const matchingAllyOffer = allyOffers.find((o) => o.sellerId === targetOffer.sellerId) ?? allyOffers[0];
+  assert.ok(
+    matchingAllyOffer.minFloorGems < targetOffer.minFloorGems,
+    'Ally buyer must receive a deeper affinity-discounted floor than stranger'
+  );
+  assert.ok(matchingAllyOffer.minFloorGems < matchingAllyOffer.listPriceGems);
+
+  // Accept valid offer >= minFloorGems -> transitions to sold & rejects duplicate purchase
+  const acceptStep = liveSvc.evaluateServerHaggleStep({
+    playerName: 'AllyBuyer',
+    offerId: matchingAllyOffer.offerId,
+    offeredGems: matchingAllyOffer.currentAskGems,
+  });
+  assert.equal(acceptStep.ok, true);
+  assert.equal(acceptStep.decision, 'accept');
+  assert.ok(acceptStep.finalPriceGems >= matchingAllyOffer.minFloorGems);
+
+  const committed = liveSvc.commitHaggleTurn({
+    playerName: 'AllyBuyer',
+    offerId: matchingAllyOffer.offerId,
+    decision: acceptStep.decision,
+    finalPriceGems: acceptStep.finalPriceGems,
+    serverCounterGems: acceptStep.serverCounterGems,
+    replyVi: 'Chốt đơn ngay cho bạn đồng hành!',
+    source: 'local_fallback',
+  });
+  assert.ok(committed);
+  assert.equal(committed.status, 'sold');
+  assert.ok(committed.currentAskGems >= matchingAllyOffer.minFloorGems);
+
+  const duplicateAttempt = liveSvc.evaluateServerHaggleStep({
+    playerName: 'AllyBuyer',
+    offerId: matchingAllyOffer.offerId,
+    offeredGems: matchingAllyOffer.currentAskGems,
+  });
+  assert.equal(duplicateAttempt.ok, false, 'Sold haggle offer must reject duplicate purchase');
+
+  // Guild War-Room briefing confirmation unlocks bounded +8% Guild Boss damage bonus
+  const bossBefore = liveSvc.getLiveGuildBossState('WarCommander');
+  const leaderName = liveSvc.getSnapshot(1).players[0].displayName;
+  liveSvc.saveGuildWarBriefing('WarCommander', {
+    id: 'gwb_test_1',
+    mode: 'guild_boss',
+    sessionId: bossBefore.dateKey,
+    leaderName,
+    priorityTargetId: bossBefore.dateKey,
+    priorityTargetName: bossBefore.bossName,
+    briefingVi: 'Dồn toàn lực đánh phá giáp Boss Bang trong lượt này.',
+    roleOrders: [
+      {
+        memberName: leaderName,
+        roleLabelVi: 'Bang Chủ',
+        dutyVi: 'Mở màn dồn Tuyệt Kỹ khi Boss lộ điểm yếu.',
+      },
+    ],
+    mvpSummaryVi: 'Cả bang giữ nhịp ổn định!',
+    confirmedByPlayer: false,
+    bonusPct: 8,
+    updatedAtMs: Date.now(),
+    source: 'local_fallback',
+    model: 'local-warroom-v1',
+  });
+  const confirmedBriefing = liveSvc.confirmGuildWarBriefing({
+    playerName: 'WarCommander',
+    mode: 'guild_boss',
+    sessionId: bossBefore.dateKey,
+  });
+  assert.equal(confirmedBriefing?.confirmedByPlayer, true);
+
+  const bossResult = liveSvc.recordHumanGuildBossAttack({
+    playerName: 'WarCommander',
+    heroId: 'aurelia',
+    damage: 1000,
+  });
+  const humanEntry = bossResult.state.contributors.find((c) => c.displayName === 'WarCommander');
+  assert.equal(
+    humanEntry?.damage,
+    1080,
+    'Confirmed War-Room order must apply exact +8% Guild Boss contribution bonus'
+  );
+});
+
+test('NV-10: Express Phase 3 endpoints end-to-end, CJK leakage sanitizer & 702 LC invariant', async () => {
+  // Stray CJK/Hangul characters from LLM output must be rejected in favor of clean Vietnamese fallback
+  assert.equal(
+    sanitizeAiOutputText('Chào bạn 好的 rất vui được gặp!', 80, 'Chào bạn, rất vui được đồng hành!'),
+    'Chào bạn, rất vui được đồng hành!'
+  );
+
+  const tmpStore = path.join(os.tmpdir(), `aetherbow-live-ai-nv10-${Date.now()}.json`);
+  const liveSvc = new LiveAiPlayersService(tmpStore);
+  const firstAi = liveSvc.getSnapshot(1).players[0];
+  const app = express();
+  app.use(express.json());
+  app.use('/api/ai/nvidia', createNvidiaAiRouter(new NvidiaNimAiService({ apiKey: '' }), liveSvc));
+
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const addr = server.address();
+  assert.ok(addr && typeof addr === 'object');
+  const baseUrl = `http://127.0.0.1:${addr.port}`;
+
+  try {
+    // 1. Nemesis Letter + Accept
+    const nemRes = await fetch(`${baseUrl}/api/ai/nvidia/nemesis-letter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'TesterP3', aiPlayerId: firstAi.id }),
+    });
+    assert.equal(nemRes.status, 200);
+    const nemJson = (await nemRes.json()) as { letterVi: string; counterStyle: string; aiPlayerId: string };
+    assert.ok(nemJson.letterVi.length > 0 && nemJson.counterStyle.length > 0);
+
+    const accRes = await fetch(`${baseUrl}/api/ai/nvidia/nemesis-letter/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'TesterP3', aiPlayerId: nemJson.aiPlayerId }),
+    });
+    assert.equal(accRes.status, 200);
+
+    // 2. Contracts generate -> progress -> claim
+    const genRes = await fetch(`${baseUrl}/api/ai/nvidia/contracts/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerName: 'TesterP3',
+        aiPlayerId: firstAi.id,
+        chapterId: 2,
+        playerPowerRating: 1450,
+      }),
+    });
+    assert.equal(genRes.status, 200);
+    const genJson = (await genRes.json()) as {
+      ok: boolean;
+      contract: { id: string; objectiveKind: string; targetCount: number; chapterTarget?: number };
+    };
+    assert.equal(genJson.ok, true);
+
+    const progRes = await fetch(`${baseUrl}/api/ai/nvidia/contracts/progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerName: 'TesterP3',
+        objectiveKind: genJson.contract.objectiveKind,
+        delta: genJson.contract.targetCount,
+        chapterId: genJson.contract.chapterTarget ?? 2,
+        hpRatio: 0.9,
+      }),
+    });
+    assert.equal(progRes.status, 200);
+
+    const claimRes = await fetch(`${baseUrl}/api/ai/nvidia/contracts/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'TesterP3', contractId: genJson.contract.id }),
+    });
+    assert.equal(claimRes.status, 200);
+    const claimJson = (await claimRes.json()) as { ok: boolean; goldReward: number; gemsReward: number };
+    assert.equal(claimJson.ok, true);
+    assert.ok(claimJson.goldReward >= 250 && claimJson.gemsReward >= 25);
+
+    // 3. Spectator Casting
+    const castRes = await fetch(`${baseUrl}/api/ai/nvidia/spectator-cast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(castRes.status, 200);
+    const castJson = (await castRes.json()) as { scoutingSummaryVi: string; lines: unknown[] };
+    assert.ok(castJson.scoutingSummaryVi.length > 0 && Array.isArray(castJson.lines));
+
+    // 4. Auction Psychological Reaction
+    const reactRes = await fetch(`${baseUrl}/api/ai/nvidia/auction-react`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        itemName: 'Cung Ánh Trăng Thần Thoại',
+        rarity: 'MYTHIC',
+        currentBid: 120,
+        buyoutPrice: 180,
+        bidderAiId: firstAi.id,
+        playerOutbid: true,
+      }),
+    });
+    assert.equal(reactRes.status, 200);
+    const reactJson = (await reactRes.json()) as { tauntVi: string; stanceLabelVi: string };
+    assert.ok(reactJson.tauntVi.length > 0 && reactJson.stanceLabelVi.length > 0);
+
+    // 5. Haggle Offers + Negotiate
+    const offersRes = await fetch(`${baseUrl}/api/ai/nvidia/haggle/offers?playerName=TesterP3`);
+    assert.equal(offersRes.status, 200);
+    const offersJson = (await offersRes.json()) as {
+      offers: Array<{ offerId: string; currentAskGems: number }>;
+    };
+    assert.ok(offersJson.offers.length >= 1);
+
+    const negRes = await fetch(`${baseUrl}/api/ai/nvidia/haggle/negotiate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerName: 'TesterP3',
+        offerId: offersJson.offers[0].offerId,
+        offeredGems: offersJson.offers[0].currentAskGems,
+        playerNote: 'Chốt giá luôn nha!',
+      }),
+    });
+    assert.equal(negRes.status, 200);
+    const negJson = (await negRes.json()) as { ok: boolean; decision: string; replyVi: string };
+    assert.equal(negJson.ok, true);
+    assert.equal(negJson.decision, 'accept');
+    assert.ok(negJson.replyVi.length > 0);
+
+    // 6. Guild War-Room Briefing + Confirm
+    const briefRes = await fetch(`${baseUrl}/api/ai/nvidia/guild-briefing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'TesterP3', mode: 'guild_war' }),
+    });
+    assert.equal(briefRes.status, 200);
+    const briefJson = (await briefRes.json()) as {
+      sessionId: string;
+      briefingVi: string;
+      roleOrders: unknown[];
+      bonusPct: number;
+    };
+    assert.ok(briefJson.briefingVi.length > 0 && briefJson.roleOrders.length >= 2);
+    assert.equal(briefJson.bonusPct, 8);
+
+    const confRes = await fetch(`${baseUrl}/api/ai/nvidia/guild-briefing/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerName: 'TesterP3',
+        mode: 'guild_war',
+        sessionId: briefJson.sessionId,
+      }),
+    });
+    assert.equal(confRes.status, 200);
+    const confJson = (await confRes.json()) as { ok: boolean; briefing: { confirmedByPlayer: boolean } };
+    assert.equal(confJson.ok, true);
+    assert.equal(confJson.briefing.confirmedByPlayer, true);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+
+  // Fresh Account 702 LC hard invariant still holds
+  assert.equal(computePlayerStats(createInitialSaveData()).powerRating, 702);
+});
+
+
+

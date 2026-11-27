@@ -18,11 +18,13 @@ import type {
   AiLivePlayerProfile,
   AiRivalRecord,
   VirtualBuildCoachResult,
+  VirtualPlayerContract,
   VirtualPlayerRelationshipMemory,
   VirtualRelationshipTier,
 } from '../types/game';
 import {
   fetchVirtualPlayerMemory,
+  generateVirtualContract,
   requestVirtualBuildCoach,
   sendVirtualPlayerDm,
 } from '../services/nvidiaVirtualPlayerClient';
@@ -99,6 +101,9 @@ export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
   const [dmSending, setDmSending] = useState(false);
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachResult, setCoachResult] = useState<VirtualBuildCoachResult | null>(null);
+  const [contractLoading, setContractLoading] = useState(false);
+  const [createdContract, setCreatedContract] = useState<VirtualPlayerContract | null>(null);
+  const [contractNotice, setContractNotice] = useState<string | null>(null);
   const [lastAffinityDelta, setLastAffinityDelta] = useState<number | null>(null);
   const dmEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -106,6 +111,8 @@ export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
     if (!player) return;
     let cancelled = false;
     setCoachResult(null);
+    setCreatedContract(null);
+    setContractNotice(null);
     setLastAffinityDelta(null);
     void fetchVirtualPlayerMemory(playerDisplayName, player.id, player.displayName).then(
       (mem) => {
@@ -233,6 +240,33 @@ export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
       setMemory(refreshed);
     } finally {
       setCoachLoading(false);
+    }
+  };
+
+  const handleRequestPersonalContract = async () => {
+    if (contractLoading) return;
+    setContractLoading(true);
+    setContractNotice(null);
+    setActiveView('dm');
+    try {
+      const res = await generateVirtualContract({
+        playerName: playerDisplayName,
+        aiPlayerId: player.id,
+        chapterId: currentChapterId,
+        playerPowerRating,
+      });
+      if (res.ok && res.contract) {
+        setCreatedContract(res.contract);
+        setContractNotice(
+          `Đã nhận Kèo Riêng từ ${player.displayName}! Theo dõi & nhận thưởng tại Trung Tâm Cao Thủ → Kèo Riêng.`
+        );
+      } else {
+        setContractNotice(
+          res.message ?? 'Bạn đã đạt giới hạn 3 Kèo Riêng đang chạy. Hãy hoàn thành 1 kèo trước nhé!'
+        );
+      }
+    } finally {
+      setContractLoading(false);
     }
   };
 
@@ -499,6 +533,15 @@ export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="ai-profile-contract-btn"
+                disabled={contractLoading}
+                onClick={() => void handleRequestPersonalContract()}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/45 text-[11px] font-bold text-emerald-100 hover:bg-emerald-500/25 cursor-pointer whitespace-nowrap disabled:opacity-60"
+              >
+                {contractLoading ? 'Đang tạo kèo…' : 'Xin Kèo Riêng'}
+              </button>
+              <button
+                type="button"
                 disabled={dmSending}
                 onClick={() =>
                   void handleSendDm('Hôm nay rảnh đi Co-op săn Boss hay làm ván Arena 1v1 không?')
@@ -508,6 +551,34 @@ export const AiPlayerProfileModal: React.FC<AiPlayerProfileModalProps> = ({
                 Rủ đi Co-op / Tái đấu
               </button>
             </div>
+
+            {/* Inline Personal Contract Banner */}
+            {(createdContract || contractNotice) && (
+              <div
+                data-testid="ai-profile-contract-banner"
+                className="rounded-xl bg-[#071522] border border-emerald-400/35 p-3 space-y-1.5 text-xs"
+              >
+                {createdContract ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black text-emerald-200">{createdContract.titleVi}</span>
+                      <span className="font-mono-nums tabular-nums text-[11px] font-bold text-amber-200">
+                        +{createdContract.rewardGold.toLocaleString('vi-VN')} Vàng · +{createdContract.rewardGems} KC
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-200 leading-relaxed">
+                      “{createdContract.pitchVi}”
+                    </p>
+                    <div className="text-[11px] text-sky-300 font-semibold">
+                      Mục tiêu: {createdContract.objectiveLabelVi}
+                    </div>
+                  </>
+                ) : null}
+                {contractNotice && (
+                  <p className="text-[11px] text-emerald-300 font-semibold">{contractNotice}</p>
+                )}
+              </div>
+            )}
 
             {/* Structured Build Coach Result Card */}
             {coachResult && (

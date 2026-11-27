@@ -75,6 +75,7 @@ import {
 } from './engine/aaaFivePillarsDirector';
 import { submitWeekendBlitzAttempt, submitWeeklyBossAttempt } from './services/weeklyBossApi';
 import { liveAiSocket } from './services/liveAiSocket';
+import { reportVirtualContractProgress } from './services/nvidiaVirtualPlayerClient';
 import { applyLiveAiAuctionBidEvent } from './data/liveAiLeaderboards';
 import { computeWeeklyBossScore } from './data/weeklyBossData';
 import { getNextTargetGoal, normalizeAiPreferences } from './data/earlyProgressionData';
@@ -882,6 +883,7 @@ export default function App() {
   const [selectedChapterId, setSelectedChapterId] = useState<number>(1);
   const selectedChapterIdRef = useRef<number>(1);
   selectedChapterIdRef.current = selectedChapterId;
+  const latestRunHpRatioRef = useRef<number>(1);
   const [gameMode, setGameMode] = useState<LobbyGameMode>('chapter');
   const [activeLobbyTab, setActiveLobbyTab] = useState<LobbyTab>('battle');
   const [heroSubTabInitial, setHeroSubTabInitial] = useState<
@@ -2150,6 +2152,8 @@ export default function App() {
           }
         },
         onHudUpdate: (snap) => {
+          latestRunHpRatioRef.current =
+            snap.maxHp > 0 ? Math.max(0, Math.min(1, snap.hp / snap.maxHp)) : 1;
           setHud(snap);
         },
         onFloatingDamage: (dmg) => {
@@ -2750,6 +2754,33 @@ export default function App() {
                 },
               };
             });
+          }
+
+          if (victory) {
+            const contractPlayer = displayNameRef.current || 'Chiến Binh Tinh Giới';
+            if (isCampaignRun) {
+              void reportVirtualContractProgress({
+                playerName: contractPlayer,
+                objectiveKind: 'clear_chapter',
+                delta: 1,
+                chapterId: summary.chapterId,
+              }).catch(() => {});
+              if (latestRunHpRatioRef.current >= 0.55) {
+                void reportVirtualContractProgress({
+                  playerName: contractPlayer,
+                  objectiveKind: 'survive_hp_ratio',
+                  delta: 1,
+                  chapterId: summary.chapterId,
+                  hpRatio: latestRunHpRatioRef.current,
+                }).catch(() => {});
+              }
+            } else if (summary.isArenaMode && !summary.liveAiDuelId) {
+              void reportVirtualContractProgress({
+                playerName: contractPlayer,
+                objectiveKind: 'arena_win',
+                delta: 1,
+              }).catch(() => {});
+            }
           }
 
           if (summary.isWeeklyRankedBossMode && summary.weeklyBossIsPractice) {
@@ -4948,6 +4979,60 @@ export default function App() {
       triggerUpgradeCelebration(
         reward.predictedCorrectly ? 'Dự Đoán Chính Xác Khán Đài AI!' : 'Thưởng Cổ Vũ Khán Đài AI!',
         `+${reward.goldReward.toLocaleString('vi-VN')} Vàng · +${reward.gemsReward} Ngọc · +${reward.starDustReward} Bụi Sao`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleClaimAiContractReward = useCallback(
+    (reward: { goldReward: number; gemsReward: number; titleLabel: string }) => {
+      const safeGold = Math.max(0, Math.round(reward.goldReward));
+      const safeGems = Math.max(0, Math.round(reward.gemsReward));
+      soundEngine.playVictory();
+      setSave((prev) => ({
+        ...prev,
+        gold: prev.gold + safeGold,
+        gems: prev.gems + safeGems,
+      }));
+      triggerUpgradeCelebration(
+        `Hoàn Thành Kèo Riêng: ${reward.titleLabel}`,
+        `+${safeGold.toLocaleString('vi-VN')} Vàng · +${safeGems} Ngọc`
+      );
+    },
+    [triggerUpgradeCelebration]
+  );
+
+  const handleCompleteHagglePurchase = useCallback(
+    (deal: {
+      costGems: number;
+      rewardGold: number;
+      rewardStarDust: number;
+      rewardReforgeStone: number;
+      itemName: string;
+    }) => {
+      const safeCost = Math.max(0, Math.round(deal.costGems));
+      if (saveRef.current.gems < safeCost) return;
+      const safeGold = Math.max(0, Math.round(deal.rewardGold));
+      const safeDust = Math.max(0, Math.round(deal.rewardStarDust));
+      const safeStones = Math.max(0, Math.round(deal.rewardReforgeStone));
+      soundEngine.playVictory();
+      setSave((prev) => {
+        if (prev.gems < safeCost) return prev;
+        return {
+          ...prev,
+          gems: prev.gems - safeCost,
+          gold: prev.gold + safeGold,
+          starDust: (prev.starDust ?? 0) + safeDust,
+          reforgeStones: (prev.reforgeStones ?? 0) + safeStones,
+        };
+      });
+      const parts: string[] = [];
+      if (safeGold > 0) parts.push(`+${safeGold.toLocaleString('vi-VN')} Vàng`);
+      if (safeDust > 0) parts.push(`+${safeDust} Bụi Sao`);
+      if (safeStones > 0) parts.push(`+${safeStones} Đá Tẩy Luyện`);
+      triggerUpgradeCelebration(
+        `Chốt Kèo Thương Lượng: ${deal.itemName}`,
+        parts.length > 0 ? parts.join(' · ') : `Đã nhận ${deal.itemName}`
       );
     },
     [triggerUpgradeCelebration]
@@ -13195,6 +13280,7 @@ export default function App() {
       {phase === GamePhase.TITLE && enteredGame && auctionModalOpen && (
         <AuctionHouseModal
           save={save}
+          playerDisplayName={playerDisplayName}
           onPlaceBid={handlePlaceAuctionBid}
           onBuyoutLot={handleBuyoutAuctionLot}
           onListGear={handleListAuctionGear}
@@ -13203,6 +13289,7 @@ export default function App() {
           onClaimAll={handleClaimAuctionAll}
           onClaimEntry={handleClaimAuctionEntry}
           onRefreshLots={handleRefreshAuctionLots}
+          onCompleteHagglePurchase={handleCompleteHagglePurchase}
           onClose={() => setAuctionModalOpen(false)}
         />
       )}
@@ -13268,6 +13355,7 @@ export default function App() {
           playerDisplayName={playerDisplayName}
           playerHeroId={save.selectedHeroId}
           playerPowerRating={playerStats.powerRating}
+          currentChapterId={selectedChapterId}
           aiPreferences={currentAiPrefs}
           coopPartyRoles={save.coopPartyRoles ?? ['dps', 'guardian']}
           onUpdateAiPreferences={handleUpdateAiPreferences}
@@ -13279,6 +13367,7 @@ export default function App() {
           onStartGuildWarBastion={handleStartGuildWarBastion}
           onClaimGuildWarLiveReward={handleClaimGuildWarLiveReward}
           onClaimSpectatorReward={handleClaimSpectatorReward}
+          onClaimAiContractReward={handleClaimAiContractReward}
           onInspectAiPlayer={(aiId) => setInspectedAiPlayerId(aiId)}
           onClose={() => setLiveAiHubOpen(false)}
         />

@@ -2,17 +2,23 @@ import type {
   AiAutoPilotTactic,
   AiDraftDecision,
   AiLivePlayerPersonality,
+  AiRivalTier,
   AiTacticalDirective,
   AiTacticalTargetPriority,
   NvidiaAiStatusSnapshot,
+  VirtualAuctionTellStance,
   VirtualBuildCoachResult,
   VirtualCompanionCalloutResult,
   VirtualCompanionCommandId,
+  VirtualContractObjectiveKind,
   VirtualDmMessage,
+  VirtualGuildWarRoleOrder,
   VirtualMemoryEntry,
+  VirtualNemesisCounterStyle,
   VirtualPlayerPersonaId,
   VirtualPostMatchCommentaryResult,
   VirtualRelationshipTier,
+  VirtualSpectatorCastMoment,
 } from '../types/game.ts';
 import {
   computeLocalFallbackTacticalDirective,
@@ -1064,4 +1070,506 @@ export class NvidiaNimAiService {
       model: aiRes.model,
     };
   }
+
+  // ============================================================================
+  // LIVING VIRTUAL CHARACTER AI (PHASE 3): NEMESIS, CONTRACTS, CASTING, HAGGLE, WAR-ROOM
+  // ============================================================================
+
+  public async generateNemesisChallengeLetter(rawInput: {
+    aiPlayerId: string;
+    aiName: string;
+    aiTitle?: string;
+    aiPersonality: AiLivePlayerPersonality;
+    rivalTier: AiRivalTier;
+    rivalryScore: number;
+    playerName: string;
+    playerStyleSummary: string;
+    playerWeakness: string;
+    counterStyle: VirtualNemesisCounterStyle;
+    counterLabelVi: string;
+    winsAgainstAi: number;
+    lossesAgainstAi: number;
+    recentMemories?: VirtualMemoryEntry[];
+  }): Promise<{
+    letterVi: string;
+    counterHintVi: string;
+    source: 'nvidia_nim' | 'local_fallback';
+    model: string;
+  }> {
+    const aiName = sanitizePromptText(rawInput.aiName, 28) || 'Huyết Ưng';
+    const playerName = sanitizePromptText(rawInput.playerName, 24) || 'Xạ Thủ';
+    const styleSummary = sanitizePromptText(rawInput.playerStyleSummary, 140);
+    const weakness = sanitizePromptText(rawInput.playerWeakness, 120);
+    const counterLabel = sanitizePromptText(rawInput.counterLabelVi, 60);
+
+    const fallback = {
+      letterVi:
+        rawInput.winsAgainstAi > rawInput.lossesAgainstAi
+          ? `${playerName}, trận trước bạn thắng sát nút thôi! Ta đã đọc vị lối đánh của bạn và đổi sang ${counterLabel}, dám tái đấu không?`
+          : `${playerName}, lối đánh của bạn vẫn hở sườn ở nhịp phản đòn. Ta đã chuẩn bị ${counterLabel}, vào Đấu Trường phục thù đi!`,
+      counterHintVi: `Đối thủ đang dùng ${counterLabel} — hãy đổi nhịp lướt và giữ Tuyệt Kỹ phá thế ép góc.`,
+      source: 'local_fallback' as const,
+      model: 'local-nemesis-v1',
+    };
+
+    const cacheKey = `nemesis:${rawInput.aiPlayerId}:${rawInput.counterStyle}:${rawInput.winsAgainstAi}:${rawInput.lossesAgainstAi}`;
+    const nowMs = Date.now();
+    const cached = this.getCached<typeof fallback>(cacheKey, nowMs);
+    if (cached) return cached;
+
+    const aiRes = await this.callChatJson({
+      systemPrompt:
+        `Bạn nhập vai đối thủ truyền kiếp "${aiName}" (${sanitizePromptText(rawInput.aiTitle ?? 'Cao thủ Đấu Trường', 40)}) viết Chiến Thư gửi game thủ "${playerName}" trong game bắn cung roguelite 3D Aetherbow. ` +
+        'Phân tích thật lối đánh của người chơi, giải thích ngắn gọn vì sao bạn chuyển sang chiến thuật khắc chế mới, giọng khiêu chiến sắc bén nhưng văn minh. ' +
+        'Chỉ dùng tiếng Việt chuẩn có dấu, tuyệt đối không lẫn ký tự Trung/Hàn/Nhật, không nhắc tới AI. ' +
+        'Trả về DUY NHẤT JSON: {"letterVi":"1-2 câu chiến thư tối đa 34 từ","counterHintVi":"1 câu mẹo phá giải tối đa 22 từ"}.',
+      userPrompt: JSON.stringify({
+        personality: rawInput.aiPersonality,
+        rivalTier: rawInput.rivalTier,
+        record: { playerWins: rawInput.winsAgainstAi, aiWins: rawInput.lossesAgainstAi },
+        playerStyleSummary: styleSummary,
+        playerWeakness: weakness,
+        counterStyle: rawInput.counterStyle,
+        counterLabelVi: counterLabel,
+        recentMemories: (rawInput.recentMemories ?? []).slice(0, 3).map((m) => m.summaryVi),
+      }),
+      temperature: 0.6,
+      maxTokens: 320,
+      preferFast: false,
+      priority: 'user',
+    });
+
+    if (!aiRes) return fallback;
+
+    const result = {
+      letterVi: sanitizeAiOutputText(aiRes.json.letterVi, 210, fallback.letterVi),
+      counterHintVi: sanitizeAiOutputText(aiRes.json.counterHintVi, 140, fallback.counterHintVi),
+      source: 'nvidia_nim' as const,
+      model: aiRes.model,
+    };
+    this.setCached(cacheKey, result, nowMs);
+    return result;
+  }
+
+  public async generateVirtualContractPitch(rawInput: {
+    aiName: string;
+    aiPersonality: AiLivePlayerPersonality;
+    relationshipTier: VirtualRelationshipTier;
+    playerName: string;
+    chapterId: number;
+    playerPowerRating: number;
+    objectiveKind: VirtualContractObjectiveKind;
+    objectiveLabelVi: string;
+  }): Promise<{
+    titleVi: string;
+    pitchVi: string;
+    source: 'nvidia_nim' | 'local_fallback';
+    model: string;
+  }> {
+    const aiName = sanitizePromptText(rawInput.aiName, 28) || 'Linh Vũ';
+    const playerName = sanitizePromptText(rawInput.playerName, 24) || 'Xạ Thủ';
+    const objectiveLabel = sanitizePromptText(rawInput.objectiveLabelVi, 100);
+
+    const fallback = {
+      titleVi:
+        rawInput.relationshipTier === 'rival'
+          ? `Kèo Thách Đấu từ ${aiName}`
+          : `Ủy Thác Chiến Đấu cùng ${aiName}`,
+      pitchVi:
+        rawInput.relationshipTier === 'rival'
+          ? `${playerName}, dám nhận kèo "${objectiveLabel}" với ${rawInput.playerPowerRating.toLocaleString('vi-VN')} LC không? Làm được ta chịu thua một bậc!`
+          : `Này ${playerName}, hoàn thành "${objectiveLabel}" nhé — xong việc mình chia phần thưởng và ghi nhận chiến công ngay!`,
+      source: 'local_fallback' as const,
+      model: 'local-contract-v1',
+    };
+
+    const aiRes = await this.callChatJson({
+      systemPrompt:
+        `Bạn nhập vai cao thủ "${aiName}" tạo 1 lời giao kèo/nhiệm vụ riêng cho "${playerName}" trong game bắn cung roguelite 3D Aetherbow. ` +
+        `Mối quan hệ: ${rawInput.relationshipTier}. Chỉ dùng tiếng Việt chuẩn có dấu, không lẫn ký tự Trung/Hàn/Nhật, không nhắc tới AI. ` +
+        'Trả về DUY NHẤT JSON: {"titleVi":"tên kèo ngắn tối đa 8 từ","pitchVi":"lời mời/thách đấu 1 câu tối đa 26 từ"}.',
+      userPrompt: JSON.stringify({
+        personality: rawInput.aiPersonality,
+        chapterId: rawInput.chapterId,
+        playerPowerRating: rawInput.playerPowerRating,
+        objectiveKind: rawInput.objectiveKind,
+        objectiveLabelVi: objectiveLabel,
+      }),
+      temperature: 0.6,
+      maxTokens: 260,
+      preferFast: false,
+      priority: 'user',
+    });
+
+    if (!aiRes) return fallback;
+
+    return {
+      titleVi: sanitizeAiOutputText(aiRes.json.titleVi, 64, fallback.titleVi),
+      pitchVi: sanitizeAiOutputText(aiRes.json.pitchVi, 180, fallback.pitchVi),
+      source: 'nvidia_nim',
+      model: aiRes.model,
+    };
+  }
+
+  public async generateSpectatorCasting(rawInput: {
+    matchId: string;
+    moment: VirtualSpectatorCastMoment;
+    fighterAName: string;
+    fighterAPower: number;
+    fighterAHpPct: number;
+    fighterBName: string;
+    fighterBPower: number;
+    fighterBHpPct: number;
+    winnerName?: string;
+    latestPlayNote?: string;
+  }): Promise<{
+    scoutingSummaryVi: string;
+    favoredFighterName: string;
+    castLineVi: string;
+    postMatchQuoteVi?: string;
+    source: 'nvidia_nim' | 'local_fallback';
+    model: string;
+  }> {
+    const fA = sanitizePromptText(rawInput.fighterAName, 28) || 'Cao Thủ A';
+    const fB = sanitizePromptText(rawInput.fighterBName, 28) || 'Cao Thủ B';
+    const favored = rawInput.fighterAPower >= rawInput.fighterBPower ? fA : fB;
+    const note = sanitizePromptText(rawInput.latestPlayNote ?? '', 120);
+
+    const fallbackLine =
+      rawInput.moment === 'finish' || rawInput.moment === 'post_match'
+        ? `Kết thúc nghẹt thở! ${rawInput.winnerName || favored} tung đòn dứt điểm chuẩn xác khép lại trận đấu!`
+        : rawInput.moment === 'swing'
+        ? `Pha đổi máu cực gắt giữa ${fA} (${Math.round(rawInput.fighterAHpPct)}%) và ${fB} (${Math.round(rawInput.fighterBHpPct)}%) — cục diện đảo chiều từng giây!`
+        : `Trận so tài đỉnh cao giữa ${fA} và ${fB} chính thức khai hỏa trên Khán Đài Tinh Giới!`;
+
+    const fallback = {
+      scoutingSummaryVi: `${favored} nhỉnh hơn nhẹ về lực chiến, nhưng một pha Né Hoàn Hảo có thể lật kèo bất cứ lúc nào.`,
+      favoredFighterName: favored,
+      castLineVi: fallbackLine,
+      postMatchQuoteVi: rawInput.winnerName
+        ? `${rawInput.winnerName}: "Trận này đánh đã tay thật, hẹn tái đấu vòng sau!"`
+        : undefined,
+      source: 'local_fallback' as const,
+      model: 'local-caster-v1',
+    };
+
+    const cacheKey = `cast:${rawInput.matchId}:${rawInput.moment}`;
+    const nowMs = Date.now();
+    const cached = this.getCached<typeof fallback>(cacheKey, nowMs);
+    if (cached) return cached;
+
+    const aiRes = await this.callChatJson({
+      systemPrompt:
+        'Bạn là Bình Luận Viên Esports nhiệt huyết bình luận trực tiếp trận đấu 1v1 giữa 2 cao thủ trong game bắn cung 3D Aetherbow. ' +
+        'Chỉ dùng tiếng Việt chuẩn có dấu, không lẫn ký tự Trung/Hàn/Nhật, súc tích, kịch tính, không nhắc tới AI. ' +
+        'Trả về DUY NHẤT JSON: {"scoutingSummaryVi":"nhận định soi kèo 1 câu tối đa 22 từ","castLineVi":"câu bình luận trực tiếp 1 câu tối đa 24 từ","postMatchQuoteVi":"1 câu phát biểu ngắn của người thắng nếu đã xong trận, hoặc chuỗi rỗng"}.',
+      userPrompt: JSON.stringify({
+        moment: rawInput.moment,
+        fighterA: { name: fA, power: rawInput.fighterAPower, hpPct: Math.round(rawInput.fighterAHpPct) },
+        fighterB: { name: fB, power: rawInput.fighterBPower, hpPct: Math.round(rawInput.fighterBHpPct) },
+        winnerName: rawInput.winnerName ?? null,
+        latestPlayNote: note,
+      }),
+      temperature: 0.65,
+      maxTokens: 280,
+      preferFast: true,
+      priority: 'background',
+    });
+
+    if (!aiRes) return fallback;
+
+    const rawPost =
+      typeof aiRes.json.postMatchQuoteVi === 'string' && aiRes.json.postMatchQuoteVi.trim().length > 2
+        ? sanitizeAiOutputText(aiRes.json.postMatchQuoteVi, 140, fallback.postMatchQuoteVi ?? '')
+        : fallback.postMatchQuoteVi;
+
+    const result = {
+      scoutingSummaryVi: sanitizeAiOutputText(
+        aiRes.json.scoutingSummaryVi,
+        150,
+        fallback.scoutingSummaryVi
+      ),
+      favoredFighterName: favored,
+      castLineVi: sanitizeAiOutputText(aiRes.json.castLineVi, 170, fallback.castLineVi),
+      postMatchQuoteVi: rawInput.winnerName ? rawPost : undefined,
+      source: 'nvidia_nim' as const,
+      model: aiRes.model,
+    };
+    this.setCached(cacheKey, result, nowMs);
+    return result;
+  }
+
+  public async generateAuctionPsychReaction(rawInput: {
+    lotId: string;
+    lotLabel: string;
+    aiName: string;
+    aiPersonality: AiLivePlayerPersonality;
+    currentBid: number;
+    buyoutPrice: number;
+    playerJustBid: boolean;
+  }): Promise<{
+    stance: VirtualAuctionTellStance;
+    stanceLabelVi: string;
+    tauntVi: string;
+    source: 'nvidia_nim' | 'local_fallback';
+    model: string;
+  }> {
+    const aiName = sanitizePromptText(rawInput.aiName, 28) || 'Thương Nhân Ảo';
+    const lotLabel = sanitizePromptText(rawInput.lotLabel, 64) || 'Vật Phẩm Hiếm';
+    const bidRatio = rawInput.buyoutPrice > 0 ? rawInput.currentBid / rawInput.buyoutPrice : 0.5;
+
+    const defaultStance: VirtualAuctionTellStance =
+      bidRatio >= 0.82
+        ? 'backing_off'
+        : rawInput.aiPersonality === 'aggressive'
+        ? 'all_in'
+        : rawInput.aiPersonality === 'assassin'
+        ? 'bluffing'
+        : 'testing';
+
+    const stanceLabels: Record<VirtualAuctionTellStance, string> = {
+      bluffing: 'Đang dọa giá',
+      backing_off: 'Sắp rút lui',
+      all_in: 'Quyết ôm lô',
+      testing: 'Thăm dò giá',
+    };
+
+    const fallback = {
+      stance: defaultStance,
+      stanceLabelVi: stanceLabels[defaultStance],
+      tauntVi:
+        defaultStance === 'backing_off'
+          ? `Mức ${rawInput.currentBid} Ngọc cho ${lotLabel} hơi sát trần rồi, để xem bạn có dám theo tiếp không...`
+          : defaultStance === 'all_in'
+          ? `Món ${lotLabel} này hợp bộ của mình quá, giá ${rawInput.currentBid} Ngọc mình vẫn theo tới cùng!`
+          : `Đặt ${rawInput.currentBid} Ngọc thử xem có ai thực sự cần ${lotLabel} không nào.`,
+      source: 'local_fallback' as const,
+      model: 'local-auction-psych-v1',
+    };
+
+    const cacheKey = `auc:${rawInput.lotId}:${Math.round(rawInput.currentBid / 5)}:${rawInput.aiName}`;
+    const nowMs = Date.now();
+    const cached = this.getCached<typeof fallback>(cacheKey, nowMs);
+    if (cached) return cached;
+
+    const aiRes = await this.callChatJson({
+      systemPrompt:
+        `Bạn nhập vai game thủ "${aiName}" đang đấu giá tranh vật phẩm "${lotLabel}" trong Sàn Đấu Giá Aetherbow. ` +
+        'Viết 1 câu phản ứng tâm lý tự nhiên bằng tiếng Việt chuẩn có dấu (tối đa 22 từ), không lẫn ký tự Trung/Hàn/Nhật, không nhắc AI, để lộ nhẹ tâm lý (đang dọa giá, sắp rút lui, quyết ôm lô hoặc thăm dò). ' +
+        'Trả về DUY NHẤT JSON: {"stance":"bluffing|backing_off|all_in|testing","tauntVi":"1 câu phản ứng đấu giá"}.',
+      userPrompt: JSON.stringify({
+        personality: rawInput.aiPersonality,
+        currentBid: rawInput.currentBid,
+        buyoutPrice: rawInput.buyoutPrice,
+        playerJustBid: rawInput.playerJustBid,
+      }),
+      temperature: 0.65,
+      maxTokens: 220,
+      preferFast: true,
+      priority: 'background',
+    });
+
+    if (!aiRes) return fallback;
+
+    const rawStance = aiRes.json.stance;
+    const stance: VirtualAuctionTellStance =
+      rawStance === 'bluffing' ||
+      rawStance === 'backing_off' ||
+      rawStance === 'all_in' ||
+      rawStance === 'testing'
+        ? rawStance
+        : defaultStance;
+
+    const result = {
+      stance,
+      stanceLabelVi: stanceLabels[stance],
+      tauntVi: sanitizeAiOutputText(aiRes.json.tauntVi, 150, fallback.tauntVi),
+      source: 'nvidia_nim' as const,
+      model: aiRes.model,
+    };
+    this.setCached(cacheKey, result, nowMs);
+    return result;
+  }
+
+  public async evaluateHaggleNegotiation(rawInput: {
+    sellerName: string;
+    sellerPersonality: AiLivePlayerPersonality;
+    relationshipTier: VirtualRelationshipTier;
+    affinityScore: number;
+    itemName: string;
+    listPriceGems: number;
+    minFloorGems: number;
+    currentAskGems: number;
+    offeredGems: number;
+    roundsUsed: number;
+    maxRounds: number;
+    playerMessage?: string;
+    serverDecision: 'accept' | 'counter' | 'reject';
+    serverCounterGems: number;
+  }): Promise<{
+    replyVi: string;
+    source: 'nvidia_nim' | 'local_fallback';
+    model: string;
+  }> {
+    const sellerName = sanitizePromptText(rawInput.sellerName, 28) || 'Thương Nhân Ảo';
+    const itemName = sanitizePromptText(rawInput.itemName, 64) || 'Gói Tài Nguyên';
+    const playerMsg = sanitizePromptText(rawInput.playerMessage ?? '', 120);
+
+    const fallbackReply =
+      rawInput.serverDecision === 'accept'
+        ? rawInput.relationshipTier === 'ally' || rawInput.relationshipTier === 'mentor'
+          ? `Chỗ quen biết thân thiết, chốt ngay ${rawInput.offeredGems} Ngọc cho gói ${itemName} luôn!`
+          : `Được đấy, chốt nhanh ${rawInput.offeredGems} Ngọc cho ${itemName}, giao dịch sòng phẳng!`
+        : rawInput.serverDecision === 'counter'
+        ? `Giá ${rawInput.offeredGems} Ngọc hơi thấp so với giá thị trường — bớt hết cỡ còn ${rawInput.serverCounterGems} Ngọc, bạn chốt nhé?`
+        : `Thấp quá rồi bạn ơi, ${itemName} không thể xuống dưới ${rawInput.minFloorGems} Ngọc được. Hẹn phiên sau nhé!`;
+
+    const aiRes = await this.callChatJson({
+      systemPrompt:
+        `Bạn nhập vai cao thủ bán hàng "${sellerName}" trong Quầy Thương Lượng 1-1 game Aetherbow. ` +
+        `QUYẾT ĐỊNH GIÁ ĐÃ ĐƯỢC CHỐT CỨNG BỞI HỆ THỐNG: "${rawInput.serverDecision}" (giá đề nghị lại nếu counter: ${rawInput.serverCounterGems} Ngọc). ` +
+        'Hãy viết đúng 1 câu trả lời thương lượng tự nhiên khớp hoàn toàn với quyết định trên và mối quan hệ hiện tại, tiếng Việt chuẩn có dấu, tối đa 26 từ, không lẫn ký tự Trung/Hàn/Nhật, không nhắc AI. ' +
+        'Trả về DUY NHẤT JSON: {"replyVi":"câu trả lời thương lượng"}.',
+      userPrompt: JSON.stringify({
+        personality: rawInput.sellerPersonality,
+        relationshipTier: rawInput.relationshipTier,
+        affinityScore: rawInput.affinityScore,
+        itemName,
+        listPriceGems: rawInput.listPriceGems,
+        offeredGems: rawInput.offeredGems,
+        serverDecision: rawInput.serverDecision,
+        serverCounterGems: rawInput.serverCounterGems,
+        roundsUsed: rawInput.roundsUsed,
+        maxRounds: rawInput.maxRounds,
+        playerMessage: playerMsg,
+      }),
+      temperature: 0.55,
+      maxTokens: 220,
+      preferFast: false,
+      priority: 'user',
+    });
+
+    if (!aiRes) {
+      return {
+        replyVi: fallbackReply,
+        source: 'local_fallback',
+        model: 'local-haggle-v1',
+      };
+    }
+
+    return {
+      replyVi: sanitizeAiOutputText(aiRes.json.replyVi, 175, fallbackReply),
+      source: 'nvidia_nim',
+      model: aiRes.model,
+    };
+  }
+
+  public async generateGuildWarBriefing(rawInput: {
+    mode: 'guild_boss' | 'guild_war';
+    sessionId: string;
+    leaderName: string;
+    officerNames: string[];
+    playerName: string;
+    priorityTargetId: string;
+    priorityTargetName: string;
+    targetHpPct: number;
+    topContributorName?: string;
+    topContributorScore?: number;
+  }): Promise<{
+    briefingVi: string;
+    roleOrders: VirtualGuildWarRoleOrder[];
+    mvpSummaryVi: string;
+    source: 'nvidia_nim' | 'local_fallback';
+    model: string;
+  }> {
+    const leader = sanitizePromptText(rawInput.leaderName, 28) || 'Thủ Lĩnh Tề Thiên';
+    const officer1 = sanitizePromptText(rawInput.officerNames[0] ?? 'Linh Vũ', 28);
+    const officer2 = sanitizePromptText(rawInput.officerNames[1] ?? 'Lôi Đế', 28);
+    const playerName = sanitizePromptText(rawInput.playerName, 24) || 'Xạ Thủ';
+    const targetName = sanitizePromptText(rawInput.priorityTargetName, 64) || 'Mục Tiêu Ưu Tiên';
+
+    const fallbackOrders: VirtualGuildWarRoleOrder[] = [
+      {
+        memberName: playerName,
+        roleLabelVi: 'Chủ Công Dồn Sát Thương',
+        dutyVi: `Tập trung đánh ${targetName} và xả Tuyệt Kỹ ngay nhịp vỡ giáp.`,
+        isHumanPlayer: true,
+      },
+      {
+        memberName: officer1,
+        roleLabelVi: 'Kiểm Soát & Phá Giáp',
+        dutyVi: 'Giữ nhịp làm chậm và mở cửa sổ phá giáp cho toàn bang.',
+      },
+      {
+        memberName: officer2,
+        roleLabelVi: 'Hỗ Trợ Hỏa Lực',
+        dutyVi: 'Dọn quái vệ tinh và bọc lót tuyến sau trong giai đoạn nộ.',
+      },
+    ];
+
+    const fallback = {
+      briefingVi:
+        rawInput.mode === 'guild_war'
+          ? `Toàn bang dồn lực công ${targetName} (còn ${Math.round(rawInput.targetHpPct)}% phòng tuyến) để mở cửa chiếm điểm nhanh!`
+          : `Boss Bang ${targetName} còn ${Math.round(rawInput.targetHpPct)}% máu — cả bang đồng bộ dồn sát thương trong pha này!`,
+      roleOrders: fallbackOrders,
+      mvpSummaryVi: rawInput.topContributorName
+        ? `Dẫn đầu cống hiến hiện tại: ${rawInput.topContributorName} (${Math.round(rawInput.topContributorScore ?? 0).toLocaleString('vi-VN')} điểm).`
+        : 'Chưa có người dẫn đầu — vào trận xác nhận chiến lệnh để mở thưởng cống hiến +8%!',
+      source: 'local_fallback' as const,
+      model: 'local-guild-warroom-v1',
+    };
+
+    const cacheKey = `gwar:${rawInput.mode}:${rawInput.sessionId}:${rawInput.priorityTargetId}:${Math.round(rawInput.targetHpPct / 15)}`;
+    const nowMs = Date.now();
+    const cached = this.getCached<typeof fallback>(cacheKey, nowMs);
+    if (cached) return cached;
+
+    const aiRes = await this.callChatJson({
+      systemPrompt:
+        `Bạn là Thủ Lĩnh Bang Hội "${leader}" điều phối Hội Đồng Chiến Thuật cho hoạt động ${rawInput.mode === 'guild_war' ? 'Công Thành Chiến' : 'Săn Boss Bang'} trong game Aetherbow. ` +
+        'Chỉ dùng tiếng Việt chuẩn có dấu, không lẫn ký tự Trung/Hàn/Nhật, súc tích rõ ràng như bang chủ thật, không nhắc AI. ' +
+        'Trả về DUY NHẤT JSON: {"briefingVi":"1 câu mệnh lệnh tổng tối đa 26 từ","playerDutyVi":"nhiệm vụ cụ thể cho người chơi tối đa 18 từ","officer1DutyVi":"nhiệm vụ phó bang 1 tối đa 16 từ","officer2DutyVi":"nhiệm vụ phó bang 2 tối đa 16 từ","mvpSummaryVi":"1 câu tổng kết bảng cống hiến tối đa 22 từ"}.',
+      userPrompt: JSON.stringify({
+        mode: rawInput.mode,
+        playerName,
+        officer1,
+        officer2,
+        priorityTargetName: targetName,
+        targetHpPct: Math.round(rawInput.targetHpPct),
+        topContributorName: rawInput.topContributorName ?? null,
+        topContributorScore: rawInput.topContributorScore ?? 0,
+      }),
+      temperature: 0.45,
+      maxTokens: 320,
+      preferFast: true,
+      priority: 'background',
+    });
+
+    if (!aiRes) return fallback;
+
+    const result = {
+      briefingVi: sanitizeAiOutputText(aiRes.json.briefingVi, 175, fallback.briefingVi),
+      roleOrders: [
+        {
+          ...fallbackOrders[0],
+          dutyVi: sanitizeAiOutputText(aiRes.json.playerDutyVi, 120, fallbackOrders[0].dutyVi),
+        },
+        {
+          ...fallbackOrders[1],
+          dutyVi: sanitizeAiOutputText(aiRes.json.officer1DutyVi, 110, fallbackOrders[1].dutyVi),
+        },
+        {
+          ...fallbackOrders[2],
+          dutyVi: sanitizeAiOutputText(aiRes.json.officer2DutyVi, 110, fallbackOrders[2].dutyVi),
+        },
+      ],
+      mvpSummaryVi: sanitizeAiOutputText(aiRes.json.mvpSummaryVi, 150, fallback.mvpSummaryVi),
+      source: 'nvidia_nim' as const,
+      model: aiRes.model,
+    };
+    this.setCached(cacheKey, result, nowMs);
+    return result;
+  }
 }
+

@@ -27,10 +27,18 @@ import type {
   LiveMiniCupState,
   LiveServerBountyContributor,
   LiveServerBountyState,
+  VirtualContractObjectiveKind,
   VirtualDmMessage,
+  VirtualGuildWarBriefing,
+  VirtualHaggleOfferItem,
   VirtualMemoryKind,
+  VirtualNemesisChallengeLetter,
+  VirtualNemesisCounterStyle,
+  VirtualPlayerContract,
   VirtualPlayerRelationshipMemory,
   VirtualRelationshipTier,
+  VirtualSpectatorCastingBundle,
+  VirtualSpectatorCastLine,
 } from '../types/game.ts';
 import {
   applyGuildWarBastionStrike,
@@ -76,12 +84,21 @@ interface LiveAiStoreData {
   spectatorCheersByMatch?: Record<string, Record<string, string>>;
   spectatorClaimsByMatch?: Record<string, Record<string, boolean>>;
   relationshipsByPlayer?: Record<string, Record<string, VirtualPlayerRelationshipMemory>>;
+  nemesisLettersByPlayer?: Record<string, Record<string, VirtualNemesisChallengeLetter>>;
+  contractsByPlayer?: Record<string, VirtualPlayerContract[]>;
+  spectatorCastingByMatch?: Record<string, VirtualSpectatorCastingBundle>;
+  haggleOffersByPlayer?: Record<string, { dayKey: string; offers: VirtualHaggleOfferItem[] }>;
+  guildWarBriefingByKey?: Record<string, VirtualGuildWarBriefing>;
 }
 
 const MAX_CHAT_PER_CHANNEL = 40;
 const MAX_RELATIONSHIP_PLAYERS = 80;
 const MAX_RELATIONSHIP_MEMORIES = 6;
 const MAX_DM_MESSAGES = 12;
+const MAX_ACTIVE_CONTRACTS = 3;
+const MAX_STORED_CONTRACTS = 9;
+const MAX_SPECTATOR_CAST_CACHE = 8;
+const MAX_BRIEFING_CACHE = 16;
 
 function buildDefaultAiBuildSnapshot(seed: RosterSeed): AiLiveBuildSnapshot {
   const weaponByHero: Record<HeroId, string> = {
@@ -1015,6 +1032,21 @@ export class LiveAiPlayersService {
       nowMs,
     });
 
+    if (params.playerWon) {
+      this.recordContractProgress({
+        playerName: params.challengerName,
+        objectiveKind: 'win_duel',
+        delta: 1,
+        nowMs,
+      });
+      this.recordContractProgress({
+        playerName: params.challengerName,
+        objectiveKind: 'arena_win',
+        delta: 1,
+        nowMs,
+      });
+    }
+
     this.persistStore();
     return { alreadyProcessed: false, opponent, ratingDelta, event, rival };
   }
@@ -1508,7 +1540,10 @@ export class LiveAiPlayersService {
   }): { state: LiveGuildBossState; event: AiLiveActivityEvent } {
     const nowMs = params.nowMs ?? Date.now();
     const pKey = this.normalizePlayerKey(params.playerName);
-    const safeDmg = Math.max(250, Math.min(85_000, Math.round(params.damage)));
+    const boss = this.ensureLiveGuildBoss(nowMs);
+    const briefKey = `guild_boss:${boss.dateKey}:${pKey}`;
+    const confirmedBonus = this.store.guildWarBriefingByKey?.[briefKey]?.confirmedByPlayer ? 1.08 : 1;
+    const safeDmg = Math.max(250, Math.min(92_000, Math.round(params.damage * confirmedBonus)));
     this.applyGuildBossHitInternal({
       id: `human_${pKey}`,
       displayName: params.playerName,
@@ -1517,12 +1552,21 @@ export class LiveAiPlayersService {
       damage: safeDmg,
       nowMs,
     });
+    this.recordContractProgress({
+      playerName: params.playerName,
+      objectiveKind: 'guild_boss_strike',
+      delta: 1,
+      nowMs,
+    });
     const event = this.pushActivity({
       id: `evt_gbl_h_${nowMs}_${crypto.randomBytes(3).toString('hex')}`,
       timestamp: nowMs,
       kind: 'guild',
       actorName: params.playerName,
-      summary: `góp ${safeDmg.toLocaleString('vi-VN')} ST vào Boss Bang Live cùng toàn bang!`,
+      summary:
+        confirmedBonus > 1
+          ? `theo Chiến Lệnh Bang góp ${safeDmg.toLocaleString('vi-VN')} ST (+8%) vào Boss Bang Live!`
+          : `góp ${safeDmg.toLocaleString('vi-VN')} ST vào Boss Bang Live cùng toàn bang!`,
       accent: 'emerald',
     });
     this.persistStore();
@@ -2260,8 +2304,19 @@ export class LiveAiPlayersService {
     event: AiLiveActivityEvent;
   } {
     const nowMs = params.nowMs ?? Date.now();
-    const war = this.ensureLiveGuildWar(nowMs);
     const pKey = this.normalizePlayerKey(params.playerName);
+    const war = this.ensureLiveGuildWar(nowMs);
+    const warBriefKey = `guild_war:${war.warId}:${pKey}`;
+    const activeBrief = this.store.guildWarBriefingByKey?.[warBriefKey];
+    const matchesOrder =
+      activeBrief?.confirmedByPlayer &&
+      (!activeBrief.priorityTargetId || activeBrief.priorityTargetId === params.bastionId);
+    const boostedScoreGain =
+      matchesOrder && typeof params.scoreGain === 'number'
+        ? Math.round(params.scoreGain * 1.08)
+        : matchesOrder
+        ? Math.round((params.mode === 'assault_3d' ? 160 : 75) * 1.08)
+        : params.scoreGain;
     const res = applyGuildWarBastionStrike(war, {
       actorId: `human_${pKey}`,
       actorName: params.playerName,
@@ -2270,7 +2325,7 @@ export class LiveAiPlayersService {
       faction: 'zodiac_guild',
       bastionId: params.bastionId,
       mode: params.mode,
-      scoreGain: params.scoreGain,
+      scoreGain: boostedScoreGain,
       nowMs,
     });
     this.store.guildWarLive = res.nextState;
@@ -2281,8 +2336,8 @@ export class LiveAiPlayersService {
       actorName: params.playerName,
       summary:
         params.mode === 'assault_3d'
-          ? `xung kích 3D tại ${res.bastion.name} (+${res.pointsAwarded} điểm Bang)!`
-          : `chi viện nhanh ${res.bastion.name} (+${res.pointsAwarded} điểm Bang)!`,
+          ? `xung kích 3D tại ${res.bastion.name} (+${res.pointsAwarded} điểm Bang${matchesOrder ? ' · Chiến Lệnh +8%' : ''})!`
+          : `chi viện nhanh ${res.bastion.name} (+${res.pointsAwarded} điểm Bang${matchesOrder ? ' · Chiến Lệnh +8%' : ''})!`,
       accent: res.flippedOwner ? 'amber' : 'emerald',
     });
     this.persistStore();
@@ -2814,6 +2869,736 @@ export class LiveAiPlayersService {
     this.persistStore();
     return msg;
   }
+
+  // ============================================================================
+  // LIVING VIRTUAL CHARACTER AI (PHASE 3): NEMESIS, CONTRACTS, CASTING, HAGGLE, WAR-ROOM
+  // ============================================================================
+
+  public deriveNemesisCounterProfile(
+    playerName: string
+  ): {
+    counterStyle: VirtualNemesisCounterStyle;
+    counterLabelVi: string;
+    playerStyleSummary: string;
+    playerWeakness: string;
+  } {
+    const adapt = this.getAdaptationForPlayer(playerName);
+    if (!adapt) {
+      return {
+        counterStyle: 'anti_kite',
+        counterLabelVi: 'Khóa Góc Áp Sát',
+        playerStyleSummary: 'Lối đánh cân bằng, giữ cự ly trung bình và thả diều ổn định.',
+        playerWeakness: 'Dễ bị gián đoạn nhịp bắn khi bị ép góc bất ngờ.',
+      };
+    }
+    const dodgeNote =
+      adapt.dodgeBias === 'left'
+        ? 'hay lướt sang trái'
+        : adapt.dodgeBias === 'right'
+        ? 'hay lướt sang phải'
+        : 'lướt đa hướng linh hoạt';
+    if (adapt.rangeStyle === 'kiter') {
+      return {
+        counterStyle: 'anti_kite',
+        counterLabelVi: 'Bẫy Băng Chặn Lướt',
+        playerStyleSummary: `Xạ thủ thả diều tầm xa (${adapt.counterInsightLabel}), ${dodgeNote}.`,
+        playerWeakness: 'Hở sườn khi kỹ năng Dash đang hồi chiêu ở góc hẹp.',
+      };
+    }
+    if (adapt.dashFrequencyPer10s >= 2.2) {
+      return {
+        counterStyle: 'anti_dodge',
+        counterLabelVi: 'Loạt Tên Trễ Nhịp',
+        playerStyleSummary: `Phản xạ Né Hoàn Hảo rất bén (${adapt.dashFrequencyPer10s.toFixed(1)} Dash/10s, ${dodgeNote}).`,
+        playerWeakness: 'Dễ dính đòn trễ nhịp ngay sau khi vừa hết bất tử Dash.',
+      };
+    }
+    if (adapt.rangeStyle === 'brawler') {
+      return {
+        counterStyle: 'anti_burst',
+        counterLabelVi: 'Khiên Phản Sát Thương',
+        playerStyleSummary: `Chuyên áp sát dồn sát thương nhanh (${adapt.counterInsightLabel}).`,
+        playerWeakness: 'Máu mỏng nếu chuỗi dồn sát thương bị chặn nhịp đầu.',
+      };
+    }
+    return {
+      counterStyle: 'anti_crit',
+      counterLabelVi: 'Giáp Kháng Chí Mạng',
+      playerStyleSummary: `Lối đánh chủ động hệ ${adapt.preferredElement} (${adapt.counterInsightLabel}).`,
+      playerWeakness: 'Dễ hụt nhịp khi bị kéo dài giao tranh.',
+    };
+  }
+
+  public getNemesisLetter(
+    playerName: string,
+    aiPlayerId: string,
+    nowMs = Date.now()
+  ): VirtualNemesisChallengeLetter | null {
+    const pKey = this.normalizePlayerKey(playerName);
+    const existing = this.store.nemesisLettersByPlayer?.[pKey]?.[aiPlayerId];
+    if (!existing || existing.expiresAtMs <= nowMs) return null;
+    return { ...existing };
+  }
+
+  public saveNemesisLetter(
+    playerName: string,
+    letter: VirtualNemesisChallengeLetter
+  ): VirtualNemesisChallengeLetter {
+    const pKey = this.normalizePlayerKey(playerName);
+    if (!this.store.nemesisLettersByPlayer) this.store.nemesisLettersByPlayer = {};
+    const keys = Object.keys(this.store.nemesisLettersByPlayer);
+    if (!this.store.nemesisLettersByPlayer[pKey] && keys.length >= MAX_RELATIONSHIP_PLAYERS) {
+      delete this.store.nemesisLettersByPlayer[keys[0]];
+    }
+    if (!this.store.nemesisLettersByPlayer[pKey]) {
+      this.store.nemesisLettersByPlayer[pKey] = {};
+    }
+    this.store.nemesisLettersByPlayer[pKey][letter.aiPlayerId] = { ...letter };
+    this.persistStore();
+    return { ...letter };
+  }
+
+  public acceptNemesisLetter(
+    playerName: string,
+    aiPlayerId: string,
+    nowMs = Date.now()
+  ): VirtualNemesisChallengeLetter | null {
+    const pKey = this.normalizePlayerKey(playerName);
+    const existing = this.store.nemesisLettersByPlayer?.[pKey]?.[aiPlayerId];
+    if (!existing) return null;
+    existing.acceptedAtMs = nowMs;
+    this.recordRelationshipInteraction({
+      playerName,
+      aiPlayerId,
+      kind: 'nemesis_letter',
+      summaryVi: `Nhận Chiến Thư (${existing.counterLabelVi}) từ ${existing.aiName}`,
+      affinityDelta: -3,
+      nowMs,
+    });
+    this.persistStore();
+    return { ...existing };
+  }
+
+  public getPlayerContracts(playerName: string): VirtualPlayerContract[] {
+    const pKey = this.normalizePlayerKey(playerName);
+    const list = this.store.contractsByPlayer?.[pKey] ?? [];
+    return list.map((c) => ({ ...c }));
+  }
+
+  public prepareContractSpec(params: {
+    playerName: string;
+    aiPlayerId?: string;
+    chapterId: number;
+    playerPowerRating: number;
+  }): {
+    canCreate: boolean;
+    reason?: string;
+    issuer: AiLivePlayerProfile;
+    relationshipTier: VirtualRelationshipTier;
+    objectiveKind: VirtualContractObjectiveKind;
+    objectiveLabelVi: string;
+    targetCount: number;
+    chapterTarget?: number;
+    rewardGold: number;
+    rewardGems: number;
+    rewardAffinity: number;
+  } {
+    const existing = this.getPlayerContracts(params.playerName);
+    const activeCount = existing.filter((c) => c.status === 'active').length;
+    const safeChapter = Math.max(1, Math.min(12, Math.floor(params.chapterId || 1)));
+    const issuer =
+      (params.aiPlayerId ? this.findPlayerByNameOrId(params.aiPlayerId) : null) ??
+      this.pickContextualMentor(safeChapter + existing.length);
+    const mem = this.getRelationshipMemory(params.playerName, issuer.id);
+
+    if (activeCount >= MAX_ACTIVE_CONTRACTS) {
+      return {
+        canCreate: false,
+        reason: `Bạn đang có tối đa ${MAX_ACTIVE_CONTRACTS} kèo hoạt động. Hãy hoàn thành hoặc nhận thưởng trước!`,
+        issuer,
+        relationshipTier: mem.tier,
+        objectiveKind: 'clear_chapter',
+        objectiveLabelVi: '',
+        targetCount: 1,
+        rewardGold: 450,
+        rewardGems: 35,
+        rewardAffinity: 8,
+      };
+    }
+
+    const activeKinds = new Set(existing.filter((c) => c.status === 'active').map((c) => c.objectiveKind));
+    const candidateSpecs: Array<{
+      objectiveKind: VirtualContractObjectiveKind;
+      objectiveLabelVi: string;
+      targetCount: number;
+      chapterTarget?: number;
+      rewardGold: number;
+      rewardGems: number;
+      rewardAffinity: number;
+    }> =
+      mem.tier === 'rival'
+        ? [
+            {
+              objectiveKind: 'win_duel',
+              objectiveLabelVi: 'Thắng 1 trận So Tài 1v1 với Cao Thủ AI',
+              targetCount: 1,
+              rewardGold: 650,
+              rewardGems: 48,
+              rewardAffinity: 10,
+            },
+            {
+              objectiveKind: 'arena_win',
+              objectiveLabelVi: 'Giành 1 chiến thắng tại Đấu Trường',
+              targetCount: 1,
+              rewardGold: 600,
+              rewardGems: 45,
+              rewardAffinity: 9,
+            },
+            {
+              objectiveKind: 'clear_chapter',
+              objectiveLabelVi: `Vượt thành công Chương ${safeChapter}`,
+              targetCount: 1,
+              chapterTarget: safeChapter,
+              rewardGold: 700,
+              rewardGems: 55,
+              rewardAffinity: 10,
+            },
+          ]
+        : [
+            {
+              objectiveKind: 'clear_chapter',
+              objectiveLabelVi: `Vượt thành công Chương ${safeChapter}`,
+              targetCount: 1,
+              chapterTarget: safeChapter,
+              rewardGold: Math.min(1400, 420 + safeChapter * 75),
+              rewardGems: Math.min(100, 32 + safeChapter * 5),
+              rewardAffinity: 10,
+            },
+            {
+              objectiveKind: 'guild_boss_strike',
+              objectiveLabelVi: 'Góp sức đánh Boss Bang Live 1 lượt',
+              targetCount: 1,
+              rewardGold: 520,
+              rewardGems: 40,
+              rewardAffinity: 9,
+            },
+            {
+              objectiveKind: 'survive_hp_ratio',
+              objectiveLabelVi: `Hoàn thành 1 trận với lượng máu còn trên 55%`,
+              targetCount: 1,
+              chapterTarget: safeChapter,
+              rewardGold: 620,
+              rewardGems: 50,
+              rewardAffinity: 11,
+            },
+            {
+              objectiveKind: 'win_duel',
+              objectiveLabelVi: 'Thắng 1 trận So Tài 1v1 Đấu Trường',
+              targetCount: 1,
+              rewardGold: 580,
+              rewardGems: 45,
+              rewardAffinity: 8,
+            },
+          ];
+
+    const picked =
+      candidateSpecs.find((s) => !activeKinds.has(s.objectiveKind)) ?? candidateSpecs[0];
+
+    return {
+      canCreate: true,
+      issuer,
+      relationshipTier: mem.tier,
+      objectiveKind: picked.objectiveKind,
+      objectiveLabelVi: picked.objectiveLabelVi,
+      targetCount: picked.targetCount,
+      chapterTarget: picked.chapterTarget,
+      rewardGold: Math.max(250, Math.min(1500, picked.rewardGold)),
+      rewardGems: Math.max(25, Math.min(120, picked.rewardGems)),
+      rewardAffinity: Math.max(6, Math.min(15, picked.rewardAffinity)),
+    };
+  }
+
+  public createPlayerContract(
+    playerName: string,
+    contract: VirtualPlayerContract
+  ): VirtualPlayerContract {
+    const pKey = this.normalizePlayerKey(playerName);
+    if (!this.store.contractsByPlayer) this.store.contractsByPlayer = {};
+    const keys = Object.keys(this.store.contractsByPlayer);
+    if (!this.store.contractsByPlayer[pKey] && keys.length >= MAX_RELATIONSHIP_PLAYERS) {
+      delete this.store.contractsByPlayer[keys[0]];
+    }
+    const bucket = this.store.contractsByPlayer[pKey] ?? [];
+    const safeContract: VirtualPlayerContract = {
+      ...contract,
+      rewardGold: Math.max(250, Math.min(1500, Math.round(contract.rewardGold))),
+      rewardGems: Math.max(25, Math.min(120, Math.round(contract.rewardGems))),
+      rewardAffinity: Math.max(6, Math.min(15, Math.round(contract.rewardAffinity))),
+      targetCount: Math.max(1, Math.min(5, Math.round(contract.targetCount))),
+      currentCount: 0,
+      status: 'active',
+    };
+    bucket.unshift(safeContract);
+    if (bucket.length > MAX_STORED_CONTRACTS) {
+      bucket.splice(MAX_STORED_CONTRACTS);
+    }
+    this.store.contractsByPlayer[pKey] = bucket;
+    this.persistStore();
+    return { ...safeContract };
+  }
+
+  public recordContractProgress(params: {
+    playerName: string;
+    objectiveKind: VirtualContractObjectiveKind;
+    delta?: number;
+    chapterId?: number;
+    hpRatio?: number;
+    nowMs?: number;
+  }): VirtualPlayerContract[] {
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const list = this.store.contractsByPlayer?.[pKey];
+    if (!list || list.length === 0) return [];
+    const nowMs = params.nowMs ?? Date.now();
+    const step = Math.max(1, Math.min(3, Math.round(params.delta ?? 1)));
+    let changed = false;
+
+    for (const c of list) {
+      if (c.status !== 'active' || c.objectiveKind !== params.objectiveKind) continue;
+      if (
+        c.objectiveKind === 'survive_hp_ratio' &&
+        typeof params.hpRatio === 'number' &&
+        params.hpRatio < 0.55
+      ) {
+        continue;
+      }
+      if (
+        c.objectiveKind === 'clear_chapter' &&
+        typeof c.chapterTarget === 'number' &&
+        typeof params.chapterId === 'number' &&
+        params.chapterId < c.chapterTarget
+      ) {
+        continue;
+      }
+      c.currentCount = Math.min(c.targetCount, c.currentCount + step);
+      if (c.currentCount >= c.targetCount) {
+        c.status = 'completed';
+        c.completedAtMs = nowMs;
+      }
+      changed = true;
+    }
+
+    if (changed) {
+      this.persistStore();
+    }
+    return list.map((c) => ({ ...c }));
+  }
+
+  public claimContractReward(params: {
+    playerName: string;
+    contractId: string;
+    nowMs?: number;
+  }): {
+    ok: boolean;
+    alreadyClaimed: boolean;
+    goldReward: number;
+    gemsReward: number;
+    affinityDelta: number;
+    message: string;
+    contracts: VirtualPlayerContract[];
+  } {
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const list = this.store.contractsByPlayer?.[pKey] ?? [];
+    const contract = list.find((c) => c.id === params.contractId);
+    if (!contract) {
+      return {
+        ok: false,
+        alreadyClaimed: false,
+        goldReward: 0,
+        gemsReward: 0,
+        affinityDelta: 0,
+        message: 'Không tìm thấy kèo nhiệm vụ này.',
+        contracts: list.map((c) => ({ ...c })),
+      };
+    }
+    if (contract.status === 'claimed') {
+      return {
+        ok: true,
+        alreadyClaimed: true,
+        goldReward: 0,
+        gemsReward: 0,
+        affinityDelta: 0,
+        message: 'Bạn đã nhận thưởng kèo này rồi.',
+        contracts: list.map((c) => ({ ...c })),
+      };
+    }
+    if (contract.status !== 'completed') {
+      return {
+        ok: false,
+        alreadyClaimed: false,
+        goldReward: 0,
+        gemsReward: 0,
+        affinityDelta: 0,
+        message: 'Kèo chưa hoàn thành đủ điều kiện.',
+        contracts: list.map((c) => ({ ...c })),
+      };
+    }
+
+    const nowMs = params.nowMs ?? Date.now();
+    contract.status = 'claimed';
+    contract.claimedAtMs = nowMs;
+    this.recordRelationshipInteraction({
+      playerName: params.playerName,
+      aiPlayerId: contract.aiPlayerId,
+      kind: 'contract_done',
+      summaryVi: `Hoàn thành kèo "${contract.titleVi}" cùng ${contract.aiName}`,
+      affinityDelta: contract.rewardAffinity,
+      nowMs,
+    });
+    this.persistStore();
+    return {
+      ok: true,
+      alreadyClaimed: false,
+      goldReward: contract.rewardGold,
+      gemsReward: contract.rewardGems,
+      affinityDelta: contract.rewardAffinity,
+      message: `Hoàn thành kèo "${contract.titleVi}"! Nhận +${contract.rewardGold.toLocaleString('vi-VN')} Vàng · +${contract.rewardGems} Ngọc · +${contract.rewardAffinity} Thân Thiết.`,
+      contracts: list.map((c) => ({ ...c })),
+    };
+  }
+
+  public getSpectatorCasting(matchId: string): VirtualSpectatorCastingBundle | null {
+    const found = this.store.spectatorCastingByMatch?.[matchId];
+    if (!found) return null;
+    return {
+      ...found,
+      lines: found.lines.map((l) => ({ ...l })),
+    };
+  }
+
+  public saveSpectatorCasting(
+    bundle: VirtualSpectatorCastingBundle
+  ): VirtualSpectatorCastingBundle {
+    if (!this.store.spectatorCastingByMatch) this.store.spectatorCastingByMatch = {};
+    const keys = Object.keys(this.store.spectatorCastingByMatch);
+    if (!this.store.spectatorCastingByMatch[bundle.matchId] && keys.length >= MAX_SPECTATOR_CAST_CACHE) {
+      delete this.store.spectatorCastingByMatch[keys[0]];
+    }
+    const existing = this.store.spectatorCastingByMatch[bundle.matchId];
+    const mergedLines: VirtualSpectatorCastLine[] = existing ? [...existing.lines] : [];
+    for (const line of bundle.lines) {
+      if (!mergedLines.some((l) => l.moment === line.moment && l.matchId === line.matchId)) {
+        mergedLines.push(line);
+      }
+    }
+    const saved: VirtualSpectatorCastingBundle = {
+      ...bundle,
+      lines: mergedLines.slice(-5),
+      postMatchQuoteVi: bundle.postMatchQuoteVi || existing?.postMatchQuoteVi,
+    };
+    this.store.spectatorCastingByMatch[bundle.matchId] = saved;
+    this.persistStore();
+    return { ...saved, lines: saved.lines.map((l) => ({ ...l })) };
+  }
+
+  public getHaggleOffers(playerName: string, nowMs = Date.now()): VirtualHaggleOfferItem[] {
+    const pKey = this.normalizePlayerKey(playerName);
+    const dayKey = new Date(nowMs).toISOString().slice(0, 10);
+    if (!this.store.haggleOffersByPlayer) this.store.haggleOffersByPlayer = {};
+    const keys = Object.keys(this.store.haggleOffersByPlayer);
+    if (!this.store.haggleOffersByPlayer[pKey] && keys.length >= MAX_RELATIONSHIP_PLAYERS) {
+      delete this.store.haggleOffersByPlayer[keys[0]];
+    }
+
+    const existing = this.store.haggleOffersByPlayer[pKey];
+    if (existing && existing.dayKey === dayKey && existing.offers.length > 0) {
+      // Refresh affinity/floor dynamically if player boosted affinity since open
+      for (const offer of existing.offers) {
+        if (offer.status === 'open') {
+          const mem = this.getRelationshipMemory(playerName, offer.sellerId, nowMs);
+          offer.affinityScore = mem.affinityScore;
+          offer.relationshipTier = mem.tier;
+          const maxDiscountPct =
+            mem.tier === 'ally' || mem.tier === 'mentor'
+              ? 0.2
+              : mem.tier === 'acquaintance'
+              ? 0.12
+              : 0.06;
+          offer.minFloorGems = Math.max(8, Math.ceil(offer.listPriceGems * (1 - maxDiscountPct)));
+        }
+      }
+      return existing.offers.map((o) => ({ ...o }));
+    }
+
+    const sellers = [
+      this.store.players[0],
+      this.store.players[3] ?? this.store.players[1],
+      this.store.players[7] ?? this.store.players[2],
+    ].filter(Boolean);
+
+    const templates = [
+      {
+        itemName: 'Túi Bụi Tinh Tú Đậm Đặc',
+        itemCategory: 'shard_bundle' as const,
+        itemSummaryVi: 'Nhận 260 Bụi Tinh Tú + 800 Vàng nâng cấp nhanh',
+        listPriceGems: 36,
+        rewardGold: 800,
+        rewardStarDust: 260,
+        rewardReforgeStone: 0,
+      },
+      {
+        itemName: 'Hộp Đá Tẩy Luyện Hoàng Đạo',
+        itemCategory: 'scroll_kit' as const,
+        itemSummaryVi: 'Nhận 4 Đá Tẩy Luyện + 1.100 Vàng cường hóa',
+        listPriceGems: 48,
+        rewardGold: 1100,
+        rewardStarDust: 80,
+        rewardReforgeStone: 4,
+      },
+      {
+        itemName: 'Rương Tài Nguyên Chiến Binh',
+        itemCategory: 'gem_pack' as const,
+        itemSummaryVi: 'Nhận 2.400 Vàng + 180 Bụi Tinh Tú + 2 Đá Tẩy Luyện',
+        listPriceGems: 62,
+        rewardGold: 2400,
+        rewardStarDust: 180,
+        rewardReforgeStone: 2,
+      },
+    ];
+
+    const offers: VirtualHaggleOfferItem[] = templates.map((tpl, idx) => {
+      const seller = sellers[idx % sellers.length];
+      const mem = this.getRelationshipMemory(playerName, seller.id, nowMs);
+      const maxDiscountPct =
+        mem.tier === 'ally' || mem.tier === 'mentor'
+          ? 0.2
+          : mem.tier === 'acquaintance'
+          ? 0.12
+          : 0.06;
+      const minFloorGems = Math.max(8, Math.ceil(tpl.listPriceGems * (1 - maxDiscountPct)));
+      return {
+        offerId: `haggle_${dayKey}_${idx + 1}_${seller.id}`,
+        sellerId: seller.id,
+        sellerName: seller.displayName,
+        sellerTitle: seller.titleBadge,
+        sellerPersonality: seller.personality,
+        itemName: tpl.itemName,
+        itemCategory: tpl.itemCategory,
+        itemSummaryVi: tpl.itemSummaryVi,
+        listPriceGems: tpl.listPriceGems,
+        minFloorGems,
+        currentAskGems: tpl.listPriceGems,
+        rewardGold: tpl.rewardGold,
+        rewardStarDust: tpl.rewardStarDust,
+        rewardReforgeStone: tpl.rewardReforgeStone,
+        affinityScore: mem.affinityScore,
+        relationshipTier: mem.tier,
+        roundsUsed: 0,
+        maxRounds: 3,
+        status: 'open',
+      };
+    });
+
+    this.store.haggleOffersByPlayer[pKey] = { dayKey, offers };
+    this.persistStore();
+    return offers.map((o) => ({ ...o }));
+  }
+
+  public evaluateServerHaggleStep(params: {
+    playerName: string;
+    offerId: string;
+    offeredGems: number;
+    nowMs?: number;
+  }): {
+    ok: boolean;
+    error?: string;
+    offer?: VirtualHaggleOfferItem;
+    decision: 'accept' | 'counter' | 'reject';
+    finalPriceGems: number;
+    serverCounterGems: number;
+  } {
+    const nowMs = params.nowMs ?? Date.now();
+    const offers = this.getHaggleOffers(params.playerName, nowMs);
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const bucket = this.store.haggleOffersByPlayer?.[pKey];
+    const offer = bucket?.offers.find((o) => o.offerId === params.offerId);
+    if (!offer || offers.length === 0) {
+      return {
+        ok: false,
+        error: 'Gói thương lượng không tồn tại.',
+        decision: 'reject',
+        finalPriceGems: 0,
+        serverCounterGems: 0,
+      };
+    }
+    if (offer.status === 'sold') {
+      return {
+        ok: false,
+        error: 'Gói này đã được giao dịch thành công.',
+        offer: { ...offer },
+        decision: 'reject',
+        finalPriceGems: 0,
+        serverCounterGems: offer.currentAskGems,
+      };
+    }
+    if (offer.status === 'rejected' || offer.roundsUsed >= offer.maxRounds) {
+      return {
+        ok: false,
+        error: 'Đã hết lượt thương lượng cho gói này hôm nay.',
+        offer: { ...offer },
+        decision: 'reject',
+        finalPriceGems: 0,
+        serverCounterGems: offer.currentAskGems,
+      };
+    }
+
+    const cleanOffer = Math.max(1, Math.min(offer.listPriceGems * 2, Math.round(params.offeredGems)));
+    const nextRound = offer.roundsUsed + 1;
+
+    // Hard server floor invariant: NEVER accept below minFloorGems (max 20% discount for allies/mentors)
+    if (cleanOffer >= offer.currentAskGems || cleanOffer >= offer.minFloorGems) {
+      const acceptPrice = Math.min(offer.currentAskGems, Math.max(offer.minFloorGems, cleanOffer));
+      return {
+        ok: true,
+        offer: { ...offer },
+        decision: 'accept',
+        finalPriceGems: acceptPrice,
+        serverCounterGems: acceptPrice,
+      };
+    }
+
+    if (nextRound >= offer.maxRounds) {
+      return {
+        ok: true,
+        offer: { ...offer },
+        decision: 'reject',
+        finalPriceGems: 0,
+        serverCounterGems: offer.minFloorGems,
+      };
+    }
+
+    // Step down halfway toward minFloorGems
+    const nextAsk = Math.max(
+      offer.minFloorGems,
+      Math.ceil((offer.currentAskGems + offer.minFloorGems) / 2)
+    );
+    return {
+      ok: true,
+      offer: { ...offer },
+      decision: 'counter',
+      finalPriceGems: 0,
+      serverCounterGems: nextAsk,
+    };
+  }
+
+  public commitHaggleTurn(params: {
+    playerName: string;
+    offerId: string;
+    decision: 'accept' | 'counter' | 'reject';
+    finalPriceGems: number;
+    serverCounterGems: number;
+    replyVi: string;
+    source: AiInferenceSource;
+    nowMs?: number;
+  }): VirtualHaggleOfferItem | null {
+    const nowMs = params.nowMs ?? Date.now();
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const offer = this.store.haggleOffersByPlayer?.[pKey]?.offers.find(
+      (o) => o.offerId === params.offerId
+    );
+    if (!offer) return null;
+
+    offer.roundsUsed = Math.min(offer.maxRounds, offer.roundsUsed + 1);
+    offer.lastReplyVi = params.replyVi.slice(0, 180);
+    offer.source = params.source;
+
+    if (params.decision === 'accept') {
+      offer.currentAskGems = params.finalPriceGems;
+      offer.status = 'sold';
+      this.recordRelationshipInteraction({
+        playerName: params.playerName,
+        aiPlayerId: offer.sellerId,
+        kind: 'haggle_deal',
+        summaryVi: `Chốt đơn "${offer.itemName}" giá ${params.finalPriceGems} Ngọc`,
+        affinityDelta: 5,
+        nowMs,
+      });
+    } else if (params.decision === 'counter') {
+      offer.currentAskGems = Math.max(offer.minFloorGems, params.serverCounterGems);
+      offer.status = 'open';
+    } else {
+      offer.status = 'rejected';
+    }
+    this.persistStore();
+    return { ...offer };
+  }
+
+  public getGuildWarBriefing(
+    mode: 'guild_boss' | 'guild_war',
+    sessionId: string,
+    playerName: string
+  ): VirtualGuildWarBriefing | null {
+    const pKey = this.normalizePlayerKey(playerName);
+    const key = `${mode}:${sessionId}:${pKey}`;
+    const existing = this.store.guildWarBriefingByKey?.[key];
+    if (!existing) return null;
+    return {
+      ...existing,
+      roleOrders: existing.roleOrders.map((r) => ({ ...r })),
+    };
+  }
+
+  public saveGuildWarBriefing(
+    playerName: string,
+    briefing: VirtualGuildWarBriefing
+  ): VirtualGuildWarBriefing {
+    const pKey = this.normalizePlayerKey(playerName);
+    const key = `${briefing.mode}:${briefing.sessionId}:${pKey}`;
+    if (!this.store.guildWarBriefingByKey) this.store.guildWarBriefingByKey = {};
+    const keys = Object.keys(this.store.guildWarBriefingByKey);
+    if (!this.store.guildWarBriefingByKey[key] && keys.length >= MAX_BRIEFING_CACHE) {
+      delete this.store.guildWarBriefingByKey[keys[0]];
+    }
+    const prevConfirmed = this.store.guildWarBriefingByKey[key]?.confirmedByPlayer ?? false;
+    const saved: VirtualGuildWarBriefing = {
+      ...briefing,
+      confirmedByPlayer: briefing.confirmedByPlayer || prevConfirmed,
+      bonusPct: 8,
+    };
+    this.store.guildWarBriefingByKey[key] = saved;
+    this.persistStore();
+    return { ...saved, roleOrders: saved.roleOrders.map((r) => ({ ...r })) };
+  }
+
+  public confirmGuildWarBriefing(params: {
+    mode: 'guild_boss' | 'guild_war';
+    sessionId: string;
+    playerName: string;
+    nowMs?: number;
+  }): VirtualGuildWarBriefing | null {
+    const nowMs = params.nowMs ?? Date.now();
+    const pKey = this.normalizePlayerKey(params.playerName);
+    const key = `${params.mode}:${params.sessionId}:${pKey}`;
+    const existing = this.store.guildWarBriefingByKey?.[key];
+    if (!existing) return null;
+    if (!existing.confirmedByPlayer) {
+      existing.confirmedByPlayer = true;
+      existing.updatedAtMs = nowMs;
+      const leader = this.findPlayerByNameOrId(existing.leaderName) ?? this.store.players[0];
+      if (leader) {
+        this.recordRelationshipInteraction({
+          playerName: params.playerName,
+          aiPlayerId: leader.id,
+          kind: 'guild_war_order',
+          summaryVi: `Xác nhận Chiến Lệnh ${params.mode === 'guild_war' ? 'Công Thành' : 'Boss Bang'} (+8%)`,
+          affinityDelta: 3,
+          nowMs,
+        });
+      }
+      this.persistStore();
+    }
+    return { ...existing, roleOrders: existing.roleOrders.map((r) => ({ ...r })) };
+  }
 }
+
 
 

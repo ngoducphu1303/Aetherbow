@@ -31,6 +31,16 @@ import {
 } from '../engine/wave11FivePillars';
 import { HERO_MAP } from '../data/heroesData';
 import { liveAiSocket, LiveSocketStatus } from '../services/liveAiSocket';
+import {
+  acceptNemesisChallengeLetter,
+  claimVirtualContractReward,
+  confirmGuildWarBriefing,
+  fetchVirtualContracts,
+  generateVirtualContract,
+  requestGuildWarBriefing,
+  requestNemesisChallengeLetter,
+  requestSpectatorCasting,
+} from '../services/nvidiaVirtualPlayerClient';
 import type {
   AiAutoPilotTactic,
   AiCompanionRole,
@@ -41,12 +51,17 @@ import type {
   AiRivalRecord,
   CoopAiRole,
   HeroId,
+  VirtualGuildWarBriefing,
+  VirtualNemesisChallengeLetter,
+  VirtualPlayerContract,
+  VirtualSpectatorCastingBundle,
 } from '../types/game';
 
 interface LiveAiHubModalProps {
   playerDisplayName: string;
   playerHeroId?: HeroId;
   playerPowerRating?: number;
+  currentChapterId?: number;
   aiPreferences: AiPreferencesState;
   coopPartyRoles?: [CoopAiRole, CoopAiRole];
   onUpdateAiPreferences: (next: AiPreferencesState) => void;
@@ -71,6 +86,11 @@ interface LiveAiHubModalProps {
     gemsReward: number;
     starDustReward: number;
     predictedCorrectly: boolean;
+  }) => void;
+  onClaimAiContractReward?: (reward: {
+    goldReward: number;
+    gemsReward: number;
+    titleLabel: string;
   }) => void;
   onInspectAiPlayer?: (aiPlayerId: string) => void;
   onClose: () => void;
@@ -101,6 +121,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   playerDisplayName,
   playerHeroId = 'aurelia',
   playerPowerRating = 18500,
+  currentChapterId = 1,
   aiPreferences,
   coopPartyRoles = ['dps', 'guardian'],
   onUpdateAiPreferences,
@@ -112,6 +133,7 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   onStartGuildWarBastion,
   onClaimGuildWarLiveReward,
   onClaimSpectatorReward,
+  onClaimAiContractReward,
   onInspectAiPlayer,
   onClose,
 }) => {
@@ -122,7 +144,15 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
     liveAiSocket.getStatus()
   );
   const [activeTab, setActiveTab] = useState<
-    'players' | 'spectator' | 'guild_war' | 'bounty' | 'cup' | 'rivals' | 'feed' | 'autopilot'
+    | 'players'
+    | 'contracts'
+    | 'spectator'
+    | 'guild_war'
+    | 'bounty'
+    | 'cup'
+    | 'rivals'
+    | 'feed'
+    | 'autopilot'
   >('players');
   const [filterMode, setFilterMode] = useState<'all' | 'ready_duel'>('all');
   const [challengingId, setChallengingId] = useState<string | null>(null);
@@ -132,6 +162,18 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
   const [claimingGuildWar, setClaimingGuildWar] = useState(false);
   const [claimingSpectator, setClaimingSpectator] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Phase 3 Living Virtual Character AI states
+  const [nemesisLetter, setNemesisLetter] = useState<VirtualNemesisChallengeLetter | null>(null);
+  const [nemesisLoading, setNemesisLoading] = useState(false);
+  const [contracts, setContracts] = useState<VirtualPlayerContract[]>([]);
+  const [contractBusy, setContractBusy] = useState(false);
+  const [claimingContractId, setClaimingContractId] = useState<string | null>(null);
+  const [spectatorCast, setSpectatorCast] = useState<VirtualSpectatorCastingBundle | null>(null);
+  const [spectatorCastLoading, setSpectatorCastLoading] = useState(false);
+  const [warRoomMode, setWarRoomMode] = useState<'guild_war' | 'guild_boss'>('guild_war');
+  const [warBriefing, setWarBriefing] = useState<VirtualGuildWarBriefing | null>(null);
+  const [warBriefingLoading, setWarBriefingLoading] = useState(false);
 
   const coopSynergy = useMemo(() => computeCoopRoleSynergy(coopPartyRoles), [coopPartyRoles]);
   const activeAiTier: AiDuelDifficultyTier = normalizeAiDuelDifficultyTier(
@@ -233,6 +275,130 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
     onClaimGuildWarLiveReward,
     onClaimSpectatorReward,
   ]);
+
+  // Phase 3: Sync contracts on modal open
+  useEffect(() => {
+    let active = true;
+    fetchVirtualContracts(playerDisplayName).then((list) => {
+      if (active) setContracts(list);
+    });
+    return () => {
+      active = false;
+    };
+  }, [playerDisplayName]);
+
+  // Phase 3: Sync Guild War-Room briefing when opening guild_war tab or switching warRoomMode
+  useEffect(() => {
+    if (activeTab !== 'guild_war') return;
+    let active = true;
+    setWarBriefingLoading(true);
+    requestGuildWarBriefing({ playerName: playerDisplayName, mode: warRoomMode })
+      .then((res) => {
+        if (active) setWarBriefing(res);
+      })
+      .finally(() => {
+        if (active) setWarBriefingLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab, warRoomMode, playerDisplayName]);
+
+  // Phase 3: Sync Spectator AI Casting when match progresses or opens
+  const specMatchId = snapshot?.spectatorMatch?.matchId ?? '';
+  const specMatchStatus = snapshot?.spectatorMatch?.status ?? '';
+  const specMatchTickBucket = snapshot?.spectatorMatch
+    ? Math.floor(snapshot.spectatorMatch.tickCount / 4)
+    : -1;
+  useEffect(() => {
+    if (activeTab !== 'spectator' || !snapshot?.spectatorMatch) return;
+    const match = snapshot.spectatorMatch;
+    let active = true;
+    setSpectatorCastLoading(true);
+    requestSpectatorCasting({
+      playerName: playerDisplayName,
+      matchId: match.matchId,
+      fighterAName: match.fighterA.displayName,
+      fighterAPower: match.fighterA.powerRating,
+      fighterAHpPct: (match.fighterA.hp / Math.max(1, match.fighterA.maxHp)) * 100,
+      fighterBName: match.fighterB.displayName,
+      fighterBPower: match.fighterB.powerRating,
+      fighterBHpPct: (match.fighterB.hp / Math.max(1, match.fighterB.maxHp)) * 100,
+      winnerName:
+        match.status === 'finished' && match.winnerId
+          ? match.winnerId === match.fighterA.aiPlayerId
+            ? match.fighterA.displayName
+            : match.fighterB.displayName
+          : undefined,
+    })
+      .then((bundle) => {
+        if (active) setSpectatorCast(bundle);
+      })
+      .finally(() => {
+        if (active) setSpectatorCastLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab, specMatchId, specMatchStatus, specMatchTickBucket, playerDisplayName]);
+
+  const handleLoadNemesisLetter = async (aiPlayerId?: string, aiName?: string, forceRefresh = false) => {
+    if (nemesisLoading) return;
+    setNemesisLoading(true);
+    try {
+      const letter = await requestNemesisChallengeLetter({
+        playerName: playerDisplayName,
+        aiPlayerId,
+        aiName,
+        forceRefresh,
+      });
+      setNemesisLetter(letter);
+    } finally {
+      setNemesisLoading(false);
+    }
+  };
+
+  const handleGenerateContract = async () => {
+    if (contractBusy) return;
+    setContractBusy(true);
+    try {
+      const res = await generateVirtualContract({
+        playerName: playerDisplayName,
+        chapterId: currentChapterId,
+        playerPowerRating,
+      });
+      setContracts(res.contracts);
+      if (res.ok && res.contract) {
+        setFeedback(`Đã nhận kèo mới từ ${res.contract.aiName}: ${res.contract.titleVi}`);
+      } else if (res.message) {
+        setFeedback(res.message);
+      }
+    } finally {
+      setContractBusy(false);
+    }
+  };
+
+  const handleClaimContract = async (contract: VirtualPlayerContract) => {
+    if (claimingContractId) return;
+    setClaimingContractId(contract.id);
+    try {
+      const res = await claimVirtualContractReward({
+        playerName: playerDisplayName,
+        contractId: contract.id,
+      });
+      setContracts(res.contracts);
+      setFeedback(res.message);
+      if (res.ok && !res.alreadyClaimed) {
+        onClaimAiContractReward?.({
+          goldReward: res.goldReward,
+          gemsReward: res.gemsReward,
+          titleLabel: contract.titleVi,
+        });
+      }
+    } finally {
+      setClaimingContractId(null);
+    }
+  };
 
   const filteredPlayers = useMemo(() => {
     const list = snapshot?.players ?? [];
@@ -352,6 +518,18 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
               }`}
             >
               AI Live ({snapshot?.players.length ?? 0})
+            </button>
+            <button
+              type="button"
+              data-testid="hub-tab-contracts"
+              onClick={() => setActiveTab('contracts')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                activeTab === 'contracts'
+                  ? 'bg-amber-400/25 text-amber-200'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Kèo Riêng ({contracts.filter((c) => c.status !== 'claimed').length})
             </button>
             <button
               type="button"
@@ -818,29 +996,211 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
           </div>
         )}
 
+        {/* TAB 1A: Phase 3 Pillar 2 — Dynamic Virtual Player Contracts */}
+        {activeTab === 'contracts' && (
+          <div className="space-y-4" data-testid="hub-contracts-panel">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="font-display text-base font-black text-white">
+                  Kèo Thách Đấu &amp; Ủy Thác Từ 18 Cao Thủ
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Nhân vật ảo tự giao kèo sát Chương {currentChapterId} ({playerPowerRating.toLocaleString('vi-VN')} LC). Giữ tối đa 3 kèo cùng lúc, thưởng Vàng, Ngọc và điểm Thân Thiết.
+                </p>
+              </div>
+              <button
+                type="button"
+                data-testid="hub-generate-contract-btn"
+                disabled={contractBusy || contracts.filter((c) => c.status === 'active').length >= 3}
+                onClick={handleGenerateContract}
+                className="a2-yellow-btn px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+              >
+                {contractBusy ? 'Đang tạo kèo…' : 'Xin Kèo Mới'}
+              </button>
+            </div>
+
+            {contracts.length === 0 ? (
+              <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl space-y-2">
+                <p className="text-xs text-slate-300">
+                  Bạn chưa nhận kèo riêng nào từ các cao thủ AI.
+                </p>
+                <button
+                  type="button"
+                  disabled={contractBusy}
+                  onClick={handleGenerateContract}
+                  className="a2-slate-btn px-4 py-2 rounded-xl text-xs font-bold text-amber-200 border border-amber-400/40 cursor-pointer"
+                >
+                  Nhận Kèo Đầu Tiên
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto a2-scroll">
+                {contracts.map((c) => {
+                  const pct = Math.min(100, Math.round((c.currentCount / Math.max(1, c.targetCount)) * 100));
+                  const statusLabel =
+                    c.status === 'claimed'
+                      ? 'Đã nhận thưởng'
+                      : c.status === 'completed'
+                      ? 'Hoàn thành'
+                      : 'Đang thực hiện';
+                  const statusColor =
+                    c.status === 'claimed'
+                      ? 'text-slate-400'
+                      : c.status === 'completed'
+                      ? 'text-emerald-300'
+                      : 'text-amber-300';
+                  return (
+                    <div
+                      key={c.id}
+                      className="rounded-2xl border border-slate-800 bg-[#070b1a] p-4 space-y-2.5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-sky-300">{c.aiName}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{c.aiTitle}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className={`font-bold ${statusColor}`}>{statusLabel}</span>
+                          </div>
+                          <div className="font-display text-sm font-black text-white">
+                            {c.titleVi}
+                          </div>
+                          <p className="text-xs text-slate-200 leading-relaxed">
+                            &ldquo;{c.pitchVi}&rdquo;
+                          </p>
+                        </div>
+                        {c.status === 'completed' && (
+                          <button
+                            type="button"
+                            disabled={claimingContractId === c.id}
+                            onClick={() => handleClaimContract(c)}
+                            className="a2-emerald-btn px-3.5 py-2 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer shrink-0 disabled:opacity-50"
+                          >
+                            {claimingContractId === c.id ? 'Đang nhận…' : 'Nhận Thưởng'}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] font-mono-nums">
+                          <span className="text-slate-300">{c.objectiveLabelVi}</span>
+                          <span className="font-bold text-amber-200">
+                            {c.currentCount}/{c.targetCount} ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-900 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] font-mono-nums text-slate-400 flex flex-wrap items-center gap-2">
+                        <span className="text-amber-300 font-bold">
+                          +{c.rewardGold.toLocaleString('vi-VN')} Vàng
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span className="text-cyan-300 font-bold">+{c.rewardGems} Ngọc</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="text-emerald-300 font-bold">
+                          +{c.rewardAffinity} Thân Thiết
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* TAB 1B: Persistent Rival / Nemesis System */}
         {activeTab === 'rivals' && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-300">
-                Các đối thủ <strong className="text-sky-200">[AI Live]</strong> bạn từng giao đấu 1v1 sẽ lưu lịch sử Thắng–Thua vĩnh viễn. Đánh bại Kình Địch Phục Thù để nhận thưởng cộng dồn &amp; Thưởng Đòi Nợ!
+                Các đối thủ <strong className="text-sky-200">[AI Live]</strong> bạn từng giao đấu 1v1 sẽ lưu lịch sử Thắng–Thua vĩnh viễn và tự học lối đánh để gửi Chiến Thư khắc chế!
               </p>
-              {(snapshot?.rivals ?? []).length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  data-testid="rival-read-letter-btn"
+                  disabled={nemesisLoading}
                   onClick={() => {
-                    liveAiSocket.requestRivalRevenge(undefined, playerDisplayName);
-                    setFeedback('Đang gọi Kình Địch gửi chiến thư phục thù…');
+                    const top = snapshot?.rivals?.[0];
+                    handleLoadNemesisLetter(top?.aiPlayerId, top?.aiDisplayName, true);
                   }}
-                  className="a2-slate-btn px-3 py-1.5 rounded-xl text-[11px] font-bold text-rose-200 border border-rose-400/45 whitespace-nowrap cursor-pointer"
+                  className="a2-slate-btn px-3 py-1.5 rounded-xl text-[11px] font-bold text-amber-200 border border-amber-400/45 whitespace-nowrap cursor-pointer disabled:opacity-50"
                 >
-                  Khiêu Khích Kình Địch
+                  {nemesisLoading ? 'Đang phân tích…' : 'Đọc Chiến Thư AI'}
                 </button>
-              )}
+                {(snapshot?.rivals ?? []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      liveAiSocket.requestRivalRevenge(undefined, playerDisplayName);
+                      setFeedback('Đang gọi Kình Địch gửi chiến thư phục thù…');
+                    }}
+                    className="a2-slate-btn px-3 py-1.5 rounded-xl text-[11px] font-bold text-rose-200 border border-rose-400/45 whitespace-nowrap cursor-pointer"
+                  >
+                    Khiêu Khích Kình Địch
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Phase 3 Pillar 1: Nemesis Challenge Letter & Counter-Tactic Card */}
+            {nemesisLetter && (
+              <div
+                data-testid="rival-nemesis-letter-card"
+                className="rounded-2xl border border-rose-500/40 bg-[#140914] p-4 space-y-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-slate-300 flex flex-wrap items-center gap-1.5">
+                    <span className="font-black text-rose-300">Chiến Thư Truyền Kiếp</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-bold text-white">{nemesisLetter.aiName}</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="text-amber-300 font-bold">
+                      Khắc chế: {nemesisLetter.counterLabelVi}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await acceptNemesisChallengeLetter({
+                        playerName: playerDisplayName,
+                        aiPlayerId: nemesisLetter.aiPlayerId,
+                      });
+                      const aiTarget =
+                        snapshot?.players.find((p) => p.id === nemesisLetter.aiPlayerId) ??
+                        snapshot?.players[0];
+                      if (aiTarget) {
+                        handleChallenge(aiTarget);
+                      } else {
+                        setFeedback(`Đã nhận Chiến Thư từ ${nemesisLetter.aiName}!`);
+                      }
+                    }}
+                    className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer"
+                  >
+                    Nhận Chiến Thư &amp; Tái Đấu
+                  </button>
+                </div>
+                <p className="text-xs text-slate-100 leading-relaxed">
+                  &ldquo;{nemesisLetter.letterVi}&rdquo;
+                </p>
+                <div className="text-[11px] text-cyan-200 pt-1 border-t border-rose-500/20">
+                  <span className="font-bold text-cyan-300">Mẹo phá giải:</span>{' '}
+                  {nemesisLetter.counterHintVi}
+                </div>
+              </div>
+            )}
+
             {(snapshot?.rivals ?? []).length === 0 ? (
               <div className="py-10 text-center border border-dashed border-slate-700/80 rounded-2xl text-xs text-slate-400">
-                Chưa có lịch sử Truyền Kiếp nào. Hãy chọn một chiến binh [AI Live] ở tab Đối Thủ và bấm Thách Đấu 1v1 để khởi tạo duyên nợ!
+                Chưa có lịch sử Truyền Kiếp nào. Hãy chọn một chiến binh [AI Live] ở tab AI Live và bấm Thách Đấu 1v1, hoặc bấm &ldquo;Đọc Chiến Thư AI&rdquo; để nhận lời khiêu chiến mở màn!
               </div>
             ) : (
               <div className="divide-y divide-slate-800/80 border-y border-slate-800/80 max-h-[44vh] overflow-y-auto">
@@ -1421,6 +1781,113 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
 
           return (
             <div className="space-y-4">
+              {/* Phase 3 Pillar 5: AI Guild War-Room Coordinator */}
+              <div
+                data-testid="guild-war-room-briefing"
+                className="rounded-2xl border border-cyan-400/35 bg-[#071122] p-4 space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <div className="text-xs text-slate-300 flex flex-wrap items-center gap-1.5">
+                      <span className="font-black text-cyan-300">Hội Đồng Chiến Thuật Bang Hội</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-amber-200 font-bold">
+                        Chỉ huy: {warBriefing?.leaderName ?? 'Thủ Lĩnh Bang'}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-emerald-300 font-mono-nums font-bold">
+                        {warBriefing?.confirmedByPlayer
+                          ? 'Đã kích hoạt +8% Cống Hiến'
+                          : 'Thưởng phối hợp +8%'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-white leading-relaxed">
+                      {warBriefingLoading
+                        ? 'Hội Đồng Bang đang phân tích mặt trận thực tế…'
+                        : warBriefing?.briefingVi ??
+                          'Xác nhận Chiến Lệnh Bang để đồng bộ mục tiêu ưu tiên và nhận thưởng cống hiến.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1 bg-[#050914] border border-slate-800 rounded-xl p-1 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setWarRoomMode('guild_war')}
+                        className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap cursor-pointer ${
+                          warRoomMode === 'guild_war'
+                            ? 'bg-amber-400/20 text-amber-200'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Công Thành
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWarRoomMode('guild_boss')}
+                        className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap cursor-pointer ${
+                          warRoomMode === 'guild_boss'
+                            ? 'bg-cyan-400/20 text-cyan-200'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Boss Bang
+                      </button>
+                    </div>
+                    {warBriefing && (
+                      <button
+                        type="button"
+                        data-testid="guild-war-confirm-order-btn"
+                        disabled={warBriefing.confirmedByPlayer}
+                        onClick={async () => {
+                          const updated = await confirmGuildWarBriefing({
+                            playerName: playerDisplayName,
+                            mode: warBriefing.mode,
+                            sessionId: warBriefing.sessionId,
+                          });
+                          if (updated) {
+                            setWarBriefing(updated);
+                            setFeedback(
+                              `Đã xác nhận Chiến Lệnh Bang (+8% cống hiến vào ${updated.priorityTargetName})!`
+                            );
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer ${
+                          warBriefing.confirmedByPlayer
+                            ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 cursor-default'
+                            : 'a2-emerald-btn'
+                        }`}
+                      >
+                        {warBriefing.confirmedByPlayer ? 'Đã Xác Nhận (+8%)' : 'Xác Nhận Chiến Lệnh'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {warBriefing && warBriefing.roleOrders.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-800/80">
+                    {warBriefing.roleOrders.map((ro, idx) => (
+                      <div
+                        key={`${ro.memberName}_${idx}`}
+                        className="rounded-xl bg-[#050914] border border-slate-800/90 p-2.5 space-y-0.5"
+                      >
+                        <div className="text-[11px] font-bold text-white flex items-center justify-between gap-1">
+                          <span className="truncate">{ro.memberName}</span>
+                          <span className="text-[10px] text-amber-300 shrink-0">{ro.roleLabelVi}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug">{ro.dutyVi}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {warBriefing?.mvpSummaryVi && (
+                  <div className="text-[11px] text-slate-300">
+                    <span className="font-bold text-amber-300">Tổng kết MVP:</span>{' '}
+                    {warBriefing.mvpSummaryVi}
+                  </div>
+                )}
+              </div>
+
               <div className="rounded-2xl border border-amber-400/35 bg-[#080d22] p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -1754,6 +2221,47 @@ export const LiveAiHubModal: React.FC<LiveAiHubModalProps> = ({
                   </button>
                 </div>
               )}
+
+              {/* Phase 3 Pillar 3: Live AI Spectator Casting & Pre-Match Scouting */}
+              <div
+                data-testid="spectator-ai-casting-panel"
+                className="rounded-2xl border border-cyan-400/35 bg-[#061121] p-3.5 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-black text-cyan-300">Bình Luận Viên AI Trực Tiếp</span>
+                    <span aria-hidden="true" className="text-slate-600">·</span>
+                    <span className="text-amber-200 font-bold">
+                      Cửa trên: {spectatorCast?.favoredFighterName ?? match.fighterA.displayName}
+                    </span>
+                  </div>
+                  {spectatorCastLoading && (
+                    <span className="text-[11px] text-slate-400">Đang cập nhật bình luận…</span>
+                  )}
+                </div>
+                {spectatorCast?.scoutingSummaryVi && (
+                  <p className="text-xs text-slate-200 leading-snug">
+                    <span className="font-bold text-amber-300">Soi kèo:</span>{' '}
+                    {spectatorCast.scoutingSummaryVi}
+                  </p>
+                )}
+                {spectatorCast && spectatorCast.lines.length > 0 && (
+                  <div className="space-y-1 pt-1.5 border-t border-slate-800/80">
+                    {spectatorCast.lines.map((cl) => (
+                      <div key={cl.id} className="text-xs text-cyan-100 leading-snug">
+                        <span className="font-bold text-cyan-300">{cl.speakerName}:</span>{' '}
+                        {cl.textVi}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {spectatorCast?.postMatchQuoteVi && match.status === 'finished' && (
+                  <div className="text-xs text-amber-200 pt-1.5 border-t border-slate-800/80">
+                    <span className="font-bold text-amber-300">Phát biểu sau trận:</span>{' '}
+                    {spectatorCast.postMatchQuoteVi}
+                  </div>
+                )}
+              </div>
 
               {/* Live Match Play-by-Play Ticker */}
               <div className="rounded-2xl border border-slate-800 bg-[#060917] p-3.5 space-y-2">

@@ -7,13 +7,20 @@ import type {
   SkillDefinition,
   SkillId,
   TacticalCrossroadsOption,
+  VirtualAuctionPsychReaction,
   VirtualBuildCoachResult,
   VirtualCompanionCalloutResult,
   VirtualCompanionCommandId,
+  VirtualContractObjectiveKind,
   VirtualDmMessage,
+  VirtualGuildWarBriefing,
+  VirtualHaggleOfferItem,
+  VirtualNemesisChallengeLetter,
+  VirtualPlayerContract,
   VirtualPlayerPersonaId,
   VirtualPlayerRelationshipMemory,
   VirtualPostMatchCommentaryResult,
+  VirtualSpectatorCastingBundle,
 } from '../types/game';
 import { shouldSkipNodeApiEndpoints } from '../engine/glbFetchResilience';
 import {
@@ -470,4 +477,368 @@ export async function requestVirtualCompanionCallout(params: {
   }
   return fallback;
 }
+
+// ============================================================================
+// PHASE 3 CLIENT BRIDGE: NEMESIS, CONTRACTS, CASTING, AUCTION/HAGGLE & WAR-ROOM
+// ============================================================================
+
+const PHASE3_TIMEOUT_MS = 7_500;
+
+export async function requestNemesisChallengeLetter(params: {
+  playerName: string;
+  aiPlayerId?: string;
+  aiName?: string;
+  forceRefresh?: boolean;
+}): Promise<VirtualNemesisChallengeLetter> {
+  const nowMs = Date.now();
+  const fallback: VirtualNemesisChallengeLetter = {
+    id: `nem_local_${nowMs}`,
+    aiPlayerId: params.aiPlayerId ?? 'ai_01',
+    aiName: params.aiName ?? 'Huyết Ưng',
+    aiTitle: 'Cao Thủ Đấu Trường',
+    rivalTier: 'contender',
+    rivalryScore: 25,
+    counterStyle: 'anti_kite',
+    counterLabelVi: 'Khóa Góc Áp Sát',
+    letterVi: `${params.playerName}, ta đã phân tích lối đánh của bạn và đổi sang chiến thuật áp sát mới. Vào Đấu Trường so tài lại ngay!`,
+    counterHintVi: 'Giữ Dash cho pha áp sát đầu tiên và phản công bằng Tuyệt Kỹ khi đối thủ vừa hụt chiêu.',
+    createdAtMs: nowMs,
+    expiresAtMs: nowMs + 6 * 3_600_000,
+    source: 'local_fallback',
+    model: 'local-nemesis-v1',
+  };
+
+  const remote = await fetchJsonWithTimeout<VirtualNemesisChallengeLetter>(
+    '/api/ai/nvidia/nemesis-letter',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    PHASE3_TIMEOUT_MS
+  );
+  if (remote && typeof remote.letterVi === 'string' && remote.letterVi.length > 0) {
+    return remote;
+  }
+  return fallback;
+}
+
+export async function acceptNemesisChallengeLetter(params: {
+  playerName: string;
+  aiPlayerId: string;
+}): Promise<boolean> {
+  const remote = await fetchJsonWithTimeout<{ ok: boolean }>(
+    '/api/ai/nvidia/nemesis-letter/accept',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    STATUS_TIMEOUT_MS
+  );
+  return Boolean(remote?.ok);
+}
+
+export async function fetchVirtualContracts(
+  playerName: string
+): Promise<VirtualPlayerContract[]> {
+  const qs = encodeURIComponent(playerName.trim() || 'Xạ Thủ');
+  const remote = await fetchJsonWithTimeout<{ contracts: VirtualPlayerContract[] }>(
+    `/api/ai/nvidia/contracts?playerName=${qs}`,
+    { method: 'GET' },
+    STATUS_TIMEOUT_MS
+  );
+  return Array.isArray(remote?.contracts) ? remote.contracts : [];
+}
+
+export async function generateVirtualContract(params: {
+  playerName: string;
+  aiPlayerId?: string;
+  chapterId: number;
+  playerPowerRating: number;
+}): Promise<{
+  ok: boolean;
+  contract?: VirtualPlayerContract;
+  contracts: VirtualPlayerContract[];
+  message?: string;
+}> {
+  const remote = await fetchJsonWithTimeout<{
+    ok: boolean;
+    contract?: VirtualPlayerContract;
+    contracts?: VirtualPlayerContract[];
+    message?: string;
+  }>(
+    '/api/ai/nvidia/contracts/generate',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    PHASE3_TIMEOUT_MS
+  );
+  if (remote && Array.isArray(remote.contracts)) {
+    return {
+      ok: Boolean(remote.ok),
+      contract: remote.contract,
+      contracts: remote.contracts,
+      message: remote.message,
+    };
+  }
+  return {
+    ok: false,
+    contracts: await fetchVirtualContracts(params.playerName),
+    message: 'Không thể tạo kèo mới lúc này (hoặc bạn đã đạt tối đa 3 kèo đang chạy).',
+  };
+}
+
+export async function reportVirtualContractProgress(params: {
+  playerName: string;
+  objectiveKind: VirtualContractObjectiveKind;
+  delta?: number;
+  chapterId?: number;
+  hpRatio?: number;
+}): Promise<VirtualPlayerContract[]> {
+  const remote = await fetchJsonWithTimeout<{ ok: boolean; contracts?: VirtualPlayerContract[] }>(
+    '/api/ai/nvidia/contracts/progress',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    STATUS_TIMEOUT_MS
+  );
+  return Array.isArray(remote?.contracts) ? remote.contracts : [];
+}
+
+export async function claimVirtualContractReward(params: {
+  playerName: string;
+  contractId: string;
+}): Promise<{
+  ok: boolean;
+  alreadyClaimed: boolean;
+  goldReward: number;
+  gemsReward: number;
+  affinityDelta: number;
+  message: string;
+  contracts: VirtualPlayerContract[];
+}> {
+  const remote = await fetchJsonWithTimeout<{
+    ok: boolean;
+    alreadyClaimed: boolean;
+    goldReward: number;
+    gemsReward: number;
+    affinityDelta: number;
+    message: string;
+    contracts: VirtualPlayerContract[];
+  }>(
+    '/api/ai/nvidia/contracts/claim',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    STATUS_TIMEOUT_MS
+  );
+  if (remote) return remote;
+  return {
+    ok: false,
+    alreadyClaimed: false,
+    goldReward: 0,
+    gemsReward: 0,
+    affinityDelta: 0,
+    message: 'Không thể kết nối máy chủ để nhận thưởng kèo.',
+    contracts: [],
+  };
+}
+
+export async function requestSpectatorCasting(params: {
+  playerName: string;
+  matchId?: string;
+  fighterAName?: string;
+  fighterAPower?: number;
+  fighterAHpPct?: number;
+  fighterBName?: string;
+  fighterBPower?: number;
+  fighterBHpPct?: number;
+  winnerName?: string;
+}): Promise<VirtualSpectatorCastingBundle> {
+  const nowMs = Date.now();
+  const favored =
+    (params.fighterAPower ?? 1000) >= (params.fighterBPower ?? 1000)
+      ? params.fighterAName ?? 'Cao Thủ A'
+      : params.fighterBName ?? 'Cao Thủ B';
+  const fallback: VirtualSpectatorCastingBundle = {
+    matchId: params.matchId ?? 'spec_local',
+    scoutingSummaryVi: `${favored} nhỉnh hơn nhẹ về lực chiến, nhưng nhịp Né Hoàn Hảo có thể xoay chuyển cục diện.`,
+    favoredFighterName: favored,
+    lines: [
+      {
+        id: `cast_local_${nowMs}`,
+        matchId: params.matchId ?? 'spec_local',
+        moment: params.winnerName ? 'finish' : 'opening',
+        speakerName: 'BLV Tinh Giới',
+        textVi: params.winnerName
+          ? `${params.winnerName} đã tung đòn quyết định khép lại trận đấu nghẹt thở!`
+          : `Hai cao thủ đang thăm dò nhau từng nhịp bắn trên Khán Đài Tinh Giới!`,
+        timestampMs: nowMs,
+        source: 'local_fallback',
+      },
+    ],
+    updatedAtMs: nowMs,
+    source: 'local_fallback',
+    model: 'local-caster-v1',
+  };
+
+  const remote = await fetchJsonWithTimeout<VirtualSpectatorCastingBundle>(
+    '/api/ai/nvidia/spectator-cast',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    PHASE3_TIMEOUT_MS
+  );
+  if (remote && typeof remote.scoutingSummaryVi === 'string' && Array.isArray(remote.lines)) {
+    return remote;
+  }
+  return fallback;
+}
+
+export async function requestAuctionPsychReaction(params: {
+  lotId: string;
+  lotLabel: string;
+  aiPlayerId?: string;
+  aiName: string;
+  currentBid: number;
+  buyoutPrice: number;
+  playerJustBid: boolean;
+}): Promise<VirtualAuctionPsychReaction> {
+  const nowMs = Date.now();
+  const fallback: VirtualAuctionPsychReaction = {
+    id: `auc_local_${nowMs}`,
+    lotId: params.lotId,
+    aiPlayerId: params.aiPlayerId ?? 'ai_01',
+    aiName: params.aiName,
+    stance: 'testing',
+    stanceLabelVi: 'Thăm dò giá',
+    tauntVi: `Mức ${params.currentBid} Ngọc cho ${params.lotLabel} khá căng rồi đấy, bạn có theo tiếp không?`,
+    timestampMs: nowMs,
+    source: 'local_fallback',
+    model: 'local-auction-psych-v1',
+  };
+
+  const remote = await fetchJsonWithTimeout<VirtualAuctionPsychReaction>(
+    '/api/ai/nvidia/auction-react',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    POST_MATCH_TIMEOUT_MS
+  );
+  if (remote && typeof remote.tauntVi === 'string' && remote.tauntVi.length > 0) {
+    return remote;
+  }
+  return fallback;
+}
+
+export async function fetchVirtualHaggleOffers(
+  playerName: string
+): Promise<VirtualHaggleOfferItem[]> {
+  const qs = encodeURIComponent(playerName.trim() || 'Xạ Thủ');
+  const remote = await fetchJsonWithTimeout<{ offers: VirtualHaggleOfferItem[] }>(
+    `/api/ai/nvidia/haggle/offers?playerName=${qs}`,
+    { method: 'GET' },
+    STATUS_TIMEOUT_MS
+  );
+  return Array.isArray(remote?.offers) ? remote.offers : [];
+}
+
+export async function negotiateVirtualHaggleOffer(params: {
+  playerName: string;
+  offerId: string;
+  offeredGems: number;
+  playerMessage?: string;
+}): Promise<{
+  ok: boolean;
+  decision: 'accept' | 'counter' | 'reject';
+  finalPriceGems: number;
+  counterPriceGems: number;
+  replyVi: string;
+  source: 'nvidia_nim' | 'local_fallback';
+  offer: VirtualHaggleOfferItem | null;
+  offers: VirtualHaggleOfferItem[];
+  error?: string;
+}> {
+  const remote = await fetchJsonWithTimeout<{
+    ok: boolean;
+    decision: 'accept' | 'counter' | 'reject';
+    finalPriceGems: number;
+    counterPriceGems: number;
+    replyVi: string;
+    source: 'nvidia_nim' | 'local_fallback';
+    offer: VirtualHaggleOfferItem | null;
+    offers: VirtualHaggleOfferItem[];
+    error?: string;
+  }>(
+    '/api/ai/nvidia/haggle/negotiate',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    PHASE3_TIMEOUT_MS
+  );
+  if (remote) return remote;
+  return {
+    ok: false,
+    decision: 'reject',
+    finalPriceGems: 0,
+    counterPriceGems: 0,
+    replyVi: 'Không thể kết nối quầy thương lượng lúc này.',
+    source: 'local_fallback',
+    offer: null,
+    offers: [],
+    error: 'NETWORK_ERROR',
+  };
+}
+
+export async function requestGuildWarBriefing(params: {
+  playerName: string;
+  mode: 'guild_boss' | 'guild_war';
+  forceRefresh?: boolean;
+}): Promise<VirtualGuildWarBriefing | null> {
+  const remote = await fetchJsonWithTimeout<VirtualGuildWarBriefing>(
+    '/api/ai/nvidia/guild-briefing',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    PHASE3_TIMEOUT_MS
+  );
+  if (remote && typeof remote.briefingVi === 'string') return remote;
+  return null;
+}
+
+export async function confirmGuildWarBriefing(params: {
+  playerName: string;
+  mode: 'guild_boss' | 'guild_war';
+  sessionId: string;
+}): Promise<VirtualGuildWarBriefing | null> {
+  const remote = await fetchJsonWithTimeout<{
+    ok: boolean;
+    briefing: VirtualGuildWarBriefing | null;
+  }>(
+    '/api/ai/nvidia/guild-briefing/confirm',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    },
+    STATUS_TIMEOUT_MS
+  );
+  return remote?.briefing ?? null;
+}
+
 

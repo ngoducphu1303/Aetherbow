@@ -12,6 +12,11 @@ import {
 import { normalizeAuctionHouse } from '../data/wave7Data';
 import { liveAiSocket } from '../services/liveAiSocket';
 import {
+  fetchVirtualHaggleOffers,
+  negotiateVirtualHaggleOffer,
+  requestAuctionPsychReaction,
+} from '../services/nvidiaVirtualPlayerClient';
+import {
   AiLiveAuctionBidEvent,
   AiLivePlayerProfile,
   AuctionLotItem,
@@ -19,6 +24,8 @@ import {
   Rarity,
   SaveData,
   SocketGemInstance,
+  VirtualAuctionPsychReaction,
+  VirtualHaggleOfferItem,
 } from '../types/game';
 import {
   GearSlotSvg,
@@ -28,6 +35,7 @@ import {
 
 interface AuctionHouseModalProps {
   save: SaveData;
+  playerDisplayName?: string;
   onPlaceBid: (lotId: string, bidAmount: number) => void;
   onBuyoutLot: (lotId: string) => void;
   onListGear: (gearUid: string, startBid: number, buyoutPrice: number) => void;
@@ -36,6 +44,13 @@ interface AuctionHouseModalProps {
   onClaimAll: () => void;
   onClaimEntry: (entryId: string) => void;
   onRefreshLots: () => void;
+  onCompleteHagglePurchase?: (deal: {
+    costGems: number;
+    rewardGold: number;
+    rewardStarDust: number;
+    rewardReforgeStone: number;
+    itemName: string;
+  }) => void;
   onClose: () => void;
 }
 
@@ -64,6 +79,7 @@ function getSuggestedGearPricing(rarity: Rarity): { start: number; buyout: numbe
 
 export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
   save,
+  playerDisplayName = 'Xạ Thủ',
   onPlaceBid,
   onBuyoutLot,
   onListGear,
@@ -72,9 +88,10 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
   onClaimAll,
   onClaimEntry,
   onRefreshLots,
+  onCompleteHagglePurchase,
   onClose,
 }) => {
-  const [tab, setTab] = useState<'market' | 'consign' | 'claims'>('market');
+  const [tab, setTab] = useState<'market' | 'haggle' | 'consign' | 'claims'>('market');
   const [imgErr, setImgErr] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [selectedConsignKey, setSelectedConsignKey] = useState<string>('');
@@ -86,11 +103,26 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
   const [liveBidEvents, setLiveBidEvents] = useState<AiLiveAuctionBidEvent[]>(
     () => liveAiSocket.getRecentAuctionEvents()
   );
+  const [psychReaction, setPsychReaction] = useState<VirtualAuctionPsychReaction | null>(null);
+  const [haggleOffers, setHaggleOffers] = useState<VirtualHaggleOfferItem[]>([]);
+  const [haggleBusyId, setHaggleBusyId] = useState<string | null>(null);
+  const [haggleNoteById, setHaggleNoteById] = useState<Record<string, string>>({});
+  const [haggleNotice, setHaggleNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchVirtualHaggleOffers(playerDisplayName).then((list) => {
+      if (active) setHaggleOffers(list);
+    });
+    return () => {
+      active = false;
+    };
+  }, [playerDisplayName]);
 
   const ah = useMemo(() => normalizeAuctionHouse(save.auctionHouse, now), [save.auctionHouse, now]);
   const activeLots = ah.lots.filter((l) => l.status === 'active');
@@ -265,6 +297,18 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
               </span>
             </div>
           )}
+          {psychReaction && (
+            <div
+              data-testid="auction-psych-reaction"
+              className="px-3.5 py-2 border-t border-amber-400/25 bg-[#120d1f] flex flex-wrap items-center gap-2 text-xs text-slate-100"
+            >
+              <span className="font-bold text-amber-300 shrink-0">{psychReaction.aiName}</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span className="font-bold text-cyan-300 shrink-0">{psychReaction.stanceLabelVi}</span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span className="text-slate-200">&ldquo;{psychReaction.tauntVi}&rdquo;</span>
+            </div>
+          )}
         </div>
 
         {/* Sub-Tabs */}
@@ -278,6 +322,17 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
           >
             <Gavel className="w-3.5 h-3.5" />
             <span>Phiên Đấu Giá ({marketLots.length})</span>
+          </button>
+          <button
+            type="button"
+            data-testid="auction-tab-haggle"
+            onClick={() => setTab('haggle')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              tab === 'haggle' ? 'a2-yellow-btn' : 'a2-slate-btn'
+            }`}
+          >
+            <Tag className="w-3.5 h-3.5" />
+            <span>Thương Lượng 1-1 ({haggleOffers.filter((o) => o.status === 'open').length})</span>
           </button>
           <button
             type="button"
@@ -386,6 +441,16 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
                         onClick={() => {
                           soundEngine.playUiClick(1.06);
                           onPlaceBid(lot.id, minNextBid);
+                          const rivalBidder = aiPlayers[0];
+                          requestAuctionPsychReaction({
+                            lotId: lot.id,
+                            lotLabel: lot.label,
+                            aiPlayerId: rivalBidder?.id,
+                            aiName: rivalBidder?.displayName ?? lot.sellerName,
+                            currentBid: minNextBid,
+                            buyoutPrice: lot.buyoutPrice,
+                            playerJustBid: true,
+                          }).then((reaction) => setPsychReaction(reaction));
                         }}
                         className="a2-purple-btn flex-1 py-2 px-3 rounded-xl text-[11px] font-black whitespace-nowrap cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
                       >
@@ -408,6 +473,171 @@ export const AuctionHouseModal: React.FC<AuctionHouseModalProps> = ({
                   </div>
                 );
               })
+            )}
+          </div>
+        )}
+
+        {/* TAB 1B: Phase 3 Pillar 4B — 1-on-1 Haggle Desk */}
+        {tab === 'haggle' && (
+          <div className="space-y-3" data-testid="auction-haggle-panel">
+            <div className="text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
+              <span>
+                Mặc cả trực tiếp với cao thủ online (tối đa 3 lượt/gói). Độ thân thiết càng cao, mức giảm giá tối đa càng sâu (lên tới 20%).
+              </span>
+              {haggleNotice && (
+                <span className="font-bold text-amber-300">{haggleNotice}</span>
+              )}
+            </div>
+
+            {haggleOffers.length === 0 ? (
+              <div className="rounded-2xl border border-slate-800 bg-[#070b1a] p-6 text-center text-xs text-slate-400">
+                Đang tải quầy thương lượng từ các cao thủ trực tuyến…
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {haggleOffers.map((offer) => {
+                  const busy = haggleBusyId === offer.offerId;
+                  const bidMinus15 = Math.max(1, Math.round(offer.currentAskGems * 0.85));
+                  const bidMinus8 = Math.max(1, Math.round(offer.currentAskGems * 0.92));
+                  const tierVi =
+                    offer.relationshipTier === 'ally'
+                      ? 'Bạn Thân (giảm tới 20%)'
+                      : offer.relationshipTier === 'mentor'
+                      ? 'Tiền Bối (giảm tới 20%)'
+                      : offer.relationshipTier === 'acquaintance'
+                      ? 'Người Quen (giảm tới 12%)'
+                      : offer.relationshipTier === 'rival'
+                      ? 'Đối Thủ (giảm tối đa 6%)'
+                      : 'Mới Gặp (giảm tối đa 6%)';
+
+                  const submitOffer = async (offeredGems: number) => {
+                    if (busy || offer.status !== 'open') return;
+                    if (save.gems < offeredGems) {
+                      setHaggleNotice(`Cần đủ ${offeredGems} Ngọc để chốt mức giá này.`);
+                      return;
+                    }
+                    setHaggleBusyId(offer.offerId);
+                    setHaggleNotice(null);
+                    try {
+                      const res = await negotiateVirtualHaggleOffer({
+                        playerName: playerDisplayName,
+                        offerId: offer.offerId,
+                        offeredGems,
+                        playerMessage: haggleNoteById[offer.offerId] || undefined,
+                      });
+                      if (res.offers.length > 0) setHaggleOffers(res.offers);
+                      setHaggleNoteById((prev) => ({ ...prev, [offer.offerId]: '' }));
+                      if (res.ok && res.decision === 'accept' && res.finalPriceGems > 0) {
+                        soundEngine.playLevelUp();
+                        onCompleteHagglePurchase?.({
+                          costGems: res.finalPriceGems,
+                          rewardGold: offer.rewardGold,
+                          rewardStarDust: offer.rewardStarDust,
+                          rewardReforgeStone: offer.rewardReforgeStone,
+                          itemName: offer.itemName,
+                        });
+                        setHaggleNotice(
+                          `Chốt đơn "${offer.itemName}" với ${offer.sellerName} giá ${res.finalPriceGems} Ngọc!`
+                        );
+                      } else if (res.error) {
+                        setHaggleNotice(res.error);
+                      }
+                    } finally {
+                      setHaggleBusyId(null);
+                    }
+                  };
+
+                  return (
+                    <div
+                      key={offer.offerId}
+                      className="rounded-2xl border border-slate-800 bg-[#070b1a] p-4 space-y-2.5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="text-xs text-slate-400 flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-amber-300">{offer.sellerName}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="text-cyan-300">{tierVi}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="font-mono-nums">
+                              Lượt {offer.roundsUsed}/{offer.maxRounds}
+                            </span>
+                          </div>
+                          <div className="font-display text-sm font-black text-white">
+                            {offer.itemName}
+                          </div>
+                          <div className="text-xs text-slate-300">{offer.itemSummaryVi}</div>
+                        </div>
+                        <div className="text-right font-mono-nums shrink-0">
+                          <div className="text-[11px] text-slate-400 line-through">
+                            Niêm yết {offer.listPriceGems} Ngọc
+                          </div>
+                          <div className="text-sm font-black text-amber-300">
+                            Giá chào: {offer.currentAskGems} Ngọc
+                          </div>
+                        </div>
+                      </div>
+
+                      {offer.lastReplyVi && (
+                        <div className="rounded-xl bg-[#0b1328] border border-slate-800 px-3 py-2 text-xs text-slate-100">
+                          <span className="font-bold text-amber-300">{offer.sellerName}:</span>{' '}
+                          &ldquo;{offer.lastReplyVi}&rdquo;
+                        </div>
+                      )}
+
+                      {offer.status === 'open' ? (
+                        <div className="space-y-2 pt-1">
+                          <input
+                            type="text"
+                            maxLength={90}
+                            value={haggleNoteById[offer.offerId] ?? ''}
+                            onChange={(e) =>
+                              setHaggleNoteById((prev) => ({
+                                ...prev,
+                                [offer.offerId]: e.target.value,
+                              }))
+                            }
+                            placeholder="Thêm câu mặc cả ngắn (tuỳ chọn)..."
+                            className="w-full rounded-xl bg-[#050914] border border-slate-700 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={busy || save.gems < bidMinus15}
+                              onClick={() => submitOffer(bidMinus15)}
+                              className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-bold text-cyan-200 border border-cyan-400/40 whitespace-nowrap cursor-pointer disabled:opacity-45"
+                            >
+                              Trả -15% ({bidMinus15} Ngọc)
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy || save.gems < bidMinus8}
+                              onClick={() => submitOffer(bidMinus8)}
+                              className="a2-slate-btn px-3 py-1.5 rounded-xl text-xs font-bold text-amber-200 border border-amber-400/40 whitespace-nowrap cursor-pointer disabled:opacity-45"
+                            >
+                              Trả -8% ({bidMinus8} Ngọc)
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy || save.gems < offer.currentAskGems}
+                              onClick={() => submitOffer(offer.currentAskGems)}
+                              className="a2-yellow-btn px-3.5 py-1.5 rounded-xl text-xs font-black whitespace-nowrap cursor-pointer disabled:opacity-45"
+                            >
+                              {busy ? 'Đang thương lượng…' : `Chốt Giá (${offer.currentAskGems} Ngọc)`}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-bold text-emerald-300">
+                          {offer.status === 'sold'
+                            ? `Đã giao dịch thành công giá ${offer.currentAskGems} Ngọc.`
+                            : 'Đã kết thúc phiên thương lượng hôm nay.'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}

@@ -4055,7 +4055,11 @@ export type VirtualMemoryKind =
   | 'arena_loss'
   | 'coop_clear'
   | 'dm_chat'
-  | 'coach_advice';
+  | 'coach_advice'
+  | 'contract_done'
+  | 'haggle_deal'
+  | 'nemesis_letter'
+  | 'guild_war_order';
 
 export interface VirtualMemoryEntry {
   id: string;
@@ -4116,6 +4120,165 @@ export interface VirtualBuildCoachResult {
   source: AiInferenceSource;
   model: string;
 }
+
+// ============================================================================
+// LIVING VIRTUAL CHARACTER AI (PHASE 3 — NEMESIS, CONTRACTS, CASTING, HAGGLE, WAR-ROOM)
+// ============================================================================
+
+export type VirtualNemesisCounterStyle =
+  | 'anti_kite'
+  | 'anti_burst'
+  | 'anti_crit'
+  | 'anti_dodge';
+
+export interface VirtualNemesisChallengeLetter {
+  id: string;
+  aiPlayerId: string;
+  aiName: string;
+  aiTitle: string;
+  rivalTier: AiRivalTier;
+  rivalryScore: number;
+  counterStyle: VirtualNemesisCounterStyle;
+  counterLabelVi: string;
+  letterVi: string;
+  counterHintVi: string;
+  createdAtMs: number;
+  expiresAtMs: number;
+  acceptedAtMs?: number;
+  source: AiInferenceSource;
+  model: string;
+}
+
+export type VirtualContractObjectiveKind =
+  | 'clear_chapter'
+  | 'win_duel'
+  | 'guild_boss_strike'
+  | 'arena_win'
+  | 'survive_hp_ratio';
+
+export type VirtualContractStatus = 'active' | 'completed' | 'claimed';
+
+export interface VirtualPlayerContract {
+  id: string;
+  aiPlayerId: string;
+  aiName: string;
+  aiTitle: string;
+  relationshipTier: VirtualRelationshipTier;
+  titleVi: string;
+  pitchVi: string;
+  objectiveKind: VirtualContractObjectiveKind;
+  objectiveLabelVi: string;
+  targetCount: number;
+  currentCount: number;
+  chapterTarget?: number;
+  rewardGold: number;
+  rewardGems: number;
+  rewardAffinity: number;
+  status: VirtualContractStatus;
+  createdAtMs: number;
+  completedAtMs?: number;
+  claimedAtMs?: number;
+  source: AiInferenceSource;
+  model: string;
+}
+
+export type VirtualSpectatorCastMoment =
+  | 'pre_match'
+  | 'opening'
+  | 'swing'
+  | 'finish'
+  | 'post_match';
+
+export interface VirtualSpectatorCastLine {
+  id: string;
+  matchId: string;
+  moment: VirtualSpectatorCastMoment;
+  speakerName: string;
+  textVi: string;
+  timestampMs: number;
+  source: AiInferenceSource;
+}
+
+export interface VirtualSpectatorCastingBundle {
+  matchId: string;
+  scoutingSummaryVi: string;
+  favoredFighterName: string;
+  lines: VirtualSpectatorCastLine[];
+  postMatchQuoteVi?: string;
+  updatedAtMs: number;
+  source: AiInferenceSource;
+  model: string;
+}
+
+export type VirtualAuctionTellStance =
+  | 'bluffing'
+  | 'backing_off'
+  | 'all_in'
+  | 'testing';
+
+export interface VirtualAuctionPsychReaction {
+  id: string;
+  lotId: string;
+  aiPlayerId: string;
+  aiName: string;
+  stance: VirtualAuctionTellStance;
+  stanceLabelVi: string;
+  tauntVi: string;
+  timestampMs: number;
+  source: AiInferenceSource;
+  model: string;
+}
+
+export type VirtualHaggleItemCategory = 'gem_pack' | 'shard_bundle' | 'scroll_kit';
+
+export interface VirtualHaggleOfferItem {
+  offerId: string;
+  sellerId: string;
+  sellerName: string;
+  sellerTitle: string;
+  sellerPersonality: AiLivePlayerPersonality;
+  itemName: string;
+  itemCategory: VirtualHaggleItemCategory;
+  itemSummaryVi: string;
+  listPriceGems: number;
+  minFloorGems: number;
+  currentAskGems: number;
+  rewardGold: number;
+  rewardStarDust: number;
+  rewardReforgeStone: number;
+  affinityScore: number;
+  relationshipTier: VirtualRelationshipTier;
+  roundsUsed: number;
+  maxRounds: number;
+  status: 'open' | 'accepted' | 'rejected' | 'sold';
+  lastReplyVi?: string;
+  source?: AiInferenceSource;
+}
+
+export interface VirtualGuildWarRoleOrder {
+  memberName: string;
+  roleLabelVi: string;
+  dutyVi: string;
+  isHumanPlayer?: boolean;
+}
+
+export interface VirtualGuildWarBriefing {
+  id: string;
+  mode: 'guild_boss' | 'guild_war';
+  sessionId: string;
+  leaderName: string;
+  priorityTargetId: string;
+  priorityTargetName: string;
+  briefingVi: string;
+  roleOrders: VirtualGuildWarRoleOrder[];
+  bonusPct: number;
+  confirmedByPlayer: boolean;
+  mvpSummaryVi?: string;
+  updatedAtMs: number;
+  source: AiInferenceSource;
+  model: string;
+}
+
 
 
 

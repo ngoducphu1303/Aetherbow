@@ -790,6 +790,567 @@ export function createNvidiaAiRouter(
     }
   });
 
+  // ============================================================================
+  // PHASE 3: NEMESIS LETTER, DYNAMIC CONTRACTS, SPECTATOR CASTING, HAGGLE & WAR-ROOM
+  // ============================================================================
+
+  // Pillar 1: Nemesis Challenge Letter & Counter-Tactic
+  router.post('/nemesis-letter', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const requestedAi = liveAiService?.findPlayerByNameOrId(
+        typeof body.aiPlayerId === 'string' ? body.aiPlayerId : undefined
+      );
+      const rivals = liveAiService?.getRivalsForPlayer(playerName) ?? [];
+      const topRival =
+        (requestedAi ? rivals.find((r) => r.aiPlayerId === requestedAi.id) : rivals[0]) ?? null;
+      const aiProfile =
+        requestedAi ??
+        (topRival ? liveAiService?.getPlayerById(topRival.aiPlayerId) : null) ??
+        liveAiService?.getSnapshot(1).players[0] ??
+        null;
+
+      const aiId = aiProfile?.id ?? String(body.aiPlayerId ?? 'ai_01');
+      const forceRefresh = Boolean(body.forceRefresh);
+      if (liveAiService && !forceRefresh) {
+        const cached = liveAiService.getNemesisLetter(playerName, aiId);
+        if (cached) {
+          res.setHeader('Cache-Control', 'no-store');
+          res.json(cached);
+          return;
+        }
+      }
+
+      const counterProfile = liveAiService
+        ? liveAiService.deriveNemesisCounterProfile(playerName)
+        : {
+            counterStyle: 'anti_kite' as const,
+            counterLabelVi: 'Khóa Góc Áp Sát',
+            playerStyleSummary: 'Lối đánh cân bằng, giữ cự ly trung bình.',
+            playerWeakness: 'Hở sườn khi bị ép góc nhanh.',
+          };
+      const mem = liveAiService?.getRelationshipMemory(playerName, aiId);
+      const generated = await nvidiaAiService.generateNemesisChallengeLetter({
+        aiPlayerId: aiId,
+        aiName: aiProfile?.displayName ?? String(body.aiName ?? 'Huyết Ưng'),
+        aiTitle: aiProfile?.titleBadge ?? 'Cao Thủ Đấu Trường',
+        aiPersonality: aiProfile?.personality ?? 'aggressive',
+        rivalTier: topRival?.rivalryTier ?? 'contender',
+        rivalryScore: topRival?.rivalryScore ?? 25,
+        playerName,
+        playerStyleSummary: counterProfile.playerStyleSummary,
+        playerWeakness: counterProfile.playerWeakness,
+        counterStyle: counterProfile.counterStyle,
+        counterLabelVi: counterProfile.counterLabelVi,
+        winsAgainstAi: topRival?.winsAgainst ?? 0,
+        lossesAgainstAi: topRival?.lossesAgainst ?? 0,
+        recentMemories: mem?.memories ?? [],
+      });
+
+      const nowMs = Date.now();
+      const letter = {
+        id: `nem_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
+        aiPlayerId: aiId,
+        aiName: aiProfile?.displayName ?? String(body.aiName ?? 'Huyết Ưng'),
+        aiTitle: aiProfile?.titleBadge ?? 'Cao Thủ Đấu Trường',
+        rivalTier: topRival?.rivalryTier ?? ('contender' as const),
+        rivalryScore: topRival?.rivalryScore ?? 25,
+        counterStyle: counterProfile.counterStyle,
+        counterLabelVi: counterProfile.counterLabelVi,
+        letterVi: generated.letterVi,
+        counterHintVi: generated.counterHintVi,
+        createdAtMs: nowMs,
+        expiresAtMs: nowMs + 6 * 3_600_000,
+        source: generated.source,
+        model: generated.model,
+      };
+
+      const saved = liveAiService ? liveAiService.saveNemesisLetter(playerName, letter) : letter;
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(saved);
+    } catch {
+      res.status(500).json({ error: 'AI_NEMESIS_LETTER_FAILED' });
+    }
+  });
+
+  router.post('/nemesis-letter/accept', (req, res) => {
+    const body =
+      req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+    if (!body || typeof body.aiPlayerId !== 'string') {
+      res.status(400).json({ error: 'INVALID_BODY' });
+      return;
+    }
+    const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+    const accepted = liveAiService?.acceptNemesisLetter(
+      playerName,
+      body.aiPlayerId.trim().slice(0, 48)
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: Boolean(accepted), letter: accepted ?? null });
+  });
+
+  // Pillar 2: Dynamic Virtual Player Contracts (Side-Quests)
+  router.get('/contracts', (req, res) => {
+    const playerName = sanitizeServerDisplayName(req.query.playerName ?? 'Xạ Thủ');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      contracts: liveAiService ? liveAiService.getPlayerContracts(playerName) : [],
+    });
+  });
+
+  router.post('/contracts/generate', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body || !liveAiService) {
+        res.status(400).json({ error: 'SERVICE_UNAVAILABLE' });
+        return;
+      }
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const chapterId = Math.max(1, Math.min(12, Math.floor(Number(body.chapterId ?? 1))));
+      const playerPowerRating = Math.max(100, Math.min(9_999_999, Math.round(Number(body.playerPowerRating ?? 702))));
+      const aiPlayerId = typeof body.aiPlayerId === 'string' ? body.aiPlayerId.trim().slice(0, 48) : undefined;
+
+      const spec = liveAiService.prepareContractSpec({
+        playerName,
+        aiPlayerId,
+        chapterId,
+        playerPowerRating,
+      });
+      if (!spec.canCreate) {
+        res.status(409).json({
+          ok: false,
+          error: 'CONTRACT_LIMIT_REACHED',
+          message: spec.reason,
+          contracts: liveAiService.getPlayerContracts(playerName),
+        });
+        return;
+      }
+
+      const pitch = await nvidiaAiService.generateVirtualContractPitch({
+        aiName: spec.issuer.displayName,
+        aiPersonality: spec.issuer.personality,
+        relationshipTier: spec.relationshipTier,
+        playerName,
+        chapterId,
+        playerPowerRating,
+        objectiveKind: spec.objectiveKind,
+        objectiveLabelVi: spec.objectiveLabelVi,
+      });
+
+      const nowMs = Date.now();
+      const created = liveAiService.createPlayerContract(playerName, {
+        id: `ctr_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
+        aiPlayerId: spec.issuer.id,
+        aiName: spec.issuer.displayName,
+        aiTitle: spec.issuer.titleBadge,
+        relationshipTier: spec.relationshipTier,
+        titleVi: pitch.titleVi,
+        pitchVi: pitch.pitchVi,
+        objectiveKind: spec.objectiveKind,
+        objectiveLabelVi: spec.objectiveLabelVi,
+        targetCount: spec.targetCount,
+        currentCount: 0,
+        chapterTarget: spec.chapterTarget,
+        rewardGold: spec.rewardGold,
+        rewardGems: spec.rewardGems,
+        rewardAffinity: spec.rewardAffinity,
+        status: 'active',
+        createdAtMs: nowMs,
+        source: pitch.source,
+        model: pitch.model,
+      });
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ok: true,
+        contract: created,
+        contracts: liveAiService.getPlayerContracts(playerName),
+      });
+    } catch {
+      res.status(500).json({ error: 'AI_CONTRACT_GENERATE_FAILED' });
+    }
+  });
+
+  router.post('/contracts/progress', (req, res) => {
+    const body =
+      req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+    if (!body || !liveAiService) {
+      res.status(400).json({ error: 'INVALID_BODY' });
+      return;
+    }
+    const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+    const validKinds = new Set([
+      'clear_chapter',
+      'win_duel',
+      'guild_boss_strike',
+      'arena_win',
+      'survive_hp_ratio',
+    ]);
+    const kind = String(body.objectiveKind ?? '');
+    if (!validKinds.has(kind)) {
+      res.status(400).json({ error: 'INVALID_OBJECTIVE_KIND' });
+      return;
+    }
+    const contracts = liveAiService.recordContractProgress({
+      playerName,
+      objectiveKind: kind as any,
+      delta: Number(body.delta ?? 1),
+      chapterId: body.chapterId !== undefined ? Number(body.chapterId) : undefined,
+      hpRatio: body.hpRatio !== undefined ? Number(body.hpRatio) : undefined,
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, contracts });
+  });
+
+  router.post('/contracts/claim', (req, res) => {
+    const body =
+      req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+    if (!body || !liveAiService || typeof body.contractId !== 'string') {
+      res.status(400).json({ error: 'INVALID_BODY' });
+      return;
+    }
+    const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+    const result = liveAiService.claimContractReward({
+      playerName,
+      contractId: body.contractId.trim().slice(0, 64),
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
+
+  // Pillar 3: Live AI Spectator Match Casting
+  router.post('/spectator-cast', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const liveMatch = liveAiService?.getLiveSpectatorMatch(playerName) ?? null;
+      const matchId = liveMatch?.matchId ?? String(body.matchId ?? 'spec_local');
+      const fA = liveMatch?.fighterA;
+      const fB = liveMatch?.fighterB;
+
+      const hpAPct = fA && fA.maxHp > 0 ? (fA.hp / fA.maxHp) * 100 : Number(body.fighterAHpPct ?? 100);
+      const hpBPct = fB && fB.maxHp > 0 ? (fB.hp / fB.maxHp) * 100 : Number(body.fighterBHpPct ?? 100);
+      const isFinished = liveMatch?.status === 'finished' || Boolean(body.winnerName);
+      const minHp = Math.min(hpAPct, hpBPct);
+      const moment: 'pre_match' | 'opening' | 'swing' | 'finish' | 'post_match' = isFinished
+        ? 'finish'
+        : minHp <= 65
+        ? 'swing'
+        : liveMatch && liveMatch.tickCount > 0
+        ? 'opening'
+        : 'pre_match';
+
+      const existing = liveAiService?.getSpectatorCasting(matchId);
+      if (existing && existing.lines.some((l) => l.moment === moment)) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.json(existing);
+        return;
+      }
+
+      const winnerName = liveMatch?.winnerId
+        ? liveMatch.winnerId === fA?.aiPlayerId
+          ? fA.displayName
+          : fB?.displayName
+        : typeof body.winnerName === 'string'
+        ? body.winnerName
+        : undefined;
+
+      const cast = await nvidiaAiService.generateSpectatorCasting({
+        matchId,
+        moment,
+        fighterAName: fA?.displayName ?? String(body.fighterAName ?? 'Linh Vũ'),
+        fighterAPower: fA?.powerRating ?? Number(body.fighterAPower ?? 4200),
+        fighterAHpPct: hpAPct,
+        fighterBName: fB?.displayName ?? String(body.fighterBName ?? 'Lôi Đế'),
+        fighterBPower: fB?.powerRating ?? Number(body.fighterBPower ?? 4100),
+        fighterBHpPct: hpBPct,
+        winnerName,
+        latestPlayNote: liveMatch?.tickerLog?.[0]?.text ?? undefined,
+      });
+
+      const nowMs = Date.now();
+      const bundle = {
+        matchId,
+        scoutingSummaryVi: cast.scoutingSummaryVi,
+        favoredFighterName: cast.favoredFighterName,
+        lines: [
+          {
+            id: `cast_${matchId}_${moment}_${nowMs}`,
+            matchId,
+            moment,
+            speakerName: 'BLV Tinh Giới',
+            textVi: cast.castLineVi,
+            timestampMs: nowMs,
+            source: cast.source,
+          },
+        ],
+        postMatchQuoteVi: cast.postMatchQuoteVi,
+        updatedAtMs: nowMs,
+        source: cast.source,
+        model: cast.model,
+      };
+      const saved = liveAiService ? liveAiService.saveSpectatorCasting(bundle) : bundle;
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(saved);
+    } catch {
+      res.status(500).json({ error: 'AI_SPECTATOR_CAST_FAILED' });
+    }
+  });
+
+  // Pillar 4A: Auction House Psychological Reaction
+  router.post('/auction-react', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const aiProfile =
+        liveAiService?.findPlayerByNameOrId(
+          typeof body.aiPlayerId === 'string'
+            ? body.aiPlayerId
+            : typeof body.aiName === 'string'
+            ? body.aiName
+            : undefined
+        ) ?? liveAiService?.getSnapshot(1).players[0] ?? null;
+
+      const reaction = await nvidiaAiService.generateAuctionPsychReaction({
+        lotId: String(body.lotId ?? 'lot_1').slice(0, 64),
+        lotLabel: String(body.lotLabel ?? 'Vật Phẩm Đấu Giá').slice(0, 64),
+        aiName: aiProfile?.displayName ?? String(body.aiName ?? 'Lôi Đế'),
+        aiPersonality: aiProfile?.personality ?? 'aggressive',
+        currentBid: Math.max(1, Math.round(Number(body.currentBid ?? 20))),
+        buyoutPrice: Math.max(2, Math.round(Number(body.buyoutPrice ?? 50))),
+        playerJustBid: Boolean(body.playerJustBid),
+      });
+
+      const nowMs = Date.now();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        id: `auc_psych_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
+        lotId: String(body.lotId ?? 'lot_1').slice(0, 64),
+        aiPlayerId: aiProfile?.id ?? 'ai_01',
+        aiName: aiProfile?.displayName ?? String(body.aiName ?? 'Lôi Đế'),
+        ...reaction,
+        timestampMs: nowMs,
+      });
+    } catch {
+      res.status(500).json({ error: 'AI_AUCTION_REACT_FAILED' });
+    }
+  });
+
+  // Pillar 4B: 1-on-1 Haggle Desk (Server-Clamped Economy Floors)
+  router.get('/haggle/offers', (req, res) => {
+    const playerName = sanitizeServerDisplayName(req.query.playerName ?? 'Xạ Thủ');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      offers: liveAiService ? liveAiService.getHaggleOffers(playerName) : [],
+    });
+  });
+
+  router.post('/haggle/negotiate', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body || !liveAiService || typeof body.offerId !== 'string') {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const offerId = body.offerId.trim().slice(0, 64);
+      const offeredGems = Math.max(1, Math.min(9999, Math.round(Number(body.offeredGems ?? 1))));
+      const playerMessage = typeof body.playerMessage === 'string' ? body.playerMessage.slice(0, 120) : undefined;
+
+      const evalStep = liveAiService.evaluateServerHaggleStep({
+        playerName,
+        offerId,
+        offeredGems,
+      });
+      if (!evalStep.ok || !evalStep.offer) {
+        res.status(409).json({
+          ok: false,
+          error: evalStep.error ?? 'HAGGLE_CLOSED',
+          offer: evalStep.offer ?? null,
+          offers: liveAiService.getHaggleOffers(playerName),
+        });
+        return;
+      }
+
+      const aiReply = await nvidiaAiService.evaluateHaggleNegotiation({
+        sellerName: evalStep.offer.sellerName,
+        sellerPersonality: evalStep.offer.sellerPersonality,
+        relationshipTier: evalStep.offer.relationshipTier,
+        affinityScore: evalStep.offer.affinityScore,
+        itemName: evalStep.offer.itemName,
+        listPriceGems: evalStep.offer.listPriceGems,
+        minFloorGems: evalStep.offer.minFloorGems,
+        currentAskGems: evalStep.offer.currentAskGems,
+        offeredGems,
+        roundsUsed: evalStep.offer.roundsUsed + 1,
+        maxRounds: evalStep.offer.maxRounds,
+        playerMessage,
+        serverDecision: evalStep.decision,
+        serverCounterGems: evalStep.serverCounterGems,
+      });
+
+      const updated = liveAiService.commitHaggleTurn({
+        playerName,
+        offerId,
+        decision: evalStep.decision,
+        finalPriceGems: evalStep.finalPriceGems,
+        serverCounterGems: evalStep.serverCounterGems,
+        replyVi: aiReply.replyVi,
+        source: aiReply.source,
+      });
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ok: true,
+        decision: evalStep.decision,
+        finalPriceGems: evalStep.finalPriceGems,
+        counterPriceGems: evalStep.serverCounterGems,
+        replyVi: aiReply.replyVi,
+        source: aiReply.source,
+        model: aiReply.model,
+        offer: updated,
+        offers: liveAiService.getHaggleOffers(playerName),
+      });
+    } catch {
+      res.status(500).json({ error: 'AI_HAGGLE_FAILED' });
+    }
+  });
+
+  // Pillar 5: AI Guild War-Room Coordinator
+  router.post('/guild-briefing', async (req, res) => {
+    try {
+      const body =
+        req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+      if (!body || !liveAiService) {
+        res.status(400).json({ error: 'INVALID_BODY' });
+        return;
+      }
+      const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+      const mode: 'guild_boss' | 'guild_war' =
+        body.mode === 'guild_war' ? 'guild_war' : 'guild_boss';
+
+      let sessionId = '';
+      let priorityTargetId = '';
+      let priorityTargetName = '';
+      let targetHpPct = 100;
+      let topContributorName: string | undefined;
+      let topContributorScore: number | undefined;
+
+      if (mode === 'guild_war') {
+        const war = liveAiService.getLiveGuildWarState(playerName);
+        sessionId = war.warId;
+        const vulnerableBastion =
+          [...war.bastions].sort((a, b) => a.controlScore - b.controlScore)[0] ?? war.bastions[0];
+        priorityTargetId = vulnerableBastion?.id ?? 'solar_spire';
+        priorityTargetName = vulnerableBastion?.name ?? 'Tháp Thái Dương';
+        const controlPct = vulnerableBastion
+          ? Math.round(((vulnerableBastion.controlScore + 100) / 200) * 100)
+          : 50;
+        targetHpPct = Math.max(5, 100 - controlPct);
+        topContributorName = war.contributors[0]?.displayName;
+        topContributorScore = war.contributors[0]?.points;
+      } else {
+        const boss = liveAiService.getLiveGuildBossState(playerName);
+        sessionId = boss.dateKey;
+        priorityTargetId = boss.dateKey;
+        priorityTargetName = boss.bossName;
+        targetHpPct = boss.maxHp > 0 ? (boss.currentHp / boss.maxHp) * 100 : 100;
+        topContributorName = boss.contributors[0]?.displayName;
+        topContributorScore = boss.contributors[0]?.damage;
+      }
+
+      const forceRefresh = Boolean(body.forceRefresh);
+      const cached = !forceRefresh
+        ? liveAiService.getGuildWarBriefing(mode, sessionId, playerName)
+        : null;
+      if (cached) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.json(cached);
+        return;
+      }
+
+      const snapPlayers = liveAiService.getSnapshot(1).players;
+      const leader = snapPlayers[0]?.displayName ?? 'Tề Thiên';
+      const officers = [
+        snapPlayers[1]?.displayName ?? 'Linh Vũ',
+        snapPlayers[2]?.displayName ?? 'Lôi Đế',
+      ];
+
+      const gen = await nvidiaAiService.generateGuildWarBriefing({
+        mode,
+        sessionId,
+        leaderName: leader,
+        officerNames: officers,
+        playerName,
+        priorityTargetId,
+        priorityTargetName,
+        targetHpPct,
+        topContributorName,
+        topContributorScore,
+      });
+
+      const nowMs = Date.now();
+      const briefing = liveAiService.saveGuildWarBriefing(playerName, {
+        id: `brief_${mode}_${sessionId}_${nowMs}`,
+        mode,
+        sessionId,
+        leaderName: leader,
+        priorityTargetId,
+        priorityTargetName,
+        briefingVi: gen.briefingVi,
+        roleOrders: gen.roleOrders,
+        bonusPct: 8,
+        confirmedByPlayer: false,
+        mvpSummaryVi: gen.mvpSummaryVi,
+        updatedAtMs: nowMs,
+        source: gen.source,
+        model: gen.model,
+      });
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(briefing);
+    } catch {
+      res.status(500).json({ error: 'AI_GUILD_BRIEFING_FAILED' });
+    }
+  });
+
+  router.post('/guild-briefing/confirm', (req, res) => {
+    const body =
+      req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : null;
+    if (!body || !liveAiService) {
+      res.status(400).json({ error: 'INVALID_BODY' });
+      return;
+    }
+    const playerName = sanitizeServerDisplayName(body.playerName ?? 'Xạ Thủ');
+    const mode: 'guild_boss' | 'guild_war' =
+      body.mode === 'guild_war' ? 'guild_war' : 'guild_boss';
+    const sessionId = String(body.sessionId ?? '').trim().slice(0, 64);
+    const confirmed = liveAiService.confirmGuildWarBriefing({
+      mode,
+      sessionId,
+      playerName,
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: Boolean(confirmed), briefing: confirmed });
+  });
+
   return router;
 }
 
